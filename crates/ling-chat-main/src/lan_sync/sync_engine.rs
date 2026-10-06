@@ -130,11 +130,7 @@ pub async fn execute_push(
             "transferring",
             current,
             total,
-            if total > 0 {
-                ((current * 100) / total) as u32
-            } else {
-                0
-            },
+            (current * 100).checked_div(total).unwrap_or(0) as u32,
             Some(op.path.clone()),
             bytes_transferred,
             Some(format!("正在推送: {}", op.path)),
@@ -310,11 +306,7 @@ pub async fn execute_pull(
             "transferring",
             current,
             total,
-            if total > 0 {
-                ((current * 100) / total) as u32
-            } else {
-                0
-            },
+            (current * 100).checked_div(total).unwrap_or(0) as u32,
             Some(op.path.clone()),
             bytes_transferred,
             Some(format!("正在拉取: {}", op.path)),
@@ -456,6 +448,7 @@ pub async fn execute_pull(
 
 // ─── 辅助 ────────────────────────────────────────────────────
 
+#[allow(clippy::too_many_arguments)]
 fn emit_progress(
     app: &AppHandle,
     phase: &str,

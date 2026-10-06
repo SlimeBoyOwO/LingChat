@@ -56,10 +56,7 @@ pub(super) fn run(
     // 必须 spawn 而非同步等待——插件脚本跑在 spawn_blocking 上，一个慢插件
     // 会把应用启动拖死；启动失败时插件会自行禁用并推事件。
     {
-        let plugin_manager = app
-            .state::<Arc<plugins::PluginManager>>()
-            .inner()
-            .clone();
+        let plugin_manager = app.state::<Arc<plugins::PluginManager>>().inner().clone();
         let app_handle = app.handle().clone();
         tauri::async_runtime::spawn(async move {
             plugin_manager.run_startup_hooks(&app_handle).await;
@@ -69,7 +66,7 @@ pub(super) fn run(
     // 延迟加载 DeBerta 直到应用主体挂载完成；
     // 如果在加载完成前有聊天请求到达，LocalTtsAdapter 的惰性引导仍然会运行，
     // 因此首次消息延迟是启动时加载的代价。
-    ai_service::tts::local::setup::spawn_preload(&app.handle(), &local_tts);
+    ai_service::tts::local::setup::spawn_preload(app.handle(), local_tts);
 
     // 启动鼠标轮询点击穿透循环
     let window = app

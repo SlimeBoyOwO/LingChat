@@ -20,11 +20,10 @@
 
 use futures_util::StreamExt;
 use reqwest::multipart::Form;
-use std::sync::Arc;
 use tracing::debug;
 
 use super::error::{AsrError, map_reqwest_error};
-use super::provider::{AsrResult, ProviderCredentials, parse_llama_text};
+use super::provider::{AsrResult, PartialCallback, ProviderCredentials, parse_llama_text};
 
 /// SSE 帧解析结果。
 #[derive(Debug, PartialEq)]
@@ -95,7 +94,7 @@ pub async fn recognize_stream(
     model: &str,
     prompt: Option<String>,
     wav_bytes: Vec<u8>,
-    on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+    on_partial: Option<PartialCallback>,
 ) -> Result<AsrResult, AsrError> {
     let url = format!("{endpoint}/v1/audio/transcriptions");
     debug!("[ASR/llama-stream] 上传整段 WAV 流式转写: {url} (model={model})");

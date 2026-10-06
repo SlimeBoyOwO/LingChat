@@ -168,7 +168,7 @@ pub fn is_healthy(app: &AppHandle, settings: &AsrSettings) -> bool {
     } else {
         None
     };
-    let registered = state.registered.lock().unwrap().clone();
+    let registered = *state.registered.lock().unwrap();
     want.is_some() && registered == want
 }
 

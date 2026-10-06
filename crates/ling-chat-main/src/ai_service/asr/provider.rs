@@ -76,6 +76,11 @@ pub use super::qwen_models::{
 #[allow(unused_imports)]
 pub use super::registry::{build_stream_params, get_provider, list_models, list_provider_info};
 
+/// 增量文本回调：provider 只回传文本，事件发射由调用方（session / 命令层）注入。
+///
+/// 语义为**整段累积视图**——每次调用传入当前的完整文本，前端整体替换语音追加块。
+pub type PartialCallback = Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>;
+
 /// 所有云 ASR provider 必须实现的接口。
 #[async_trait]
 pub trait AsrProvider: Send + Sync {
@@ -116,7 +121,7 @@ pub trait AsrProvider: Send + Sync {
         &self,
         _wav_bytes: Vec<u8>,
         _opts: &AsrOptions,
-        _on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+        _on_partial: Option<PartialCallback>,
     ) -> Result<AsrResult, AsrError> {
         Err(AsrError::StreamingNotSupported(self.id().into()))
     }

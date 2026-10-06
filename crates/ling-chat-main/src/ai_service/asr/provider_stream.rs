@@ -27,7 +27,6 @@
 use futures_util::{SinkExt, StreamExt};
 use serde_json::Value as JsonValue;
 use serde_json::json;
-use std::sync::Arc;
 use tokio::sync::{mpsc, oneshot};
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -35,6 +34,7 @@ use tokio_tungstenite::tungstenite::http;
 use tracing::{debug, warn};
 
 use super::error::AsrError;
+use super::provider::PartialCallback;
 use super::region::DashScopeRegion;
 
 /// 本模块的错误归属：只服务 DashScope 实时端点（唯一调用方是
@@ -207,7 +207,7 @@ fn build_finish_task_payload(task_id: &str) -> Vec<u8> {
 /// partial，前端整体替换输入框的语音追加块）——事件发射由调用方
 /// （session 层）注入回调，本模块不依赖 Tauri AppHandle。
 pub async fn start_streaming(
-    on_partial: Arc<dyn Fn(&str) + Send + Sync>,
+    on_partial: PartialCallback,
     endpoint: String,
     api_key: String,
     model: String,

@@ -168,8 +168,7 @@ pub fn sanitize_history(history: Vec<LlmMessage>) -> Vec<LlmMessage> {
             if complete {
                 out.push(msg.clone());
                 // 只搬运匹配期望 id 的回应，多出来的孤立 tool 一并丢弃
-                for k in (i + 1)..j {
-                    let t = &history[k];
+                for t in history.iter().take(j).skip(i + 1) {
                     if let Some(id) = t.tool_call_id.as_ref() {
                         if expected.contains(id) {
                             out.push(t.clone());

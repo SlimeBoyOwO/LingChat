@@ -63,6 +63,12 @@ pub struct VadSegmenter {
     candidate_frame: u64,
 }
 
+impl Default for VadSegmenter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl VadSegmenter {
     pub fn new() -> Self {
         Self::with_config(SegmenterConfig::default())

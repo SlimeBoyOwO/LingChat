@@ -345,10 +345,10 @@ async fn handle_server_ws(state: ServerState, mut socket: WebSocket) {
             },
             cmd = bc_rx.recv() => match cmd {
                 Ok(WsCommand::Text(t)) => {
-                    let _ = socket.send(AxumMessage::Text(t.into())).await;
+                    let _ = socket.send(AxumMessage::Text(t)).await;
                 },
                 Ok(WsCommand::Binary(b)) => {
-                    let _ = socket.send(AxumMessage::Binary(b.into())).await;
+                    let _ = socket.send(AxumMessage::Binary(b)).await;
                 },
                 Ok(WsCommand::Close) => break,
                 // 广播落后（容量小、发帧快）丢帧继续；通道关闭仅在服务停止时发生，退出。

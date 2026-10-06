@@ -5,8 +5,7 @@ use crate::ai_service::proactive_system::types::{
     IntentType, PerceptionResult, ProactivePrompt, UserScheduleSettings, UserState,
 };
 use crate::ai_service::screen_analyzer::{
-    NativeImageCompress, ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg,
-    image_bytes_to_native_data_url,
+    ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg, image_bytes_to_native_data_url,
 };
 use chrono::Local;
 use rand::Rng;
@@ -247,7 +246,7 @@ impl StrategyDispatcher {
             .unwrap_or(false);
         let native_compress = resolve_chat_provider(app)
             .map(|p| p.native_image_compress())
-            .unwrap_or(NativeImageCompress::default());
+            .unwrap_or_default();
         // 全局：图片超过端点大小限制时是否自动压缩（关闭则超限截图按原样直发）
         let auto_compress = crate::config::app_config::AppConfig::load(app)
             .map(|c| c.auto_compress_image)

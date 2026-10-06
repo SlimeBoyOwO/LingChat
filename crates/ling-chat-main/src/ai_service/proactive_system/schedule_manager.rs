@@ -5,6 +5,12 @@ pub struct ScheduleManager {
     last_triggered_key: String,
 }
 
+impl Default for ScheduleManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScheduleManager {
     pub fn new() -> Self {
         Self {

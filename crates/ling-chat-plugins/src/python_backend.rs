@@ -50,7 +50,7 @@ fn build_interpreter() -> Interpreter {
     rustpython_vm::Interpreter::builder(rustpython_vm::Settings::default())
         .add_frozen_modules(rustpython_pylib::FROZEN_STDLIB)
         .add_native_module(host_api::plugin_module_def(
-            &rustpython_vm::Context::genesis(),
+            rustpython_vm::Context::genesis(),
         ))
         .build()
 }
@@ -226,7 +226,7 @@ fn run_entry(
         if !collect_result {
             return Ok(None);
         }
-        py_serde::serialize(vm, &*result, serde_json::value::Serializer)
+        py_serde::serialize(vm, &result, serde_json::value::Serializer)
             .map(Some)
             .map_err(|e| format!("结果序列化失败: {e}"))
     })

@@ -133,8 +133,6 @@ pub async fn import_role(
 }
 
 /// 取消正在进行的导入。
-
-/// 取消正在进行的导入。
 #[tauri::command]
 pub async fn cancel_role_import(
     task_id: String,

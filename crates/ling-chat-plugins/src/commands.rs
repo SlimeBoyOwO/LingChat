@@ -152,9 +152,10 @@ pub async fn import_plugin_from_path(
     tracing::info!(
         "[PluginImport] import_plugin_from_path 开始: path={path}, format={format:?}, policy={policy:?}"
     );
-    let src = ling_chat_main::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path)
-        .await
-        .map_err(|e| format!("准备导入源: {e}"))?;
+    let src =
+        ling_chat_main::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path)
+            .await
+            .map_err(|e| format!("准备导入源: {e}"))?;
     if src.cleanup_after_import {
         state.set_saf_cache(&task_id, src.path.clone());
     }
@@ -163,8 +164,7 @@ pub async fn import_plugin_from_path(
         if !src.path.exists() {
             return Err(format!("文件不存在: {}", src.path.display()));
         }
-        importer::do_import_plugin(&app, &src.path, format, policy, cancel_token)
-            .await
+        importer::do_import_plugin(&app, &src.path, format, policy, cancel_token).await
     }
     .await;
 
@@ -244,9 +244,12 @@ pub async fn plugin_resource_keep(
     match kind {
         ResourceKind::Characters => {
             let state = app.state::<AppState>();
-            ling_chat_main::db::role_sync::sync_roles_from_folder(&state.db, &ling_chat_main::api::data_dir())
-                .await
-                .map_err(|e| e.to_string())?;
+            ling_chat_main::db::role_sync::sync_roles_from_folder(
+                &state.db,
+                &ling_chat_main::api::data_dir(),
+            )
+            .await
+            .map_err(|e| e.to_string())?;
         },
         ResourceKind::Scripts => {
             let _ = ling_chat_main::api::script_editor::editor_rescan_scripts(app.clone()).await;

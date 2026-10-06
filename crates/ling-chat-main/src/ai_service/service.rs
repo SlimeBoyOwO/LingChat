@@ -33,6 +33,7 @@ pub struct AIService {
 }
 
 impl AIService {
+    #[allow(clippy::too_many_arguments)]
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,

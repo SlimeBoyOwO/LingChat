@@ -10,7 +10,6 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 /// 前端事件发射器由宿主 AppHandle 实现。
-
 /// 便捷函数：直接向 AppHandle 发 serde 可序列化 payload。业务层也可以绕过 trait。
 pub fn emit<T: Serialize + Clone>(app: &AppHandle, event: &str, payload: &T) -> Result<()> {
     app.emit(event, payload.clone())

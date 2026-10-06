@@ -58,6 +58,12 @@ pub struct UserActivityMonitor {
 // Win32 hooks require a static/global callback, so we use a OnceLock to access the active monitor's inner state.
 static GLOBAL_MONITOR_INNER: OnceLock<Arc<Mutex<MonitorInner>>> = OnceLock::new();
 
+impl Default for UserActivityMonitor {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl UserActivityMonitor {
     pub fn new() -> Self {
         let inner = Arc::new(Mutex::new(MonitorInner {

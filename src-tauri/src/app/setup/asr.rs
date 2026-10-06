@@ -17,7 +17,9 @@ pub async fn init_asr(
     app: &tauri::AppHandle,
     asr_state: &Arc<ling_chat_main::ai_service::asr::AsrState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use ling_chat_main::ai_service::asr::{debug_log, provider, session::AsrSession, settings, vad::AsrVad};
+    use ling_chat_main::ai_service::asr::{
+        debug_log, provider, session::AsrSession, settings, vad::AsrVad,
+    };
 
     tracing::info!("[ASR] init_asr 开始");
     let mut cfg = settings::load(app)?;

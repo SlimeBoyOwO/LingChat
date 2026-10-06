@@ -191,7 +191,7 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
 
             // 每 ~2s 重申一次气泡窗置顶：别的窗口抢焦点后它会掉到后面去
             ticks = ticks.wrapping_add(1);
-            if ticks % 40 == 0 {
+            if ticks.is_multiple_of(40) {
                 raise_bubble(&app);
             }
 
