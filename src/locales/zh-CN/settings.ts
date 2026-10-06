@@ -1,4 +1,21 @@
 export default {
+  roleLayout: {
+    title: "布局预览",
+    hint: "拖动画布调整立绘，拖动虚线框调整气泡；滚轮缩放立绘。方向键微调，Shift + 方向键加速。修改后点击底部保存生效。",
+    landscape: "横屏 1280 × 720",
+    portrait: "竖屏 720 × 1280",
+    emotion: "预览情绪",
+    role: "立绘",
+    bubble: "情绪气泡",
+    reset: "重置所选项",
+    canvas: "角色布局画布，可拖动或使用方向键调整",
+    dialogue: "对话框位置示意",
+    scale: "立绘缩放",
+    coordinates:
+      "预览画布 {width} × {height}；位移沿用游戏像素，气泡位置为百分比。下方数值可精确调整。",
+    missingImage: "当前服装缺少此情绪的立绘，可在差分管理中补充。",
+    modelFailed: "Live2D 预览加载失败，已尝试展示静态立绘。",
+  },
   avatars: {
     title: "差分管理",
     hint: "按服装管理情绪立绘。上传、替换和删除会立即保存，不受底部保存按钮影响。支持 PNG、JPEG、WebP，单张最大 20 MB、边长最大 8192 像素。",

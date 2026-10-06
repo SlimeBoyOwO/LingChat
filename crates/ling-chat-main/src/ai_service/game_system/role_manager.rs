@@ -592,12 +592,12 @@ impl GameRoleManager {
         true
     }
 
-    /// 刷新已加载角色的形象配置：Live2D 模型、主对话/桌宠的显示方式、桌宠无框模式。
+    /// 刷新已加载角色的形象配置和主对话立绘、气泡布局。
     ///
-    /// 这四个字段必须一起拷：内存里的 `role.settings` 是之后
+    /// 这些字段必须一起拷：内存里的 `role.settings` 是之后
     /// `init_game` / 切角色时 `onstage_roles` 的数据源，漏拷会让保存后的
     /// 显示方式在下一次 init 时被打回旧值。
-    pub fn update_role_live2d_settings(
+    pub fn update_role_visual_settings(
         &mut self,
         role_id: i32,
         settings: &CharacterSettings,
@@ -610,6 +610,11 @@ impl GameRoleManager {
         role.settings.avatar_mode = settings.avatar_mode.clone();
         role.settings.avatar_mode_p = settings.avatar_mode_p.clone();
         role.settings.pet_frameless = settings.pet_frameless;
+        role.settings.scale = settings.scale;
+        role.settings.offset_x = settings.offset_x;
+        role.settings.offset_y = settings.offset_y;
+        role.settings.bubble_top = settings.bubble_top;
+        role.settings.bubble_left = settings.bubble_left;
         true
     }
 

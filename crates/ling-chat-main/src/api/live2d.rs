@@ -856,7 +856,7 @@ pub async fn import_live2d(
         let mut game_status = service.game_status.lock().await;
         game_status
             .role_manager
-            .update_role_live2d_settings(role_id, &settings);
+            .update_role_visual_settings(role_id, &settings);
     }
 
     Ok(Live2dImportResult { live2d, models })

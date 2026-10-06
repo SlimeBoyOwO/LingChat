@@ -92,11 +92,7 @@ export function loadImageAspect(url: string): Promise<number | null> {
   });
 }
 
-export function avatarObjectFit(aspectRatio: number): string {
-  if (aspectRatio >= 1.0) return "contain";
-  const percent = Math.max(80, 100 - (1.0 - aspectRatio) * 40);
-  return `auto ${Math.round(percent)}%`;
-}
+export { avatarObjectFit } from "@/utils/avatar-layout";
 
 export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
   const { role, audioRef } = options;

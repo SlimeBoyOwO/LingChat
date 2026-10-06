@@ -661,10 +661,10 @@ pub async fn update_role_settings(
         let voice_updated = gs
             .role_manager
             .update_role_voice_settings(role_id, &validated);
-        let live2d_updated = gs
+        let visual_updated = gs
             .role_manager
-            .update_role_live2d_settings(role_id, &validated);
-        voice_updated || live2d_updated
+            .update_role_visual_settings(role_id, &validated);
+        voice_updated || visual_updated
     };
 
     tracing::info!(

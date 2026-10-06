@@ -77,6 +77,12 @@
             </div>
 
             <div v-else class="mx-auto max-w-3xl space-y-6">
+              <RoleLayoutEditor
+                v-if="activeTab === 'visuals' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                :clothes="props.clothes"
+              />
               <!-- Data-Driven Form (tabs with schemas) -->
               <div v-if="currentTabConfig" class="space-y-4">
                 <div
@@ -325,6 +331,7 @@ import {
 import { Icon } from "../../base";
 import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
+import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -1116,6 +1123,11 @@ async function persistSettings(): Promise<boolean> {
     await updateRoleSettings(props.roleId, localSettings.value);
     const runtimeRole = gameStore.gameRoles[props.roleId];
     if (runtimeRole) {
+      runtimeRole.scale = Number(localSettings.value.scale ?? 1);
+      runtimeRole.offsetX = Number(localSettings.value.offset_x ?? 0);
+      runtimeRole.offsetY = Number(localSettings.value.offset_y ?? 0);
+      runtimeRole.bubbleTop = Number(localSettings.value.bubble_top ?? 5);
+      runtimeRole.bubbleLeft = Number(localSettings.value.bubble_left ?? 20);
       runtimeRole.live2d = localSettings.value.live2d
         ? structuredClone(toRaw(localSettings.value.live2d))
         : null;
