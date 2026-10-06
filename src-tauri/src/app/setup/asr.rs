@@ -15,9 +15,11 @@ use tauri::Emitter;
 /// 本函数只 mutate 内部的 `session: Option<AsrSession>`，不会重建外层 Arc。
 pub async fn init_asr(
     app: &tauri::AppHandle,
-    asr_state: &Arc<crate::ai_service::asr::AsrState>,
+    asr_state: &Arc<ling_chat_main::ai_service::asr::AsrState>,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::ai_service::asr::{debug_log, provider, session::AsrSession, settings, vad::AsrVad};
+    use ling_chat_main::ai_service::asr::{
+        debug_log, provider, session::AsrSession, settings, vad::AsrVad,
+    };
 
     tracing::info!("[ASR] init_asr 开始");
     let mut cfg = settings::load(app)?;
@@ -43,7 +45,7 @@ pub async fn init_asr(
     // 开关值也要按设置落定，不留半初始化状态
     debug_log::set(cfg.vad_debug_log);
     // TLS 走统一的 webpki-roots 配置（Android 上 rustls-platform-verifier 未初始化会 panic）
-    let tls_config = crate::utils::tls::build_tls_config()?;
+    let tls_config = ling_chat_main::utils::tls::build_tls_config()?;
     let http = reqwest::Client::builder()
         .tls_backend_preconfigured(tls_config)
         .timeout(std::time::Duration::from_secs(30))

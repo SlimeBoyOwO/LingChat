@@ -1,0 +1,143 @@
+[package]
+name = "ling-chat-main"
+version = "0.5.2"
+description = "LingChat 业务主 crate：api / ai_service / db / config / utils 等"
+authors = ["LingChat Team"]
+edition = "2021"
+
+# lib 名带连字符转下划线，避免与外壳 bin 名冲突（同 Windows 上的历史处理）。
+[lib]
+name = "ling_chat_main"
+
+[dependencies]
+# macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件，缺失时 tauri.conf.json
+# 的 transparent 会被静默忽略。该 feature 由 cfg(target_os = "macos") 门控。
+tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
+tauri-plugin-store = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-fs = "2"
+tauri-plugin-screenshots = { path = "../../src-tauri/plugins/tauri-plugin-screenshots" }
+tauri-plugin-android-fs = "28"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+toml = "0.8"
+sea-orm = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-chrono",
+] }
+sea-orm-migration = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "ansi",
+    "chrono",
+] }
+serde_yaml = "0.9"
+chrono = { version = "0.4", features = ["serde"] }
+thiserror = "2"
+reqwest = { version = "0.13", features = [
+    "json",
+    "form",
+    "multipart",
+    "query",
+    "stream",
+    "rustls",
+    "system-proxy",
+], default-features = false }
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+webpki-roots = "0.26"
+futures-util = "0.3"
+futures-executor = "0.3"
+async-stream = "0.3"
+bytes = "1"
+regex = "1"
+genai = "0.6"
+uuid = { version = "1", features = ["v4"] }
+async-trait = "0.1"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "std",
+    "ndarray",
+] }
+ndarray = "0.17"
+
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
+    "std",
+] }
+once_cell = "1"
+base64 = "0.22"
+rand = "0.8"
+indoc = "2"
+
+image = { version = "0.25", default-features = false, features = [
+    "png",
+    "jpeg",
+    "webp",
+] }
+infer = "0.19"
+sevenz-rust2 = "0.21"
+sha2 = "0.10"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
+
+# LAN Sync
+axum = { version = "0.7", features = ["tokio", "ws"] }
+mdns-sd = "0.11"
+if-addrs = "0.13"
+tokio-util = { version = "0.7", features = ["io"] }
+
+# Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
+encoding_rs = "0.8"
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-global-shortcut = "2"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "directml",
+    "load-dynamic",
+] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
+    "directml",
+] }
+windows = { version = "0.62.2", features = [
+    "Win32_UI_Controls",
+    "Win32_Storage_FileSystem",
+    "Win32_UI_WindowsAndMessaging",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Graphics_Dxgi",
+    "Win32_Security",
+    "Win32_System_Threading",
+] }
+
+[target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
+# GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
+wgpu = "26"
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "webgpu",
+    "download-binaries",
+] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
+    "webgpu",
+] }
+ash = { version = "0.38", default-features = false, features = ["loaded"] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+# 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "coreml",
+    "download-binaries",
+] }
+sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
+    "coreml",
+] }

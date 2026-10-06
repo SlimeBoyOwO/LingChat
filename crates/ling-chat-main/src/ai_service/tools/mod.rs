@@ -1,0 +1,159 @@
+pub mod agent;
+pub mod background_command;
+pub mod character;
+pub mod clock;
+pub mod executor;
+pub mod god_agent;
+pub mod memory;
+pub mod permissions;
+pub mod read_media_file;
+pub mod registry;
+pub mod scene;
+pub mod schedule;
+pub mod settings;
+pub mod skill_files;
+pub mod status;
+pub mod tool_loop;
+pub mod web_search;
+
+use std::io::Write;
+use std::path::Path;
+use std::sync::Arc;
+
+use anyhow::Result;
+use serde_json::Value;
+use tauri::{AppHandle, Manager};
+use tokio::sync::Mutex;
+
+use crate::AppState;
+use crate::ai_service::game_system::game_status::GameStatus;
+
+use character::{CharacterGetClothes, CharacterList, CharacterSetClothes, CharacterSwitch};
+use clock::CurrentTimeTool;
+use memory::{AddNote, DeleteNote, GetCurrentMemory, GetNotes, UpdateNote};
+use permissions::CONFIG_FILE_NAME;
+use permissions::ToolPermissionConfig;
+use read_media_file::ReadMediaFileTool;
+use registry::ToolRegistry;
+use scene::{SceneList, SceneSwitch};
+use schedule::{AddTodo, DeleteTodo, GetAllSchedule, UpdateTodo};
+use settings::SharedToolSettings;
+#[cfg(desktop)]
+use skill_files::ExecuteCommand;
+use skill_files::{
+    DeleteFile, EditFile, Glob, Grep, GrepFiles, ListFiles, ListSkills, ReadFile, ReadSkill,
+    SearchFiles, WriteFile,
+};
+use status::{CurrentStatus, SceneStatus};
+use web_search::WebSearchTool;
+
+/// 从 AppHandle 获取共享的 `GameStatus` 句柄。
+///
+/// 锁顺序统一为 `ai_service.lock()` → `game_status.lock()`（与 api/scene.rs 等命令一致），
+/// 避免嵌套死锁。clone 出句柄后即释放 ai_service 锁，工具再独立锁 game_status。
+pub async fn game_status_handle(app: &AppHandle) -> Arc<Mutex<GameStatus>> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    service.game_status.clone()
+}
+
+/// 校验工具参数必须是空 object（无参工具共用）。
+pub(crate) fn ensure_no_args(arguments: &Value, tool: &str) -> Result<(), String> {
+    let Some(obj) = arguments.as_object() else {
+        return Err(format!("{tool} 参数必须是 JSON object"));
+    };
+    if !obj.is_empty() {
+        return Err(format!("{tool} 不接受参数"));
+    }
+    Ok(())
+}
+
+/// 将内容写到同目录临时文件，再原子替换目标文件。
+/// `tempfile::persist` 在 Windows 上也支持覆盖已有目标，避免普通 `fs::rename`
+/// 导致工具第一次写入成功、后续更新全部失败。
+pub(crate) fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("目标路径没有父目录: {}", path.display()))?;
+    std::fs::create_dir_all(parent)
+        .map_err(|e| format!("创建目录 {} 失败: {e}", parent.display()))?;
+    let mut temporary =
+        tempfile::NamedTempFile::new_in(parent).map_err(|e| format!("创建临时文件失败: {e}"))?;
+    temporary
+        .write_all(content)
+        .map_err(|e| format!("写入临时文件失败: {e}"))?;
+    temporary
+        .as_file()
+        .sync_all()
+        .map_err(|e| format!("同步临时文件失败: {e}"))?;
+    temporary
+        .persist(path)
+        .map_err(|e| format!("替换 {} 失败: {}", path.display(), e.error))?;
+    Ok(())
+}
+
+/// 创建并注册所有内置聊天工具。
+pub fn built_in_registry(
+    role_names: impl IntoIterator<Item = (String, String)>,
+    tool_settings: SharedToolSettings,
+) -> Result<ToolRegistry> {
+    let registry = ToolRegistry::new();
+    registry.register(Arc::new(CurrentTimeTool))?;
+    registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
+    registry.register(Arc::new(GetAllSchedule))?;
+    registry.register(Arc::new(AddTodo))?;
+    registry.register(Arc::new(UpdateTodo))?;
+    registry.register(Arc::new(DeleteTodo))?;
+    registry.register(Arc::new(GetCurrentMemory))?;
+    registry.register(Arc::new(GetNotes))?;
+    registry.register(Arc::new(AddNote))?;
+    registry.register(Arc::new(UpdateNote))?;
+    registry.register(Arc::new(DeleteNote))?;
+    registry.register(Arc::new(CurrentStatus))?;
+    registry.register(Arc::new(SceneStatus))?;
+    registry.register(Arc::new(SceneList))?;
+    registry.register(Arc::new(SceneSwitch))?;
+    registry.register(Arc::new(CharacterList))?;
+    registry.register(Arc::new(CharacterSwitch))?;
+    registry.register(Arc::new(CharacterGetClothes))?;
+    registry.register(Arc::new(CharacterSetClothes))?;
+    registry.register(Arc::new(ListSkills))?;
+    registry.register(Arc::new(ReadSkill))?;
+    registry.register(Arc::new(ReadMediaFileTool::new(tool_settings.clone())))?;
+    registry.register(Arc::new(ListFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(ReadFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(WriteFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(DeleteFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(EditFile::new(tool_settings.clone())))?;
+    registry.register(Arc::new(SearchFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(GrepFiles::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Glob::new(tool_settings.clone())))?;
+    registry.register(Arc::new(Grep::new(tool_settings.clone())))?;
+    // Android/iOS 没有稳定、可审批的桌面 shell 环境。移动端不注册命令工具，
+    // 避免模型选中 execute_command 后才得到系统级执行失败。
+    #[cfg(desktop)]
+    registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
+    let data_dir = crate::api::data_dir();
+    let mut permissions = ToolPermissionConfig::load_or_create(
+        &data_dir,
+        registry
+            .definitions()
+            .into_iter()
+            .map(|definition| definition.function.name),
+    )?;
+    permissions.set_available_tools(
+        registry
+            .definitions()
+            .into_iter()
+            .map(|definition| definition.function.name)
+            .collect(),
+    );
+    permissions.initialize_characters(&data_dir, role_names.into_iter().map(|(_, name)| name))?;
+    // 启动时按用户配置同步各工具权限：已启用的工具组/web_search 放开给
+    // default 角色组（新建配置的 default 组默认关闭）。
+    tool_settings.get().sync_to_permissions(&mut permissions);
+    // 覆盖写 available_tools 展示列表（仅展示，运行时不被读取）
+    permissions.save(&data_dir.join(CONFIG_FILE_NAME))?;
+    registry.set_permissions(permissions);
+    Ok(registry)
+}

@@ -18,7 +18,7 @@ fn read_hdr_mode_enabled(identifier: &str) -> bool {
     };
     let path = std::path::Path::new(&appdata)
         .join(identifier)
-        .join(crate::config::STORE_FILE);
+        .join(ling_chat_main::config::STORE_FILE);
 
     let Ok(content) = std::fs::read_to_string(path) else {
         return false;
@@ -26,7 +26,7 @@ fn read_hdr_mode_enabled(identifier: &str) -> bool {
     let Ok(json) = serde_json::from_str::<Value>(&content) else {
         return false;
     };
-    json.get(crate::config::keys::HDR_MODE_ENABLED)
+    json.get(ling_chat_main::config::keys::HDR_MODE_ENABLED)
         .and_then(Value::as_bool)
         .unwrap_or(false)
 }

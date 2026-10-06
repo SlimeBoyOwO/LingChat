@@ -4,8 +4,8 @@
 
 LingChat 的内置 TTS 基于 Style-Bert-VITS2（SBV2），以 Rust crate 的形式运行在 Tauri 主进程内：
 
-- crate：`src-tauri/crates/sbv2-local-tts`
-- 主程序桥接：`src-tauri/src/ai_service/tts/local`
+- 引擎 crate：`sbv2_core`（git 依赖，声明于 `crates/ling-chat-main/Cargo.toml`）
+- 主程序桥接：`crates/ling-chat-main/src/ai_service/tts/local`
 - 前端封装：`src/api/services/tts-local.ts`
 - 角色 TTS 类型：`localsbv2api`
 
@@ -643,4 +643,4 @@ std::fs::write("preview.wav", wav)?;
 - `download-complete` 不区分成功与失败；
 - 引擎没有公开卸载单个语音或清空内存缓存的 command。
 
-调用方不应假设这些能力已经存在。扩展接口时需要同步更新 Rust command、`src-tauri/src/lib.rs` 的 invoke handler、TypeScript 封装及本文档。
+调用方不应假设这些能力已经存在。扩展接口时需要同步更新 Rust command、`src-tauri/src/app/commands.rs` 的 invoke handler、TypeScript 封装及本文档。

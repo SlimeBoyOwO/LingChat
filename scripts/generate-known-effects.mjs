@@ -10,7 +10,7 @@
  *   node scripts/generate-known-effects.mjs --check   只校验产物是否最新（不写文件）
  *
  * 唯一真相: src/components/game/standard/particles/index.ts 的 ALL_EFFECTS
- * 产物:     src-tauri/src/ai_service/game_system/script_engine/events/known_effects.rs
+ * 产物:     crates/ling-chat-main/src/ai_service/game_system/script_engine/events/known_effects.rs
  */
 
 import { execFileSync } from "node:child_process";
@@ -24,7 +24,7 @@ const projectRoot = join(__dirname, "..");
 const REGISTRY = join(projectRoot, "src/components/game/standard/particles/index.ts");
 const OUTPUT = join(
   projectRoot,
-  "src-tauri/src/ai_service/game_system/script_engine/events/known_effects.rs",
+  "crates/ling-chat-main/src/ai_service/game_system/script_engine/events/known_effects.rs",
 );
 
 const checkOnly = process.argv.includes("--check");

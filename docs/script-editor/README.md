@@ -24,7 +24,7 @@ PR #540 的目标：
 
 **前端只见 JSON，YAML 语义只存在于 Rust 一侧；所有写入原子化并留 `.bak`；任何来自前端的路径都必须过 `paths` 模块的校验。**
 
-- 后端：`src-tauri/src/api/script_editor/`（Rust），分层 `paths / io / schema / validate / commands`；
+- 后端：`crates/ling-chat-main/src/api/script_editor/`（Rust），分层 `paths / io / schema / validate / commands`；
 - 前端：`src/components/script-editor/*` + `src/stores/modules/script-editor/*`（Vue 3 + Pinia），路由 `/script-editor` 懒加载；
 - 试玩：复用真引擎执行路径（`init_script → run_script → on_script_end`），三层隔离（后端会话快照、代号守卫、前端双快照）。
 

@@ -5,7 +5,7 @@
   "packageManager": "pnpm@11.21.0",
   "type": "module",
   "scripts": {
-    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs",
+    "init": "tauri icon src-tauri/icons/icon.png && node scripts/prepare-desktop-resources.mjs && node scripts/download_emotion_model.mjs && node scripts/ensure-onnxruntime.mjs",
     "dev": "vite",
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
@@ -13,15 +13,15 @@
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
     "android:dev": "tauri android dev",
     "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64 --apk",
-    "android:check": "cargo ndk check --manifest-path src-tauri/Cargo.toml --target aarch64-linux-android",
+    "android:check": "cargo ndk check --target aarch64-linux-android",
     "android:devbuild": "node scripts/prepare-bundled-resources.mjs 5 && tauri android build -d -t aarch64 --apk",
     "ios:init": "tauri ios init",
     "ios:build": "bash scripts/build-ios-unsigned.sh",
-    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml",
-    "format:rs": "cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "format": "prettier --write . && cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins",
+    "format:rs": "cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins",
     "format:frontend": "prettier --write \"src/**/*.{vue,js,ts,css,scss}\"",
-    "format:check": "prettier --check . && cargo fmt --manifest-path src-tauri/Cargo.toml -- --check",
-    "check:rs": "cargo check --manifest-path src-tauri/Cargo.toml --lib",
+    "format:check": "prettier --check . && cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins -- --check",
+    "check:rs": "cargo check --workspace",
     "gen:effects": "node scripts/generate-known-effects.mjs",
     "check:effects": "node scripts/generate-known-effects.mjs --check",
     "prepare": "husky"
@@ -76,7 +76,7 @@
     ],
     "src/components/game/standard/particles/index.ts": [
       "node scripts/generate-known-effects.mjs",
-      "git add src-tauri/src/ai_service/game_system/script_engine/events/known_effects.rs"
+      "git add crates/ling-chat-main/src/ai_service/game_system/script_engine/events/known_effects.rs"
     ]
   }
 }

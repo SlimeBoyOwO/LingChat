@@ -14,34 +14,32 @@ use image::RgbaImage;
 use scopeguard::guard;
 use widestring::U16CString;
 use windows::{
-    core::{HSTRING, PCWSTR},
     Win32::{
         Foundation::{BOOL, HANDLE, HWND, LPARAM, MAX_PATH, RECT, TRUE},
         Graphics::{
-            Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS},
+            Dwm::{DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS, DwmGetWindowAttribute},
             Gdi::{
-                BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject,
-                GetCurrentObject, GetDIBits, GetObjectW, GetWindowDC, IsRectEmpty, ReleaseDC,
-                SelectObject, BITMAP, BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, HBITMAP, HDC,
-                OBJ_BITMAP, SRCCOPY,
+                BITMAP, BITMAPINFO, BITMAPINFOHEADER, BitBlt, CreateCompatibleBitmap,
+                CreateCompatibleDC, DIB_RGB_COLORS, DeleteDC, DeleteObject, GetCurrentObject,
+                GetDIBits, GetObjectW, GetWindowDC, HBITMAP, HDC, IsRectEmpty, OBJ_BITMAP,
+                ReleaseDC, SRCCOPY, SelectObject,
             },
         },
         Storage::{
             FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW},
-            Xps::{PrintWindow, PRINT_WINDOW_FLAGS},
+            Xps::{PRINT_WINDOW_FLAGS, PrintWindow},
         },
         System::{
             ProcessStatus::{GetModuleBaseNameW, GetModuleFileNameExW},
-            Threading::{
-                OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION,
-            },
+            Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION},
         },
         UI::WindowsAndMessaging::{
-            EnumWindows, GetClassNameW, GetWindowLongPtrW, GetWindowRect, GetWindowTextLengthW,
-            GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible,
-            GWL_EXSTYLE, WINDOW_EX_STYLE, WS_EX_TOOLWINDOW,
+            EnumWindows, GWL_EXSTYLE, GetClassNameW, GetWindowLongPtrW, GetWindowRect,
+            GetWindowTextLengthW, GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindow,
+            IsWindowVisible, WINDOW_EX_STYLE, WS_EX_TOOLWINDOW,
         },
     },
+    core::{HSTRING, PCWSTR},
 };
 
 use crate::commands::ScreenshotableWindow;
@@ -141,11 +139,7 @@ struct LangCodePage {
 }
 
 unsafe fn get_app_name(pid: u32) -> String {
-    let scope_guard_handle = match OpenProcess(
-        PROCESS_QUERY_LIMITED_INFORMATION,
-        false,
-        pid,
-    ) {
+    let scope_guard_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
         Ok(handle) => handle,
         Err(_) => return String::new(),
     };
@@ -257,10 +251,9 @@ unsafe fn is_valid_window(hwnd: HWND) -> bool {
         return false;
     }
 
-    let class_name =
-        U16CString::from_vec_truncate(&lp_class_name[0..lp_class_name_length])
-            .to_string()
-            .unwrap_or_default();
+    let class_name = U16CString::from_vec_truncate(&lp_class_name[0..lp_class_name_length])
+        .to_string()
+        .unwrap_or_default();
     if class_name.is_empty() {
         return false;
     }
@@ -327,11 +320,8 @@ pub fn enumerate_all_windows() -> Result<Vec<ScreenshotableWindow>, String> {
     let hwnds_mut_ptr: *mut Vec<HWND> = Box::into_raw(Box::default());
 
     let hwnds = unsafe {
-        EnumWindows(
-            Some(enum_windows_proc),
-            LPARAM(hwnds_mut_ptr as isize),
-        )
-        .map_err(|e| format!("EnumWindows failed: {e}"))?;
+        EnumWindows(Some(enum_windows_proc), LPARAM(hwnds_mut_ptr as isize))
+            .map_err(|e| format!("EnumWindows failed: {e}"))?;
         Box::from_raw(hwnds_mut_ptr)
     };
 
@@ -458,12 +448,9 @@ pub fn capture_own_window(id: u32) -> Result<RgbaImage, String> {
         let mut bitmap_height = window_height;
 
         // Get the window DC
-        let scope_guard_hdc_window = guard(
-            GetWindowDC(Some(hwnd)),
-            |val| {
-                ReleaseDC(Some(hwnd), val);
-            },
-        );
+        let scope_guard_hdc_window = guard(GetWindowDC(Some(hwnd)), |val| {
+            ReleaseDC(Some(hwnd), val);
+        });
 
         // Check if the window DC has its own bitmap (GDI-rendered windows)
         let hgdi_obj = GetCurrentObject(*scope_guard_hdc_window, OBJ_BITMAP);
@@ -480,19 +467,15 @@ pub fn capture_own_window(id: u32) -> Result<RgbaImage, String> {
         }
 
         // Create memory DC and bitmap
-        let scope_guard_hdc_mem = guard(
-            CreateCompatibleDC(Some(*scope_guard_hdc_window)),
-            |val| {
-                let _ = DeleteDC(val);
-            },
-        );
+        let scope_guard_hdc_mem = guard(CreateCompatibleDC(Some(*scope_guard_hdc_window)), |val| {
+            let _ = DeleteDC(val);
+        });
         let scope_guard_h_bitmap = guard(
             CreateCompatibleBitmap(*scope_guard_hdc_window, bitmap_width, bitmap_height),
             delete_bitmap_object,
         );
 
-        let previous_object =
-            SelectObject(*scope_guard_hdc_mem, (*scope_guard_h_bitmap).into());
+        let previous_object = SelectObject(*scope_guard_hdc_mem, (*scope_guard_h_bitmap).into());
 
         // Try PrintWindow chain: PW_RENDERFULLCONTENT → PW(0) → PW(4) → BitBlt
         // PW_RENDERFULLCONTENT (2) - available on Windows 8+
@@ -501,24 +484,17 @@ pub fn capture_own_window(id: u32) -> Result<RgbaImage, String> {
 
         // PW_CLIENTONLY (0) - if DWM composition is enabled
         if !is_success {
-            if let Ok(dwm_enabled) =
-                windows::Win32::Graphics::Dwm::DwmIsCompositionEnabled()
-            {
+            if let Ok(dwm_enabled) = windows::Win32::Graphics::Dwm::DwmIsCompositionEnabled() {
                 if dwm_enabled.as_bool() {
-                    is_success = PrintWindow(
-                        hwnd,
-                        *scope_guard_hdc_mem,
-                        PRINT_WINDOW_FLAGS(0),
-                    )
-                    .as_bool();
+                    is_success =
+                        PrintWindow(hwnd, *scope_guard_hdc_mem, PRINT_WINDOW_FLAGS(0)).as_bool();
                 }
             }
         }
 
         // PW_CLIENTONLY variant (4)
         if !is_success {
-            is_success =
-                PrintWindow(hwnd, *scope_guard_hdc_mem, PRINT_WINDOW_FLAGS(4)).as_bool();
+            is_success = PrintWindow(hwnd, *scope_guard_hdc_mem, PRINT_WINDOW_FLAGS(4)).as_bool();
         }
 
         // GDI BitBlt fallback
@@ -554,8 +530,7 @@ pub fn capture_own_window(id: u32) -> Result<RgbaImage, String> {
 
         // Crop to the actual window bounds (removing DWM invisible borders)
         let mut window_rect = RECT::default();
-        GetWindowRect(hwnd, &mut window_rect)
-            .map_err(|e| format!("GetWindowRect failed: {e}"))?;
+        GetWindowRect(hwnd, &mut window_rect).map_err(|e| format!("GetWindowRect failed: {e}"))?;
 
         let scale_factor = bitmap_width as f32 / window_width as f32;
         let x = ((window_bounds.left - window_rect.left) as f32 * scale_factor).ceil();
@@ -566,10 +541,9 @@ pub fn capture_own_window(id: u32) -> Result<RgbaImage, String> {
         // so no cropping is needed.
         let mut lp_class_name = [0u16; MAX_PATH as usize];
         let lp_class_name_length = GetClassNameW(hwnd, &mut lp_class_name) as usize;
-        let class_name =
-            U16CString::from_vec_truncate(&lp_class_name[0..lp_class_name_length])
-                .to_string()
-                .unwrap_or_default();
+        let class_name = U16CString::from_vec_truncate(&lp_class_name[0..lp_class_name_length])
+            .to_string()
+            .unwrap_or_default();
 
         let (crop_x, crop_y) = if class_name == "#32770" {
             (0.0f32, 0.0f32)

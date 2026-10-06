@@ -34,8 +34,8 @@ The existing systems remain active. A static avatar is hidden only after a Live2
 | `src/components/game/live2d/live2d-motion.ts`             | Motion start/finish attribution through engine lifecycle events                                                                                      |
 | `src/components/game/live2d/useLive2dLipSync.ts`          | Passive audio decoding and mouth amplitude sampling                                                                                                  |
 | `src/components/settings/character/Live2DSettings.vue`    | Import, variant editing, bindings, outfit mapping, and preview                                                                                       |
-| `src-tauri/src/api/live2d.rs`                             | Directory/ZIP import, inspection, loose-asset discovery, validation, staging, rollback, and runtime refresh                                          |
-| `src-tauri/src/ai_service/types.rs`                       | Serialized `settings.yml.live2d` contract, plus the `avatar_mode` / `avatar_mode_p` display-mode keys and the `pet_frameless` pet-window chrome flag |
+| `crates/ling-chat-main/src/api/live2d.rs`                 | Directory/ZIP import, inspection, loose-asset discovery, validation, staging, rollback, and runtime refresh                                          |
+| `crates/ling-chat-main/src/ai_service/types.rs`           | Serialized `settings.yml.live2d` contract, plus the `avatar_mode` / `avatar_mode_p` display-mode keys and the `pet_frameless` pet-window chrome flag |
 
 ## Render Stack
 
@@ -243,7 +243,7 @@ pnpm run build
 For native code changes, run the normal Rust check:
 
 ```bash
-cargo check --manifest-path src-tauri/Cargo.toml
+cargo check --workspace
 ```
 
 ### Tauri Runtime Verification

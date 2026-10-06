@@ -1,11 +1,12 @@
 # ⚠️ 本文件与仓库根的 .cargo/config.toml 必须保持一致（除本段说明文字外，
 # 两份的配置项应逐项相同）。
 # Cargo 是「从 cwd 向上查找」配置，不是从 manifest 向上：
-#   在 src-tauri/ 下直接跑 cargo            → 读本文件
-#   在仓库根跑 cargo --manifest-path src-tauri/Cargo.toml → 读根目录那份
-# 因此两份都在实际生效。只改一份会让本地与 CI 的编译行为静默不一致。
+#   在 src-tauri/ 下直接跑 cargo            → 先读本文件，再读仓库根那份
+#   在仓库根跑 cargo --manifest-path src-tauri/Cargo.toml → 只读仓库根那份
+# 越靠近 cwd 的配置优先级越高。两份都在实际生效。只改一份会让本地与 CI
+# 的编译行为静默不一致。
 # 注意：新增的 [profile.dev.package."*"] 之类的 package 覆盖放在
-# src-tauri/Cargo.toml 里（覆盖只支持 manifest，且不受 cwd 影响）。
+# 仓库根 Cargo.toml 里（workspace 成员里的 profile 会被静默忽略）。
 
 [profile.dev]
 debug = 1

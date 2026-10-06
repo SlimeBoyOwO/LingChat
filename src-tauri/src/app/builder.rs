@@ -21,7 +21,7 @@ pub fn build() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .plugin({
-            use crate::ai_service::asr::global_hotkey::{self, PttGlobalEvent};
+            use ling_chat_main::ai_service::asr::global_hotkey::{self, PttGlobalEvent};
             use tauri::Emitter;
             use tauri_plugin_global_shortcut::ShortcutState;
 

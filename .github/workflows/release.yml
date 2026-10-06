@@ -149,7 +149,6 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
-          cd src-tauri
           cargo build --release
           DAWN=$(find target/release -name "libwebgpu_dawn.so" 2>/dev/null | head -1)
           if [ -z "$DAWN" ]; then
@@ -159,7 +158,6 @@ jobs:
             sudo ldconfig
             echo "已放置 /usr/lib/x86_64-linux-gnu/libwebgpu_dawn.so"
           fi
-          cd ..
           pnpm tauri build
 
       - name: 上传构建产物（仅安装包与更新签名）
@@ -172,14 +170,14 @@ jobs:
           # - `bundle/appimage/<Name>.AppDir/`、`bundle/macos/LingChat.app/`：解包目录，含全部依赖库
           # 这些都不是分发文件，通配进来会让 artifact 与 Release 多出几百 MB 无用内容。
           path: |
-            src-tauri/target/release/bundle/*/*.deb
-            src-tauri/target/release/bundle/*/*.rpm
-            src-tauri/target/release/bundle/*/*.AppImage
-            src-tauri/target/release/bundle/*/*.dmg
-            src-tauri/target/release/bundle/*/*.msi
-            src-tauri/target/release/bundle/*/*.exe
-            src-tauri/target/release/bundle/*/*.tar.gz
-            src-tauri/target/release/bundle/*/*.sig
+            target/release/bundle/*/*.deb
+            target/release/bundle/*/*.rpm
+            target/release/bundle/*/*.AppImage
+            target/release/bundle/*/*.dmg
+            target/release/bundle/*/*.msi
+            target/release/bundle/*/*.exe
+            target/release/bundle/*/*.tar.gz
+            target/release/bundle/*/*.sig
           if-no-files-found: warn
 
   release:
