@@ -144,6 +144,14 @@
                 </div>
               </div>
 
+              <AvatarManager
+                v-if="activeTab === 'avatars' && props.roleId"
+                :role-id="props.roleId"
+                :clothes="clothesList"
+                @changed="emit('saved')"
+                :resource-clothes="props.clothes"
+              />
+
               <Live2DSettings
                 v-if="activeTab === 'live2d' && props.roleId"
                 v-model="localSettings.live2d"
@@ -316,6 +324,7 @@ import {
 } from "../../../api/services/character";
 import { Icon } from "../../base";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import AvatarManager from "../character/AvatarManager.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -431,6 +440,7 @@ const tabs = computed(() => [
   { id: "basic", label: t("settings.characterInfo.tabs.basic") },
   { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
   { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
+  { id: "avatars", label: t("settings.avatars.title") },
   { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
   { id: "touch", label: t("settings.characterInfo.tabs.touch") },
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },

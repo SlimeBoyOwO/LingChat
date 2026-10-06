@@ -10,6 +10,25 @@ import type {
 } from "@/types/live2d";
 import { i18n } from "@/locales";
 
+export interface CharacterAvatarSlot {
+  emotion: string;
+  path: string | null;
+  fallback: boolean;
+}
+
+export const listCharacterAvatars = (roleId: number, clothes: string) =>
+  invoke<CharacterAvatarSlot[]>("list_character_avatars", { roleId, clothes });
+
+export const writeCharacterAvatar = (
+  roleId: number,
+  clothes: string,
+  emotion: string,
+  bytes: number[],
+) => invoke<void>("write_character_avatar", { roleId, clothes, emotion, bytes });
+
+export const deleteCharacterAvatar = (roleId: number, clothes: string, emotion: string) =>
+  invoke<void>("delete_character_avatar", { roleId, clothes, emotion });
+
 interface CharacterSelectResponse {
   success: boolean;
   character: {

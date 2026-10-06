@@ -1,4 +1,21 @@
 export default {
+  avatars: {
+    title: "差分管理",
+    hint: "按服装管理情绪立绘。上传、替换和删除会立即保存，不受底部保存按钮影响。支持 PNG、JPEG、WebP，单张最大 20 MB、边长最大 8192 像素。",
+    costume: "服装",
+    default: "默认服装",
+    fallback: "使用正常立绘",
+    present: "已配置",
+    missing: "未配置",
+    upload: "上传",
+    replace: "替换",
+    delete: "删除",
+    confirmDelete:
+      "确定删除「{emotion}」的立绘吗？该服装下此情绪的所有图片格式都会删除，操作立即生效。",
+    tooLarge: "图片不能超过 20 MB",
+    sadAlias: "哭泣（伤心）",
+    shyAlias: "难为情（羞耻）",
+  },
   shared: {
     prevPage: "上一页",
     nextPage: "下一页",

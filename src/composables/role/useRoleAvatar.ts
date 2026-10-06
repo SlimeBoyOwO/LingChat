@@ -15,6 +15,7 @@
  */
 import { ref, watch, nextTick, onUnmounted, type Ref } from "vue";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
@@ -114,13 +115,32 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
   // 两个代次号各管一条异步链：头像解析、情绪演出
   let resolveAvatarId = 0;
   let latestEmotionId = 0;
+  let avatarRevision = 0;
+  let disposed = false;
+  let stopAvatarUpdates: (() => void) | undefined;
+  void listen<number>("character:avatars-updated", (event) => {
+    if (event.payload !== role.value.roleId) return;
+    avatarRevision = Date.now();
+    void resolveAvatar();
+  })
+    .then((stop) => {
+      if (disposed) stop();
+      else stopAvatarUpdates = stop;
+    })
+    .catch((error) => console.error("监听角色立绘更新失败", error));
+  onUnmounted(() => {
+    disposed = true;
+    stopAvatarUpdates?.();
+    resolveAvatarId++;
+  });
 
   async function resolveAvatar() {
     const currentId = ++resolveAvatarId;
     try {
       const path = await invoke<string>("get_avatar_file", avatarFolderParams(role.value));
       if (currentId === resolveAvatarId) {
-        targetAvatarUrl.value = convertFileSrc(path);
+        targetAvatarUrl.value =
+          convertFileSrc(path) + (avatarRevision ? `?v=${avatarRevision}` : "");
       }
     } catch {
       if (currentId === resolveAvatarId) {
