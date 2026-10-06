@@ -136,16 +136,24 @@ impl MemoryBuilder {
                     }
 
                     if !active_user_lines.is_empty() {
-                        // [修改点 2]：如果存在其他角色台词(has_context)，则强制给 User 台词加上 "主角名称: "
+                        // [修改点 2]：仅当消息里存在需要区分的说话人时才给玩家台词加 "主角名称: "
+                        // 前缀——有其他角色台词(has_context)，或同段里混入旁白/系统行。
+                        // 单人纯对话下 role=user 已能确定说话人，加前缀是冗余。
+                        let has_narration = active_user_lines.iter().any(|l| {
+                            matches!(l.base.display_name.as_deref(), Some("旁白") | Some("系统"))
+                        });
+                        let need_name = has_context || has_narration;
                         let user_text: Vec<String> = active_user_lines
                             .iter()
                             .map(|l| {
                                 let name = l.base.display_name.as_deref().unwrap_or("未知");
-                                let s = match name {
+                                match name {
                                     "旁白" | "系统" => l.base.content.clone(),
-                                    _ => format!("{}: {}", name, l.base.content),
-                                };
-                                s
+                                    _ if need_name => {
+                                        format!("{}: {}", name, l.base.content)
+                                    },
+                                    _ => l.base.content.clone(),
+                                }
                             })
                             .collect();
                         // 用换行符拼接多条User台词
