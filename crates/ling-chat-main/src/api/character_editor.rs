@@ -15,7 +15,8 @@ struct EditSession {
     role_id: i32,
     original: PathBuf,
     draft: tempfile::TempDir,
-    fingerprint: Vec<u8>,
+    settings_version: Vec<u8>,
+    resource_versions: HashMap<String, Vec<u8>>,
     changes: Vec<(String, String)>,
     resources_changed: BTreeSet<String>,
 }
@@ -40,8 +41,9 @@ fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn fingerprint(root: &Path) -> Result<Vec<u8>, String> {
-    fn hash(path: &Path, digest: &mut Sha256) -> Result<(), String> {
+// 素材只比对目录项、大小和修改时间，不读取图片/模型正文。
+fn fingerprint(path: &Path) -> Result<Vec<u8>, String> {
+    fn stamp(path: &Path, digest: &mut Sha256) -> Result<(), String> {
         if path.is_symlink() {
             return Err("角色资源不能包含符号链接".into());
         }
@@ -49,7 +51,8 @@ fn fingerprint(root: &Path) -> Result<Vec<u8>, String> {
             digest.update(b"missing");
             return Ok(());
         }
-        if path.is_dir() {
+        let metadata = fs::metadata(path).map_err(|e| e.to_string())?;
+        if metadata.is_dir() {
             digest.update(b"directory");
             let mut entries = fs::read_dir(path)
                 .map_err(|e| e.to_string())?
@@ -62,38 +65,137 @@ fn fingerprint(root: &Path) -> Result<Vec<u8>, String> {
                 let name = entry.file_name().unwrap().to_string_lossy();
                 digest.update((name.len() as u64).to_le_bytes());
                 digest.update(name.as_bytes());
-                hash(&entry, digest)?;
+                stamp(&entry, digest)?;
             }
         } else {
             digest.update(b"file");
-            digest.update(
-                fs::metadata(path)
-                    .map_err(|e| e.to_string())?
-                    .len()
-                    .to_le_bytes(),
-            );
-            let mut file = fs::File::open(path).map_err(|e| e.to_string())?;
-            use std::io::Read;
-            let mut buffer = [0u8; 65536];
-            loop {
-                let count = file.read(&mut buffer).map_err(|e| e.to_string())?;
-                if count == 0 {
-                    break;
-                }
-                digest.update(&buffer[..count]);
-            }
+            digest.update(metadata.len().to_le_bytes());
+            let modified = metadata
+                .modified()
+                .map_err(|e| e.to_string())?
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| e.to_string())?;
+            digest.update(modified.as_nanos().to_le_bytes());
         }
         Ok(())
     }
     let mut digest = Sha256::new();
-    for path in [
-        resolve_settings_file(root),
-        root.join("avatar"),
-        root.join("live2d"),
-    ] {
-        hash(&path, &mut digest)?;
-    }
+    stamp(path, &mut digest)?;
     Ok(digest.finalize().to_vec())
+}
+
+fn settings_version(root: &Path) -> Result<Vec<u8>, String> {
+    let path = resolve_settings_file(root);
+    let mut digest = Sha256::new();
+    digest.update(path.file_name().unwrap().to_string_lossy().as_bytes());
+    digest.update(fs::read(path).map_err(|e| e.to_string())?);
+    Ok(digest.finalize().to_vec())
+}
+
+pub(super) fn resource_root(
+    role_id: i32,
+    edit_id: Option<&str>,
+    resource: &str,
+) -> Result<Option<PathBuf>, String> {
+    let Some(id) = edit_id else {
+        return Ok(None);
+    };
+    let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+    let session = sessions
+        .get(id)
+        .filter(|s| s.role_id == role_id)
+        .ok_or("角色编辑草稿已失效")?;
+    Ok(Some(if session.resource_versions.contains_key(resource) {
+        session.draft.path().to_path_buf()
+    } else {
+        session.original.clone()
+    }))
+}
+
+pub(super) fn file_root(
+    role_id: i32,
+    edit_id: Option<&str>,
+    relative: &str,
+) -> Result<Option<PathBuf>, String> {
+    let Some(id) = edit_id else {
+        return Ok(None);
+    };
+    let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+    let session = sessions
+        .get(id)
+        .filter(|s| s.role_id == role_id)
+        .ok_or("角色编辑草稿已失效")?;
+    // 后续调用仍会校验文件位于所选根目录内。
+    Ok(Some(if session.draft.path().join(relative).exists() {
+        session.draft.path().to_path_buf()
+    } else {
+        session.original.clone()
+    }))
+}
+
+// 调用者持有 RESOURCE_LOCK。只在真正修改素材时创建资源副本，耗时复制放入阻塞线程池。
+pub(super) async fn prepare_resource(
+    role_id: i32,
+    edit_id: &str,
+    resource: &str,
+) -> Result<(), String> {
+    if !["avatar", "live2d"].contains(&resource) {
+        return Err("无效资源类型".into());
+    }
+    let (original, draft) = {
+        let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+        let session = sessions
+            .get(edit_id)
+            .filter(|s| s.role_id == role_id)
+            .ok_or("草稿已失效")?;
+        if session.resource_versions.contains_key(resource) {
+            return Ok(());
+        }
+        (session.original.clone(), session.draft.path().to_path_buf())
+    };
+    let resource = resource.to_string();
+    let key = resource.clone();
+    let expected = tokio::task::spawn_blocking(move || {
+        let expected = fingerprint(&original.join(&resource))?;
+        let target = draft.join(&resource);
+        if target.exists() {
+            crate::utils::path::validate_path_in_base(&target, &draft)?;
+            fs::remove_dir_all(&target).map_err(|e| e.to_string())?;
+        }
+        if resource == "live2d" {
+            // 导入时才复制模型及相邻纹理，兼容历史资源目录；不覆盖已修改的头像草稿。
+            for entry in fs::read_dir(&original).map_err(|e| e.to_string())? {
+                let entry = entry.map_err(|e| e.to_string())?;
+                let name = entry.file_name();
+                let text = name.to_string_lossy();
+                if text.starts_with(".editor-")
+                    || text.starts_with(".live2d-staging-")
+                    || text == ".git"
+                    || text.starts_with("settings.yml")
+                    || text.starts_with("settings_local.yml")
+                    || (text == "avatar" && draft.join(&name).exists())
+                {
+                    continue;
+                }
+                copy_tree(&entry.path(), &draft.join(name))?;
+            }
+        } else {
+            copy_tree(&original.join(&resource), &draft.join(&resource))?;
+        }
+        if fingerprint(&original.join(&resource))? != expected {
+            return Err("准备草稿时资源已被其他操作修改，请重试".to_string());
+        }
+        Ok(expected)
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let mut sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+    let session = sessions
+        .get_mut(edit_id)
+        .filter(|s| s.role_id == role_id)
+        .ok_or("草稿已失效")?;
+    session.resource_versions.insert(key, expected);
+    Ok(())
 }
 
 pub(super) fn draft_root(role_id: i32, edit_id: Option<&str>) -> Result<Option<PathBuf>, String> {
@@ -177,7 +279,7 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
         .parent()
         .ok_or("角色目录不存在")?
         .to_path_buf();
-    let expected = fingerprint(&original)?;
+    let expected = settings_version(&original)?;
     let settings = super::character::get_role_settings(app.clone(), role_id).await?;
     let parent = original.join(".editor-drafts");
     fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
@@ -192,26 +294,11 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
         .prefix("edit-")
         .tempdir_in(parent)
         .map_err(|e| e.to_string())?;
-    // 兼容模型不在 live2d/ 内、纹理在相邻目录的历史资源结构。
-    for entry in fs::read_dir(&original).map_err(|e| e.to_string())? {
-        let entry = entry.map_err(|e| e.to_string())?;
-        let name = entry.file_name();
-        let text = name.to_string_lossy();
-        if text.starts_with(".editor-")
-            || text.starts_with(".live2d-staging-")
-            || text == ".git"
-            || text.starts_with("settings.yml")
-            || text.starts_with("settings_local.yml")
-        {
-            continue;
-        }
-        copy_tree(&entry.path(), &draft.path().join(name))?;
-    }
     write_json_as_yaml(
         &draft.path().join("settings.yml"),
         &serde_json::to_value(&settings).map_err(|e| e.to_string())?,
     )?;
-    if fingerprint(&original)? != expected {
+    if settings_version(&original)? != expected {
         return Err("创建草稿期间角色已被其他操作修改，请重试".into());
     }
     app.asset_protocol_scope()
@@ -224,7 +311,8 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
             role_id,
             original,
             draft,
-            fingerprint: expected,
+            settings_version: expected,
+            resource_versions: HashMap::new(),
             changes: Vec::new(),
             resources_changed: BTreeSet::new(),
         },
@@ -280,7 +368,7 @@ pub async fn commit_character_edit(
     let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     let validated: CharacterSettings =
         serde_json::from_value(settings.clone()).map_err(|e| e.to_string())?;
-    let (original, draft, expected, changes, resources_changed) = {
+    let (original, draft, expected, changes, resources_changed, resource_versions) = {
         let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
         let s = sessions
             .get(&edit_id)
@@ -289,36 +377,46 @@ pub async fn commit_character_edit(
         (
             s.original.clone(),
             s.draft.path().to_path_buf(),
-            s.fingerprint.clone(),
+            s.settings_version.clone(),
             s.changes.clone(),
             s.resources_changed.clone(),
+            s.resource_versions.clone(),
         )
     };
-    if fingerprint(&original)? != expected {
+    if settings_version(&original)? != expected {
         return Err("角色配置或资源已被其他操作修改，请保留当前内容并重新打开配置后再保存".into());
+    }
+    for resource in &resources_changed {
+        if resource_versions.get(resource) != Some(&fingerprint(&original.join(resource))?) {
+            return Err("待保存的角色资源已被其他操作修改，请保留当前内容并重新打开配置".into());
+        }
     }
     // 只有资源修改才替换目录，普通配置保存不复制旧模型到回收区。
     let names: Vec<&str> = resources_changed.iter().map(String::as_str).collect();
-    // 保留整个旧资源版本，也涵盖草稿中移除的服装。
-    let trash = original.join(".editor-trash");
-    fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
-    if !trash
-        .canonicalize()
-        .map_err(|e| e.to_string())?
-        .starts_with(&original)
-    {
-        return Err("回收区目录越界".into());
-    }
-    let backup = tempfile::Builder::new()
-        .prefix("edit-backup-")
-        .tempdir_in(trash)
-        .map_err(|e| e.to_string())?
-        .keep();
-    move_resources(&original, &backup, &names)?;
-    if let Err(error) = move_resources(&draft, &original, &names) {
-        move_resources(&backup, &original, &names)?;
-        return Err(error);
-    }
+    let backup = if names.is_empty() {
+        None
+    } else {
+        let trash = original.join(".editor-trash");
+        fs::create_dir_all(&trash).map_err(|e| e.to_string())?;
+        if !trash
+            .canonicalize()
+            .map_err(|e| e.to_string())?
+            .starts_with(&original)
+        {
+            return Err("回收区目录越界".into());
+        }
+        let backup = tempfile::Builder::new()
+            .prefix("edit-backup-")
+            .tempdir_in(trash)
+            .map_err(|e| e.to_string())?
+            .keep();
+        move_resources(&original, &backup, &names)?;
+        if let Err(error) = move_resources(&draft, &original, &names) {
+            move_resources(&backup, &original, &names)?;
+            return Err(error);
+        }
+        Some(backup)
+    };
     if let Err(error) = super::character::update_role_settings(
         app.clone(),
         role_id,
@@ -326,15 +424,14 @@ pub async fn commit_character_edit(
     )
     .await
     {
-        move_resources(&original, &draft, &names)?;
-        move_resources(&backup, &original, &names)?;
+        if let Some(backup) = &backup {
+            move_resources(&original, &draft, &names)?;
+            move_resources(backup, &original, &names)?;
+        }
         return Err(error);
     }
     for (old, new) in changes {
         super::character_costumes::notify_costume_change(&app, role_id, old, new).await;
-    }
-    if resources_changed.is_empty() {
-        let _ = fs::remove_dir(&backup);
     }
     SESSIONS.lock().map_err(|e| e.to_string())?.remove(&edit_id);
     let _ = app.emit("character:avatars-updated", role_id);
@@ -360,6 +457,98 @@ mod tests {
         fs::write(root.path().join("avatar/正常.png"), b"external").unwrap();
         assert_ne!(fingerprint(root.path()).unwrap(), before);
     }
+    #[tokio::test]
+    async fn resource_drafts_are_lazy_and_keep_original_files_isolated() {
+        let original = tempfile::tempdir().unwrap();
+        fs::write(original.path().join("settings.yml"), b"ai_name: original").unwrap();
+        fs::create_dir(original.path().join("avatar")).unwrap();
+        fs::write(original.path().join("avatar/正常.png"), b"original").unwrap();
+        fs::create_dir(original.path().join("live2d")).unwrap();
+        let model = original.path().join("live2d/model.moc3");
+        fs::write(&model, b"model").unwrap();
+        let version = settings_version(original.path()).unwrap();
+        // 配置版本不依赖模型正文；外部模型更新不会阻止仅修改文本的保存。
+        fs::write(&model, b"external model update").unwrap();
+        assert_eq!(settings_version(original.path()).unwrap(), version);
+        let draft = tempfile::tempdir().unwrap();
+        let draft_path = draft.path().to_path_buf();
+        let id = uuid::Uuid::new_v4().to_string();
+        SESSIONS.lock().unwrap().insert(
+            id.clone(),
+            EditSession {
+                role_id: 51,
+                original: original.path().to_path_buf(),
+                draft,
+                settings_version: version,
+                resource_versions: HashMap::new(),
+                changes: Vec::new(),
+                resources_changed: BTreeSet::new(),
+            },
+        );
+        assert_eq!(
+            resource_root(51, Some(&id), "avatar").unwrap().unwrap(),
+            original.path()
+        );
+        assert_eq!(
+            file_root(51, Some(&id), "live2d/model.moc3")
+                .unwrap()
+                .unwrap(),
+            original.path()
+        );
+        {
+            let _guard = super::super::character_costumes::RESOURCE_LOCK.lock().await;
+            prepare_resource(51, &id, "avatar").await.unwrap();
+            fs::write(draft_path.join("avatar/正常.png"), b"edited").unwrap();
+            // 重复编辑复用已有草稿，不能再次复制并覆盖用户编辑。
+            prepare_resource(51, &id, "avatar").await.unwrap();
+        }
+        assert!(!draft_path.join("live2d").exists());
+        assert_eq!(
+            resource_root(51, Some(&id), "avatar").unwrap().unwrap(),
+            draft_path
+        );
+        assert_eq!(
+            fs::read(original.path().join("avatar/正常.png")).unwrap(),
+            b"original"
+        );
+        assert_eq!(
+            fs::read(draft_path.join("avatar/正常.png")).unwrap(),
+            b"edited"
+        );
+        fs::create_dir(original.path().join("legacy-model")).unwrap();
+        fs::write(original.path().join("legacy-model/model.json"), b"legacy").unwrap();
+        {
+            let _guard = super::super::character_costumes::RESOURCE_LOCK.lock().await;
+            prepare_resource(51, &id, "live2d").await.unwrap();
+        }
+        assert_eq!(
+            file_root(51, Some(&id), "legacy-model/model.json")
+                .unwrap()
+                .unwrap(),
+            draft_path
+        );
+        assert_eq!(
+            fs::read(draft_path.join("avatar/正常.png")).unwrap(),
+            b"edited"
+        );
+        assert_eq!(
+            fs::read(draft_path.join("live2d/model.moc3")).unwrap(),
+            b"external model update"
+        );
+        let expected = SESSIONS.lock().unwrap()[&id].resource_versions["avatar"].clone();
+        fs::write(original.path().join("avatar/正常.png"), b"external update").unwrap();
+        assert_ne!(
+            fingerprint(&original.path().join("avatar")).unwrap(),
+            expected
+        );
+        discard_character_edit(51, id).await.unwrap();
+        assert!(!draft_path.exists());
+        assert_eq!(
+            fs::read(original.path().join("avatar/正常.png")).unwrap(),
+            b"external update"
+        );
+    }
+
     #[test]
     fn failed_resource_move_restores_prior_moves() {
         let source = tempfile::tempdir().unwrap();
@@ -420,7 +609,8 @@ mod tests {
                 role_id: 42,
                 original: original.path().to_path_buf(),
                 draft,
-                fingerprint: fingerprint(original.path()).unwrap(),
+                settings_version: settings_version(original.path()).unwrap(),
+                resource_versions: HashMap::new(),
                 changes: Vec::new(),
                 resources_changed: BTreeSet::new(),
             },

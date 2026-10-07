@@ -19,14 +19,15 @@ export function useCharacterEditorApi() {
     const editId = id();
     if (context) {
       context.busy.value++;
-      context.revision.value++;
     }
     try {
       const result = await operation(editId);
-      if (context) context.revision.value++;
       return result;
     } finally {
-      if (context) context.busy.value--;
+      if (context) {
+        context.busy.value--;
+        context.revision.value++;
+      }
     }
   }
   return {

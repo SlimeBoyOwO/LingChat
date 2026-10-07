@@ -40,14 +40,18 @@ pub(super) async fn avatar_dir_for_edit(
     clothes: &str,
     edit_id: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let state = app.state::<AppState>();
-    let role = RoleRepo::get_role_by_id(&state.db, role_id)
-        .await
-        .map_err(|e| e.to_string())?
-        .ok_or("角色不存在")?;
-    let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
-    let root = super::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let root = super::character_editor::draft_root(role_id, edit_id)?.unwrap_or(root);
+    let root =
+        if let Some(root) = super::character_editor::resource_root(role_id, edit_id, "avatar")? {
+            root
+        } else {
+            let state = app.state::<AppState>();
+            let role = RoleRepo::get_role_by_id(&state.db, role_id)
+                .await
+                .map_err(|e| e.to_string())?
+                .ok_or("角色不存在")?;
+            let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
+            super::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?
+        };
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let mut dir = root.join("avatar");
     if !clothes.is_empty() && clothes != "default" {
@@ -69,14 +73,18 @@ pub(super) async fn avatar_dir_for_edit(
     Ok(dir)
 }
 
-pub(super) fn emotion_files(dir: &Path, emotion: &str) -> Result<Vec<PathBuf>, String> {
+pub(super) fn avatar_files(
+    dir: &Path,
+) -> Result<std::collections::BTreeMap<String, Vec<PathBuf>>, String> {
+    let mut files: std::collections::BTreeMap<String, Vec<PathBuf>> = Default::default();
     if !dir.exists() {
-        return Ok(Vec::new());
+        return Ok(files);
     }
-    let mut files = Vec::new();
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())? {
-        let path = entry.map_err(|e| e.to_string())?.path();
-        if path.file_stem().and_then(|s| s.to_str()) != Some(emotion)
+        let entry = entry.map_err(|e| e.to_string())?;
+        let path = entry.path();
+        let emotion = path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if !EMOTIONS.contains(&emotion)
             || !EXTENSIONS.contains(
                 &path
                     .extension()
@@ -88,15 +96,22 @@ pub(super) fn emotion_files(dir: &Path, emotion: &str) -> Result<Vec<PathBuf>, S
         {
             continue;
         }
-        if path.is_symlink() {
+        let kind = entry.file_type().map_err(|e| e.to_string())?;
+        if kind.is_symlink() {
             return Err("不支持符号链接图片".into());
         }
-        if path.is_file() {
-            files.push(path);
+        if kind.is_file() {
+            files.entry(emotion.into()).or_default().push(path);
         }
     }
-    files.sort();
+    for paths in files.values_mut() {
+        paths.sort();
+    }
     Ok(files)
+}
+
+pub(super) fn emotion_files(dir: &Path, emotion: &str) -> Result<Vec<PathBuf>, String> {
+    Ok(avatar_files(dir)?.remove(emotion).unwrap_or_default())
 }
 
 #[derive(Serialize)]
@@ -114,18 +129,19 @@ pub async fn list_character_avatars(
     edit_id: Option<String>,
 ) -> Result<Vec<AvatarSlot>, String> {
     let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
+    let files = avatar_files(&dir)?;
     EMOTIONS
         .iter()
         .map(|emotion| {
-            let mut path = emotion_files(&dir, emotion)?.into_iter().next();
+            let mut path = files.get(*emotion).and_then(|paths| paths.first()).cloned();
             let fallback = path.is_none() && *emotion == "平静";
             if fallback {
-                path = emotion_files(&dir, "正常")?.into_iter().next();
+                path = files.get("正常").and_then(|paths| paths.first()).cloned();
             }
             Ok(AvatarSlot {
                 emotion: (*emotion).into(),
                 path: path.map(|p| p.to_string_lossy().into_owned()),
-                fallback: fallback && !emotion_files(&dir, "正常")?.is_empty(),
+                fallback: fallback && files.contains_key("正常"),
             })
         })
         .collect()
@@ -157,6 +173,9 @@ pub async fn write_character_avatar(
     limits.max_alloc = Some(256 * 1024 * 1024);
     reader.limits(limits);
     let image = reader.decode().map_err(|e| format!("图片无法读取: {e}"))?;
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
+    }
     let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     let old = emotion_files(&dir, &emotion)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -196,6 +215,9 @@ pub async fn delete_character_avatar(
     let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
+    }
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
     }
     let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     for file in emotion_files(&dir, &emotion)? {

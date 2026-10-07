@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
-use super::character_avatars::{EMOTIONS, avatar_dir_for_edit, emotion_files, validate_segment};
+use super::character_avatars::{EMOTIONS, avatar_dir_for_edit, avatar_files, validate_segment};
 use crate::{AppState, ai_service::types::CharacterSettings, config};
 
 // 与差分增删共享锁，防止上传图片时服装目录被改名。
@@ -45,12 +45,11 @@ pub async fn list_character_costumes(
     let mut result = Vec::new();
     for name in names {
         let dir = avatar_dir_for_edit(&app, role_id, &name, edit_id.as_deref()).await?;
-        let preview = emotion_files(&dir, "正常")?.into_iter().next();
+        let files = avatar_files(&dir)?;
+        let preview = files.get("正常").and_then(|paths| paths.first()).cloned();
         let mut missing = Vec::new();
         for emotion in EMOTIONS.iter().filter(|name| **name != "头像") {
-            if emotion_files(&dir, emotion)?.is_empty()
-                && !(*emotion == "平静" && preview.is_some())
-            {
+            if !files.contains_key(*emotion) && !(*emotion == "平静" && preview.is_some()) {
                 missing.push((*emotion).to_string());
             }
         }
@@ -183,6 +182,9 @@ pub async fn manage_character_costume(
         || ["default", "默认"].contains(&new_name.as_str())
     {
         return Err("默认服装不能被重命名或移除".into());
+    }
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
     }
     let root = avatar_dir_for_edit(&app, role_id, "default", edit_id.as_deref()).await?;
     let source = if action == "create" {

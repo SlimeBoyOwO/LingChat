@@ -648,6 +648,9 @@ pub async fn import_live2d(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::prepare_resource(role_id, id, "live2d").await?;
+    }
     let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
     let source = PathBuf::from(source_path);
     if !source.exists() {
@@ -884,7 +887,8 @@ pub async fn get_live2d_file(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
+    let root = super::character_editor::file_root(role_id, edit_id.as_deref(), &file_path)?
+        .unwrap_or(root);
     let resolved = root.join(file_path);
     crate::utils::path::validate_path_in_base(&resolved, &root)?;
     if !resolved.is_file() {
@@ -913,7 +917,7 @@ pub async fn inspect_live2d(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
+
     let settings =
         super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
     let live2d = settings
@@ -921,6 +925,8 @@ pub async fn inspect_live2d(
         .ok_or_else(|| "角色未配置 Live2D".to_string())?;
     let mut models = Vec::new();
     for (variant_name, variant) in &live2d.variants {
+        let root = super::character_editor::file_root(role_id, edit_id.as_deref(), &variant.model)?
+            .unwrap_or_else(|| root.clone());
         let model_file = root.join(&variant.model);
         let (info, _) = inspect_model(&model_file, &root, &root, variant_name.clone())?;
         models.push(info);
@@ -950,7 +956,7 @@ pub async fn get_live2d_variant_assets(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
+
     let settings =
         super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
     let live2d = settings
@@ -960,6 +966,8 @@ pub async fn get_live2d_variant_assets(
         .variants
         .get(&variant_name)
         .ok_or_else(|| format!("variant {variant_name} 不存在"))?;
+    let root = super::character_editor::file_root(role_id, edit_id.as_deref(), &variant.model)?
+        .unwrap_or(root);
     let model_file = root.join(&variant.model);
     // variant.model 来自用户可编辑的 settings.yml，必须挡住越界路径
     crate::utils::path::validate_path_in_base(&model_file, &root)?;

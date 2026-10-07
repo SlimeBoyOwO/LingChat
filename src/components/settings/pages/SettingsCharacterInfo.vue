@@ -209,6 +209,7 @@
                 </p>
                 <button
                   class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
+                  :disabled="clothesLoading"
                   @click="touchEditorVisible = true"
                 >
                   {{ $t("settings.characterInfo.touch.open") }}
@@ -312,7 +313,6 @@ import {
   discardCharacterEdit,
   commitCharacterEdit,
   listCharacterCostumes,
-  listCharacterAvatars,
 } from "../../../api/services/character";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -361,6 +361,8 @@ const resourceBusy = ref(0);
 const resourceRevision = ref(0);
 const baseline = ref("");
 const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
+const clothesLoading = ref(false);
+let clothesSequence = 0;
 let loadSequence = 0;
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
@@ -370,23 +372,33 @@ async function refreshDraftClothes() {
   const id = editId.value;
   const roleId = editRoleId.value;
   if (!id || !roleId) return;
-  const costumes = await listCharacterCostumes(roleId, id);
-  const result = await Promise.all(
-    costumes.map(async (costume) => {
-      const slots = await listCharacterAvatars(roleId, costume.name, id);
-      const path = slots.find((slot) => slot.emotion === "正常")?.path;
-      return {
-        title: costume.name,
-        avatar: path ? convertFileSrc(path) + "?v=" + resourceRevision.value : "",
-      };
-    }),
-  );
-  if (editId.value === id) draftClothes.value = result;
+  const sequence = ++clothesSequence;
+  clothesLoading.value = true;
+  try {
+    const costumes = await listCharacterCostumes(roleId, id);
+    if (editId.value !== id || sequence !== clothesSequence) return;
+    draftClothes.value = costumes.map((costume) => ({
+      title: costume.name,
+      avatar: costume.preview
+        ? convertFileSrc(costume.preview) + "?v=" + resourceRevision.value
+        : "",
+    }));
+  } finally {
+    if (sequence === clothesSequence) clothesLoading.value = false;
+  }
 }
-watch(resourceRevision, () => {
-  void refreshDraftClothes().catch(console.error);
+watch([resourceRevision, activeTab, editId], () => {
+  if (
+    editId.value &&
+    ["visuals", "avatars", "clothes", "touch", "live2d", "pet"].includes(activeTab.value)
+  ) {
+    void refreshDraftClothes().catch(console.error);
+  }
 });
+
 async function discardDraft() {
+  ++clothesSequence;
+  clothesLoading.value = false;
   const id = editId.value;
   const roleId = editRoleId.value;
   if (id && roleId) await discardCharacterEdit(roleId, id);
@@ -1068,7 +1080,7 @@ watch(
           localSettings.value.avatar_mode_p = "live2d";
         }
         baseline.value = JSON.stringify(localSettings.value);
-        await refreshDraftClothes();
+        draftClothes.value = [...(props.clothes ?? [])];
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
