@@ -280,22 +280,10 @@ async fn edit_context_impl(
     }
 }
 
-/// 触发并等待一次永久记忆压缩；只压达到阈值的角色。
-async fn compress_context_impl(app: AppHandle) -> serde_json::Value {
-    // 短锁：只取句柄 + 台词快照，随后在锁外 await 压缩，
-    // 避免压缩（若干次 LLM 调用）期间一直冻住 GameStatus。
-    let (handles, lines) = {
-        let gs = game_status_handle(&app).await;
-        let gs = gs.lock().await;
-        (gs.role_manager.memory_bank_handles(), gs.line_list.clone())
-    };
-    let mut triggered = 0usize;
-    for handle in handles {
-        if handle.compress_if_needed(&lines).await {
-            triggered += 1;
-        }
-    }
-    serde_json::json!({ "ok": true, "triggered": triggered })
+/// 旧版「记忆压缩」入口：记忆链路已迁移到工具驱动的向量记忆，压缩不再存在。
+/// 保留返回结构以兼容老插件的调用与判断。
+async fn compress_context_impl(_app: AppHandle) -> serde_json::Value {
+    serde_json::json!({ "ok": true, "triggered": 0 })
 }
 
 // ── 读素材 ──
@@ -709,11 +697,11 @@ mod plugin_host {
         Ok(super::value_to_pyobject(vm, &result))
     }
 
-    /// 触发并等待一次永久记忆压缩；只压达到阈值的角色。
+    /// 兼容旧插件的记忆压缩入口（现为 no-op）。
     ///
     /// 用法：`compress_context()`
     ///
-    /// 返回 `{ "ok": true, "triggered": N }`（N = 实际触发压缩的角色数，0 = 无需压缩）。
+    /// 返回 `{ "ok": true, "triggered": 0 }`。
     #[pyfunction]
     fn compress_context(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
         let Some(app) = crate::app_handle() else {

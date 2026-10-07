@@ -137,9 +137,6 @@ impl GameStatus {
     ) -> Result<()> {
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         let game_line = GameLine::from_base(line, perceived);
-        // 中段插入会平移其后的下标，先让进行中的后台摘要作废，避免过期结果落库
-        //（与工具消息回填、edit_context_lines 的处理一致）。
-        self.role_manager.invalidate_memory_history();
         self.line_list
             .insert(index.min(self.line_list.len()), game_line);
         self.refresh_memories(db).await?;
@@ -182,9 +179,7 @@ impl GameStatus {
     ///   一条 warn，不拦截；
     /// - `replacement` 中未带 id 的行按位置继承被替换行的 id，保住存档链锚点
     ///   （否则 `SaveRepo::sync_lines` 可能因「首行分歧」拒绝覆盖）；
-    /// - 回拨所有角色的压缩指针到编辑起点（仅当指针在其之后），使被编辑的早期
-    ///   内容重新进入窗口、下次压缩重新摘要；
-    /// - `invalidate_memory_history` + `refresh_memories`。
+    /// - `refresh_memories` 重建各角色上下文记忆。
     ///
     /// 返回被替换掉的条数。**落库不在这里**，由调用方走正常存盘流程
     /// （`SaveRepo::sync_lines`）持久化。
@@ -228,10 +223,7 @@ impl GameStatus {
             }
         }
 
-        self.role_manager.invalidate_memory_history();
         let removed = self.line_list.splice(lo..hi, replacement).count();
-        // 指针在编辑点之后的角色回拨到编辑起点，让这段重新进入窗口。
-        self.role_manager.rewind_memory_pointers(lo).await;
         self.refresh_memories(db).await?;
 
         Ok(removed)

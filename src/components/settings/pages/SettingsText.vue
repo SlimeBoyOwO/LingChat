@@ -924,7 +924,7 @@ function loadLastTtsCleanup() {
 }
 
 const loadConfig = async () => {
-  const configKeys = ["features.use_persistent_memory"];
+  const configKeys = ["features.memory_enabled"];
   for (const key of configKeys) {
     envSettings.value[key] = await getEnvConfigByKey(key);
   }

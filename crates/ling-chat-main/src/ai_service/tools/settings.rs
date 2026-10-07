@@ -38,13 +38,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ),
     (
         "memory",
-        &[
-            "memory_get_current",
-            "memory_get_notes",
-            "memory_add_note",
-            "memory_update_note",
-            "memory_delete_note",
-        ],
+        &["memory_store", "vector_search", "memory_delete"],
     ),
     (
         "character",

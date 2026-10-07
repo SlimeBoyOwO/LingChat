@@ -225,13 +225,7 @@ pub async fn create_save(
     // 5. 标记当前活跃存档
     service.game_status.lock().await.active_save_id = Some(save_id);
 
-    // 6. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 7. 持久化剧本状态（若有）
+    // 6. 持久化剧本状态（若有）
     let script_status_snapshot = service.game_status.lock().await.script_status.clone();
     match script_status_snapshot {
         Some(script_status) => {
@@ -261,7 +255,7 @@ pub async fn create_save(
         },
     }
 
-    // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
+    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
     let baseline_hash = auto_save::hash_of_real_lines(&lines);
     drop(service);
     state
@@ -400,14 +394,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
 
-    // 6. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
-    //    后台全量重压会用旧库/旧指针把 DB 恢复的记忆库覆盖掉。
-    let _ = service
-        .restore_memory_banks(save_id)
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
-
-    // 7. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
+    // 6. 载入台词
     // 先记下载入内容的真实对话指纹，稍后同步自动存档基线，避免下个 tick 把刚载入内容当新变化重存覆盖旧档
     let baseline_hash = auto_save::hash_of_real_lines(&line_list);
     service
@@ -415,14 +402,14 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 
-    // 8. 恢复 GameStatus 快照
+    // 7. 恢复 GameStatus 快照
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
     service.game_status.lock().await.apply_snapshot(&snapshot);
 
-    // 9. 恢复剧本状态：覆盖掉被中止旧引擎可能残留的 script_status（含 None 的情况）
+    // 8. 恢复剧本状态：覆盖掉被中止旧引擎可能残留的 script_status（含 None 的情况）
     service.game_status.lock().await.script_status = resume_script.clone();
 
-    // 10. 返回前端初始化数据
+    // 9. 返回前端初始化数据
     let result = build_web_init_data(&service, &app).await?;
     // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
@@ -482,13 +469,7 @@ pub async fn update_save(
         .await
         .map_err(|e| format!("保存状态失败: {}", e))?;
 
-    // 5. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 6. 持久化剧本状态
+    // 5. 持久化剧本状态
     let script_status_snapshot = service.game_status.lock().await.script_status.clone();
     match script_status_snapshot {
         Some(script_status) => {
@@ -518,7 +499,7 @@ pub async fn update_save(
         },
     }
 
-    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
+    // 6. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
     let baseline_hash = auto_save::hash_of_real_lines(&lines);
     drop(service);
     state
@@ -537,12 +518,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
 
     let service = state.ai_service.lock().await;
 
-    // 1. 删除 MemoryBank
-    SaveRepo::delete_memory_banks_by_save(db, save_id)
-        .await
-        .map_err(|e| format!("删除记忆库失败: {}", e))?;
-
-    // 2. 删除 running_script 关联（若有）
+    // 1. 删除 running_script 关联（若有）
     if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {
         if let Some(rs_id) = save_model.running_script_id {
             let _ = SaveRepo::delete_running_script(db, rs_id).await;
@@ -557,7 +533,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         let _ = std::fs::remove_file(screenshot_path);
     }
 
-    // 3. 删除存档（级联删除关联的 line / line_perception）
+    // 2. 删除存档（级联删除关联的 line / line_perception）
     let deleted = SaveRepo::delete_save(db, save_id)
         .await
         .map_err(|e| format!("删除存档失败: {}", e))?;
@@ -566,7 +542,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         return Err(format!("存档 {} 不存在", save_id));
     }
 
-    // 4. 若当前活跃存档是被删除的，清除标记
+    // 3. 若当前活跃存档是被删除的，清除标记
     if service.game_status.lock().await.active_save_id == Some(save_id) {
         service.game_status.lock().await.active_save_id = None;
     }

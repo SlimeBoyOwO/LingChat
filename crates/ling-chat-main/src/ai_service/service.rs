@@ -8,10 +8,8 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
-use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
@@ -37,13 +35,8 @@ impl AIService {
     pub async fn new(
         db: DatabaseConnection,
         data_dir: PathBuf,
-        llm: LlmSlot,
         tts_config: TtsConfig,
         local_tts: Option<LocalTtsRuntime>,
-        use_persistent_memory: bool,
-        memory_update_interval: u32,
-        memory_recent_window: u32,
-        memory_limits: MemorySectionLimits,
         memory_inject_continue_user: bool,
     ) -> Self {
         // Initialize the event handler registry before any script is run
@@ -52,13 +45,8 @@ impl AIService {
         let role_manager = GameRoleManager::new(
             data_dir.clone(),
             db.clone(),
-            llm,
             tts_config,
             local_tts,
-            use_persistent_memory,
-            memory_update_interval,
-            memory_recent_window,
-            memory_limits,
             memory_inject_continue_user,
         );
         let game_status = Arc::new(Mutex::new(GameStatus::new(role_manager)));
@@ -178,7 +166,6 @@ impl AIService {
 
     async fn clear_game_status(&mut self) {
         let mut gs = self.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
         gs.role_manager.reset_roles();
         gs.line_list.clear();
         gs.onstage_role_ids.clear();
@@ -201,7 +188,7 @@ impl AIService {
         self.game_status.lock().await.active_save_id = save_id;
     }
 
-    /// 载入存档台词并恢复 MemoryBank。
+    /// 载入存档台词并重建角色上下文记忆。
     pub async fn load_lines(
         &mut self,
         lines: Vec<GameLine>,
@@ -210,7 +197,6 @@ impl AIService {
     ) -> Result<()> {
         {
             let mut gs = self.game_status.lock().await;
-            gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
@@ -221,27 +207,6 @@ impl AIService {
             gs.main_role_id = Some(main_role_id);
         }
         Ok(())
-    }
-
-    /// 将当前所有已加载角色的 `GameMemoryBank` 持久化到 DB。
-    /// 委托给 `GameRoleManager` 以确保后台压缩结果先同步再写入。
-    pub async fn persist_memory_banks(&mut self, save_id: i32) -> Result<()> {
-        self.game_status
-            .lock()
-            .await
-            .role_manager
-            .persist_memory_banks_to_db(&self.db, save_id, None)
-            .await
-    }
-
-    /// 从 DB 恢复所有 MemoryBank 到对应已加载角色，并惰性创建压缩系统。
-    pub async fn restore_memory_banks(&mut self, save_id: i32) -> Result<()> {
-        self.game_status
-            .lock()
-            .await
-            .role_manager
-            .load_memory_banks_from_db(&self.db, save_id, None)
-            .await
     }
 
     /// 辅助函数，用于快速获取人物的设定

@@ -12,9 +12,7 @@ use sea_orm::{
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::db::entities::{
-    adventure_unlock, line, line_perception, memory_bank, role, running_script, save,
-};
+use crate::db::entities::{adventure_unlock, line, line_perception, role, running_script, save};
 
 use super::messages::DbRecords;
 use super::staging::staging_dir;
@@ -25,6 +23,7 @@ const DB_RECORDS_FILE: &str = "db_records.json";
 // ─── 表操作顺序（按外键依赖） ─────────────────────────────────
 
 /// DELETE 顺序：先删子表再删父表，避免 FK 约束冲突。
+/// `memory_bank` 是旧版记忆链路遗留表（表结构保留、不再读写），一并清掉避免残留。
 const DELETE_ORDER: [&str; 7] = [
     "line_perception",
     "memory_bank",
@@ -36,7 +35,7 @@ const DELETE_ORDER: [&str; 7] = [
 ];
 
 // INSERT 顺序在 apply_staged_db_records 中通过 import_rows! 宏按序调用：
-// role → save → running_script → adventure_unlock → line → memory_bank → line_perception
+// role → save → running_script → adventure_unlock → line → line_perception
 
 /// 导入宏：将 JSON 数组反序列化为 Entity Model，转为 ActiveModel 逐行 INSERT。
 ///
@@ -60,7 +59,7 @@ macro_rules! import_rows {
 
 // ─── 导出 ─────────────────────────────────────────────────────
 
-/// 导出全部 7 张业务表的数据。
+/// 导出全部 6 张业务表的数据（memory_bank 旧记忆表不再导出）。
 ///
 /// 通过独立只读连接打开数据库（`mode=ro`），不阻塞主应用的读写连接。
 pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
@@ -88,8 +87,6 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         export_table::<adventure_unlock::Entity, adventure_unlock::Model>(&db, "adventure_unlock")
             .await?;
     let lines = export_table::<line::Entity, line::Model>(&db, "line").await?;
-    let memory_banks =
-        export_table::<memory_bank::Entity, memory_bank::Model>(&db, "memory_bank").await?;
     let line_perceptions =
         export_table::<line_perception::Entity, line_perception::Model>(&db, "line_perception")
             .await?;
@@ -99,7 +96,6 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         + running_scripts.len()
         + adventure_unlocks.len()
         + lines.len()
-        + memory_banks.len()
         + line_perceptions.len();
     info!("数据库导出完成: {} 条记录", total);
 
@@ -110,7 +106,7 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         running_scripts,
         adventure_unlocks,
         lines,
-        memory_banks,
+        memory_banks: Vec::new(),
         line_perceptions,
     })
 }
@@ -229,7 +225,6 @@ pub async fn apply_staged_db_records(
     import_rows!(&txn, &records.running_scripts, running_script, imported);
     import_rows!(&txn, &records.adventure_unlocks, adventure_unlock, imported);
     import_rows!(&txn, &records.lines, line, imported);
-    import_rows!(&txn, &records.memory_banks, memory_bank, imported);
     import_rows!(&txn, &records.line_perceptions, line_perception, imported);
 
     // 重新启用外键检查

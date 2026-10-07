@@ -135,6 +135,8 @@ pub struct DbRecords {
     pub running_scripts: Vec<serde_json::Value>,
     pub adventure_unlocks: Vec<serde_json::Value>,
     pub lines: Vec<serde_json::Value>,
+    /// 旧版记忆表的行：新链路不再读写，字段保留仅为兼容旧对端的序列化格式。
+    #[serde(default)]
     pub memory_banks: Vec<serde_json::Value>,
     pub line_perceptions: Vec<serde_json::Value>,
 }

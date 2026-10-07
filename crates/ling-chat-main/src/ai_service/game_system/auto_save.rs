@@ -207,13 +207,7 @@ impl AutoSaveManager {
             .await
             .map_err(|e| format!("保存状态失败: {}", e))?;
 
-        // 4d. Persist memory banks
-        service
-            .persist_memory_banks(save_id)
-            .await
-            .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-        // 4e. Persist script state (if running)
+        // 4d. Persist script state (if running)
         let script_status_snapshot = service.game_status.lock().await.script_status.clone();
         match script_status_snapshot {
             Some(script_status) => {

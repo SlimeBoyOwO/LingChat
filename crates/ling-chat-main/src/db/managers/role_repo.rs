@@ -17,7 +17,6 @@ use crate::db::entities::role::{
 };
 use crate::db::entities::running_script;
 use crate::db::entities::save;
-use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::save_repo::SaveRepo;
 
 pub struct RoleRepo;
@@ -162,17 +161,16 @@ impl RoleRepo {
     /// 2. 找出所有 main_role_id = role_id 的存档
     /// 3. 清理这些存档的 running_script（FK running_script.save_id → save.id 会阻止 save 删除）
     /// 4. 逐个删除存档（级联清 line/line_perception）
-    /// 5. 清该角色所有 memory_bank 行（跨存档兜底）
-    /// 6. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
-    /// 7. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
-    /// 8. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
-    /// 9. delete role by id
-    /// 10. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
+    /// 5. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
+    /// 6. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
+    /// 7. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
+    /// 8. delete role by id
+    /// 9. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
     ///
     /// 返回是否实际删除了行。
     ///
     /// **为什么需要关闭 FK？**
-    /// 角色的 FK 引用散布在 save/line/line_perception/memory_bank/running_script 等多个表，
+    /// 角色的 FK 引用散布在 save/line/line_perception/running_script 等多个表，
     /// 任何一处漏清理都会触发 SQLite FK 约束失败。关闭 FK 让我们不再"打地鼠"，即使将来 schema
     /// 增加新引用也不会破坏删除流程。手工清理步骤保留是为了不留下孤儿行（line_perception
     /// 等 NOT NULL 字段不删会留垃圾，line.sender_role_id 保留归属更有用——所以这部分仍然置 NULL）。
@@ -207,34 +205,31 @@ impl RoleRepo {
             SaveRepo::delete_save(db, *save_id).await?;
         }
 
-        // 5. 清该角色全部 memory_bank
-        MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
-
-        // 6. 防御性清 line_perception（NOT NULL FK，必须删）
+        // 5. 防御性清 line_perception（NOT NULL FK，必须删）
         line_perception::Entity::delete_many()
             .filter(line_perception::Column::RoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 7. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
+        // 6. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
         line::Entity::update_many()
             .col_expr(line::Column::SenderRoleId, Expr::value(Option::<i32>::None))
             .filter(line::Column::SenderRoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 8. 防御性解绑其他存档的 main_role_id
+        // 7. 防御性解绑其他存档的 main_role_id
         save::Entity::update_many()
             .col_expr(save::Column::MainRoleId, Expr::value(Option::<i32>::None))
             .filter(save::Column::MainRoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 9. 删 role 本身
+        // 8. 删 role 本身
         let result = role::Entity::delete_by_id(role_id).exec(db).await?;
         let rows_affected = result.rows_affected > 0;
 
-        // 10. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
+        // 9. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
         enable_fk(db).await?;
         guard.disarm();
 

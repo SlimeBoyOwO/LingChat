@@ -97,24 +97,6 @@
       </MenuItem>
     </div>
 
-    <!-- 永久记忆调试 -->
-    <div
-      class="h-full cursor-pointer transition-all duration-300"
-      @click="emit('navigate', 'memory')"
-    >
-      <MenuItem :title="$t('advance.menu.memoryTitle')" size="large">
-        <template #header>
-          <Database :size="20" />
-        </template>
-        <p class="mb-3 min-h-17 text-sm leading-relaxed text-white/50">
-          {{ $t("advance.menu.memoryDesc") }}
-        </p>
-        <Button type="big" icon="advance" :icon_size="18">
-          {{ $t("advance.menu.memoryButton") }}
-        </Button>
-      </MenuItem>
-    </div>
-
     <!-- 界面语言 -->
     <div class="h-full transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
@@ -183,7 +165,6 @@ import {
   BookOpen,
   Cast,
   Cpu,
-  Database,
   Heart,
   Mic,
   SlidersHorizontal,
@@ -236,7 +217,7 @@ async function onAffectionMasterToggle(enabled: boolean) {
 }
 
 const emit = defineEmits<{
-  navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast" | "memory"];
+  navigate: [tab: "llm" | "tts" | "asr" | "other" | "tools" | "cast"];
 }>();
 
 // 内置 TTS 官方教程（LingBlog）

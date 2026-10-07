@@ -13,7 +13,6 @@ pub mod font;
 pub mod game;
 pub mod live2d;
 pub mod locale;
-pub mod memory;
 pub mod music;
 pub mod pet;
 pub mod save;

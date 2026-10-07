@@ -8,6 +8,7 @@
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 use tauri::{AppHandle, Wry};
 use tauri_plugin_store::{Store, StoreExt};
 
@@ -34,23 +35,11 @@ fn default_enable_time_sense() -> bool {
 fn default_enable_emotion_classifier() -> bool {
     true
 }
-fn default_memory_update_interval() -> u32 {
-    250
+fn default_memory_top_k() -> u32 {
+    20
 }
-fn default_memory_recent_window() -> u32 {
-    30
-}
-fn default_memory_short_term_max_chars() -> u32 {
-    500
-}
-fn default_memory_long_term_max_chars() -> u32 {
-    2000
-}
-fn default_memory_user_info_max_chars() -> u32 {
-    800
-}
-fn default_memory_promises_max_chars() -> u32 {
-    800
+fn default_memory_min_score() -> f64 {
+    0.4
 }
 fn default_disable_splash_animation() -> bool {
     false
@@ -70,10 +59,9 @@ pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
 pub const MAX_LLM_TIMEOUT_SECS: u64 = 3600;
 pub const MIN_AUTO_SAVE_INTERVAL_SECS: u32 = 30;
 pub const MAX_AUTO_SAVE_INTERVAL_SECS: u32 = 3600;
-pub const MIN_MEMORY_UPDATE_INTERVAL: u32 = 1;
-pub const MAX_MEMORY_UPDATE_INTERVAL: u32 = 10_000;
-pub const MAX_MEMORY_RECENT_WINDOW: u32 = 10_000;
-pub const MAX_MEMORY_SECTION_CHARS: u32 = 1_000_000;
+pub const MIN_MEMORY_TOP_K: u32 = 1;
+pub const MAX_MEMORY_TOP_K: u32 = 200;
+pub const MAX_MEMORY_MIN_SCORE: f64 = 1.0;
 
 fn default_llm_timeout_secs() -> u64 {
     DEFAULT_LLM_TIMEOUT_SECS
@@ -121,25 +109,28 @@ pub struct AppConfig {
     pub ai_auto_effect: bool,
 
     // ---- 功能开关（记忆系统） ----
+    /// 记忆工具（memory_store / memory_delete / memory_summarize）总开关。
     #[serde(default = "default_true")]
-    pub use_persistent_memory: bool,
-    #[serde(default = "default_memory_update_interval")]
-    pub memory_update_interval: u32,
-    #[serde(default = "default_memory_recent_window")]
-    pub memory_recent_window: u32,
+    pub memory_enabled: bool,
     /// 记忆窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
     /// 默认开启：genai 不做消息规范化，Gemini 等 provider 要求首条为 user。
     #[serde(default = "default_true")]
     pub memory_inject_continue_user: bool,
-    // 记忆段长度上限（字符数，0 = 不截断）：决定压缩喂给 LLM 的旧内容与运行时注入上下文的长度
-    #[serde(default = "default_memory_short_term_max_chars")]
-    pub memory_short_term_max_chars: u32,
-    #[serde(default = "default_memory_long_term_max_chars")]
-    pub memory_long_term_max_chars: u32,
-    #[serde(default = "default_memory_user_info_max_chars")]
-    pub memory_user_info_max_chars: u32,
-    #[serde(default = "default_memory_promises_max_chars")]
-    pub memory_promises_max_chars: u32,
+
+    // ---- 记忆（向量嵌入） ----
+    /// OpenAI 兼容 embeddings 接口地址（留空 = 未配置）。
+    #[serde(default)]
+    pub embedding_base_url: String,
+    #[serde(default)]
+    pub embedding_api_key: String,
+    #[serde(default)]
+    pub embedding_model: String,
+
+    // ---- 记忆检索参数 ----
+    #[serde(default = "default_memory_top_k")]
+    pub memory_top_k: u32,
+    #[serde(default = "default_memory_min_score")]
+    pub memory_min_score: f64,
 
     // ---- 界面与显示 ----
     /// 是否关闭首次启动的开屏动画（LoadingTransition）。
@@ -170,19 +161,18 @@ impl Default for AppConfig {
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
+            memory_enabled: true,
             weather_city: String::new(),
             weather_first_talk: false,
             ai_auto_clothes: true,
             ai_auto_scene: true,
             ai_auto_effect: true,
-            use_persistent_memory: true,
-            memory_update_interval: default_memory_update_interval(),
-            memory_recent_window: default_memory_recent_window(),
             memory_inject_continue_user: true,
-            memory_short_term_max_chars: default_memory_short_term_max_chars(),
-            memory_long_term_max_chars: default_memory_long_term_max_chars(),
-            memory_user_info_max_chars: default_memory_user_info_max_chars(),
-            memory_promises_max_chars: default_memory_promises_max_chars(),
+            embedding_base_url: String::new(),
+            embedding_api_key: String::new(),
+            embedding_model: String::new(),
+            memory_top_k: default_memory_top_k(),
+            memory_min_score: default_memory_min_score(),
             disable_splash_animation: default_disable_splash_animation(),
             auto_save_enabled: default_auto_save_enabled(),
             auto_save_interval_secs: default_auto_save_interval_secs(),
@@ -223,6 +213,19 @@ fn get_u32_in_range(store: &Store<Wry>, key: &str, default: u32, min: u32, max: 
         .get(key)
         .and_then(|value| value.as_u64())
         .and_then(|value| u32::try_from(value).ok())
+        .filter(|value| (min..=max).contains(value))
+        .unwrap_or(default)
+}
+
+/// 读取 f64 设置；缺失或越界时回退默认值（同时兼容字符串形式的数字）。
+fn get_f64_in_range(store: &Store<Wry>, key: &str, default: f64, min: f64, max: f64) -> f64 {
+    store
+        .get(key)
+        .and_then(|v| match v {
+            JsonValue::Number(n) => n.as_f64(),
+            JsonValue::String(s) => s.parse::<f64>().ok(),
+            _ => None,
+        })
         .filter(|value| (min..=max).contains(value))
         .unwrap_or(default)
 }
@@ -277,6 +280,7 @@ impl AppConfig {
                 keys::ENABLE_EMOTION_CLASSIFIER,
                 default.enable_emotion_classifier,
             ),
+            memory_enabled: get_bool(&store, keys::MEMORY_ENABLED, default.memory_enabled),
             weather_city: get_string(&store, keys::WEATHER_CITY).unwrap_or_default(),
             weather_first_talk: get_bool(
                 &store,
@@ -286,57 +290,30 @@ impl AppConfig {
             ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
             ai_auto_scene: get_bool(&store, keys::AI_AUTO_SCENE, default.ai_auto_scene),
             ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
-            use_persistent_memory: get_bool(
-                &store,
-                keys::USE_PERSISTENT_MEMORY,
-                default.use_persistent_memory,
-            ),
-            memory_update_interval: get_u32_in_range(
-                &store,
-                keys::MEMORY_UPDATE_INTERVAL,
-                default.memory_update_interval,
-                MIN_MEMORY_UPDATE_INTERVAL,
-                MAX_MEMORY_UPDATE_INTERVAL,
-            ),
-            memory_recent_window: get_u32_in_range(
-                &store,
-                keys::MEMORY_RECENT_WINDOW,
-                default.memory_recent_window,
-                0,
-                MAX_MEMORY_RECENT_WINDOW,
-            ),
             memory_inject_continue_user: get_bool(
                 &store,
                 keys::MEMORY_INJECT_CONTINUE_USER,
                 default.memory_inject_continue_user,
             ),
-            memory_short_term_max_chars: get_u32_in_range(
+            embedding_base_url: get_string(&store, keys::EMBEDDING_BASE_URL)
+                .unwrap_or_else(|| default.embedding_base_url.clone()),
+            embedding_api_key: get_string(&store, keys::EMBEDDING_API_KEY)
+                .unwrap_or_else(|| default.embedding_api_key.clone()),
+            embedding_model: get_string(&store, keys::EMBEDDING_MODEL)
+                .unwrap_or_else(|| default.embedding_model.clone()),
+            memory_top_k: get_u32_in_range(
                 &store,
-                keys::MEMORY_SHORT_TERM_MAX_CHARS,
-                default.memory_short_term_max_chars,
-                0,
-                MAX_MEMORY_SECTION_CHARS,
+                keys::MEMORY_TOP_K,
+                default.memory_top_k,
+                MIN_MEMORY_TOP_K,
+                MAX_MEMORY_TOP_K,
             ),
-            memory_long_term_max_chars: get_u32_in_range(
+            memory_min_score: get_f64_in_range(
                 &store,
-                keys::MEMORY_LONG_TERM_MAX_CHARS,
-                default.memory_long_term_max_chars,
-                0,
-                MAX_MEMORY_SECTION_CHARS,
-            ),
-            memory_user_info_max_chars: get_u32_in_range(
-                &store,
-                keys::MEMORY_USER_INFO_MAX_CHARS,
-                default.memory_user_info_max_chars,
-                0,
-                MAX_MEMORY_SECTION_CHARS,
-            ),
-            memory_promises_max_chars: get_u32_in_range(
-                &store,
-                keys::MEMORY_PROMISES_MAX_CHARS,
-                default.memory_promises_max_chars,
-                0,
-                MAX_MEMORY_SECTION_CHARS,
+                keys::MEMORY_MIN_SCORE,
+                default.memory_min_score,
+                0.0,
+                MAX_MEMORY_MIN_SCORE,
             ),
             disable_splash_animation: get_bool(
                 &store,

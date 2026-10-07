@@ -52,6 +52,8 @@ pub struct InnerAppState {
     pub ai_service: SharedAIService,
     /// 聊天组件。
     pub chat: ChatComponents,
+    /// 向量记忆服务（嵌入 + 混合检索 + 去重），配置在启动时快照。
+    pub memory: Arc<crate::ai_service::memory::MemoryService>,
     /// 脚本引擎通道。
     pub script_channels: ai_service::game_system::script_engine::SharedScriptChannels,
     /// 生成锁，用于控制并发生成。

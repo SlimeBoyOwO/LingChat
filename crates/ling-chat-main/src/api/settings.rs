@@ -20,8 +20,8 @@ use crate::ai_service::llm::provider_config::{
     save_role_assignment,
 };
 use crate::config::app_config::{
-    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
-    MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
+    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_MIN_SCORE, MAX_MEMORY_TOP_K, MIN_LLM_TIMEOUT_SECS,
+    MIN_MEMORY_TOP_K,
 };
 use crate::config::{self, ConfigSetting, ConfigTree, keys};
 
@@ -72,37 +72,34 @@ pub fn save_settings(
 
     validate_u32_setting(
         &values,
-        keys::MEMORY_UPDATE_INTERVAL,
-        "记忆压缩触发条数",
-        MIN_MEMORY_UPDATE_INTERVAL,
-        MAX_MEMORY_UPDATE_INTERVAL,
+        keys::MEMORY_TOP_K,
+        "记忆检索返回条数",
+        MIN_MEMORY_TOP_K,
+        MAX_MEMORY_TOP_K,
     )?;
-    validate_u32_setting(
-        &values,
-        keys::MEMORY_RECENT_WINDOW,
-        "记忆最近窗口",
-        0,
-        MAX_MEMORY_RECENT_WINDOW,
-    )?;
-    for (key, label) in [
-        (keys::MEMORY_SHORT_TERM_MAX_CHARS, "短期记忆长度上限"),
-        (keys::MEMORY_LONG_TERM_MAX_CHARS, "长期记忆长度上限"),
-        (keys::MEMORY_USER_INFO_MAX_CHARS, "用户信息长度上限"),
-        (keys::MEMORY_PROMISES_MAX_CHARS, "约定长度上限"),
-    ] {
-        validate_u32_setting(&values, key, label, 0, MAX_MEMORY_SECTION_CHARS)?;
+    if let Some(raw) = values.get(keys::MEMORY_MIN_SCORE) {
+        let value = raw
+            .parse::<f64>()
+            .map_err(|_| "记忆检索相似度阈值必须是 0–1 之间的小数".to_string())?;
+        if !(0.0..=MAX_MEMORY_MIN_SCORE).contains(&value) {
+            return Err(format!(
+                "记忆检索相似度阈值必须在 0–{} 之间",
+                MAX_MEMORY_MIN_SCORE
+            ));
+        }
     }
 
+    // 记忆配置读取发生在启动时，改完需重启才生效
     let memory_settings_changed = values.keys().any(|key| {
         matches!(
             key.as_str(),
-            keys::USE_PERSISTENT_MEMORY
-                | keys::MEMORY_UPDATE_INTERVAL
-                | keys::MEMORY_RECENT_WINDOW
-                | keys::MEMORY_SHORT_TERM_MAX_CHARS
-                | keys::MEMORY_LONG_TERM_MAX_CHARS
-                | keys::MEMORY_USER_INFO_MAX_CHARS
-                | keys::MEMORY_PROMISES_MAX_CHARS
+            keys::MEMORY_ENABLED
+                | keys::MEMORY_TOP_K
+                | keys::MEMORY_MIN_SCORE
+                | keys::EMBEDDING_BASE_URL
+                | keys::EMBEDDING_API_KEY
+                | keys::EMBEDDING_MODEL
+                | keys::MEMORY_INJECT_CONTINUE_USER
         )
     });
 
@@ -154,7 +151,7 @@ pub fn save_settings(
     }
 
     if memory_settings_changed {
-        Ok("配置已成功保存；记忆压缩相关设置将在重启 LingChat 后生效。".to_string())
+        Ok("配置已成功保存；记忆相关设置将在重启 LingChat 后生效。".to_string())
     } else {
         Ok("配置已成功保存并已生效！".to_string())
     }

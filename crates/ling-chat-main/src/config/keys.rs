@@ -58,18 +58,21 @@ pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";
 pub const AUTO_SAVE_INTERVAL_SECS: &str = "features.auto_save_interval_secs";
 
 // ========== 功能开关（记忆系统） ==========
-pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
-pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
-pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
+/// 记忆工具总开关：关闭后 memory_store / vector_search / memory_delete 不可用。
+pub const MEMORY_ENABLED: &str = "features.memory_enabled";
 /// 上下文窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
 /// 兼容 Gemini 等要求首条消息为 user 的 provider。
 pub const MEMORY_INJECT_CONTINUE_USER: &str = "features.memory_inject_continue_user";
 
-// ========== 记忆段长度上限（字符数，0 = 不截断） ==========
-pub const MEMORY_SHORT_TERM_MAX_CHARS: &str = "features.memory_short_term_max_chars";
-pub const MEMORY_LONG_TERM_MAX_CHARS: &str = "features.memory_long_term_max_chars";
-pub const MEMORY_USER_INFO_MAX_CHARS: &str = "features.memory_user_info_max_chars";
-pub const MEMORY_PROMISES_MAX_CHARS: &str = "features.memory_promises_max_chars";
+// ========== 记忆（向量嵌入） ==========
+/// OpenAI 兼容 embeddings 接口地址（不含 /embeddings 后缀）。
+pub const EMBEDDING_BASE_URL: &str = "embedding.base_url";
+pub const EMBEDDING_API_KEY: &str = "embedding.api_key";
+pub const EMBEDDING_MODEL: &str = "embedding.model";
+
+// ========== 记忆检索参数 ==========
+pub const MEMORY_TOP_K: &str = "memory.top_k";
+pub const MEMORY_MIN_SCORE: &str = "memory.min_score";
 
 // ========== TTS 本地引擎 ==========
 pub const ENABLE_LOCAL_TTS: &str = "features.enable_local_tts";

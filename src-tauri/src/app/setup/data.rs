@@ -53,15 +53,12 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     // 提前加载配置 + 构建 LlmClient（AIService 的子成员 GameRoleManager 需要它）
     let app_config = AppConfig::load(app.handle()).unwrap_or_default();
     tracing::info!(
-        "MemoryBank 配置: enabled={}, update_interval={}, recent_window={}, inject_continue_user={}, limits=[{},{},{},{}]（记忆设置需重启生效）",
-        app_config.use_persistent_memory,
-        app_config.memory_update_interval,
-        app_config.memory_recent_window,
+        "记忆配置: enabled={}, top_k={}, min_score={}, embedding=({}), inject_continue_user={}（记忆设置需重启生效）",
+        app_config.memory_enabled,
+        app_config.memory_top_k,
+        app_config.memory_min_score,
+        app_config.embedding_model,
         app_config.memory_inject_continue_user,
-        app_config.memory_short_term_max_chars,
-        app_config.memory_long_term_max_chars,
-        app_config.memory_user_info_max_chars,
-        app_config.memory_promises_max_chars,
     );
 
     Ok((db, app_config))

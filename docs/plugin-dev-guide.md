@@ -160,26 +160,30 @@ def run(ctx):
 | `ctx["args"]`      | dict     | 本次调用的参数（已按 schema 校验，未知字段被拒）；无参工具为空 dict |
 | `ctx["config"]`    | dict     | 设置页保存的配置；未填的字段不出现，`number` 一律为 float           |
 | `ctx["env"]`       | dict     | 白名单环境变量（`[[env]]` 声明且进程里存在），用 `.get("KEY")` 读   |
-| `ctx["call_tool"]` | function | 调用任意已注册工具，见下文                                          |
+| `ctx["call_tool"]` | function | 调用你有权限的已注册工具，见下文                                    |
 
 ## 调用内置工具：`ctx["call_tool"]`
 
-插件脚本可以调用 **所有已注册的 LLM 工具**（内置工具 + 其他插件注册的工具），返回该工具产出的 JSON dict：
+插件脚本可以调用**已注册的 LLM 工具**（内置工具 + 其他插件注册的工具），返回该工具产出的 JSON dict：
 
 ```python
 def run(ctx):
     call_tool = ctx["call_tool"]
     status = call_tool("status_get_current", {})
     todos = call_tool("schedule_get_all", {})
-    notes = call_tool("memory_get_notes", {"role": "莱姆"})
+    roles = call_tool("character_list", {})
     return {"ok": True, "now_role": status.get("current_role_id")}
 ```
 
 入参：第一个是工具名（str，**区分大小写**），第二个是参数 dict（无参工具传 `{}`）。
 
-返回：统一 JSON dict——成功 `{ "ok": true, ... }`，失败 `{ "ok": false, "error": { "code", "message" } }`。未知工具、参数非法、执行超时等都走失败分支，**不再抛异常**，脚本先判 `r.get("ok")` 即可。
+返回：统一 JSON dict——成功 `{ "ok": true, ... }`，失败 `{ "ok": false, "error": { "code", "message" } }`。未知工具、参数非法、执行超时、**权限不足**等都走失败分支，**不再抛异常**，脚本先判 `r.get("ok")` 即可。
 
-- **注意**：`call_tool` 可以调用含写操作的工具（`memory_add_note`、`schedule_add_todo`、`scene_switch`、`character_switch` 等），且当前沙箱不校验调用方身份——安装第三方插件前请自行评估。
+- **权限与 LLM 路径完全一致**（对齐「场景组 × 角色组」权限矩阵）：
+  - 插件**工具**脚本（模型调 `call_tool` 拉起的那种）继承本轮的工具白名单——白名单之外的工具一律 `ok: false`；
+  - **信号 handler / 启动入口**没有场景上下文，按「当前角色在所有已启用场景组里允许的工具」的并集兜底；取不到角色时按 default 角色组计算；
+  - 设置页关掉的工具组、`features.memory_enabled` 关闭后的记忆工具，在这条路径上同样拿不到 / 直接失败。
+- **注意**：`call_tool` 可以调用含写操作的工具（`memory_store`、`schedule_add_todo`、`scene_switch`、`character_switch` 等）——权限决定的是「能不能调」，不区分只读/写入；安装第三方插件前仍请自行评估其可信度。
 
 ## HTTP 请求：`from plugin_host import http_get, http_post`
 
@@ -334,11 +338,14 @@ def on_reply(ctx):
         ctx["config"]["endpoint"],
         body={"text": payload.get("message"), "emotion": payload.get("emotion")},
     )
+    # 例：调用内置工具，把「去过的地方」写进角色长期记忆
+    ctx["call_tool"]("memory_store", {"content": f"去过 {payload.get('name')}"})
 ```
 
 约定与限制：
 
-- **返回值会被丢弃**。信号没有下游消费者，不要靠 `return` 传递信息；想让结果进入对话，自己在 handler 里调 `call_tool`（如 `memory_add_note`）。
+- **返回值会被丢弃**。信号没有下游消费者，不要靠 `return` 传递信息；想让结果进入对话，自己在 handler 里调 `call_tool`（如 `memory_store`）。
+- **`call_tool` 按权限矩阵兜底**：信号没有场景上下文，可用工具 = 当前角色在所有已启用场景组里允许的工具的并集（取不到角色时按 default 角色组）。被设置页关掉的工具组在这里同样调不到。
 - **handler 必须尽快返回**。超时（`timeout_ms`）会放弃本次执行，但中断不了阻塞线程，死循环会一直占着那个线程。
 - **同时执行的 handler 有上限**（当前 4 个）。达到上限时本次派发被**跳过**并记一条 warn，不排队。
 - **每次派发都新建解释器**，全局状态不跨派发保留，和工具调用一样。
@@ -500,11 +507,12 @@ required = true            # 可选，默认 true
 | `ctx["call_tool"]` | function | 同工具脚本 |
 
 启动没有信号名与载荷，所以**没有** `signal` / `payload` / `tool_name` / `args`。
+`call_tool` 的可用工具集按权限矩阵的无场景兜底策略计算（同信号 handler，见「调用内置工具」）。
 
 ```python
 # data/plugins/my_plugin/boot.py
 def on_start(ctx):
-    ctx["call_tool"]("memory_add_note", {"content": "插件已启动", "tags": ["system"]})
+    ctx["call_tool"]("memory_store", {"content": "插件已启动", "tags": ["system"]})
 ```
 
 ### 失败与重试
@@ -522,7 +530,7 @@ def on_start(ctx):
 
 ## 内置工具 API 清单
 
-以下 32 个工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。
+以下内置工具可直接通过 `call_tool(name, args)` 调用（`execute_command` 仅桌面端注册）。成功返回一律是带 `"ok": true` 的 JSON 对象；失败返回 `{"ok": false, "error": {...}}`（见上）。能否调用还受权限矩阵约束，不在白名单内的工具会返回失败。
 
 ### 时间
 
@@ -556,32 +564,32 @@ def on_start(ctx):
 - 参数：`{ id: integer(必), group?: string }`（`group` 同上）
 - 返回：`{ ok: true, id: number, group: string }`
 
-### 记忆（角色笔记文件 + 自动记忆库）
+### 记忆（长期记忆，按当前角色隔离）
 
-**`memory_get_current`**
+写入、删除与摘要**不要求** embeddings：配置了远程 OpenAI 兼容接口、或在设置页「嵌入模型 → 本地嵌入模型」导入了本地量化模型
+**bge-small-zh-v1.5**（也可手动放到 `third_party/bge_small_zh_v1_5/`，未配置 `embedding.*` 时自动使用；二进制不再随包分发）时走向量路；两者都不可用时
+自动退化为**字符 n-gram 词法模式**（非嵌入式 RAG），功能照常可用。`features.memory_enabled`
+关闭时这些工具才返回执行失败。**检索没有对应工具**——宿主会在每条用户消息生成前自动做 RAG 检索，
+把命中的记忆落成台词行注入当轮上下文（详见 `docs/function_call/memory.md`）。
 
-- 参数：`{}`
-- 返回：`{ ok: true, role_id: number, memory: string }`（当前角色的自动记忆库文本）
+**`memory_store`**
 
-**`memory_get_notes`**
+- 参数：`{ content: string(必), tags?: string[] }`
+- 返回：`{ ok: true, action: "stored" | "merged" | "skipped", memory_id: string | null, detail: string }`
+  （写入前做三级去重：与既有记忆过于相似直接跳过，中间地带交给 LLM 判是否合并；
+  写入后记忆条数达到自动摘要阈值时，宿主会在**后台**触发一次记忆整理，不阻塞本次调用）
 
-- 参数：`{ role?: string }`（不传读当前角色；传其他角色名只读）
-- 返回：`{ ok: true, notes: [ { id, content, tags: string[], created_at: string(RFC3339) } ] }`
+**`memory_delete`**
 
-**`memory_add_note`**
+- 参数：`{ memory_id?: string, query?: string }`（二选一；给了 `memory_id` 精确删，否则按语义相似度删）
+- 返回：`{ ok: true, deleted: number, memory_id?: string, items?: [ { content, score } ] }`
 
-- 参数：`{ content: string(必), tags?: string[] }`（仅写当前角色）
-- 返回：`{ ok: true, id: string }`
+**`memory_summarize`**
 
-**`memory_update_note`**
-
-- 参数：`{ id: string(必), content?: string, tags?: string[] }`（至少一项）
-- 返回：`{ ok: true, id: string }`
-
-**`memory_delete_note`**
-
-- 参数：`{ id: string(必) }`
-- 返回：`{ ok: true, id: string }`
+- 参数：`{ keep_recent?: integer(默认 20) }`（保留原样的最新记忆条数；`0` 表示全部参与压缩）
+- 返回：`{ ok: true, action: "summarized" | "noop", summarized: number, memory_id: string | null, detail: string }`
+  （把较早的一批记忆交给 LLM 合成一条 `summary` 记忆，先插摘要再删源条目；
+  没什么好整理时返回 `noop` 并在 `detail` 里说明原因）
 
 ### 状态（读运行时 `game_status`）
 
@@ -757,9 +765,9 @@ def on_start(ctx):
 >
 > `role_id` 会先校验存在性再动手，所以写错 id 只会拿到 `ok: false`，不会先把你的对话清空。
 
-### 台词历史（上下文源）：`read_context` / `edit_context` / `compress_context`
+### 台词历史（上下文源）：`read_context` / `edit_context`，以及 `compress_context`
 
-这三个函数操作**当前对话的台词历史**（内部叫 `line_list`）——即「LLM 上下文」的**源**：每轮发给 LLM 的上下文都是它按各角色视角渲染出来的。三点务必记牢：
+`read_context` / `edit_context` 操作**当前对话的台词历史**（内部叫 `line_list`）——即「LLM 上下文」的**源**：每轮发给 LLM 的上下文都是它按各角色视角渲染出来的。三点务必记牢：
 
 - 下标按**台词行**算（不是渲染后的 LLM 消息），**从 1 开始、闭区间**，第 1 条通常就是 role system 的人设行。
 - 改的是**全局历史**：影响所有角色看到的上下文 + 界面显示的历史 + 存档。
@@ -769,7 +777,8 @@ def on_start(ctx):
 
 返回 `{ "ok": true, "total": N, "lines": [ ... ] }`。每行字段齐全：`id`（未存盘的可能为 null）、`content`、`original_emotion`、`predicted_emotion`、`tts_content`、`action_content`、`audio_file`、`thinking`、`tool_call`、`attribute`、`sender_role_id`、`display_name`、`perceived_role_ids`。
 
-> `attribute` 取值是 `"System"` / `"User"` / `"Assistant"` / `"Tool"`（首字母大写）。
+> `attribute` 取值是 `"System"` / `"User"` / `"Assistant"` / `"Tool"` / `"Memory"`（首字母大写）。
+> `"Memory"` 是宿主在每条用户消息前自动写入的长期记忆检索行（RAG 注入），下一条用户消息会替换它。
 
 ```python
 from plugin_host import read_context
@@ -800,16 +809,16 @@ merged["attribute"] = "User"
 r = edit_context([merged], start=1, end=3)   # {"ok": True, "removed": 3, "total": ...}
 ```
 
-**`compress_context()`** — 立刻触发一次永久记忆压缩并**等它完成**再返回（只压达到阈值的角色；没开永久记忆 / 没配 LLM / 没到阈值都直接返回）。相当于「把这段剧情沉进长期记忆」的显式触发点，会调用若干次 LLM，**可能耗时数秒**。
+**`compress_context()`** — 立刻触发一次**长期记忆摘要**并**等它完成**再返回（只处理记忆条数达到自动摘要阈值的角色；没开记忆功能 / 没配嵌入或 LLM / 没到阈值都直接返回）。相当于「把这段剧情沉进长期记忆」的显式触发点，每次摘要会调用 LLM，**可能耗时数秒**。
 
-返回 `{ "ok": true, "triggered": N }`（`N` = 实际触发压缩的角色数，0 = 无需压缩）。
+返回 `{ "ok": true, "triggered": N }`（`N` = 实际完成摘要的角色数，0 = 无需压缩）。
 
 ```python
 from plugin_host import compress_context
 r = compress_context()   # {"ok": True, "triggered": 1}
 ```
 
-> **和永久记忆的关系**：如果永久记忆已经把早期台词压缩成了摘要，那些行**仍在历史里，但发给 LLM 的是摘要**——只改行对 LLM 无效（system 人设行除外）。`edit_context` 会自动把压缩指针回拨到编辑处，让这段重新进入上下文；随后的压缩把改动重新摘要进去。代价是**逐字内容会被 LLM 改写成摘要**，所以想保留原文就别在改动后紧接着压缩。
+> **和台词历史的关系**：`compress_context` 压的是**长期记忆**（`memory_archive_{role_id}` 里由 `memory_store` 写入的 `kind='memory'` 条目），不改 `line_list`——台词历史一行都不动。想改历史请用 `edit_context`。
 
 ### WebSocket：`ws_open` / `ws_close` / `ws_send` / `ws_status`
 
@@ -879,4 +888,4 @@ def run(ctx):
 - 网络出站：`http_get` / `http_post` 可发往任意 URL；WebSocket client 连接受 manifest `ws_allow` 白名单约束（省略 `ws_allow` = 允许全网段），且脚本只能操作自己在 `[[ws]]` 里声明过的连接。
 - 每次调用新建解释器，无跨调用状态；超时（`timeout_ms`，上限 120000ms）后执行结果作废、本次调用终止。
 - **注意**：超时无法强制中断脚本所在的阻塞线程，死循环可能残留占用线程直至进程退出，插件作者（和你们的agent）应避免写死循环。
-- `call_tool` 是有意的受信任通道，可触达所有注册工具（含写操作）。（谨慎使用）
+- `call_tool` 走与 LLM 相同的「场景组 × 角色组」权限矩阵：插件工具脚本继承外层白名单，信号 / 启动入口按当前角色所有已启用场景组的并集兜底；白名单外的工具一律返回 `ok: false`。（写操作工具仍可被触达，装第三方插件前自行评估）
