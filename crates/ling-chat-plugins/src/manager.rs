@@ -258,6 +258,7 @@ impl PluginManager {
             config: record.state.config.clone(),
             env: python_backend::collect_env(&record.manifest),
             read: record.manifest.read.clone(),
+            send_user_message: record.manifest.send_user_message,
         }
     }
 
