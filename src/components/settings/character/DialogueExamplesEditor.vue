@@ -59,36 +59,15 @@
       <article
         v-for="(message, index) in draft.messages"
         :key="message.id"
-        class="space-y-3 rounded-xl border p-3"
-        :class="
-          message.role === 'user'
-            ? 'border-cyan-300/15 bg-cyan-400/5'
-            : 'border-violet-300/15 bg-violet-400/5'
-        "
+        class="space-y-3 rounded-xl border border-violet-300/15 bg-violet-400/5 p-3"
       >
         <div class="flex flex-wrap items-center gap-2">
-          <span class="text-xs text-white/40">{{ index + 1 }}</span>
-          <select
-            :value="message.role"
-            class="example-control min-w-0 flex-1"
-            :aria-label="t('settings.dialogueExamples.roleLabel', { index: index + 1 })"
-            @change="changeRole(message, ($event.target as HTMLSelectElement).value as ExampleRole)"
-          >
-            <option value="user">
-              {{
-                userName
-                  ? `${userName} · ${t("settings.dialogueExamples.user")}`
-                  : t("settings.dialogueExamples.user")
-              }}
-            </option>
-            <option value="assistant">
-              {{
-                characterName
-                  ? `${characterName} · ${t("settings.dialogueExamples.character")}`
-                  : t("settings.dialogueExamples.character")
-              }}
-            </option>
-          </select>
+          <span class="min-w-0 flex-1 text-sm text-white/70">{{
+            t("settings.dialogueExamples.cardTitle", { index: index + 1 })
+          }}</span>
+          <span v-if="message.prefix.trim()" class="text-xs text-white/40">{{
+            message.prefix
+          }}</span>
           <div class="flex gap-1">
             <button
               type="button"
@@ -129,10 +108,7 @@
         />
       </article>
       <div class="flex flex-wrap gap-2">
-        <button type="button" class="example-button" @click="add('user')">
-          {{ t("settings.dialogueExamples.addUser") }}
-        </button>
-        <button type="button" class="example-button" @click="add('assistant')">
+        <button type="button" class="example-button" @click="add">
           {{ t("settings.dialogueExamples.addCharacter") }}
         </button>
       </div>
@@ -147,10 +123,8 @@ import {
   parseDialogueExamples,
   serializeDialogueExamples,
   renumberExamples,
-  setExampleRole,
   type ExampleDocument,
   type ExampleMessage,
-  type ExampleRole,
 } from "@/utils/dialogue-examples";
 
 const props = defineProps<{
@@ -211,12 +185,12 @@ function updateRaw(value: string) {
   history.value = [];
   emit("update:modelValue", value);
 }
-async function add(role: ExampleRole) {
+async function add() {
   checkpoint();
   const card: Card = {
     id: ++nextId,
-    role,
-    prefix: role === "user" ? "用户：" : "角色：",
+    role: "assistant",
+    prefix: `${draft.value.messages.length + 1}.`,
     content: "",
     separator: "",
   };
@@ -239,11 +213,6 @@ function remove(index: number) {
   checkpoint();
   draft.value.messages.splice(index, 1);
   renumberExamples(draft.value.messages);
-  publish();
-}
-function changeRole(message: Card, role: ExampleRole) {
-  checkpoint();
-  setExampleRole(message, role);
   publish();
 }
 function undo() {
@@ -276,8 +245,5 @@ function undo() {
   padding: 0.5rem 0.65rem;
   color: white;
   font-size: 0.8rem;
-}
-.example-control option {
-  background: #292929;
 }
 </style>
