@@ -2,14 +2,26 @@
   <!-- 全屏独立层而不是弹窗内的一个标签页：外层的 click 关闭让「按下与抬起落在不同元素」
        的手势变成关闭弹窗，而拖顶点几乎必然滑出面板 -->
   <div class="fixed inset-0 z-[60] flex flex-col bg-black/70 text-white backdrop-blur-sm">
-    <div class="flex items-center gap-3 border-b border-white/10 bg-white/5 px-5 py-3">
+    <div class="flex flex-wrap items-center gap-3 border-b border-white/10 bg-white/5 px-5 py-3">
       <h3 class="m-0 text-base font-bold">{{ $t("settings.characterInfo.touch.editorTitle") }}</h3>
       <select v-model="costume" class="live2d-select">
         <option v-for="option in costumeOptions" :key="option" :value="option">{{ option }}</option>
       </select>
-      <span class="text-xs text-white/40">{{ $t("settings.characterInfo.touch.editorHint") }}</span>
-      <div class="ml-auto flex items-center gap-2">
-        <button class="live2d-btn" :disabled="!canUndo" @click="undo">
+      <span class="hidden text-xs text-white/40 lg:inline">{{
+        $t("settings.characterInfo.touch.editorHint")
+      }}</span>
+      <div class="ml-auto flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          class="live2d-btn"
+          :class="{ 'bg-cyan-400/20! text-cyan-100!': testMode }"
+          :disabled="!costumes"
+          :aria-pressed="testMode"
+          @click="toggleTestMode"
+        >
+          {{ t(testMode ? "settings.touchTest.backToEdit" : "settings.touchTest.enter") }}
+        </button>
+        <button class="live2d-btn" :disabled="testMode || !canUndo" @click="undo">
           {{ $t("settings.characterInfo.touch.undo") }}
         </button>
         <button class="live2d-btn" @click="close">
@@ -21,8 +33,8 @@
       </div>
     </div>
 
-    <div class="flex min-h-0 flex-1">
-      <div class="flex min-w-0 flex-1 items-center justify-center p-6">
+    <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+      <div class="flex min-h-48 min-w-0 flex-1 items-center justify-center p-3 md:p-6">
         <!-- 只按有没有立绘分支：预览里那个盒子既是画布也是量取景的元素，解析要等它量出来，
              把它一起挡在条件后面就会成环 -->
         <div v-if="!avatarUrl" class="text-sm text-white/50">
@@ -42,7 +54,12 @@
             position="center bottom"
           >
             <template #overlay>
-              <div ref="overlayRef" class="absolute inset-0 z-30 overflow-hidden">
+              <div
+                ref="overlayRef"
+                class="absolute inset-0 z-30 overflow-hidden"
+                :class="{ 'cursor-crosshair': testMode }"
+                @click="testMode && testCanvasClick($event)"
+              >
                 <!-- viewBox 取 1×1 且 preserveAspectRatio 为 none：这个盒子已被摆成立绘的
                      绘制矩形，于是 user 坐标就是图片归一化坐标 -->
                 <div :style="imageRectStyle" class="absolute">
@@ -59,18 +76,34 @@
                       :points="toPoints(shape.points)"
                       vector-effect="non-scaling-stroke"
                       class="region-shape"
-                      :class="shape.selected ? 'region-shape-selected' : ''"
+                      :class="[
+                        shape.selected ? 'region-shape-selected' : '',
+                        testMode ? 'region-shape-testing' : '',
+                      ]"
                       :stroke="shape.color"
-                      @click.stop="selectRegion(shape.part)"
+                      :style="{ color: shape.color }"
+                      @click.stop="!testMode && selectRegion(shape.part)"
                     />
                     <polyline
-                      v-if="draftPoints.length > 1"
+                      v-if="!testMode && draftPoints.length > 1"
                       :points="toPoints(draftPoints)"
                       vector-effect="non-scaling-stroke"
                       class="region-draft"
                     />
                   </svg>
 
+                  <span
+                    v-if="
+                      testMode &&
+                      testPoint &&
+                      testPoint[0] >= 0 &&
+                      testPoint[0] <= 1 &&
+                      testPoint[1] >= 0 &&
+                      testPoint[1] <= 1
+                    "
+                    class="pointer-events-none absolute z-40 h-3 w-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white bg-cyan-400 shadow-[0_0_12px_rgba(34,211,238,0.8)]"
+                    :style="{ left: `${testPoint[0] * 100}%`, top: `${testPoint[1] * 100}%` }"
+                  />
                   <button
                     v-for="handle in handles"
                     :key="handle.key"
@@ -87,20 +120,68 @@
       </div>
 
       <div
-        class="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-white/10 bg-black/20 p-4"
+        class="flex max-h-[45%] min-h-0 w-full shrink-0 flex-col gap-3 overflow-y-auto border-t border-white/10 bg-black/20 p-4 md:max-h-none md:w-80 md:border-t-0 md:border-l"
       >
-        <button v-if="costumes" class="live2d-btn" @click="startNewRegion()">
+        <div
+          v-if="testMode"
+          class="space-y-3 rounded-xl border border-cyan-200/20 bg-cyan-400/5 p-3"
+          role="status"
+        >
+          <h4 class="text-sm font-semibold text-cyan-100">{{ t("settings.touchTest.title") }}</h4>
+          <p class="text-xs leading-relaxed text-white/55">{{ t("settings.touchTest.hint") }}</p>
+          <p v-if="draft" class="text-xs text-amber-100/75">
+            {{ t("settings.touchTest.draftHint") }}
+          </p>
+          <p v-if="!testPoint" class="text-xs text-white/65">
+            {{ t("settings.touchTest.clickHint") }}
+          </p>
+          <template v-else>
+            <p class="text-xs text-white/50">
+              {{
+                t("settings.touchTest.coordinates", {
+                  x: testPoint[0].toFixed(3),
+                  y: testPoint[1].toFixed(3),
+                })
+              }}
+            </p>
+            <p class="text-sm text-cyan-100">
+              {{
+                hitPart
+                  ? t("settings.touchTest.hit", { name: hitPart })
+                  : t("settings.touchTest.miss")
+              }}
+            </p>
+            <template v-if="hitPart">
+              <p v-if="testHits.length > 1" class="text-xs text-amber-100/80">
+                {{ t("settings.touchTest.overlap", { names: testHits.join(" → ") }) }}
+              </p>
+              <p class="text-xs text-white/50">{{ t("settings.touchTest.message") }}</p>
+              <p
+                class="rounded-lg bg-black/20 p-2 text-sm break-words whitespace-pre-wrap text-white/80"
+              >
+                {{ testMessage }}
+              </p>
+              <p v-if="!currentParts[hitPart]?.message" class="text-xs text-white/45">
+                {{ t("settings.touchTest.fallback") }}
+              </p>
+            </template>
+          </template>
+        </div>
+        <button v-if="costumes && !testMode" class="live2d-btn" @click="startNewRegion()">
           {{ $t("settings.characterInfo.touch.addRegion") }}
         </button>
 
-        <div
+        <fieldset
           v-for="(region, part) in currentParts"
           :key="part"
-          class="space-y-2 rounded-xl border p-3 transition-colors"
+          :disabled="testMode"
+          class="min-w-0 space-y-2 rounded-xl border p-3 transition-colors"
           :class="
-            part === selectedPart ? 'border-[#5e72e4] bg-white/10' : 'border-white/10 bg-white/5'
+            part === (testMode ? hitPart : selectedPart)
+              ? 'border-[#5e72e4] bg-white/10'
+              : 'border-white/10 bg-white/5'
           "
-          @click="selectedPart = String(part)"
+          @click="!testMode && (selectedPart = String(part))"
         >
           <div class="flex items-center gap-2">
             <!-- 名字不能直接绑 part：key 是改名的结果而不是输入源。Vue 每次重渲染都会把
@@ -139,7 +220,7 @@
               {{ $t("settings.characterInfo.touch.addPolygon") }}
             </button>
           </div>
-        </div>
+        </fieldset>
 
         <!-- 有 URL 却始终解析不出来，说明文件读不到或不是图片：此时禁止保存，
              否则旧数据会在写回新形状时被静默丢掉 -->
@@ -173,6 +254,8 @@ import {
   DEFAULT_COSTUME,
   fitFromObjectFit,
   hitRegion,
+  hitRegions,
+  touchRegionMessage,
   imageRectInBox,
   parseBodyPart,
   resolveCostumeKey,
@@ -192,6 +275,7 @@ interface ClothesOption {
 const props = defineProps<{
   bodyPart: unknown;
   clothes: ClothesOption[];
+  userName?: string;
 }>();
 
 const emit = defineEmits<{
@@ -218,6 +302,31 @@ const draft = ref<{ part: string | null; points: TouchPolygon } | null>(null);
 const imageAspect = ref(0);
 const boxAspect = ref(0);
 const dirty = ref(false);
+const testMode = ref(false);
+const testPoint = ref<Vec2 | null>(null);
+const testHits = computed(() => {
+  const point = testPoint.value;
+  if (!point || point[0] < 0 || point[0] > 1 || point[1] < 0 || point[1] > 1) return [];
+  return hitRegions(currentParts.value, point[0], point[1]);
+});
+const hitPart = computed(() => testHits.value[0] ?? null);
+const testMessage = computed(() =>
+  hitPart.value
+    ? touchRegionMessage(currentParts.value[hitPart.value]?.message, props.userName ?? "")
+    : "",
+);
+
+function toggleTestMode() {
+  testMode.value = !testMode.value;
+  testPoint.value = null;
+  selectedVertex.value = null;
+}
+function testCanvasClick(event: MouseEvent) {
+  testPoint.value = toImagePoint(event.clientX, event.clientY, false);
+}
+watch(costume, () => {
+  testPoint.value = null;
+});
 
 const history: TouchCostumes[] = [];
 const canUndo = ref(false);
@@ -293,7 +402,7 @@ const shapes = computed<Shape[]>(() => {
         part,
         points,
         color,
-        selected: part === selectedPart.value,
+        selected: part === (testMode.value ? hitPart.value : selectedPart.value),
       });
     });
   });
@@ -312,6 +421,7 @@ interface Handle {
 
 /** 只给选中的区域画手柄；未选中的只画轮廓，否则多个区域叠在一起会糊成一片 */
 const handles = computed<Handle[]>(() => {
+  if (testMode.value) return [];
   const result: Handle[] = [];
   const part = selectedPart.value;
   const region = part ? currentParts.value[part] : undefined;
@@ -477,7 +587,7 @@ function selectRegion(part: string) {
 }
 
 /** 视口坐标换算到图片归一化坐标，与 SVG 的盒子互为逆运算 */
-function toImagePoint(clientX: number, clientY: number): Vec2 | null {
+function toImagePoint(clientX: number, clientY: number, clamp = true): Vec2 | null {
   const element = overlayRef.value;
   if (!element || !imageAspect.value || !boxAspect.value) return null;
   const box = element.getBoundingClientRect();
@@ -489,10 +599,11 @@ function toImagePoint(clientX: number, clientY: number): Vec2 | null {
   );
   const x = ((clientX - box.left) / box.width - rect.x) / rect.width;
   const y = ((clientY - box.top) / box.height - rect.y) / rect.height;
-  return [Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, y))];
+  return clamp ? [Math.max(0, Math.min(1, x)), Math.max(0, Math.min(1, y))] : [x, y];
 }
 
 function handleCanvasClick(event: MouseEvent) {
+  if (testMode.value) return;
   // 还没解析出来就不许画：此时画下去会把 costumes 从 null 顶成空表，
   // 应用时用空表覆盖旧数据
   if (!costumes.value) return;
@@ -516,6 +627,7 @@ function handleCanvasClick(event: MouseEvent) {
 }
 
 function handleCanvasDoubleClick() {
+  if (testMode.value) return;
   // 双击会先派发两次 click，末尾多出一个几乎重合的点，去掉再闭合
   const points = draft.value?.points;
   if (points && points.length >= 2) {
@@ -565,6 +677,10 @@ function deleteSelectedVertex() {
 }
 
 function onKeyDown(event: KeyboardEvent) {
+  if (testMode.value) {
+    if (event.key === "Escape") toggleTestMode();
+    return;
+  }
   const target = event.target as HTMLElement | null;
   if (target?.closest("input, textarea, select, [contenteditable='true']")) return;
   if (event.key === "Escape") {
@@ -636,6 +752,16 @@ watch(
 
 watch(avatarUrl, measureImage, { immediate: true });
 
+watch(
+  overlayRef,
+  (element, previous) => {
+    if (previous) observer?.unobserve(previous);
+    measureBox();
+    if (element) observer?.observe(element);
+  },
+  { flush: "post" },
+);
+
 onMounted(() => {
   measureBox();
   observer = new ResizeObserver(() => {
@@ -663,8 +789,13 @@ onBeforeUnmount(() => {
 }
 
 .region-shape-selected {
+  fill: currentColor;
   fill-opacity: 0.3;
   stroke-width: 3;
+}
+
+.region-shape-testing {
+  pointer-events: none;
 }
 
 .region-draft {

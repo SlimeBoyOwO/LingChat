@@ -287,6 +287,7 @@
 
         <!-- 触摸区域编辑器：留在弹窗的 DOM 子树内，才能被 Live2D 抚摸的元素守卫一起挡住 -->
         <TouchRegionsEditor
+          :user-name="gameStore.userName"
           v-if="touchEditorVisible"
           :body-part="localSettings.body_part"
           :clothes="props.clothes ?? []"

@@ -25,6 +25,20 @@ export default {
     confirmRemove:
       "确定移除「{name}」吗？会保存当前设置，清除关联的服装、触摸区域和 Live2D 映射。原立绘将移入角色目录的 .editor-trash 回收区，当前穿着此服装时切回默认服装。",
   },
+  touchTest: {
+    enter: "测试触摸",
+    backToEdit: "返回编辑",
+    title: "触摸命中与反应预览",
+    hint: "按游戏相同的图片坐标与命中规则测试；只预览将发送的提示词，不触发 AI 对话。重叠区域按配置顺序优先命中。",
+    draftHint: "尚未闭合的多边形暂不参与测试，返回编辑后可继续绘制。",
+    clickHint: "点击立绘检查触摸反应。",
+    coordinates: "图片坐标 X {x} · Y {y}",
+    hit: "命中部位：{name}",
+    miss: "此处未命中任何区域",
+    overlap: "重叠命中顺序：{names}；实际触发第一项。",
+    message: "将发送的提示词",
+    fallback: "此部位未填写提示词，使用游戏的默认触摸消息。",
+  },
   voicePreview: {
     title: "角色语音试听",
     hint: "使用上方当前配置合成试听音频；沿用全局语音服务地址与密钥。远程服务将收到试听文本，并按其规则计费。",

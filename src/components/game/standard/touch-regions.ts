@@ -218,3 +218,15 @@ export function hitRegion(regions: CostumeRegions, x: number, y: number): string
   }
   return null;
 }
+
+/** 编辑器显示全部重叠命中，顺序与运行时 hitRegion 的先到先得一致。 */
+export function hitRegions(regions: CostumeRegions, x: number, y: number): string[] {
+  return Object.entries(regions)
+    .filter(([, region]) => region.polygons.some((polygon) => pointInPolygon(x, y, polygon)))
+    .map(([part]) => part);
+}
+
+/** 编辑器与运行时共用触摸消息的空值回退。 */
+export function touchRegionMessage(message: string | undefined, userName: string): string {
+  return message || `${userName}戳了一下你`;
+}
