@@ -275,6 +275,10 @@ pub struct PluginManifest {
     /// 空 = 不能读任何文件；未声明的路径一律拒绝。
     #[serde(default)]
     pub read: Vec<String>,
+    /// 是否允许 `send_user_message` 把外部消息当成玩家发言送进对话。
+    /// 缺省 false：未声明的插件调用一律被拒。
+    #[serde(default)]
+    pub send_user_message: bool,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
@@ -297,6 +301,8 @@ pub struct PluginRunEnv {
     pub env: HashMap<String, String>,
     /// manifest `read` 声明（相对 `data/` 的前缀），空 = 不能读任何文件。
     pub read: Vec<String>,
+    /// manifest `send_user_message` 声明：是否允许把外部消息送进对话。
+    pub send_user_message: bool,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。

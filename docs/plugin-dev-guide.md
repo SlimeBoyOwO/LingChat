@@ -101,7 +101,7 @@ script = "tavily.py"
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）与可读素材范围（`read`），见后文对应章节。
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）以及把外部消息送进对话的能力（`send_user_message`），见后文对应章节。
 
 ## 插件携带资源（人物 / 剧本 / 音乐 / 背景图 / 环境音）
 
@@ -227,6 +227,33 @@ r = read_data_file("game_data/characters/风雪/avatar/高兴.webp")
 - 单个文件上限 64MB，超了返回 `ok: false`
 - 失败不抛异常，按返回值处理即可；`error` 里只有你自己给的相对路径，不会带宿主绝对路径
 - 目录名和角色显示名不一定一样（立绘目录由角色数据决定），插件侧别按显示名硬拼
+
+## 送消息进对话：`from plugin_host import send_user_message`
+
+插件想「替玩家说一句话」时用这个——比如把外部平台（QQ、Discord…）收到的消息转进来，
+让角色像平时一样回应：
+
+```toml
+# manifest.toml：顶层声明后本插件才能用（不写 = 调用一律被拒）
+send_user_message = true
+```
+
+```python
+from plugin_host import send_user_message
+
+r = send_user_message("今天好累啊")
+
+# 成功：{ "ok": true }（消息已入队，回复在后台生成）
+# 失败：{ "ok": false, "error": "..." }（含未声明该能力）
+```
+
+- **必须先声明**：manifest 顶层写 `send_user_message = true`，否则调用返回 `ok: false`
+- 和玩家在输入框里发一句走的是**同一条路**：写进对话、按当前配置生成回复，
+  记忆与工具照常生效
+- 生成在后台跑，本调用立刻返回，不会把插件 handler 卡住；`ok: true` 只代表已入队，
+  别紧接着去 `read_context` 断言一定写进去了
+- `/` 开头的内容会被当成调试指令（`/查看记忆` 等），插件侧应自行过滤
+- 别把收到的 `ai_reply` 原样再 `send_user_message` 转回来，否则会和角色互相刷屏
 
 ## 订阅宿主信号：`[[subscribe]]`
 
