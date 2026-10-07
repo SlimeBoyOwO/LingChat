@@ -76,18 +76,28 @@
               ></div>
             </div>
 
-            <div v-else class="mx-auto max-w-3xl space-y-6">
+            <fieldset
+              v-else
+              :inert="saving || resourceBusy > 0"
+              :disabled="saving || resourceBusy > 0"
+              class="mx-auto max-w-3xl min-w-0 space-y-6 border-0 p-0"
+            >
+              <p
+                class="rounded-xl border border-cyan-200/15 bg-cyan-400/5 p-3 text-xs leading-relaxed text-cyan-100/70"
+              >
+                {{ t("settings.characterInfo.draft.hint") }}
+              </p>
               <PetLayoutEditor
                 v-if="activeTab === 'pet' && props.roleId"
                 v-model="localSettings"
                 :role-id="props.roleId"
-                :clothes="props.clothes"
+                :clothes="draftClothes"
               />
               <RoleLayoutEditor
                 v-if="activeTab === 'visuals' && props.roleId"
                 v-model="localSettings"
                 :role-id="props.roleId"
-                :clothes="props.clothes"
+                :clothes="draftClothes"
               />
               <!-- Data-Driven Form (tabs with schemas) -->
               <div v-if="currentTabConfig" class="space-y-4">
@@ -107,7 +117,6 @@
                     :step="field.step"
                     :placeholder="field.placeholder"
                     class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    @change="handleFieldChange(field)"
                   />
                   <DialogueExamplesEditor
                     v-else-if="field.type === 'examples'"
@@ -127,7 +136,6 @@
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    @change="handleFieldChange(field)"
                   >
                     <option
                       v-for="opt in resolveFieldOptions(field)"
@@ -146,7 +154,6 @@
                       v-model="fieldModel(field).value"
                       type="checkbox"
                       class="peer sr-only"
-                      @change="handleFieldChange(field)"
                     />
                     <label
                       :for="field.key"
@@ -166,22 +173,13 @@
                 v-if="activeTab === 'voice' && props.roleId"
                 :role-id="props.roleId"
                 :model-value="localSettings"
-                @reference-selected="
-                  handleFieldChange({
-                    key: 'gsv_voice_filename',
-                    label: t('settings.voicePreview.reference'),
-                    type: 'text',
-                    realtime: true,
-                  })
-                "
               />
 
               <AvatarManager
                 v-if="activeTab === 'avatars' && props.roleId"
                 :role-id="props.roleId"
                 :clothes="clothesList"
-                @changed="emit('saved')"
-                :resource-clothes="props.clothes"
+                :resource-clothes="draftClothes"
                 :initial-costume="avatarCostume"
               />
 
@@ -216,7 +214,7 @@
                   {{ $t("settings.characterInfo.touch.open") }}
                 </button>
               </div>
-            </div>
+            </fieldset>
           </div>
         </div>
 
@@ -227,7 +225,7 @@
           <!-- 危险操作区（左侧）：删除角色 -->
           <div class="flex items-center">
             <button
-              :disabled="deleteState.disabled"
+              :disabled="deleteState.disabled || loading || saving || resourceBusy > 0"
               :title="
                 deleteState.disabled
                   ? deleteState.reason
@@ -275,7 +273,7 @@
             </button>
             <button
               class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving"
+              :disabled="saving || loading || resourceBusy > 0 || !editId"
               @click="saveSettings"
             >
               <span
@@ -296,7 +294,7 @@
           :user-name="gameStore.userName"
           v-if="touchEditorVisible"
           :body-part="localSettings.body_part"
-          :clothes="props.clothes ?? []"
+          :clothes="draftClothes"
           @apply="onTouchRegionsApply"
           @close="touchEditorVisible = false"
         />
@@ -306,13 +304,18 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, toRaw, watch } from "vue";
+import { computed, onUnmounted, provide, ref, toRaw, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   deleteCharacter as deleteCharacterApi,
-  getRoleSettings,
-  updateRoleSettings,
+  beginCharacterEdit,
+  discardCharacterEdit,
+  commitCharacterEdit,
+  listCharacterCostumes,
+  listCharacterAvatars,
 } from "../../../api/services/character";
+import { characterEditorKey } from "@/composables/useCharacterEditor";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
 import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
@@ -352,6 +355,46 @@ const uiStore = useUIStore();
 const gameStore = useGameStore();
 const localSettings = ref<any>({});
 const touchEditorVisible = ref(false);
+const editId = ref<string>();
+const editRoleId = ref<number>();
+const resourceBusy = ref(0);
+const resourceRevision = ref(0);
+const baseline = ref("");
+const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
+let loadSequence = 0;
+provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
+const hasChanges = computed(
+  () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
+);
+async function refreshDraftClothes() {
+  const id = editId.value;
+  const roleId = editRoleId.value;
+  if (!id || !roleId) return;
+  const costumes = await listCharacterCostumes(roleId, id);
+  const result = await Promise.all(
+    costumes.map(async (costume) => {
+      const slots = await listCharacterAvatars(roleId, costume.name, id);
+      const path = slots.find((slot) => slot.emotion === "正常")?.path;
+      return {
+        title: costume.name,
+        avatar: path ? convertFileSrc(path) + "?v=" + resourceRevision.value : "",
+      };
+    }),
+  );
+  if (editId.value === id) draftClothes.value = result;
+}
+watch(resourceRevision, () => {
+  void refreshDraftClothes().catch(console.error);
+});
+async function discardDraft() {
+  const id = editId.value;
+  const roleId = editRoleId.value;
+  if (id && roleId) await discardCharacterEdit(roleId, id);
+  if (editId.value === id) {
+    editId.value = undefined;
+    editRoleId.value = undefined;
+  }
+}
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
 const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
 
@@ -486,7 +529,6 @@ interface FieldSchema {
   hint?: string;
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
-  realtime?: boolean;
   // When set, the field reads/writes into localSettings.value[parent][key].
   // The parent object is auto-initialised to {} on first write if missing.
   parent?: string;
@@ -613,7 +655,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       key: "tts_type",
       label: t("settings.characterInfo.fields.ttsType"),
       type: "select",
-      realtime: true,
       options: [
         { label: "sva", value: "sva-vits" },
         { label: "sbv2", value: "sbv2" },
@@ -633,7 +674,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       key: "voice_lang",
       label: t("settings.characterInfo.fields.voiceLang"),
       type: "select",
-      realtime: true,
       options: [
         // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
         { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
@@ -691,7 +731,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       key: "voice_dialect",
       label: t("settings.characterInfo.fields.voiceDialect"),
       type: "select",
-      realtime: true,
       options: [
         { label: t("settings.characterInfo.dialectOptions.mandarin"), value: "" },
         { label: t("settings.characterInfo.dialectOptions.cantonese"), value: "广东话" },
@@ -727,7 +766,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "sbv2_name",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "sbv2",
     },
     {
@@ -735,7 +773,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "sbv2_speaker_id",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "sbv2",
     },
 
@@ -752,7 +789,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "sbv2api_name",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "sbv2api",
     },
     {
@@ -760,7 +796,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "sbv2api_speaker_id",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "sbv2api",
     },
 
@@ -769,7 +804,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "gsv_voice_text",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "gsv",
     },
     {
@@ -777,7 +811,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "gsv_voice_filename",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "gsv",
     },
     {
@@ -785,7 +818,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "gsv_gpt_model_name",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "gsv",
     },
     {
@@ -793,7 +825,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: "gsv_sovits_model_name",
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       visibleIf: (s) => s.tts_type === "gsv",
     },
 
@@ -802,7 +833,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: t("settings.characterInfo.fields.openttsVoice"),
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       placeholder: t("settings.characterInfo.placeholders.openttsVoice"),
       visibleIf: (s) => s.tts_type === "opentts",
     },
@@ -820,7 +850,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: t("settings.characterInfo.fields.fishS2Voice"),
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       placeholder: t("settings.characterInfo.placeholders.fishS2Voice"),
       visibleIf: (s) => s.tts_type === "fishs2",
     },
@@ -831,7 +860,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       parent: "voice_models",
       label: t("settings.characterInfo.fields.cosyVoiceVoice"),
       type: "select",
-      realtime: true,
       dynamicOptions: () =>
         cloudVoices.value.length === 0
           ? [{ label: t("settings.characterInfo.fields.noCloudVoice"), value: "" }]
@@ -912,7 +940,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       label: t("settings.characterInfo.fields.openttsVoiceLabel"),
       type: "text",
       isVoiceModel: true,
-      realtime: true,
       placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
       visibleIf: (s) => s.tts_type === "opentts",
     },
@@ -1005,16 +1032,28 @@ const clothesList = computed({
 // --- Watchers & Methods ---
 
 watch(
-  () => props.visible,
-  async (newVal) => {
+  () => [props.visible, props.roleId] as const,
+  async ([newVal]) => {
+    const sequence = ++loadSequence;
     if (!newVal) {
-      clearRealtimeSaveTimer();
+      await discardDraft();
+      return;
     }
     if (newVal && props.roleId) {
       loading.value = true;
       try {
-        const data = await getRoleSettings(props.roleId);
-        localSettings.value = JSON.parse(JSON.stringify(data));
+        await discardDraft();
+        if (sequence !== loadSequence || !props.visible) return;
+        const roleId = props.roleId;
+        const draft = await beginCharacterEdit(roleId);
+        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+          await discardCharacterEdit(roleId, draft.edit_id);
+          return;
+        }
+        editId.value = draft.edit_id;
+        editRoleId.value = roleId;
+        resourceRevision.value = 0;
+        localSettings.value = JSON.parse(JSON.stringify(draft.settings));
         migrateLegacyVoiceModelFields();
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = "ja";
@@ -1028,11 +1067,13 @@ watch(
         if (!localSettings.value.avatar_mode_p) {
           localSettings.value.avatar_mode_p = "live2d";
         }
+        baseline.value = JSON.stringify(localSettings.value);
+        await refreshDraftClothes();
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
       } finally {
-        loading.value = false;
+        if (sequence === loadSequence) loading.value = false;
       }
     }
   },
@@ -1055,40 +1096,25 @@ watch(
   },
 );
 
-const REALTIME_SAVE_DEBOUNCE_MS = 300;
-let realtimeSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-const clearRealtimeSaveTimer = () => {
-  if (realtimeSaveTimer !== null) {
-    clearTimeout(realtimeSaveTimer);
-    realtimeSaveTimer = null;
+const handleClose = async () => {
+  if (saving.value || resourceBusy.value) return;
+  if (
+    !loading.value &&
+    hasChanges.value &&
+    !(await dialogStore.confirm(
+      t("settings.characterInfo.draft.discardMessage"),
+      t("settings.characterInfo.draft.discardTitle"),
+    ))
+  )
+    return;
+  ++loadSequence;
+  try {
+    await discardDraft();
+  } catch (error) {
+    console.error("清理角色草稿失败", error);
   }
-};
-
-const handleClose = () => {
-  clearRealtimeSaveTimer();
+  touchEditorVisible.value = false;
   emit("close");
-};
-
-const handleFieldChange = (field: FieldSchema) => {
-  if (!field.realtime || !props.roleId) return;
-
-  // 防抖逻辑
-  const roleId = props.roleId;
-  clearRealtimeSaveTimer();
-  realtimeSaveTimer = setTimeout(async () => {
-    realtimeSaveTimer = null;
-    if (!props.visible || props.roleId !== roleId) return;
-    try {
-      await updateRoleSettings(roleId, localSettings.value);
-    } catch (e) {
-      console.error(`实时更新 ${field.key} 失败:`, e);
-      // 使用国际化
-      await dialogStore.alert(
-        t("settings.characterInfo.messages.realtimeUpdateFailed", { label: field.label }),
-      );
-    }
-  }, REALTIME_SAVE_DEBOUNCE_MS);
 };
 
 function openCostumeAvatars(name: string) {
@@ -1097,12 +1123,7 @@ function openCostumeAvatars(name: string) {
 }
 
 function onCostumeChanged(change: { oldName: string; newName: string }) {
-  if (props.roleId) {
-    const role = gameStore.gameRoles[props.roleId];
-    if (role?.clothesName === change.oldName) role.clothesName = change.newName;
-  }
-  applySettingsToRuntime();
-  emit("saved");
+  if (avatarCostume.value === change.oldName) avatarCostume.value = change.newName;
 }
 
 function applySettingsToRuntime() {
@@ -1135,16 +1156,21 @@ function applySettingsToRuntime() {
 
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
-  if (!props.roleId) return false;
-  clearRealtimeSaveTimer();
+  if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
   saving.value = true;
   try {
-    await updateRoleSettings(props.roleId, localSettings.value);
+    await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
+    editId.value = undefined;
+    editRoleId.value = undefined;
     applySettingsToRuntime();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);
-    await dialogStore.alert(t("settings.characterInfo.messages.saveFailed"));
+    await dialogStore.alert(
+      t("settings.characterInfo.draft.saveFailed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
     return false;
   } finally {
     saving.value = false;
@@ -1158,16 +1184,17 @@ const saveSettings = async () => {
   }
 };
 
-/** 触摸区域编辑器自带保存：它是个子流程，写完不关弹窗，用户可以接着改别的标签页 */
+/** 子编辑器只应用到弹窗草稿，统一由底部保存提交。 */
 async function onTouchRegionsApply(value: Record<string, unknown>) {
   if (Object.keys(value).length) localSettings.value.body_part = value;
   else delete localSettings.value.body_part;
-  if (!(await persistSettings())) return;
-  emit("saved");
   touchEditorVisible.value = false;
 }
 
-onUnmounted(clearRealtimeSaveTimer);
+onUnmounted(() => {
+  ++loadSequence;
+  void discardDraft().catch(console.error);
+});
 </script>
 
 <style scoped>

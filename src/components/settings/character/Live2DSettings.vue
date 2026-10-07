@@ -349,11 +349,12 @@
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { importLive2d, inspectLive2d } = useCharacterEditorApi();
 import { open } from "@tauri-apps/plugin-dialog";
 import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
-import { importLive2d, inspectLive2d } from "@/api/services/character";
 import Live2DStage from "@/components/game/live2d/Live2DStage.vue";
 import { TOUCH_PART_ORDER } from "@/components/game/live2d/live2d-touch";
 import type { GameRole } from "@/stores/modules/game/state";

@@ -77,14 +77,12 @@
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { listCharacterAvatars, writeCharacterAvatar, deleteCharacterAvatar } =
+  useCharacterEditorApi();
 import { computed, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import {
-  listCharacterAvatars,
-  writeCharacterAvatar,
-  deleteCharacterAvatar,
-  type CharacterAvatarSlot,
-} from "@/api/services/character";
+import { type CharacterAvatarSlot } from "@/api/services/character";
 import { useI18n } from "vue-i18n";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 

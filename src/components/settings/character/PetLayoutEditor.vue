@@ -143,10 +143,12 @@
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { listCharacterAvatars } = useCharacterEditorApi();
 import { computed, ref, watch, onMounted, onUnmounted } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
-import { listCharacterAvatars } from "@/api/services/character";
+
 import { useSettingsStore } from "@/stores/modules/settings";
 import { EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import { prefersLive2d } from "@/types/live2d";

@@ -9,7 +9,7 @@ export default {
     size: "当前舞台 {size} × {size} 像素，取自全局桌宠大小设置。虚线为舞台边界，淡色轮廓表示静态立绘被圆框或舞台裁切的部分；无框模式仍受方形舞台限制。",
   },
   costumes: {
-    hint: "按服装查看立绘资源和 Live2D 映射。新增、重命名、移除会连同当前角色设置立即保存；提示词和模型选择也可以用底部保存按钮保存。",
+    hint: "按服装查看立绘资源和 Live2D 映射。新增、重命名、移除及映射修改均保留在草稿，点击底部保存更改后生效。",
     newName: "新服装名称",
     add: "新增服装",
     noPreview: "缺少正常立绘",
@@ -23,7 +23,7 @@ export default {
     missing: "查看缺失情绪",
     editAvatars: "管理此服装差分 →",
     confirmRemove:
-      "确定移除「{name}」吗？会保存当前设置，清除关联的服装、触摸区域和 Live2D 映射。原立绘将移入角色目录的 .editor-trash 回收区，当前穿着此服装时切回默认服装。",
+      "确定从草稿移除「{name}」及其触摸区域、Live2D 映射吗？点击底部保存更改后生效，取消编辑可放弃此次移除。保存时原资源会留在角色目录的 .editor-trash 回收区。",
   },
   dialogueExamples: {
     cards: "台词卡片",
@@ -62,7 +62,7 @@ export default {
     chooseFile: "选择本机音频",
     noReference: "尚未填写参考音频路径",
     serverPathHint:
-      "GPT-SoVITS 按服务器文件系统读取此路径。本机选择适用于同机服务；远程服务请在上方填写服务器路径，本机预听不可用时仍可合成试听。选择后按现有语音配置规则自动保存。",
+      "GPT-SoVITS 按服务器文件系统读取此路径。本机选择适用于同机服务；远程服务请在上方填写服务器路径，本机预听不可用时仍可合成试听。选择后保留在草稿，点击底部保存更改后生效。",
     loadReference: "读取并预听本机文件",
     reading: "正在读取…",
     audioInfo: "音频大小 {size} · 时长 {duration}",
@@ -118,7 +118,7 @@ export default {
   },
   avatars: {
     title: "差分管理",
-    hint: "按服装管理情绪立绘。上传、替换和删除会立即保存，不受底部保存按钮影响。支持 PNG、JPEG、WebP，单张最大 20 MB、边长最大 8192 像素。",
+    hint: "按服装管理情绪立绘。上传、替换和删除先更新草稿，点击底部保存更改后生效；取消编辑可放弃。支持 PNG、JPEG、WebP，单张最大 20 MB、边长最大 8192 像素。",
     costume: "服装",
     default: "默认服装",
     fallback: "使用正常立绘",
@@ -530,6 +530,12 @@ export default {
     },
   },
   characterInfo: {
+    draft: {
+      hint: "所有配置和资源更改先保留在草稿。点击底部「保存更改」统一保存；取消或关闭会放弃草稿。试听和预览不保存配置。删除角色是独立操作。",
+      discardTitle: "放弃角色编辑？",
+      discardMessage: "尚有未保存的配置或资源更改，关闭后将全部放弃。确定关闭吗？",
+      saveFailed: "保存失败：{error}\n草稿已保留。请处理错误后重试；取消会放弃草稿。",
+    },
     header: {
       title: "{title} - 配置编辑",
       subtitle: "修改角色的详细设置",
@@ -651,7 +657,7 @@ export default {
       unreadableAvatar: "立绘读取失败，无法在图上定位区域",
       undo: "撤销",
       cancel: "取消",
-      apply: "保存并关闭",
+      apply: "应用到草稿",
       discardTitle: "放弃修改",
       discardMessage: "有未应用的修改，确定要关闭吗？",
     },

@@ -33,8 +33,8 @@ export interface CharacterCostumeSummary {
   total: number;
   missing: string[];
 }
-export const listCharacterCostumes = (roleId: number) =>
-  invoke<CharacterCostumeSummary[]>("list_character_costumes", { roleId });
+export const listCharacterCostumes = (roleId: number, editId?: string) =>
+  invoke<CharacterCostumeSummary[]>("list_character_costumes", { roleId, editId });
 
 export const manageCharacterCostume = (
   roleId: number,
@@ -42,6 +42,7 @@ export const manageCharacterCostume = (
   oldName: string,
   newName: string,
   settings: Record<string, unknown>,
+  editId?: string,
 ) =>
   invoke<Record<string, any>>("manage_character_costume", {
     roleId,
@@ -49,20 +50,26 @@ export const manageCharacterCostume = (
     oldName,
     newName,
     settings,
+    editId,
   });
 
-export const listCharacterAvatars = (roleId: number, clothes: string) =>
-  invoke<CharacterAvatarSlot[]>("list_character_avatars", { roleId, clothes });
+export const listCharacterAvatars = (roleId: number, clothes: string, editId?: string) =>
+  invoke<CharacterAvatarSlot[]>("list_character_avatars", { roleId, clothes, editId });
 
 export const writeCharacterAvatar = (
   roleId: number,
   clothes: string,
   emotion: string,
   bytes: number[],
-) => invoke<void>("write_character_avatar", { roleId, clothes, emotion, bytes });
+  editId?: string,
+) => invoke<void>("write_character_avatar", { roleId, clothes, emotion, bytes, editId });
 
-export const deleteCharacterAvatar = (roleId: number, clothes: string, emotion: string) =>
-  invoke<void>("delete_character_avatar", { roleId, clothes, emotion });
+export const deleteCharacterAvatar = (
+  roleId: number,
+  clothes: string,
+  emotion: string,
+  editId?: string,
+) => invoke<void>("delete_character_avatar", { roleId, clothes, emotion, editId });
 
 interface CharacterSelectResponse {
   success: boolean;
@@ -215,23 +222,32 @@ export const importLive2d = async (
   roleId: number,
   sourcePath: string,
   sourceKind: "directory" | "zip",
+  editId?: string,
 ): Promise<Live2dImportResult> => {
-  return invoke<Live2dImportResult>("import_live2d", { roleId, sourcePath, sourceKind });
+  return invoke<Live2dImportResult>("import_live2d", { roleId, sourcePath, sourceKind, editId });
 };
 
-export const inspectLive2d = async (roleId: number): Promise<Live2dImportResult> => {
-  return invoke<Live2dImportResult>("inspect_live2d", { roleId });
+export const inspectLive2d = async (
+  roleId: number,
+  editId?: string,
+): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>("inspect_live2d", { roleId, editId });
 };
 
-export const getLive2dFilePath = async (roleId: number, filePath: string): Promise<string> => {
-  return invoke<string>("get_live2d_file", { roleId, filePath });
+export const getLive2dFilePath = async (
+  roleId: number,
+  filePath: string,
+  editId?: string,
+): Promise<string> => {
+  return invoke<string>("get_live2d_file", { roleId, filePath, editId });
 };
 
 export const getLive2dVariantAssets = async (
   roleId: number,
   variantName: string,
+  editId?: string,
 ): Promise<Live2dVariantAssets> => {
-  return invoke<Live2dVariantAssets>("get_live2d_variant_assets", { roleId, variantName });
+  return invoke<Live2dVariantAssets>("get_live2d_variant_assets", { roleId, variantName, editId });
 };
 
 /** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */
@@ -266,3 +282,13 @@ export const deleteCharacter = async (
     throw new Error(typeof error === "string" ? error : "删除角色失败");
   }
 };
+
+export const beginCharacterEdit = (roleId: number) =>
+  invoke<{ edit_id: string; settings: Record<string, any> }>("begin_character_edit", { roleId });
+export const discardCharacterEdit = (roleId: number, editId: string) =>
+  invoke<void>("discard_character_edit", { roleId, editId });
+export const commitCharacterEdit = (
+  roleId: number,
+  editId: string,
+  settings: Record<string, any>,
+) => invoke<void>("commit_character_edit", { roleId, editId, settings });

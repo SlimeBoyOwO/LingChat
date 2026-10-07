@@ -125,14 +125,12 @@
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { listCharacterCostumes, manageCharacterCostume } = useCharacterEditorApi();
 import { ref, watch, toRaw } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
-import {
-  listCharacterCostumes,
-  manageCharacterCostume,
-  type CharacterCostumeSummary,
-} from "@/api/services/character";
+import { type CharacterCostumeSummary } from "@/api/services/character";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 
 const props = defineProps<{ roleId: number; modelValue: Record<string, any> }>();

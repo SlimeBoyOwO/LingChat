@@ -17,7 +17,8 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from "vue";
 
-import { getLive2dFilePath, getLive2dVariantAssets } from "@/api/services/character";
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { getLive2dFilePath, getLive2dVariantAssets } = useCharacterEditorApi();
 import type { GameRole } from "@/stores/modules/game/state";
 import {
   prefersLive2d,

@@ -10,8 +10,8 @@ use tokio_util::sync::CancellationToken;
 
 use crate::AppState;
 use crate::ai_service::types::{
-    CharacterSettings, Live2dEyeBlinkBinding, Live2dMotionBinding, Live2dParameterBinding,
-    Live2dSettings, Live2dVariant, strip_transient_fields,
+    Live2dEyeBlinkBinding, Live2dMotionBinding, Live2dParameterBinding, Live2dSettings,
+    Live2dVariant, strip_transient_fields,
 };
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::archive::extract_zip;
@@ -635,7 +635,9 @@ pub async fn import_live2d(
     role_id: i32,
     source_path: String,
     source_kind: Live2dSourceKind,
+    edit_id: Option<String>,
 ) -> Result<Live2dImportResult, String> {
+    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
         .await
@@ -646,6 +648,7 @@ pub async fn import_live2d(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
+    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
     let source = PathBuf::from(source_path);
     if !source.exists() {
         return Err("Live2D 来源不存在".to_string());
@@ -830,8 +833,8 @@ pub async fn import_live2d(
     };
 
     let mut settings =
-        match RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id).await {
-            Ok(settings) => settings.unwrap_or_else(CharacterSettings::default),
+        match super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await {
+            Ok(settings) => settings,
             Err(error) => {
                 let _ = fs::remove_dir_all(&target);
                 return Err(format!("读取角色配置失败: {error}"));
@@ -851,7 +854,9 @@ pub async fn import_live2d(
         return Err(format!("保存 Live2D 配置失败: {error}"));
     }
 
-    {
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::mark_resources_changed(role_id, id, "live2d")?;
+    } else {
         let service = state.ai_service.lock().await;
         let mut game_status = service.game_status.lock().await;
         game_status
@@ -867,6 +872,7 @@ pub async fn get_live2d_file(
     app: AppHandle,
     role_id: i32,
     file_path: String,
+    edit_id: Option<String>,
 ) -> Result<String, String> {
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
@@ -878,6 +884,7 @@ pub async fn get_live2d_file(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
+    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
     let resolved = root.join(file_path);
     crate::utils::path::validate_path_in_base(&resolved, &root)?;
     if !resolved.is_file() {
@@ -890,7 +897,12 @@ pub async fn get_live2d_file(
 }
 
 #[tauri::command]
-pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImportResult, String> {
+pub async fn inspect_live2d(
+    app: AppHandle,
+    role_id: i32,
+    edit_id: Option<String>,
+) -> Result<Live2dImportResult, String> {
+    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
         .await
@@ -901,10 +913,9 @@ pub async fn inspect_live2d(app: AppHandle, role_id: i32) -> Result<Live2dImport
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
-        .await
-        .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .ok_or_else(|| "角色配置不存在".to_string())?;
+    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
+    let settings =
+        super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
     let live2d = settings
         .live2d
         .ok_or_else(|| "角色未配置 Live2D".to_string())?;
@@ -927,6 +938,7 @@ pub async fn get_live2d_variant_assets(
     app: AppHandle,
     role_id: i32,
     variant_name: String,
+    edit_id: Option<String>,
 ) -> Result<Live2dVariantAssets, String> {
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
@@ -938,10 +950,9 @@ pub async fn get_live2d_variant_assets(
         .as_deref()
         .ok_or_else(|| "角色资源目录不存在".to_string())?;
     let root = resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
-    let settings = RoleRepo::get_role_settings_by_id(&state.db, &super::data_dir(), role_id)
-        .await
-        .map_err(|e| format!("读取角色配置失败: {e}"))?
-        .ok_or_else(|| "角色配置不存在".to_string())?;
+    let root = super::character_editor::draft_root(role_id, edit_id.as_deref())?.unwrap_or(root);
+    let settings =
+        super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
     let live2d = settings
         .live2d
         .ok_or_else(|| "角色未配置 Live2D".to_string())?;

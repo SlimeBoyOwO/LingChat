@@ -717,7 +717,7 @@ async function close() {
   emit("close");
 }
 
-// 只发 apply：保存成功与否由外层决定关不关，失败时要留在编辑器里别把改动丢掉
+// 只应用到父弹窗草稿，由底部保存按钮统一提交。
 function apply() {
   emit("apply", serializeBodyPart(costumes.value ?? {}));
 }

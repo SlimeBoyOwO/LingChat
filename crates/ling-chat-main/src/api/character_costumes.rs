@@ -2,7 +2,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
-use super::character_avatars::{EMOTIONS, avatar_dir, emotion_files, validate_segment};
+use super::character_avatars::{EMOTIONS, avatar_dir_for_edit, emotion_files, validate_segment};
 use crate::{AppState, ai_service::types::CharacterSettings, config};
 
 // 与差分增删共享锁，防止上传图片时服装目录被改名。
@@ -21,10 +21,12 @@ pub struct CostumeSummary {
 pub async fn list_character_costumes(
     app: AppHandle,
     role_id: i32,
+    edit_id: Option<String>,
 ) -> Result<Vec<CostumeSummary>, String> {
     let _guard = RESOURCE_LOCK.lock().await;
-    let settings = super::character::get_role_settings(app.clone(), role_id).await?;
-    let root = avatar_dir(&app, role_id, "default").await?;
+    let settings =
+        super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
+    let root = avatar_dir_for_edit(&app, role_id, "default", edit_id.as_deref()).await?;
     let mut names = std::collections::BTreeSet::new();
     names.insert("default".to_string());
     for item in settings.clothes.unwrap_or_default() {
@@ -42,7 +44,7 @@ pub async fn list_character_costumes(
     }
     let mut result = Vec::new();
     for name in names {
-        let dir = avatar_dir(&app, role_id, &name).await?;
+        let dir = avatar_dir_for_edit(&app, role_id, &name, edit_id.as_deref()).await?;
         let preview = emotion_files(&dir, "正常")?.into_iter().next();
         let mut missing = Vec::new();
         for emotion in EMOTIONS.iter().filter(|name| **name != "头像") {
@@ -160,6 +162,7 @@ pub async fn manage_character_costume(
     old_name: String,
     new_name: String,
     settings: serde_json::Value,
+    edit_id: Option<String>,
 ) -> Result<CharacterSettings, String> {
     let _guard = RESOURCE_LOCK.lock().await;
     let mut settings: CharacterSettings =
@@ -181,16 +184,16 @@ pub async fn manage_character_costume(
     {
         return Err("默认服装不能被重命名或移除".into());
     }
-    let root = avatar_dir(&app, role_id, "default").await?;
+    let root = avatar_dir_for_edit(&app, role_id, "default", edit_id.as_deref()).await?;
     let source = if action == "create" {
         None
     } else {
-        Some(avatar_dir(&app, role_id, &old_name).await?)
+        Some(avatar_dir_for_edit(&app, role_id, &old_name, edit_id.as_deref()).await?)
     };
     let target = if action == "remove" {
         None
     } else {
-        Some(avatar_dir(&app, role_id, &new_name).await?)
+        Some(avatar_dir_for_edit(&app, role_id, &new_name, edit_id.as_deref()).await?)
     };
     if target.as_ref().is_some_and(|p| p.exists()) {
         return Err("目标服装目录已存在".into());
@@ -238,12 +241,17 @@ pub async fn manage_character_costume(
     } else if let Some(target) = &target {
         std::fs::create_dir(target).map_err(|e| e.to_string())?;
     }
-    let saved = super::character::update_role_settings(
-        app.clone(),
-        role_id,
-        serde_json::to_value(&settings).map_err(|e| e.to_string())?,
-    )
-    .await;
+    let saved = if let Some(id) = edit_id.as_deref() {
+        super::character_editor::write_draft(role_id, id, &settings)
+    } else {
+        super::character::update_role_settings(
+            app.clone(),
+            role_id,
+            serde_json::to_value(&settings).map_err(|e| e.to_string())?,
+        )
+        .await
+        .map(|_| ())
+    };
     if let Err(error) = saved {
         if moved {
             std::fs::rename(destination.unwrap(), source.as_ref().unwrap())
@@ -258,6 +266,20 @@ pub async fn manage_character_costume(
     } else {
         &new_name
     };
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::record_costume(role_id, id, old_name, replacement.into())?;
+    } else {
+        notify_costume_change(&app, role_id, old_name, replacement.into()).await;
+    }
+    super::character_editor::settings(app, role_id, edit_id.as_deref()).await
+}
+
+pub(super) async fn notify_costume_change(
+    app: &AppHandle,
+    role_id: i32,
+    old_name: String,
+    replacement: String,
+) {
     {
         let state = app.state::<AppState>();
         let service = state.ai_service.lock().await;
@@ -266,7 +288,7 @@ pub async fn manage_character_costume(
             .lock()
             .await
             .role_manager
-            .remap_character_costume(role_id, &old_name, replacement);
+            .remap_character_costume(role_id, &old_name, &replacement);
     }
     if let Ok(store) = app.store(config::STORE_FILE) {
         let key = config::session::last_clothes_key(role_id);
@@ -276,24 +298,21 @@ pub async fn manage_character_costume(
             .as_deref()
             == Some(&old_name)
         {
-            store.set(key, serde_json::Value::String(replacement.into()));
+            store.set(key, serde_json::Value::String(replacement.clone()));
             if let Err(error) = store.save() {
                 tracing::warn!("服装会话保存失败: {error}");
             }
         }
     }
-    app.emit(
+    let _ = app.emit(
         "character:costume-renamed",
         CostumeChange {
             role_id,
             old_name,
-            new_name: replacement.into(),
+            new_name: replacement.clone(),
         },
-    )
-    .map_err(|e| e.to_string())?;
-    app.emit("role:list-updated", ())
-        .map_err(|e| e.to_string())?;
-    super::character::get_role_settings(app, role_id).await
+    );
+    let _ = app.emit("role:list-updated", ());
 }
 
 #[cfg(test)]

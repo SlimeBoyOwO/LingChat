@@ -31,6 +31,15 @@ pub(super) async fn avatar_dir(
     role_id: i32,
     clothes: &str,
 ) -> Result<PathBuf, String> {
+    avatar_dir_for_edit(app, role_id, clothes, None).await
+}
+
+pub(super) async fn avatar_dir_for_edit(
+    app: &AppHandle,
+    role_id: i32,
+    clothes: &str,
+    edit_id: Option<&str>,
+) -> Result<PathBuf, String> {
     let state = app.state::<AppState>();
     let role = RoleRepo::get_role_by_id(&state.db, role_id)
         .await
@@ -38,6 +47,7 @@ pub(super) async fn avatar_dir(
         .ok_or("角色不存在")?;
     let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
     let root = super::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?;
+    let root = super::character_editor::draft_root(role_id, edit_id)?.unwrap_or(root);
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let mut dir = root.join("avatar");
     if !clothes.is_empty() && clothes != "default" {
@@ -101,8 +111,9 @@ pub async fn list_character_avatars(
     app: AppHandle,
     role_id: i32,
     clothes: String,
+    edit_id: Option<String>,
 ) -> Result<Vec<AvatarSlot>, String> {
-    let dir = avatar_dir(&app, role_id, &clothes).await?;
+    let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     EMOTIONS
         .iter()
         .map(|emotion| {
@@ -127,6 +138,7 @@ pub async fn write_character_avatar(
     clothes: String,
     emotion: String,
     bytes: Vec<u8>,
+    edit_id: Option<String>,
 ) -> Result<(), String> {
     let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
@@ -145,7 +157,7 @@ pub async fn write_character_avatar(
     limits.max_alloc = Some(256 * 1024 * 1024);
     reader.limits(limits);
     let image = reader.decode().map_err(|e| format!("图片无法读取: {e}"))?;
-    let dir = avatar_dir(&app, role_id, &clothes).await?;
+    let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     let old = emotion_files(&dir, &emotion)?;
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     let mut temporary = tempfile::NamedTempFile::new_in(&dir).map_err(|e| e.to_string())?;
@@ -164,8 +176,12 @@ pub async fn write_character_avatar(
             std::fs::remove_file(file).map_err(|e| e.to_string())?;
         }
     }
-    app.emit("character:avatars-updated", role_id)
-        .map_err(|e| e.to_string())?;
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::mark_resources_changed(role_id, id, "avatar")?;
+    } else {
+        app.emit("character:avatars-updated", role_id)
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -175,17 +191,22 @@ pub async fn delete_character_avatar(
     role_id: i32,
     clothes: String,
     emotion: String,
+    edit_id: Option<String>,
 ) -> Result<(), String> {
     let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
     }
-    let dir = avatar_dir(&app, role_id, &clothes).await?;
+    let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     for file in emotion_files(&dir, &emotion)? {
         std::fs::remove_file(file).map_err(|e| e.to_string())?;
     }
-    app.emit("character:avatars-updated", role_id)
-        .map_err(|e| e.to_string())?;
+    if let Some(id) = edit_id.as_deref() {
+        super::character_editor::mark_resources_changed(role_id, id, "avatar")?;
+    } else {
+        app.emit("character:avatars-updated", role_id)
+            .map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 

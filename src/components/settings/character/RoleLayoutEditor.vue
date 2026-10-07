@@ -164,10 +164,12 @@
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { listCharacterAvatars } = useCharacterEditorApi();
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
-import { listCharacterAvatars } from "@/api/services/character";
+
 import { avatarObjectFit, standardAvatarStyle } from "@/utils/avatar-layout";
 import { EMOTION_CONFIG, EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";

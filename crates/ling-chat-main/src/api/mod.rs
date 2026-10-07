@@ -8,6 +8,7 @@ pub mod background;
 pub mod character;
 pub mod character_avatars;
 pub mod character_costumes;
+pub mod character_editor;
 pub mod character_voice;
 pub mod chat;
 pub mod codex;
