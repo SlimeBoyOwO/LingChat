@@ -109,6 +109,12 @@
                     class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
                     @change="handleFieldChange(field)"
                   />
+                  <DialogueExamplesEditor
+                    v-else-if="field.type === 'examples'"
+                    v-model="fieldModel(field).value"
+                    :user-name="localSettings.user_name || gameStore.userName"
+                    :character-name="localSettings.ai_name || ''"
+                  />
                   <textarea
                     v-else-if="field.type === 'textarea'"
                     :id="field.key"
@@ -314,6 +320,7 @@ import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
 import PetLayoutEditor from "../character/PetLayoutEditor.vue";
 import VoicePreview from "../character/VoicePreview.vue";
+import DialogueExamplesEditor from "../character/DialogueExamplesEditor.vue";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
@@ -457,7 +464,7 @@ const voiceModelKeys = [
 
 // --- Schema Definition ---
 
-type FieldType = "text" | "number" | "textarea" | "select" | "switch";
+type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch";
 
 interface FieldOption {
   label: string;
@@ -522,13 +529,13 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     {
       key: "system_prompt_example",
       label: t("settings.characterInfo.fields.systemPromptExample"),
-      type: "textarea",
+      type: "examples",
       rows: 6,
     },
     {
       key: "system_prompt_example_old",
       label: t("settings.characterInfo.fields.systemPromptExampleOld"),
-      type: "textarea",
+      type: "examples",
       rows: 4,
     },
   ],
