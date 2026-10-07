@@ -19,6 +19,7 @@ use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
 use crate::ai_service::tools::god_agent::god_agent_registry;
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::GameLine;
+use crate::db::entities::line::LineAttribute;
 
 pub struct GodAgentCore {
     /// LLM 槽位（支持运行时热切换）。
@@ -84,9 +85,14 @@ impl GodAgentCore {
 }
 
 /// 取台词列表末尾 `window` 条，按由旧到新返回。各能力的视图快照共用。
+///
+/// 跳过 System 行：多人场景下每个角色的人设 prompt 都存在 line_list 的 System 行
+/// 里，几千字符塞进决策上下文既浪费 token 又淹没对话信号；角色摘要已由视图的
+/// subtitle/info 提供。旁白行（User 属性）保留。
 pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
     gs.line_list
         .iter()
+        .filter(|l| !matches!(l.attribute(), LineAttribute::System))
         .rev()
         .take(window)
         .cloned()
