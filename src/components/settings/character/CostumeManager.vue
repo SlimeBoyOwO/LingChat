@@ -78,7 +78,7 @@
             {{ t("settings.costumes.remove") }}
           </button>
         </div>
-        <label v-if="costume.name !== 'default'" class="flex flex-col gap-2 text-xs text-white/60">
+        <label class="flex flex-col gap-2 text-xs text-white/60">
           {{ t("settings.costumes.prompt") }}
           <textarea
             :value="promptFor(costume.name)"
