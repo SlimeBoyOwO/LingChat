@@ -2,7 +2,7 @@
 //!
 //! `ort` 默认静态链接 pyke 预编译的 x86-64-v3 二进制（要求 AVX2/FMA），旧 CPU 上启动即
 //! 非法指令崩溃。**仅 Windows** 改用 `load-dynamic`（见 Cargo.toml），运行时从这里加载
-//! 应用目录下的 onnxruntime.dll（由 scripts/download-onnxruntime.mjs 取回，含 DirectML EP）。
+//! 应用目录下的 onnxruntime.dll（由 scripts/ensure-onnxruntime.mjs 取回，含 DirectML EP）。
 //!
 //! `ort::init_from` 只在 `load-dynamic` 下存在，故本模块限定 `#[cfg(target_os = "windows")]`。
 //! 找不到 dll 时返回 false，上层据此降级。
@@ -94,5 +94,51 @@ pub fn init_onnx_runtime(app: &AppHandle) -> bool {
             );
             false
         },
+    }
+}
+
+// 钦灵：这个我就保留了，防止之后开发者哭哭
+#[cfg(test)]
+#[cfg(target_os = "windows")]
+mod tests {
+    /// 运行时验证 onnxruntime.dll：ort API 版本匹配、含 DirectML EP、能用 DML 建 session。
+    /// 需先跑 `node scripts/ensure-onnxruntime.mjs`。
+    #[test]
+    #[ignore = "需要已下载的 onnxruntime.dll（scripts/ensure-onnxruntime.mjs）"]
+    fn load_official_onnxruntime() {
+        // 本 crate 位于 <repo>/crates/ling-chat-main，dll 与 data 都在 src-tauri/ 与仓库根下。
+        let dll = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("src-tauri")
+            .join("binaries")
+            .join("onnxruntime.dll");
+        assert!(dll.exists(), "onnxruntime.dll 不存在: {}", dll.display());
+
+        let _env = ort::init_from(&dll).expect("ort::init_from 加载失败");
+        // 能建 SessionBuilder = ort api 版本匹配
+        let _builder = ort::session::Session::builder().expect("SessionBuilder 创建失败");
+
+        // 走 EP bridge 的 GetExecutionProviderApi("DML")：None = 该 dll 不含 DML EP
+        assert!(
+            ort::ep::directml::api().is_some(),
+            "当前 onnxruntime.dll 不含 DirectML EP，选 GPU 会静默回落 CPU"
+        );
+
+        // 需要 DX12 GPU；error_on_failure 让「静默回落 CPU」变成硬错误
+        let model = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("data")
+            .join("third_party")
+            .join("asr_vad")
+            .join("silero-vad.onnx");
+        assert!(model.exists(), "测试模型不存在: {}", model.display());
+        let _gpu_session = ort::session::Session::builder()
+            .expect("SessionBuilder 创建失败")
+            .with_execution_providers([ort::ep::DirectML::default().build().error_on_failure()])
+            .expect("注册 DirectML EP 失败")
+            .commit_from_file(&model)
+            .expect("用 DirectML 建 session 失败（本机无 DX12 GPU？）");
     }
 }

@@ -60,7 +60,7 @@ impl AchievementTriggerHandler {
     fn check_night_owl(manager: &mut AchievementManager) -> Option<Achievement> {
         let now = chrono::Local::now();
         let hour = now.hour();
-        if hour >= 23 || hour < 4 {
+        if !(4..23).contains(&hour) {
             return manager.increment_progress("night_owl", 1);
         }
         None

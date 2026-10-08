@@ -74,8 +74,8 @@ pub(super) fn build_service_graph(
     // 构建聊天主 LLM 槽位（支持运行时热切换）。
     // 槽位本身始终存在，未配置模型时内部值为 None。
     let llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_chat_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_chat_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -131,8 +131,8 @@ pub(super) fn build_service_graph(
     // —— 构建聊天组件 ——
     // 翻译 LLM 槽位（支持运行时热切换）；槽位本身始终存在。
     let translate_llm: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(
-        resolve_translate_provider(&app.handle())
-            .and_then(|p| build_llm_client_from_provider(&app.handle(), &p))
+        resolve_translate_provider(app.handle())
+            .and_then(|p| build_llm_client_from_provider(app.handle(), &p))
             .map(Arc::new),
     ));
 
@@ -227,7 +227,7 @@ pub(super) fn build_service_graph(
 
     // 创建屏幕分析器
     let screen_analyzer = {
-        let sa_config = ScreenAnalyzerConfig::resolve(&app.handle());
+        let sa_config = ScreenAnalyzerConfig::resolve(app.handle());
         std::sync::Arc::new(tokio::sync::Mutex::new(ScreenAnalyzer::new(sa_config)))
     };
 
@@ -245,8 +245,8 @@ pub(super) fn build_service_graph(
     ));
 
     // 构建上帝 Agent（多人对话编排器）—— 使用独立槽位以支持热切换
-    let god_agent = resolve_god_agent_provider(&app.handle()).map(|llm| {
-        let config = ai_service::god_agent::config::GodAgentConfig::load(&app.handle());
+    let god_agent = resolve_god_agent_provider(app.handle()).map(|llm| {
+        let config = ai_service::god_agent::config::GodAgentConfig::load(app.handle());
         let slot: LlmSlot = std::sync::Arc::new(tokio::sync::RwLock::new(Some(Arc::new(llm))));
         Arc::new(GodAgentCore::new(slot, config))
     });

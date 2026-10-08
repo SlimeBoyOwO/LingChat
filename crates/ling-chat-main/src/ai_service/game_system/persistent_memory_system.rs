@@ -248,6 +248,7 @@ fn commit_update_if_current(
 }
 
 impl PersistentMemorySystem {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         role_id: i32,
         initial_bank: &GameMemoryBank,

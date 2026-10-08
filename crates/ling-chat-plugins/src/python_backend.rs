@@ -50,7 +50,7 @@ fn build_interpreter() -> Interpreter {
     rustpython_vm::Interpreter::builder(rustpython_vm::Settings::default())
         .add_frozen_modules(rustpython_pylib::FROZEN_STDLIB)
         .add_native_module(host_api::plugin_module_def(
-            &rustpython_vm::Context::genesis(),
+            rustpython_vm::Context::genesis(),
         ))
         .build()
 }
@@ -203,6 +203,8 @@ fn run_entry(
     interpreter.enter(|vm| {
         // 本次执行期间，read_data_file 只认这个插件 manifest 的 read 声明
         let _read_guard = host_api::set_read_allow(&run_env.read);
+        // send_user_message 只对声明了该能力的插件放行
+        let _send_guard = host_api::set_send_allow(run_env.send_user_message);
         // ws_send / ws_open / ws_close 按当前插件定位连接
         let _plugin_guard = host_api::set_current_plugin(&run_env.plugin_id);
         let scope = vm.new_scope_with_builtins();
@@ -226,7 +228,7 @@ fn run_entry(
         if !collect_result {
             return Ok(None);
         }
-        py_serde::serialize(vm, &*result, serde_json::value::Serializer)
+        py_serde::serialize(vm, &result, serde_json::value::Serializer)
             .map(Some)
             .map_err(|e| format!("结果序列化失败: {e}"))
     })

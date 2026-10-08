@@ -2,15 +2,13 @@
 //!
 //! 结果流式（SSE）实现见 `crate::ai_service::asr::provider_stream_llama`。
 
-use std::sync::Arc;
-
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use tracing::{debug, instrument};
 
 use crate::ai_service::asr::config_fields::llama_asr_config_fields;
 use crate::ai_service::asr::error::{AsrError, map_reqwest_error};
-use crate::ai_service::asr::provider::AsrProvider;
+use crate::ai_service::asr::provider::{AsrProvider, PartialCallback};
 use crate::ai_service::asr::provider_meta::AsrConfigField;
 use crate::ai_service::asr::provider_types::{AsrOptions, AsrResult, Hotword, ProviderCredentials};
 
@@ -160,7 +158,7 @@ impl AsrProvider for LlamaAsrProvider {
         &self,
         wav_bytes: Vec<u8>,
         opts: &AsrOptions,
-        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
+        on_partial: Option<PartialCallback>,
     ) -> Result<AsrResult, AsrError> {
         let prompt = llama_prompt_from_hotwords(&opts.hotwords);
         crate::ai_service::asr::provider_stream_llama::recognize_stream(

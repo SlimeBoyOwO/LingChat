@@ -193,7 +193,7 @@ pub async fn apply_resource_sync(
         *locked = true;
     }
 
-    let result = sync::apply_selected_files(&get_data_dir(), &selected_files).map_err(|e| {
+    let result = sync::apply_selected_files(get_data_dir(), &selected_files).map_err(|e| {
         // 出错时也要解锁
         let mut locked = state.syncing.lock().unwrap();
         *locked = false;

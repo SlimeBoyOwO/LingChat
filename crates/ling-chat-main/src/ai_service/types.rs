@@ -788,6 +788,7 @@ impl AffectionVector {
 /// 由上帝 Agent 与好感度同一次评估调整。
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct NegativeVector {
     /// 愤怒：被冒犯时的火气
     pub anger: i32,
@@ -801,19 +802,6 @@ pub struct NegativeVector {
     pub jealousy: i32,
     /// 疏远：想保持距离的程度
     pub estrangement: i32,
-}
-
-impl Default for NegativeVector {
-    fn default() -> Self {
-        Self {
-            anger: 0,
-            hurt: 0,
-            disappointment: 0,
-            indifference: 0,
-            jealousy: 0,
-            estrangement: 0,
-        }
-    }
 }
 
 impl NegativeVector {

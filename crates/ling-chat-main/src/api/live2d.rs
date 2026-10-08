@@ -336,10 +336,7 @@ fn is_idle_group_name(group: &str) -> bool {
 /// 「脸红」「墨镜」这类功能名，没有约定俗成的默认项，按字母序取第一个会凭空给角色
 /// 换脸——DeepSeek 会取到 `love`，SailorDoggy 会取到 `blush`。
 fn is_default_expression_name(name: &str) -> bool {
-    name == "00_Default"
-        || name.to_ascii_lowercase() == "default"
-        || name == "默认"
-        || name == "正常"
+    name == "00_Default" || name.eq_ignore_ascii_case("default") || name == "默认" || name == "正常"
 }
 
 fn inspect_model(

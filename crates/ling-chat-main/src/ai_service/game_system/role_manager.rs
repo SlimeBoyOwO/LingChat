@@ -54,6 +54,7 @@ pub struct GameRoleManager {
 }
 
 impl GameRoleManager {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         data_dir: PathBuf,
         db: DatabaseConnection,
@@ -440,6 +441,7 @@ impl GameRoleManager {
     /// 惰性构造角色的 `PersistentMemorySystem`。
     ///
     /// 调用方保证在 `enabled=true` 时槽位内已就绪 LLM（构造函数注入）。
+    #[allow(clippy::too_many_arguments)]
     fn ensure_memory_bank_system(
         &mut self,
         role_id: i32,

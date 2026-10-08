@@ -178,7 +178,7 @@ impl FileTools {
                 })
             })
             .collect::<Vec<_>>();
-        entries.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+        entries.sort_by_key(|a| a.name.to_lowercase());
         let truncated = entries.len() > MAX_LIST_ENTRIES;
         entries.truncate(MAX_LIST_ENTRIES);
         Ok(ListResult {

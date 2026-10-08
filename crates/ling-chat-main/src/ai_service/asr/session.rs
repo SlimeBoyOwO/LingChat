@@ -22,7 +22,7 @@ pub enum AsrSource {
 }
 
 impl AsrSource {
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn from_code(s: &str) -> Option<Self> {
         match s {
             "button" => Some(Self::Button),
             "auto" => Some(Self::Auto),

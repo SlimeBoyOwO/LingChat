@@ -57,6 +57,12 @@ pub struct ScriptChannels {
     pub choice_allow_free: bool,
 }
 
+impl Default for ScriptChannels {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ScriptChannels {
     pub fn new() -> Self {
         Self {

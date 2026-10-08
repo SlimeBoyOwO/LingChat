@@ -245,8 +245,7 @@ pub fn sanitize_history(history: Vec<LlmMessage>) -> Vec<LlmMessage> {
 
             if complete {
                 out.push(msg.clone());
-                for k in (i + 1)..j {
-                    let t = &history[k];
+                for t in history.iter().take(j).skip(i + 1) {
                     if let Some(id) = t.tool_call_id.as_ref() {
                         if expected.contains(id) {
                             out.push(t.clone());

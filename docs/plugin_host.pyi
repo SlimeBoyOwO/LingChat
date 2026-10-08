@@ -33,6 +33,10 @@ def http_post(
 def read_data_file(path: str) -> Dict[str, Any]:
     """读 data/ 下白名单内的文件。成功 {ok, size, base64}，失败 {ok: False, error}。"""
 
+def send_user_message(text: str) -> Dict[str, Any]:
+    """把外部消息当成玩家发言送进对话（后台生成回复）。需 manifest 声明
+    send_user_message = true。成功 {ok}，失败 {ok: False, error}。"""
+
 def switch_character(role_id: int) -> Dict[str, Any]:
     """完整切换当前角色（会清空对话历史）。成功 {ok, role_id, name}。"""
 
