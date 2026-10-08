@@ -172,6 +172,7 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 
 入口统一是 `ai_service/memory/`（`MemoryService`），配置在启动时快照。
 
+- **嵌入模型**：远程优先 —— 配置了 `embedding.*`（base_url / api_key / model）时用远程 OpenAI 兼容 embeddings 接口；留空且随应用打包的内置本地模型齐备时，自动使用 **bekko-embedding-v1-a25m 量化版**（`data/third_party/bekko_embedding_v1_a25m/`，约 49MB，完全离线，无需联网与任何 API）。内置模型为 int4 Transformer + int2 词嵌入表，加载是懒加载（首次嵌入时才读表建 ONNX Session），推理在阻塞线程池执行；换模型后旧向量不参与检索（按 `model` 列过滤）。
 - **写入（store）**：三级去重 —— 余弦 > 0.92 拒收；0.70–0.92 交给 LLM 判 merge/skip/new；LLM 失败降级为直接存储。
 - **删除**：`memory_delete` 按 `memory_id` 精确删或按语义相似度删（最低 0.5）；删角色时 `RoleRepo::delete_main_role` 一并清掉该角色的 `memory_embeddings`（该表无 FK，不显式清会留孤儿行）。
 - **摘要（summarize）**：`MemoryService::summarize(role_id, keep_recent)` 把较早的一批记忆交给 LLM 合成一条 `summary` 记忆，**先插摘要、再删源条目**（插入失败不丢数据）。三条触发路径共用同一条链路：

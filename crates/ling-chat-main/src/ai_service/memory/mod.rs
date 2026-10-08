@@ -18,6 +18,7 @@
 //! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。
 
 pub mod embedding;
+pub mod local_embedding;
 pub mod search;
 pub mod store;
 
@@ -33,6 +34,7 @@ use crate::ai_service::types::LlmMessage;
 use crate::config::AppConfig;
 
 pub use embedding::EmbeddingClient;
+pub use local_embedding::{LOCAL_MODEL_NAME, LocalEmbedder};
 pub use search::{HybridSearch, SearchHit, SearchMode};
 pub use store::{MemoryRow, chunk_text};
 
@@ -112,7 +114,12 @@ enum DedupDecision {
 pub struct MemoryService {
     db: DatabaseConnection,
     llm: LlmSlot,
-    embedder: EmbeddingClient,
+    /// 远程 OpenAI 兼容 embeddings 客户端（配置了 `embedding.*` 时启用，优先于内置模型）。
+    remote: Option<EmbeddingClient>,
+    /// 内置本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
+    local: tokio::sync::OnceCell<Arc<LocalEmbedder>>,
+    /// 内置模型的文件是否齐备（同步检查，供 `is_configured` 在懒加载前判定就绪）。
+    local_available: bool,
     search: HybridSearch,
     enabled: bool,
     top_k: usize,
@@ -126,14 +133,32 @@ pub struct MemoryService {
 impl MemoryService {
     /// 从启动时的配置快照构造。`llm` 是聊天 LLM 槽位，去重合并与摘要复用它。
     pub fn new(db: DatabaseConnection, llm: LlmSlot, cfg: &AppConfig) -> Self {
-        Self {
-            db,
-            llm,
-            embedder: EmbeddingClient::new(
+        // 显式配置了远程嵌入时优先用远程；否则回落到内置的本地量化模型。
+        let remote_configured =
+            !cfg.embedding_base_url.trim().is_empty() && !cfg.embedding_model.trim().is_empty();
+        let remote = remote_configured.then(|| {
+            EmbeddingClient::new(
                 cfg.embedding_base_url.clone(),
                 cfg.embedding_api_key.clone(),
                 cfg.embedding_model.clone(),
-            ),
+            )
+        });
+        let local_available = local_embedding::is_bundled_available();
+        if remote_configured {
+            tracing::info!("记忆嵌入使用远程接口: model={}", cfg.embedding_model);
+        } else if local_available {
+            tracing::info!("记忆嵌入使用内置本地模型: {}", LOCAL_MODEL_NAME);
+        } else {
+            tracing::warn!(
+                "记忆嵌入未配置：既无远程 embedding 配置，也缺少内置模型文件，记忆检索将不可用"
+            );
+        }
+        Self {
+            db,
+            llm,
+            remote,
+            local: tokio::sync::OnceCell::new(),
+            local_available,
             search: HybridSearch::default(),
             enabled: cfg.memory_enabled,
             top_k: cfg.memory_top_k as usize,
@@ -148,14 +173,46 @@ impl MemoryService {
         self.enabled
     }
 
-    /// 嵌入配置是否就绪（base_url + model 均非空）。
+    /// 嵌入配置是否就绪：远程已配置，或内置模型文件齐备。
     pub fn is_configured(&self) -> bool {
-        self.embedder.is_configured()
+        self.remote.is_some() || self.local_available
     }
 
-    /// 当前配置的嵌入模型名（换模型后旧向量不参与检索）。
+    /// 当前使用的嵌入模型名（换模型后旧向量不参与检索）。
     pub fn model(&self) -> &str {
-        self.embedder.model()
+        match &self.remote {
+            Some(remote) => remote.model(),
+            None => LOCAL_MODEL_NAME,
+        }
+    }
+
+    /// 取到可用的本地嵌入器（首次调用时在阻塞线程池里懒加载）。
+    async fn ensure_local(&self) -> Result<&Arc<LocalEmbedder>> {
+        let dir = local_embedding::bundled_dir();
+        self.local
+            .get_or_try_init(|| async move {
+                let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
+                    .await
+                    .context("内置嵌入模型加载线程失败")??;
+                Ok::<Arc<LocalEmbedder>, anyhow::Error>(Arc::new(embedder))
+            })
+            .await
+    }
+
+    /// 嵌入一段文本：远程优先，否则用内置模型。
+    async fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
+        if let Some(remote) = &self.remote {
+            return remote.embed(text).await;
+        }
+        self.ensure_local().await?.embed(text).await
+    }
+
+    /// 嵌入多段文本：远程优先，否则用内置模型。
+    async fn embed_many(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        if let Some(remote) = &self.remote {
+            return remote.embed_batch(texts).await;
+        }
+        self.ensure_local().await?.embed_batch(texts).await
     }
 
     /// 默认检索参数（top_k / min_score），供工具调用时兜底。
@@ -232,7 +289,7 @@ impl MemoryService {
         let min_score = min_score.unwrap_or(default_min_score).clamp(0.0, 1.0);
 
         let rows = store::load_role_rows(&self.db, role_id).await?;
-        let query_vec = self.embedder.embed(query).await?;
+        let query_vec = self.embed_one(query).await?;
         Ok(self
             .search
             .run(&query_vec, query, &rows, mode, top_k, min_score, time_range))
@@ -246,7 +303,7 @@ impl MemoryService {
     /// 语义删除：向量检索相似度 ≥ 0.5 的记忆并删除，返回被删条目的预览。
     pub async fn delete_by_query(&self, role_id: i32, query: &str) -> Result<Vec<(String, f32)>> {
         let rows = store::load_role_rows(&self.db, role_id).await?;
-        let query_vec = self.embedder.embed(query).await?;
+        let query_vec = self.embed_one(query).await?;
         let mut scored: Vec<(MemoryRow, f32)> = rows
             .into_iter()
             .filter(|row| row.embedding.len() == query_vec.len() && row.model == self.model())
@@ -418,7 +475,7 @@ impl MemoryService {
     async fn insert_memory(&self, role_id: i32, content: &str, tags: &[String]) -> Result<String> {
         let memory_id = uuid::Uuid::new_v4().to_string();
         let chunks = chunk_text(content);
-        let embeddings = self.embedder.embed_batch(&chunks).await?;
+        let embeddings = self.embed_many(&chunks).await?;
         let tags_csv = if tags.is_empty() {
             None
         } else {
@@ -431,7 +488,7 @@ impl MemoryService {
             &chunks,
             &embeddings,
             tags_csv,
-            self.embedder.model(),
+            self.model(),
         )
         .await?;
         Ok(memory_id)
@@ -439,7 +496,7 @@ impl MemoryService {
 
     /// 三级去重（见模块文档）。
     async fn dedup(&self, role_id: i32, content: &str) -> Result<DedupDecision> {
-        let Ok(query_vec) = self.embedder.embed(content).await else {
+        let Ok(query_vec) = self.embed_one(content).await else {
             // 嵌入失败不阻塞写入：去重是优化，不是硬门槛。
             return Ok(DedupDecision::Store);
         };
@@ -664,6 +721,8 @@ pub fn describe(service: &MemoryService) -> serde_json::Value {
     json!({
         "enabled": service.enabled(),
         "configured": service.is_configured(),
+        "embedder": if service.remote.is_some() { "remote" } else if service.local_available { "builtin" } else { "none" },
+        "model": service.model(),
         "top_k": top_k,
         "min_score": min_score,
         "auto_summarize_threshold": AUTO_SUMMARIZE_THRESHOLD,

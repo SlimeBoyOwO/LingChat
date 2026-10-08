@@ -48,6 +48,9 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "ndarray",
 ] }
 ndarray = "0.17"
+# 内置本地嵌入模型（bekko-embedding-v1-a25m 量化版）：BPE 分词 + gzip 解压
+tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
+flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "std",

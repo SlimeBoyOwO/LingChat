@@ -47,7 +47,7 @@ fn require_memory(app: &tauri::AppHandle) -> Result<std::sync::Arc<MemoryService
     }
     if !memory.is_configured() {
         return Err(ToolError::Execution(
-            "嵌入模型未配置，请在设置 → 嵌入模型 中填写接口地址与模型名".into(),
+            "嵌入模型未配置且未检测到内置模型：请在设置 → 嵌入模型 中填写接口地址与模型名，或确认内置模型文件完整".into(),
         ));
     }
     Ok(memory)
