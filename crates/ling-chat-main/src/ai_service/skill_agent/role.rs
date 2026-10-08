@@ -100,22 +100,22 @@ impl TaskKind {
     pub const fn directive(self) -> &'static str {
         match self {
             TaskKind::WriteChapter => {
-                include_str!("prompts/role_directive_write_chapter.txt")
+                include_str!("prompts/role_directive_write_chapter.md")
             },
             TaskKind::Outline => {
-                include_str!("prompts/role_directive_outline.txt")
+                include_str!("prompts/role_directive_outline.md")
             },
             TaskKind::DraftChapter => {
-                include_str!("prompts/role_directive_draft_chapter.txt")
+                include_str!("prompts/role_directive_draft_chapter.md")
             },
             TaskKind::ReviseOutline => {
-                include_str!("prompts/role_directive_revise_outline.txt")
+                include_str!("prompts/role_directive_revise_outline.md")
             },
             TaskKind::Polish => {
-                include_str!("prompts/role_directive_polish.txt")
+                include_str!("prompts/role_directive_polish.md")
             },
             TaskKind::ReviseChapter => {
-                include_str!("prompts/role_directive_revise_chapter.txt")
+                include_str!("prompts/role_directive_revise_chapter.md")
             },
             _ => "",
         }
@@ -183,11 +183,11 @@ impl TaskKind {
                  里那一节（往下连带可以）；此外不许碰正文，也不许碰 `Chapters/`。"
                 .to_string(),
             TaskKind::DraftChapter => format!(
-                include_str!("prompts/role_scope_note_draft_chapter.txt"),
+                include_str!("prompts/role_scope_note_draft_chapter.md"),
                 chap = chap
             ),
             TaskKind::WriteChapter => format!(
-                include_str!("prompts/role_scope_note_write_chapter.txt"),
+                include_str!("prompts/role_scope_note_write_chapter.md"),
                 id = id
             ),
             TaskKind::ReviseChapter => format!(
@@ -236,13 +236,13 @@ pub const DRAFT_TOOLS: &[&str] = &[
 ];
 
 /// 「写」与「转成 YAML」两个动作词的定义 + 细节稿里写什么；流程 Agent 与角色 Agent 都要看到（一处定义、两处注入）。
-pub const ACTION_VOCAB: &str = include_str!("prompts/role_action_vocab.txt");
+pub const ACTION_VOCAB: &str = include_str!("prompts/role_action_vocab.md");
 
 /// 判任务的规则：这一句到底该产出文字还是产出能跑的章节；只注入流程 Agent（`router.rs`），角色 Agent 看不到。
-pub const ROUTING_LAND_RULES: &str = include_str!("prompts/role_routing_land_rules.txt");
+pub const ROUTING_LAND_RULES: &str = include_str!("prompts/role_routing_land_rules.md");
 
 /// 不产出能跑章节的那一轮的统一要求：贴在任务块里，覆盖手册里"写完就转成 YAML"那部分。
-pub const DICTATE_NOTE: &str = include_str!("prompts/role_dictate_note.txt");
+pub const DICTATE_NOTE: &str = include_str!("prompts/role_dictate_note.md");
 
 const WRITER_DOC: &str = Role::Writer.doc();
 const DEMANDER_DOC: &str = Role::Demander.doc();
@@ -313,7 +313,7 @@ const TRANSFORMER_REVISE_TOOLS: &[&str] = &[
 ];
 
 /// 职责边界的系统底线：代码写死，流程 Agent 不得覆盖；措辞必须是「本轮排给你的任务」，否则它会把上一轮剩下的行也做掉。
-pub const BOUNDARY_BASELINE: &str = include_str!("prompts/role_boundary_baseline.txt");
+pub const BOUNDARY_BASELINE: &str = include_str!("prompts/role_boundary_baseline.md");
 
 /// 边界补充的长度上限（字符数，不是字节数 —— 中文按字算）。
 pub const BOUNDARY_MAX_CHARS: usize = 40;
@@ -420,7 +420,7 @@ pub fn reconcile(kind: TaskKind, facts: ScriptFacts) -> Handoff {
             } else if facts.target_is_next || facts.target_exists != Some(false) {
                 Handoff::Proceed
             } else {
-                Handoff::ProceedNote(include_str!("prompts/role_reconcile_write_chapter.txt"))
+                Handoff::ProceedNote(include_str!("prompts/role_reconcile_write_chapter.md"))
             }
         },
 

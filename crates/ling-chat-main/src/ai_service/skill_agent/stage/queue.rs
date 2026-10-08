@@ -182,7 +182,7 @@ fn render_text(entry: &QueueEntry) -> String {
 }
 
 /// 队列视图 / 归档视图的头部。
-const QUEUE_HEADER: &str = include_str!("../prompts/stage_queue_header.txt");
+const QUEUE_HEADER: &str = include_str!("../prompts/stage_queue_header.md");
 
 const QUEUE_DONE_HEADER: &str = "# 已归档（`[x]` 代码按磁盘事实核对过的、这一轮真做出来的，或上一轮已经勾过的；\
     `[=]` 本来就在盘上、这一轮没动过（不算欠）；`[~]` 没做完就被放下的 —— 不再执行，也没当成做完）\n\n";

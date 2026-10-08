@@ -316,7 +316,7 @@ async fn tool_write_file(
     if !item.allow_runnable && is_runnable_script_path(path) {
         return (
             false,
-            format!(include_str!("prompts/tools_execute_tool.txt"), path = path),
+            format!(include_str!("prompts/tools_execute_tool.md"), path = path),
         );
     }
     if let Some(refusal) = draft_scope_refusal(item.kind, "write_file", path, false) {
@@ -589,7 +589,7 @@ fn foreign_package_refusal(bound: Option<&str>, existing: &[String], path: &str)
         return None;
     }
     Some(format!(
-        include_str!("prompts/tools_foreign_package_refusal_info.txt"),
+        include_str!("prompts/tools_foreign_package_refusal_info.md"),
         key = key
     ))
 }
@@ -643,7 +643,7 @@ fn draft_scope_refusal(kind: TaskKind, tool: &str, path: &str, blank_new: bool) 
         return None;
     }
     Some(format!(
-        include_str!("prompts/tools_draft_scope_refusal_info.txt"),
+        include_str!("prompts/tools_draft_scope_refusal_info.md"),
         kind.label(),
         path = path
     ))

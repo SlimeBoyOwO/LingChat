@@ -143,7 +143,7 @@ fn build_router_system(hub: &str) -> String {
         })
         .collect();
     format!(
-        include_str!("prompts/router_build_router_system.txt"),
+        include_str!("prompts/router_build_router_system.md"),
         kinds.join("\n"),
         crate::ai_service::skill_agent::role::ACTION_VOCAB,
         crate::ai_service::skill_agent::role::ROUTING_LAND_RULES,

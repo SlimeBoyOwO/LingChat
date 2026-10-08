@@ -88,7 +88,7 @@ fn build_script_block(
     known_keys: &[String],
 ) -> String {
     let Some(key) = script_key else {
-        let mut out = String::from(include_str!("prompts/core_build_script_block.txt"));
+        let mut out = String::from(include_str!("prompts/core_build_script_block.md"));
         if !known_keys.is_empty() {
             out.push_str("\n\n（磁盘上现有的剧本包，仅供你告诉用户「有这些」：");
             out.push_str(&known_keys.join("、"));
@@ -437,7 +437,7 @@ pub async fn run_chat(
             .unwrap_or_default();
         let own = format!(
             // 本项任务书补在最后一条：模型最后读到的必须是"我这一项是什么"。
-            include_str!("prompts/core_run_chat.txt"),
+            include_str!("prompts/core_run_chat.md"),
             stage::prompt::render_text_of(task, target),
             idx + 1,
             plan.items.len(),

@@ -43,7 +43,7 @@ pub fn ensure_package_skeleton(dir: &Path, key: &str) -> std::io::Result<bool> {
         .map(|s| s.to_string_lossy().to_string())
         .unwrap_or_default();
     let mut text = format!(
-        include_str!("../prompts/stage_ensure_package_skeleton.txt"),
+        include_str!("../prompts/stage_ensure_package_skeleton.md"),
         SKELETON_MARKER = SKELETON_MARKER,
         name = name
     );

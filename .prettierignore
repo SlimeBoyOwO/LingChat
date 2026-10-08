@@ -4,3 +4,6 @@ dist-ssr
 *.log
 coverage
 *.html
+
+# 提示词文件由 include_str! 编译期逐字节嵌入二进制，不允许被格式化改写
+crates/ling-chat-main/src/ai_service/skill_agent/prompts/

@@ -124,7 +124,7 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
         ));
     }
     if plan.items.len() > 1 {
-        out.push_str(include_str!("../prompts/stage_build_task_block.txt"));
+        out.push_str(include_str!("../prompts/stage_build_task_block.md"));
     }
     if is_last {
         out.push_str(
@@ -138,7 +138,7 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
         out.push_str(&format!("\n【用户这一轮的原话】{}", user_msg.trim()));
     }
 
-    out.push_str(include_str!("../prompts/stage_build_task_block_2.txt"));
+    out.push_str(include_str!("../prompts/stage_build_task_block_2.md"));
 
     out.push('\n');
     out.push_str(crate::ai_service::skill_agent::role::ACTION_VOCAB);
@@ -148,13 +148,13 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
     }
 
     out.push_str(&format!(
-        include_str!("../prompts/stage_build_task_block_3.txt"),
+        include_str!("../prompts/stage_build_task_block_3.md"),
         allowed.join(" / ")
     ));
 
     out.push_str(&format!(
         // 本项能动什么：三层方向规则（改可以往上对齐、删只能往下连带），工具层另有对应闸门。
-        include_str!("../prompts/stage_build_task_block_4.txt"),
+        include_str!("../prompts/stage_build_task_block_4.md"),
         task.scope_note(
             plan.items
                 .get(item_index)
@@ -185,7 +185,7 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
         );
     } else {
         out.push_str(&format!(
-            include_str!("../prompts/stage_build_task_block_5.txt"),
+            include_str!("../prompts/stage_build_task_block_5.md"),
             DEFERRED_MARK = DEFERRED_MARK
         ));
     }
