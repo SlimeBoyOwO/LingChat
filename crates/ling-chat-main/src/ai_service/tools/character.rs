@@ -332,7 +332,7 @@ impl Tool for CharacterSetClothes {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "character_set_clothes",
-            "更换服装（默认换你自己，即当前对话角色），立绘会立即更新，并自动生成一句换装旁白。优先省略 role_id；只有明确要更换其他角色的服装时才传。已经是该服装时不重复生成",
+            "更换服装（默认换你自己，即当前对话角色），立绘会立即更新，并自动生成一句换装旁白。优先省略 role_id；只有明确要更换其他角色的服装时才传。已经是该服装时不重复生成。若工具返回 locked（用户手动锁定过服装），任何调用都不会执行——不要再尝试，可提示用户在设置中重新打开自动换装或手动选择",
             json!({
                 "type": "object",
                 "properties": {
@@ -351,6 +351,20 @@ impl Tool for CharacterSetClothes {
         arguments: Value,
     ) -> Result<ToolResult, ToolError> {
         let app = context.require_app()?;
+
+        // 手动优先（硬边界）：用户手动选过服装后，AI 的换装请求一律不执行；
+        // 恢复自动换装的唯一途径是用户在设置页重新打开开关
+        let auto_allowed = crate::config::AppConfig::load(&app)
+            .map(|c| c.ai_auto_clothes)
+            .unwrap_or(true);
+        if !auto_allowed {
+            return Ok(json!({
+                "success": false,
+                "locked": true,
+                "message": "用户已手动选择当前服装并关闭了自动更换，本次及后续的换装调用都不会执行。请自然接受，不要反复尝试；若用户想换装，可提示其在设置中重新打开自动换装，或在角色卡中手动选择",
+            }));
+        }
+
         let raw = arguments
             .as_object()
             .and_then(|obj| obj.get("name"))
@@ -373,7 +387,8 @@ impl Tool for CharacterSetClothes {
         // select_clothes：它按原始字符串比较，会凭空生成一句换装旁白。
         let switched = canonical_clothes(&available, &current).as_deref() != Some(target.as_str());
         if switched {
-            crate::api::character::select_clothes(app.clone(), role_id, target.clone())
+            // 走不落锁的内部实现：落锁只发生在"用户手动"的 select_clothes 命令里
+            crate::api::character::select_clothes_inner(app.clone(), role_id, target.clone())
                 .await
                 .map_err(|e| ToolError::Execution(format!("更换服装失败: {e}")))?;
         }

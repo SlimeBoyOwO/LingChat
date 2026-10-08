@@ -85,6 +85,12 @@ pub(super) fn run(
         ai_service::game_system::auto_save::AutoSaveManager::run_periodic(auto_save_manager).await;
     });
 
+    // 天气缓存后台刷新：每 5 分钟检查一次，配置了手动城市且缓存过期才拉取
+    //（没有自动定位），供 generator 注入"用户所在地天气"提醒与 query_weather 工具复用
+    tauri::async_runtime::spawn(ai_service::tools::weather::run_refresh_loop(
+        app.handle().clone(),
+    ));
+
     // 桌宠点击穿透轮询与 pet:cursor 鼠标广播——具体实现在 api::pet，
     // 入口文件不堆业务逻辑。
     #[cfg(desktop)]

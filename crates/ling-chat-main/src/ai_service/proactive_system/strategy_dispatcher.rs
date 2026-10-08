@@ -296,6 +296,16 @@ impl StrategyDispatcher {
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
 
-        format!("{{ {} 想继续说话了}}", ai_name)
+        // 天气缓存有货时附一份话题素材（由 query_weather 与后台刷新循环维护）。
+        // 只是可选参考——想不出说什么时可以拿天气自然开个头，像随口一提，
+        // 不许播报数据；没货时提示词保持原样，暖场行为与未接入天气前一致。
+        let weather_hint = crate::ai_service::tools::weather::cached_summary().map(|s| {
+            format!("{{如果你一时想不到说什么，可以参考：用户所在地现在是{s}。要聊也请像随口一提那样自然带出，不要报数据}}")
+        });
+
+        match weather_hint {
+            Some(hint) => format!("{{ {} 想继续说话了}}{}", ai_name, hint),
+            None => format!("{{ {} 想继续说话了}}", ai_name),
+        }
     }
 }

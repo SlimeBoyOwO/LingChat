@@ -263,7 +263,35 @@ impl MessageGenerator {
         };
         let role = gs.get_role(&self.deps.db, rid).await?;
         // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
-        Ok(role.memory.clone())
+        let mut context = role.memory.clone();
+        drop(gs);
+        self.inject_weather_first_talk(&mut context);
+        Ok(context)
+    }
+
+    /// 今日首次对话时，把天气提醒追加进当轮上下文（仅本轮可见，不写回记忆）。
+    ///
+    /// 剧本系来源（AI 对话/自由对话事件）与编辑器试玩不注入；其余自由对话
+    /// 场景由 `first_talk_reminder` 内部的"每日一次 + 配置开关 + 缓存有货"
+    /// 三重门决定是否真正注入。追加到最后一条 user 消息上，与 processor
+    /// 时间感知的 `系统提醒` 格式保持一致。
+    fn inject_weather_first_talk(&self, context: &mut Vec<LlmMessage>) {
+        let script_source = matches!(
+            self.deps.source,
+            GeneratorSource::ScriptAiDialogue | GeneratorSource::ScriptFreeDialogue
+        );
+        let allowed = !script_source && !self.deps.is_preview;
+        if let Some(reminder) =
+            crate::ai_service::tools::weather::first_talk_reminder(&self.deps.app, allowed)
+        {
+            match context.last_mut() {
+                Some(last) if last.role == "user" => {
+                    last.content
+                        .push_str(&format!("\n{{系统提醒: {reminder}}}"));
+                },
+                _ => context.push(LlmMessage::system(reminder)),
+            }
+        }
     }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
