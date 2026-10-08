@@ -198,6 +198,7 @@
             :placeholder="placeholderText"
             v-model="inputMessage"
             @keydown.enter.exact.prevent="sendOrContinue"
+            @paste="onPasteImage"
             :readonly="!isInputEnabled"
           ></textarea>
         </div>
@@ -280,6 +281,7 @@ const { micEnabled, micTitle, micIconName, toggleRecording } = useMicControl();
 // 失败提示由调用方提供：桌宠侧静默，主界面弹 alert。
 const {
   hasScreenshot,
+  screenshotBase64,
   init: initScreenshot,
   destroy: destroyScreenshot,
   start: startScreenshotRaw,
@@ -657,6 +659,29 @@ onUnmounted(() => {
   window.removeEventListener("resize", updateContainerWidth);
   destroyScreenshot();
 });
+
+// 粘贴图片：读取剪贴板中的图片，复用截图链路（预览、压缩与视觉路由和截图一致）。
+// 已有截图时直接覆盖，与"重新截取"行为对齐。
+function onPasteImage(event: ClipboardEvent) {
+  const items = event.clipboardData?.items;
+  if (!items) return;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (!item.type.startsWith("image/")) continue;
+    const file = item.getAsFile();
+    if (!file) continue;
+    event.preventDefault();
+    const reader = new FileReader();
+    reader.onload = () => {
+      // 后端与预览均按裸 base64 处理，去掉 data URL 前缀
+      const dataUrl = String(reader.result ?? "");
+      screenshotBase64.value = dataUrl.slice(dataUrl.indexOf(",") + 1);
+      hasScreenshot.value = true;
+    };
+    reader.readAsDataURL(file);
+    return;
+  }
+}
 
 function sendOrContinue() {
   if (gameStore.currentStatus === "input") {
