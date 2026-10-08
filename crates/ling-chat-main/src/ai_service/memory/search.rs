@@ -24,15 +24,6 @@ pub enum SearchMode {
     Hybrid,
 }
 
-impl SearchMode {
-    pub fn parse(raw: Option<&str>) -> Self {
-        match raw {
-            Some("vector") => Self::Vector,
-            _ => Self::Hybrid,
-        }
-    }
-}
-
 /// 一条检索结果（按 `memory_id` 聚合后的整条记忆）。
 #[derive(Clone, Debug)]
 pub struct SearchHit {

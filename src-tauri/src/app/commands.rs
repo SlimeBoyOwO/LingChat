@@ -93,6 +93,10 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::music::delete_music_category,
         api::music::open_music_folder,
         api::locale::get_locale_messages,
+        // ── 长期记忆浏览（设置页「记忆系统」面板） ──
+        api::memory::memory_list_roles,
+        api::memory::memory_list,
+        api::memory::memory_delete,
         api::ambient::get_ambient_list,
         api::ambient::upload_ambient,
         api::ambient::delete_ambient,

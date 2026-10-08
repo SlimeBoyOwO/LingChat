@@ -57,6 +57,9 @@ impl Tool for PluginTool {
         let script_rel = self.spec.script.clone();
         let plugin_id = self.plugin_id.clone();
         let name = self.name.clone();
+        // 插件脚本里的 call_tool 只能触达外层工具上下文已授权的工具：
+        // 权限矩阵（场景组 × 角色组）在生成 allowed 时已经算完，这里原样继承。
+        let allowed = context.allowed_tools.clone();
 
         // 取 config/env、解析脚本路径、跑 Python 都是阻塞操作（PluginManager 内部
         // 用 blocking_lock，RustPython 需要线程局部状态），整体放 spawn_blocking；
@@ -68,7 +71,14 @@ impl Tool for PluginTool {
                 .plugin_dir(&plugin_id)
                 .map(|dir| dir.join(&script_rel))
                 .ok_or_else(|| format!("插件 {plugin_id} 目录不存在"))?;
-            python_backend::run_plugin_script(&script_path, &name, &arguments, run_env, app)
+            python_backend::run_plugin_script(
+                &script_path,
+                &name,
+                &arguments,
+                run_env,
+                Some(allowed),
+                app,
+            )
         })
         .await
         .map_err(|join_err| ToolError::Execution(format!("插件线程异常: {join_err}")))?;

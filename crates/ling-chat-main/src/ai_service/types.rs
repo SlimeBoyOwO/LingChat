@@ -218,6 +218,7 @@ impl LineAttributeExt {
             LineAttribute::System => "system",
             LineAttribute::Assistant => "assistant",
             LineAttribute::Tool => "tool",
+            LineAttribute::Memory => "memory",
         }
     }
 }

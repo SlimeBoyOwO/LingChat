@@ -217,23 +217,60 @@ impl ToolPermissionConfig {
         // 2. 角色归属的角色组权限
         // 没有角色名时直接返回空集 —— 未登录/未指定角色的调用方没有工具权限，
         // 必须通过角色归属到某个角色组才能获取工具访问权。
-        let Some(role_name) = role_name else {
+        let Some(group) = self.role_group_for(role_name) else {
             return HashSet::new();
         };
-        let Some(group) = self
-            .role_groups
-            .values()
-            .find(|g| g.roles.contains(role_name))
-        else {
+        if !group.enabled || role_name.is_none() {
+            return HashSet::new();
+        }
+
+        // 3. 交集 / all_tools
+        Self::intersect(scene, group, all_names)
+    }
+
+    /// 无明确调用场景的调用方（插件信号 handler、插件启动入口）的可用工具集：
+    /// 所有已启用场景组对该角色允许工具的**并集**。
+    ///
+    /// 与 [`allowed_tools`](Self::allowed_tools) 的区别只在「场景」这一维——
+    /// 权限矩阵本身（角色组归属、组启用状态、工具列表）完全一致。
+    /// `role_name = None` 时按 default 角色组计算（对应「应用自身」身份），
+    /// 角色不在任何组时同样返回空集。
+    pub fn allowed_tools_unscoped(
+        &self,
+        role_name: Option<&str>,
+        all_names: &HashSet<String>,
+    ) -> HashSet<String> {
+        let Some(group) = self.role_group_for(role_name) else {
             return HashSet::new();
         };
         if !group.enabled {
             return HashSet::new();
         }
+        let mut allowed = HashSet::new();
+        for scene in self.scene_groups.values().filter(|scene| scene.enabled) {
+            allowed.extend(Self::intersect(scene, group, all_names));
+        }
+        allowed
+    }
 
-        // 3. 交集 / all_tools
-        // all_tools = true 且对方的工具集为空时，回退到全量名集合，
-        // 使得"双方都 all_tools"时能返回所有工具。
+    /// 取角色归属的角色组；`role_name = None` 时返回 default 角色组
+    /// （仅用于 [`allowed_tools_unscoped`](Self::allowed_tools_unscoped) 的无场景调用方）。
+    fn role_group_for(&self, role_name: Option<&str>) -> Option<&GroupPermission> {
+        match role_name {
+            Some(role) => self
+                .role_groups
+                .values()
+                .find(|group| group.roles.contains(role)),
+            None => self.role_groups.get(DEFAULT_ROLE_GROUP),
+        }
+    }
+
+    /// 场景组 × 角色组的工具交集（`all_tools` 语义见各分支注释）。
+    fn intersect(
+        scene: &ToolPermission,
+        group: &GroupPermission,
+        all_names: &HashSet<String>,
+    ) -> HashSet<String> {
         if group.all_tools {
             if scene.all_tools || scene.tools.is_empty() {
                 all_names.clone()

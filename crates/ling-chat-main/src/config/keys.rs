@@ -58,7 +58,7 @@ pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";
 pub const AUTO_SAVE_INTERVAL_SECS: &str = "features.auto_save_interval_secs";
 
 // ========== 功能开关（记忆系统） ==========
-/// 记忆工具总开关：关闭后 memory_store / vector_search / memory_delete 不可用。
+/// 记忆工具总开关：关闭后 memory_store / memory_delete / memory_summarize 不可用。
 pub const MEMORY_ENABLED: &str = "features.memory_enabled";
 /// 上下文窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
 /// 兼容 Gemini 等要求首条消息为 user 的 provider。

@@ -33,7 +33,7 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use background_effect::SetBackgroundEffect;
 use character::{CharacterGetClothes, CharacterList, CharacterSetClothes, CharacterSwitch};
 use clock::CurrentTimeTool;
-use memory::{MemoryDelete, MemoryStore, VectorSearch};
+use memory::{MemoryDelete, MemoryStore, MemorySummarize};
 use permissions::CONFIG_FILE_NAME;
 use permissions::ToolPermissionConfig;
 use read_media_file::ReadMediaFileTool;
@@ -109,8 +109,8 @@ pub fn built_in_registry(
     registry.register(Arc::new(UpdateTodo))?;
     registry.register(Arc::new(DeleteTodo))?;
     registry.register(Arc::new(MemoryStore))?;
-    registry.register(Arc::new(VectorSearch))?;
     registry.register(Arc::new(MemoryDelete))?;
+    registry.register(Arc::new(MemorySummarize))?;
     registry.register(Arc::new(CurrentStatus))?;
     registry.register(Arc::new(SceneStatus))?;
     registry.register(Arc::new(SceneList))?;

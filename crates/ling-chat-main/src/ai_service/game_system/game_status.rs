@@ -278,11 +278,12 @@ impl GameStatus {
         .await
     }
 
-    /// 非系统消息数量（用于羁绊冒险解锁条件检测）
+    /// 非系统消息数量（用于羁绊冒险解锁条件检测）。
+    /// 人设 System 行与 RAG 检索行（Memory）都不算真实对话。
     pub fn chat_message_count(&self) -> usize {
         self.line_list
             .iter()
-            .filter(|l| !matches!(l.attribute(), LineAttribute::System))
+            .filter(|l| !matches!(l.attribute(), LineAttribute::System | LineAttribute::Memory))
             .count()
     }
 

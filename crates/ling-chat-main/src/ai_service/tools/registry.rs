@@ -132,6 +132,25 @@ impl ToolRegistry {
             .allowed_tools(source, role_name, &all_names)
     }
 
+    /// 无明确调用场景的调用方（插件信号 handler / 启动入口的 `call_tool`）可执行的
+    /// 工具名称集合：所有已启用场景组对 `role_name` 允许工具的并集。
+    ///
+    /// 与 [`allowed_tools`](Self::allowed_tools) 共用同一份权限矩阵，只是不绑定场景。
+    pub fn allowed_tools_unscoped(
+        &self,
+        role_name: Option<&str>,
+    ) -> std::collections::HashSet<String> {
+        let all_names: std::collections::HashSet<String> = self
+            .definitions()
+            .into_iter()
+            .map(|d| d.function.name)
+            .collect();
+        self.permissions
+            .read()
+            .unwrap()
+            .allowed_tools_unscoped(role_name, &all_names)
+    }
+
     /// 把插件工具名并入 available_tools 展示列表（不落盘）。
     pub fn add_available_tools(&self, names: &[String]) {
         let mut perms = self.permissions.write().unwrap();

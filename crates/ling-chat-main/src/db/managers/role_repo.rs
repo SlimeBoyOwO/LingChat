@@ -12,6 +12,7 @@ use tracing::warn;
 use crate::ai_service::types::CharacterSettings;
 use crate::db::entities::line;
 use crate::db::entities::line_perception;
+use crate::db::entities::memory_embedding;
 use crate::db::entities::role::{
     self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
 };
@@ -164,8 +165,9 @@ impl RoleRepo {
     /// 5. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
     /// 6. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
     /// 7. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
-    /// 8. delete role by id
-    /// 9. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
+    /// 8. 删除该角色名下的长期记忆向量（memory_embeddings 无 FK，不删会留孤儿行）
+    /// 9. delete role by id
+    /// 10. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
     ///
     /// 返回是否实际删除了行。
     ///
@@ -225,11 +227,18 @@ impl RoleRepo {
             .exec(db)
             .await?;
 
-        // 8. 删 role 本身
+        // 8. 删除该角色名下的长期记忆向量。memory_embeddings.role_id 没有 FK 约束，
+        // 不显式清理会永久残留孤儿行（检索按 role_id 隔离，残留行不可见但占空间）。
+        memory_embedding::Entity::delete_many()
+            .filter(memory_embedding::Column::RoleId.eq(role_id))
+            .exec(db)
+            .await?;
+
+        // 9. 删 role 本身
         let result = role::Entity::delete_by_id(role_id).exec(db).await?;
         let rows_affected = result.rows_affected > 0;
 
-        // 9. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
+        // 10. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
         enable_fk(db).await?;
         guard.disarm();
 

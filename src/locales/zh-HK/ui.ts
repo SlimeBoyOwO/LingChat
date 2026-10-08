@@ -304,7 +304,7 @@ export default {
     approvalDefaultCwd: "（預設沙箱目錄）",
     groups: {
       schedule: "日程同待辦（查日程、加/改/刪待辦）",
-      memory: "長期記憶（存取向量記憶、按語義檢索）",
+      memory: "長期記憶（存入、刪除、整理壓縮；每輪自動檢索注入）",
       character: "角色切換（列出/切換在場角色）",
       scene: "場景切換（列出/切換場景）",
       status: "狀態查詢（目前狀態/場景狀態）",
@@ -322,8 +322,8 @@ export default {
       schedule_update_todo: "更新待辦",
       schedule_delete_todo: "刪除待辦",
       memory_store: "存入記憶",
-      vector_search: "檢索記憶",
       memory_delete: "刪除記憶",
+      memory_summarize: "整理記憶",
       character_list: "角色列表",
       character_switch: "切換角色",
       character_get_clothes: "查詢服裝",

@@ -5,14 +5,17 @@
 
 use std::path::Path;
 
+use base64::Engine;
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, Statement,
+    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, Set, Statement,
     TransactionTrait,
 };
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::db::entities::{adventure_unlock, line, line_perception, role, running_script, save};
+use crate::db::entities::{
+    adventure_unlock, line, line_perception, memory_embedding, role, running_script, save,
+};
 
 use super::messages::DbRecords;
 use super::staging::staging_dir;
@@ -20,10 +23,18 @@ use super::staging::staging_dir;
 /// 暂存文件名。
 const DB_RECORDS_FILE: &str = "db_records.json";
 
+/// base64 标准字母表（记忆向量在 JSON 里的传输编码）。
+const B64: base64::engine::general_purpose::GeneralPurpose =
+    base64::engine::general_purpose::STANDARD;
+
 // ─── 表操作顺序（按外键依赖） ─────────────────────────────────
 
 /// DELETE 顺序：先删子表再删父表，避免 FK 约束冲突。
 /// `memory_bank` 是旧版记忆链路遗留表（表结构保留、不再读写），一并清掉避免残留。
+///
+/// 注意：`memory_embeddings` **不在此列**——它是后加的表，旧对端发来的记录里没有
+/// 这个字段，无条件清空会把本地长期记忆抹掉。它在导入时按记录里是否有该字段
+/// 决定是否整表镜像（见 [`apply_staged_db_records`]）。
 const DELETE_ORDER: [&str; 7] = [
     "line_perception",
     "memory_bank",
@@ -34,8 +45,8 @@ const DELETE_ORDER: [&str; 7] = [
     "role",
 ];
 
-// INSERT 顺序在 apply_staged_db_records 中通过 import_rows! 宏按序调用：
-// role → save → running_script → adventure_unlock → line → line_perception
+// INSERT 顺序在 apply_staged_db_records 中按序调用：
+// role → memory_embeddings → save → running_script → adventure_unlock → line → line_perception
 
 /// 导入宏：将 JSON 数组反序列化为 Entity Model，转为 ActiveModel 逐行 INSERT。
 ///
@@ -59,7 +70,8 @@ macro_rules! import_rows {
 
 // ─── 导出 ─────────────────────────────────────────────────────
 
-/// 导出全部 6 张业务表的数据（memory_bank 旧记忆表不再导出）。
+/// 导出全部业务表的数据（memory_bank 旧记忆表不再导出，memory_embeddings 长期记忆随行导出；
+/// RAG 检索行 attribute="Memory" 按行过滤，不跨端同步）。
 ///
 /// 通过独立只读连接打开数据库（`mode=ro`），不阻塞主应用的读写连接。
 pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
@@ -90,13 +102,41 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
     let line_perceptions =
         export_table::<line_perception::Entity, line_perception::Model>(&db, "line_perception")
             .await?;
+    // RAG 检索行（attribute="Memory"）是本机当轮生成的临时上下文，不参与同步：
+    // 对端下一条用户消息会自行检索重建，跨端镜像没有价值；而且旧对端的
+    // LineAttribute 枚举没有这个变体，整批 line 反序列化会直接失败。
+    let mut skip_line_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    let lines: Vec<Value> = lines
+        .into_iter()
+        .filter(|row| {
+            if row.get("attribute").and_then(Value::as_str) == Some("Memory") {
+                if let Some(id) = row.get("id").and_then(Value::as_i64) {
+                    skip_line_ids.insert(id);
+                }
+                false
+            } else {
+                true
+            }
+        })
+        .collect();
+    // 连带过滤这些行的感知记录，避免对端落孤儿行
+    let line_perceptions: Vec<Value> = line_perceptions
+        .into_iter()
+        .filter(|row| {
+            !row.get("line_id")
+                .and_then(Value::as_i64)
+                .is_some_and(|id| skip_line_ids.contains(&id))
+        })
+        .collect();
+    let memory_embeddings = export_memory_embeddings(&db).await?;
 
     let total: usize = roles.len()
         + saves.len()
         + running_scripts.len()
         + adventure_unlocks.len()
         + lines.len()
-        + line_perceptions.len();
+        + line_perceptions.len()
+        + memory_embeddings.len();
     info!("数据库导出完成: {} 条记录", total);
 
     Ok(DbRecords {
@@ -108,7 +148,89 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         lines,
         memory_banks: Vec::new(),
         line_perceptions,
+        memory_embeddings: Some(memory_embeddings),
     })
+}
+
+/// LAN 同步用的 `memory_embeddings` 行：与实体同构，仅 `embedding` 换成 base64。
+///
+/// 向量原样走 JSON 会变成几千个数字的数组（每条记忆 10KB+ 的文本膨胀），
+/// base64 后体积约为裸字节的 4/3，且导入端解析零歧义。
+#[derive(serde::Serialize, serde::Deserialize)]
+struct MemoryEmbeddingRecord {
+    id: i32,
+    role_id: i32,
+    memory_id: String,
+    chunk_index: i32,
+    content: String,
+    tags: Option<String>,
+    embedding: String,
+    dim: i32,
+    model: String,
+    created_at: i64,
+}
+
+/// 导出长期记忆表（embedding → base64）。
+async fn export_memory_embeddings(db: &DatabaseConnection) -> Result<Vec<Value>, String> {
+    let rows = memory_embedding::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| format!("查询表 memory_embeddings 失败: {e}"))?;
+
+    rows.into_iter()
+        .map(|row| {
+            serde_json::to_value(MemoryEmbeddingRecord {
+                id: row.id,
+                role_id: row.role_id,
+                memory_id: row.memory_id,
+                chunk_index: row.chunk_index,
+                content: row.content,
+                tags: row.tags,
+                embedding: B64.encode(&row.embedding),
+                dim: row.dim,
+                model: row.model,
+                created_at: row.created_at,
+            })
+            .map_err(|e| format!("序列化表 memory_embeddings 的行失败: {e}"))
+        })
+        .collect()
+}
+
+/// 导入长期记忆表（base64 → 向量），保留原始 ID。
+async fn import_memory_embeddings(
+    db: &impl ConnectionTrait,
+    rows: &[Value],
+    count: &mut u64,
+) -> Result<(), String> {
+    if rows.is_empty() {
+        return Ok(());
+    }
+    let records: Vec<MemoryEmbeddingRecord> =
+        serde_json::from_value(Value::Array(rows.to_vec()))
+            .map_err(|e| format!("反序列化 memory_embeddings 失败: {e}"))?;
+    for record in records {
+        let embedding = B64
+            .decode(record.embedding.as_bytes())
+            .map_err(|e| format!("memory_embeddings 向量 base64 解码失败: {e}"))?;
+        let model = memory_embedding::ActiveModel {
+            id: Set(record.id),
+            role_id: Set(record.role_id),
+            memory_id: Set(record.memory_id),
+            chunk_index: Set(record.chunk_index),
+            content: Set(record.content),
+            tags: Set(record.tags),
+            embedding: Set(embedding),
+            dim: Set(record.dim),
+            model: Set(record.model),
+            created_at: Set(record.created_at),
+        };
+        memory_embedding::Entity::insert(model)
+            .exec(db)
+            .await
+            .map_err(|e| format!("插入 memory_embeddings 失败: {e}"))?;
+        *count += 1;
+    }
+    Ok(())
 }
 
 /// 导出单张表的所有行，序列化为 `Vec<serde_json::Value>`。
@@ -221,6 +343,14 @@ pub async fn apply_staged_db_records(
 
     // ─── INSERT 全部行（父表 → 子表顺序） ────────────────
     import_rows!(&txn, &records.roles, role, imported);
+    // 长期记忆只在对端记录里带该字段时整表镜像；旧对端没有这个概念，保留本地记忆。
+    if let Some(memory_embeddings) = &records.memory_embeddings {
+        let cleared = delete_all(&txn, "memory_embeddings").await?;
+        if cleared > 0 {
+            info!("已清除 memory_embeddings: {} 行", cleared);
+        }
+        import_memory_embeddings(&txn, memory_embeddings, &mut imported).await?;
+    }
     import_rows!(&txn, &records.saves, save, imported);
     import_rows!(&txn, &records.running_scripts, running_script, imported);
     import_rows!(&txn, &records.adventure_unlocks, adventure_unlock, imported);

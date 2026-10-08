@@ -1,18 +1,20 @@
-//! 向量记忆工具：`memory_store` / `vector_search` / `memory_delete`。
+//! 向量记忆工具：`memory_store` / `memory_delete` / `memory_summarize`。
 //!
 //! 三个工具共用 `AppState::memory`（[`MemoryService`]），按 `current_role_id`
 //! 隔离记忆。`features.memory_enabled` 关闭或嵌入配置未就绪时直接返回错误，
-//! 不让模型误以为记忆已写入。
+//! 不让模型误以为记忆已写入。检索不在此列——它由生成管线在用户新消息轮
+//! 自动完成（RAG 注入，见 `message_system::generator::inject_rag_memories`）。
 
 use std::time::Duration;
 
 use async_trait::async_trait;
-use chrono::NaiveDate;
 use serde_json::{Value, json};
 use tauri::Manager;
 
 use crate::AppState;
-use crate::ai_service::memory::{MemoryService, SearchMode};
+use crate::ai_service::memory::{
+    DEFAULT_KEEP_RECENT, MemoryService, spawn_auto_summarize_if_needed,
+};
 use crate::ai_service::types::ToolDefinition;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -20,10 +22,10 @@ use super::game_status_handle;
 
 /// 写记忆：远端嵌入 + LLM 去重判定，可能较慢。
 const STORE_TIMEOUT: Duration = Duration::from_secs(60);
-/// 检索：一次嵌入请求。
-const SEARCH_TIMEOUT: Duration = Duration::from_secs(30);
 /// 删除：语义删除需要嵌入请求。
 const DELETE_TIMEOUT: Duration = Duration::from_secs(30);
+/// 摘要：一次 LLM 生成 + 一次（或多次）嵌入写入，最慢。
+const SUMMARIZE_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// 取当前对话角色 ID；无角色时报错。
 async fn current_role_id(context: &ToolContext) -> Result<i32, ToolError> {
@@ -89,46 +91,6 @@ fn parse_string(
     }
 }
 
-/// 解析 `YYYY-MM-DD` 起止日期为 Unix 毫秒区间（含端点整天）。
-fn parse_date_range(
-    start: Option<&str>,
-    end: Option<&str>,
-) -> Result<Option<(i64, i64)>, ToolError> {
-    let day_start = |raw: &str| -> Result<i64, ToolError> {
-        let date = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
-            .map_err(|_| ToolError::InvalidArguments(format!("日期 {raw} 需要 YYYY-MM-DD 格式")))?;
-        Ok(date
-            .and_hms_opt(0, 0, 0)
-            .map(|dt| dt.and_utc().timestamp_millis())
-            .unwrap_or(0))
-    };
-    let day_end = |raw: &str| -> Result<i64, ToolError> {
-        let date = NaiveDate::parse_from_str(raw.trim(), "%Y-%m-%d")
-            .map_err(|_| ToolError::InvalidArguments(format!("日期 {raw} 需要 YYYY-MM-DD 格式")))?;
-        // 次日零点前一毫秒 = 当天 23:59:59.999
-        Ok(date
-            .succ_opt()
-            .and_then(|next| next.and_hms_opt(0, 0, 0))
-            .map(|dt| dt.and_utc().timestamp_millis() - 1)
-            .unwrap_or(i64::MAX))
-    };
-    let start_ms = start.map(day_start).transpose()?;
-    let end_ms = end.map(day_end).transpose()?;
-    match (start_ms, end_ms) {
-        (None, None) => Ok(None),
-        (start, end) => {
-            let start = start.unwrap_or(0);
-            let end = end.unwrap_or(i64::MAX);
-            if end < start {
-                return Err(ToolError::InvalidArguments(
-                    "end_date 早于 start_date".into(),
-                ));
-            }
-            Ok(Some((start, end)))
-        },
-    }
-}
-
 // ─── memory_store ───
 
 /// memory_store：把一条关于用户的事实写入长期记忆。
@@ -189,96 +151,13 @@ impl Tool for MemoryStore {
             .store(role_id, &content, &tags)
             .await
             .map_err(|e| ToolError::Execution(format!("写入记忆失败: {e}")))?;
+        // 写入后记忆规模越过阈值时，后台自动把较早的记忆压缩掉（不阻塞本轮）。
+        spawn_auto_summarize_if_needed(memory.clone(), role_id);
         Ok(json!({
             "ok": true,
             "action": outcome.action,
             "memory_id": outcome.memory_id,
             "detail": outcome.detail,
-        }))
-    }
-}
-
-// ─── vector_search ───
-
-/// vector_search：语义 + 关键词混合检索该角色的长期记忆。
-pub struct VectorSearch;
-
-#[async_trait]
-impl Tool for VectorSearch {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            "vector_search",
-            "检索当前角色关于用户的长期记忆（语义 + 关键词混合，带时间过滤）",
-            json!({
-                "type": "object",
-                "properties": {
-                    "query": {"type": "string", "description": "要找的信息，用自然语言描述"},
-                    "mode": {"type": "string", "enum": ["hybrid", "vector"], "description": "检索方式，hybrid=语义+关键词（默认），vector=纯语义"},
-                    "top_k": {"type": "integer", "description": "最多返回条数，默认取系统配置"},
-                    "min_score": {"type": "number", "description": "最低相似度阈值 0-1，默认取系统配置"},
-                    "start_date": {"type": "string", "description": "仅返回该日期（YYYY-MM-DD）之后的记忆"},
-                    "end_date": {"type": "string", "description": "仅返回该日期（YYYY-MM-DD）之前的记忆"}
-                },
-                "required": ["query"],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    fn timeout_hint(&self) -> Option<Duration> {
-        Some(SEARCH_TIMEOUT)
-    }
-
-    async fn execute(
-        &self,
-        context: &ToolContext,
-        arguments: Value,
-    ) -> Result<ToolResult, ToolError> {
-        let obj = require_object(&arguments, "vector_search")?;
-        let query = parse_string(obj, "query", "vector_search", true)?.unwrap_or_default();
-        let mode = SearchMode::parse(obj.get("mode").and_then(Value::as_str));
-        let top_k = match obj.get("top_k") {
-            Some(value) => Some(value.as_u64().ok_or_else(|| {
-                ToolError::InvalidArguments("vector_search 的 top_k 必须是整数".into())
-            })? as usize),
-            None => None,
-        };
-        let min_score = match obj.get("min_score") {
-            Some(value) => Some(value.as_f64().ok_or_else(|| {
-                ToolError::InvalidArguments("vector_search 的 min_score 必须是数字".into())
-            })?),
-            None => None,
-        };
-        let time_range = parse_date_range(
-            obj.get("start_date").and_then(Value::as_str),
-            obj.get("end_date").and_then(Value::as_str),
-        )?;
-
-        let app = context.require_app()?;
-        let role_id = current_role_id(context).await?;
-        let memory = require_memory(&app)?;
-        let hits = memory
-            .search(role_id, &query, mode, top_k, min_score, time_range)
-            .await
-            .map_err(|e| ToolError::Execution(format!("记忆检索失败: {e}")))?;
-
-        let results: Vec<Value> = hits
-            .into_iter()
-            .map(|hit| {
-                json!({
-                    "memory_id": hit.memory_id,
-                    "content": hit.content,
-                    "score": (hit.score * 1000.0).round() / 1000.0,
-                    "source": hit.source,
-                    "created_at": hit.created_at,
-                })
-            })
-            .collect();
-        Ok(json!({
-            "ok": true,
-            "pipeline": "hybrid_search",
-            "count": results.len(),
-            "results": results,
         }))
     }
 }
@@ -297,7 +176,7 @@ impl Tool for MemoryDelete {
             json!({
                 "type": "object",
                 "properties": {
-                    "memory_id": {"type": "string", "description": "要删除的记忆 ID（来自 vector_search/memory_store）"},
+                    "memory_id": {"type": "string", "description": "要删除的记忆 ID（来自 memory_store 的返回）"},
                     "query": {"type": "string", "description": "用自然语言描述要删的内容，会语义匹配并删除相似记忆"}
                 },
                 "required": [],
@@ -351,5 +230,66 @@ impl Tool for MemoryDelete {
             })
             .collect();
         Ok(json!({"ok": true, "deleted": items.len(), "items": items}))
+    }
+}
+
+// ─── memory_summarize ───
+
+/// memory_summarize：把较早的长期记忆压缩合并成一条摘要。
+///
+/// 记忆条数变多后检索质量会下降、去重误判率上升；该工具把「较早的一批」交给 LLM
+/// 合成一条 `summary` 记忆再删掉源条目，最新的 `keep_recent` 条保持原样。
+/// 写入后的自动压缩（阈值 [`AUTO_SUMMARIZE_THRESHOLD`](crate::ai_service::memory::AUTO_SUMMARIZE_THRESHOLD)）
+/// 走的是同一条 `MemoryService::summarize` 链路。
+pub struct MemorySummarize;
+
+#[async_trait]
+impl Tool for MemorySummarize {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "memory_summarize",
+            "整理长期记忆：把较早的一批记忆压缩合并成一条摘要（最新的若干条原样保留）。当记忆条数明显变多、或用户要求整理记忆时调用",
+            json!({
+                "type": "object",
+                "properties": {
+                    "keep_recent": {"type": "integer", "description": "保留原样的最新记忆条数，默认 20；0 表示全部参与压缩"}
+                },
+                "required": [],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SUMMARIZE_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_summarize")?;
+        let keep_recent = match obj.get("keep_recent") {
+            None => DEFAULT_KEEP_RECENT,
+            Some(value) => value.as_u64().ok_or_else(|| {
+                ToolError::InvalidArguments("memory_summarize 的 keep_recent 必须是整数".into())
+            })? as usize,
+        };
+
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+        let outcome = memory
+            .summarize(role_id, keep_recent)
+            .await
+            .map_err(|e| ToolError::Execution(format!("记忆摘要失败: {e}")))?;
+        Ok(json!({
+            "ok": true,
+            "action": outcome.action,
+            "summarized": outcome.summarized,
+            "memory_id": outcome.memory_id,
+            "detail": outcome.detail,
+        }))
     }
 }

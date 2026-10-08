@@ -58,7 +58,6 @@ const readTools = new Set([
   "ReadMediaFile",
   "glob",
   "grep",
-  "vector_search",
   "schedule_get_all",
   "character_list",
   "character_get_clothes",
@@ -73,6 +72,7 @@ const updateTools = new Set([
   "schedule_delete_todo",
   "memory_store",
   "memory_delete",
+  "memory_summarize",
   "character_set_clothes",
 ]);
 const switchTools = new Set(["character_switch", "scene_switch"]);

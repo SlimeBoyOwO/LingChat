@@ -1,6 +1,6 @@
 use sea_orm_migration::prelude::*;
 
-/// 向量记忆表：工具驱动的长期记忆（memory_store / vector_search / memory_delete）。
+/// 向量记忆表：长期记忆（memory_store 写入，用户新消息轮 RAG 检索 / memory_delete 删除）。
 ///
 /// 每条记忆按固定长度切块后逐块入库，同一记忆的多个分块共享 `memory_id`。
 /// `embedding` 存 L2 归一化的 Float32 小端字节，检索时在内存里算余弦相似度。

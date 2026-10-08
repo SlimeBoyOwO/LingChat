@@ -89,11 +89,14 @@ impl GodAgentCore {
 /// 跳过 System 行：多人场景下每个角色的人设 prompt 都存在 line_list 的 System 行
 /// 里，几千字符塞进决策上下文既浪费 token 又淹没对话信号；角色摘要已由视图的
 /// subtitle/info 提供。旁白行（User 属性）保留。
+///
+/// 跳过 RAG 检索行（`Memory`）：那是给主对话用的上下文片段，不进上帝 Agent 的决策视图。
 pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
     gs.line_list
         .iter()
         .filter(|l| !matches!(l.attribute(), LineAttribute::System))
         .rev()
+        .filter(|l| !matches!(l.attribute(), LineAttribute::Memory))
         .take(window)
         .cloned()
         .collect::<Vec<_>>()

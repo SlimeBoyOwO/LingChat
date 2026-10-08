@@ -156,15 +156,34 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 
 ## 6. 与既有记忆体系的关系
 
-| 层                           | 内容                                          | PR #523 的改动                    |
-| ---------------------------- | --------------------------------------------- | --------------------------------- |
-| `role.memory`                | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 新增工具行还原逻辑                |
-| 台词表 `line` 表             | 会话历史真相源（`save_repo` 持久化）          | 新增 `tool_call` 列 + `Tool` 属性 |
-| `MemoryBank`（持久记忆摘要） | 长程记忆，LLM 上下文接入仍待完善              | 未改动                            |
+| 层                                  | 内容                                          | 说明                                    |
+| ----------------------------------- | --------------------------------------------- | --------------------------------------- |
+| `role.memory`                       | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 含工具行还原逻辑                        |
+| 台词表 `line` 表                    | 会话历史真相源（`save_repo` 持久化）          | `tool_call` 列 + `Tool` 属性            |
+| `memory_embeddings`（向量长期记忆） | 跨会话的语义记忆：工具写入、RAG 自动检索      | `MemoryBuilder` 不直接读它，见 §7       |
+| `MemoryBank`（旧持久记忆摘要）      | **已废弃**：表保留、链路不再读写              | 同步时只清不导（`lan_sync/db_sync.rs`） |
 
-工具历史目前**只进 `role.memory` 与台词表，不进 `MemoryBank` 摘要** —— 工具调用是短期上下文的一部分，不属于「该长期记住的角色设定」。这是刻意边界：若日后想让「某类工具结果」长期记住，应加在 `MemoryBank` 的摘要策略里，而不是塞台词表。
+长期记忆由模型主动调工具写入（`memory_store`）—— 没有后台抽取；
+检索则在**每条用户消息生成前**自动完成（RAG）：宿主用最近几轮对话当 query 做混合检索，
+把命中结果落成一条 `Memory` 属性的台词行插在该用户行之前，经 `MemoryBuilder` 重建进入当轮上下文；
+下一条用户消息会替换掉上一轮的检索行，历史里最多只保留最近一轮的结果。检索没有对应工具。
 
-## 7. 常见问题
+## 7. 长期记忆的生命周期：去重 / 删除 / 摘要 / 检索注入 / 多端同步
+
+入口统一是 `ai_service/memory/`（`MemoryService`），配置在启动时快照。
+
+- **写入（store）**：三级去重 —— 余弦 > 0.92 拒收；0.70–0.92 交给 LLM 判 merge/skip/new；LLM 失败降级为直接存储。
+- **删除**：`memory_delete` 按 `memory_id` 精确删或按语义相似度删（最低 0.5）；删角色时 `RoleRepo::delete_main_role` 一并清掉该角色的 `memory_embeddings`（该表无 FK，不显式清会留孤儿行）。
+- **摘要（summarize）**：`MemoryService::summarize(role_id, keep_recent)` 把较早的一批记忆交给 LLM 合成一条 `summary` 记忆，**先插摘要、再删源条目**（插入失败不丢数据）。三条触发路径共用同一条链路：
+  1. 模型主动调 `memory_summarize` 工具；
+  2. 写入后条数达到 `AUTO_SUMMARIZE_THRESHOLD`（当前 64）时后台自动压缩（不阻塞本轮工具）；
+  3. 插件 `compress_context()` 显式触发（只处理达到阈值的角色，返回 `{ ok, triggered }`）。
+- **检索注入（RAG）**：`MessageGenerator::inject_rag_memories`（仅用户新消息轮）以最近几轮真实对话为 query 调 `MemoryService::search`（hybrid，命中取 `min(memory.top_k, 6)` 条），结果写成 `LineAttribute::Memory` 台词行插在该用户行之前，并替换掉本角色上一轮的检索行。记忆功能关闭 / 嵌入未配置时只清旧行不检索；检索失败只记警告、不影响本轮生成。该行不参与 LAN 同步（对端下条消息自行重建），也从前端历史、上帝 Agent 决策视图与 `chat_message_count` 中排除。
+- **多端同步**：`memory_embeddings` 随 LAN 记录级同步整表镜像（导出时 `embedding` 转 base64，避免 JSON 数字数组膨胀）；旧对端发来的记录没有该字段时保留本地记忆、不做镜像。
+- **调试**：聊天框输入 `/查看记忆`，后端日志会打印角色短期记忆、记忆服务配置（`memory::describe`）与该角色的长期记忆条数。
+- **浏览 / 删除（UI）**：设置 → 高级设置 → 记忆系统 → 「查看记忆」面板可按角色浏览全部长期记忆（正文、时间、标签，分块已聚合），并逐条删除（`memory_list_roles` / `memory_list` / `memory_delete` 命令，按 `role_id` 作用域删）。只读写库表，不依赖 `memory_enabled` 开关与嵌入配置——功能关闭时也能查看和清理。
+
+## 8. 常见问题
 
 - **为什么工具行塞进 `line_list` 而不是单独数组？** —— 复用台词表的「追加 / 截断 / 持久化 / 感知者」语义：剧本试玩的 `line_len` 截断能把整段工具历史一起带走；存档读写天然覆盖；且 `MemoryBuilder` 按行序重建时工具行和台词顺序天然一致。
 - **工具行的 `perceived_role_ids` 有意义吗？** —— 落盘时取了当时的 `present_role_ids`，但工具行还原时是「无条件还原」（`attribute == Tool` 直接 push），不参与 `is_target` 感知过滤 —— 工具过程对所有角色记忆都可见，符合「工具是系统行为」的定位。

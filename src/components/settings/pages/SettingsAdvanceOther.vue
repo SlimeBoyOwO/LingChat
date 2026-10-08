@@ -145,6 +145,93 @@
             </Toggle>
           </section>
 
+          <!-- 长期记忆浏览：查看/删除各角色已存的向量记忆，不走后端配置树 -->
+          <section
+            v-if="activeSelection.subcategory === '记忆系统'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.memoryViewer.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.memoryViewer.desc") }}
+            </p>
+            <Button type="big" :disabled="memoryLoading" @click="toggleMemoryViewer">
+              <RefreshCw :size="18" :class="{ 'animate-spin': memoryLoading }" />
+              {{
+                memoryViewerOpen
+                  ? $t("settings.advanceOther.memoryViewer.hideButton")
+                  : $t("settings.advanceOther.memoryViewer.viewButton")
+              }}
+            </Button>
+
+            <div v-if="memoryViewerOpen" class="mt-4">
+              <p v-if="memoryError" class="mb-2 text-sm text-red-400">{{ memoryError }}</p>
+
+              <div v-if="!memoryLoading && !memoryRoles.length" class="text-sm text-white/60">
+                {{ $t("settings.advanceOther.memoryViewer.emptyRoles") }}
+              </div>
+
+              <template v-if="memoryRoles.length">
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                  <select
+                    v-model="memoryRoleId"
+                    class="rounded-lg border border-white/15 bg-black/40 px-3 py-1.5 text-sm text-white outline-none"
+                    @change="loadMemoryList"
+                  >
+                    <option v-for="role in memoryRoles" :key="role.role_id" :value="role.role_id">
+                      {{ memoryRoleLabel(role) }}（{{ role.count }}）
+                    </option>
+                  </select>
+                  <button
+                    class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                    :disabled="memoryLoading"
+                    @click="refreshMemoryViewer"
+                  >
+                    {{ $t("settings.advanceOther.memoryViewer.refresh") }}
+                  </button>
+                </div>
+
+                <p v-if="memoryLoading" class="text-sm text-white/60">
+                  {{ $t("settings.advanceOther.memoryViewer.loading") }}
+                </p>
+                <p v-else-if="!memories.length" class="text-sm text-white/60">
+                  {{ $t("settings.advanceOther.memoryViewer.emptyList") }}
+                </p>
+                <ul v-else class="m-0 flex list-none flex-col gap-2 p-0">
+                  <li
+                    v-for="item in memories"
+                    :key="item.memory_id"
+                    class="rounded-lg border border-white/10 bg-black/25 p-3"
+                  >
+                    <div class="mb-1 flex items-center justify-between gap-2">
+                      <span class="text-xs text-white/50">{{
+                        formatMemoryTime(item.created_at)
+                      }}</span>
+                      <button
+                        class="cursor-pointer border-none bg-transparent text-xs text-red-400 transition-colors hover:text-red-300 disabled:opacity-60"
+                        :disabled="deletingMemoryId === item.memory_id"
+                        @click="removeMemory(item)"
+                      >
+                        {{
+                          deletingMemoryId === item.memory_id
+                            ? $t("settings.advanceOther.memoryViewer.deleting")
+                            : $t("settings.advanceOther.memoryViewer.delete")
+                        }}
+                      </button>
+                    </div>
+                    <p class="m-0 text-sm leading-6 break-words whitespace-pre-wrap text-white/90">
+                      {{ item.content }}
+                    </p>
+                    <p v-if="item.tags.length" class="mt-1 mb-0 text-xs text-white/45">
+                      {{ $t("settings.advanceOther.memoryViewer.tags") }}{{ item.tags.join(", ") }}
+                    </p>
+                  </li>
+                </ul>
+              </template>
+            </div>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
@@ -186,11 +273,20 @@ import { Button, Toggle } from "@/components/base";
 import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
+import {
+  deleteMemory,
+  listMemories,
+  listMemoryRoles,
+  type MemoryItem,
+  type MemoryRoleSummary,
+} from "@/api/services/memory";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { RefreshCw } from "lucide-vue-next";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
+const dialogStore = useDialogStore();
 const { t, te } = useI18n();
 
 // 好感度动画开关（前端设置项，即时生效，不入后端配置树）
@@ -323,6 +419,84 @@ const forceReconnectTts = async () => {
       reconnectStatus.message = "";
       reconnectStatusTimer = null;
     }, 8000);
+  }
+};
+
+// --- 长期记忆浏览面板（设置页「记忆系统」子页） ---
+const memoryViewerOpen = ref(false);
+const memoryLoading = ref(false);
+const memoryError = ref("");
+const memoryRoles = ref<MemoryRoleSummary[]>([]);
+const memoryRoleId = ref<number | null>(null);
+const memories = ref<MemoryItem[]>([]);
+const deletingMemoryId = ref<string | null>(null);
+
+const memoryRoleLabel = (role: MemoryRoleSummary) =>
+  role.name || t("settings.advanceOther.memoryViewer.unknownRole", { id: role.role_id });
+
+const formatMemoryTime = (timestamp: number) => new Date(timestamp).toLocaleString();
+
+const memoryErrorText = (error: unknown) =>
+  t("settings.advanceOther.memoryViewer.loadFailed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const loadMemoryList = async () => {
+  if (memoryRoleId.value === null || memoryLoading.value) return;
+  memoryLoading.value = true;
+  memoryError.value = "";
+  try {
+    memories.value = await listMemories(memoryRoleId.value);
+  } catch (error) {
+    memories.value = [];
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    memoryLoading.value = false;
+  }
+};
+
+/** 拉取「有记忆的角色」清单并刷新当前角色的列表（首次打开 / 切换后刷新 / 删除后重数）。 */
+const refreshMemoryViewer = async () => {
+  if (memoryLoading.value) return;
+  memoryLoading.value = true;
+  memoryError.value = "";
+  try {
+    memoryRoles.value = await listMemoryRoles();
+    if (!memoryRoles.value.some((role) => role.role_id === memoryRoleId.value)) {
+      memoryRoleId.value = memoryRoles.value[0]?.role_id ?? null;
+    }
+    memories.value = memoryRoleId.value === null ? [] : await listMemories(memoryRoleId.value);
+  } catch (error) {
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    memoryLoading.value = false;
+  }
+};
+
+const toggleMemoryViewer = async () => {
+  if (memoryViewerOpen.value) {
+    memoryViewerOpen.value = false;
+    return;
+  }
+  memoryViewerOpen.value = true;
+  await refreshMemoryViewer();
+};
+
+const removeMemory = async (item: MemoryItem) => {
+  if (deletingMemoryId.value || memoryRoleId.value === null) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.memoryViewer.deleteConfirm"),
+    t("settings.advanceOther.memoryViewer.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  deletingMemoryId.value = item.memory_id;
+  try {
+    await deleteMemory(memoryRoleId.value, item.memory_id);
+    await refreshMemoryViewer();
+  } catch (error) {
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    deletingMemoryId.value = null;
   }
 };
 

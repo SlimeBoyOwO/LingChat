@@ -1,4 +1,6 @@
-//! 向量记忆服务：工具驱动的长期记忆（memory_store / vector_search / memory_delete）。
+//! 向量记忆服务：长期记忆（memory_store / memory_delete / memory_summarize）。
+//! 检索不暴露成工具：生成管线在用户新消息轮自动做 RAG 检索（[`MemoryService::search`]），
+//! 命中结果落成 `LineAttribute::Memory` 台词行注入当轮上下文。
 //!
 //! 对标 BaiShou-Next 的记忆范式：
 //! - 远程 OpenAI 兼容 embeddings 接口把文本变成 L2 归一化向量；
@@ -6,6 +8,11 @@
 //! - 检索 = 内存余弦（向量路）+ LIKE 关键词（文本路），RRF 融合排序；
 //! - 写入前三级去重：余弦 > 0.92 拒收，0.70–0.92 交给 LLM 判 merge/skip/new，
 //!   LLM 失败时降级为直接存储。
+//!
+//! 生命周期的「出口」是 [`MemoryService::summarize`]：把较早的一批记忆交给 LLM
+//! 压缩成一条 `summary` 记忆，源条目随后删除。触发方式有三种——模型主动调用
+//! `memory_summarize` 工具、写入后条数越过 [`AUTO_SUMMARIZE_THRESHOLD`] 的后台
+//! 自动压缩、插件 `compress_context()` 的显式触发。
 //!
 //! 配置（`embedding.*` / `memory.*` / `features.memory_enabled`）在启动时快照，
 //! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。
@@ -15,6 +22,7 @@ pub mod search;
 pub mod store;
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
 use anyhow::{Context, Result, anyhow};
 use sea_orm::DatabaseConnection;
@@ -39,6 +47,17 @@ const DELETE_CANDIDATES: usize = 5;
 /// 嵌入请求超时。
 const EMBED_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
+/// 自动摘要阈值：一次写入后记忆条数达到该值，后台自动把较早的记忆压缩掉。
+pub const AUTO_SUMMARIZE_THRESHOLD: usize = 64;
+/// 摘要时默认保留的最新记忆条数（越新的越可能还被用到，不参与压缩）。
+pub const DEFAULT_KEEP_RECENT: usize = 20;
+/// 单次摘要至少要压缩的记忆条数，低于该值视为「没什么好整理的」。
+const MIN_SUMMARIZE_ENTRIES: usize = 2;
+/// 单次摘要喂给 LLM 的源记忆字符预算；超出的部分留到下一轮，避免提示词爆炸。
+const SUMMARIZE_MAX_CHARS: usize = 24_000;
+/// 自动/摘要生成的记忆打的标签。
+const SUMMARY_TAG: &str = "summary";
+
 /// 一次 `store` 的结果。
 pub struct StoreOutcome {
     /// `stored` / `merged` / `skipped`。
@@ -47,6 +66,36 @@ pub struct StoreOutcome {
     pub memory_id: Option<String>,
     /// 人类可读的说明/内容预览。
     pub detail: String,
+}
+
+/// 一次 `summarize` 的结果。
+pub struct SummarizeOutcome {
+    /// `summarized` / `noop`。
+    pub action: String,
+    /// 被压缩掉的源记忆条数。
+    pub summarized: usize,
+    /// 新摘要记忆的 ID（`noop` 时为 None）。
+    pub memory_id: Option<String>,
+    /// 摘要预览，或未执行的原因。
+    pub detail: String,
+}
+
+/// 供 UI 浏览的一条长期记忆（同一 `memory_id` 的分块已聚合，标签已从正文剥离）。
+#[derive(Clone, Debug, serde::Serialize)]
+pub struct MemoryItem {
+    pub memory_id: String,
+    pub content: String,
+    /// `store` 时传入的标签（正文末尾 `\n[标签: …]` 行拆出来的元数据）。
+    pub tags: Vec<String>,
+    /// 创建时间（Unix 毫秒）。
+    pub created_at: i64,
+}
+
+/// 聚合成单条后的记忆（同一 `memory_id` 的分块按序拼接）。
+struct MemoryEntry {
+    memory_id: String,
+    content: String,
+    created_at: i64,
 }
 
 /// 去重判定结果。
@@ -59,7 +108,7 @@ enum DedupDecision {
     Store,
 }
 
-/// 嵌入 + 向量存储 + 混合检索 + 去重的统一入口。
+/// 嵌入 + 向量存储 + 混合检索 + 去重 + 摘要的统一入口。
 pub struct MemoryService {
     db: DatabaseConnection,
     llm: LlmSlot,
@@ -68,10 +117,14 @@ pub struct MemoryService {
     enabled: bool,
     top_k: usize,
     min_score: f64,
+    /// 摘要互斥锁：压缩要跨「LLM 生成 + 删源条目」，并发跑会产出重复摘要。
+    summarize_lock: tokio::sync::Mutex<()>,
+    /// 后台自动摘要是否正在跑（防止连续写入堆起一串压缩任务）。
+    auto_summarize_running: std::sync::atomic::AtomicBool,
 }
 
 impl MemoryService {
-    /// 从启动时的配置快照构造。`llm` 是聊天 LLM 槽位，去重合并复用它。
+    /// 从启动时的配置快照构造。`llm` 是聊天 LLM 槽位，去重合并与摘要复用它。
     pub fn new(db: DatabaseConnection, llm: LlmSlot, cfg: &AppConfig) -> Self {
         Self {
             db,
@@ -85,6 +138,8 @@ impl MemoryService {
             enabled: cfg.memory_enabled,
             top_k: cfg.memory_top_k as usize,
             min_score: cfg.memory_min_score,
+            summarize_lock: tokio::sync::Mutex::new(()),
+            auto_summarize_running: std::sync::atomic::AtomicBool::new(false),
         }
     }
 
@@ -210,6 +265,153 @@ impl MemoryService {
             deleted.push((row.content, score));
         }
         Ok(deleted)
+    }
+
+    /// 某角色当前的记忆条数（按 `memory_id` 去重，分块不重复计）。
+    pub async fn count_memories(&self, role_id: i32) -> Result<usize> {
+        store::count_role_memories(&self.db, role_id).await
+    }
+
+    /// 列出某角色的全部长期记忆（最新在前），供设置页「记忆系统」浏览面板使用。
+    ///
+    /// 只读库表：不依赖嵌入配置，`memory_enabled` 关闭时也能查看和清理已存内容。
+    pub async fn list_memories(&self, role_id: i32) -> Result<Vec<MemoryItem>> {
+        let rows = store::load_role_rows(&self.db, role_id).await?;
+        let mut entries = group_entries(rows);
+        entries.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then(a.memory_id.cmp(&b.memory_id))
+        });
+        Ok(entries
+            .into_iter()
+            .map(|entry| {
+                let (content, tags) = split_tags_suffix(&entry.content);
+                MemoryItem {
+                    memory_id: entry.memory_id,
+                    content: content.to_string(),
+                    tags,
+                    created_at: entry.created_at,
+                }
+            })
+            .collect())
+    }
+
+    /// 摘要：把较早的一批记忆压缩成一条 `summary` 记忆，随后删除源条目。
+    ///
+    /// `keep_recent` 条最新的记忆保持原样（越新越可能还被用到）；更早的按时间从旧
+    /// 到新挑选，直到 [`SUMMARIZE_MAX_CHARS`] 字符预算用完，剩下的留到下一轮。
+    /// 全程持 [`summarize_lock`](Self::summarize_lock)，并发调用会串行执行，
+    /// 后到者重新取快照后通常已无可压缩内容，返回 `noop`。
+    ///
+    /// 顺序是「先插摘要、再删源条目」：插入（含远程嵌入）失败时源记忆原样保留，
+    /// 不会因为压缩出错丢数据。
+    pub async fn summarize(&self, role_id: i32, keep_recent: usize) -> Result<SummarizeOutcome> {
+        let _serialized = self.summarize_lock.lock().await;
+
+        let rows = store::load_role_rows(&self.db, role_id).await?;
+        let mut entries = group_entries(rows);
+        if entries.is_empty() {
+            return Ok(noop_outcome("记忆库为空，无需摘要".to_string()));
+        }
+        // 最新在前，方便按 keep_recent 切出「保留区」；keep_recent = 0 表示全部参与压缩。
+        entries.sort_by(|a, b| {
+            b.created_at
+                .cmp(&a.created_at)
+                .then(a.memory_id.cmp(&b.memory_id))
+        });
+        let keep = keep_recent.min(entries.len());
+        let mut candidates = entries.split_off(keep);
+        if candidates.len() < MIN_SUMMARIZE_ENTRIES {
+            return Ok(noop_outcome(format!(
+                "保留最新 {} 条后只剩 {} 条较早记忆，未达到摘要门槛 {MIN_SUMMARIZE_ENTRIES} 条，无需整理",
+                keep,
+                candidates.len()
+            )));
+        }
+
+        // 从最旧的开始挑；至少压缩 MIN_SUMMARIZE_ENTRIES 条（候选数已由上一道闸保证），
+        // 其余按字符预算取，超预算的部分留到下一轮。
+        candidates.sort_by(|a, b| a.created_at.cmp(&b.created_at));
+        let mut selected = Vec::new();
+        let mut budget = 0usize;
+        for entry in candidates {
+            let len = entry.content.chars().count();
+            if selected.len() >= MIN_SUMMARIZE_ENTRIES && budget + len > SUMMARIZE_MAX_CHARS {
+                break;
+            }
+            budget += len;
+            selected.push(entry);
+            if budget >= SUMMARIZE_MAX_CHARS && selected.len() >= MIN_SUMMARIZE_ENTRIES {
+                break;
+            }
+        }
+
+        let source_count = selected.len();
+        let summary = self.llm_summarize(&selected).await?;
+        // 先插后删：这一步失败只是没压成，不能反过来先删了源条目。
+        let memory_id = self
+            .insert_memory(role_id, &summary, &[SUMMARY_TAG.to_string()])
+            .await?;
+        for entry in &selected {
+            store::delete_memory_scoped(&self.db, role_id, &entry.memory_id).await?;
+        }
+
+        let preview: String = summary.chars().take(100).collect();
+        Ok(SummarizeOutcome {
+            action: "summarized".into(),
+            summarized: source_count,
+            memory_id: Some(memory_id),
+            detail: format!("{preview}…"),
+        })
+    }
+
+    /// 尝试占用「后台自动摘要」槽位；已有任务在跑时返回 false。
+    fn try_begin_auto_summarize(&self) -> bool {
+        self.auto_summarize_running
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_ok()
+    }
+
+    /// 释放自动摘要槽位。
+    fn end_auto_summarize(&self) {
+        self.auto_summarize_running.store(false, Ordering::SeqCst);
+    }
+
+    /// 让 LLM 把一批较早的记忆压缩成一条摘要正文。
+    async fn llm_summarize(&self, entries: &[MemoryEntry]) -> Result<String> {
+        let client: Arc<LlmClient> = slot_snapshot(&self.llm)
+            .await
+            .context("未配置聊天 LLM，无法生成记忆摘要")?;
+
+        let mut listing = String::new();
+        for (index, entry) in entries.iter().enumerate() {
+            listing.push_str(&format!(
+                "{}. {}\n",
+                index + 1,
+                strip_tags_suffix(&entry.content)
+            ));
+        }
+        let prompt = format!(
+            "以下是同一个角色记忆库中较早的一批记忆：\n\
+             \n{listing}\n\
+             请把它们压缩成一条连贯的摘要：\n\
+             - 保留全部关键事实（人物关系、约定、承诺、偏好、重要事件与时间）；\n\
+             - 去掉重复与无关细节，互相矛盾的表述保留较新的说法；\n\
+             - 不要添加原文没有的信息，不要解释你做了什么；\n\
+             - 直接输出摘要正文（可分多行），不要输出 JSON、序号或标题。"
+        );
+        let reply = client
+            .complete(&[
+                LlmMessage::system("你是长期记忆压缩器，只输出压缩后的摘要正文。"),
+                LlmMessage::user(prompt),
+            ])
+            .await?;
+        let summary = reply.trim();
+        if summary.is_empty() {
+            return Err(anyhow!("LLM 返回了空摘要"));
+        }
+        Ok(summary.to_string())
     }
 
     /// 逐块嵌入并写入一张记忆。
@@ -353,6 +555,109 @@ fn extract_json(text: &str) -> Result<serde_json::Value> {
     serde_json::from_str(&text[start..=end]).context("JSON 解析失败")
 }
 
+/// 把按 `memory_id` 分组的分块行聚合成单条记忆（分块按 `chunk_index` 拼接）。
+fn group_entries(rows: Vec<MemoryRow>) -> Vec<MemoryEntry> {
+    let mut ordered = rows;
+    ordered.sort_by(|a, b| {
+        a.memory_id
+            .cmp(&b.memory_id)
+            .then(a.chunk_index.cmp(&b.chunk_index))
+    });
+
+    let mut entries: Vec<MemoryEntry> = Vec::new();
+    for row in ordered {
+        match entries.last_mut() {
+            Some(last) if last.memory_id == row.memory_id => {
+                last.content.push_str(&row.content);
+                last.created_at = last.created_at.min(row.created_at);
+            },
+            _ => entries.push(MemoryEntry {
+                memory_id: row.memory_id,
+                content: row.content,
+                created_at: row.created_at,
+            }),
+        }
+    }
+    entries
+}
+
+/// `store` 会把标签拼进正文末尾（`\n[标签: a,b]`）；拆成「正文 + 标签列表」两部分。
+/// 只有当它是最后一行（其后不再换行）时才拆，避免误伤正文里提到的同名片段。
+fn split_tags_suffix(content: &str) -> (&str, Vec<String>) {
+    let Some(index) = content.rfind("\n[标签: ") else {
+        return (content, Vec::new());
+    };
+    if content[index + 1..].contains('\n') {
+        return (content, Vec::new());
+    }
+    let line = &content[index + 1..]; // "[标签: a,b]"
+    match line
+        .strip_prefix("[标签: ")
+        .and_then(|s| s.strip_suffix(']'))
+    {
+        Some(inner) => (
+            &content[..index],
+            inner
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .map(str::to_string)
+                .collect(),
+        ),
+        None => (content, Vec::new()),
+    }
+}
+
+/// [`split_tags_suffix`] 的正文部分：喂给摘要 LLM 前剥掉标签行，
+/// 标签只作为元数据存在，不该占摘要的篇幅。
+fn strip_tags_suffix(content: &str) -> &str {
+    split_tags_suffix(content).0
+}
+
+/// 构造 `noop` 结果。
+fn noop_outcome(detail: String) -> SummarizeOutcome {
+    SummarizeOutcome {
+        action: "noop".into(),
+        summarized: 0,
+        memory_id: None,
+        detail,
+    }
+}
+
+/// 写入后的自动摘要闸门：记忆条数越过 [`AUTO_SUMMARIZE_THRESHOLD`] 且当前没有
+/// 摘要任务在跑时，后台把较早的记忆压缩成一条，不阻塞调用方。
+///
+/// 每次写入调用一次，成本只是一次计数查询；计数与压缩都在后台任务里完成。
+pub fn spawn_auto_summarize_if_needed(memory: Arc<MemoryService>, role_id: i32) {
+    tokio::spawn(async move {
+        let count = match memory.count_memories(role_id).await {
+            Ok(count) => count,
+            Err(error) => {
+                tracing::warn!("自动记忆摘要：计数失败: {error}");
+                return;
+            },
+        };
+        if count < AUTO_SUMMARIZE_THRESHOLD {
+            return;
+        }
+        if !memory.try_begin_auto_summarize() {
+            return;
+        }
+        let outcome = memory.summarize(role_id, DEFAULT_KEEP_RECENT).await;
+        memory.end_auto_summarize();
+        match outcome {
+            Ok(result) if result.action == "summarized" => tracing::info!(
+                role_id,
+                summarized = result.summarized,
+                total_after = count.saturating_sub(result.summarized),
+                "记忆条数越过阈值，后台自动摘要完成"
+            ),
+            Ok(_) => tracing::debug!(role_id, "自动摘要无可压缩内容"),
+            Err(error) => tracing::warn!(role_id, "后台自动摘要失败: {error}"),
+        }
+    });
+}
+
 /// 给前端/调试用的当前配置摘要。
 pub fn describe(service: &MemoryService) -> serde_json::Value {
     let (top_k, min_score) = service.defaults();
@@ -361,5 +666,7 @@ pub fn describe(service: &MemoryService) -> serde_json::Value {
         "configured": service.is_configured(),
         "top_k": top_k,
         "min_score": min_score,
+        "auto_summarize_threshold": AUTO_SUMMARIZE_THRESHOLD,
+        "keep_recent": DEFAULT_KEEP_RECENT,
     })
 }

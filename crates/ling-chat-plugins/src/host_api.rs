@@ -3,8 +3,9 @@
 //! 三类能力：
 //! - **HTTP**：`http_get` / `http_post`，复用 `factory::build_http_client`
 //!   （webpki-roots，Android 兼容），返回 `{ status, ok, body }`。
-//! - **宿主控制**：`switch_character`（完整切换当前角色）、以及台词历史（上下文
-//!   源）的 `read_context` / `edit_context` / `compress_context`。
+//! - **宿主控制**：`switch_character`（完整切换当前角色）、台词历史（上下文
+//!   源）的 `read_context` / `edit_context`，以及 `compress_context`
+//!   （触发长期记忆摘要，见其函数文档）。
 //! - **读素材**：`read_data_file`，把 `data/` 下的文件（角色立绘、TTS 语音等）
 //!   读成 base64 交给插件；只允许 `data/` 内的相对路径，且必须落在该插件
 //!   manifest `read` 声明的前缀之下（未声明一律拒绝）。
@@ -280,10 +281,55 @@ async fn edit_context_impl(
     }
 }
 
-/// 旧版「记忆压缩」入口：记忆链路已迁移到工具驱动的向量记忆，压缩不再存在。
-/// 保留返回结构以兼容老插件的调用与判断。
-async fn compress_context_impl(_app: AppHandle) -> serde_json::Value {
-    serde_json::json!({ "ok": true, "triggered": 0 })
+/// 触发长期记忆摘要：把记忆条数达到阈值的角色的较早记忆压缩成一条摘要。
+///
+/// 记忆链路迁移到工具驱动的向量记忆后，这里的「压缩」= `MemoryService::summarize`
+/// （LLM 合并 → 先插摘要再删源条目）。调用约定与旧版保持一致：仍返回
+/// `{ ok, triggered }`，没开记忆功能 / 没配嵌入 / 没有角色达到阈值时直接返回
+/// `triggered: 0`。会调用 LLM，可能耗时数秒。
+async fn compress_context_impl(app: AppHandle) -> serde_json::Value {
+    use crate::ai_service::memory::{AUTO_SUMMARIZE_THRESHOLD, DEFAULT_KEEP_RECENT};
+
+    let state = app.state::<AppState>();
+    let memory = state.memory.clone();
+    if !memory.enabled() || !memory.is_configured() {
+        return serde_json::json!({ "ok": true, "triggered": 0 });
+    }
+
+    let role_ids = match crate::ai_service::memory::store::role_ids_with_memories(&state.db).await {
+        Ok(role_ids) => role_ids,
+        Err(error) => {
+            tracing::warn!("compress_context 读取记忆角色列表失败: {error}");
+            return serde_json::json!({ "ok": true, "triggered": 0 });
+        },
+    };
+
+    let mut triggered = 0u32;
+    for role_id in role_ids {
+        let count = match memory.count_memories(role_id).await {
+            Ok(count) => count,
+            Err(error) => {
+                tracing::warn!(role_id, "compress_context 计数失败: {error}");
+                continue;
+            },
+        };
+        if count < AUTO_SUMMARIZE_THRESHOLD {
+            continue;
+        }
+        match memory.summarize(role_id, DEFAULT_KEEP_RECENT).await {
+            Ok(outcome) if outcome.action == "summarized" => {
+                tracing::info!(
+                    role_id,
+                    summarized = outcome.summarized,
+                    "compress_context 完成记忆摘要"
+                );
+                triggered += 1;
+            },
+            Ok(_) => {},
+            Err(error) => tracing::warn!(role_id, "compress_context 记忆摘要失败: {error}"),
+        }
+    }
+    serde_json::json!({ "ok": true, "triggered": triggered })
 }
 
 // ── 读素材 ──

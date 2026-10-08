@@ -331,7 +331,8 @@ export default {
     approvalDefaultCwd: "(default sandbox)",
     groups: {
       schedule: "Schedule & To-dos (view, add, update, delete)",
-      memory: "Long-term Memory (store vector memories, semantic search)",
+      memory:
+        "Long-term Memory (store, delete, summarize; retrieval happens automatically each turn)",
       character: "Character Switching (list/switch present characters)",
       scene: "Scene Switching (list/switch scenes)",
       status: "Status Queries (current/scene status)",
@@ -349,8 +350,8 @@ export default {
       schedule_update_todo: "Update To-do",
       schedule_delete_todo: "Delete To-do",
       memory_store: "Store Memory",
-      vector_search: "Search Memory",
       memory_delete: "Delete Memory",
+      memory_summarize: "Summarize Memories",
       character_list: "List Characters",
       character_switch: "Switch Character",
       character_get_clothes: "Get Outfit",

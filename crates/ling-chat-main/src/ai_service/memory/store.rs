@@ -1,7 +1,7 @@
 //! `memory_embeddings` 表的读写：分块、向量序列化、按角色增删查。
 
 use anyhow::{Context, Result};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
 
 use crate::db::entities::memory_embedding;
 
@@ -100,6 +100,31 @@ pub async fn delete_memory_scoped(
         .exec(db)
         .await?;
     Ok(deleted.rows_affected as usize)
+}
+
+/// 某角色当前的记忆条数（按 `memory_id` 去重，分块不重复计）。
+pub async fn count_role_memories(db: &DatabaseConnection, role_id: i32) -> Result<usize> {
+    let ids: Vec<String> = memory_embedding::Entity::find()
+        .select_only()
+        .column(memory_embedding::Column::MemoryId)
+        .distinct()
+        .filter(memory_embedding::Column::RoleId.eq(role_id))
+        .into_tuple()
+        .all(db)
+        .await?;
+    Ok(ids.len())
+}
+
+/// 存在长期记忆的角色 ID 列表（供压缩入口遍历所有角色）。
+pub async fn role_ids_with_memories(db: &DatabaseConnection) -> Result<Vec<i32>> {
+    let role_ids: Vec<i32> = memory_embedding::Entity::find()
+        .select_only()
+        .column(memory_embedding::Column::RoleId)
+        .distinct()
+        .into_tuple()
+        .all(db)
+        .await?;
+    Ok(role_ids)
 }
 
 /// 读取某角色的全部记忆分块（按记忆、分块序排好）。

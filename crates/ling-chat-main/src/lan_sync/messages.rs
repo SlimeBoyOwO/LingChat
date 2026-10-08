@@ -139,6 +139,12 @@ pub struct DbRecords {
     #[serde(default)]
     pub memory_banks: Vec<serde_json::Value>,
     pub line_perceptions: Vec<serde_json::Value>,
+    /// 长期记忆向量行（`memory_embeddings`），`embedding` 以 base64 字符串传输。
+    ///
+    /// `Option` 用于区分对端版本：`None` = 旧对端没发这个字段（导入时保留本地记忆、
+    /// 不做镜像），`Some` = 新对端，整表镜像（先清后插，与其它表一致）。
+    #[serde(default)]
+    pub memory_embeddings: Option<Vec<serde_json::Value>>,
 }
 
 // ─── 进度事件 ────────────────────────────────────────────────
