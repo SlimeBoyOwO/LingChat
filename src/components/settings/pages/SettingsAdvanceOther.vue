@@ -232,6 +232,113 @@
             </div>
           </section>
 
+          <!-- 旧版存档记忆整合：一键导入 + 浏览/删除独立归档表 -->
+          <section
+            v-if="activeSelection.subcategory === '记忆系统'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.legacyMemory.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.legacyMemory.desc") }}
+            </p>
+            <div class="flex flex-wrap items-center gap-2">
+              <Button type="big" :disabled="legacyImporting" @click="runLegacyImport">
+                <RefreshCw :size="18" :class="{ 'animate-spin': legacyImporting }" />
+                {{
+                  legacyImporting
+                    ? $t("settings.advanceOther.legacyMemory.importing")
+                    : $t("settings.advanceOther.legacyMemory.importButton")
+                }}
+              </Button>
+              <button
+                v-if="legacyArchives.length"
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="legacyLoading"
+                @click="refreshLegacyArchives"
+              >
+                {{ $t("settings.advanceOther.memoryViewer.refresh") }}
+              </button>
+            </div>
+
+            <p v-if="legacyError" class="mt-3 mb-0 text-sm text-red-400">{{ legacyError }}</p>
+
+            <div v-if="legacyLoading" class="mt-3 text-sm text-white/60">
+              {{ $t("settings.advanceOther.memoryViewer.loading") }}
+            </div>
+
+            <div v-else-if="legacyArchives.length" class="mt-3 flex flex-col gap-2">
+              <div
+                v-for="archive in legacyArchives"
+                :key="archive.id"
+                class="rounded-lg border border-white/10 bg-black/25 p-3"
+              >
+                <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <span class="text-sm font-medium break-words text-white">
+                      {{ archive.role_name }}
+                    </span>
+                    <span class="ml-2 text-xs text-white/50">
+                      {{
+                        archive.script_key
+                          ? archive.script_key
+                          : $t("settings.advanceOther.legacyMemory.globalScript")
+                      }}{{ archive.script_role_key ? " / " + archive.script_role_key : "" }}
+                    </span>
+                  </div>
+                  <div class="flex flex-none items-center gap-2 text-xs">
+                    <span class="text-white/50">{{ archive.entry_count }}</span>
+                    <button
+                      class="cursor-pointer rounded-md border border-white/15 bg-white/10 px-2 py-1 text-xs text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                      :disabled="legacyDeletingId === archive.id"
+                      @click="toggleLegacyArchive(archive)"
+                    >
+                      {{
+                        legacyEntries[archive.id] !== undefined
+                          ? $t("settings.advanceOther.legacyMemory.hide")
+                          : $t("settings.advanceOther.legacyMemory.view")
+                      }}
+                    </button>
+                    <button
+                      class="cursor-pointer rounded-md border border-red-400/30 bg-red-400/10 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-60"
+                      :disabled="legacyDeletingId === archive.id"
+                      @click="removeLegacyArchive(archive)"
+                    >
+                      {{
+                        legacyDeletingId === archive.id
+                          ? $t("settings.advanceOther.legacyMemory.deleting")
+                          : $t("settings.advanceOther.legacyMemory.delete")
+                      }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="legacyEntries[archive.id]" class="mt-2 flex flex-col gap-2">
+                  <p v-if="!legacyEntries[archive.id].length" class="m-0 text-sm text-white/60">
+                    {{ $t("settings.advanceOther.legacyMemory.emptyEntry") }}
+                  </p>
+                  <div
+                    v-for="entry in legacyEntries[archive.id]"
+                    :key="entry.id"
+                    class="rounded-md border border-white/10 bg-black/20 p-2"
+                  >
+                    <span class="mb-1 block text-xs text-white/50">
+                      {{ sectionLabel(entry.section) }}
+                    </span>
+                    <p class="m-0 text-sm leading-6 break-words whitespace-pre-wrap text-white/90">
+                      {{ entry.content }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="legacyLoaded" class="mt-3 text-sm text-white/60">
+              {{ $t("settings.advanceOther.legacyMemory.empty") }}
+            </div>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
@@ -275,8 +382,15 @@ import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
 import {
   deleteMemory,
+  deleteMemoryArchive,
+  getMemoryArchive,
+  importLegacyMemories,
   listMemories,
+  listMemoryArchives,
   listMemoryRoles,
+  type LegacyImportResult,
+  type MemoryArchiveEntry,
+  type MemoryArchiveSummary,
   type MemoryItem,
   type MemoryRoleSummary,
 } from "@/api/services/memory";
@@ -500,6 +614,106 @@ const removeMemory = async (item: MemoryItem) => {
   }
 };
 
+// --- 旧版存档记忆整合面板（每「剧本 × 角色」独立归档表） ---
+const legacyImporting = ref(false);
+const legacyLoading = ref(false);
+const legacyLoaded = ref(false);
+const legacyError = ref("");
+const legacyArchives = ref<MemoryArchiveSummary[]>([]);
+const legacyEntries = ref<Record<number, MemoryArchiveEntry[]>>({});
+const legacyDeletingId = ref<number | null>(null);
+
+const legacyErrorText = (error: unknown) =>
+  t("settings.advanceOther.legacyMemory.loadFailed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const sectionLabel = (section: string) =>
+  te(`settings.advanceOther.legacyMemory.sectionLabels.${section}`)
+    ? t(`settings.advanceOther.legacyMemory.sectionLabels.${section}`)
+    : section;
+
+const refreshLegacyArchives = async () => {
+  if (legacyLoading.value) return;
+  legacyLoading.value = true;
+  legacyError.value = "";
+  try {
+    legacyArchives.value = await listMemoryArchives();
+    legacyLoaded.value = true;
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyLoading.value = false;
+  }
+};
+
+const runLegacyImport = async () => {
+  if (legacyImporting.value) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.legacyMemory.importConfirm"),
+    t("settings.advanceOther.legacyMemory.importConfirmTitle"),
+  );
+  if (!confirmed) return;
+  legacyImporting.value = true;
+  legacyError.value = "";
+  try {
+    const result: LegacyImportResult = await importLegacyMemories();
+    await refreshLegacyArchives();
+    await dialogStore.alert(
+      t("settings.advanceOther.legacyMemory.importSum", {
+        legacyRows: result.legacy_rows,
+        imported: result.imported_roles,
+        memories: result.memories_written,
+        skippedExisting: result.skipped_existing,
+        skippedEmpty: result.skipped_empty,
+      }),
+      t("settings.advanceOther.legacyMemory.importTitle"),
+    );
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyImporting.value = false;
+  }
+};
+
+const toggleLegacyArchive = async (archive: MemoryArchiveSummary) => {
+  if (legacyEntries.value[archive.id] !== undefined) {
+    const next = { ...legacyEntries.value };
+    delete next[archive.id];
+    legacyEntries.value = next;
+    return;
+  }
+  legacyError.value = "";
+  try {
+    const entries = await getMemoryArchive(archive.id);
+    legacyEntries.value = { ...legacyEntries.value, [archive.id]: entries };
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  }
+};
+
+const removeLegacyArchive = async (archive: MemoryArchiveSummary) => {
+  if (legacyDeletingId.value !== null) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.legacyMemory.deleteConfirm"),
+    t("settings.advanceOther.legacyMemory.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  legacyDeletingId.value = archive.id;
+  legacyError.value = "";
+  try {
+    await deleteMemoryArchive(archive.id);
+    const next = { ...legacyEntries.value };
+    delete next[archive.id];
+    legacyEntries.value = next;
+    await refreshLegacyArchives();
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyDeletingId.value = null;
+  }
+};
+
 const loadConfig = async (selectFirst = true) => {
   isLoading.value = true;
   try {
@@ -574,6 +788,7 @@ onMounted(async () => {
   await nextTick();
   updateIndicatorPosition();
   setupNavResizeObserver();
+  refreshLegacyArchives();
 });
 
 onUnmounted(() => {

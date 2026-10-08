@@ -97,6 +97,11 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::memory::memory_list_roles,
         api::memory::memory_list,
         api::memory::memory_delete,
+        // ── 旧版存档记忆一键整合（「记忆系统」面板） ──
+        api::memory_archive::memory_import_legacy,
+        api::memory_archive::memory_archive_list,
+        api::memory_archive::memory_archive_get,
+        api::memory_archive::memory_archive_delete,
         api::ambient::get_ambient_list,
         api::ambient::upload_ambient,
         api::ambient::delete_ambient,

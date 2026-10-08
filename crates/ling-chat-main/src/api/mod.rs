@@ -14,6 +14,7 @@ pub mod game;
 pub mod live2d;
 pub mod locale;
 pub mod memory;
+pub mod memory_archive;
 pub mod music;
 pub mod pet;
 pub mod save;
