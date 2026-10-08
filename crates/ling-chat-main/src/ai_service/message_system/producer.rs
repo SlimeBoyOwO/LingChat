@@ -6,9 +6,7 @@
 //! - 把这一整段（含 tag）作为一个句子送出，索引递增。
 //! - 结束时剩余缓冲（情绪tag + 尾部正文）单独作为最后一个句子，标记 `is_final=true`。
 //!
-//! 与旧版差异：
-//! - Python 里还会调用一个 `num_end > 0 && buffer[num_end]=='】'` 的数字拆分分支，
-//!   用于拦截 `【1】` 之类非情绪 tag 的起始符；这里等价处理（仍按 `【...】` 捕获）。
+//! 分句只依赖标签边界，不依赖网络 chunk 大小；`【1】` 等数字标签同样处理。
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -96,7 +94,6 @@ impl StreamProducer {
         let mut last_display = Instant::now();
 
         let mut buffer = String::new();
-        let mut sentence = String::new();
         let mut sentence_index: usize = 0;
         // 本轮回复内已投递句子的归一化集合：模型在多轮工具调用间容易把
         // 开场白复读一遍，逐字重复的句子直接丢弃（短句豁免，避免误伤语气词）。
@@ -127,84 +124,28 @@ impl StreamProducer {
                         last_display = now;
                     }
 
-                    // 句子切分
-                    loop {
-                        if !buffer.contains('【') {
+                    // 当前标签闭合且下一个标签已开始，才说明当前段的正文完整。
+                    // 一次耗尽所有完整段，不能把网络 chunk 边界当成句子边界。
+                    while let Some(start) = buffer.find('【') {
+                        let after_start = start + '【'.len_utf8();
+                        let Some(close) = buffer[after_start..].find('】') else {
                             break;
-                        }
-
-                        if !sentence.is_empty() {
-                            // 已有 sentence 开头，等 】 闭合
-                            let Some(end_byte) = buffer.find('】') else {
-                                break;
-                            };
-                            let after_close = end_byte + '】'.len_utf8();
-                            sentence.push_str(&buffer[..after_close]);
-                            buffer.drain(..after_close);
-
-                            // 再向后吃到下一个【
-                            if let Some(next_start) = buffer.find('【') {
-                                sentence.push_str(&buffer[..next_start]);
-                                buffer.drain(..next_start);
-                            } else {
-                                sentence.push_str(&buffer);
-                                buffer.clear();
-                            }
-
-                            Self::dispatch_sentence(
-                                &self.tx,
-                                &mut sentence,
-                                &mut sentence_index,
-                                &mut seen_sentences,
-                                &mut pending_sentence,
-                                &self.tool_calls_seen,
-                            )
-                            .await?;
-                        } else {
-                            // 寻找新情绪 tag 起点
-                            let Some(start_byte) = buffer.find('【') else {
-                                break;
-                            };
-                            let after_start = start_byte + '【'.len_utf8();
-                            sentence.push_str(&buffer[..after_start]);
-                            buffer.drain(..after_start);
-
-                            // 处理 `【数字】` 这类非情绪标签（例如 【1】）
-                            // 旧版检测：buffer 开头是不是全数字，若是就当作一个完整闭合句子
-                            let mut num_end = 0usize;
-                            for c in buffer.chars() {
-                                if c.is_ascii_digit() {
-                                    num_end += c.len_utf8();
-                                } else {
-                                    break;
-                                }
-                            }
-                            if num_end > 0 && buffer[num_end..].starts_with('】') {
-                                let close_end = num_end + '】'.len_utf8();
-                                sentence.push_str(&buffer[..close_end]);
-                                buffer.drain(..close_end);
-
-                                if let Some(next_start) = buffer.find('【') {
-                                    sentence.push_str(&buffer[..next_start]);
-                                    buffer.drain(..next_start);
-                                } else {
-                                    sentence.push_str(&buffer);
-                                    buffer.clear();
-                                }
-                                Self::dispatch_sentence(
-                                    &self.tx,
-                                    &mut sentence,
-                                    &mut sentence_index,
-                                    &mut seen_sentences,
-                                    &mut pending_sentence,
-                                    &self.tool_calls_seen,
-                                )
-                                .await?;
-                            } else {
-                                // 不完整句子，等下一轮 chunk
-                                break;
-                            }
-                        }
+                        };
+                        let after_close = after_start + close + '】'.len_utf8();
+                        let Some(next_start) = buffer[after_close..].find('【') else {
+                            break;
+                        };
+                        let boundary = after_close + next_start;
+                        let mut sentence = buffer.drain(..boundary).collect();
+                        Self::dispatch_sentence(
+                            &self.tx,
+                            &mut sentence,
+                            &mut sentence_index,
+                            &mut seen_sentences,
+                            &mut pending_sentence,
+                            &self.tool_calls_seen,
+                        )
+                        .await?;
                     }
                 },
                 PresentationChunk::Chunk(LlmChunk::Reasoning(text)) => {
@@ -247,9 +188,7 @@ impl StreamProducer {
                         Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
                     }
 
-                    let mut preamble = std::mem::take(&mut sentence);
-                    preamble.push_str(&buffer);
-                    buffer.clear();
+                    let preamble = std::mem::take(&mut buffer);
                     let preamble = fix_ai_generated_text(&preamble);
                     // `is_duplicate` 会顺带把文本记入 `seen_sentences`：工具后模型若原样
                     // 复读这段前导，EOF 收尾时才认得出它是重复（否则会多显示一条）。
@@ -274,12 +213,7 @@ impl StreamProducer {
         }
 
         // 最后一个句子
-        let final_content_raw = {
-            let mut s = String::new();
-            s.push_str(&sentence);
-            s.push_str(&buffer);
-            s
-        };
+        let final_content_raw = buffer;
         if !final_content_raw.is_empty() {
             let final_content = fix_ai_generated_text(&final_content_raw);
             accumulated = fix_ai_generated_text(&accumulated);
@@ -369,5 +303,187 @@ impl StreamProducer {
             return false;
         }
         !seen.insert(normalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Reply = (String, usize, bool);
+
+    async fn run_stream(
+        chunks: Vec<PresentationChunk>,
+        tools_seen: bool,
+    ) -> (ProducerOutput, Vec<SentenceItem>) {
+        let (tx, mut rx) = mpsc::channel(32);
+        let producer = StreamProducer {
+            llm_stream: Box::pin(futures_util::stream::iter(chunks.into_iter().map(Ok))),
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(tools_seen)),
+        };
+        let task = tokio::spawn(producer.run());
+        let mut items = Vec::new();
+        while let Some(item) = rx.recv().await {
+            items.push(item);
+        }
+        (task.await.unwrap().unwrap(), items)
+    }
+
+    fn content(text: &str) -> PresentationChunk {
+        PresentationChunk::Chunk(LlmChunk::Content(text.to_owned()))
+    }
+
+    async fn replies(chunks: &[&str], tools_seen: bool) -> (ProducerOutput, Vec<Reply>) {
+        let (output, items) =
+            run_stream(chunks.iter().map(|s| content(s)).collect(), tools_seen).await;
+        let replies = items
+            .into_iter()
+            .map(|item| match item {
+                SentenceItem::Reply(text, index, is_final) => (text, index, is_final),
+                SentenceItem::BeforeTools { .. } => panic!("unexpected tool barrier"),
+            })
+            .collect();
+        (output, replies)
+    }
+
+    #[tokio::test]
+    async fn multiple_sentences_in_one_chunk_are_all_emitted() {
+        let text = "【开心】第一句。【认真】第二句。【期待】第三句。【平静】第四句。";
+        let (output, actual) = replies(&[text], false).await;
+        assert_eq!(output.accumulated, text);
+        assert!(output.sent_final);
+        assert_eq!(
+            actual,
+            vec![
+                ("【开心】第一句。".into(), 0, false),
+                ("【认真】第二句。".into(), 1, false),
+                ("【期待】第三句。".into(), 2, false),
+                ("【平静】第四句。".into(), 3, true),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sentence_output_is_independent_of_chunk_boundaries() {
+        let text = "【开心】你好🙂<こんにちは>（挥手）【2】第二句。【平静】再见。";
+        let (_, expected) = replies(&[text], false).await;
+        assert_eq!(expected.len(), 3);
+        // 每一个合法 UTF-8 切点都覆盖一次，包括标签内部和正文/译文/动作内部。
+        for boundary in text.char_indices().map(|(i, _)| i).chain([text.len()]) {
+            let (output, actual) =
+                replies(&[&text[..boundary], "", &text[boundary..]], false).await;
+            assert_eq!(actual, expected, "split at byte {boundary}");
+            assert!(output.sent_final);
+        }
+        let characters: Vec<String> = text.chars().map(|c| c.to_string()).collect();
+        let chunks: Vec<&str> = characters.iter().map(String::as_str).collect();
+        assert_eq!(replies(&chunks, false).await.1, expected);
+    }
+
+    #[tokio::test]
+    async fn a_single_sentence_waits_for_eof_and_is_final() {
+        let (output, actual) = replies(&["【", "开心", "】", "你好", "世界。"], false).await;
+        assert!(output.sent_final);
+        assert_eq!(actual, vec![("【开心】你好世界。".into(), 0, true)]);
+        let (empty, actual) = replies(&[""], false).await;
+        assert!(!empty.sent_final);
+        assert!(actual.is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_sentences_are_emitted_before_the_stream_ends() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let (release, wait) = oneshot::channel::<()>();
+        let stream = futures_util::stream::iter(vec![Ok(content("【开心】第一句。【平静】"))])
+            .chain(futures_util::stream::once(async move {
+                wait.await.unwrap();
+                Ok(content("第二句。"))
+            }));
+        let producer = StreamProducer {
+            llm_stream: Box::pin(stream),
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(false)),
+        };
+        let task = tokio::spawn(producer.run());
+        let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(first, SentenceItem::Reply(text, 0, false) if text == "【开心】第一句。"));
+        release.send(()).unwrap();
+        assert!(
+            matches!(rx.recv().await, Some(SentenceItem::Reply(text, 1, true)) if text == "【平静】第二句。")
+        );
+        assert!(task.await.unwrap().unwrap().sent_final);
+    }
+
+    #[tokio::test]
+    async fn tool_barrier_flushes_all_preamble_sentences_in_order() {
+        let (ack, _wait) = oneshot::channel();
+        let (output, items) = run_stream(
+            vec![
+                content("【开心】先说明。【认真】再检查。"),
+                PresentationChunk::BeforeTools(ack),
+                content("【平静】完成。"),
+            ],
+            true,
+        )
+        .await;
+        let mut items = items.into_iter();
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 0, false)) if text == "【开心】先说明。")
+        );
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 1, false)) if text == "【认真】再检查。")
+        );
+        assert!(matches!(
+            items.next(),
+            Some(SentenceItem::BeforeTools { index: 2, .. })
+        ));
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 3, true)) if text == "【平静】完成。")
+        );
+        assert!(items.next().is_none());
+        assert!(output.sent_final);
+    }
+
+    #[tokio::test]
+    async fn duplicate_tool_tail_promotes_the_last_distinct_sentence() {
+        let first = "【认真】这是一句足够长的说明。";
+        let second = "【开心】这是另一句足够长的回答。";
+        let text = format!("{first}{second}{first}");
+        let (output, actual) = replies(&[&text], true).await;
+        assert!(output.sent_final);
+        assert_eq!(
+            actual,
+            vec![(first.into(), 0, false), (second.into(), 1, true)]
+        );
+    }
+
+    #[tokio::test]
+    async fn no_text_after_tool_barrier_preserves_caller_finalization() {
+        let (ack, _wait) = oneshot::channel();
+        let (output, items) = run_stream(
+            vec![
+                content("【认真】开始检查。"),
+                PresentationChunk::BeforeTools(ack),
+            ],
+            true,
+        )
+        .await;
+        assert!(!output.sent_final);
+        assert_eq!(items.len(), 2);
+        assert!(
+            matches!(&items[0], SentenceItem::Reply(text, 0, false) if text == "【认真】开始检查。")
+        );
+        assert!(matches!(
+            &items[1],
+            SentenceItem::BeforeTools { index: 1, .. }
+        ));
     }
 }
