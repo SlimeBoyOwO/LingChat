@@ -281,6 +281,14 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let state = app.state::<AppState>();
     let db = &state.db;
 
+    let mut service = state.ai_service.lock().await;
+
+    // 剧本运行期间锁定存档：读档会整体重置 GameStatus，直接拆掉正在运行的剧本。
+    // 此守卫必须先于中止旧引擎——否则会把玩家正在跑的剧本杀掉再拒绝读档。
+    if service.game_status.lock().await.script_status.is_some() {
+        return Err("剧本运行中，角色已锁定，无法读取存档".to_string());
+    }
+
     // 旧引擎是独立 tokio 任务，读档前必须中止它并清掉其挂起的输入通道：
     // 否则它会继续往恢复后的共享 GameStatus 写台词，污染本次读档的状态。
     let aborted_script_engine = if let Some(handle) = state.script_task.lock().await.take() {
@@ -293,10 +301,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         let mut ch = state.script_channels.lock().await;
         let _ = ch.input_tx.take();
         let _ = ch.choice_tx.take();
+        let _ = ch.poem_tx.take();
         ch.choice_allow_free = false;
+        ch.force_choice_guard = None;
     }
-
-    let mut service = state.ai_service.lock().await;
 
     // 被中止的引擎走不到 on_script_end 收尾，is_running 会残留 true——
     // 若本存档没有剧本可续跑，编辑器试玩/重扫的守卫会永远以为有剧本在跑。
@@ -428,7 +436,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     drop(service);
     // 续跑引擎必须在释放 ai_service 锁之后启动（spawn 内部会再锁 ai_service）
     if let Some(script) = resume_script {
-        crate::api::script::spawn_script_execution(app.clone(), script).await;
+        // 读档本体已完成，续跑起跑失败（如与 DLC 管理操作互斥）只告警，不颠覆读档结果
+        if let Err(e) = crate::api::script::spawn_script_execution(app.clone(), script).await {
+            tracing::warn!("[SaveAPI] 续跑剧本引擎失败: {}", e);
+        }
     }
     state
         .auto_save_manager

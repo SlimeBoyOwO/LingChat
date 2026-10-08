@@ -1,0 +1,295 @@
+//! Persistent main-menu corruption selected by a script.
+//!
+//! The effect is deliberately preset-only: scripts may select a bounded theme
+//! and a short plain-text message, but cannot inject CSS, HTML, URLs, or paths.
+
+use std::fs;
+#[cfg(windows)]
+use std::os::windows::fs::MetadataExt;
+use std::path::{Path, PathBuf};
+
+use anyhow::{anyhow, Context, Result};
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
+
+use crate::ai_service::game_system::script_engine::events::{
+    register_event, ScriptContext, ScriptEvent,
+};
+use crate::ai_service::tools::atomic_replace;
+
+const STATE_FILE: &str = "script_menu_effect.json";
+const MAX_MESSAGE_CHARS: usize = 160;
+const THEMES: [&str; 3] = ["normal", "blood", "ghost"];
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptMenuEffectState {
+    pub version: u8,
+    pub owner: String,
+    pub theme: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+}
+
+pub struct MenuEffectEvent {
+    theme: String,
+    message: Option<String>,
+}
+
+impl MenuEffectEvent {
+    fn from_event_data(data: &Value) -> Self {
+        let theme = data
+            .get("theme")
+            .and_then(Value::as_str)
+            .unwrap_or("normal")
+            .trim()
+            .to_ascii_lowercase();
+        let message = data
+            .get("message")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned);
+        Self { theme, message }
+    }
+}
+
+fn state_path(data_dir: &Path) -> PathBuf {
+    data_dir.join(STATE_FILE)
+}
+
+fn is_link_like(metadata: &fs::Metadata) -> bool {
+    if metadata.file_type().is_symlink() {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0400;
+        return metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0;
+    }
+    #[cfg(not(windows))]
+    false
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct MenuEffectSnapshot(Option<Vec<u8>>);
+
+pub(crate) fn snapshot_menu_effect_file(data_dir: &Path) -> Result<MenuEffectSnapshot> {
+    let path = state_path(data_dir);
+    let bytes = match fs::symlink_metadata(&path) {
+        Ok(metadata) => {
+            if is_link_like(&metadata) || !metadata.is_file() || metadata.len() > 8 * 1024 {
+                return Err(anyhow!("主菜单特效状态不是安全的小型普通文件"));
+            }
+            Some(fs::read(&path).context("读取主菜单特效快照失败")?)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+        Err(error) => return Err(error).context("读取主菜单特效状态失败"),
+    };
+    Ok(MenuEffectSnapshot(bytes))
+}
+
+pub(crate) fn restore_menu_effect_snapshot(
+    data_dir: &Path,
+    snapshot: &MenuEffectSnapshot,
+) -> Result<()> {
+    let path = state_path(data_dir);
+    let changed = match &snapshot.0 {
+        Some(bytes) => {
+            atomic_replace(&path, bytes)
+                .map_err(|error| anyhow!("回滚主菜单特效状态失败: {error}"))?;
+            true
+        }
+        None => match fs::remove_file(&path) {
+            Ok(()) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            Err(error) => return Err(error).context("回滚空主菜单特效状态失败"),
+        },
+    };
+    if changed {
+        crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(data_dir)
+            .context("提交菜单特效快照回滚失败")?;
+    }
+    Ok(())
+}
+
+fn validate_message(message: Option<String>) -> Result<Option<String>> {
+    let Some(message) = message else {
+        return Ok(None);
+    };
+    if message.chars().count() > MAX_MESSAGE_CHARS {
+        return Err(anyhow!(
+            "main_menu_effect.message 最多允许 {} 个字符",
+            MAX_MESSAGE_CHARS
+        ));
+    }
+    if message
+        .chars()
+        .any(|character| character.is_control() && !matches!(character, '\n' | '\t'))
+    {
+        return Err(anyhow!("main_menu_effect.message 包含不允许的控制字符"));
+    }
+    Ok(Some(message))
+}
+
+pub fn read_menu_effect(data_dir: &Path) -> Option<ScriptMenuEffectState> {
+    let path = state_path(data_dir);
+    let bytes = fs::read(path).ok()?;
+    if bytes.len() > 8 * 1024 {
+        return None;
+    }
+    let state: ScriptMenuEffectState = serde_json::from_slice(&bytes).ok()?;
+    if state.version != 1
+        || state.owner.is_empty()
+        || state.owner.chars().count() > 512
+        || !THEMES.contains(&state.theme.as_str())
+        || state.theme == "normal"
+        || validate_message(state.message.clone()).is_err()
+    {
+        return None;
+    }
+    Some(state)
+}
+
+fn write_menu_effect(data_dir: &Path, state: &ScriptMenuEffectState) -> Result<()> {
+    let bytes = serde_json::to_vec_pretty(state).context("序列化主菜单特效状态失败")?;
+    atomic_replace(&state_path(data_dir), &bytes)
+        .map_err(|error| anyhow!("保存主菜单特效状态失败: {error}"))?;
+    crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(data_dir)
+        .context("提交主菜单特效状态失败")
+}
+
+pub fn clear_menu_effect(data_dir: &Path) -> Result<bool> {
+    let path = state_path(data_dir);
+    match fs::remove_file(path) {
+        Ok(()) => {
+            crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(
+                data_dir,
+            )
+            .context("提交主菜单特效清除失败")?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(error) => Err(error).context("清除主菜单特效状态失败"),
+    }
+}
+
+/// 删角色文件彩蛋（DDLC ghost menu 的对应物）的锁定判定：剧本至少真正进过
+/// 一次（有运行状态记录）、声明了 character_files 管理，但其角色标记目录里
+/// 一个 .chr 都不剩——不管第几幕，进入剧本时被锁成纯黑底 + 黑白幽灵立绘，
+/// 不给任何文字和按钮出口；玩家把 .chr 放回标记目录后，下次检查自动解锁。
+///
+/// 目录本身不存在不算"删"——刚进剧本就退出、标记尚未创建的情形不能误伤；
+/// 只有"目录在、文件没了"才是玩家故意删文件的强信号。
+pub(crate) fn script_markers_wiped(
+    data_dir: &Path,
+    script: &crate::ai_service::types::ScriptStatus,
+) -> bool {
+    let declared = script
+        .settings
+        .get("character_files")
+        .and_then(serde_json::Value::as_array)
+        .is_some_and(|files| !files.is_empty());
+    if !declared {
+        return false;
+    }
+    let path_key = script.path_key();
+    if !crate::ai_service::game_system::script_engine::persistent_state::played_script_keys(
+        data_dir,
+    )
+    .contains(&path_key)
+    {
+        return false;
+    }
+    let Ok(namespace) = super::character_file_event::namespace_from_path_key(&path_key) else {
+        return false;
+    };
+    let dir = super::character_file_event::external_characters_root(data_dir).join(namespace);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return false;
+    };
+    let chr_count = entries
+        .flatten()
+        .filter(|entry| entry.path().extension().is_some_and(|ext| ext == "chr"))
+        .count();
+    if chr_count == 0 {
+        tracing::info!(
+            "[MenuEffect] 剧本 '{}' 的角色标记被全部删除，进入时锁为幽灵演出",
+            path_key
+        );
+        return true;
+    }
+    false
+}
+
+pub fn clear_menu_effect_for_owner(data_dir: &Path, owner: &str) -> Result<bool> {
+    let Some(state) = read_menu_effect(data_dir) else {
+        return Ok(false);
+    };
+    if state.owner != owner {
+        return Ok(false);
+    }
+    clear_menu_effect(data_dir)
+}
+
+#[async_trait]
+impl ScriptEvent for MenuEffectEvent {
+    async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
+        if !THEMES.contains(&self.theme.as_str()) {
+            return Err(anyhow!(
+                "main_menu_effect.theme 只支持 normal / blood / ghost，收到 '{}'",
+                self.theme
+            ));
+        }
+
+        if ctx.is_preview {
+            if self.theme != "normal" {
+                validate_message(self.message.clone())?;
+            }
+            tracing::info!(
+                "[MenuEffectEvent] 试玩隔离：仅预览主题配置 {}，不改持久菜单",
+                self.theme
+            );
+            return Ok(None);
+        }
+
+        if self.theme == "normal" {
+            clear_menu_effect(ctx.data_dir)?;
+            tracing::info!("[MenuEffectEvent] 已恢复普通主菜单");
+            return Ok(None);
+        }
+
+        let owner = {
+            let game_status = ctx.game_status.lock().await;
+            game_status
+                .script_status
+                .as_ref()
+                .ok_or_else(|| anyhow!("ScriptStatus 未设置，无法保存主菜单特效"))?
+                .path_key()
+        };
+        let state = ScriptMenuEffectState {
+            version: 1,
+            owner,
+            theme: self.theme.clone(),
+            message: validate_message(self.message.clone())?,
+        };
+        write_menu_effect(ctx.data_dir, &state)?;
+        tracing::info!(
+            "[MenuEffectEvent] 主菜单主题设为 {}（owner={}）",
+            state.theme,
+            state.owner
+        );
+        Ok(None)
+    }
+
+    fn event_type() -> &'static str {
+        "main_menu_effect"
+    }
+}
+
+pub fn register() {
+    register_event(MenuEffectEvent::event_type(), |data| {
+        Box::new(MenuEffectEvent::from_event_data(&data))
+    });
+}

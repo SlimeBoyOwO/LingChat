@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.5.2"
+version = "0.5.3"
 default-run = "ling_chat"
 description = "AI Galgame Engine"
 authors = ["LingChat Team"]

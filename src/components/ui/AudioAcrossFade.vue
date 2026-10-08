@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from "@/utils/dlcMediaOwnership";
 
 const props = withDefaults(
   defineProps<{
@@ -41,6 +42,10 @@ const audio2 = ref<HTMLAudioElement | null>(null);
 const applyRate = (el: HTMLAudioElement | null) => {
   if (!el) return;
   const r = props.rate;
+  // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
+  el.preservesPitch = false;
+  (el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false;
+  (el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
   el.playbackRate = typeof r === "number" && r > 0 ? r : 1;
 };
 
@@ -55,10 +60,33 @@ const clearFade = () => {
   }
 };
 
-onBeforeUnmount(() => {
+const releaseAudio = (audio: HTMLAudioElement | null) => {
+  if (!audio) return;
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+};
+
+const releaseAllAudio = () => {
   clearFade();
   unregisterSpectrumSource(audio1.value);
   unregisterSpectrumSource(audio2.value);
+  releaseAudio(audio1.value);
+  releaseAudio(audio2.value);
+};
+
+const handleReleaseDlcMedia = (event: Event) => {
+  const folderKey = releaseFolderFromEvent(event);
+  for (const audio of [audio1.value, audio2.value]) {
+    if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
+      releaseAudio(audio);
+    }
+  }
+};
+
+onBeforeUnmount(() => {
+  window.removeEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
+  releaseAllAudio();
 });
 
 // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
@@ -96,8 +124,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
       if (currentAudio.volume > 0) {
         currentAudio.volume = Math.max(0, currentAudio.volume - step);
       } else {
-        currentAudio.pause();
-        currentAudio.src = ""; // 释放资源
+        releaseAudio(currentAudio);
         clearFade();
       }
     }, FADE_INTERVAL);
@@ -145,7 +172,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
     // 完成交接
     if (currentDone && nextDone) {
-      currentAudio.pause();
+      releaseAudio(currentAudio);
       activeIndex = activeIndex === 1 ? 2 : 1; // 切换主轨道身份
       clearFade();
     }
@@ -154,6 +181,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
 // 初始化
 onMounted(() => {
+  window.addEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
   // 注册给频谱可视化（未开启该功能时不做任何事，见 utils/audioSpectrum.ts）
   registerSpectrumSource(audio1.value);
   registerSpectrumSource(audio2.value);
