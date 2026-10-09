@@ -16,8 +16,8 @@
 use std::collections::HashMap;
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, EntityTrait, FromQueryResult,
-    QueryFilter, QueryOrder, Set, Statement,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, FromQueryResult, QueryFilter, QueryOrder, Set, Statement,
 };
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
@@ -130,6 +130,28 @@ fn table_name(role_id: i32) -> String {
     format!("memory_archive_{role_id}")
 }
 
+/// 目录表 `memory_archive_profiles` 的兜底建表（防御旧库升级时迁移未落表、或
+/// 数据库文件被替换等场景）。与 `migration/m20261009` 的 DDL 保持一致；
+/// `CREATE TABLE IF NOT EXISTS` / 索引幂等，命令入口各调一次开销可忽略。
+async fn ensure_profile_table(db: &DatabaseConnection) -> Result<(), String> {
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        r#"CREATE TABLE IF NOT EXISTS memory_archive_profiles (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             script_key TEXT,
+             script_role_key TEXT,
+             role_id INTEGER NOT NULL UNIQUE,
+             role_name TEXT NOT NULL,
+             table_name TEXT NOT NULL UNIQUE,
+             created_at INTEGER NOT NULL,
+             updated_at INTEGER NOT NULL
+           )"#,
+    ))
+    .await
+    .map_err(|e| format!("确保档案目录表存在失败: {e}"))?;
+    Ok(())
+}
+
 /// `memory_archive_{id}` 数据表的建表语句（动态表名，statement 无参数化位置）。
 const DATA_TABLE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "{table}" (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -165,6 +187,9 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             skipped_unassigned: 0,
         });
     }
+
+    // 1.5 防御旧库升级/库被替换导致目录表缺失：幂等补建。
+    ensure_profile_table(db).await?;
 
     // 2. 读取全部旧记忆行。
     let rows = db
@@ -321,6 +346,8 @@ pub async fn memory_archive_list(
     let state = app.state::<AppState>();
     let db = &state.db;
 
+    ensure_profile_table(db).await?;
+
     let profiles = memory_archive_profile::Entity::find()
         .order_by_desc(memory_archive_profile::Column::Id)
         .all(db)
@@ -361,6 +388,8 @@ pub async fn memory_archive_get(
 ) -> Result<Vec<MemoryArchiveEntry>, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+
+    ensure_profile_table(db).await?;
 
     let profile = memory_archive_profile::Entity::find_by_id(profile_id)
         .one(db)
@@ -408,6 +437,8 @@ pub async fn memory_archive_get(
 pub async fn memory_archive_delete(app: tauri::AppHandle, profile_id: i32) -> Result<bool, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+
+    ensure_profile_table(db).await?;
 
     let profile = memory_archive_profile::Entity::find_by_id(profile_id)
         .one(db)
