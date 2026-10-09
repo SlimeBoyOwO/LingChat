@@ -1,6 +1,6 @@
 [package]
 name = "ling_chat"
-version = "0.5.2"
+version.workspace = true
 default-run = "ling_chat"
 description = "AI Galgame Engine"
 authors = ["LingChat Team"]
@@ -46,34 +46,17 @@ tauri-plugin-fs = "2"
 tauri-plugin-notification = "2.4"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
 # setup 编排里直接用到 DatabaseConnection 类型与少量 EntityTrait 调用
-sea-orm = { version = "1", features = [
-    "sqlx-sqlite",
-    "runtime-tokio-rustls",
-    "macros",
-    "with-chrono",
-] }
-tokio = { version = "1", features = ["full"] }
-anyhow = "1"
-tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = [
-    "env-filter",
-    "ansi",
-    "chrono",
-] }
-chrono = { version = "0.4", features = ["serde"] }
-reqwest = { version = "0.13", features = [
-    "json",
-    "form",
-    "multipart",
-    "query",
-    "stream",
-    "rustls",
-    "system-proxy",
-], default-features = false }
-rustls = { version = "0.23", features = ["aws-lc-rs"] }
+sea-orm = { workspace = true }
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-updater = "2"

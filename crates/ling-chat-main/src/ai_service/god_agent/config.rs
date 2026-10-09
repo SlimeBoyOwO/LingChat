@@ -35,13 +35,16 @@ impl Default for GodAgentConfig {
             provider_id: None,
             max_consecutive_npc: 3,
             recent_window: 20,
-            affection_eval_interval: 5,
+            affection_eval_interval: Self::DEFAULT_AFFECTION_EVAL_INTERVAL,
             affection_enabled: true,
         }
     }
 }
 
 impl GodAgentConfig {
+    /// 好感度评估间隔的默认值：每累计多少段真实对话评估一次。
+    pub const DEFAULT_AFFECTION_EVAL_INTERVAL: usize = 25;
+
     /// 从 store 读取 usize：save_settings 会把数字输入规范化成 JSON Number，
     /// 旧版本存的是字符串，两种形态都要认（Bool 一并兜住，防误存）。
     fn read_usize(store: &tauri_plugin_store::Store<tauri::Wry>, key: &str) -> Option<usize> {
@@ -72,7 +75,7 @@ impl GodAgentConfig {
 
         let affection_eval_interval =
             Self::read_usize(&store, keys::GOD_AGENT_AFFECTION_EVAL_INTERVAL)
-                .unwrap_or(5)
+                .unwrap_or(Self::DEFAULT_AFFECTION_EVAL_INTERVAL)
                 .max(1);
 
         let affection_enabled = store

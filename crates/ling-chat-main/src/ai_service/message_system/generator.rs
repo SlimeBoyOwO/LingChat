@@ -121,11 +121,11 @@ impl MessageGenerator {
         // 3. 生成循环（God Agent 激活时可能多轮）
         let mut accumulated = String::new();
         let mut consecutive_npc_rounds: usize = 0;
-        let original_msg = user_message.unwrap_or_default();
+        let original_msg = user_message.as_deref().unwrap_or_default();
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let context = self.get_current_context().await?;
+            let context = self.get_current_context(user_message.as_deref()).await?;
             if context.is_empty() {
                 break;
             }
@@ -137,7 +137,7 @@ impl MessageGenerator {
                 None
             };
             let round_acc = self
-                .execute_pipeline(context, &original_msg, round_msg_seq)
+                .execute_pipeline(context, original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
 
@@ -167,7 +167,7 @@ impl MessageGenerator {
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
     #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
-        let mut context = self.get_current_context().await?;
+        let mut context = self.get_current_context(None).await?;
         if context.is_empty() {
             return Ok(String::new());
         }
@@ -255,7 +255,7 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self) -> Result<Vec<LlmMessage>> {
+    async fn get_current_context(&self, user_input: Option<&str>) -> Result<Vec<LlmMessage>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
@@ -264,6 +264,10 @@ impl MessageGenerator {
         let role = gs.get_role(&self.deps.db, rid).await?;
         // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
         let mut context = role.memory.clone();
+        // 世界书注入（上游）：随本轮上下文进，不写回记忆
+        if let Some(book) = &role.worldbook {
+            book.inject(&mut context, user_input);
+        }
         drop(gs);
         self.inject_weather_first_talk(&mut context);
         Ok(context)

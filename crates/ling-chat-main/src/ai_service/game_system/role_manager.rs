@@ -199,6 +199,10 @@ impl GameRoleManager {
 
         let display_name = settings.ai_name.clone();
         let resource_path = role.resource_folder.clone();
+        let worldbook = settings
+            .resource_path
+            .as_deref()
+            .and_then(|path| crate::ai_service::worldbook::Worldbook::load(Path::new(path)));
 
         let voice_maker = build_voice_maker(
             &self.data_dir,
@@ -229,6 +233,7 @@ impl GameRoleManager {
 
         let new_role = GameRole {
             role_id: Some(role.id),
+            worldbook,
             display_name: Some(display_name),
             settings,
             resource_path,

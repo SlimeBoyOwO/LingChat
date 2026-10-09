@@ -2,6 +2,48 @@
 members = ["src-tauri", "crates/ling-chat-main", "crates/ling-chat-plugins"]
 resolver = "2"
 
+# 三个成员共用的包版本。
+[workspace.package]
+version = "0.5.2"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+serde_yaml = "0.9"
+toml = "0.8"
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["io"] }
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+futures-util = "0.3"
+async-trait = "0.1"
+axum = { version = "0.7", features = ["tokio", "ws"] }
+reqwest = { version = "0.13", features = [
+    "json",
+    "form",
+    "multipart",
+    "query",
+    "stream",
+    "rustls",
+    "system-proxy",
+], default-features = false }
+rustls = { version = "0.23", features = ["aws-lc-rs"] }
+sea-orm = { version = "1", features = [
+    "sqlx-sqlite",
+    "runtime-tokio-rustls",
+    "macros",
+    "with-chrono",
+] }
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+base64 = "0.22"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = [
+    "env-filter",
+    "ansi",
+    "chrono",
+] }
+
 # [patch] 与 [profile] 只能放在 workspace 根：成员 crate 里的这两段会被 Cargo 静默忽略。
 # esaxx-rs 的 patch 路径相对本文件，故补 src-tauri/ 前缀。
 [patch.crates-io]
