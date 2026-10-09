@@ -1,6 +1,6 @@
 [package]
 name = "ling-chat-plugins"
-version = "0.5.2"
+version.workspace = true
 description = "LingChat 插件系统 crate：PluginManager + RustPython 脚本后端"
 authors = ["LingChat Team"]
 edition = "2021"
@@ -11,29 +11,21 @@ name = "ling_chat_plugins"
 [dependencies]
 ling-chat-main = { path = "../ling-chat-main" }
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-serde_yaml = "0.9"
-tokio = { version = "1", features = ["full"] }
-tokio-util = { version = "0.7", features = ["io"] }
-futures-util = "0.3"
-async-trait = "0.1"
-axum = { version = "0.7", features = ["tokio", "ws"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
-reqwest = { version = "0.13", features = [
-    "json",
-    "form",
-    "multipart",
-    "query",
-    "stream",
-    "rustls",
-    "system-proxy",
-], default-features = false }
-base64 = "0.22"
-uuid = { version = "1", features = ["v4"] }
-toml = "0.8"
-anyhow = "1"
-tracing = "0.1"
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+futures-util = { workspace = true }
+async-trait = { workspace = true }
+axum = { workspace = true }
+tokio-tungstenite = { workspace = true }
+reqwest = { workspace = true }
+base64 = { workspace = true }
+uuid = { workspace = true }
+toml = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（受限沙箱）。
 rustpython-vm = { version = "0.5", default-features = false, features = [
