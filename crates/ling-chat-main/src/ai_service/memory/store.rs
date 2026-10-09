@@ -1,13 +1,44 @@
 //! `memory_embeddings` 表的读写：分块、向量序列化、按角色增删查。
 
 use anyhow::{Context, Result};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QuerySelect};
+use sea_orm::{
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait, QueryFilter,
+    QuerySelect, Statement,
+};
 
 use crate::db::entities::memory_embedding;
 
 /// 分块字符数与重叠字符数（对齐 BaiShou 的 1024/128，这里按字符而非 token）。
 const CHUNK_CHARS: usize = 1024;
 const CHUNK_OVERLAP_CHARS: usize = 128;
+
+/// `memory_embeddings` 表的兜底建表（防御旧库升级时迁移未落表、或数据库文件被
+/// 替换/复制等场景）。DDL 与 `migration/m20261007` 保持一致；
+/// `CREATE TABLE IF NOT EXISTS` / 索引幂等，读写入口各调一次开销可忽略。
+pub async fn ensure_memory_embeddings_table(db: &DatabaseConnection) -> Result<()> {
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        r#"CREATE TABLE IF NOT EXISTS memory_embeddings (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             role_id INTEGER NOT NULL,
+             memory_id VARCHAR(64) NOT NULL,
+             chunk_index INTEGER NOT NULL,
+             content TEXT NOT NULL,
+             tags TEXT NULL,
+             embedding BLOB NOT NULL,
+             dim INTEGER NOT NULL,
+             model VARCHAR(128) NOT NULL,
+             created_at INTEGER NOT NULL
+           )"#,
+    ))
+    .await?;
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        "CREATE INDEX IF NOT EXISTS idx_memory_embeddings_role ON memory_embeddings (role_id)",
+    ))
+    .await?;
+    Ok(())
+}
 
 /// 检索/去重时从库里读出的一行。
 #[derive(Clone, Debug)]
@@ -54,6 +85,7 @@ pub async fn insert_memory(
     tags: Option<String>,
     model: &str,
 ) -> Result<()> {
+    ensure_memory_embeddings_table(db).await?;
     let created_at = chrono::Utc::now().timestamp_millis();
     for (index, (chunk, embedding)) in chunks.iter().zip(embeddings.iter()).enumerate() {
         let model_row = memory_embedding::ActiveModel {
@@ -78,6 +110,7 @@ pub async fn insert_memory(
 
 /// 删除一张记忆的全部分块，返回删除行数。
 pub async fn delete_memory(db: &DatabaseConnection, memory_id: &str) -> Result<usize> {
+    ensure_memory_embeddings_table(db).await?;
     let deleted = memory_embedding::Entity::delete_many()
         .filter(memory_embedding::Column::MemoryId.eq(memory_id.to_string()))
         .exec(db)
@@ -91,6 +124,7 @@ pub async fn delete_memory_scoped(
     role_id: i32,
     memory_id: &str,
 ) -> Result<usize> {
+    ensure_memory_embeddings_table(db).await?;
     let deleted = memory_embedding::Entity::delete_many()
         .filter(
             memory_embedding::Column::MemoryId
@@ -104,6 +138,7 @@ pub async fn delete_memory_scoped(
 
 /// 某角色当前的记忆条数（按 `memory_id` 去重，分块不重复计）。
 pub async fn count_role_memories(db: &DatabaseConnection, role_id: i32) -> Result<usize> {
+    ensure_memory_embeddings_table(db).await?;
     let ids: Vec<String> = memory_embedding::Entity::find()
         .select_only()
         .column(memory_embedding::Column::MemoryId)
@@ -117,6 +152,7 @@ pub async fn count_role_memories(db: &DatabaseConnection, role_id: i32) -> Resul
 
 /// 存在长期记忆的角色 ID 列表（供压缩入口遍历所有角色）。
 pub async fn role_ids_with_memories(db: &DatabaseConnection) -> Result<Vec<i32>> {
+    ensure_memory_embeddings_table(db).await?;
     let role_ids: Vec<i32> = memory_embedding::Entity::find()
         .select_only()
         .column(memory_embedding::Column::RoleId)
@@ -129,6 +165,7 @@ pub async fn role_ids_with_memories(db: &DatabaseConnection) -> Result<Vec<i32>>
 
 /// 读取某角色的全部记忆分块（按记忆、分块序排好）。
 pub async fn load_role_rows(db: &DatabaseConnection, role_id: i32) -> Result<Vec<MemoryRow>> {
+    ensure_memory_embeddings_table(db).await?;
     let rows = memory_embedding::Entity::find()
         .filter(memory_embedding::Column::RoleId.eq(role_id))
         .all(db)
