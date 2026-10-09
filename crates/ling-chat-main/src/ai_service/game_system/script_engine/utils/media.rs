@@ -37,6 +37,17 @@ impl MediaType {
             MediaType::Ambient => "ambient",
         }
     }
+
+    /// 该类素材允许的扩展名（小写、不含点）：编辑器列举素材与「是不是写错了扩展名」的探测共用这一份。
+    /// 解析器按完整文件名精确匹配，扩展名表只在这里维护一次。
+    pub fn allowed_extensions(self) -> &'static [&'static str] {
+        match self {
+            MediaType::Background | MediaType::Pic => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
+            MediaType::Music | MediaType::Sound | MediaType::Ambient => {
+                &["mp3", "wav", "ogg", "flac"]
+            },
+        }
+    }
 }
 
 /// Resolve a script media file path from YAML event data.

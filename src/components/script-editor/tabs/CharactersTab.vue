@@ -4,10 +4,12 @@ import { Button, Icon } from "@/components/base";
 import { MenuPage, MenuItem } from "@/components/ui";
 import { useI18n } from "vue-i18n";
 import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import type { ScriptCharacter } from "@/api/services/script-editor";
 
 const emit = defineEmits<{
   "new-character": [];
   "import-character": [];
+  "edit-character": [c: ScriptCharacter];
 }>();
 
 const { t } = useI18n();
@@ -35,7 +37,9 @@ const assetUrl = (path: string) => convertFileSrc(path);
       <div
         v-for="c in store.characters"
         :key="c.folder"
-        class="group mb-2 flex w-full items-center rounded-[10px] border border-white/10 bg-white/6 px-[13px] py-[11px] transition-all duration-200"
+        class="group hover:border-brand/50 mb-2 flex w-full cursor-pointer items-center rounded-[10px] border border-white/10 bg-white/6 px-[13px] py-[11px] transition-all duration-200 hover:bg-white/10"
+        :title="t('scriptEditor.characters.edit')"
+        @click="emit('edit-character', c)"
       >
         <!-- 立绘缩略图：本地 avatar 优先，没有回退全局；都没有时占位，与
              引擎运行时同一个查找顺序，避免「编辑器看着有、游戏里没有」 -->
@@ -85,7 +89,7 @@ const assetUrl = (path: string) => convertFileSrc(path);
         <button
           class="shrink-0 rounded px-[5px] text-[11px] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-300"
           :title="t('scriptEditor.characters.delete')"
-          @click="store.deleteCharacter(c.folder, c.aiName)"
+          @click.stop="store.deleteCharacter(c.folder, c.aiName)"
         >
           ✕
         </button>

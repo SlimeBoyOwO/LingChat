@@ -3,10 +3,6 @@
 use serde::Serialize;
 
 /// Skill Agent 运行期间推送到前端的流式事件。
-///
-/// 与 ling_chat_agent 的 `ChatEvent` 同构，但增加 `Reasoning`（LingChat 的
-/// LlmClient 会产出思考链片段）。事件走作用域隔离的 `Channel`，不经全局
-/// `emit`，因此与剧本编辑器试玩的 `preview_generation` 守卫互不干扰。
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum SkillAgentEvent {
@@ -14,6 +10,13 @@ pub enum SkillAgentEvent {
     Status { content: String },
     /// 流式文本增量。
     MessageDelta { content: String },
+    /// 一项的开始（一轮可能逐项做多件事）：带的是这一项的标题文本（前端当正文用），语义是分段边界。
+    ItemStart {
+        /// 队列里的位置（从 1 起）与本轮共几项；给将来的界面用，前端现在只渲染 `title`。
+        index: usize,
+        total: usize,
+        title: String,
+    },
     /// 思考链增量（仅统计展示，不进入正式回复）。
     Reasoning { content: String },
     /// 一个工具即将被调用。

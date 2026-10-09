@@ -17,13 +17,12 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use crate::ai_service::game_system::script_engine::events::background_effect_event::KNOWN_EFFECTS;
-use crate::ai_service::game_system::script_engine::utils::media::{
-    MediaType, resolve_script_media,
-};
-use crate::ai_service::game_system::script_engine::utils::script_function::parse_variable_action;
+use super::events::background_effect_event::KNOWN_EFFECTS;
+use super::utils::media::{MediaType, resolve_script_media};
+use super::utils::script_function::parse_variable_action;
 
 use super::schema::build_schema;
+use crate::utils::script_modes::{Mode, ScriptModes};
 use crate::utils::script_paths as paths;
 use crate::utils::yaml_file;
 
@@ -187,6 +186,8 @@ pub fn validate(
 ) -> ValidationReport {
     let mut diags: Vec<Diagnostic> = Vec::new();
     let schema = build_schema();
+    // 用户声明的模式决定松紧：他说过"素材/角色卡之后补"，就不该再判成错。
+    let modes = ScriptModes::read(script_dir);
 
     // 事件类型 → 字段表，用于必填/未知字段检查
     let mut field_index: HashMap<&str, &Vec<super::schema::FieldSpec>> = HashMap::new();
@@ -485,7 +486,7 @@ pub fn validate(
             // 逐类型细查
             match ty {
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
-                    check_asset(data_dir, script_dir, obj, ty, cid, i, &mut diags);
+                    check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
                     // music 事件的播放速度：超范围会失真或被浏览器拒绝，提前告警
                     if ty == "music" {
                         if let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64()) {
@@ -604,18 +605,22 @@ pub fn validate(
             // character 引用
             if let Some(ch) = obj.get("character").and_then(|v| v.as_str()) {
                 if ch != "MAIN" && !known_characters.contains(ch) {
+                    // 松紧由角色卡模式决定：只有"只用已有"才算错误，"允许缺失"与"没问过"都只提醒（没问过不该拦人）。
+                    let severity = if modes.cast == Mode::OnlyExisting {
+                        Severity::Error
+                    } else {
+                        Severity::Warn
+                    };
+                    let mut message = format!(
+                        "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
+                        ch
+                    );
+                    if severity == Severity::Warn {
+                        message.push_str("（角色卡模式允许缺失：之后建好这张卡即可）");
+                    }
                     diags.push(
-                        Diagnostic::event(
-                            Severity::Error,
-                            "character.unknown",
-                            cid,
-                            i,
-                            format!(
-                                "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
-                                ch
-                            ),
-                        )
-                        .with_field("character"),
+                        Diagnostic::event(severity, "character.unknown", cid, i, message)
+                            .with_field("character"),
                     );
                 }
             }
@@ -854,6 +859,7 @@ fn check_modify_character_action(
 fn check_asset(
     data_dir: &Path,
     script_dir: &Path,
+    modes: ScriptModes,
     obj: &serde_json::Map<String, JsonValue>,
     ty: &str,
     cid: &str,
@@ -888,22 +894,113 @@ fn check_asset(
     if path.is_empty() {
         return; // 必填检查已经报过了
     }
+    // `none` 是引擎的"清空该轨"写法（`musicPath: none` 用来停音乐），不是素材引用，当成缺失报出来是假报警。
+    if path.eq_ignore_ascii_case("none") {
+        return;
+    }
 
     if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "asset.missing",
-                cid,
-                i,
-                format!(
-                    "找不到素材「{}」。运行时不会报错，只会静默把画面/声音清空",
-                    path
-                ),
-            )
-            .with_field(key),
-        );
+        let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
+        if let Some(existing) = sibling_extension_asset(data_dir, script_dir, path, media) {
+            message.push_str(&format!("；磁盘上有「{}」，疑似写错了扩展名", existing));
+        }
+        // 松紧由用户声明的素材模式决定：只有"只用已有"才算错误，"允许缺失"是用户允许的缺口；没声明时按最宽。
+        let severity = if modes.asset == Mode::OnlyExisting {
+            Severity::Error
+        } else {
+            Severity::Warn
+        };
+        if severity == Severity::Warn {
+            message.push_str("（素材模式允许缺口：登记进 .agent/assets.md 即可）");
+        }
+        diags.push(Diagnostic::event(severity, "asset.missing", cid, i, message).with_field(key));
     }
+}
+
+/// `asset.missing` 文案的固定前后缀。提取函数与它同源，避免两处各写一遍。
+const ASSET_MISSING_PREFIX: &str = "找不到素材「";
+const ASSET_MISSING_TAIL: &str = "。运行时不会报错，只会静默把画面/声音清空";
+
+/// 从 `asset.missing` 诊断里取出被引用的素材名（调用方常常只要名字）；提取规则跟文案放在一起，改文案时会一起被想到。
+pub fn missing_asset_name(d: &Diagnostic) -> Option<&str> {
+    if d.code != "asset.missing" {
+        return None;
+    }
+    d.message
+        .strip_prefix(ASSET_MISSING_PREFIX)?
+        .split('」')
+        .next()
+}
+
+/// 换个扩展名能不能找到同一个素材：写的是 `夜晚.png`，磁盘上是 `夜晚.webp`。
+/// 解析器按完整文件名精确匹配不会自动命中；它和真缺素材一样会静默清空画面/声音，但修法完全不同。
+fn sibling_extension_asset(
+    data_dir: &Path,
+    script_dir: &Path,
+    path: &str,
+    media: MediaType,
+) -> Option<String> {
+    let file = Path::new(path);
+    let stem = file.file_stem()?.to_str()?;
+    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase());
+    let dir = file
+        .parent()
+        .and_then(|d| d.to_str())
+        .filter(|d| !d.is_empty());
+
+    for candidate_ext in media.allowed_extensions() {
+        if ext.as_deref() == Some(*candidate_ext) {
+            continue;
+        }
+        let candidate = match dir {
+            Some(d) => format!(
+                "{}/{}.{}",
+                d.trim_end_matches(['/', '\\']),
+                stem,
+                candidate_ext
+            ),
+            None => format!("{}.{}", stem, candidate_ext),
+        };
+        if let Some(found) = resolve_script_media(data_dir, Some(script_dir), &candidate, media) {
+            return Some(
+                Path::new(&found)
+                    .file_name()
+                    .map(|n| n.to_string_lossy().into_owned())
+                    .unwrap_or(candidate),
+            );
+        }
+    }
+    None
+}
+
+/// 单章素材自检：只查这一章引用的素材存不存在，供 Skill Agent 写完一章时当场复查。
+/// 此时整剧还没写完，[`validate`] 会报一批「尚未写完」的假错，而素材这一章就能定论；判定复用 `check_asset`。
+pub fn check_chapter_assets(
+    data_dir: &Path,
+    script_dir: &Path,
+    cid: &str,
+    chapter: &serde_json::Value,
+) -> Vec<Diagnostic> {
+    let mut diags = Vec::new();
+    let modes = ScriptModes::read(script_dir);
+    let Some(events) = chapter.get("events").and_then(|v| v.as_array()) else {
+        return diags;
+    };
+    for (i, ev) in events.iter().enumerate() {
+        let Some(obj) = ev.as_object() else {
+            continue;
+        };
+        let Some(ty) = obj.get("type").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if matches!(
+            ty,
+            "background" | "present_pic" | "music" | "sound" | "ambient"
+        ) {
+            check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
+        }
+    }
+    diags
 }
 
 /// 条件语法检查 + 变量收集。

@@ -1,14 +1,6 @@
 //! Skill Agent 核心：多轮工具调用循环。
-//!
-//! 复刻 ling_chat_agent `llm.rs` 的循环结构（`parse_tool_args` / 逐轮回填 /
-//! 轮数上限，-1 为无上限），但把 DeepSeek 直连 SSE 替换为 LingChat 的 `LlmClient`
-//! （流式 provider 走 `complete_stream_with_tools`，非流式走 `complete_with_tools`）。
-//! 历史与工具结果完整保留、不做裁剪：保证模型看到全部上下文。
-//! 仅对从 DB 重载的历史做 `sanitize_history` 规整，修复上一轮中断遗留的
-//! 「assistant(tool_calls) 缺 tool 回应」畸形轮次（否则 OpenAI 校验直接 400）。
 
 use std::collections::HashMap;
-use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
@@ -18,9 +10,9 @@ use serde_json::Value;
 
 use crate::ai_service::llm::{LlmChunk, LlmClient};
 use crate::ai_service::skill_agent::command_executor::ApprovalMap;
-use crate::ai_service::skill_agent::config::SkillAgentConfig;
+use crate::ai_service::skill_agent::config::{SkillAgentConfig, resolve_skill_agent_provider};
 use crate::ai_service::skill_agent::events::{SkillAgentEvent, Usage};
-use crate::ai_service::skill_agent::{db, skills, tools};
+use crate::ai_service::skill_agent::{db, history, role, router, skills, stage, title, tools};
 use crate::ai_service::types::{
     FunctionCall, LlmMessage, ToolCall, ToolDefinition, parse_tool_args,
 };
@@ -47,11 +39,36 @@ pub struct SkillAgentRunContext {
     pub approvals: ApprovalMap,
     pub db: DatabaseConnection,
     pub llm: Arc<LlmClient>,
+    /// 命令层拿得到、核心层拿不到的东西：按任务类型现解析 provider（思考模式按任务给，见 [`role::TaskKind::thinking`]）。
+    pub app: tauri::AppHandle,
     pub config: SkillAgentConfig,
     pub sandbox_dir: std::path::PathBuf,
     pub skills_dir: std::path::PathBuf,
+    /// `data/` 根目录，在这里解析一次：`stage` 等纯逻辑模块只收参数、不碰全局静态，否则在测试环境里一取就 panic。
+    pub data_dir: std::path::PathBuf,
     /// 会话绑定的剧本 key（运行时解析为路径注入系统提示）。
     pub script_key: Option<String>,
+    /// 运行开始时就存在的剧本包 key，用来认出"未绑定的会话正往别人的剧本包里写"；这一轮新建的包不在列表里。
+    pub existing_script_keys: Vec<String>,
+    /// 由剧本包状态推导出的当前阶段。
+    pub stage_snapshot: stage::StageSnapshot,
+    /// 这一轮新绑定的剧本 key（写 `story_config.yaml` 那一刻绑定，见 `tools.rs::bind_script_key_if_new`）。
+    pub bound_script_key: std::sync::Mutex<Option<String>>,
+    /// 这一轮算上下文预算用的模型窗口（token），由命令层解析 `/models` 得到；读不到用默认值（见 `stage::budget::DEFAULT_CONTEXT_WINDOW`）。
+    pub context_window: usize,
+}
+
+impl SkillAgentRunContext {
+    /// 记下这一轮新绑定的剧本 key。
+    pub fn remember_bound_key(&self, key: &str) {
+        if let Ok(mut bound) = self.bound_script_key.lock() {
+            *bound = Some(key.to_string());
+        }
+    }
+
+    fn bound_key(&self) -> Option<String> {
+        self.bound_script_key.lock().ok().and_then(|k| k.clone())
+    }
 }
 
 /// 累积中的工具调用（流式分片拼接）。
@@ -62,138 +79,6 @@ struct AccumToolCall {
     name: String,
     arguments: String,
 }
-
-// ---------- 系统提示 ----------
-
-/// 构建「当前剧本」段：给出 key/路径，并指示 agent 先看已有内容（实时读取，不注入静态快照）。
-fn build_script_block(sandbox_dir: &Path, script_key: Option<&str>) -> String {
-    let Some(key) = script_key else {
-        return String::new();
-    };
-    match crate::utils::script_paths::resolve_script_dir(key) {
-        Ok(dir) => {
-            let rel = dir.strip_prefix(sandbox_dir).unwrap_or(&dir);
-            format!(
-                "\n\n【当前剧本上下文】\n剧本 key：{}\n剧本目录：{}（相对于文件沙箱根 {}）\n\n工作之前，请先用 list_files / read_file 查看剧本中已有的内容，再决定如何编写或修改。\n剧本中的素材引用（imagePath / musicPath / soundPath / ambientPath）只写素材文件名本身（如 夜晚.webp），不要带 backgrounds/、musics/ 等类型目录前缀；引擎会按事件类型自动到对应目录查找。",
-                key,
-                rel.display(),
-                sandbox_dir.display()
-            )
-        },
-        Err(_) => String::new(), // 剧本缺失/失效 → 降级，不阻断对话
-    }
-}
-
-fn build_system_prompt(
-    config: &SkillAgentConfig,
-    skills_block: &str,
-    script_block: &str,
-    sandbox_dir: &Path,
-    skills_dir: &Path,
-) -> String {
-    let tool_names = tools::tool_names();
-    let platform = if cfg!(mobile) { "移动端" } else { "桌面" };
-    let command_guidance = if cfg!(mobile) {
-        "\n- 当前移动端不提供 execute_command，不能运行 shell 命令\
-         \n3. 不要尝试调用或编造 execute_command 结果；需要产出文件时使用 write_file"
-    } else {
-        "\n- execute_command 可能需要用户确认\
-         \n3. 需要运行本地命令时使用 execute_command；命令由系统 shell 执行，带空格的参数请用引号包裹（引号会原样传递）"
-    };
-    let default = format!(
-        "你是运行在本机 LingChat {platform}应用里的 AI 剧本创作助手。你拥有以下能力：\
-\n- 调用工具完成真实操作：{tool_names}\
-\n- 通过 read_skill 加载技能指令后再执行任务\
-\n- 文件路径默认相对于文件沙箱根目录（{sandbox}）\
-\n- 技能目录：{skills_dir}（技能文件以 SKILL.md 存放，需要时可用 list_files / read_file 直接查看）\
-{command_guidance}\
-\n使用规则：\
-\n1. 当任务匹配某个技能的描述时，先调用 read_skill 加载该技能，再按指令执行；已读取过的技能不要重复读取\
-\n2. 需要操作文件时使用 list_files / read_file / write_file / delete_file\
-\n4. 任务必须完成到产出物为止：读取技能、查询配色、运行搜索都只是中间步骤，最终必须调用 write_file 实际写出用户要求的文件，才算完成任务\
-\n5. 未写出文件之前禁止总结收尾，禁止以「已获取到所需信息」「以上就是设计建议」之类的说法结束回答；继续调用工具，直到文件真正创建成功\
-\n6. 写文件时一次性用 write_file 写完整内容，不要提前分段；只有当一次写入因参数过长而失败（报错会附带 [诊断] 提示）时，才改用 write_file（append=true）分段补齐\
-\n7. 文件范围受限时如实说明，不要编造文件内容",
-        tool_names = tool_names,
-        platform = platform,
-        command_guidance = command_guidance,
-        sandbox = sandbox_dir.display(),
-        skills_dir = skills_dir.display(),
-    );
-
-    let base = match &config.system_prompt {
-        Some(custom) if !custom.trim().is_empty() => custom.clone(),
-        _ => default,
-    };
-    format!("{}{}{}", base, script_block, skills_block)
-}
-
-// ---------- 历史规整 ----------
-
-/// 规整从 DB 加载的历史，修复/丢弃不完整的工具轮次。
-///
-/// 背景：某轮生成 `assistant(tool_calls)` 后、对应 `tool` 结果全部落库前，若运行被
-/// 中断（用户点停止、崩溃、DB 写失败），DB 里会留下「带 tool_calls 却没有工具回应」
-/// 的孤立 assistant。OpenAI 接口校验会直接 400：带 `tool_calls` 的 assistant 消息
-/// 必须被紧随的 tool 消息逐一回应（insufficient tool messages following tool_calls）。
-///
-/// 这里把这种残缺轮次降级为纯文本 assistant（保留正文、去掉 tool_calls），并丢弃
-/// 无主的孤立 tool 消息，保证任何一次重载后的请求都合法。完整轮次原样保留。
-pub fn sanitize_history(history: Vec<LlmMessage>) -> Vec<LlmMessage> {
-    let mut out = Vec::with_capacity(history.len());
-    let mut i = 0usize;
-    while i < history.len() {
-        let msg = &history[i];
-
-        if msg.role == "assistant" && msg.tool_calls.is_some() {
-            let expected: Vec<String> = msg
-                .tool_calls
-                .as_ref()
-                .map(|tcs| tcs.iter().map(|tc| tc.id.clone()).collect())
-                .unwrap_or_default();
-
-            // 从下一条起连续收集紧随其后的 tool 回应
-            let mut j = i + 1;
-            let mut actual: Vec<String> = Vec::new();
-            while j < history.len() && history[j].role == "tool" {
-                if let Some(id) = history[j].tool_call_id.clone() {
-                    actual.push(id);
-                }
-                j += 1;
-            }
-
-            // 完整：每个期望的 tool_call_id 都有回应
-            let complete = !expected.is_empty() && expected.iter().all(|id| actual.contains(id));
-
-            if complete {
-                out.push(msg.clone());
-                // 只搬运匹配期望 id 的回应，多出来的孤立 tool 一并丢弃
-                for t in history.iter().take(j).skip(i + 1) {
-                    if let Some(id) = t.tool_call_id.as_ref() {
-                        if expected.contains(id) {
-                            out.push(t.clone());
-                        }
-                    }
-                }
-            } else {
-                // 残缺轮次：降级为纯文本 assistant，保留正文
-                let mut fixed = msg.clone();
-                fixed.tool_calls = None;
-                out.push(fixed);
-            }
-            i = j;
-        } else if msg.role == "tool" {
-            // 无主 tool（前面没有待回应的 assistant）→ 丢弃
-            i += 1;
-        } else {
-            out.push(msg.clone());
-            i += 1;
-        }
-    }
-    out
-}
-
-// ---------- 主循环 ----------
 
 /// 运行一次对话（一次用户消息 = 一次调用）。历史由 `history` 传入（不含 system）。
 pub async fn run_chat(
@@ -206,74 +91,541 @@ pub async fn run_chat(
     } else {
         "命令需手动确认"
     };
+    let turn_start = std::time::SystemTime::now(); // 本轮起点：队列用它判断"登记之后有没有人动过那个产物"，必须在任何模型动作之前取。
     let _ = ctx.channel.send(SkillAgentEvent::Status {
         content: format!("思考中…（{}）", approval_mode),
     });
 
-    let skill_list = skills::find_all_skills(&ctx.skills_dir);
-    let skills_block = skills::build_skills_xml(&skill_list);
-    let script_block = build_script_block(&ctx.sandbox_dir, ctx.script_key.as_deref());
-    let system_prompt = build_system_prompt(
-        &ctx.config,
-        &skills_block,
-        &script_block,
+    let script_block = history::build_script_block(
         &ctx.sandbox_dir,
-        &ctx.skills_dir,
+        ctx.script_key.as_deref(),
+        &ctx.existing_script_keys,
     );
 
-    let mut messages: Vec<LlmMessage> = Vec::with_capacity(history.len() + 1);
-    messages.push(LlmMessage::system(system_prompt));
-    // 首轮判定必须在 sanitize_history(history) 移动 history 之前记录：
-    // 本会话第一条 assistant 回复（含工具调用轮）结束时用于自动生成会话标题。
-    // 不能等收尾时再用 messages 判——工具轮会让 messages 提前含 assistant(tool_calls)。
-    let is_first_turn = !history.iter().any(|m| m.role == "assistant");
-    // 历史先规整再并入：DB 里可能残留上一轮中断产生的「无 tool 回应的 assistant
-    // (tool_calls)」，不处理会触发 OpenAI 400（insufficient tool messages）。
-    messages.extend(sanitize_history(history));
+    if let (Some(key), Some(dir)) = (
+        ctx.stage_snapshot.script_key.as_deref(),
+        ctx.stage_snapshot.script_dir.as_deref(),
+    ) {
+        if let Err(e) = stage::ensure_package_skeleton(dir, key) {
+            tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
+        }
+    }
 
-    // -1 表示无上限（保留全部上下文与工具轮次）；否则为有限轮数，至少 1 轮。
-    // 无上限时用 usize::MAX 作区间上界，`round == max_rounds - 1` 的下限检查永不触发。
+    let user_msg = history
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.clone())
+        .unwrap_or_default();
+    let recent = history::recent_turns(&history, 2);
+    let queue_text = ctx
+        .stage_snapshot
+        .script_dir
+        .as_deref()
+        .map(|d| std::fs::read_to_string(d.join(stage::QUEUE_REL_PATH)).unwrap_or_default())
+        .unwrap_or_default();
+    let plan = router::route(
+        &ctx.llm,
+        &router::RouteInput {
+            snapshot: &ctx.stage_snapshot,
+            queue: &queue_text,
+            recent: &recent,
+            user_msg: &user_msg,
+            skills_dir: &ctx.skills_dir,
+        },
+    )
+    .await;
+
+    let creates_chapters = plan
+        .items
+        .iter()
+        .any(|i| i.kind.produces_runnable_chapters());
+    tracing::info!(
+        "[router] 任务={} 队列={} 项",
+        plan.items
+            .iter()
+            .map(|i| i.kind.key())
+            .collect::<Vec<_>>()
+            .join("/"),
+        plan.items.len()
+    );
+
+    save_queue(&ctx, &plan.items, turn_start);
+
+    let is_first_turn = !history.iter().any(|m| m.role == "assistant");
+    let base_history =
+        history::sanitize_history(stage::budget::compact_history(history, &ctx.stage_snapshot));
     let max_rounds: usize = if ctx.config.max_tool_rounds < 0 {
         usize::MAX
     } else {
         (ctx.config.max_tool_rounds as usize).max(1)
     };
-    let mut turn_prompt_tokens: u64 = 0;
-    let mut turn_completion_tokens: u64 = 0;
-    let mut turn_cached_tokens: u64 = 0;
-    // 截断自动续跑预算（最多补一次生成）
-    let mut recovery_budget: usize = RECOVERY_BUDGET;
 
-    for round in 0..max_rounds {
+    let (mut planned, skipped) = preplan(&ctx, &plan);
+    let mut deferred: Vec<String> = Vec::new();
+
+    let mut reply = String::new();
+    let mut usage = TurnUsage::default();
+
+    let show_headers = plan.items.len() > 1
+        || planned
+            .iter()
+            .any(|(_, _, h)| matches!(h, role::Handoff::Prerequisite { .. }));
+
+    let mut cursor = 0usize;
+    while cursor < planned.len() {
+        let (idx, task, handoff) = planned[cursor];
+        cursor += 1;
         if cancelled.load(Ordering::SeqCst) {
             let _ = ctx.channel.send(SkillAgentEvent::Status {
                 content: "已停止生成".into(),
             });
-            return Ok(());
+            break;
+        }
+        let snap = refreshed_snapshot(&ctx);
+        let (task, handoff) = recheck_handoff(&plan, idx, &snap, task, handoff);
+        let is_last =
+            cursor == planned.len() && !matches!(handoff, role::Handoff::Prerequisite { .. });
+        let allowed: &[&str] = item_tools(task, handoff);
+        let item_llm = resolve_skill_agent_provider(&ctx.app, task.thinking());
+        let llm: &LlmClient = item_llm.as_ref().unwrap_or(&ctx.llm);
+        tracing::info!(
+            "[router] 剧本={} 第{}/{}项 任务={} 目标={:?} 承接={:?} 产出能跑章节={} 工具={} 跳过={} 判据={}",
+            ctx.script_key.as_deref().unwrap_or("-"),
+            idx + 1,
+            plan.items.len(),
+            task.label(),
+            plan.items.get(idx).map(|i| i.target.as_str()),
+            handoff,
+            task.produces_runnable_chapters(),
+            allowed.join("/"),
+            skipped.len(),
+            plan.reason.as_deref().unwrap_or("（无）")
+        );
+
+        if show_headers {
+            let head = item_header(task, handoff, idx, plan.items.len());
+            let _ = ctx.channel.send(SkillAgentEvent::ItemStart {
+                index: idx + 1,
+                total: plan.items.len(),
+                title: head.clone(),
+            });
+            reply.push_str(&head);
         }
 
-        let defs = tools::tool_definitions();
-        let (assistant_text, reasoning_text, tool_calls, finish_reason, usage) =
-            match stream_completion(&ctx, &messages, &defs, &cancelled).await {
+        let target = plan.items.get(idx).map(|i| i.target.as_str()).unwrap_or("");
+
+        let skills_block = if allowed.contains(&"read_skill") {
+            skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir))
+        } else {
+            String::new()
+        };
+
+        let task_block = stage::prompt::build_task_block(&stage::prompt::TaskBlockInput {
+            task,
+            handoff,
+            plan: &plan,
+            user_msg: &user_msg,
+            skills_dir: &ctx.skills_dir,
+            land: creates_chapters,
+            item_index: idx,
+            skipped: &skipped,
+            is_last,
+            allowed,
+        });
+        let system_prompt = history::build_system_prompt(
+            &ctx.config,
+            allowed,
+            &skills_block,
+            &script_block,
+            &task_block,
+            &ctx.sandbox_dir,
+            &ctx.skills_dir,
+        );
+
+        let run_materials = stage::prompt::build_run_materials(&snap, &ctx.data_dir);
+        let digest = queue_dir(&ctx)
+            .map(|dir| stage::prompt::handoff_digest(&dir, &plan.items, idx, &deferred))
+            .unwrap_or_default();
+        let own = format!(
+            // 本项任务书补在最后一条：模型最后读到的必须是"我这一项是什么"。
+            include_str!("prompts/core_run_chat.md"),
+            stage::prompt::render_text_of(task, target),
+            idx + 1,
+            plan.items.len(),
+            if target.trim().is_empty() {
+                "（未指明）"
+            } else {
+                target.trim()
+            }
+        );
+        let mut messages =
+            item_messages(system_prompt, &base_history, &digest, run_materials, &own);
+
+        let text = run_item_tools(
+            &ctx,
+            llm,
+            &mut messages,
+            allowed,
+            &cancelled,
+            max_rounds,
+            &mut usage,
+            is_first_turn && cursor == 1,
+            tools::ItemScope {
+                allow_runnable: task.produces_runnable_chapters(),
+                kind: task,
+            },
+        )
+        .await?;
+        if let Some(q) = stage::prompt::deferred_question(&text) {
+            deferred.push(q);
+        }
+        reply.push_str(&text);
+        save_queue(&ctx, &plan.items, turn_start);
+
+        if !matches!(handoff, role::Handoff::Explain(_)) {
+            if let Some(dir) = queue_dir(&ctx) {
+                if stage::queue::still_owed(&dir, task, target) {
+                    messages.push(LlmMessage::user(format!(
+                        "【代码核对】这一项在盘上还没有看到产物（{}）。**增 / 改类**要看到文件在、或被改过；\
+                         **删除类**要看到它真的不见了。没落地就不算做完 —— 要么现在就真的做（该调的工具要调，\
+                         比如删除要 `delete_file` 返回成功），要么在回执里说清为什么做不到；**不要写「已做完」**。",
+                        stage::prompt::render_text_of(task, target)
+                    )));
+                    let second = run_item_tools(
+                        &ctx,
+                        llm,
+                        &mut messages,
+                        allowed,
+                        &cancelled,
+                        max_rounds,
+                        &mut usage,
+                        false,
+                        tools::ItemScope {
+                            allow_runnable: task.produces_runnable_chapters(),
+                            kind: task,
+                        },
+                    )
+                    .await?;
+                    reply.push_str(&second);
+                    save_queue(&ctx, &plan.items, turn_start);
+                }
+            }
+        }
+
+        if matches!(handoff, role::Handoff::Prerequisite { .. }) {
+            append_original_if_ready(&ctx, &plan, idx, &mut planned);
+        }
+    }
+
+    if let Some(dir) = queue_dir(&ctx) {
+        let owed: Vec<String> = planned
+            .iter()
+            .filter(|(_, _, handoff)| !matches!(handoff, role::Handoff::Explain(_)))
+            .filter(|(idx, task, _)| {
+                let t = plan
+                    .items
+                    .get(*idx)
+                    .map(|i| i.target.as_str())
+                    .unwrap_or("");
+                stage::queue::still_owed(&dir, *task, t)
+            })
+            .map(|(idx, task, _)| {
+                let t = plan
+                    .items
+                    .get(*idx)
+                    .map(|i| i.target.as_str())
+                    .unwrap_or("");
+                stage::prompt::render_text_of(*task, t)
+            })
+            .collect();
+        if !owed.is_empty() {
+            reply.push_str(&format!(
+                "\n\n---\n\n【本轮盘点（代码按盘上事实核的）】盘上没有看到这些项的产物：{}。\
+                 删除类可能本来就核不到（属正常）；**上面若有一项的回执写着「做完了」，以这份盘点为准** —— \
+                 那一项其实没落地，说一声我可以重跑。\n",
+                owed.join("、")
+            ));
+        }
+    }
+
+    let _ = ctx.channel.send(SkillAgentEvent::Done {
+        final_text: reply,
+        usage: usage.into_option(),
+    });
+    Ok(())
+}
+
+/// 开跑前的预扫：逐项用"预计产物"判一次承接，排出本轮真正要做的顺序与跳过的说明。
+fn preplan(
+    ctx: &SkillAgentRunContext,
+    plan: &router::RoutePlan,
+) -> (Vec<(usize, role::TaskKind, role::Handoff)>, Vec<String>) {
+    let mut planned = Vec::new();
+    let mut skipped = Vec::new();
+    let mut pending = stage::evidence::Pending::default();
+    for (idx, item) in plan.items.iter().enumerate() {
+        let snap = refreshed_snapshot(ctx);
+        let handoff = role::reconcile(
+            item.kind,
+            stage::evidence::facts_of(&snap, Some(item.target.as_str()), &pending),
+        );
+        match handoff {
+            role::Handoff::Explain(why) => skipped.push(format!("{}：{why}", item.kind.label())),
+            role::Handoff::Prerequisite { first, .. } => {
+                pending.add(stage::evidence::Pending::of(first, item.target.as_str()));
+                pending.add(stage::evidence::Pending::of(
+                    item.kind,
+                    item.target.as_str(),
+                ));
+                planned.push((idx, first, handoff));
+            },
+            _ => {
+                pending.add(stage::evidence::Pending::of(
+                    item.kind,
+                    item.target.as_str(),
+                ));
+                planned.push((idx, item.kind, handoff));
+            },
+        }
+    }
+    if planned.is_empty() {
+        let item = &plan.items[0];
+        let snap = refreshed_snapshot(ctx);
+        let handoff = role::reconcile(
+            item.kind,
+            stage::evidence::facts_of(
+                &snap,
+                Some(item.target.as_str()),
+                &stage::evidence::Pending::default(),
+            ),
+        );
+        planned.push((0, item.kind, handoff));
+    }
+    (planned, skipped)
+}
+
+/// 真正执行这一项之前，用真实事实再判一次（预扫那趟用的是"预计产物"）：原任务已经能做了就直接做，不再跑这个前置。
+fn recheck_handoff(
+    plan: &router::RoutePlan,
+    idx: usize,
+    snap: &stage::StageSnapshot,
+    task: role::TaskKind,
+    handoff: role::Handoff,
+) -> (role::TaskKind, role::Handoff) {
+    let role::Handoff::Prerequisite { .. } = handoff else {
+        return (task, handoff);
+    };
+    let Some(original) = plan.items.get(idx) else {
+        return (task, handoff);
+    };
+    let again = role::reconcile(
+        original.kind,
+        stage::evidence::facts_of(
+            snap,
+            Some(original.target.as_str()),
+            &stage::evidence::Pending::default(),
+        ),
+    );
+    match again {
+        role::Handoff::Proceed | role::Handoff::ProceedNote(_) => (original.kind, again),
+        _ => (task, handoff),
+    }
+}
+
+/// 权限按任务给：任务的产物是什么，就只给写什么的那套工具。
+fn item_tools(task: role::TaskKind, handoff: role::Handoff) -> &'static [&'static str] {
+    if matches!(handoff, role::Handoff::Explain(_)) {
+        role::CHAT_TOOLS
+    } else if task.produces_runnable_chapters() {
+        task.tools()
+    } else if task.drafts_into_agent_dir() {
+        role::DRAFT_TOOLS
+    } else {
+        role::DICTATE_TOOLS
+    }
+}
+
+/// 项与项之间的分界标题：序号一律用队列里的位置（与注入的「队列第 i/N 项」同口径）。
+fn item_header(task: role::TaskKind, handoff: role::Handoff, idx: usize, total: usize) -> String {
+    format!(
+        "\n\n---\n\n**（第 {}/{} 项 · {}）**\n\n",
+        idx + 1,
+        total,
+        if matches!(handoff, role::Handoff::Prerequisite { .. }) {
+            format!("{} · 前置", task.label()) // 这一项是"为了做原任务先补的前置"，标出来用户才看得懂为什么任务名变了
+        } else {
+            task.label().to_string()
+        }
+    )
+}
+
+/// 前置刚补完，原任务可能立刻就能做：同一轮里接着做掉（只追加一次，追加的这项不再触发本分支）。
+fn append_original_if_ready(
+    ctx: &SkillAgentRunContext,
+    plan: &router::RoutePlan,
+    idx: usize,
+    planned: &mut Vec<(usize, role::TaskKind, role::Handoff)>,
+) {
+    let Some(original) = plan.items.get(idx) else {
+        return;
+    };
+    let snap = refreshed_snapshot(ctx);
+    let again = role::reconcile(
+        original.kind,
+        stage::evidence::facts_of(
+            // 兜底要用真实磁盘事实：前面那一项可能没真写出来（预计 ≠ 事实）。
+            &snap,
+            Some(original.target.as_str()),
+            &stage::evidence::Pending::default(),
+        ),
+    );
+    if !matches!(
+        again,
+        role::Handoff::Prerequisite { .. } | role::Handoff::Explain(_)
+    ) {
+        planned.push((idx, original.kind, again));
+    }
+}
+
+/// 每项执行前重新读盘（上一项刚落盘的章节这一项才看得见），key 现取而不是用回合起点那份快照。
+fn refreshed_snapshot(ctx: &SkillAgentRunContext) -> stage::StageSnapshot {
+    match ctx.script_key.clone().or_else(|| ctx.bound_key()) {
+        Some(key) => stage::derive(Some(&key)),
+        None => ctx.stage_snapshot.clone(),
+    }
+}
+
+/// 队列写进哪个剧本包：每次写的时候现算，不取回合开始那份快照。
+fn queue_dir(ctx: &SkillAgentRunContext) -> Option<std::path::PathBuf> {
+    if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
+        return Some(dir.to_path_buf());
+    }
+    let key = ctx.bound_key()?;
+    stage::derive(Some(&key)).script_dir
+}
+
+/// 队列落盘。失败只记一行日志：账本是辅助记忆，不该把这一轮弄失败。
+fn save_queue(
+    ctx: &SkillAgentRunContext,
+    items: &[router::QueueItem],
+    registered_at: std::time::SystemTime,
+) {
+    let Some(dir) = queue_dir(ctx) else {
+        return;
+    };
+    if let Err(e) = stage::queue::write_queue(&dir, items, registered_at) {
+        tracing::warn!("[router] 队列落盘失败: {e}");
+    }
+}
+
+/// 拼一项请求的消息表：system + 历史 + 交接材料（前面各项 + 状态）+ 本轮动态材料 + 本项任务书（放最后，走 user 角色）。
+fn item_messages(
+    system_prompt: String,
+    base_history: &[LlmMessage],
+    handoff_digest: &str,
+    run_materials: String,
+    own_task: &str,
+) -> Vec<LlmMessage> {
+    let mut messages = Vec::with_capacity(base_history.len() + 3);
+    messages.push(LlmMessage::system(system_prompt));
+    messages.extend(base_history.iter().cloned());
+    if !handoff_digest.trim().is_empty() {
+        messages.push(LlmMessage::user(handoff_digest.to_string()));
+    }
+    if !run_materials.is_empty() {
+        messages.push(LlmMessage::user(run_materials));
+    }
+    messages.push(LlmMessage::user(own_task.to_string()));
+    messages
+}
+
+/// 本轮累计用量。逐项加起来，收尾时一次报给前端。
+#[derive(Default)]
+struct TurnUsage {
+    prompt: u64,
+    completion: u64,
+    cached: u64,
+}
+
+impl TurnUsage {
+    fn add(&mut self, usage: Option<&Usage>) {
+        if let Some(u) = usage {
+            self.prompt += u.prompt_tokens;
+            self.completion += u.completion_tokens;
+            self.cached += u.cached_tokens;
+        }
+    }
+
+    fn into_option(self) -> Option<Usage> {
+        (self.prompt + self.completion > 0).then(|| Usage {
+            prompt_tokens: self.prompt,
+            completion_tokens: self.completion,
+            total_tokens: self.prompt + self.completion,
+            cached_tokens: self.cached,
+        })
+    }
+}
+
+/// 跑一项任务的工具轮：流式生成 → 执行工具 → 直到模型不再调工具；返回这一项的最终回复文本。
+async fn run_item_tools(
+    ctx: &SkillAgentRunContext,
+    llm: &LlmClient,
+    messages: &mut Vec<LlmMessage>,
+    allowed: &[&str],
+    cancelled: &CancelFlag,
+    max_rounds: usize,
+    usage: &mut TurnUsage,
+    first_turn: bool,
+    item: tools::ItemScope,
+) -> Result<String, String> {
+    let mut recovery_budget: usize = RECOVERY_BUDGET;
+    let mut last_text = String::new();
+
+    for round in 0..max_rounds {
+        if cancelled.load(Ordering::SeqCst) {
+            break;
+        }
+        match stage::budget::apply_context_budget(messages, ctx.context_window) {
+            outcome if !stage::budget::budget_allows_send(&outcome) => {
+                let note = outcome.note().unwrap_or_else(|| "上下文已满".into());
+                tracing::warn!("[ctx] {}", note.replace('\n', " "));
+                let _ = ctx.channel.send(SkillAgentEvent::Error {
+                    message: note.clone(),
+                });
+                return Err(note);
+            },
+            outcome => {
+                if let Some(note) = outcome.note() {
+                    tracing::info!("[ctx] {}", note.replace('\n', " "));
+                    let _ = ctx.channel.send(SkillAgentEvent::Status { content: note });
+                }
+            },
+        }
+        let defs = tools::tool_definitions(allowed);
+        let (assistant_text, reasoning_text, tool_calls, finish_reason, round_usage) =
+            match stream_completion(ctx, llm, messages, &defs, cancelled).await {
                 Ok(r) => r,
                 Err(e) => {
-                    let _ = ctx
-                        .channel
-                        .send(SkillAgentEvent::Error { message: e.clone() });
-                    return Err(e);
+                    let message = if history::looks_like_context_overflow(&e) {
+                        format!(
+                            "这个对话的上下文满了（模型拒绝了这一次请求）。请**新开一个对话**继续 —— \
+                             剧本文件都在磁盘上，新会话里照样能接着改。\n\n原始报错：{}",
+                            e.lines().next().unwrap_or("")
+                        )
+                    } else {
+                        e.clone()
+                    };
+                    let _ = ctx.channel.send(SkillAgentEvent::Error {
+                        message: message.clone(),
+                    });
+                    return Err(message);
                 },
             };
-        // 逐轮累加当轮用量（provider 未上报时为 None，跳过）
-        if let Some(u) = &usage {
-            turn_prompt_tokens += u.prompt_tokens;
-            turn_completion_tokens += u.completion_tokens;
-            turn_cached_tokens += u.cached_tokens;
-        }
+        usage.add(round_usage.as_ref());
+        last_text = assistant_text.clone();
 
-        // 无工具调用 → 完成
         if tool_calls.is_empty() {
-            // 被输出长度上限截断（finish_reason=max_tokens）且未取消 → 推一条纠正提示
-            // 自动续跑一次。纠正提示只进内存 messages，不落库，用户界面无感知。
             let truncated = finish_reason.as_deref() == Some("max_tokens");
             let was_cancelled = cancelled.load(Ordering::SeqCst);
             if truncated && !was_cancelled && recovery_budget > 0 {
@@ -291,19 +643,15 @@ pub async fn run_chat(
                 ctx.conversation_id,
                 &final_msg,
                 Some(&reasoning_text),
-                usage.as_ref(),
+                round_usage.as_ref(),
             )
             .await;
 
-            // 首轮（本会话第一条 assistant 回复，含工具调用轮）→ 后台自动生成会话标题。
-            // 不阻塞 Done：生成/写库/通知都在独立任务里完成；用户已在 UI 手动
-            // 改名后（title 非空）自动生成会跳过（见 auto_title_conversation）。
-            if is_first_turn {
+            if first_turn {
                 let title_db = ctx.db.clone();
                 let title_llm = Arc::clone(&ctx.llm);
                 let title_channel = ctx.channel.clone();
                 let conv_id = ctx.conversation_id;
-                // 标题源：最后一条 user 消息（即本轮提问）+ 本次回复开头摘要
                 let first_user = messages
                     .iter()
                     .rev()
@@ -312,7 +660,7 @@ pub async fn run_chat(
                     .unwrap_or_default();
                 let reply_summary: String = assistant_text.chars().take(200).collect();
                 tauri::async_runtime::spawn(async move {
-                    auto_title_conversation(
+                    title::auto_title_conversation(
                         title_db,
                         title_llm,
                         title_channel,
@@ -323,25 +671,9 @@ pub async fn run_chat(
                     .await;
                 });
             }
-
-            let usage = if turn_prompt_tokens + turn_completion_tokens > 0 {
-                Some(Usage {
-                    prompt_tokens: turn_prompt_tokens,
-                    completion_tokens: turn_completion_tokens,
-                    total_tokens: turn_prompt_tokens + turn_completion_tokens,
-                    cached_tokens: turn_cached_tokens,
-                })
-            } else {
-                None
-            };
-            let _ = ctx.channel.send(SkillAgentEvent::Done {
-                final_text: assistant_text,
-                usage,
-            });
-            return Ok(());
+            return Ok(assistant_text);
         }
 
-        // 有工具调用：回填 assistant(tool_calls) 并持久化
         let assistant_msg = LlmMessage {
             role: "assistant".into(),
             content: assistant_text.clone(),
@@ -367,144 +699,78 @@ pub async fn run_chat(
             ctx.conversation_id,
             &assistant_msg,
             Some(&reasoning_text),
-            usage.as_ref(),
+            round_usage.as_ref(),
         )
         .await;
 
-        // 逐个执行工具，回填 tool 结果并持久化
         for tc in &tool_calls {
-            let call_id = if tc.id.is_empty() {
-                format!("call-{}-{}", std::process::id(), tc.index)
-            } else {
-                tc.id.clone()
-            };
-            let args = parse_tool_args(&tc.arguments);
-            let _ = ctx.channel.send(SkillAgentEvent::ToolCall {
-                call_id: call_id.clone(),
-                tool: tc.name.clone(),
-                args: args.clone(),
-                raw_args: tc.arguments.clone(),
-            });
-
-            let (ok, mut output) = tools::execute_tool(&ctx, &tc.name, &args).await;
-
-            // 参数不是有效 JSON → 大概率生成被截断，附上原文片段便于模型/user 定位
-            if !ok
-                && !tc.arguments.trim().is_empty()
-                && serde_json::from_str::<Value>(&tc.arguments).is_err()
-            {
-                let snippet: String = tc.arguments.chars().take(400).collect();
-                output = format!(
-                    "{}\n\n[诊断] 本次工具调用的参数不是有效 JSON，可能是内容过长被截断。收到的参数开头：\n{}",
-                    output, snippet
-                );
-            }
-
-            let _ = ctx.channel.send(SkillAgentEvent::ToolResult {
-                call_id: call_id.clone(),
-                tool: tc.name.clone(),
-                ok,
-                output: output.clone(),
-                error: None,
-            });
-
-            let tool_msg = LlmMessage::tool_result(tc.id.clone(), &output);
-            messages.push(tool_msg.clone());
-            let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None, None).await;
+            run_one_tool_call(ctx, tc, allowed, item, messages).await;
         }
 
         if round == max_rounds - 1 {
             let _ = ctx.channel.send(SkillAgentEvent::Error {
                 message: format!("已达到最大工具调用轮数（{}），已停止", max_rounds),
             });
-            return Ok(());
+            break;
         }
     }
 
-    Ok(())
+    Ok(last_text)
 }
 
-// ---------- 会话自动命名 ----------
-
-/// 首轮回复结束后后台生成会话标题（由 `run_chat` 收尾处 spawn，不阻塞回复流）。
-///
-/// 生成前二次检查标题仍为空：用户可能已手动改名（或在 UI 上新建了标题），
-/// 非空则跳过，保证「用户已设置会话名时不再自动生成」。
-async fn auto_title_conversation(
-    db: DatabaseConnection,
-    llm: Arc<LlmClient>,
-    channel: tauri::ipc::Channel<SkillAgentEvent>,
-    conversation_id: i32,
-    first_user_msg: String,
-    reply_summary: String,
+/// 执行一次工具调用：发事件 → 跑工具 → 回填结果消息并持久化。
+async fn run_one_tool_call(
+    ctx: &SkillAgentRunContext,
+    tc: &AccumToolCall,
+    allowed: &[&str],
+    item: tools::ItemScope,
+    messages: &mut Vec<LlmMessage>,
 ) {
-    let Ok(Some(conv)) = db::get_conversation(&db, conversation_id).await else {
-        return;
+    let call_id = if tc.id.is_empty() {
+        format!("call-{}-{}", std::process::id(), tc.index)
+    } else {
+        tc.id.clone()
     };
-    let titled = conv
-        .title
-        .as_deref()
-        .map(str::trim)
-        .is_some_and(|t| !t.is_empty());
-    if titled {
-        return;
-    }
-    let title = generate_title(&llm, &first_user_msg, &reply_summary).await;
-    if title.is_empty() {
-        return;
-    }
-    if db::update_conversation_title(&db, conversation_id, title.clone())
-        .await
-        .is_err()
-    {
-        return;
-    }
-    let _ = channel.send(SkillAgentEvent::ConversationTitle { title });
-}
+    let args = parse_tool_args(&tc.arguments);
+    let _ = ctx.channel.send(SkillAgentEvent::ToolCall {
+        call_id: call_id.clone(),
+        tool: tc.name.clone(),
+        args: args.clone(),
+        raw_args: tc.arguments.clone(),
+    });
 
-/// 生成 4-10 字会话标题。优先 LLM（非流式单次调用），失败/未配置时
-/// 回退截取首条用户消息前 15 字并去掉尾部标点。
-async fn generate_title(llm: &LlmClient, first_user_msg: &str, reply_summary: &str) -> String {
-    let mut candidate = String::new();
-    if llm.config().is_usable() {
-        let msgs = vec![
-            LlmMessage::system(
-                "你是会话命名助手。根据用户的提问与助手的回复，用中文生成 4-10 个字的短标题，\
-                 概括这次对话的主题。只输出标题本身，不要引号、标点或任何解释。",
+    let args_invalid =
+        !tc.arguments.trim().is_empty() && serde_json::from_str::<Value>(&tc.arguments).is_err();
+    let (ok, output) = if args_invalid {
+        let snippet: String = tc.arguments.chars().take(400).collect();
+        (
+            false,
+            format!(
+                "这次调用**没有执行**：参数不是合法 JSON，多半是内容太长被截断。收到的参数开头：\n{snippet}\n\n\
+                 改小一点再来 —— 只改文件里的一段就用 `edit_file`（给要替换掉的原文，参数很小）；\
+                 要写一份长内容，按节拆成几次写。**不要**改用 append 硬补：那只会把内容写重复。"
             ),
-            LlmMessage::user(format!(
-                "用户提问：{}\n助手回复：{}",
-                first_user_msg, reply_summary
-            )),
-        ];
-        match llm.complete(&msgs).await {
-            Ok(text) => {
-                let t = text
-                    .trim()
-                    .trim_matches(|c| matches!(c, '"' | '「' | '」' | '《' | '》'));
-                if !t.is_empty() {
-                    candidate = t.chars().take(20).collect();
-                }
-            },
-            Err(e) => tracing::warn!("[SkillAgent] 自动生成会话标题失败，回退截取: {e}"),
-        }
-    }
-    if candidate.is_empty() {
-        candidate = first_user_msg
-            .trim()
-            .chars()
-            .take(15)
-            .collect::<String>()
-            .trim_end_matches(['，', '。', '！', '？', '；', '、', ',', '.', '!', '?', ':'])
-            .to_string();
-    }
-    candidate
-}
+        )
+    } else {
+        tools::execute_tool(ctx, allowed, &tc.name, &args, item).await
+    };
 
-// ---------- LLM 调用（双路径） ----------
+    let _ = ctx.channel.send(SkillAgentEvent::ToolResult {
+        call_id: call_id.clone(),
+        tool: tc.name.clone(),
+        ok,
+        output: output.clone(),
+        error: None,
+    });
+
+    let tool_msg = LlmMessage::tool_result(tc.id.clone(), &output);
+    messages.push(tool_msg.clone());
+    let _ = db::insert_message(&ctx.db, ctx.conversation_id, &tool_msg, None, None).await;
+}
 
 async fn stream_completion(
     ctx: &SkillAgentRunContext,
+    llm: &LlmClient,
     messages: &[LlmMessage],
     defs: &[ToolDefinition],
     cancelled: &CancelFlag,
@@ -518,14 +784,9 @@ async fn stream_completion(
     ),
     String,
 > {
-    let llm = &ctx.llm;
     let mut text_out = String::new();
-    // 思考链单独累积：只展示不落 LLM 上下文（Reasoning chunk 不进 text_out）。
     let mut reasoning_out = String::new();
-    // 本轮 token 用量：由 provider 的 StreamEnd.usage / 非流式响应的 usage 填充；
-    // provider 未上报时保持 None，调用方按「无数据」处理。
     let mut usage: Option<Usage> = None;
-    // 最后一次 StreamEnd 携带的归一化停止原因（"stop" / "max_tokens" / …）。
     let mut finish_reason: Option<String> = None;
     let mut tool_map: HashMap<usize, AccumToolCall> = HashMap::new();
 
@@ -569,7 +830,6 @@ async fn stream_completion(
                     usage: end_usage,
                 } => {
                     finish_reason = reason;
-                    // LlmUsage（LLM 层）→ Usage（skill_agent 事件层）字段同名直转
                     usage = end_usage.map(|u| Usage {
                         prompt_tokens: u.prompt_tokens,
                         completion_tokens: u.completion_tokens,
@@ -577,9 +837,7 @@ async fn stream_completion(
                         cached_tokens: u.cached_tokens,
                     });
                 },
-                LlmChunk::ToolCallProgress { .. } => {
-                    // 剧本编辑器的 agent 会话不需要参数生成进度提示
-                },
+                LlmChunk::ToolCallProgress { .. } => {},
             }
         }
     } else {

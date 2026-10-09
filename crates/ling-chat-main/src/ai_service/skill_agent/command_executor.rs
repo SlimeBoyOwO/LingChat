@@ -82,11 +82,6 @@ pub fn needs_elevated_launcher(uac_requested: bool, process_elevated: bool) -> b
 }
 
 /// 通过 Windows 正常 RunAs 流程启动管理员重启辅助进程。
-///
-/// 辅助进程先写入就绪标记，再等待当前 LingChat 完全退出，最后启动继承管理员
-/// 令牌的新实例。这样可以避免两个 WebView/Tauri 实例短暂重叠时，新实例因共享
-/// 资源仍被旧实例占用而立即退出。用户仍需在系统 UAC 对话框中明确同意，本函数
-/// 不绕过系统安全边界。
 #[cfg(windows)]
 pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
     use std::os::windows::process::CommandExt;
@@ -135,8 +130,6 @@ pub fn launch_current_process_as_admin() -> anyhow::Result<()> {
         );
     }
 
-    // Start-Process 返回只代表 ShellExecute 接受了请求。等到提权后的辅助进程
-    // 真正运行并写入标记后，调用方才可以安全关闭当前实例。
     let deadline = Instant::now() + Duration::from_secs(10);
     while !ready_file.is_file() && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(50));
@@ -249,10 +242,6 @@ pub async fn run_shell_command(
 }
 
 /// 以受限的时间和输出运行 shell 命令。
-///
-/// shell 进程是生命周期边界。成功分离的后代进程可以继续运行，
-/// 但仅凭继承 stdout/stderr 句柄无法让这个 future 保持存活。
-/// 超时或输出失控时，进程树会被尽力终止。
 pub async fn run_shell_command_with_timeout(
     sandbox_dir: &Path,
     command: &str,
@@ -270,9 +259,6 @@ pub async fn run_shell_command_with_timeout(
 }
 
 /// 以更大且明确受限的后台超时，运行分离的对话命令。
-///
-/// 特意与 [`run_shell_command_with_timeout`] 分开，
-/// 让前台调用方保留原有的五分钟上限。
 pub async fn run_shell_command_in_background_with_timeout(
     sandbox_dir: &Path,
     command: &str,
@@ -304,7 +290,6 @@ async fn run_shell_command_with_limits(
     #[cfg(windows)]
     let mut process = {
         let mut process = tokio::process::Command::new("cmd");
-        // raw_arg 能保持 cmd.exe 的嵌套引号原样不被破坏。
         process
             .arg("/D")
             .arg("/C")
@@ -510,9 +495,6 @@ async fn terminate_process_tree(child: &mut tokio::process::Child) {
 }
 
 /// 异步取消会直接 drop 命令 future，没有机会再等待清理。
-/// 要在 `Child::kill_on_drop` 移除 shell 进程之前运行操作系统的进程树终止命令。
-/// 这里特意只在取消时阻塞：分离的 taskkill 会与子进程 drop 竞争，
-/// 可能在 taskkill 检查之前就丢失父子进程关系。
 struct ProcessTreeCancellationGuard {
     pid: Option<u32>,
 }
@@ -577,9 +559,6 @@ pub async fn run_shell_command_elevated_with_timeout(
     std::fs::write(&temp.script, bat_content)?;
     std::fs::write(&temp.guard, b"running")?;
 
-    // 提权后的 cmd 进程树由提权 watchdog 负责终止。中等完整性的启动器
-    // 无法可靠地 taskkill 高完整性子进程，因此超时/取消时只移除哨兵文件，
-    // 让这个提权进程在同等完整性级别下执行清理。
     let watchdog = format!(
         "$ErrorActionPreference = 'Stop'\r\n\
          $guard = '{}'\r\n\
@@ -601,8 +580,6 @@ pub async fn run_shell_command_elevated_with_timeout(
     );
     std::fs::write(&temp.watchdog, watchdog)?;
 
-    // Process::WaitForExit 只等待提权 watchdog 本身。
-    // Start-Process -Wait 还会等待后代进程，会复现句柄继承导致的挂起。
     let ps = format!(
         "$p = Start-Process -FilePath powershell.exe -ArgumentList '-NoProfile','-ExecutionPolicy','Bypass','-File','\"{}\"' -Verb RunAs -PassThru; $p.WaitForExit(); exit $p.ExitCode",
         temp.watchdog.display()
@@ -696,8 +673,6 @@ fn powershell_single_quoted_path(path: &Path) -> String {
 }
 
 /// 删除哨兵后，提权 watchdog 会在同等权限下终止命令树；taskkill 是 watchdog
-/// 未能正常运行时的最后兜底。若用户仍停留在 UAC 窗口，PID 文件不存在，之后即使
-/// 接受 UAC，watchdog 也会先发现哨兵缺失并拒绝启动命令。
 #[cfg(windows)]
 async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
     let _ = std::fs::remove_file(guard_path);
@@ -713,7 +688,6 @@ async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
     }
     let Some(pid) = pid else { return };
 
-    // 先给提权 watchdog 一个轮询间隔，让它优先执行特权清理。
     tokio::time::sleep(Duration::from_millis(300)).await;
 
     let mut taskkill = tokio::process::Command::new("taskkill");
@@ -726,8 +700,6 @@ async fn cancel_elevated_process(guard_path: &Path, pid_path: &Path) {
         .kill_on_drop(true);
     match tokio::time::timeout(Duration::from_secs(5), taskkill.status()).await {
         Ok(Ok(status)) if status.success() => {},
-        // watchdog 可能已经终止了进程；因此非零的兜底结果仅作诊断，
-        // 不视为第二次面向用户的失败。
         Ok(Ok(status)) => tracing::debug!(pid, ?status, "提权 watchdog 已接管或兜底终止失败"),
         Ok(Err(error)) => tracing::warn!(pid, %error, "无法启动 taskkill 清理提权进程"),
         Err(_) => tracing::warn!(pid, "终止超时的提权进程失败：taskkill 超时"),

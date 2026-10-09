@@ -14,8 +14,10 @@ pub mod chapter;
 pub mod events;
 pub mod events_handler;
 pub mod responses;
+pub mod schema;
 pub mod script_manager;
 pub mod utils;
+pub mod validate;
 
 // Re-export key types
 pub use events::{ScriptChannels, SharedScriptChannels};

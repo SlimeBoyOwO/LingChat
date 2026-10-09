@@ -6,11 +6,9 @@ use sea_orm::{
 };
 
 use crate::ai_service::skill_agent::events::Usage;
-use crate::ai_service::types::LlmMessage;
+use crate::ai_service::types::{LlmMessage, ToolCall};
 use crate::db::entities::skill_agent_conversation::{self, Entity as ConvEntity};
 use crate::db::entities::skill_agent_message::{self, Entity as MsgEntity};
-
-// ==================== 会话 ====================
 
 /// 新建会话。只记录创建时的剧本 key，不存剧本内容快照。
 pub async fn create_conversation(
@@ -68,7 +66,6 @@ pub async fn touch_conversation(db: &DatabaseConnection, id: i32) -> Result<(), 
 }
 
 /// 更新会话标题（用户重命名 / 首轮自动命名共用）。
-/// 顺带刷新 updated_at，保持会话列表「按最近更新倒序」的排序正确。
 pub async fn update_conversation_title(
     db: &DatabaseConnection,
     id: i32,
@@ -86,6 +83,24 @@ pub async fn update_conversation_title(
     Ok(())
 }
 
+/// 绑定会话的剧本 key；顺带刷新 updated_at 保持列表排序。
+pub async fn update_conversation_script_key(
+    db: &DatabaseConnection,
+    id: i32,
+    script_key: String,
+) -> Result<(), String> {
+    let Some(m) = get_conversation(db, id).await? else {
+        return Ok(());
+    };
+    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    am.script_key = Set(Some(script_key));
+    am.updated_at = Set(Local::now().naive_local());
+    am.update(db)
+        .await
+        .map_err(|e| format!("更新会话剧本 key 失败: {}", e))?;
+    Ok(())
+}
+
 /// 删除会话及其全部消息。
 pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(), String> {
     MsgEntity::delete_many()
@@ -100,13 +115,7 @@ pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(),
     Ok(())
 }
 
-// ==================== 消息 ====================
-
 /// 插入一条消息（OpenAI 格式；空 content 存 NULL）。
-/// `reasoning` 为 assistant 的思考链（仅展示用途，不参与 LLM 上下文）。
-/// `usage` 为产生该消息那一轮 LLM 调用的 token 用量（仅 assistant 消息携带，
-/// 用于用量统计持久化；tool/user 消息传 None）。
-/// 返回新消息的 DB id（供「回溯删除」定位删除起点）。
 pub async fn insert_message(
     db: &DatabaseConnection,
     conversation_id: i32,
@@ -166,9 +175,6 @@ pub async fn clear_messages(db: &DatabaseConnection, conversation_id: i32) -> Re
 }
 
 /// 删除某会话中 id >= `from_id` 的全部消息（「回溯」：把对话回退到该消息之前）。
-///
-/// 消息按插入顺序分配自增 id，删除一段后 LLM 上下文从剩余消息重建，
-/// 不会残留「无 user 开头的 assistant 回复」导致上下文结构错乱。
 pub async fn delete_messages_from(
     db: &DatabaseConnection,
     conversation_id: i32,
@@ -195,4 +201,60 @@ pub fn message_to_llm(m: &skill_agent_message::Model) -> LlmMessage {
         tool_call_id: m.tool_call_id.clone(),
         image_data_url: None,
     }
+}
+
+/// 从会话写入过的路径反推它归属的剧本包，供 `script_key` 为空的会话（老会话，或建包早于绑定逻辑）兜底。
+pub async fn derive_script_key(db: &DatabaseConnection, conversation_id: i32) -> Option<String> {
+    let rows = MsgEntity::find()
+        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
+        .filter(skill_agent_message::Column::ToolCalls.like("%/scripts/%"))
+        .order_by_asc(skill_agent_message::Column::Id)
+        .all(db)
+        .await
+        .ok()?;
+
+    let known = crate::utils::script_paths::enumerate_script_keys();
+    let mut votes: Vec<(String, usize)> = Vec::new();
+    for row in rows {
+        let Some(calls) = row
+            .tool_calls
+            .as_deref()
+            .and_then(|s| serde_json::from_str::<Vec<ToolCall>>(s).ok())
+        else {
+            continue;
+        };
+        for call in calls {
+            if call.function.name != "write_file" {
+                continue;
+            }
+            let Ok(args) = serde_json::from_str::<serde_json::Value>(&call.function.arguments)
+            else {
+                continue;
+            };
+            let Some(path) = args.get("path").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            let derived =
+                crate::ai_service::skill_agent::stage::evidence::script_key_of(path, &known);
+            let Some(key) = derived else {
+                continue;
+            };
+            match votes.iter_mut().find(|(k, _)| *k == key) {
+                Some((_, n)) => *n += 1,
+                None => votes.push((key, 1)),
+            }
+        }
+    }
+
+    let mut best: Option<(String, usize)> = None;
+    for (key, n) in votes {
+        let better = match &best {
+            Some((_, bn)) => n > *bn,
+            None => true,
+        };
+        if better {
+            best = Some((key, n));
+        }
+    }
+    best.map(|(key, _)| key)
 }

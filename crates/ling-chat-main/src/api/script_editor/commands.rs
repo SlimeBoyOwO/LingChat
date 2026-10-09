@@ -17,15 +17,15 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::{ScriptStatus, strip_transient_fields};
-use crate::api::{data_dir, game_data_dir, resolve_role_dir};
+use crate::api::resolve_role_dir;
 use crate::db::managers::role_repo::RoleRepo;
 
 use sea_orm::DatabaseConnection;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
-use super::schema::{ScriptSchema, build_schema};
-use super::validate::{self, ValidationReport};
+use crate::ai_service::game_system::script_engine::schema::{ScriptSchema, build_schema};
+use crate::ai_service::game_system::script_engine::validate::{self, ValidationReport};
 use crate::utils::script_paths::{self as paths, ScriptLayout};
 use crate::utils::yaml_file::{self, ChapterDoc};
 
@@ -84,6 +84,8 @@ pub struct ScriptCharacter {
     /// 剧本里 `character:` 应该写的值（settings.yml 的 script_role_key，缺省为目录名）
     pub role_key: String,
     pub ai_name: String,
+    /// 人设（`settings.yml` 的 `system_prompt`），编辑角色时回填用。
+    pub system_prompt: String,
     /// avatar/ 下能找到的情绪名（不含扩展名）
     pub emotions: Vec<String>,
     /// avatar/ 下的服装子目录
@@ -311,6 +313,12 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             })
             .unwrap_or_else(|| folder.clone());
 
+        let system_prompt = settings
+            .get("system_prompt")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+
         let avatar = e.path().join("avatar");
         let mut emotions: Vec<String> = Vec::new();
         let mut clothes: Vec<String> = Vec::new();
@@ -339,6 +347,7 @@ fn read_characters(script_dir: &Path) -> Vec<ScriptCharacter> {
             folder,
             role_key,
             ai_name,
+            system_prompt,
             emotions,
             clothes,
             preview_image,
@@ -480,7 +489,12 @@ pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
         }
     }
 
-    Ok(validate::validate(&data_dir(), &dir, &key, &names))
+    Ok(validate::validate(
+        crate::data_dir::get_data_dir(),
+        &dir,
+        &key,
+        &names,
+    ))
 }
 
 // ============================================================
@@ -716,28 +730,37 @@ pub enum AssetScope {
     Global,
 }
 
+/// 素材类别（命令参数的取值）→ 引擎的素材类型。
+fn media_type_of(
+    kind: &str,
+) -> Result<crate::ai_service::game_system::script_engine::utils::media::MediaType, String> {
+    use crate::ai_service::game_system::script_engine::utils::media::MediaType;
+    match kind {
+        "background" => Ok(MediaType::Background),
+        "music" => Ok(MediaType::Music),
+        "sound" => Ok(MediaType::Sound),
+        "ambient" => Ok(MediaType::Ambient),
+        "pic" => Ok(MediaType::Pic),
+        other => Err(format!("未知素材类别: {}", other)),
+    }
+}
+
 /// 素材类别 → 剧本内子目录 / 全局目录。
 ///
 /// 剧本内一律落在 `media.rs` 候选列表的**第一个**目录，保证引擎一定能找到；
 /// 全局目录直接用 `MediaType::fallback_dir()` 的同一套值，避免又写一份会发散的映射。
 fn asset_dirs(kind: &str) -> Result<(&'static str, PathBuf), String> {
-    use crate::ai_service::game_system::script_engine::utils::media::MediaType;
-    let (subdir, media) = match kind {
-        "background" => ("Backgrounds", MediaType::Background),
-        "music" => ("Musics", MediaType::Music),
-        "sound" => ("Sounds", MediaType::Sound),
-        "ambient" => ("Ambients", MediaType::Ambient),
-        "pic" => ("Pics", MediaType::Pic),
-        other => return Err(format!("未知素材类别: {}", other)),
-    };
-    Ok((subdir, game_data_dir().join(media.fallback_dir())))
+    let media = media_type_of(kind)?;
+    Ok((
+        media.subdir_candidates()[0],
+        crate::api::game_data_dir().join(media.fallback_dir()),
+    ))
 }
 
 fn allowed_extensions(kind: &str) -> &'static [&'static str] {
-    match kind {
-        "background" | "pic" => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
-        _ => &["mp3", "wav", "ogg", "flac"],
-    }
+    media_type_of(kind)
+        .map(|m| m.allowed_extensions())
+        .unwrap_or(&[])
 }
 
 /// 列出全局素材（`game_data/backgrounds` / `musics` / `ambient`）。
@@ -1000,7 +1023,7 @@ pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
         .ok_or_else(|| "无法从源路径取出文件名".to_string())?;
     let name = paths::sanitize_file_name(&raw_name)?;
 
-    let dir = data_dir().join("editor");
+    let dir = crate::data_dir::get_data_dir().join("editor");
     std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
     clear_editor_bg_dir(&dir)?;
     let target = dir.join(&name);
@@ -1024,7 +1047,7 @@ pub fn editor_upload_editor_bg_data(data: String, name: String) -> Result<String
     }
 
     let name = paths::sanitize_file_name(&name)?;
-    let dir = data_dir().join("editor");
+    let dir = crate::data_dir::get_data_dir().join("editor");
     std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
     clear_editor_bg_dir(&dir)?;
     let target = dir.join(&name);
@@ -1109,9 +1132,92 @@ pub fn editor_create_character(
         folder: folder.clone(),
         role_key: folder,
         ai_name: name,
+        system_prompt: system_prompt.trim().to_string(),
         emotions: Vec::new(),
         clothes: Vec::new(),
         preview_image: None,
+        global_avatar,
+    })
+}
+
+/// 改一个剧本内角色：只动显示名与人设，立绘、情绪、服装、`script_role_key` 等其余键原样保留。
+/// 目录名不给改：改目录要连带改 `script_role_key` 与所有章节里的引用，那是"换个角色"，得走删+建。
+#[tauri::command]
+pub fn editor_update_character(
+    key: String,
+    folder: String,
+    ai_name: String,
+    system_prompt: String,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(&key)?;
+    let safe = paths::sanitize_folder_name(&folder)?;
+    let char_dir = dir.join("characters").join(&safe);
+    if !char_dir.is_dir() {
+        return Err(format!("角色目录不存在: characters/{}", safe));
+    }
+
+    let settings_path = char_dir.join("settings.yml");
+    let mut settings: Map<String, JsonValue> = std::fs::read_to_string(&settings_path)
+        .ok()
+        .and_then(|s| serde_yaml::from_str::<JsonValue>(&s).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    let name = if ai_name.trim().is_empty() {
+        safe.clone()
+    } else {
+        ai_name.trim().to_string()
+    };
+    settings.insert("ai_name".into(), JsonValue::String(name.clone()));
+    // 作者把真正的名字写在 `name` 里时（read_characters 优先读它），一起改，别留两个名字
+    if settings.contains_key("name") {
+        settings.insert("name".into(), JsonValue::String(name.clone()));
+    }
+    settings.insert(
+        "system_prompt".into(),
+        JsonValue::String(system_prompt.trim().to_string()),
+    );
+    // 老角色卡可能缺 script_role_key：顺手补上（缺了引擎每次启动都会新建重复角色）
+    settings
+        .entry("script_role_key".to_string())
+        .or_insert_with(|| JsonValue::String(safe.clone()));
+
+    let role_key = settings
+        .get("script_role_key")
+        .and_then(|v| v.as_str())
+        .unwrap_or(&safe)
+        .to_string();
+    yaml_file::write_json_as_yaml(&settings_path, &JsonValue::Object(settings))?;
+
+    let global_avatar_dir = crate::api::characters_dir().join(&safe).join("avatar");
+    let mut emotions: Vec<String> = Vec::new();
+    let mut clothes: Vec<String> = Vec::new();
+    if let Ok(files) = std::fs::read_dir(char_dir.join("avatar")) {
+        for f in files.flatten() {
+            let n = f.file_name().to_string_lossy().to_string();
+            if f.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                clothes.push(n);
+            } else if let Some(stem) = Path::new(&n).file_stem() {
+                emotions.push(stem.to_string_lossy().to_string());
+            }
+        }
+    }
+    emotions.sort();
+    emotions.dedup();
+    clothes.sort();
+    let avatar = char_dir.join("avatar");
+    let global_avatar = first_avatar_image(&global_avatar_dir).is_some();
+    let preview_image =
+        first_avatar_image(&avatar).or_else(|| first_avatar_image(&global_avatar_dir));
+
+    Ok(ScriptCharacter {
+        folder: safe.clone(),
+        role_key,
+        ai_name: name,
+        system_prompt: system_prompt.trim().to_string(),
+        emotions,
+        clothes,
+        preview_image,
         global_avatar,
     })
 }
@@ -1798,7 +1904,7 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
 /// 角色卡里写的玩家名（settings.user_name）。查不到或为空返回空串 ——
 /// 试玩用它显示玩家身份、替换 %player%，缺了只是显示空，不该阻断试玩（issue #8）。
 async fn user_name_of(db: &DatabaseConnection, id: i32) -> String {
-    RoleRepo::get_role_settings_by_id(db, &data_dir(), id)
+    RoleRepo::get_role_settings_by_id(db, crate::data_dir::get_data_dir(), id)
         .await
         .ok()
         .flatten()

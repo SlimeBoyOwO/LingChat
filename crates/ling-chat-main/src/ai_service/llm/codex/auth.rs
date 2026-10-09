@@ -42,7 +42,7 @@ struct CodexAuthFile {
 }
 
 fn auth_file_path() -> PathBuf {
-    crate::api::data_dir().join("codex-auth.json")
+    crate::data_dir::get_data_dir().join("codex-auth.json")
 }
 
 pub fn load_credential() -> Option<CodexCredential> {
