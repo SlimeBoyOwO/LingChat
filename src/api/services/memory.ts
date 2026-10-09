@@ -1,11 +1,11 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/** 有长期记忆的角色摘要（浏览面板的角色下拉选项）。 */
+/** 有记忆的角色摘要（浏览面板的角色下拉选项）。 */
 export interface MemoryRoleSummary {
   role_id: number;
   /** 角色名；后端查不到角色行时为空串，前端回退成「ID N」。 */
   name: string;
-  /** 该角色的记忆条数（按 memory_id 去重）。 */
+  /** 可浏览条目数：长期记忆 + 旧版整合条目（共用表统一视图）。 */
   count: number;
 }
 

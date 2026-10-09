@@ -73,6 +73,9 @@ impl MigrationTrait for Migration {
 
 #[derive(DeriveIden)]
 enum MemoryEmbedding {
+    /// 代码（实体 / 存储层 / LAN 同步）统一读写 `memory_embeddings`（复数）；
+    /// 必须显式指定，否则 DeriveIden 会默认建出单数 `memory_embedding`。
+    #[sea_orm(iden = "memory_embeddings")]
     Table,
     Id,
     RoleId,

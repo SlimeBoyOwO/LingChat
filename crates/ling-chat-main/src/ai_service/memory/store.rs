@@ -248,13 +248,105 @@ pub async fn role_ids_with_memories(db: &DatabaseConnection) -> Result<Vec<i32>>
         {
             continue;
         }
-        if count_role_memory_rows(db, &profile.table_name).await? > 0 {
+        // 共用表里任一内容（长期记忆或旧版整合条目）都算「有可浏览记忆」。
+        if count_table_archive_entries(db, &profile.table_name).await? > 0 {
             out.push(profile.role_id);
         }
     }
     out.sort_unstable();
     out.dedup();
     Ok(out)
+}
+
+/// 某角色「可浏览条目数」：长期记忆条数 + 旧版整合条目数（浏览面板下拉计数用）。
+pub async fn count_role_entries(db: &DatabaseConnection, role_id: i32) -> Result<usize> {
+    let table = ensure_role_archive(db, role_id)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    count_table_archive_entries(db, &table).await
+}
+
+/// 共用归档表里的可浏览条目数（长期记忆按 `memory_id` 去重 + 旧版整合逐行计）。
+async fn count_table_archive_entries(db: &DatabaseConnection, table: &str) -> Result<usize> {
+    #[derive(Debug, FromQueryResult)]
+    struct CountRow {
+        #[sea_orm(column_name = "c")]
+        c: i64,
+    }
+    let count = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT (SELECT COUNT(DISTINCT memory_id) FROM \"{table}\" \
+                   WHERE kind='memory' AND memory_id IS NOT NULL) \
+                 + (SELECT COUNT(*) FROM \"{table}\" WHERE kind='legacy') AS c"
+            ),
+        ))
+        .await?
+        .and_then(|row| CountRow::from_query_result(&row, "").ok())
+        .map(|c| c.c)
+        .unwrap_or(0);
+    Ok(count as usize)
+}
+
+/// 读取某角色的旧版整合条目（`kind='legacy'`，逐行一条，按创建时间倒序）。
+pub async fn load_role_legacy_rows(
+    db: &DatabaseConnection,
+    role_id: i32,
+) -> Result<Vec<LegacyRow>> {
+    let table = ensure_role_archive(db, role_id)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    #[derive(Debug, FromQueryResult)]
+    struct LegacyRowRaw {
+        id: i32,
+        content: String,
+        created_at: i64,
+    }
+
+    let rows = db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT id, content, created_at FROM \"{table}\" \
+                 WHERE kind='legacy' ORDER BY created_at DESC, id DESC"
+            ),
+        ))
+        .await
+        .context("读取旧版整合条目失败")?;
+
+    let mut out: Vec<LegacyRow> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        if let Ok(r) = LegacyRowRaw::from_query_result(row, "") {
+            out.push(LegacyRow {
+                id: r.id,
+                content: r.content,
+                created_at: r.created_at,
+            });
+        }
+    }
+    Ok(out)
+}
+
+/// 删除某角色共用表里的一条旧版整合条目（越权保护），返回删除行数。
+pub async fn delete_legacy_row(
+    db: &DatabaseConnection,
+    role_id: i32,
+    row_id: i32,
+) -> Result<usize> {
+    let table = ensure_role_archive(db, role_id)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+    let result = db
+        .execute(Statement::from_sql_and_values(
+            DatabaseBackend::Sqlite,
+            format!("DELETE FROM \"{table}\" WHERE id = ? AND kind='legacy'"),
+            vec![sea_orm::Value::Int(Some(row_id))],
+        ))
+        .await
+        .context("删除旧版整合条目失败")?;
+    Ok(result.rows_affected() as usize)
 }
 
 /// 读取某角色的全部长期记忆分块（`kind='memory'`，按记忆、分块序排好）。
@@ -480,6 +572,14 @@ pub struct MemoryRow {
     pub embedding: Vec<f32>,
     /// 产生该向量的嵌入模型名。
     pub model: String,
+    pub created_at: i64,
+}
+
+/// 浏览用：一条旧版整合条目（`kind='legacy'`，无向量、无 `memory_id`）。
+#[derive(Clone, Debug)]
+pub struct LegacyRow {
+    pub id: i32,
+    pub content: String,
     pub created_at: i64,
 }
 

@@ -298,7 +298,15 @@ impl MemoryService {
     }
 
     /// 按 `memory_id` 精确删除。
+    ///
+    /// 浏览面板里旧版整合条目以 `legacy_{行id}` 作为展示用 id，这里识别该前缀后
+    /// 改为按行删除单条整合条目；其余按 `kind='memory'` 分块整体删除。
     pub async fn delete_by_id(&self, role_id: i32, memory_id: &str) -> Result<usize> {
+        if let Some(id_str) = memory_id.strip_prefix("legacy_") {
+            if let Ok(row_id) = id_str.parse::<i32>() {
+                return store::delete_legacy_row(&self.db, role_id, row_id).await;
+            }
+        }
         store::delete_memory_scoped(&self.db, role_id, memory_id).await
     }
 
@@ -333,27 +341,40 @@ impl MemoryService {
 
     /// 列出某角色的全部长期记忆（最新在前），供设置页「记忆系统」浏览面板使用。
     ///
+    /// 统一视图：长期记忆（`kind='memory'`，按 `memory_id` 聚合分块）+ 旧版整合
+    /// 条目（`kind='legacy'`，逐行一条，`memory_id` 展示为 `legacy_{行id}`）。
     /// 只读库表：不依赖嵌入配置，`memory_enabled` 关闭时也能查看和清理已存内容。
     pub async fn list_memories(&self, role_id: i32) -> Result<Vec<MemoryItem>> {
-        let rows = store::load_role_rows(&self.db, role_id).await?;
-        let mut entries = group_entries(rows);
-        entries.sort_by(|a, b| {
+        let mut items: Vec<MemoryItem> = {
+            let entries = group_entries(store::load_role_rows(&self.db, role_id).await?);
+            entries
+                .into_iter()
+                .map(|entry| {
+                    let (content, tags) = split_tags_suffix(&entry.content);
+                    MemoryItem {
+                        memory_id: entry.memory_id,
+                        content: content.to_string(),
+                        tags,
+                        created_at: entry.created_at,
+                    }
+                })
+                .collect()
+        };
+        // 追加旧版整合条目（浏览面板共用一张表，两类条目一并可见）。
+        for legacy in store::load_role_legacy_rows(&self.db, role_id).await? {
+            items.push(MemoryItem {
+                memory_id: format!("legacy_{}", legacy.id),
+                content: legacy.content,
+                tags: Vec::new(),
+                created_at: legacy.created_at,
+            });
+        }
+        items.sort_by(|a, b| {
             b.created_at
                 .cmp(&a.created_at)
                 .then(a.memory_id.cmp(&b.memory_id))
         });
-        Ok(entries
-            .into_iter()
-            .map(|entry| {
-                let (content, tags) = split_tags_suffix(&entry.content);
-                MemoryItem {
-                    memory_id: entry.memory_id,
-                    content: content.to_string(),
-                    tags,
-                    created_at: entry.created_at,
-                }
-            })
-            .collect())
+        Ok(items)
     }
 
     /// 摘要：把较早的一批记忆压缩成一条 `summary` 记忆，随后删除源条目。

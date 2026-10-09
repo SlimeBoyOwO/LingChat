@@ -83,6 +83,9 @@ impl MigrationTrait for Migration {
 
 #[derive(DeriveIden)]
 enum MemoryArchiveProfile {
+    /// 代码（实体 / 目录表读写）统一用 `memory_archive_profiles`（复数）；
+    /// 必须显式指定，否则 DeriveIden 会默认建出单数 `memory_archive_profile`。
+    #[sea_orm(iden = "memory_archive_profiles")]
     Table,
     Id,
     ScriptKey,
