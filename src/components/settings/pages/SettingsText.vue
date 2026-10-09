@@ -124,6 +124,73 @@
         </div>
       </MenuItem>
 
+      <!-- 回复台词数量档位：运行时状态（随存档保存），需要进入对话后才能调整 -->
+      <MenuItem :title="$t('settings.text.replyLength.title')" size="small">
+        <template #header>
+          <MessageSquareText :size="20" />
+        </template>
+        <div class="flex items-center gap-2">
+          <Button
+            v-for="opt in REPLY_LENGTH_OPTIONS"
+            :key="opt.value"
+            type="big"
+            :active="replyLengthMode === opt.value"
+            :disabled="replyLengthMode === null || replyLengthSaving"
+            @click="setReplyLengthMode(opt.value)"
+          >
+            {{ $t(opt.labelKey) }}
+          </Button>
+        </div>
+        <p class="mt-3 text-sm leading-relaxed text-white/50">
+          {{
+            replyLengthMode === null
+              ? $t("settings.text.replyLength.unavailable")
+              : $t("settings.text.replyLength.desc")
+          }}
+        </p>
+      </MenuItem>
+
+      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
+        <template #header>
+          <Download :size="20" />
+        </template>
+        <div class="flex gap-3">
+          <Button
+            type="big"
+            :title="$t('settings.text.engineDownload.cpuHint')"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
+              )
+            "
+            >{{ $t("settings.text.engineDownload.cpu") }}</Button
+          >
+          <Button
+            type="big"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
+              )
+            "
+            >{{ $t("settings.text.engineDownload.nvidia") }}</Button
+          >
+          <Button
+            type="big"
+            :title="$t('settings.text.engineDownload.amdHint')"
+            @click="
+              openWebsite(
+                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
+              )
+            "
+            >{{ $t("settings.text.engineDownload.amd") }}</Button
+          >
+        </div>
+        <p class="mt-3 text-sm leading-relaxed text-white/50">
+          现在更推荐使用本软件自带的内置 TTS 模型，本处提供的 TTS
+          引擎需要自行下载，可以参考文档了解详细信息。
+        </p>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
@@ -164,43 +231,6 @@
           <Earth :size="20" />
         </template>
         <Toggle @change="voiceSound">{{ $t("settings.text.voiceSound.desc") }}</Toggle>
-      </MenuItem>
-
-      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
-        <template #header>
-          <Download :size="20" />
-        </template>
-        <div class="flex gap-3">
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.cpuHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.cpu") }}</Button
-          >
-          <Button
-            type="big"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.nvidia") }}</Button
-          >
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.amdHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.amd") }}</Button
-          >
-        </div>
       </MenuItem>
 
       <MenuItem :title="$t('settings.text.back.title')" size="small">
@@ -495,6 +525,7 @@ import {
   GlassWater,
   HardDrive,
   Import,
+  MessageSquareText,
   RefreshCw,
   Star,
   Timer,
@@ -897,6 +928,8 @@ const loadConfig = async () => {
   for (const key of configKeys) {
     envSettings.value[key] = await getEnvConfigByKey(key);
   }
+  // 回复台词数量档位是运行时状态，单独走命令读取
+  void loadReplyLengthMode();
 };
 
 // 使用 settings store 的文字速度
@@ -931,6 +964,44 @@ const mergeMotionMode = computed<"append" | "replace">({
 const setMergeMotionMode = (val: "append" | "replace") => {
   settingsStore.update("text.mergeMotionMode", val);
 };
+
+// ─── 回复台词数量档位 ────────────────────────────────────────
+// 这是随存档保存的运行时状态（存在存档全局变量里），不是应用配置，
+// 因此走专用命令读写；不要改用 getEnvConfigByKey —— 配置树里没有这个键。
+const REPLY_LENGTH_OPTIONS = [
+  { value: "short", labelKey: "settings.text.replyLength.short" },
+  { value: "normal", labelKey: "settings.text.replyLength.normal" },
+  { value: "free", labelKey: "settings.text.replyLength.free" },
+] as const;
+type ReplyLengthMode = (typeof REPLY_LENGTH_OPTIONS)[number]["value"];
+// null = 当前不可调整（尚未进入对话 / 剧本模式 / 剧本编辑器试玩中）
+const replyLengthMode = ref<ReplyLengthMode | null>(null);
+const replyLengthSaving = ref(false);
+
+async function loadReplyLengthMode() {
+  try {
+    replyLengthMode.value = await invoke<ReplyLengthMode | null>("get_reply_length_mode");
+  } catch (e) {
+    console.warn("读取回复台词数量档位失败:", e);
+    replyLengthMode.value = null;
+  }
+}
+
+async function setReplyLengthMode(mode: ReplyLengthMode) {
+  if (replyLengthSaving.value || replyLengthMode.value === mode) return;
+  const previous = replyLengthMode.value;
+  replyLengthSaving.value = true;
+  try {
+    replyLengthMode.value = await invoke<ReplyLengthMode>("set_reply_length_mode", { mode });
+  } catch (e) {
+    // 后端拒绝（剧本模式 / 未进入对话等）时回滚显示，避免出现「看起来切了其实没生效」
+    replyLengthMode.value = previous;
+    console.error("切换回复台词数量失败:", e);
+    dialogStore.alert(t("settings.text.replyLength.failed"));
+  } finally {
+    replyLengthSaving.value = false;
+  }
+}
 
 // ─── 界面字体选择 ───────────────────────────────────────────
 const systemFonts = ref<string[]>([]);

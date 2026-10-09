@@ -881,6 +881,15 @@ export default {
       append: "接在后面显示",
       replace: "独立显示本次动作",
     },
+    replyLength: {
+      title: "回复台词数量",
+      desc: "控制角色每次回复说几句台词，可以为不同的对话需求设置不同的档位。语音对话的时候可以用短句哦",
+      short: "短（1~2句）",
+      normal: "正常（3~5句）",
+      free: "自由（不限制）",
+      unavailable: "进入对话后才可以调整",
+      failed: "切换回复台词数量失败",
+    },
     sedentary: {
       title: "久坐喝水提醒",
       desc: "开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏",

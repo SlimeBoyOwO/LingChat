@@ -4,6 +4,7 @@ use regex::Regex;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
+use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::llm::provider_config::resolve_chat_provider;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -17,7 +18,7 @@ use crate::api::game::{GameLineInit, compute_user_message_seqs};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::save_repo::SaveRepo;
-use crate::utils::prompt::PromptRole;
+use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
 
 /// 判断当前对话模型是否开启原生多模态识图（支持识图 且 协议能承载图片）。
 /// 开启后用户发图可直接带图走对话模型，不再先用旁白转述。
@@ -65,6 +66,75 @@ pub async fn send_system_message(
 
     let preamble = PromptRole::System.build_prompt(&text);
     dispatch_chat_turn(app, None, screenshot_base64, Some(preamble)).await
+}
+
+/// 回复台词数量档位当前是否可调整：尚未进入对话（没有当前角色 / 台词表为空）
+/// 或处于剧本模式时不可调整。
+fn reply_length_adjustable(gs: &GameStatus) -> bool {
+    gs.script_status.is_none() && gs.current_role_id.is_some() && !gs.line_list.is_empty()
+}
+
+/// 读取当前存档的回复台词数量档位。
+///
+/// 返回 `None` 表示当前不可调整（剧本模式 / 剧本编辑器试玩中 / 尚未进入对话），
+/// 前端据此把选项置灰；`Some("short" | "normal" | "free")` 表示可调整。
+/// 这是跟随存档的运行时状态（存在存档全局变量里），不是应用配置，
+/// 因此不走 settings 配置树，`get_setting_by_key` 也查不到它。
+#[tauri::command]
+pub async fn get_reply_length_mode(app: AppHandle) -> Result<Option<String>, String> {
+    let state = app.state::<AppState>();
+    // 试玩会话整个 GameStatus 都会在结束时还原，此时读取的档位没有意义
+    if state.pending_preview_restore.lock().await.is_some() {
+        return Ok(None);
+    }
+    let svc = state.ai_service.lock().await;
+    let gs = svc.game_status.lock().await;
+    if !reply_length_adjustable(&gs) {
+        return Ok(None);
+    }
+    Ok(Some(gs.reply_length_mode().as_str().to_string()))
+}
+
+/// 设置回复台词数量档位：写入存档全局变量，并插一条系统提示台词告知模型新要求。
+///
+/// 档位没变化时直接返回（不重复插台词）；守卫不满足时报错而不是静默成功。
+#[tauri::command]
+pub async fn set_reply_length_mode(app: AppHandle, mode: String) -> Result<String, String> {
+    let new_mode = match mode.trim().to_ascii_lowercase().as_str() {
+        "short" => ReplyLengthMode::Short,
+        "normal" => ReplyLengthMode::Normal,
+        "free" => ReplyLengthMode::Free,
+        other => return Err(format!("未知的回复台词数量档位：{other}")),
+    };
+
+    let state = app.state::<AppState>();
+    // 试玩会话会整体快照并还原 GameStatus，此时写入注定被回滚，直接拒绝
+    if state.pending_preview_restore.lock().await.is_some() {
+        return Err("剧本编辑器试玩中无法调整回复台词数量".to_string());
+    }
+
+    // 锁序固定为 ai_service -> game_status（与全仓一致）。这里只追加台词、不改已有下标，
+    // 因此不取 generation_lock——它被整轮生成持有（最长一个 LLM 超时），设置页按钮等不起。
+    let svc = state.ai_service.lock().await;
+    let mut gs = svc.game_status.lock().await;
+
+    if gs.script_status.is_some() {
+        return Err("剧本模式下无法调整回复台词数量".to_string());
+    }
+    if !reply_length_adjustable(&gs) {
+        return Err("尚未进入对话，无法调整回复台词数量".to_string());
+    }
+    // 幂等：档位未变化（含变量缺失 + 选「正常」）就不插提示
+    if gs.reply_length_mode() == new_mode {
+        return Ok(new_mode.as_str().to_string());
+    }
+
+    // 先落提示台词再改变量：写台词失败时变量保持原样，避免「变量说短档、模型却没被告知」
+    gs.add_system_hint_line(&state.db, new_mode.announce_text())
+        .await
+        .map_err(|e| format!("写入系统提示台词失败: {e}"))?;
+    gs.set_variable(REPLY_LENGTH_VAR_KEY, serde_json::json!(new_mode.as_str()));
+    Ok(new_mode.as_str().to_string())
 }
 
 /// 一轮对话的公共流程：截图处理 → 组装生成依赖 → 入队生成。

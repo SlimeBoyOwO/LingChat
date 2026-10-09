@@ -121,6 +121,9 @@ impl MessageGenerator {
         // 3. 生成循环（God Agent 激活时可能多轮）
         let mut accumulated = String::new();
         let mut consecutive_npc_rounds: usize = 0;
+        // 每轮真正落地的 assistant 台词条数，供回复后处理（台词数量纠偏）使用。
+        // 按轮记而不是统计整轮 accumulated：多人模式下它是多个角色输出的拼接。
+        let mut round_lines: Vec<usize> = Vec::new();
         let original_msg = user_message.as_deref().unwrap_or_default();
 
         loop {
@@ -136,10 +139,26 @@ impl MessageGenerator {
             } else {
                 None
             };
+            let before_lines = {
+                let gs = self.deps.game_status.lock().await;
+                gs.line_list.len()
+            };
             let round_acc = self
                 .execute_pipeline(context, original_msg, round_msg_seq)
                 .await?;
             accumulated.push_str(&round_acc);
+            round_lines.push({
+                let gs = self.deps.game_status.lock().await;
+                gs.line_list[before_lines.min(gs.line_list.len())..]
+                    .iter()
+                    .filter(|l| {
+                        // 与 auto_save::is_real_dialogue 的 assistant 判据一致：
+                        // 工具调用回填的行 sender 为空，不算台词
+                        matches!(l.attribute(), LineAttribute::Assistant)
+                            && l.base.sender_role_id.is_some()
+                    })
+                    .count()
+            });
 
             // 后处理：仅第一轮清理 temp_message
             if consecutive_npc_rounds == 0 {
@@ -159,6 +178,12 @@ impl MessageGenerator {
         // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
         // 不阻塞本轮回复的呈现。
         self.maybe_evaluate_affection().await;
+
+        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚插入的提示混进评估快照）：
+        // 新增的回复后处理一律加在 `maybe_correct_reply_length` 旁边——轻量动作
+        // （插台词等）直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
+        // 绝不能影响已经呈现给用户的回复。
+        self.maybe_correct_reply_length(&round_lines).await;
 
         Ok(accumulated)
     }
@@ -447,6 +472,54 @@ impl MessageGenerator {
                 tracing::warn!("[Affection] 好感度评估失败: {e:#}");
             }
         });
+    }
+
+    /// 回复台词数量纠偏：某轮回复的台词条数超出当前档位的容忍区间时，
+    /// 插一条系统提示台词提醒模型下一次增/减。
+    ///
+    /// 只对自由对话 / 主动对话生效：入场问候天然只有一两句，会被「正常」档误判过短；
+    /// 剧本模式的节奏由剧本作者控制，不插提示（判据与好感度评估一致）。
+    /// 这里只追加一条台词，直接 await；插台词失败只记日志，不能反向报错。
+    async fn maybe_correct_reply_length(&self, round_lines: &[usize]) {
+        if !matches!(
+            self.deps.source,
+            GeneratorSource::UserChat | GeneratorSource::Proactive
+        ) {
+            return;
+        }
+
+        let mut gs = self.deps.game_status.lock().await;
+        if gs.script_status.is_some() {
+            return;
+        }
+
+        let mode = gs.reply_length_mode();
+        // 自由档不检查；条数为 0 的轮次是「模型没产出任何台词」的兜底路径，不纠偏
+        let Some(text) = round_lines
+            .iter()
+            .filter(|count| **count > 0)
+            .find_map(|count| mode.correction_text(*count))
+        else {
+            return;
+        };
+
+        // 同一条提示紧邻重复就不再插：跨过本轮刚产出的台词回头看一行，
+        // 命中即说明上一轮已经提醒过同样的问题（隔轮重复是有意的：模型不听就该再提醒）
+        let content = PromptRole::System.build_prompt(&text);
+        let lookback = round_lines.iter().sum::<usize>() + 2;
+        let duplicated = gs
+            .line_list
+            .iter()
+            .rev()
+            .take(lookback)
+            .any(|l| matches!(l.attribute(), LineAttribute::User) && l.base.content == content);
+        if duplicated {
+            return;
+        }
+
+        if let Err(e) = gs.add_system_hint_line(&self.deps.db, &text).await {
+            tracing::warn!("[ReplyLength] 写入台词数量纠偏提示失败: {e:#}");
+        }
     }
 
     async fn run_pipeline(

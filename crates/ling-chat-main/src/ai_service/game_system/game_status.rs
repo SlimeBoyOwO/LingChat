@@ -12,7 +12,7 @@ use crate::ai_service::types::{
     GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
 };
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::PromptRole;
+use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
 
 /// 存储所有运行时共享的游戏状态。
 pub struct GameStatus {
@@ -256,6 +256,34 @@ impl GameStatus {
 
     pub fn get_variable(&self, key: &str) -> Option<&Value> {
         self.global_variables.get(key)
+    }
+
+    /// 当前存档的回复台词数量档位；变量缺失或非法一律回落「正常」。
+    pub fn reply_length_mode(&self) -> ReplyLengthMode {
+        self.get_variable(REPLY_LENGTH_VAR_KEY)
+            .and_then(|value| value.as_str())
+            .map(ReplyLengthMode::from_str_lossy)
+            .unwrap_or_default()
+    }
+
+    /// 追加一条「系统提示」台词：给模型的运行时指令，既不是旁白也不是玩家发言。
+    /// 必须用 USER 属性——SYSTEM 属性会被记忆构建丢弃，提示根本进不了上下文；
+    /// sender_role_id 保持 None，从而不计入玩家消息序号，也不算「真实对话」。
+    pub async fn add_system_hint_line(
+        &mut self,
+        db: &DatabaseConnection,
+        text: &str,
+    ) -> Result<()> {
+        self.add_line(
+            db,
+            LineBase {
+                content: PromptRole::System.build_prompt(text),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some("系统".to_string()),
+                ..Default::default()
+            },
+        )
+        .await
     }
 
     /// 非系统消息数量（用于羁绊冒险解锁条件检测）

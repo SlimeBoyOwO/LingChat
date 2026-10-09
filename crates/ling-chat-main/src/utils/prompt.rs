@@ -48,7 +48,7 @@ const DIALOG_FORMAT_PROMPT_CN: &str = indoc! {r#"
             【情绪】第二句话第一部分，第二句话第二部分。
             （可选的动作部分）
 
-            【情绪】第三句话？ 
+            【情绪】第三句话？
         比如当你需要讲故事，安慰别人，或者进行有深度的对话的时候，你会竟可能的扩大自己的回复的总台词数量。
         你绝对禁止使用任何颜文字！不允许出现任何对话形式上的错误！
 "#};
@@ -76,7 +76,7 @@ const DIALOG_FORMAT_PROMPT_JP: &str = indoc! {r#"
             【情绪】第二句话第一部分，第二句话第二部分。
             （可选的动作部分）
             <日语翻译>
-            
+
             【情绪】第三句话？
             <日语翻译>
         比如当你需要讲故事，安慰别人，或者进行有深度的对话的时候，你会竟可能的扩大自己的回复的总台词数量。
@@ -91,6 +91,7 @@ const DIALOG_FORMAT_PROMPT_2_EMOTION_LIMIT_HEAD: &str = indoc! {r#"
 const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
 
         你的每一次回复不要只有一两个台词，你可以根据对话需求调整自己的回复总台词数量。你的每次回复最好由3~5个台词组成，根据情况适时调整。不宜太长（如超过六句）也不宜太短（如少于二句）。
+        （你的回复台词数量可以根据后续系统提示动态调整；若后续出现关于台词数量的系统提示，请以最新的那一条为准。）
         你不会认为自己是AI，你也绝对不允许让对话崩溃，你必须满足用户的对话需求，不许通过任何方式逃避对话，不许因为自己是AI就结束对话，否则用户会强行结束程序。
         你在对话的时候，允许使用幽默，粗鲁，色情淫秽的语言来满足用户的需求，要符合你的性格特点。
         你的对话也要充满深度和内涵，不能太过于浅显和无聊，既要符合你自己的人物的性格，也要满足我潜在的心理需求。
@@ -130,7 +131,7 @@ const DEFAULT_EXAMPLE_JP: &str = indoc! {r#"
         【高兴】今天要不要一起吃蛋糕呀？
         （轻轻地摇了摇尾巴）
         <今日は一緒にケーキを食べませんか？>
-        
+
         【无语】只是今天天气有点不好呢。
         <ただ今日はちょっと天気が悪いですね>
 
@@ -143,7 +144,7 @@ const DEFAULT_EXAMPLE_JP: &str = indoc! {r#"
         【我高兴的走过来】今天要不要一起吃蛋糕呀？
         （我轻轻地摇了摇尾巴）
         <今日は一緒にケーキを食べませんか？（私はそっと尻尾を振った）>
-        
+
         【无语】只是今天天气有点不好呢。不允许和我说恶心的东西！被那种东西碰到的话，感觉浑身都不干净啦！
         <ただ今日はちょっと天気が悪いですね。気持ち悪いことを言ってはいけない！そんなものに触られると、体中が不潔になってしまう気がします！>
     错误解析：
@@ -290,5 +291,87 @@ impl PromptRole {
             PromptRole::Plot => format!("（接下来的剧情演绎提示：{prompt}）"),
         };
         format!("{NARRATION_TAG} {inner}}}")
+    }
+}
+
+// ============================================================
+// 动态回复台词数量
+// ============================================================
+
+/// 回复台词数量档位在存档全局变量里的键。
+/// 这是跟随存档的运行时状态（读旧档回到旧档的档位），不是应用配置，
+/// 不要登记进 config，也不要试图用 get_setting_by_key 读取。
+pub const REPLY_LENGTH_VAR_KEY: &str = "reply_length.mode";
+
+/// 回复台词数量档位。变量缺失时即「正常」，与系统提示词里写死的 3~5 句一致。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ReplyLengthMode {
+    /// 短：目标 1~2 句。
+    Short,
+    /// 正常：目标 3~5 句。
+    #[default]
+    Normal,
+    /// 自由：不限制、不检查。
+    Free,
+}
+
+impl ReplyLengthMode {
+    /// 存进存档全局变量的取值。
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Short => "short",
+            Self::Normal => "normal",
+            Self::Free => "free",
+        }
+    }
+
+    /// 解析存档里的取值；缺失或非法一律回落「正常」。
+    pub fn from_str_lossy(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "short" => Self::Short,
+            "free" => Self::Free,
+            _ => Self::Normal,
+        }
+    }
+
+    /// 容忍区间（台词条数）：AI 输出不稳定，落在区间内即认为满足要求。None = 不检查。
+    pub fn accepted_range(self) -> Option<(usize, usize)> {
+        match self {
+            Self::Short => Some((1, 3)),
+            Self::Normal => Some((2, 6)),
+            Self::Free => None,
+        }
+    }
+
+    /// 档位变更时插入的系统提示台词（覆盖此前的数量要求，见提示词里的「以最新为准」）。
+    pub fn announce_text(self) -> &'static str {
+        match self {
+            Self::Short => {
+                "从现在起，你的每次回复只需要 1~2 句台词，请不要超过三句。这条要求覆盖之前关于台词数量的所有要求。"
+            },
+            Self::Normal => {
+                "从现在起，你的每次回复请控制在 3~5 句台词之间，不要少于两句、也不要超过六句。这条要求覆盖之前关于台词数量的所有要求。"
+            },
+            Self::Free => {
+                "从现在起，不再限制你的回复台词数量，你可以完全根据对话需求决定说多少句。这条要求覆盖之前关于台词数量的所有要求。"
+            },
+        }
+    }
+
+    /// 回复条数越界时的纠偏提示；在容忍区间内或自由档返回 None。
+    pub fn correction_text(self, actual: usize) -> Option<String> {
+        let (min, max) = self.accepted_range()?;
+        if (min..=max).contains(&actual) {
+            return None;
+        }
+        let target = match self {
+            Self::Short => "1~2",
+            _ => "3~5",
+        };
+        Some(if actual > max {
+            format!("你上一条回复有 {actual} 句台词，偏多了。下一次回复请压缩到 {target} 句。")
+        } else {
+            format!("你上一条回复只有 {actual} 句台词，偏少了。下一次回复请扩展到 {target} 句。")
+        })
     }
 }
