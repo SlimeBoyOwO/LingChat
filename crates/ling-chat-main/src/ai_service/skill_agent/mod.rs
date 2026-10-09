@@ -6,10 +6,12 @@ pub mod core;
 pub mod db;
 pub mod events;
 pub mod file_tools;
+pub mod history;
 pub mod role;
 pub mod router;
 pub mod skills;
 pub mod stage;
+pub mod title;
 pub mod tools;
 
 /// 对拍台：把喂给模型的文本逐字节钉住，等价重构靠它自证没改行为（只在测试里编译）。
