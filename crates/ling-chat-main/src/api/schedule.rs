@@ -4,7 +4,7 @@ use tauri::{AppHandle, Manager};
 
 #[tauri::command]
 pub async fn get_schedules() -> Result<UserScheduleSettings, String> {
-    let schedules_path = crate::data_dir::get_data_dir()
+    let schedules_path = crate::api::data_dir()
         .join("game_data")
         .join("schedules.json");
 
@@ -23,7 +23,7 @@ pub async fn get_schedules() -> Result<UserScheduleSettings, String> {
 #[tauri::command]
 pub async fn save_schedules(app: AppHandle, data: UserScheduleSettings) -> Result<String, String> {
     let state = app.state::<AppState>();
-    let schedules_path = crate::data_dir::get_data_dir()
+    let schedules_path = crate::api::data_dir()
         .join("game_data")
         .join("schedules.json");
 

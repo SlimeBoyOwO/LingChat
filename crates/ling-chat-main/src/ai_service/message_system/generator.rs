@@ -33,6 +33,7 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
@@ -232,7 +233,7 @@ impl MessageGenerator {
         }
 
         let scene_id = gs.current_scene_id.clone().unwrap();
-        let store = SceneStore::new(crate::data_dir::get_data_dir());
+        let store = SceneStore::new(&data_dir());
         if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
             if !scene.description.trim().is_empty() {
                 let text = format!(

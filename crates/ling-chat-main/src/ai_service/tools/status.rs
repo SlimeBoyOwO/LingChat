@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::ToolDefinition;
+use crate::api::data_dir;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -84,7 +85,7 @@ impl Tool for SceneStatus {
         let Some(id) = gs.current_scene_id.clone() else {
             return Err(ToolError::Execution("当前未选择任何场景".into()));
         };
-        let store = SceneStore::new(crate::data_dir::get_data_dir());
+        let store = SceneStore::new(&data_dir());
         match store.find_by_id(&id) {
             Ok(Some(scene)) => Ok(json!({
                 "ok": true,

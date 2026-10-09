@@ -94,7 +94,7 @@ impl SkillAgentConfig {
 
     /// 技能库目录（固定为 `data/game_data/skills`）。
     pub fn resolve_skills_dir(&self) -> PathBuf {
-        crate::data_dir::game_data_dir().join("skills")
+        crate::api::game_data_dir().join("skills")
     }
 }
 

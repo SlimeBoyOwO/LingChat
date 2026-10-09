@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use crate::AppState;
 use crate::ai_service::game_system::scene_store::{LightingParams, Scene, SceneStore};
+use crate::api::data_dir;
 use crate::utils::path::{validate_directory_name, validate_path_in_base};
 
 // ========== Response types ==========
@@ -257,7 +258,7 @@ fn now_iso() -> String {
 
 #[tauri::command]
 pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
@@ -342,7 +343,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
 
 #[tauri::command]
 pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<SceneInfo, String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
@@ -373,7 +374,7 @@ pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<Sc
 
 #[tauri::command]
 pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<SceneInfo, String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
@@ -402,7 +403,7 @@ pub async fn update_scene(_app: AppHandle, req: UpdateSceneRequest) -> Result<Sc
 
 #[tauri::command]
 pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
@@ -459,7 +460,7 @@ pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
 /// 返回被删除的场景数量。用于清理因背景文件被改名/删除/移动而残留的空白场景。
 #[tauri::command]
 pub async fn clear_empty_scenes(app: AppHandle) -> Result<usize, String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;
@@ -512,7 +513,7 @@ pub(crate) fn sync_scenes_after_background_category_change(
     category: &str,
     mode: &str,
 ) -> Result<(), String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("读取场景列表失败: {}", e))?;
@@ -584,7 +585,7 @@ pub async fn move_scene_to_category(
     id: String,
     category: Option<String>,
 ) -> Result<SceneInfo, String> {
-    let store = SceneStore::new(crate::data_dir::get_data_dir());
+    let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
         .map_err(|e| format!("加载场景列表失败: {}", e))?;

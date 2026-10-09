@@ -5,6 +5,7 @@ use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::ToolDefinition;
+use crate::api::data_dir;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -33,7 +34,7 @@ impl Tool for SceneList {
         arguments: Value,
     ) -> Result<ToolResult, ToolError> {
         ensure_no_args(&arguments, "scene_list").map_err(ToolError::Execution)?;
-        let store = SceneStore::new(crate::data_dir::get_data_dir());
+        let store = SceneStore::new(&data_dir());
         let scenes = store
             .load_all()
             .map_err(|e| ToolError::Execution(format!("加载场景失败: {e}")))?;
@@ -91,7 +92,7 @@ impl Tool for SceneSwitch {
             ));
         }
 
-        let store = SceneStore::new(crate::data_dir::get_data_dir());
+        let store = SceneStore::new(&data_dir());
         let scenes = store
             .load_all()
             .map_err(|e| ToolError::Execution(format!("加载场景失败: {e}")))?;

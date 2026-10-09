@@ -8,12 +8,13 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::proactive_system::types::{TodoGroup, TodoItem, UserScheduleSettings};
 use crate::ai_service::types::ToolDefinition;
+use crate::api::data_dir;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{atomic_replace, ensure_no_args};
 
 fn schedules_path() -> std::path::PathBuf {
-    crate::data_dir::game_data_dir().join("schedules.json")
+    data_dir().join("game_data").join("schedules.json")
 }
 
 /// 读入日程配置。文件不存在时返回空配置；读取或解析失败必须显式报错，避免写工具

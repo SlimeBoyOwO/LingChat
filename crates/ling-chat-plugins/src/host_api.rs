@@ -421,7 +421,7 @@ fn io_error_text(rel: &str, e: &std::io::Error) -> String {
 /// 不复用 `utils::path::validate_path_in_base`：这里要拿回 canonical 路径供读取，
 /// 且错误文案不能回带宿主绝对路径（那个辅助函数的报错里全是路径）。
 ///
-/// 显式传 base 是为了能测：全局 `get_data_dir()` 只在 App 启动时初始化，单测里拿不到。
+/// 显式传 base 是为了能测：全局 `data_dir()` 只在 App 启动时初始化，单测里拿不到。
 fn resolve_data_path_in(
     base: &std::path::Path,
     allow: &[String],

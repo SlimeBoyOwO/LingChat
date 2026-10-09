@@ -753,7 +753,7 @@ fn asset_dirs(kind: &str) -> Result<(&'static str, PathBuf), String> {
     let media = media_type_of(kind)?;
     Ok((
         media.subdir_candidates()[0],
-        crate::data_dir::game_data_dir().join(media.fallback_dir()),
+        crate::api::game_data_dir().join(media.fallback_dir()),
     ))
 }
 
