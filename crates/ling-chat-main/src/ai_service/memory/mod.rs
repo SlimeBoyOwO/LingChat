@@ -4,7 +4,9 @@
 //!
 //! 对标 BaiShou-Next 的记忆范式：
 //! - 远程 OpenAI 兼容 embeddings 接口把文本变成 L2 归一化向量；
-//! - 向量存进 `memory_embeddings` 表（Float32 小端字节）；
+//! - **存储**：长期记忆写入每「剧本 × 角色」一张的共用归档表
+//!   `memory_archive_{role_id}`（目录在 `memory_archive_profiles`，与旧版记忆整合
+//!   归档共用同一套表，见 [`store`]）；
 //! - 检索 = 内存余弦（向量路）+ LIKE 关键词（文本路），RRF 融合排序；
 //! - 写入前三级去重：余弦 > 0.92 拒收，0.70–0.92 交给 LLM 判 merge/skip/new，
 //!   LLM 失败时降级为直接存储。
@@ -318,7 +320,7 @@ impl MemoryService {
 
         let mut deleted = Vec::new();
         for (row, score) in scored {
-            store::delete_memory(&self.db, &row.memory_id).await?;
+            store::delete_memory_scoped(&self.db, role_id, &row.memory_id).await?;
             deleted.push((row.content, score));
         }
         Ok(deleted)

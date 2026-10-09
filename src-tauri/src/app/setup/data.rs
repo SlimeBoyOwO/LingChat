@@ -39,6 +39,16 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
         tracing::info!("已导入 {} 条数据库记录（来自 LAN 同步）", db_imported);
     }
 
+    // 存量迁移：把旧 `memory_embeddings` 表里已有的长期记忆一次性归并进各角色的
+    // 共用归档表（幂等：全部成功后才清空旧表数据，失败只记日志不阻断启动）。
+    match ling_chat_main::ai_service::memory::store::migrate_memory_embeddings_to_archives(&db)
+        .await
+    {
+        Ok(n) if n > 0 => tracing::info!("已归并 {n} 条旧版向量记忆进归档表"),
+        Ok(_) => {},
+        Err(e) => tracing::warn!("旧版向量记忆归并失败（可于下次启动重试）: {e}"),
+    }
+
     ling_chat_main::db::role_sync::sync_roles_from_folder(&db, &data_dir).await?;
     ling_chat_main::api::character::editor::cleanup_stale_editor_data(&db).await;
 

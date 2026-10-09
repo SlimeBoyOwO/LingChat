@@ -16,14 +16,15 @@
 use std::collections::HashMap;
 
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, FromQueryResult, QueryFilter, QueryOrder, Set, Statement,
+    ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection, EntityTrait,
+    FromQueryResult, QueryFilter, QueryOrder, Statement,
 };
 use serde::{Deserialize, Serialize};
 use tauri::Manager;
 
 use crate::AppState;
-use crate::db::entities::{memory_archive_profile, role};
+use crate::ai_service::memory::store::{ensure_archive_table_schema, ensure_role_archive};
+use crate::db::entities::memory_archive_profile;
 
 /// 各段的默认占位文本（旧版空内容时的占位符，跳过不导入）。
 const PLACEHOLDERS: [&str; 4] = [
@@ -126,10 +127,6 @@ struct CountRow {
     c: i64,
 }
 
-fn table_name(role_id: i32) -> String {
-    format!("memory_archive_{role_id}")
-}
-
 /// 目录表 `memory_archive_profiles` 的兜底建表（防御旧库升级时迁移未落表、或
 /// 数据库文件被替换等场景）。与 `migration/m20261009` 的 DDL 保持一致；
 /// `CREATE TABLE IF NOT EXISTS` / 索引幂等，命令入口各调一次开销可忽略。
@@ -152,13 +149,7 @@ async fn ensure_profile_table(db: &DatabaseConnection) -> Result<(), String> {
     Ok(())
 }
 
-/// `memory_archive_{id}` 数据表的建表语句（动态表名，statement 无参数化位置）。
-const DATA_TABLE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "{table}" (
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  section TEXT NOT NULL,
-  content TEXT NOT NULL,
-  created_at INTEGER NOT NULL
-)"#;
+/// `memory_archive_{id}` 数据表结构见 `store::MEMORY_ARCHIVE_DDL`（与长期记忆共用）。
 
 /// 一键导入旧版存档记忆：把 `memory_bank` 的四段式记忆整合到
 /// 每「剧本 × 角色」一张的独立归档表中。
@@ -239,16 +230,7 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             .extend(parsed.meaningful_sections());
     }
 
-    // 5. 角色名 / 剧本信息。
-    let mut role_meta: HashMap<i32, (String, Option<String>, Option<String>)> = HashMap::new();
-    for r in role::Entity::find()
-        .all(db)
-        .await
-        .map_err(|e| format!("读取角色表失败: {e}"))?
-    {
-        role_meta.insert(r.id, (r.name, r.script_key, r.script_role_key));
-    }
-
+    // 5. 角色归并（无元数据预取：建档案时由 ensure_role_archive 查 role 表）。
     let now = chrono::Utc::now().timestamp_millis();
 
     let mut imported_roles = 0usize;
@@ -273,7 +255,7 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             continue;
         }
 
-        // 幂等：已有档案则跳过。
+        // 幂等：已有档案则跳过（含长期记忆已建档案的角色）。
         let existing = memory_archive_profile::Entity::find()
             .filter(memory_archive_profile::Column::RoleId.eq(role_id))
             .one(db)
@@ -284,16 +266,16 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             continue;
         }
 
-        let table = table_name(role_id);
-        let ddl = DATA_TABLE_DDL.replace("{table}", &table);
-        db.execute(Statement::from_string(DatabaseBackend::Sqlite, ddl))
-            .await
-            .map_err(|e| format!("创建档案表 {table} 失败: {e}"))?;
+        // 共用归档表：与长期记忆同一张「剧本 × 角色」表（建表 + 目录行）。
+        let table = ensure_role_archive(db, role_id).await?;
 
         for (section, content) in &sections {
             db.execute(Statement::from_sql_and_values(
                 DatabaseBackend::Sqlite,
-                format!("INSERT INTO \"{table}\" (section, content, created_at) VALUES (?, ?, ?)"),
+                format!(
+                    "INSERT INTO \"{table}\" (kind, section, content, created_at) \
+                     VALUES ('legacy', ?, ?, ?)"
+                ),
                 vec![
                     sea_orm::Value::String(Some(Box::new(section.clone()))),
                     sea_orm::Value::String(Some(Box::new(content.clone()))),
@@ -304,27 +286,6 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             .map_err(|e| format!("写入档案表 {table} 失败: {e}"))?;
             memories_written += 1;
         }
-
-        let (name, script_key, script_role_key) =
-            role_meta.get(&role_id).cloned().unwrap_or_default();
-        let profile = memory_archive_profile::ActiveModel {
-            script_key: Set(script_key),
-            script_role_key: Set(script_role_key),
-            role_id: Set(role_id),
-            role_name: Set(if name.is_empty() {
-                format!("角色 {role_id}")
-            } else {
-                name
-            }),
-            table_name: Set(table),
-            created_at: Set(now),
-            updated_at: Set(now),
-            ..Default::default()
-        };
-        profile
-            .insert(db)
-            .await
-            .map_err(|e| format!("写入档案目录失败: {e}"))?;
         imported_roles += 1;
     }
 
@@ -356,10 +317,14 @@ pub async fn memory_archive_list(
 
     let mut out = Vec::with_capacity(profiles.len());
     for p in profiles {
+        ensure_archive_table_schema(db, &p.table_name).await?;
         let count = db
             .query_one(Statement::from_string(
                 DatabaseBackend::Sqlite,
-                format!("SELECT COUNT(*) AS c FROM \"{}\"", p.table_name),
+                format!(
+                    "SELECT COUNT(*) AS c FROM \"{}\" WHERE kind = 'legacy'",
+                    p.table_name
+                ),
             ))
             .await
             .and_then(|opt| opt.map(|r| CountRow::from_query_result(&r, "")).transpose())
@@ -399,6 +364,8 @@ pub async fn memory_archive_get(
         return Err(format!("档案不存在（id={profile_id}）"));
     };
 
+    ensure_archive_table_schema(db, &profile.table_name).await?;
+
     #[derive(Debug, FromQueryResult)]
     struct EntryRow {
         id: i32,
@@ -411,7 +378,8 @@ pub async fn memory_archive_get(
         .query_all(Statement::from_string(
             DatabaseBackend::Sqlite,
             format!(
-                "SELECT id, section, content, created_at FROM \"{}\" ORDER BY section, id",
+                "SELECT id, section, content, created_at FROM \"{}\" \
+                 WHERE kind = 'legacy' ORDER BY section, id",
                 profile.table_name
             ),
         ))
@@ -432,7 +400,11 @@ pub async fn memory_archive_get(
     Ok(entries)
 }
 
-/// 删除某个「剧本 × 角色」档案（连同数据表），返回是否真的删除了。
+/// 删除某个「剧本 × 角色」档案里的**旧版整合条目**（`kind='legacy'`）。
+///
+/// 共用归档表还承载长期记忆（`kind='memory'`）：只有当表里不再有任何长期记忆时
+/// 才连同数据表和目录行一起清理；仍存在长期记忆则保留表与目录行（档案面板仅移除
+/// 整合条目）。返回是否真的删除了条目。
 #[tauri::command]
 pub async fn memory_archive_delete(app: tauri::AppHandle, profile_id: i32) -> Result<bool, String> {
     let state = app.state::<AppState>();
@@ -447,6 +419,36 @@ pub async fn memory_archive_delete(app: tauri::AppHandle, profile_id: i32) -> Re
     let Some(profile) = profile else {
         return Ok(false);
     };
+
+    ensure_archive_table_schema(db, &profile.table_name).await?;
+
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        format!(
+            "DELETE FROM \"{}\" WHERE kind = 'legacy'",
+            profile.table_name
+        ),
+    ))
+    .await
+    .map_err(|e| format!("删除档案条目失败: {e}"))?;
+
+    // 若表里已无长期记忆（共用表只装整合条目了），整表 + 目录行一并清理；
+    // 否则保留（该角色的长期记忆还在这里）。
+    let memory_left = db
+        .query_one(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT 1 AS x FROM \"{}\" WHERE kind = 'memory' LIMIT 1",
+                profile.table_name
+            ),
+        ))
+        .await
+        .map_err(|e| format!("检查长期记忆残留失败: {e}"))?
+        .is_some();
+
+    if memory_left {
+        return Ok(true);
+    }
 
     db.execute(Statement::from_string(
         DatabaseBackend::Sqlite,

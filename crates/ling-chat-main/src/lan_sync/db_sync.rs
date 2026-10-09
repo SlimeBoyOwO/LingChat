@@ -13,6 +13,7 @@ use sea_orm::{
 use serde_json::Value;
 use tracing::{info, warn};
 
+use crate::ai_service::memory::store;
 use crate::db::entities::{
     adventure_unlock, line, line_perception, memory_embedding, role, running_script, save,
 };
@@ -172,6 +173,10 @@ struct MemoryEmbeddingRecord {
 
 /// 导出长期记忆表（embedding → base64）。
 async fn export_memory_embeddings(db: &DatabaseConnection) -> Result<Vec<Value>, String> {
+    // 幂等兜底：旧库可能缺这张表（长期记忆已迁入归档表，此表仅 LAN 同步协议保留读写）。
+    store::ensure_memory_embeddings_table(db)
+        .await
+        .map_err(|e| format!("确保 memory_embeddings 表存在失败: {e}"))?;
     let rows = memory_embedding::Entity::find()
         .all(db)
         .await
@@ -319,6 +324,12 @@ pub async fn apply_staged_db_records(
 
     let src_id = truncate_str(&records.device_id, 8);
     info!("开始导入数据库记录 (来源: {})...", src_id);
+
+    // 幂等兜底：旧库可能缺 memory_embeddings 表（长期记忆迁入归档表后，该表仅对端
+    // 记录里带该字段时才涉及），先确保表存在再进事务，避免 delete_all 报 no such table。
+    store::ensure_memory_embeddings_table(db)
+        .await
+        .map_err(|e| format!("确保 memory_embeddings 表存在失败: {e}"))?;
 
     // 在事务中执行全部操作
     let txn = db.begin().await.map_err(|e| format!("开始事务失败: {e}"))?;

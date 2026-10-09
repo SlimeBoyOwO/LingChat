@@ -12,6 +12,7 @@ use tracing::warn;
 use crate::ai_service::types::CharacterSettings;
 use crate::db::entities::line;
 use crate::db::entities::line_perception;
+use crate::db::entities::memory_archive_profile;
 use crate::db::entities::memory_embedding;
 use crate::db::entities::role::{
     self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
@@ -227,8 +228,27 @@ impl RoleRepo {
             .exec(db)
             .await?;
 
-        // 8. 删除该角色名下的长期记忆向量。memory_embeddings.role_id 没有 FK 约束，
-        // 不显式清理会永久残留孤儿行（检索按 role_id 隔离，残留行不可见但占空间）。
+        // 8. 删除该角色名下的长期记忆。长期记忆存在每「剧本 × 角色」一张的共用归档表
+        //    `memory_archive_{role_id}` 里，需连同目录行一起删除（缺少 FK，不显式清理
+        //    会残留孤儿表 / 孤儿行，检索按 role_id 隔离，残留不可见但占空间）。
+        if let Some(profile) = memory_archive_profile::Entity::find()
+            .filter(memory_archive_profile::Column::RoleId.eq(role_id))
+            .one(db)
+            .await?
+        {
+            db.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                format!("DROP TABLE IF EXISTS \"{}\"", profile.table_name),
+            ))
+            .await
+            .context("删除角色记忆归档表失败")?;
+            memory_archive_profile::Entity::delete_by_id(profile.id)
+                .exec(db)
+                .await?;
+        }
+
+        // 8.1 旧 `memory_embeddings` 向量表的兜底清理（旧库可能残留，且 LAN 同步
+        //      旧协议仍可能写入该表）。
         memory_embedding::Entity::delete_many()
             .filter(memory_embedding::Column::RoleId.eq(role_id))
             .exec(db)
