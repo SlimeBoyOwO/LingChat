@@ -328,7 +328,7 @@ export default {
     approvalDefaultCwd: "（デフォルトのサンドボックス）",
     groups: {
       schedule: "スケジュールと ToDo（確認・追加・更新・削除）",
-      memory: "長期記憶（保存・削除・整理。検索は各ターン自動で実行）",
+      memory: "長期記憶（保存・検索・削除・整理。検索は各ターン自動で実行）",
       character: "キャラクター切替（一覧・切替）",
       scene: "シーン切替（一覧・切替）",
       status: "ステータス確認（現在/シーンの状態）",
@@ -346,6 +346,7 @@ export default {
       schedule_update_todo: "ToDo 更新",
       schedule_delete_todo: "ToDo 削除",
       memory_store: "記憶を保存",
+      memory_query: "記憶を検索",
       memory_delete: "記憶を削除",
       memory_summarize: "記憶を整理",
       character_list: "キャラ一覧",

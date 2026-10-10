@@ -1,9 +1,10 @@
-//! 向量记忆工具：`memory_store` / `memory_delete` / `memory_summarize`。
+//! 向量记忆工具：`memory_store` / `memory_query` / `memory_delete` / `memory_summarize`。
 //!
-//! 三个工具共用 `AppState::memory`（[`MemoryService`]），按 `current_role_id`
+//! 四个工具共用 `AppState::memory`（[`MemoryService`]），按 `current_role_id`
 //! 隔离记忆。`features.memory_enabled` 关闭或嵌入配置未就绪时直接返回错误，
-//! 不让模型误以为记忆已写入。检索不在此列——它由生成管线在用户新消息轮
-//! 自动完成（RAG 注入，见 `message_system::generator::inject_rag_memories`）。
+//! 不让模型误以为记忆已写入。长期记忆的**自动**检索注入不在此列——它由生成管线
+//! 在用户新消息轮自动完成（RAG 注入，见 `message_system::generator::inject_rag_memories`）；
+//! `memory_query` 供模型按需主动检索（额外覆盖已带向量的「旧版整合」条目）。
 
 use std::time::Duration;
 
@@ -13,7 +14,7 @@ use tauri::Manager;
 
 use crate::AppState;
 use crate::ai_service::memory::{
-    DEFAULT_KEEP_RECENT, MemoryService, spawn_auto_summarize_if_needed,
+    DEFAULT_KEEP_RECENT, MemoryService, SearchMode, spawn_auto_summarize_if_needed,
 };
 use crate::ai_service::types::ToolDefinition;
 
@@ -22,6 +23,8 @@ use super::game_status_handle;
 
 /// 写记忆：远端嵌入 + LLM 去重判定，可能较慢。
 const STORE_TIMEOUT: Duration = Duration::from_secs(60);
+/// 查询：一次嵌入 + 混合检索。
+const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
 /// 删除：语义删除需要嵌入请求。
 const DELETE_TIMEOUT: Duration = Duration::from_secs(30);
 /// 摘要：一次 LLM 生成 + 一次（或多次）嵌入写入，最慢。
@@ -162,6 +165,74 @@ impl Tool for MemoryStore {
     }
 }
 
+// ─── memory_query ───
+
+/// memory_query：主动检索当前角色的记忆（长期记忆 + 已带向量的旧版整合条目）。
+pub struct MemoryQuery;
+
+#[async_trait]
+impl Tool for MemoryQuery {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "memory_query",
+            "检索当前角色的记忆库：按语义 + 关键词混合检索长期记忆与已导入的旧版存档记忆，返回最相关的若干条。需要回忆用户偏好、过往约定、剧情旧事时调用",
+            json!({
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "用自然语言描述要回忆什么"},
+                    "top_k": {"type": "integer", "description": "最多返回条数，默认取系统配置（通常 5~8）"}
+                },
+                "required": ["query"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(QUERY_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_query")?;
+        let query = parse_string(obj, "query", "memory_query", true)?.unwrap_or_default();
+        let top_k = match obj.get("top_k") {
+            None => None,
+            Some(Value::Number(value)) => value.as_u64().map(|v| v as usize),
+            Some(_) => {
+                return Err(ToolError::InvalidArguments(
+                    "memory_query 的 top_k 必须是整数".into(),
+                ));
+            },
+        };
+
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+        let hits = memory
+            .query(role_id, &query, SearchMode::Hybrid, top_k, None, None)
+            .await
+            .map_err(|e| ToolError::Execution(format!("查询记忆失败: {e}")))?;
+
+        let items: Vec<Value> = hits
+            .iter()
+            .map(|hit| {
+                json!({
+                    "memory_id": hit.memory_id,
+                    "content": hit.content,
+                    "score": (hit.score * 1000.0).round() / 1000.0,
+                    "source": hit.source,
+                    "created_at": hit.created_at,
+                })
+            })
+            .collect();
+        Ok(json!({"ok": true, "count": items.len(), "items": items}))
+    }
+}
+
 // ─── memory_delete ───
 
 /// memory_delete：按 ID 或语义查询删除长期记忆。
@@ -176,8 +247,8 @@ impl Tool for MemoryDelete {
             json!({
                 "type": "object",
                 "properties": {
-                    "memory_id": {"type": "string", "description": "要删除的记忆 ID（来自 memory_store 的返回）"},
-                    "query": {"type": "string", "description": "用自然语言描述要删的内容，会语义匹配并删除相似记忆"}
+                    "memory_id": {"type": "string", "description": "要删除的记忆 ID（来自 memory_store 或 memory_query 的返回；legacy_ 开头表示旧版整合条目）"},
+                    "query": {"type": "string", "description": "用自然语言描述要删的内容，会语义匹配并删除相似记忆（仅长期记忆）"}
                 },
                 "required": [],
                 "additionalProperties": false

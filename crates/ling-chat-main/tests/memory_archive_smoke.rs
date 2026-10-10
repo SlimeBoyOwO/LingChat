@@ -59,6 +59,19 @@ async fn migrate_and_browse_unified(db: &DatabaseConnection) -> Result<()> {
     assert_eq!(legacy.len(), 1);
     assert_eq!(legacy[0].content, "整合的旧版记忆");
 
+    // 6.5) 检索候选：未带向量的整合条目不参与；补向量后即可被 memory_query 命中。
+    let before = store::load_role_search_rows(db, 1).await?;
+    assert_eq!(before.len(), 1, "未带向量的整合条目不应进入检索候选");
+    store::save_legacy_embedding(db, &table, legacy[0].id, &[1.0f32], "test-model").await?;
+    let after = store::load_role_search_rows(db, 1).await?;
+    assert_eq!(after.len(), 2, "补向量后整合条目应进入检索候选");
+    assert!(
+        after
+            .iter()
+            .any(|r| r.memory_id == format!("legacy_{}", legacy[0].id)),
+        "整合条目应以 legacy_{{id}} 作为检索 id"
+    );
+
     // 7) 计数与角色列表
     assert_eq!(
         store::count_role_entries(db, 1).await?,

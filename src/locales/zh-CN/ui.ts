@@ -312,7 +312,7 @@ export default {
     approvalDefaultCwd: "（默认沙箱目录）",
     groups: {
       schedule: "日程与待办（查日程、加/改/删待办）",
-      memory: "长期记忆（存入、删除、整理压缩；每轮自动检索注入）",
+      memory: "长期记忆（存入、查询、删除、整理压缩；每轮自动检索注入）",
       character: "角色切换（列出/切换在场角色）",
       scene: "场景切换（列出/切换场景）",
       status: "状态查询（当前状态/场景状态）",
@@ -330,6 +330,7 @@ export default {
       schedule_update_todo: "更新待办",
       schedule_delete_todo: "删除待办",
       memory_store: "存入记忆",
+      memory_query: "查询记忆",
       memory_delete: "删除记忆",
       memory_summarize: "整理记忆",
       character_list: "角色列表",

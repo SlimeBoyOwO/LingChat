@@ -61,6 +61,8 @@ const MIN_SUMMARIZE_ENTRIES: usize = 2;
 const SUMMARIZE_MAX_CHARS: usize = 24_000;
 /// 自动/摘要生成的记忆打的标签。
 const SUMMARY_TAG: &str = "summary";
+/// 「旧版整合」条目向量回填时的单批嵌入条数（避免一次请求过大）。
+const BACKFILL_BATCH: usize = 32;
 
 /// 一次 `store` 的结果。
 pub struct StoreOutcome {
@@ -272,10 +274,43 @@ impl MemoryService {
         }
     }
 
-    /// 语义 + 关键词混合检索。
+    /// 语义 + 关键词混合检索（长期记忆）。生成管线每轮 RAG 注入走这里。
+    ///
+    /// 只召回 `kind='memory'` 的长期记忆；旧版整合条目由 [`Self::query`] /
+    /// `memory_query` 工具按需检索（不参与自动注入）。
     pub async fn search(
         &self,
         role_id: i32,
+        query: &str,
+        mode: SearchMode,
+        top_k: Option<usize>,
+        min_score: Option<f64>,
+        time_range: Option<(i64, i64)>,
+    ) -> Result<Vec<SearchHit>> {
+        let rows = store::load_role_rows(&self.db, role_id).await?;
+        self.search_rows(rows, query, mode, top_k, min_score, time_range)
+            .await
+    }
+
+    /// 供 `memory_query` 工具：在「长期记忆 + 已带向量的旧版整合条目」上做混合检索。
+    pub async fn query(
+        &self,
+        role_id: i32,
+        query: &str,
+        mode: SearchMode,
+        top_k: Option<usize>,
+        min_score: Option<f64>,
+        time_range: Option<(i64, i64)>,
+    ) -> Result<Vec<SearchHit>> {
+        let rows = store::load_role_search_rows(&self.db, role_id).await?;
+        self.search_rows(rows, query, mode, top_k, min_score, time_range)
+            .await
+    }
+
+    /// 在给定候选行上做「嵌入 query → 混合检索」的公共逻辑。
+    async fn search_rows(
+        &self,
+        rows: Vec<MemoryRow>,
         query: &str,
         mode: SearchMode,
         top_k: Option<usize>,
@@ -290,11 +325,59 @@ impl MemoryService {
         let top_k = top_k.unwrap_or(default_top_k).clamp(1, 200);
         let min_score = min_score.unwrap_or(default_min_score).clamp(0.0, 1.0);
 
-        let rows = store::load_role_rows(&self.db, role_id).await?;
         let query_vec = self.embed_one(query).await?;
         Ok(self
             .search
             .run(&query_vec, query, &rows, mode, top_k, min_score, time_range))
+    }
+
+    /// 为「旧版整合」条目补算向量，使其能被 `memory_query` 语义检索命中。
+    ///
+    /// `role_id = None` 扫描全部角色（启动时用），`Some` 只补指定角色（导入后用）。
+    /// 幂等：只处理还没有向量的行；嵌入配置未就绪时返回 0。分批嵌入，单批失败
+    /// 记警告跳过，不因一批失败丢掉整次回填。返回补算成功的条数。
+    pub async fn backfill_legacy_embeddings(&self, role_id: Option<i32>) -> Result<usize> {
+        if !self.is_configured() {
+            return Ok(0);
+        }
+        let pending = store::load_legacy_pending_embeddings(&self.db, role_id).await?;
+        if pending.is_empty() {
+            return Ok(0);
+        }
+        let total = pending.len();
+        let mut saved = 0usize;
+        for batch in pending.chunks(BACKFILL_BATCH) {
+            let texts: Vec<String> = batch.iter().map(|p| p.content.clone()).collect();
+            let embeddings = match self.embed_many(&texts).await {
+                Ok(v) if v.len() == batch.len() => v,
+                Ok(v) => {
+                    tracing::warn!(
+                        "旧版整合记忆回填：嵌入数量不匹配（{} != {}），本批跳过",
+                        v.len(),
+                        batch.len()
+                    );
+                    continue;
+                },
+                Err(e) => {
+                    tracing::warn!("旧版整合记忆回填：嵌入失败，本批跳过: {e}");
+                    continue;
+                },
+            };
+            for (p, vector) in batch.iter().zip(embeddings.iter()) {
+                if let Err(e) =
+                    store::save_legacy_embedding(&self.db, &p.table, p.row_id, vector, self.model())
+                        .await
+                {
+                    tracing::warn!("旧版整合记忆回填：写入向量失败 row={}: {e}", p.row_id);
+                    continue;
+                }
+                saved += 1;
+            }
+        }
+        if saved > 0 {
+            tracing::info!("旧版整合记忆回填完成：{saved}/{total} 条已补算向量");
+        }
+        Ok(saved)
     }
 
     /// 按 `memory_id` 精确删除。

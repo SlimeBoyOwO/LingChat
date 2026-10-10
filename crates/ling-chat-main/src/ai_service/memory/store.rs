@@ -407,6 +407,163 @@ pub async fn load_role_rows(db: &DatabaseConnection, role_id: i32) -> Result<Vec
     Ok(out)
 }
 
+/// 检索用：某角色归档表里的可检索行——长期记忆（`kind='memory'`）**加上**
+/// 已带向量的旧版整合条目（`kind='legacy'` 且 `embedding` 非空）。
+///
+/// 与 [`load_role_rows`] 的区别：这里额外纳入整合条目，供 `memory_query` 工具
+/// 语义检索；自动 RAG 注入仍走 [`load_role_rows`]（只召回长期记忆）。整合行没有
+/// `memory_id`，这里用 `legacy_{行id}` 表示（与浏览面板、精确删除一致），
+/// `chunk_index` 统一记 0。
+pub async fn load_role_search_rows(
+    db: &DatabaseConnection,
+    role_id: i32,
+) -> Result<Vec<MemoryRow>> {
+    let table = ensure_role_archive(db, role_id)
+        .await
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    #[derive(Debug, FromQueryResult)]
+    struct SearchRow {
+        id: i32,
+        kind: String,
+        memory_id: Option<String>,
+        chunk_index: i32,
+        content: String,
+        #[sea_orm(column_name = "embedding")]
+        embedding: Option<Vec<u8>>,
+        #[sea_orm(column_name = "model")]
+        model: Option<String>,
+        created_at: i64,
+    }
+
+    let rows = db
+        .query_all(Statement::from_string(
+            DatabaseBackend::Sqlite,
+            format!(
+                "SELECT id, kind, memory_id, chunk_index, content, embedding, model, created_at \
+                 FROM \"{table}\" \
+                 WHERE (kind='memory' AND memory_id IS NOT NULL) \
+                    OR (kind='legacy' AND embedding IS NOT NULL AND length(embedding) > 0) \
+                 ORDER BY memory_id, chunk_index, id"
+            ),
+        ))
+        .await
+        .context("读取检索候选失败")?;
+
+    let mut out: Vec<MemoryRow> = Vec::with_capacity(rows.len());
+    for row in &rows {
+        let Ok(r) = SearchRow::from_query_result(row, "") else {
+            continue;
+        };
+        let memory_id = match r.memory_id {
+            Some(id) => id,
+            None => format!("legacy_{}", r.id),
+        };
+        out.push(MemoryRow {
+            id: r.id,
+            memory_id,
+            chunk_index: if r.kind == "legacy" { 0 } else { r.chunk_index },
+            content: r.content,
+            tags: None,
+            embedding: r
+                .embedding
+                .map(|bytes| bytes_to_f32(&bytes))
+                .unwrap_or_default(),
+            model: r.model.unwrap_or_default(),
+            created_at: r.created_at,
+        });
+    }
+    out.sort_by(|a, b| {
+        a.memory_id
+            .cmp(&b.memory_id)
+            .then(a.chunk_index.cmp(&b.chunk_index))
+    });
+    Ok(out)
+}
+
+/// 一条待补算向量的旧版整合条目（含所属表名，便于回填时 UPDATE）。
+#[derive(Clone, Debug)]
+pub struct LegacyPendingEmbedding {
+    pub table: String,
+    pub row_id: i32,
+    pub content: String,
+}
+
+/// 扫描（指定角色或全部角色）里还没有向量的旧版整合条目，供启动/导入后回填。
+pub async fn load_legacy_pending_embeddings(
+    db: &DatabaseConnection,
+    role_id: Option<i32>,
+) -> Result<Vec<LegacyPendingEmbedding>> {
+    let profiles = memory_archive_profile::Entity::find().all(db).await?;
+    let mut out: Vec<LegacyPendingEmbedding> = Vec::new();
+
+    #[derive(Debug, FromQueryResult)]
+    struct PendingRow {
+        id: i32,
+        content: String,
+    }
+
+    for profile in profiles {
+        if role_id.is_some_and(|want| want != profile.role_id) {
+            continue;
+        }
+        let table = match ensure_role_archive(db, profile.role_id).await {
+            Ok(table) => table,
+            Err(e) => {
+                tracing::warn!("读取角色 {} 归档表失败，跳过向量回填: {e}", profile.role_id);
+                continue;
+            },
+        };
+        let rows = db
+            .query_all(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                format!(
+                    "SELECT id, content FROM \"{table}\" \
+                     WHERE kind='legacy' AND (embedding IS NULL OR length(embedding) = 0) \
+                     ORDER BY id"
+                ),
+            ))
+            .await
+            .context("扫描待回填整合条目失败")?;
+        for row in &rows {
+            if let Ok(r) = PendingRow::from_query_result(row, "") {
+                out.push(LegacyPendingEmbedding {
+                    table: table.clone(),
+                    row_id: r.id,
+                    content: r.content,
+                });
+            }
+        }
+    }
+    Ok(out)
+}
+
+/// 写入某条旧版整合条目的向量（越权保护：仅 `kind='legacy'`）。
+pub async fn save_legacy_embedding(
+    db: &DatabaseConnection,
+    table: &str,
+    row_id: i32,
+    embedding: &[f32],
+    model: &str,
+) -> Result<()> {
+    db.execute(Statement::from_sql_and_values(
+        DatabaseBackend::Sqlite,
+        format!(
+            "UPDATE \"{table}\" SET embedding = ?, dim = ?, model = ? \
+             WHERE id = ? AND kind='legacy'"
+        ),
+        vec![
+            sea_orm::Value::Bytes(Some(Box::new(f32_to_bytes(embedding)))),
+            sea_orm::Value::Int(Some(embedding.len() as i32)),
+            sea_orm::Value::String(Some(Box::new(model.to_string()))),
+            sea_orm::Value::Int(Some(row_id)),
+        ],
+    ))
+    .await
+    .context("写入整合条目向量失败")?;
+    Ok(())
+}
+
 /// 存量迁移：把旧 `memory_embeddings` 表里已存在的长期记忆一次性归并进各角色的
 /// 共用归档表（`kind='memory'`，沿用原 `memory_id` 与向量）。
 ///

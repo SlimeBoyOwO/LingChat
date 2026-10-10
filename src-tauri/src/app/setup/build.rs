@@ -159,6 +159,19 @@ pub(super) fn build_service_graph(
         memory.defaults().1,
     );
 
+    // 后台为「旧版整合」条目补算向量，使 `memory_query` 能语义检索到它们。
+    // 只在嵌入就绪时真正执行；幂等（只补没有向量的行），失败仅记日志不阻断启动。
+    {
+        let memory = memory.clone();
+        tauri::async_runtime::spawn(async move {
+            match memory.backfill_legacy_embeddings(None).await {
+                Ok(0) => {},
+                Ok(n) => tracing::info!("旧版整合记忆向量回填：{n} 条"),
+                Err(e) => tracing::warn!("旧版整合记忆向量回填失败（可下次启动重试）: {e}"),
+            }
+        });
+    }
+
     // ═══ 原 services.rs：构建其余全部服务 ═══
     // 创建脚本引擎通道
     let script_channels = std::sync::Arc::new(tokio::sync::Mutex::new(

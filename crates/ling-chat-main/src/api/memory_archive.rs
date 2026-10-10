@@ -237,6 +237,7 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
     let mut skipped_existing = 0usize;
     let mut memories_written = 0usize;
     let mut skipped_empty = 0usize;
+    let mut imported_role_ids: Vec<i32> = Vec::new();
 
     for (role_id, mut sections) in per_role {
         // 去重同一分段内的重复文本（跨存档合并出现同一内容时保留一份，保序）。
@@ -287,6 +288,16 @@ pub async fn memory_import_legacy(app: tauri::AppHandle) -> Result<LegacyImportR
             memories_written += 1;
         }
         imported_roles += 1;
+        imported_role_ids.push(role_id);
+    }
+
+    // 为刚导入的整合条目补算向量（best-effort），使其立刻能被 memory_query 检索到。
+    if state.memory.is_configured() {
+        for role_id in imported_role_ids {
+            if let Err(e) = state.memory.backfill_legacy_embeddings(Some(role_id)).await {
+                tracing::warn!("导入后补算整合记忆向量失败 role={role_id}: {e}");
+            }
+        }
     }
 
     Ok(LegacyImportResult {

@@ -65,6 +65,7 @@ const readTools = new Set([
   "status_get_current",
   "status_get_scene",
   "get_current_time",
+  "memory_query",
 ]);
 const updateTools = new Set([
   "schedule_add_todo",

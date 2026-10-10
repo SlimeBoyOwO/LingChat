@@ -38,7 +38,12 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ),
     (
         "memory",
-        &["memory_store", "memory_delete", "memory_summarize"],
+        &[
+            "memory_store",
+            "memory_query",
+            "memory_delete",
+            "memory_summarize",
+        ],
     ),
     (
         "character",

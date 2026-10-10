@@ -332,7 +332,7 @@ export default {
     groups: {
       schedule: "Schedule & To-dos (view, add, update, delete)",
       memory:
-        "Long-term Memory (store, delete, summarize; retrieval happens automatically each turn)",
+        "Long-term Memory (store, query, delete, summarize; retrieval happens automatically each turn)",
       character: "Character Switching (list/switch present characters)",
       scene: "Scene Switching (list/switch scenes)",
       status: "Status Queries (current/scene status)",
@@ -350,6 +350,7 @@ export default {
       schedule_update_todo: "Update To-do",
       schedule_delete_todo: "Delete To-do",
       memory_store: "Store Memory",
+      memory_query: "Query Memory",
       memory_delete: "Delete Memory",
       memory_summarize: "Summarize Memories",
       character_list: "List Characters",
