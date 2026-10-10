@@ -15,6 +15,10 @@ pub fn last_clothes_key(role_id: i32) -> String {
     format!("session.last_clothes.{}", role_id)
 }
 
+// ========== 天气 ==========
+/// 今日天气提醒已注入的日期（"YYYY-MM-DD"；跨天自动失效）
+pub const LAST_WEATHER_TALK_DATE: &str = "session.last_weather_talk_date";
+
 // ========== 音乐 / 环境音 ==========
 /// 上次播放的背景音乐曲目路径（"None" 表示无）
 pub const LAST_BGM_TRACK: &str = "session.last_bgm_track";

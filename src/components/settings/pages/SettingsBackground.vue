@@ -327,6 +327,7 @@ import {
   CloudFog,
 } from "lucide-vue-next";
 import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
+import { selectBackgroundEffect } from "../../../api/services/scene";
 import {
   getCpuInfo,
   redetectCpu,
@@ -529,6 +530,8 @@ async function handleRedetectPerf(): Promise<void> {
 
 function updateParticle(value: string): void {
   uiStore.setBackgroundEffect(value);
+  // 通知后端同步特效状态并落下"手动优先"锁（失败仅记录，本地显示不受影响）
+  selectBackgroundEffect(value).catch((e) => console.warn("selectBackgroundEffect 失败:", e));
 }
 
 // 天气层直接写自己的槽位，不走 applyEffectValue —— 那会把氛围层一起清掉，

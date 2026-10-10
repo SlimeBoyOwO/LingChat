@@ -79,6 +79,11 @@ export async function selectScene(sceneId: string | null): Promise<void> {
   return invoke("select_scene", { sceneId });
 }
 
+/** 用户手动选择粒子特效：同步后端状态并落下"手动优先"锁（AI 不再自动切特效）。 */
+export async function selectBackgroundEffect(effect: string): Promise<void> {
+  return invoke("select_background_effect", { effect });
+}
+
 export async function setSceneAwareness(enabled: boolean): Promise<void> {
   return invoke("set_scene_awareness", { enabled });
 }

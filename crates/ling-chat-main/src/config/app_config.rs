@@ -105,6 +105,20 @@ pub struct AppConfig {
     pub enable_time_sense: bool,
     #[serde(default = "default_enable_emotion_classifier")]
     pub enable_emotion_classifier: bool,
+    /// 天气工具的手动城市（最高优先级；空 = 未配置）
+    #[serde(default)]
+    pub weather_city: String,
+    /// 今日首次对话时是否注入天气提醒（剧本模式/编辑器试玩从不注入）。
+    /// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
+    #[serde(default)]
+    pub weather_first_talk: bool,
+    // ---- AI 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
+    #[serde(default = "default_true")]
+    pub ai_auto_clothes: bool,
+    #[serde(default = "default_true")]
+    pub ai_auto_scene: bool,
+    #[serde(default = "default_true")]
+    pub ai_auto_effect: bool,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -156,6 +170,11 @@ impl Default for AppConfig {
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
+            weather_city: String::new(),
+            weather_first_talk: false,
+            ai_auto_clothes: true,
+            ai_auto_scene: true,
+            ai_auto_effect: true,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
@@ -258,6 +277,15 @@ impl AppConfig {
                 keys::ENABLE_EMOTION_CLASSIFIER,
                 default.enable_emotion_classifier,
             ),
+            weather_city: get_string(&store, keys::WEATHER_CITY).unwrap_or_default(),
+            weather_first_talk: get_bool(
+                &store,
+                keys::WEATHER_FIRST_TALK,
+                default.weather_first_talk,
+            ),
+            ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
+            ai_auto_scene: get_bool(&store, keys::AI_AUTO_SCENE, default.ai_auto_scene),
+            ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
             use_persistent_memory: get_bool(
                 &store,
                 keys::USE_PERSISTENT_MEMORY,
@@ -325,5 +353,14 @@ impl AppConfig {
             ),
             tts: TtsConfig::from_store(Some(&store)),
         })
+    }
+
+    /// 手动优先落锁：用户手动设置了服装/场景/特效时，关闭对应的 AI 自动切换
+    /// 开关（写入 settings.json，设置页可见、可重新打开）。
+    pub fn lock_auto_switch(app: &AppHandle, key: &str) {
+        if let Ok(store) = app.store(super::STORE_FILE) {
+            store.set(key.to_string(), serde_json::Value::Bool(false));
+            let _ = store.save();
+        }
     }
 }

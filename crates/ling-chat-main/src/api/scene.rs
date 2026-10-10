@@ -2,7 +2,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
@@ -673,6 +673,36 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
         store.set(crate::config::session::LAST_SCENE_ID.to_string(), val);
         let _ = store.save();
     }
+
+    // 手动优先：用户手动选场景后，关闭 AI 自动切景（设置页可重新打开）
+    crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_SCENE);
+
+    Ok(())
+}
+
+/// 用户手动选择粒子特效（设置-背景页 / 桌宠 PetTab）。
+///
+/// 此前特效的手动选择只写前端 store、后端 `GameStatus.background_effect`
+/// 一无所知；此命令让后端同步状态、经 ambient:effect 直达通道广播（与 AI
+/// 工具同一通道），并落下"手动优先"锁。
+#[tauri::command]
+pub async fn select_background_effect(app: AppHandle, effect: String) -> Result<(), String> {
+    {
+        let state = app.state::<AppState>();
+        let service = state.ai_service.lock().await;
+        service.game_status.lock().await.background_effect = effect.clone();
+    }
+
+    let payload = serde_json::json!({
+        "type": "ambient_effect",
+        "effect": effect,
+    });
+    if let Err(e) = app.emit("ambient:effect", &payload) {
+        tracing::warn!("emit ambient effect 失败: {e}");
+    }
+
+    // 手动优先：用户手动选特效后，关闭 AI 自动切特效（设置页可重新打开）
+    crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_EFFECT);
 
     Ok(())
 }

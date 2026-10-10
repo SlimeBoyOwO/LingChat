@@ -575,8 +575,9 @@ pub fn get_avatar_file(
     ))
 }
 
-#[tauri::command]
-pub async fn select_clothes(
+/// 手动选装的内部实现（不落锁）。AI 工具 `character_set_clothes` 在通过
+/// 手动优先锁检查后也走这里，因此落锁只发生在下方真正"用户手动"的命令里。
+pub async fn select_clothes_inner(
     app: AppHandle,
     role_id: i32,
     clothes_name: String,
@@ -615,6 +616,18 @@ pub async fn select_clothes(
     } else {
         Ok(serde_json::json!({"success": true, "message": "当前衣服已经是选中状态"}))
     }
+}
+
+#[tauri::command]
+pub async fn select_clothes(
+    app: AppHandle,
+    role_id: i32,
+    clothes_name: String,
+) -> Result<serde_json::Value, String> {
+    let result = select_clothes_inner(app.clone(), role_id, clothes_name).await?;
+    // 手动优先：用户手动选装后，关闭 AI 自动换装（设置页可重新打开）
+    crate::config::AppConfig::lock_auto_switch(&app, config::keys::AI_AUTO_CLOTHES);
+    Ok(result)
 }
 
 #[tauri::command]

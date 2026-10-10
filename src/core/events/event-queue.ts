@@ -87,6 +87,19 @@ export class EventQueue {
     // 处理事件并等待完成
     await eventProcessorManager.processEvent(event);
 
+    // 空文本的收尾 reply 没有任何可展示内容，"等待用户继续"会变成永久等待——
+    // 打字机无字可打、自动续打钩子不会触发、用户面对一片空白也无处可点。
+    // 这种事件直接回到输入态。（真实案例：模型回复以空段收尾导致整个对话框卡死）
+    if (
+      event.type === "reply" &&
+      event.isFinal === true &&
+      this.queue.length === 0 &&
+      !String(event.message ?? "").trim()
+    ) {
+      this.resetToInputState();
+      return;
+    }
+
     // 如果事件需要等待用户继续，就等待
     if (this.shouldWaitForUser(event)) {
       await this.waitForUserContinue();

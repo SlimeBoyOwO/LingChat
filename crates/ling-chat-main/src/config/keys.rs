@@ -39,6 +39,19 @@ pub const TRANSLATE_ENABLE: &str = "translate.enable";
 // ========== 对话增强 ==========
 pub const ENABLE_TIME_SENSE: &str = "features.enable_time_sense";
 pub const ENABLE_EMOTION_CLASSIFIER: &str = "features.enable_emotion_classifier";
+/// 天气工具的手动城市（最高优先级；填写后 AI 即可感知该城市天气）
+pub const WEATHER_CITY: &str = "features.weather_city";
+/// 今日首次对话时是否注入天气提醒（剧本模式/编辑器试玩从不注入）。
+/// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
+pub const WEATHER_FIRST_TALK: &str = "features.weather_first_talk";
+
+// ========== AI 自动切换（手动优先锁） ==========
+/// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）
+pub const AI_AUTO_CLOTHES: &str = "features.ai_auto_clothes";
+/// 是否允许 AI 自动切换场景（用户手动选场景后自动关闭，设置页可重新打开）
+pub const AI_AUTO_SCENE: &str = "features.ai_auto_scene";
+/// 是否允许 AI 自动切换粒子特效（用户手动选特效后自动关闭，设置页可重新打开）
+pub const AI_AUTO_EFFECT: &str = "features.ai_auto_effect";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

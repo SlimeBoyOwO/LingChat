@@ -179,6 +179,52 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         description: "ENABLE_EMOTION_CLASSIFIER — 启用情感分类器（ONNX 模型，用于自动标注对话 emotion）".to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::WEATHER_CITY.to_string(),
+                        value: read_setting(app, keys::WEATHER_CITY, &app_defaults.weather_city),
+                        description: "WEATHER_CITY — 天气查询的手动城市（填写后 AI 即可感知该城市的实时天气并联动换装/场景/特效）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::WEATHER_FIRST_TALK.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::WEATHER_FIRST_TALK,
+                            &app_defaults.weather_first_talk.to_string(),
+                        ),
+                        description: "WEATHER_FIRST_TALK — 今日首次对话时注入一条天气提醒（默认关闭；关闭时天气完全由 AI 按需调用 query_weather 感知；剧本模式与编辑器试玩从不触发）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AI_AUTO_CLOTHES.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AI_AUTO_CLOTHES,
+                            &app_defaults.ai_auto_clothes.to_string(),
+                        ),
+                        description: "AI_AUTO_CLOTHES — 允许 AI 自动换装（在角色卡手动选过服装后自动关闭；关闭后 AI 的换装请求一律不执行，恢复需重新打开此开关）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AI_AUTO_SCENE.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AI_AUTO_SCENE,
+                            &app_defaults.ai_auto_scene.to_string(),
+                        ),
+                        description: "AI_AUTO_SCENE — 允许 AI 自动切换场景（在设置中手动选过场景后自动关闭；关闭后 AI 的切景请求一律不执行，恢复需重新打开此开关）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::AI_AUTO_EFFECT.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::AI_AUTO_EFFECT,
+                            &app_defaults.ai_auto_effect.to_string(),
+                        ),
+                        description: "AI_AUTO_EFFECT — 允许 AI 自动切换粒子特效（手动选过特效后自动关闭；关闭后 AI 的特效切换请求一律不执行，恢复需重新打开此开关）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );
