@@ -197,6 +197,15 @@ export default {
     },
   },
   character: {
+    new: {
+      title: "新建角色",
+      hint: "创建后将打开角色配置，可继续填写人设和上传素材。取消编辑只放弃后续修改，已创建的角色会保留，可稍后继续编辑或删除。",
+      name: "角色名称",
+      folder: "资源目录名",
+      cancel: "取消",
+      confirm: "创建并编辑",
+      creating: "正在创建…",
+    },
     list: {
       title: "角色列表（切换角色会开始全新对话）",
       noDesc: "暂无角色描述",

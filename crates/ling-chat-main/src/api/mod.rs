@@ -6,6 +6,7 @@ pub mod asr;
 pub mod asset;
 pub mod background;
 pub mod character;
+pub mod character_create;
 pub mod chat;
 pub mod codex;
 pub mod font;

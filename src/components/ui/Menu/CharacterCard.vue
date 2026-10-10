@@ -35,10 +35,18 @@
         class="h-24 w-24 overflow-hidden rounded-full border-2 border-indigo-400/50 shadow-lg md:h-24 md:w-24"
       >
         <img
+          v-if="avatar && !avatarFailed"
           :src="avatar"
           :alt="name"
           class="h-full w-full object-cover transition-transform duration-500 group-hover:scale-110"
+          @error="avatarFailed = true"
         />
+        <span
+          v-else
+          class="flex h-full w-full items-center justify-center bg-indigo-500/20 text-3xl text-white/80"
+          aria-hidden="true"
+          >{{ Array.from(name || title || "")[0] || "?" }}</span
+        >
       </div>
       <span class="bg-brand mt-1 h-1 w-6 rounded-full"></span>
       <h4 class="text-md text-center font-bold tracking-wide text-white drop-shadow-md">
@@ -221,7 +229,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
@@ -267,6 +275,13 @@ const emit = defineEmits(["saved", "favoredChange"]);
 
 // 状态管理
 const isDetailVisible = ref(false);
+const avatarFailed = ref(false);
+watch(
+  () => props.avatar,
+  () => {
+    avatarFailed.value = false;
+  },
+);
 const isSettingsModalVisible = ref(false);
 function handleToggleFavored(): void {
   emit("favoredChange", props.id);
