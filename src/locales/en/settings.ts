@@ -494,6 +494,16 @@ export default {
       item: "Outfit #{index}",
       empty: 'No outfits configured yet. Click "Add Outfit" to create one',
     },
+    gsvEmo: {
+      title: "GSV Emotion Reference Voice",
+      description: "When enabled, switches the reference audio & text in real time by emotion category (surprised / happy / fearful / sad / angry / neutral); when disabled, the gsv_voice_filename / gsv_voice_text above are used.",
+      enable: "Enabled",
+      disable: "Disabled",
+      voiceFile: "Reference voice file",
+      voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
+      text: "Reference text",
+      textPlaceholder: "Text spoken in the reference audio",
+    },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
       open: "Edit Touch Areas",
