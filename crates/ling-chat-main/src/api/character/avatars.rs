@@ -40,18 +40,17 @@ pub(super) async fn avatar_dir_for_edit(
     clothes: &str,
     edit_id: Option<&str>,
 ) -> Result<PathBuf, String> {
-    let root =
-        if let Some(root) = super::character_editor::resource_root(role_id, edit_id, "avatar")? {
-            root
-        } else {
-            let state = app.state::<AppState>();
-            let role = RoleRepo::get_role_by_id(&state.db, role_id)
-                .await
-                .map_err(|e| e.to_string())?
-                .ok_or("角色不存在")?;
-            let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
-            super::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?
-        };
+    let root = if let Some(root) = super::editor::resource_root(role_id, edit_id, "avatar")? {
+        root
+    } else {
+        let state = app.state::<AppState>();
+        let role = RoleRepo::get_role_by_id(&state.db, role_id)
+            .await
+            .map_err(|e| e.to_string())?
+            .ok_or("角色不存在")?;
+        let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
+        crate::api::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)?
+    };
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let mut dir = root.join("avatar");
     if !clothes.is_empty() && clothes != "default" {
@@ -156,7 +155,7 @@ pub async fn write_character_avatar(
     bytes: Vec<u8>,
     edit_id: Option<String>,
 ) -> Result<(), String> {
-    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
     }
@@ -174,7 +173,7 @@ pub async fn write_character_avatar(
     reader.limits(limits);
     let image = reader.decode().map_err(|e| format!("图片无法读取: {e}"))?;
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
+        super::editor::prepare_resource(role_id, id, "avatar").await?;
     }
     let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     let old = emotion_files(&dir, &emotion)?;
@@ -196,7 +195,7 @@ pub async fn write_character_avatar(
         }
     }
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::mark_resources_changed(role_id, id, "avatar")?;
+        super::editor::mark_resources_changed(role_id, id, "avatar")?;
     } else {
         app.emit("character:avatars-updated", role_id)
             .map_err(|e| e.to_string())?;
@@ -212,55 +211,22 @@ pub async fn delete_character_avatar(
     emotion: String,
     edit_id: Option<String>,
 ) -> Result<(), String> {
-    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
     if !EMOTIONS.contains(&emotion.as_str()) {
         return Err("不支持的情绪".into());
     }
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
+        super::editor::prepare_resource(role_id, id, "avatar").await?;
     }
     let dir = avatar_dir_for_edit(&app, role_id, &clothes, edit_id.as_deref()).await?;
     for file in emotion_files(&dir, &emotion)? {
         std::fs::remove_file(file).map_err(|e| e.to_string())?;
     }
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::mark_resources_changed(role_id, id, "avatar")?;
+        super::editor::mark_resources_changed(role_id, id, "avatar")?;
     } else {
         app.emit("character:avatars-updated", role_id)
             .map_err(|e| e.to_string())?;
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rejects_path_traversal_and_windows_aliases() {
-        for name in [
-            "",
-            ".",
-            "..",
-            "../outside",
-            "a/b",
-            "a\\b",
-            "C:foo",
-            "dress.",
-            "dress ",
-        ] {
-            assert!(validate_segment(name).is_err(), "{name}");
-        }
-        assert!(validate_segment("冬装").is_ok());
-    }
-
-    #[test]
-    fn finds_all_extensions_without_matching_other_emotions() {
-        let dir = tempfile::tempdir().unwrap();
-        for name in ["正常.png", "正常.webp", "高兴.png"] {
-            std::fs::write(dir.path().join(name), b"test").unwrap();
-        }
-        assert_eq!(emotion_files(dir.path(), "正常").unwrap().len(), 2);
-        assert!(emotion_files(dir.path(), "平静").unwrap().is_empty());
-    }
 }

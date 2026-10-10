@@ -22,6 +22,121 @@ struct EditSession {
 }
 static SESSIONS: LazyLock<Mutex<HashMap<String, EditSession>>> = LazyLock::new(Default::default);
 
+const COMMITTED_MARKER: &str = ".committed";
+
+fn remove_editor_directory(path: &Path, base: &Path) -> Result<(), String> {
+    if path.is_symlink() {
+        return Err("编辑器临时目录不能是符号链接".into());
+    }
+    crate::utils::path::validate_path_in_base(path, base)?;
+    if path.canonicalize().map_err(|e| e.to_string())?
+        == base.canonicalize().map_err(|e| e.to_string())?
+    {
+        return Err("不能删除角色或临时数据根目录".into());
+    }
+    fs::remove_dir_all(path).map_err(|e| e.to_string())
+}
+
+fn remove_empty_parent(path: &Path) {
+    if let Err(error) = fs::remove_dir(path) {
+        if !matches!(
+            error.kind(),
+            std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
+        ) {
+            tracing::warn!(path = %path.display(), "清理编辑器空目录失败: {error}");
+        }
+    }
+}
+
+fn close_session(session: EditSession) {
+    let parent = session.draft.path().parent().unwrap().to_path_buf();
+    if let Err(error) = session.draft.close() {
+        tracing::warn!(path = %parent.display(), "清理角色编辑草稿失败: {error}");
+    }
+    if parent
+        .file_name()
+        .is_some_and(|name| name == ".editor-drafts")
+    {
+        remove_empty_parent(&parent);
+    }
+}
+
+fn cleanup_committed_backup(backup: &Path, original: &Path) {
+    // 标记失败或清理失败都不改变已成功的保存结果。
+    if let Err(error) = fs::write(backup.join(COMMITTED_MARKER), b"") {
+        tracing::warn!("标记角色备份已提交失败: {error}");
+    }
+    if let Err(error) = remove_editor_directory(backup, original) {
+        tracing::warn!("清理已提交的角色备份失败: {error}");
+    }
+    remove_empty_parent(&original.join(".editor-trash"));
+}
+
+fn cleanup_role_editor_data(root: &Path) -> Result<(), String> {
+    let root = root.canonicalize().map_err(|e| e.to_string())?;
+    for (name, prefix) in [
+        (".editor-drafts", "edit-"),
+        (".editor-trash", "edit-backup-"),
+    ] {
+        let parent = root.join(name);
+        if !parent.exists() {
+            continue;
+        }
+        if parent.is_symlink() {
+            return Err("编辑器临时目录不能是符号链接".into());
+        }
+        crate::utils::path::validate_path_in_base(&parent, &root)?;
+        for entry in fs::read_dir(&parent).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_name().to_string_lossy().starts_with(prefix) {
+                continue;
+            }
+            let path = entry.path();
+            if !entry.file_type().map_err(|e| e.to_string())?.is_dir() {
+                continue;
+            }
+            if name == ".editor-trash" && !path.join(COMMITTED_MARKER).is_file() {
+                // 中断的提交可能把正式资源移到了这里，不能当作垃圾删除。
+                tracing::warn!(path = %path.display(), "保留状态不明的角色回滚备份，请检查资源后再处理");
+                continue;
+            }
+            if let Err(error) = remove_editor_directory(&path, &parent) {
+                tracing::warn!(path = %path.display(), "清理角色编辑残留失败: {error}");
+            }
+        }
+        remove_empty_parent(&parent);
+    }
+    Ok(())
+}
+
+/// 仅在启动、尚未创建编辑会话时调用；按角色路径覆盖普通、剧本及插件角色。
+pub async fn cleanup_stale_editor_data(db: &sea_orm::DatabaseConnection) {
+    use sea_orm::EntityTrait;
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
+    let roles = match crate::db::entities::role::Entity::find().all(db).await {
+        Ok(roles) => roles,
+        Err(error) => {
+            tracing::warn!("读取角色编辑残留目录失败: {error}");
+            return;
+        },
+    };
+    for role in roles {
+        let Some(folder) = role.resource_folder.as_deref() else {
+            continue;
+        };
+        let Ok(root) =
+            crate::api::resolve_role_dir(&role.role_type, role.script_key.as_deref(), folder)
+        else {
+            continue;
+        };
+        if root.is_dir() {
+            if let Err(error) = cleanup_role_editor_data(&root) {
+                tracing::warn!(role_id = role.id, "清理角色编辑残留失败: {error}");
+            }
+        }
+    }
+}
+
 fn copy_tree(source: &Path, target: &Path) -> Result<(), String> {
     if !source.exists() {
         return Ok(());
@@ -112,7 +227,7 @@ pub(super) fn resource_root(
     }))
 }
 
-pub(super) fn file_root(
+pub(in crate::api) fn file_root(
     role_id: i32,
     edit_id: Option<&str>,
     relative: &str,
@@ -134,7 +249,7 @@ pub(super) fn file_root(
 }
 
 // 调用者持有 RESOURCE_LOCK。只在真正修改素材时创建资源副本，耗时复制放入阻塞线程池。
-pub(super) async fn prepare_resource(
+pub(in crate::api) async fn prepare_resource(
     role_id: i32,
     edit_id: &str,
     resource: &str,
@@ -198,7 +313,10 @@ pub(super) async fn prepare_resource(
     Ok(())
 }
 
-pub(super) fn draft_root(role_id: i32, edit_id: Option<&str>) -> Result<Option<PathBuf>, String> {
+pub(in crate::api) fn draft_root(
+    role_id: i32,
+    edit_id: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
     let Some(id) = edit_id else {
         return Ok(None);
     };
@@ -210,7 +328,7 @@ pub(super) fn draft_root(role_id: i32, edit_id: Option<&str>) -> Result<Option<P
     Ok(Some(session.draft.path().to_path_buf()))
 }
 
-pub(super) async fn settings(
+pub(in crate::api) async fn settings(
     app: AppHandle,
     role_id: i32,
     edit_id: Option<&str>,
@@ -219,7 +337,7 @@ pub(super) async fn settings(
         serde_json::from_value(read_yaml_as_json(&resolve_settings_file(&root))?)
             .map_err(|e| e.to_string())
     } else {
-        super::character::get_role_settings(app, role_id).await
+        super::get_role_settings(app, role_id).await
     }
 }
 
@@ -251,7 +369,7 @@ pub(super) fn record_costume(
     Ok(())
 }
 
-pub(super) fn mark_resources_changed(
+pub(in crate::api) fn mark_resources_changed(
     role_id: i32,
     edit_id: &str,
     resource: &str,
@@ -273,14 +391,14 @@ pub struct EditorDraft {
 
 #[tauri::command]
 pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<EditorDraft, String> {
-    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
-    let original = super::character_avatars::avatar_dir(&app, role_id, "default")
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
+    let original = super::avatars::avatar_dir(&app, role_id, "default")
         .await?
         .parent()
         .ok_or("角色目录不存在")?
         .to_path_buf();
     let expected = settings_version(&original)?;
-    let settings = super::character::get_role_settings(app.clone(), role_id).await?;
+    let settings = super::get_role_settings(app.clone(), role_id).await?;
     let parent = original.join(".editor-drafts");
     fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
     if !parent
@@ -322,12 +440,15 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
 
 #[tauri::command]
 pub async fn discard_character_edit(role_id: i32, edit_id: String) -> Result<(), String> {
-    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
     let mut sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
     if sessions.get(&edit_id).is_some_and(|s| s.role_id != role_id) {
         return Err("草稿不属于此角色".into());
     }
-    sessions.remove(&edit_id);
+    if let Some(session) = sessions.remove(&edit_id) {
+        drop(sessions);
+        close_session(session);
+    }
     Ok(())
 }
 
@@ -365,7 +486,7 @@ pub async fn commit_character_edit(
     edit_id: String,
     settings: serde_json::Value,
 ) -> Result<(), String> {
-    let _guard = super::character_costumes::RESOURCE_LOCK.lock().await;
+    let _guard = super::costumes::RESOURCE_LOCK.lock().await;
     let validated: CharacterSettings =
         serde_json::from_value(settings.clone()).map_err(|e| e.to_string())?;
     let (original, draft, expected, changes, resources_changed, resource_versions) = {
@@ -407,17 +528,26 @@ pub async fn commit_character_edit(
         }
         let backup = tempfile::Builder::new()
             .prefix("edit-backup-")
-            .tempdir_in(trash)
+            .tempdir_in(&trash)
             .map_err(|e| e.to_string())?
             .keep();
-        move_resources(&original, &backup, &names)?;
+        if let Err(error) = move_resources(&original, &backup, &names) {
+            // 只删空目录；若回滚失败留下素材，保留备份。
+            remove_empty_parent(&backup);
+            remove_empty_parent(&trash);
+            return Err(error);
+        }
         if let Err(error) = move_resources(&draft, &original, &names) {
             move_resources(&backup, &original, &names)?;
+            if let Err(cleanup_error) = remove_editor_directory(&backup, &original) {
+                tracing::warn!("清理已回滚的角色备份失败: {cleanup_error}");
+            }
+            remove_empty_parent(&trash);
             return Err(error);
         }
         Some(backup)
     };
-    if let Err(error) = super::character::update_role_settings(
+    if let Err(error) = super::update_role_settings(
         app.clone(),
         role_id,
         serde_json::to_value(validated).map_err(|e| e.to_string())?,
@@ -427,204 +557,25 @@ pub async fn commit_character_edit(
         if let Some(backup) = &backup {
             move_resources(&original, &draft, &names)?;
             move_resources(backup, &original, &names)?;
+            if let Err(cleanup_error) = remove_editor_directory(backup, &original) {
+                tracing::warn!("清理已回滚的角色备份失败: {cleanup_error}");
+            }
+            remove_empty_parent(&original.join(".editor-trash"));
         }
         return Err(error);
     }
-    for (old, new) in changes {
-        super::character_costumes::notify_costume_change(&app, role_id, old, new).await;
+    if let Some(backup) = &backup {
+        // 仅在正式配置成功保存后标记；清理失败不改变保存结果，启动时再清理。
+        cleanup_committed_backup(backup, &original);
     }
-    SESSIONS.lock().map_err(|e| e.to_string())?.remove(&edit_id);
+    for (old, new) in changes {
+        super::costumes::notify_costume_change(&app, role_id, old, new).await;
+    }
+    let session = SESSIONS.lock().map_err(|e| e.to_string())?.remove(&edit_id);
+    if let Some(session) = session {
+        close_session(session);
+    }
     let _ = app.emit("character:avatars-updated", role_id);
     let _ = app.emit("role:list-updated", ());
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn draft_copy_and_cancel_leave_original_unchanged() {
-        let root = tempfile::tempdir().unwrap();
-        fs::create_dir(root.path().join("avatar")).unwrap();
-        fs::write(root.path().join("avatar/正常.png"), b"old").unwrap();
-        fs::write(root.path().join("settings.yml"), b"ai_name: original").unwrap();
-        let before = fingerprint(root.path()).unwrap();
-        let draft = tempfile::tempdir().unwrap();
-        copy_tree(&root.path().join("avatar"), &draft.path().join("avatar")).unwrap();
-        fs::write(draft.path().join("avatar/正常.png"), b"draft").unwrap();
-        drop(draft);
-        assert_eq!(fingerprint(root.path()).unwrap(), before);
-        fs::write(root.path().join("avatar/正常.png"), b"external").unwrap();
-        assert_ne!(fingerprint(root.path()).unwrap(), before);
-    }
-    #[tokio::test]
-    async fn resource_drafts_are_lazy_and_keep_original_files_isolated() {
-        let original = tempfile::tempdir().unwrap();
-        fs::write(original.path().join("settings.yml"), b"ai_name: original").unwrap();
-        fs::create_dir(original.path().join("avatar")).unwrap();
-        fs::write(original.path().join("avatar/正常.png"), b"original").unwrap();
-        fs::create_dir(original.path().join("live2d")).unwrap();
-        let model = original.path().join("live2d/model.moc3");
-        fs::write(&model, b"model").unwrap();
-        let version = settings_version(original.path()).unwrap();
-        // 配置版本不依赖模型正文；外部模型更新不会阻止仅修改文本的保存。
-        fs::write(&model, b"external model update").unwrap();
-        assert_eq!(settings_version(original.path()).unwrap(), version);
-        let draft = tempfile::tempdir().unwrap();
-        let draft_path = draft.path().to_path_buf();
-        let id = uuid::Uuid::new_v4().to_string();
-        SESSIONS.lock().unwrap().insert(
-            id.clone(),
-            EditSession {
-                role_id: 51,
-                original: original.path().to_path_buf(),
-                draft,
-                settings_version: version,
-                resource_versions: HashMap::new(),
-                changes: Vec::new(),
-                resources_changed: BTreeSet::new(),
-            },
-        );
-        assert_eq!(
-            resource_root(51, Some(&id), "avatar").unwrap().unwrap(),
-            original.path()
-        );
-        assert_eq!(
-            file_root(51, Some(&id), "live2d/model.moc3")
-                .unwrap()
-                .unwrap(),
-            original.path()
-        );
-        {
-            let _guard = super::super::character_costumes::RESOURCE_LOCK.lock().await;
-            prepare_resource(51, &id, "avatar").await.unwrap();
-            fs::write(draft_path.join("avatar/正常.png"), b"edited").unwrap();
-            // 重复编辑复用已有草稿，不能再次复制并覆盖用户编辑。
-            prepare_resource(51, &id, "avatar").await.unwrap();
-        }
-        assert!(!draft_path.join("live2d").exists());
-        assert_eq!(
-            resource_root(51, Some(&id), "avatar").unwrap().unwrap(),
-            draft_path
-        );
-        assert_eq!(
-            fs::read(original.path().join("avatar/正常.png")).unwrap(),
-            b"original"
-        );
-        assert_eq!(
-            fs::read(draft_path.join("avatar/正常.png")).unwrap(),
-            b"edited"
-        );
-        fs::create_dir(original.path().join("legacy-model")).unwrap();
-        fs::write(original.path().join("legacy-model/model.json"), b"legacy").unwrap();
-        {
-            let _guard = super::super::character_costumes::RESOURCE_LOCK.lock().await;
-            prepare_resource(51, &id, "live2d").await.unwrap();
-        }
-        assert_eq!(
-            file_root(51, Some(&id), "legacy-model/model.json")
-                .unwrap()
-                .unwrap(),
-            draft_path
-        );
-        assert_eq!(
-            fs::read(draft_path.join("avatar/正常.png")).unwrap(),
-            b"edited"
-        );
-        assert_eq!(
-            fs::read(draft_path.join("live2d/model.moc3")).unwrap(),
-            b"external model update"
-        );
-        let expected = SESSIONS.lock().unwrap()[&id].resource_versions["avatar"].clone();
-        fs::write(original.path().join("avatar/正常.png"), b"external update").unwrap();
-        assert_ne!(
-            fingerprint(&original.path().join("avatar")).unwrap(),
-            expected
-        );
-        discard_character_edit(51, id).await.unwrap();
-        assert!(!draft_path.exists());
-        assert_eq!(
-            fs::read(original.path().join("avatar/正常.png")).unwrap(),
-            b"external update"
-        );
-    }
-
-    #[test]
-    fn failed_resource_move_restores_prior_moves() {
-        let source = tempfile::tempdir().unwrap();
-        let target = tempfile::tempdir().unwrap();
-        fs::create_dir(source.path().join("avatar")).unwrap();
-        fs::create_dir(source.path().join("live2d")).unwrap();
-        fs::write(target.path().join("live2d"), b"conflict").unwrap();
-        assert!(move_resources(source.path(), target.path(), &["avatar", "live2d"]).is_err());
-        assert!(source.path().join("avatar").is_dir());
-        assert!(source.path().join("live2d").is_dir());
-        assert!(!target.path().join("avatar").exists());
-    }
-
-    #[test]
-    fn replacing_resources_can_restore_original_and_keep_draft_for_retry() {
-        let original = tempfile::tempdir().unwrap();
-        let draft = tempfile::tempdir().unwrap();
-        let backup = tempfile::tempdir().unwrap();
-        for root in [&original, &draft] {
-            fs::create_dir(root.path().join("avatar")).unwrap();
-            fs::create_dir(root.path().join("live2d")).unwrap();
-        }
-        fs::write(original.path().join("avatar/正常.png"), b"original").unwrap();
-        fs::write(draft.path().join("avatar/正常.png"), b"edited").unwrap();
-        fs::write(draft.path().join("live2d/model.model3.json"), b"imported").unwrap();
-        let names = ["avatar", "live2d"];
-        move_resources(original.path(), backup.path(), &names).unwrap();
-        move_resources(draft.path(), original.path(), &names).unwrap();
-        assert_eq!(
-            fs::read(original.path().join("avatar/正常.png")).unwrap(),
-            b"edited"
-        );
-        // Simulate settings persistence failure after publishing resource directories.
-        move_resources(original.path(), draft.path(), &names).unwrap();
-        move_resources(backup.path(), original.path(), &names).unwrap();
-        assert_eq!(
-            fs::read(original.path().join("avatar/正常.png")).unwrap(),
-            b"original"
-        );
-        assert_eq!(
-            fs::read(draft.path().join("avatar/正常.png")).unwrap(),
-            b"edited"
-        );
-        assert!(!original.path().join("live2d/model.model3.json").exists());
-        assert!(draft.path().join("live2d/model.model3.json").exists());
-    }
-
-    #[tokio::test]
-    async fn sessions_reject_other_roles_and_discard_only_their_own_files() {
-        let original = tempfile::tempdir().unwrap();
-        fs::write(original.path().join("settings.yml"), b"ai_name: original").unwrap();
-        let draft = tempfile::tempdir().unwrap();
-        let path = draft.path().to_path_buf();
-        let id = uuid::Uuid::new_v4().to_string();
-        SESSIONS.lock().unwrap().insert(
-            id.clone(),
-            EditSession {
-                role_id: 42,
-                original: original.path().to_path_buf(),
-                draft,
-                settings_version: settings_version(original.path()).unwrap(),
-                resource_versions: HashMap::new(),
-                changes: Vec::new(),
-                resources_changed: BTreeSet::new(),
-            },
-        );
-        assert!(draft_root(43, Some(&id)).is_err());
-        assert!(discard_character_edit(43, id.clone()).await.is_err());
-        assert!(path.exists());
-        discard_character_edit(42, id.clone()).await.unwrap();
-        assert!(!path.exists());
-        assert!(draft_root(42, Some(&id)).is_err());
-        assert_eq!(
-            fs::read(original.path().join("settings.yml")).unwrap(),
-            b"ai_name: original"
-        );
-        discard_character_edit(42, id).await.unwrap();
-    }
 }

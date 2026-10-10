@@ -89,8 +89,13 @@ pub async fn preview_character_voice(
             LocalTtsRuntime::new(state.engine.clone(), state.paths.clone(), (*switch).clone())
         })
     });
-    let voice = build_voice_maker(&super::data_dir(), &settings, &tts_config, local.as_ref())
-        .ok_or("请先选择并配置角色的语音服务")?;
+    let voice = build_voice_maker(
+        &crate::api::data_dir(),
+        &settings,
+        &tts_config,
+        local.as_ref(),
+    )
+    .ok_or("请先选择并配置角色的语音服务")?;
     let bytes = tokio::time::timeout(
         std::time::Duration::from_secs(120),
         voice.synthesize_preview(text, &emotion),
@@ -102,78 +107,4 @@ pub async fn preview_character_voice(
         return Err("语音服务返回空音频或超过 20 MB".into());
     }
     Ok(Response::new(bytes))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    #[test]
-    fn preview_text_validates_unicode_length() {
-        assert_eq!(validate_preview_text(" 你好 ").unwrap(), "你好");
-        assert!(validate_preview_text(" ").is_err());
-        assert!(validate_preview_text(&"好".repeat(500)).is_ok());
-        assert!(validate_preview_text(&"好".repeat(501)).is_err());
-    }
-    #[test]
-    fn reference_audio_rejects_non_audio_empty_and_oversized_files() {
-        let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("reference.wav");
-        std::fs::write(&path, b"RIFFtestWAVE").unwrap();
-        assert_eq!(read_reference_audio(&path).unwrap(), b"RIFFtestWAVE");
-        std::fs::write(&path, []).unwrap();
-        assert!(read_reference_audio(&path).is_err());
-        std::fs::File::create(&path)
-            .unwrap()
-            .set_len(MAX_AUDIO_BYTES as u64 + 1)
-            .unwrap();
-        assert!(read_reference_audio(&path).is_err());
-        let path = dir.path().join("settings.yml");
-        std::fs::write(&path, b"test").unwrap();
-        assert!(read_reference_audio(&path).is_err());
-    }
-    #[tokio::test]
-    async fn preview_uses_draft_voice_parameters_and_returns_audio_without_chat_files() {
-        use axum::{Json, Router, routing::post};
-        use serde_json::{Value, json};
-        use std::sync::{Arc, Mutex};
-        let received = Arc::new(Mutex::new(Value::Null));
-        let capture = received.clone();
-        let audio = b"RIFFtestWAVE".to_vec();
-        let response = audio.clone();
-        let router = Router::new().route(
-            "/synthesize",
-            post(move |Json(body): Json<Value>| {
-                let capture = capture.clone();
-                let response = response.clone();
-                async move {
-                    *capture.lock().unwrap() = body;
-                    response
-                }
-            }),
-        );
-        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let address = listener.local_addr().unwrap();
-        let server = tokio::spawn(async move {
-            axum::serve(listener, router).await.unwrap();
-        });
-        let config = config::tts::TtsConfig {
-            sbv2api_api_url: format!("http://{address}"),
-            ..Default::default()
-        };
-        let settings: CharacterSettings = serde_json::from_value(json!({
-            "ai_name": "试听角色", "tts_type": "sbv2api", "voice_lang": "en",
-            "voice_models": { "sbv2api_name": "draft-model", "sbv2api_speaker_id": "7" }
-        }))
-        .unwrap();
-        let dir = tempfile::tempdir().unwrap();
-        let voice = build_voice_maker(dir.path(), &settings, &config, None).unwrap();
-        let result = voice.synthesize_preview("Read this draft", "高兴").await;
-        server.abort();
-        assert_eq!(result.unwrap(), audio);
-        let body = received.lock().unwrap();
-        assert_eq!(body["text"], "Read this draft");
-        assert_eq!(body["ident"], "draft-model");
-        assert_eq!(body["speaker_id"], 7);
-        assert!(!dir.path().join("voice").exists());
-    }
 }

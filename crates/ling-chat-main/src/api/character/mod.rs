@@ -1,3 +1,10 @@
+//! 角色配置与编辑 API。
+
+pub mod avatars;
+pub mod costumes;
+pub mod editor;
+pub mod voice;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;

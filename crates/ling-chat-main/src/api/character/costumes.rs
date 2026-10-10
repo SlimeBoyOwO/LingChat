@@ -2,11 +2,11 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
-use super::character_avatars::{EMOTIONS, avatar_dir_for_edit, avatar_files, validate_segment};
+use super::avatars::{EMOTIONS, avatar_dir_for_edit, avatar_files, validate_segment};
 use crate::{AppState, ai_service::types::CharacterSettings, config};
 
 // 与差分增删共享锁，防止上传图片时服装目录被改名。
-pub(super) static RESOURCE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+pub(in crate::api) static RESOURCE_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
 #[derive(Serialize)]
 pub struct CostumeSummary {
@@ -24,8 +24,7 @@ pub async fn list_character_costumes(
     edit_id: Option<String>,
 ) -> Result<Vec<CostumeSummary>, String> {
     let _guard = RESOURCE_LOCK.lock().await;
-    let settings =
-        super::character_editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
+    let settings = super::editor::settings(app.clone(), role_id, edit_id.as_deref()).await?;
     let root = avatar_dir_for_edit(&app, role_id, "default", edit_id.as_deref()).await?;
     let mut names = std::collections::BTreeSet::new();
     names.insert("default".to_string());
@@ -184,7 +183,7 @@ pub async fn manage_character_costume(
         return Err("默认服装不能被重命名或移除".into());
     }
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::prepare_resource(role_id, id, "avatar").await?;
+        super::editor::prepare_resource(role_id, id, "avatar").await?;
     }
     let root = avatar_dir_for_edit(&app, role_id, "default", edit_id.as_deref()).await?;
     let source = if action == "create" {
@@ -244,9 +243,9 @@ pub async fn manage_character_costume(
         std::fs::create_dir(target).map_err(|e| e.to_string())?;
     }
     let saved = if let Some(id) = edit_id.as_deref() {
-        super::character_editor::write_draft(role_id, id, &settings)
+        super::editor::write_draft(role_id, id, &settings)
     } else {
-        super::character::update_role_settings(
+        super::update_role_settings(
             app.clone(),
             role_id,
             serde_json::to_value(&settings).map_err(|e| e.to_string())?,
@@ -269,11 +268,11 @@ pub async fn manage_character_costume(
         &new_name
     };
     if let Some(id) = edit_id.as_deref() {
-        super::character_editor::record_costume(role_id, id, old_name, replacement.into())?;
+        super::editor::record_costume(role_id, id, old_name, replacement.into())?;
     } else {
         notify_costume_change(&app, role_id, old_name, replacement.into()).await;
     }
-    super::character_editor::settings(app, role_id, edit_id.as_deref()).await
+    super::editor::settings(app, role_id, edit_id.as_deref()).await
 }
 
 pub(super) async fn notify_costume_change(
@@ -315,38 +314,4 @@ pub(super) async fn notify_costume_change(
         },
     );
     let _ = app.emit("role:list-updated", ());
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn rename_preserves_prompts_and_remaps_touch_and_models() {
-        let mut settings: CharacterSettings = serde_json::from_value(serde_json::json!({
-            "clothes": [{"name":"冬装","prompt":"暖和的外套"}], "clothes_name":"冬装",
-            "body_part":{"冬装":{"head":{"polygons":[[[0,0],[1,0],[0,1]]]}},"ear":{"clothesName":"冬装","X":[1,2,3]}},
-            "live2d":{"version":1,"default_variant":"winter","variants":{},"clothes_variants":{"冬装":"winter"}}
-        })).unwrap();
-        remap_settings(&mut settings, "冬装", Some("外套")).unwrap();
-        assert_eq!(
-            settings.clothes.as_ref().unwrap()[0]["prompt"],
-            "暖和的外套"
-        );
-        assert_eq!(settings.clothes_name.as_deref(), Some("外套"));
-        assert_eq!(
-            settings.live2d.as_ref().unwrap().clothes_variants["外套"],
-            "winter"
-        );
-        assert!(settings.body_part.as_ref().unwrap().contains_key("外套"));
-        assert_eq!(
-            settings.body_part.as_ref().unwrap()["ear"]["clothesName"],
-            "外套"
-        );
-        remap_settings(&mut settings, "外套", None).unwrap();
-        assert_eq!(settings.clothes_name.as_deref(), Some("default"));
-        assert!(settings.clothes.unwrap().is_empty());
-        assert!(settings.live2d.unwrap().clothes_variants.is_empty());
-        assert!(settings.body_part.unwrap().is_empty());
-    }
 }

@@ -246,7 +246,7 @@ mod resolve;
 mod safety;
 mod staging;
 
-pub use compress::compress;
+pub use compress::{compress, compress_excluding_root_entries};
 pub use extract::{extract_sevenz, extract_zip};
 pub use import_state::{ArchiveImportState, ImportTaskEntry};
 pub use import_state::{ImportingGuard, TaskRemoveGuard};
