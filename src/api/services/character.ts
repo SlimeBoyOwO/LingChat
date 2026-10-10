@@ -180,23 +180,14 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
   }
 };
 
-export interface CreateCharacterResponse {
-  success: boolean;
-  data: {
-    character_id: number;
-    title: string;
-    resource_folder: string;
-  };
+export interface CreatedCharacter {
+  character_id: number;
+  title: string;
+  resource_folder: string;
 }
 
-export const createCharacter = async (formData: FormData): Promise<CreateCharacterResponse> => {
-  try {
-    const response = await http.post("/v1/chat/character/create", formData);
-    return response;
-  } catch (error: any) {
-    throw new Error(error.response?.data?.detail || i18n.global.t("api.character.createFailed"));
-  }
-};
+export const createCharacter = (name: string, resourceFolder: string) =>
+  invoke<CreatedCharacter>("create_character", { name, resourceFolder });
 
 export interface SelectClothesResponse {
   success: boolean;

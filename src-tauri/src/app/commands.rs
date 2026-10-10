@@ -56,6 +56,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::font::list_imported_fonts,
         api::font::delete_imported_font,
         api::character::get_character_list,
+        api::character_create::create_character,
         api::character::get_role_info,
         api::character::get_role_settings,
         api::character_editor::begin_character_edit,

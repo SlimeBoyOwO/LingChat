@@ -277,7 +277,7 @@ fn default_avatar_path(resource_folder: &str) -> String {
             }
         }
     }
-    avatar_dir.to_string_lossy().into_owned()
+    String::new()
 }
 
 /// 在目录中查找文件名（不含扩展名）匹配的图片文件
