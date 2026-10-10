@@ -1,12 +1,6 @@
-use std::fs;
-use std::path::PathBuf;
-
-use async_trait::async_trait;
 use sea_orm::DatabaseConnection;
-use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tauri::Manager;
-use uuid::Uuid;
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
@@ -15,66 +9,12 @@ use crate::api::character::read_character_settings;
 use crate::api::data_dir;
 use crate::db::managers::role_repo::RoleRepo;
 
+use ling_chat_notes::NotesStore;
+
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{atomic_replace, ensure_no_args, game_status_handle};
+use super::{ensure_no_args, game_status_handle};
 
-// ─── 手动笔记：按角色独立存储 ───
-
-/// 一条手动记忆笔记。每个角色一个文件，存于 `data/game_data/notes/<角色名>.json`。
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Note {
-    pub id: String,
-    pub content: String,
-    #[serde(default)]
-    pub tags: Vec<String>,
-    pub created_at: String,
-}
-
-fn notes_dir() -> PathBuf {
-    data_dir().join("game_data").join("notes")
-}
-
-/// 角色笔记文件路径。文件名取自 LingChat 权威角色名（display_name），
-/// sanitize 后拼接，保证路径安全且与角色信息对齐。
-fn role_notes_path(display_name: &str) -> PathBuf {
-    notes_dir().join(format!("{}.json", sanitize_role_name(display_name)))
-}
-
-/// 清理角色名中的非法文件名字符，兜底防空/防 `..`。
-fn sanitize_role_name(name: &str) -> String {
-    let cleaned: String = name
-        .trim()
-        .chars()
-        .filter(|c| c.is_alphanumeric() || *c == '_' || *c == '-' || *c == ' ')
-        .collect();
-    let cleaned = cleaned.trim().to_string();
-    if cleaned.is_empty() || cleaned == "." || cleaned == ".." {
-        "unknown".to_string()
-    } else {
-        cleaned
-    }
-}
-
-fn load_role_notes(display_name: &str) -> Result<Vec<Note>, String> {
-    let path = role_notes_path(display_name);
-    if !path.exists() {
-        return Ok(Vec::new());
-    }
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("读取角色 {display_name} 的笔记失败: {e}"))?;
-    serde_json::from_str(&content).map_err(|e| format!("解析角色 {display_name} 的笔记失败: {e}"))
-}
-
-/// 原子写入角色笔记（.tmp + rename）。
-fn save_role_notes(display_name: &str, notes: &[Note]) -> Result<(), String> {
-    let path = role_notes_path(display_name);
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("创建笔记目录失败: {e}"))?;
-    }
-    let content =
-        serde_json::to_string_pretty(notes).map_err(|e| format!("序列化笔记失败: {e}"))?;
-    atomic_replace(&path, content.as_bytes()).map_err(|e| format!("保存笔记失败: {e}"))
-}
+// ─── 角色名解析（工具层）：把外部角色名映射到笔记库使用的权威展示名 ───
 
 /// 取当前对话角色的权威展示名（display_name），与权限系统使用同一个名字来源。
 async fn current_display_name(
@@ -124,6 +64,20 @@ async fn resolve_display_name(db: &DatabaseConnection, given: &str) -> Result<St
     Err(ToolError::Execution(format!("未找到角色: {given}")))
 }
 
+/// 取当前角色的权威名，供写操作定位笔记文件。返回后不持有锁。
+async fn current_role_name_for_write(context: &ToolContext) -> Result<String, ToolError> {
+    let app = context.require_app()?;
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+    let gs = game_status_handle(&app).await;
+    let mut gs = gs.lock().await;
+    current_display_name(&mut gs, &db).await
+}
+
+fn notes_store() -> NotesStore {
+    NotesStore::new(data_dir())
+}
+
 fn parse_tags(value: Option<&Value>, tool: &str) -> Result<Option<Vec<String>>, ToolError> {
     let Some(value) = value else {
         return Ok(None);
@@ -150,32 +104,12 @@ fn require_object<'a>(
         .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 参数必须是 JSON object")))
 }
 
-fn apply_note_update(note: &mut Note, content: Option<String>, tags: Option<Vec<String>>) {
-    if let Some(content) = content {
-        note.content = content;
-    }
-    if let Some(tags) = tags {
-        note.tags = tags;
-    }
-}
-
-/// 取当前角色的权威名，供写操作定位笔记文件。返回后不持有锁。
-async fn current_role_name_for_write(context: &ToolContext) -> Result<String, ToolError> {
-    let app = context.require_app()?;
-    let state = app.state::<AppState>();
-    let db = state.db.clone();
-    let gs = game_status_handle(&app).await;
-    let mut gs = gs.lock().await;
-    let name = current_display_name(&mut gs, &db).await?;
-    Ok(name)
-}
-
 // ─── 工具 ───
 
 /// memory_get_current：获取当前角色的自动记忆库文本。
 pub struct GetCurrentMemory;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Tool for GetCurrentMemory {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
@@ -216,7 +150,7 @@ impl Tool for GetCurrentMemory {
 /// 默认读取**当前角色**的笔记；可传 `role` 指定读取**其他角色**的笔记（只读）。
 pub struct GetNotes;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Tool for GetNotes {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
@@ -242,15 +176,20 @@ impl Tool for GetNotes {
         let app = context.require_app()?;
         let state = app.state::<AppState>();
         let db = state.db.clone();
+        let store = notes_store();
 
         let notes = if let Some(role_name) = obj.get("role").and_then(Value::as_str) {
             let dn = resolve_display_name(&db, role_name).await?;
-            load_role_notes(&dn).map_err(ToolError::Execution)?
+            store
+                .load(&dn)
+                .map_err(|e| ToolError::Execution(e.to_string()))?
         } else {
             let gs = game_status_handle(&app).await;
             let mut gs = gs.lock().await;
             let dn = current_display_name(&mut gs, &db).await?;
-            load_role_notes(&dn).map_err(ToolError::Execution)?
+            store
+                .load(&dn)
+                .map_err(|e| ToolError::Execution(e.to_string()))?
         };
         Ok(json!({ "ok": true, "notes": notes }))
     }
@@ -259,7 +198,7 @@ impl Tool for GetNotes {
 /// memory_add_note：向当前角色添加一条手动记忆笔记。
 pub struct AddNote;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Tool for AddNote {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
@@ -296,16 +235,9 @@ impl Tool for AddNote {
         let tags = parse_tags(obj.get("tags"), "memory_add_note")?.unwrap_or_default();
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
-        let note = Note {
-            id: Uuid::new_v4().to_string(),
-            content,
-            tags,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
-        let id = note.id.clone();
-        notes.push(note);
-        save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        let id = notes_store()
+            .add(&role_name, content, tags)
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
         Ok(json!({"ok": true, "id": id}))
     }
 }
@@ -313,7 +245,7 @@ impl Tool for AddNote {
 /// memory_update_note：更新当前角色的手动记忆笔记。
 pub struct UpdateNote;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Tool for UpdateNote {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
@@ -367,12 +299,9 @@ impl Tool for UpdateNote {
         let tags = parse_tags(obj.get("tags"), "memory_update_note")?;
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
-        let Some(note) = notes.iter_mut().find(|n| n.id == id) else {
-            return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
-        };
-        apply_note_update(note, content, tags);
-        save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        notes_store()
+            .update(&role_name, &id, content, tags)
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
         Ok(json!({"ok": true, "id": id}))
     }
 }
@@ -380,7 +309,7 @@ impl Tool for UpdateNote {
 /// memory_delete_note：删除当前角色的手动记忆笔记。
 pub struct DeleteNote;
 
-#[async_trait]
+#[async_trait::async_trait]
 impl Tool for DeleteNote {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
@@ -410,13 +339,9 @@ impl Tool for DeleteNote {
             .ok_or_else(|| ToolError::InvalidArguments("memory_delete_note 需要 id".into()))?;
 
         let role_name = current_role_name_for_write(context).await?;
-        let mut notes = load_role_notes(&role_name).map_err(ToolError::Execution)?;
-        let before = notes.len();
-        notes.retain(|n| n.id != id);
-        if notes.len() == before {
-            return Err(ToolError::Execution(format!("笔记 {id} 不存在")));
-        }
-        save_role_notes(&role_name, &notes).map_err(ToolError::Execution)?;
+        notes_store()
+            .delete(&role_name, &id)
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
         Ok(json!({"ok": true, "id": id}))
     }
 }

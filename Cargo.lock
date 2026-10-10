@@ -4304,6 +4304,7 @@ dependencies = [
  "image",
  "indoc",
  "infer",
+ "ling-chat-notes",
  "mdns-sd",
  "ndarray",
  "once_cell",
@@ -4340,6 +4341,18 @@ dependencies = [
  "wgpu",
  "windows 0.62.2",
  "zip 2.4.2",
+]
+
+[[package]]
+name = "ling-chat-notes"
+version = "0.5.2"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.18",
+ "uuid",
 ]
 
 [[package]]

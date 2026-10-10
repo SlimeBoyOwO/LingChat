@@ -1,0 +1,17 @@
+[package]
+name = "ling-chat-notes"
+version = "0.5.2"
+description = "LingChat 手动笔记存储库：按角色独立存储的笔记文件读写"
+authors = ["LingChat Team"]
+edition = "2024"
+
+[lib]
+name = "ling_chat_notes"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tempfile = "3"
+thiserror = "2"

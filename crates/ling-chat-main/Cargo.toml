@@ -10,6 +10,7 @@ edition = "2021"
 name = "ling_chat_main"
 
 [dependencies]
+ling-chat-notes = { path = "../ling-chat-notes" }
 # macos-private-api：macOS 上透明窗口（桌宠模式）的必要条件，缺失时 tauri.conf.json
 # 的 transparent 会被静默忽略。该 feature 由 cfg(target_os = "macos") 门控。
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }

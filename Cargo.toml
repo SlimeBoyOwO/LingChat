@@ -1,5 +1,10 @@
 [workspace]
-members = ["src-tauri", "crates/ling-chat-main", "crates/ling-chat-plugins"]
+members = [
+    "src-tauri",
+    "crates/ling-chat-main",
+    "crates/ling-chat-plugins",
+    "crates/ling-chat-notes",
+]
 resolver = "2"
 
 # 三个成员共用的包版本。
