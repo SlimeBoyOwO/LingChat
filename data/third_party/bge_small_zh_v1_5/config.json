@@ -1,0 +1,10 @@
+{
+  "model": "BAAI/bge-small-zh-v1.5",
+  "embed_dim": 512,
+  "vocab": 21128,
+  "max_seq_len": 512,
+  "pooling": "cls",
+  "normalize": true,
+  "embedding_quant": "int2+grouped-affine",
+  "transformer_quant": "int4-matmulnbits"
+}

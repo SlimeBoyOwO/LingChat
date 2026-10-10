@@ -1,15 +1,15 @@
-//! 内置本地嵌入模型：bekko-embedding-v1-a25m 的量化版（int4 transformer + int2 词嵌入表）。
+//! 内置本地嵌入模型：BAAI/bge-small-zh-v1.5 的中文量化版（int4 transformer + int2 词嵌入表）。
 //!
-//! ## 产物（`data/third_party/bekko_embedding_v1_a25m/`，共约 49MB）
+//! ## 产物（`data/third_party/bge_small_zh_v1_5/`，共约 11MB）
 //! - `model_int4.onnx`：Transformer 的 MatMul 全部 int4（MatMulNBits），词嵌入表已从图中
-//!   摘除，改为外部输入 `inputs_embeds`（图手术脚本见 `scripts/quantize_bekko_embedding.py`）；
-//! - `embedding_int2.bin`：256000×384 词嵌入表，每行分成 6 组 × 64 维，每组一对 fp16
+//!   摘除，改为外部输入 `inputs_embeds`（图手术脚本见 `scripts/quantize_bge_embedding.py`）；
+//! - `embedding_int2.bin`：21128×512 词嵌入表，每行分成 8 组 × 64 维，每组一对 fp16
 //!   `(scale, zero)` 仿射量化到 2-bit，再按行主序 LSB 优先打包（魔数 `BEKKOEMB02|…`）；
-//! - `tokenizer.json.gz`：BPE（vocab 256000 / merges 580604），gzip 压到 4.8MB，加载时解压进内存；
-//! - `config.json`：模型元信息（384 维 / 均值池化 / 8192 上下文）。
+//! - `tokenizer.json.gz`：BERT WordPiece（vocab 21128），gzip 压到约 0.1MB，加载时解压进内存；
+//! - `config.json`：模型元信息（512 维 / CLS 池化 / 512 上下文）。
 //!
-//! 推理：`input_ids + attention_mask + inputs_embeds` 三输入进 ONNX Runtime（CPU），
-//! 输出 `last_hidden_state` 做带 attention mask 的均值池化 + L2 归一化，
+//! 推理：`input_ids + attention_mask + token_type_ids + inputs_embeds` 四输入进 ONNX Runtime
+//! （CPU），输出 `last_hidden_state` 取 **CLS（序列首位）** 向量 + L2 归一化（bge 官方池化），
 //! 与远程 embeddings 接口的返回对齐（`MemoryService` 直接用余弦/点积检索）。
 //!
 //! ONNX Runtime 为 CPU 密集推理且 `ort::Session` 需独占，这里复刻本地 TTS 的
@@ -27,19 +27,19 @@ use tokenizers::Tokenizer;
 use tokenizers::tokenizer::{TruncationDirection, TruncationParams, TruncationStrategy};
 
 /// 当前使用的本地嵌入模型名（写入 `memory_embeddings.model` 的标识）。
-pub const LOCAL_MODEL_NAME: &str = "bekko-embedding-v1-a25m";
+pub const LOCAL_MODEL_NAME: &str = "bge-small-zh-v1.5";
 
 /// 模型子目录名（挂在 `data/third_party/` 下）。
-pub const MODEL_DIR: &str = "bekko_embedding_v1_a25m";
+pub const MODEL_DIR: &str = "bge_small_zh_v1_5";
 /// 组件文件名。
 const MODEL_FILE: &str = "model_int4.onnx";
 const TOKENIZER_FILE_GZ: &str = "tokenizer.json.gz";
 const EMBED_FILE: &str = "embedding_int2.bin";
 
-/// 词嵌入维度与均值池化输出维度。
-const EMBED_DIM: usize = 384;
-/// 模型的上下文长度上限。
-const MAX_SEQ_LEN: usize = 8192;
+/// 词嵌入维度与输出维度（bge-small-zh-v1.5 隐藏层 512）。
+const EMBED_DIM: usize = 512;
+/// 模型的上下文长度上限（bge-small-zh-v1.5 max_position_embeddings = 512）。
+const MAX_SEQ_LEN: usize = 512;
 
 /// 推理时的 ORT 内部线程数（内核级并行交给批量维度，这里给个温和的数值，
 /// 避免与情绪分类 / VAD / 本地 TTS 的多个 session 抢 CPU）。
@@ -47,7 +47,7 @@ const INTRA_THREADS: usize = 2;
 
 // ─── 内置模型路径解析 ─────────────────────────────────────────
 
-/// 内置模型完整目录（`data_dir/third_party/bekko_embedding_v1_a25m`），与 VAD / 情绪模型同策略。
+/// 内置模型完整目录（`data_dir/third_party/bge_small_zh_v1_5`），与 VAD / 情绪模型同策略。
 pub fn bundled_dir() -> std::path::PathBuf {
     crate::data_dir::get_data_dir()
         .join("third_party")
@@ -64,18 +64,18 @@ pub fn is_bundled_available() -> bool {
 
 // ─── int2 词嵌入表 ────────────────────────────────────────────
 
-/// 256000×384 的 2-bit 词嵌入表（含每行 6 组 × fp16(scale, zero)）。
+/// 21128×512 的 2-bit 词嵌入表（含每行 8 组 × fp16(scale, zero)）。
 ///
-/// 文件布局（与 `scripts/quantize_bekko_embedding.py` 的写入方保持一致）：
+/// 文件布局（与 `scripts/quantize_bge_embedding.py` 的写入方保持一致）：
 /// ```text
-/// BEKKOEMB02|256000|384|12\n     <- 魔数|词表|维度|每行 scale 数（组数×2）
-/// [vocab × 12 × 2B  fp16 scale/zero 混合列表]
-/// [vocab × 384 × 2 bits 打包数据]
+/// BEKKOEMB02|21128|512|16\n      <- 魔数|词表|维度|每行 scale 数（组数×2）
+/// [vocab × 16 × 2B  fp16 scale/zero 混合列表]
+/// [vocab × 512 × 2 bits 打包数据]
 /// ```
 struct EmbedTable {
     bits: usize,
     vocab: usize,
-    /// 每行分组数（384 维 / 64 = 6）。
+    /// 每行分组数（512 维 / 64 = 8）。
     groups: usize,
     /// 每组的向量维度（64）。
     group_size: usize,
@@ -175,7 +175,7 @@ impl EmbedTable {
         })
     }
 
-    /// 回读元素 `elem`（行主序下的第 `elem` 个 384 维分量）对应的量化码。
+    /// 回读元素 `elem`（行主序下的第 `elem` 个维度分量）对应的量化码。
     /// 位流按行主序、元素 LSB 优先，字节内 MSB 优先打包（与 Python 端 `pack_nbit` 一致）。
     fn unpack(&self, elem: usize) -> u32 {
         let p = elem * self.bits;
@@ -218,6 +218,8 @@ struct BatchInputs {
     max_len: usize,
     input_ids: Vec<i64>,
     attention_mask: Vec<i64>,
+    /// 单句编码，恒为 0（BERT 图仍保留该输入用于 token_type 嵌入查表）。
+    token_type_ids: Vec<i64>,
     /// `[batch, max_len, EMBED_DIM]` 的行主序浮点。
     inputs_embeds: Vec<f32>,
 }
@@ -225,6 +227,7 @@ struct BatchInputs {
 /// 打完补丁后的模型图输入（固定顺序），生成工件时保证不变。
 const INPUT_IDS: &str = "input_ids";
 const ATTENTION_MASK: &str = "attention_mask";
+const TOKEN_TYPE_IDS: &str = "token_type_ids";
 const INPUTS_EMBEDS: &str = "inputs_embeds";
 
 /// 内置本地嵌入器（线程安全：Session 用互斥锁串行化，推理在阻塞线程池执行）。
@@ -235,7 +238,7 @@ pub struct LocalEmbedder {
 }
 
 impl LocalEmbedder {
-    /// 阻塞式加载（约 500ms）：读 30MB 嵌入表 + 解压 tokenizer + 建 ONNX Session。
+    /// 阻塞式加载（约 300ms）：读 3.4MB 嵌入表 + 解压 tokenizer + 建 ONNX Session。
     /// 调用方应放在 `spawn_blocking` 里执行。
     pub fn load(model_dir: &Path) -> Result<Self> {
         // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
@@ -323,7 +326,7 @@ impl LocalEmbedder {
         Ok(pooled)
     }
 
-    /// 分词 + 词嵌入表查表，构造 ONNX 三输入。
+    /// 分词 + 词嵌入表查表，构造 ONNX 四输入。
     fn prepare_batch(&self, texts: &[String]) -> Result<BatchInputs> {
         let mut encodings = Vec::with_capacity(texts.len());
         let mut max_len = 0usize;
@@ -357,17 +360,20 @@ impl LocalEmbedder {
                 attention_mask.push(0i64);
             }
         }
+        // 单句编码，token_type 全 0（图内 token_type 嵌入查表恒取第 0 行）。
+        let token_type_ids = vec![0i64; texts.len() * max_len];
 
         Ok(BatchInputs {
             batch: texts.len(),
             max_len,
             input_ids,
             attention_mask,
+            token_type_ids,
             inputs_embeds,
         })
     }
 
-    /// 把批量输入丢给阻塞线程池跑 ONNX，流水线后做均值池化 + L2 归一化。
+    /// 把批量输入丢给阻塞线程池跑 ONNX，流水线后做 CLS 池化 + L2 归一化。
     async fn run_batched(&self, batch: BatchInputs) -> Result<Vec<Vec<f32>>> {
         let session = Arc::clone(&self.session);
 
@@ -375,8 +381,6 @@ impl LocalEmbedder {
             let mut guard = session
                 .lock()
                 .map_err(|_| anyhow!("内置嵌入 Session 锁被污染"))?;
-            // 池化要用 mask 过滤 padding，先拷贝一份（张量构造会 move 走原值）。
-            let mask = batch.attention_mask.clone();
             let ids_tensor = Tensor::from_array((
                 [batch.batch as i64, batch.max_len as i64],
                 batch.input_ids.into_boxed_slice(),
@@ -387,6 +391,11 @@ impl LocalEmbedder {
                 batch.attention_mask.into_boxed_slice(),
             ))
             .context("创建 attention_mask 张量失败")?;
+            let type_tensor = Tensor::from_array((
+                [batch.batch as i64, batch.max_len as i64],
+                batch.token_type_ids.into_boxed_slice(),
+            ))
+            .context("创建 token_type_ids 张量失败")?;
             let embeds_tensor = Tensor::from_array((
                 [batch.batch as i64, batch.max_len as i64, EMBED_DIM as i64],
                 batch.inputs_embeds.into_boxed_slice(),
@@ -397,6 +406,7 @@ impl LocalEmbedder {
                 .run(ort::inputs![
                     INPUT_IDS => ids_tensor,
                     ATTENTION_MASK => mask_tensor,
+                    TOKEN_TYPE_IDS => type_tensor,
                     INPUTS_EMBEDS => embeds_tensor,
                 ])
                 .context("内置嵌入 ONNX 推理失败")?;
@@ -411,25 +421,11 @@ impl LocalEmbedder {
             }
             let slice = hidden.as_slice().context("内置嵌入输出非连续布局")?;
 
+            // bge-small-zh-v1.5 用 CLS 池化：取序列首位（[CLS]）向量，无需 mask 加权。
             let mut result = Vec::with_capacity(batch.batch);
             for row in 0..batch.batch {
-                let mut sum = [0f32; EMBED_DIM];
-                let mut count = 0f32;
-                for seq in 0..batch.max_len {
-                    if mask[row * batch.max_len + seq] != 0 {
-                        let base = (row * batch.max_len + seq) * EMBED_DIM;
-                        for d in 0..EMBED_DIM {
-                            sum[d] += slice[base + d];
-                        }
-                        count += 1.0;
-                    }
-                }
-                let mut vector = vec![0f32; EMBED_DIM];
-                if count > 0.0 {
-                    for d in 0..EMBED_DIM {
-                        vector[d] = sum[d] / count;
-                    }
-                }
+                let base = row * batch.max_len * EMBED_DIM;
+                let mut vector = slice[base..base + EMBED_DIM].to_vec();
                 let norm: f32 = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
                 if norm > 0.0 {
                     for v in &mut vector {
@@ -455,84 +451,84 @@ mod tests {
             .join("..")
             .join("data")
             .join("third_party")
-            .join("bekko_embedding_v1_a25m")
+            .join("bge_small_zh_v1_5")
             .join("embedding_int2.bin")
     }
 
-    /// 用 Python（`scripts/quantize_bekko_embedding.py` 同款算法、同 fp32 链）产出的
+    /// 用 Python（`scripts/quantize_bge_embedding.py` 同款算法、同 fp32 链）产出的
     /// 参考值核对 Rust 的位流解码：表头 / f16 scale / LSB-first 解包 / 分组仿射。
-    /// 数据来自真实产物 `data/third_party/bekko_embedding_v1_a25m/embedding_int2.bin`。
+    /// 数据来自真实产物 `data/third_party/bge_small_zh_v1_5/embedding_int2.bin`。
     #[test]
     fn decode_matches_python_reference() {
         let table = EmbedTable::load(&table_path()).expect("嵌入表加载失败");
         assert_eq!(table.bits, 2);
-        assert_eq!(table.vocab, 256_000);
-        assert_eq!(table.groups, 6);
+        assert_eq!(table.vocab, 21_128);
+        assert_eq!(table.groups, 8);
         assert_eq!(table.group_size, 64);
 
-        let ids = [0u32, 2, 1000, 49_999, 123_456, 255_999];
-        let dims = [0usize, 1, 63, 64, 65, 191, 192, 383];
+        let ids = [0u32, 2, 1000, 4999, 12_345, 21_127];
+        let dims = [0usize, 1, 63, 64, 65, 127, 128, 511];
         // 参考值（python 严格 f32 链：code * scale + zero，与 Rust 逐位一致）
         let expected: [[f32; 8]; 6] = [
             [
-                0.03097534,
-                0.03097534,
-                0.03097534,
-                -0.0043029785,
-                -0.0043029785,
-                0.0015716553,
-                0.007446289,
-                -0.00078582764,
+                0.051879883,
+                -0.08874512,
+                0.051879883,
+                0.038269043,
+                0.038269043,
+                -0.022979736,
+                0.017211914,
+                0.010986328,
             ],
             [
-                0.087890625,
-                0.087890625,
-                0.087890625,
-                0.036132812,
-                0.036132812,
-                -0.09729004,
-                -0.07446289,
-                0.057128906,
+                -0.053710938,
+                -0.053710938,
+                -0.053710938,
+                0.013671875,
+                0.013671875,
+                0.013671875,
+                0.027038574,
+                0.022277832,
             ],
             [
-                0.07580566,
-                -0.02557373,
-                0.07580566,
-                0.07702637,
-                0.07702637,
-                0.057373047,
-                -0.016235352,
-                -0.026123047,
+                -0.0524292,
+                0.05456543,
+                0.05456543,
+                -0.09118652,
+                0.11608887,
+                0.012451172,
+                -0.15942383,
+                -0.05480957,
             ],
             [
-                0.05053711,
-                0.05053711,
-                -0.15515137,
-                0.04699707,
-                0.04699707,
-                -0.16052246,
-                -0.03564453,
-                -0.060668945,
+                -0.050720215,
+                -0.050720215,
+                -0.050720215,
+                0.06628418,
+                -0.07043457,
+                -0.07043457,
+                -0.045898438,
+                0.08691406,
             ],
             [
-                0.06298828,
-                -0.051757812,
-                -0.051757812,
-                0.095214844,
-                0.095214844,
-                0.021972656,
-                -0.14941406,
-                -0.04156494,
+                -0.02709961,
+                -0.02709961,
+                -0.02709961,
+                0.037963867,
+                0.12335205,
+                0.037963867,
+                -0.066467285,
+                0.1906128,
             ],
             [
-                0.03097534,
-                0.03097534,
-                0.03097534,
-                -0.0043029785,
-                -0.0043029785,
-                0.0015716553,
-                0.007446289,
-                -0.00078582764,
+                -0.061523438,
+                -0.061523438,
+                -0.061523438,
+                0.022949219,
+                0.022949219,
+                0.022949219,
+                0.02178955,
+                0.020385742,
             ],
         ];
 
