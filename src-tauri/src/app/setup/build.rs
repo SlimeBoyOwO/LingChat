@@ -152,9 +152,10 @@ pub(super) fn build_service_graph(
         &app_config,
     ));
     tracing::info!(
-        "记忆服务: enabled={}, configured={}, top_k={}, min_score={}",
+        "记忆服务: enabled={}, configured={}, retrieval={}, top_k={}, min_score={}",
         memory.enabled(),
         memory.is_configured(),
+        memory.retrieval_mode(),
         memory.defaults().0,
         memory.defaults().1,
     );

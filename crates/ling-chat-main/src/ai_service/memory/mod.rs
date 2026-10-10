@@ -2,14 +2,15 @@
 //! 检索不暴露成工具：生成管线在用户新消息轮自动做 RAG 检索（[`MemoryService::search`]），
 //! 命中结果落成 `LineAttribute::Memory` 台词行注入当轮上下文。
 //!
-//! 对标 BaiShou-Next 的记忆范式：
-//! - 远程 OpenAI 兼容 embeddings 接口把文本变成 L2 归一化向量；
+//! 对标 BaiShou-Next 的记忆范式，并支持**无嵌入模型**运行（非嵌入式 RAG）：
+//! - 配置了远程 OpenAI 兼容 embeddings 接口或内置模型时，文本变成 L2 归一化向量；
 //! - **存储**：长期记忆写入每「剧本 × 角色」一张的共用归档表
 //!   `memory_archive_{role_id}`（目录在 `memory_archive_profiles`，与旧版记忆整合
-//!   归档共用同一套表，见 [`store`]）；
-//! - 检索 = 内存余弦（向量路）+ LIKE 关键词（文本路），RRF 融合排序；
-//! - 写入前三级去重：余弦 > 0.92 拒收，0.70–0.92 交给 LLM 判 merge/skip/new，
-//!   LLM 失败时降级为直接存储。
+//!   归档共用同一套表，见 [`store`]）；没有嵌入模型时向量列为 NULL，只存正文；
+//! - 检索 = 向量余弦（有模型时）+ 字符 n-gram 词法打分，RRF 融合排序；没有嵌入
+//!   模型时全程走纯词法（见 [`search`]）；
+//! - 写入前三级去重：相似度 > 0.92 拒收，0.70–0.92 交给 LLM 判 merge/skip/new，
+//!   LLM 失败时降级为直接存储；无嵌入模型时用词法相似度（阈值相应调整）。
 //!
 //! 生命周期的「出口」是 [`MemoryService::summarize`]：把较早的一批记忆交给 LLM
 //! 压缩成一条 `summary` 记忆，源条目随后删除。触发方式有三种——模型主动调用
@@ -44,6 +45,13 @@ pub use store::{MemoryRow, chunk_text};
 const DEDUP_REJECT_THRESHOLD: f32 = 0.92;
 /// 余弦相似度落在 [0.70, 0.92] 时交给 LLM 判定是否合并。
 const DEDUP_LLM_LOWER: f32 = 0.70;
+/// 无嵌入模型时的词法去重：字符 n-gram 覆盖率高于该值视为重复，直接拒收。
+const LEXICAL_DEDUP_REJECT: f32 = 0.85;
+/// 无嵌入模型时的词法去重：覆盖率高于该值交给 LLM 判定是否合并。
+const LEXICAL_DEDUP_LLM_LOWER: f32 = 0.45;
+/// 纯词法模式下 `min_score` 的放宽系数：字符 n-gram 覆盖率天然低于语义余弦
+/// （长查询尤其明显），直接套用同一阈值会大量漏召回，故按此系数缩小。
+const LEXICAL_MIN_SCORE_SCALE: f64 = 0.5;
 /// 语义删除的最低相似度。
 const DELETE_MIN_SCORE: f32 = 0.5;
 /// 语义删除时考察的候选条数。
@@ -153,8 +161,8 @@ impl MemoryService {
         } else if local_available {
             tracing::info!("记忆嵌入使用内置本地模型: {}", LOCAL_MODEL_NAME);
         } else {
-            tracing::warn!(
-                "记忆嵌入未配置：既无远程 embedding 配置，也缺少内置模型文件，记忆检索将不可用"
+            tracing::info!(
+                "记忆嵌入未配置：既无远程 embedding 配置，也缺少内置模型文件；检索回退为字符 n-gram 词法模式（非嵌入式 RAG）"
             );
         }
         Self {
@@ -178,6 +186,9 @@ impl MemoryService {
     }
 
     /// 嵌入配置是否就绪：远程已配置，或内置模型文件齐备。
+    ///
+    /// 注意：这只决定「是否走向量路」；记忆功能本身**不依赖**它——未就绪时检索与
+    /// 写入自动退化为字符 n-gram 词法模式（非嵌入式 RAG）。
     pub fn is_configured(&self) -> bool {
         self.remote.is_some() || self.local_available
     }
@@ -187,6 +198,16 @@ impl MemoryService {
         match &self.remote {
             Some(remote) => remote.model(),
             None => LOCAL_MODEL_NAME,
+        }
+    }
+
+    /// 当前检索模式：配置了嵌入模型走 `hybrid`（向量 + 词法），否则纯词法 `lexical`
+    /// （非嵌入式 RAG）。
+    pub fn retrieval_mode(&self) -> &'static str {
+        if self.is_configured() {
+            "hybrid"
+        } else {
+            "lexical"
         }
     }
 
@@ -325,7 +346,25 @@ impl MemoryService {
         let top_k = top_k.unwrap_or(default_top_k).clamp(1, 200);
         let min_score = min_score.unwrap_or(default_min_score).clamp(0.0, 1.0);
 
-        let query_vec = self.embed_one(query).await?;
+        // 有嵌入模型 → 按请求模式（Hybrid/Vector）走向量路；未配置或嵌入失败 →
+        // 退化为纯词法（字符 n-gram）检索，保证「非嵌入式 RAG」始终可用。
+        let (query_vec, mode) = if self.is_configured() {
+            match self.embed_one(query).await {
+                Ok(vector) => (vector, mode),
+                Err(error) => {
+                    tracing::warn!("记忆检索嵌入失败，降级为纯词法检索: {error}");
+                    (Vec::new(), SearchMode::Lexical)
+                },
+            }
+        } else {
+            (Vec::new(), SearchMode::Lexical)
+        };
+        // 词法覆盖率天然低于语义余弦，纯词法模式下按系数放宽最低分阈值。
+        let min_score = if mode == SearchMode::Lexical {
+            min_score * LEXICAL_MIN_SCORE_SCALE
+        } else {
+            min_score
+        };
         Ok(self
             .search
             .run(&query_vec, query, &rows, mode, top_k, min_score, time_range))
@@ -394,18 +433,36 @@ impl MemoryService {
     }
 
     /// 语义删除：向量检索相似度 ≥ 0.5 的记忆并删除，返回被删条目的预览。
+    ///
+    /// 无嵌入模型（或嵌入失败）时退化为字符 n-gram 词法匹配，阈值按词法系数（0.5）放宽。
     pub async fn delete_by_query(&self, role_id: i32, query: &str) -> Result<Vec<(String, f32)>> {
         let rows = store::load_role_rows(&self.db, role_id).await?;
-        let query_vec = self.embed_one(query).await?;
-        let mut scored: Vec<(MemoryRow, f32)> = rows
-            .into_iter()
-            .filter(|row| row.embedding.len() == query_vec.len() && row.model == self.model())
-            .map(|row| {
-                let score = search::cosine(&query_vec, &row.embedding);
-                (row, score)
-            })
-            .filter(|(_, score)| *score >= DELETE_MIN_SCORE)
-            .collect();
+        let query = query.trim();
+        if query.is_empty() {
+            return Err(anyhow!("删除查询不能为空"));
+        }
+        let mut used_vector = false;
+        let mut scored: Vec<(MemoryRow, f32)> = if self.is_configured() {
+            match self.embed_one(query).await {
+                Ok(query_vec) => {
+                    used_vector = true;
+                    score_rows_by_vector(rows, &query_vec, self.model())
+                },
+                Err(error) => {
+                    tracing::warn!("语义删除嵌入失败，降级为词法匹配: {error}");
+                    lexical_pairs(rows, query)
+                },
+            }
+        } else {
+            lexical_pairs(rows, query)
+        };
+        // 词法覆盖率天然低于余弦，词法模式下同样放宽最低分。
+        let min_score = if used_vector {
+            DELETE_MIN_SCORE
+        } else {
+            DELETE_MIN_SCORE * LEXICAL_MIN_SCORE_SCALE as f32
+        };
+        scored.retain(|(_, score)| *score >= min_score);
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(DELETE_CANDIDATES);
 
@@ -578,10 +635,31 @@ impl MemoryService {
     }
 
     /// 逐块嵌入并写入一张记忆。
+    ///
+    /// 无嵌入模型（或嵌入失败/数量不匹配）时改为写纯文本记忆（向量列为 NULL），
+    /// 检索自动走词法——写入永远不该因为嵌入不可用而失败。
     async fn insert_memory(&self, role_id: i32, content: &str, tags: &[String]) -> Result<String> {
         let memory_id = uuid::Uuid::new_v4().to_string();
         let chunks = chunk_text(content);
-        let embeddings = self.embed_many(&chunks).await?;
+        let embeddings = if self.is_configured() {
+            match self.embed_many(&chunks).await {
+                Ok(vectors) if vectors.len() == chunks.len() => vectors,
+                Ok(vectors) => {
+                    tracing::warn!(
+                        "记忆嵌入数量不匹配（{} != {}），该条改存纯文本",
+                        vectors.len(),
+                        chunks.len()
+                    );
+                    vec![Vec::new(); chunks.len()]
+                },
+                Err(error) => {
+                    tracing::warn!("记忆嵌入失败，改存纯文本记忆: {error}");
+                    vec![Vec::new(); chunks.len()]
+                },
+            }
+        } else {
+            vec![Vec::new(); chunks.len()]
+        };
         let tags_csv = if tags.is_empty() {
             None
         } else {
@@ -601,31 +679,42 @@ impl MemoryService {
     }
 
     /// 三级去重（见模块文档）。
+    ///
+    /// 有嵌入模型时用向量余弦；否则（或嵌入失败）退化为字符 n-gram 词法相似度，
+    /// 并使用相应的阈值。
     async fn dedup(&self, role_id: i32, content: &str) -> Result<DedupDecision> {
-        let Ok(query_vec) = self.embed_one(content).await else {
-            // 嵌入失败不阻塞写入：去重是优化，不是硬门槛。
-            return Ok(DedupDecision::Store);
-        };
         let rows = store::load_role_rows(&self.db, role_id).await?;
-        let mut scored: Vec<(MemoryRow, f32)> = rows
-            .into_iter()
-            .filter(|row| row.embedding.len() == query_vec.len() && row.model == self.model())
-            .map(|row| {
-                let score = search::cosine(&query_vec, &row.embedding);
-                (row, score)
-            })
-            .collect();
+        let mut used_vector = false;
+        let mut scored: Vec<(MemoryRow, f32)> = if self.is_configured() {
+            match self.embed_one(content).await {
+                Ok(query_vec) => {
+                    used_vector = true;
+                    score_rows_by_vector(rows, &query_vec, self.model())
+                },
+                Err(error) => {
+                    tracing::warn!("记忆去重嵌入失败，降级为词法去重: {error}");
+                    lexical_pairs(rows, content)
+                },
+            }
+        } else {
+            lexical_pairs(rows, content)
+        };
+        let (reject_threshold, llm_lower) = if used_vector {
+            (DEDUP_REJECT_THRESHOLD, DEDUP_LLM_LOWER)
+        } else {
+            (LEXICAL_DEDUP_REJECT, LEXICAL_DEDUP_LLM_LOWER)
+        };
         scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
         let Some(best_score) = scored.first().map(|(_, score)| *score) else {
             return Ok(DedupDecision::Store);
         };
-        if best_score > DEDUP_REJECT_THRESHOLD {
+        if best_score > reject_threshold {
             return Ok(DedupDecision::Skip {
                 similarity: best_score,
             });
         }
-        if best_score < DEDUP_LLM_LOWER {
+        if best_score < llm_lower {
             return Ok(DedupDecision::Store);
         }
 
@@ -716,6 +805,31 @@ fn extract_json(text: &str) -> Result<serde_json::Value> {
     let start = text.find('{').context("回复中没有 JSON")?;
     let end = text.rfind('}').context("回复中没有 JSON")?;
     serde_json::from_str(&text[start..=end]).context("JSON 解析失败")
+}
+
+/// 向量打分：过滤出与查询向量同维、同模型的行，逐行算余弦。
+fn score_rows_by_vector(
+    rows: Vec<MemoryRow>,
+    query_vec: &[f32],
+    model: &str,
+) -> Vec<(MemoryRow, f32)> {
+    rows.into_iter()
+        .filter(|row| row.embedding.len() == query_vec.len() && row.model == model)
+        .map(|row| {
+            let score = search::cosine(query_vec, &row.embedding);
+            (row, score)
+        })
+        .collect()
+}
+
+/// 词法打分：无嵌入模型时对每行做字符 n-gram 覆盖率打分（不依赖任何模型）。
+fn lexical_pairs(rows: Vec<MemoryRow>, query: &str) -> Vec<(MemoryRow, f32)> {
+    let refs: Vec<&MemoryRow> = rows.iter().collect();
+    let scores = search::lexical_scores(query, &refs);
+    rows.into_iter()
+        .zip(scores)
+        .map(|(row, score)| (row, score as f32))
+        .collect()
 }
 
 /// 把按 `memory_id` 分组的分块行聚合成单条记忆（分块按 `chunk_index` 拼接）。
@@ -828,6 +942,7 @@ pub fn describe(service: &MemoryService) -> serde_json::Value {
         "enabled": service.enabled(),
         "configured": service.is_configured(),
         "embedder": if service.remote.is_some() { "remote" } else if service.local_available { "builtin" } else { "none" },
+        "retrieval": service.retrieval_mode(),
         "model": service.model(),
         "top_k": top_k,
         "min_score": min_score,

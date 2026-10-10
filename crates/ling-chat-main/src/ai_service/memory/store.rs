@@ -4,9 +4,10 @@
 //! 共用的归档表同时容纳两类条目：
 //! - `kind = 'legacy'`：旧版存档记忆整合导出的四段式条目（无向量、无 `memory_id`，
 //!   只被「旧版记忆整合」面板访问）；
-//! - `kind = 'memory'`：长期记忆（带向量，按 `memory_id` 分块，供 RAG 检索 / 浏览 /
-//!   删除 / 摘要使用）。
-//! 带向量的行走「向量 + 关键词」混合检索；纯文本行在混合模式下只会被关键词路命中。
+//! - `kind = 'memory'`：长期记忆（按 `memory_id` 分块，供 RAG 检索 / 浏览 /
+//!   删除 / 摘要使用）；配置了嵌入模型时带向量，否则为纯文本。
+//!
+//! 有嵌入模型时走「向量 + 词法」混合检索；没有向量时全部走字符 n-gram 词法检索。
 
 use std::collections::{HashMap, HashSet};
 
@@ -24,7 +25,8 @@ const CHUNK_OVERLAP_CHARS: usize = 128;
 
 /// 共用归档数据表 `memory_archive_{role_id}` 的建表语句（动态表名）。
 ///
-/// `memory` 行有向量（`embedding` / `dim` / `model` 非空、`memory_id` 非空）；
+/// `memory` 行通常有向量（`embedding` / `dim` / `model` 非空、`memory_id` 非空），
+/// 但没有嵌入模型时向量三列为 NULL（纯词法检索）；
 /// `legacy` 行是纯文本（向量三列与 `memory_id` 为 NULL，`chunk_index` 为 0）。
 pub const MEMORY_ARCHIVE_DDL: &str = r#"CREATE TABLE IF NOT EXISTS "{table}" (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -184,6 +186,20 @@ pub async fn insert_memory(
         .map_err(|e| anyhow::anyhow!(e))?;
     let created_at = chrono::Utc::now().timestamp_millis();
     for (index, (chunk, embedding)) in chunks.iter().zip(embeddings.iter()).enumerate() {
+        // 无嵌入模型（或该块嵌入缺失）时向量三列写 NULL：检索自动走字符 n-gram 词法路。
+        let (embedding_value, dim_value, model_value) = if embedding.is_empty() {
+            (
+                sea_orm::Value::Bytes(None),
+                sea_orm::Value::Int(None),
+                sea_orm::Value::String(None),
+            )
+        } else {
+            (
+                sea_orm::Value::Bytes(Some(Box::new(f32_to_bytes(embedding)))),
+                sea_orm::Value::Int(Some(embedding.len() as i32)),
+                sea_orm::Value::String(Some(Box::new(model.to_string()))),
+            )
+        };
         db.execute(Statement::from_sql_and_values(
             DatabaseBackend::Sqlite,
             format!(
@@ -195,14 +211,14 @@ pub async fn insert_memory(
                 sea_orm::Value::String(Some(Box::new(memory_id.to_string()))),
                 sea_orm::Value::Int(Some(index as i32)),
                 sea_orm::Value::String(Some(Box::new(chunk.clone()))),
-                sea_orm::Value::Bytes(Some(Box::new(f32_to_bytes(embedding)))),
-                sea_orm::Value::Int(Some(embedding.len() as i32)),
-                sea_orm::Value::String(Some(Box::new(model.to_string()))),
+                embedding_value,
+                dim_value,
+                model_value,
                 sea_orm::Value::BigInt(Some(created_at)),
             ],
         ))
         .await
-        .context("写入记忆向量失败")?;
+        .context("写入记忆失败")?;
     }
     Ok(())
 }

@@ -145,7 +145,7 @@
             </Toggle>
           </section>
 
-          <!-- 长期记忆浏览：查看/删除各角色已存的向量记忆，不走后端配置树 -->
+          <!-- 长期记忆浏览：查看/删除各角色已存的长期记忆，不走后端配置树 -->
           <section
             v-if="activeSelection.subcategory === '记忆系统'"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"

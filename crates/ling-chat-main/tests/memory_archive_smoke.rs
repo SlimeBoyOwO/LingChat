@@ -119,6 +119,70 @@ async fn unified_archive_smoke() -> Result<()> {
     result
 }
 
+/// 非嵌入式 RAG：无嵌入模型时写入纯文本记忆（向量列为 NULL），检索候选仍包含它，
+/// 且字符 n-gram 词法打分能命中相关内容。
+#[tokio::test]
+async fn model_free_memory_roundtrip() -> Result<()> {
+    use ling_chat_main::ai_service::memory::{MemoryRow, search};
+
+    std::fs::create_dir_all("target")?;
+    let path = std::path::Path::new("target")
+        .join(format!("memory_archive_lexical_{}.db", std::process::id()));
+    let _ = std::fs::remove_file(&path);
+    let db = Database::connect(format!("sqlite:{}?mode=rwc", path.display())).await?;
+    ling_chat_main::migration::Migrator::up(&db, None).await?;
+
+    let result = async {
+        // 空向量 = 未配置嵌入模型：写入应成功，向量三列落 NULL。
+        store::insert_memory(
+            &db,
+            7,
+            "mem-lex",
+            &["用户喜欢喝冰美式咖啡".to_string()],
+            &[Vec::new()],
+            None,
+            "",
+        )
+        .await?;
+
+        let rows = store::load_role_rows(&db, 7).await?;
+        assert_eq!(rows.len(), 1);
+        assert!(
+            rows[0].embedding.is_empty(),
+            "无嵌入模型时 embedding 应为空"
+        );
+        assert!(rows[0].model.is_empty(), "无嵌入模型时 model 应为空");
+
+        // 检索候选：`kind='memory'` 行无论有无向量都应载入（词法路需要它们）。
+        let search_rows = store::load_role_search_rows(&db, 7).await?;
+        assert_eq!(search_rows.len(), 1, "长期记忆应进入检索候选");
+
+        // 字符 n-gram 词法打分能命中相关内容。
+        let refs: Vec<&MemoryRow> = search_rows.iter().collect();
+        let scores = search::lexical_scores("想喝咖啡", &refs);
+        assert!(scores[0] > 0.2, "词法应命中相关内容: {}", scores[0]);
+
+        // 纯词法模式下 `run` 能返回命中（用放宽后的阈值）。
+        let hits = search::HybridSearch.run(
+            &[],
+            "想喝咖啡",
+            &search_rows,
+            search::SearchMode::Lexical,
+            5,
+            0.2,
+            None,
+        );
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].source, "lexical");
+        Ok::<(), anyhow::Error>(())
+    }
+    .await;
+
+    drop(db);
+    let _ = std::fs::remove_file(&path);
+    result
+}
+
 /// 升级路径：旧库的 seaql_migrations 记录 m20261007/09 已应用，但表被建成了单数名。
 /// 升级后跑 Migrator 应应用修正迁移 m20261010：删单数错误表、按复数名补建。
 #[tokio::test]

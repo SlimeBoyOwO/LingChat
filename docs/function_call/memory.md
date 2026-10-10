@@ -156,12 +156,12 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 
 ## 6. 与既有记忆体系的关系
 
-| 层                                  | 内容                                          | 说明                                    |
-| ----------------------------------- | --------------------------------------------- | --------------------------------------- |
-| `role.memory`                       | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 含工具行还原逻辑                        |
-| 台词表 `line` 表                    | 会话历史真相源（`save_repo` 持久化）          | `tool_call` 列 + `Tool` 属性            |
-| `memory_embeddings`（向量长期记忆） | 跨会话的语义记忆：工具写入、RAG 自动检索      | `MemoryBuilder` 不直接读它，见 §7       |
-| `MemoryBank`（旧持久记忆摘要）      | **已废弃**：表保留、链路不再读写              | 同步时只清不导（`lan_sync/db_sync.rs`） |
+| 层                                            | 内容                                          | 说明                                    |
+| --------------------------------------------- | --------------------------------------------- | --------------------------------------- |
+| `role.memory`                                 | 本轮会话的 LLM 上下文（`MemoryBuilder` 重建） | 含工具行还原逻辑                        |
+| 台词表 `line` 表                              | 会话历史真相源（`save_repo` 持久化）          | `tool_call` 列 + `Tool` 属性            |
+| `memory_archive_{role_id}`（`kind='memory'`） | 跨会话的长期记忆：工具写入、RAG 自动检索      | `MemoryBuilder` 不直接读它，见 §7       |
+| `MemoryBank`（旧持久记忆摘要）                | **已废弃**：表保留、链路不再读写              | 同步时只清不导（`lan_sync/db_sync.rs`） |
 
 长期记忆由模型主动调工具写入（`memory_store`）—— 没有后台抽取；
 检索则在**每条用户消息生成前**自动完成（RAG）：宿主用最近几轮对话当 query 做混合检索，
@@ -172,14 +172,14 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 
 入口统一是 `ai_service/memory/`（`MemoryService`），配置在启动时快照。
 
-- **嵌入模型**：远程优先 —— 配置了 `embedding.*`（base_url / api_key / model）时用远程 OpenAI 兼容 embeddings 接口；留空且随应用打包的内置本地模型齐备时，自动使用 **bge-small-zh-v1.5 中文量化版**（`data/third_party/bge_small_zh_v1_5/`，约 11MB，完全离线，无需联网与任何 API）。内置模型为 int4 Transformer + int2 词嵌入表、512 维 CLS 池化，加载是懒加载（首次嵌入时才读表建 ONNX Session），推理在阻塞线程池执行；换模型后旧向量不参与检索（按 `model` 列过滤）。
-- **写入（store）**：三级去重 —— 余弦 > 0.92 拒收；0.70–0.92 交给 LLM 判 merge/skip/new；LLM 失败降级为直接存储。
-- **删除**：`memory_delete` 按 `memory_id` 精确删或按语义相似度删（最低 0.5）；删角色时 `RoleRepo::delete_main_role` 一并清掉该角色的 `memory_embeddings`（该表无 FK，不显式清会留孤儿行）。
+- **嵌入模型（可选）**：远程优先 —— 配置了 `embedding.*`（base_url / api_key / model）时用远程 OpenAI 兼容 embeddings 接口；留空且随应用打包的内置本地模型齐备时，自动使用 **bge-small-zh-v1.5 中文量化版**（`data/third_party/bge_small_zh_v1_5/`，约 11MB，完全离线，无需联网与任何 API）。内置模型为 int4 Transformer + int2 词嵌入表、512 维 CLS 池化，加载是懒加载（首次嵌入时才读表建 ONNX Session），推理在阻塞线程池执行；换模型后旧向量不参与检索（按 `model` 列过滤）。**两者都不可用时不影响记忆功能**：检索与写入自动退化为 **字符 n-gram 词法模式**（非嵌入式 RAG）——写入不再要求向量（`embedding` / `dim` / `model` 落 NULL），检索按「中文 bigram + 单字、ASCII 整词」的 IDF 加权覆盖率打分，并在多个查询片段（换行 / 句末标点切分）间取最大值；纯词法模式下最低分阈值按 0.5 系数放宽。
+- **写入（store）**：三级去重 —— 余弦 > 0.92 拒收；0.70–0.92 交给 LLM 判 merge/skip/new；LLM 失败降级为直接存储。无嵌入模型时改用词法覆盖率（拒收 0.85 / LLM 判定下界 0.45）。
+- **删除**：`memory_delete` 按 `memory_id` 精确删或按相似度删（余弦阈值 0.5，词法模式下同系数放宽）；删角色时 `RoleRepo::delete_main_role` 连同 `memory_archive_profiles` 目录行与 `memory_archive_{role_id}` 数据表一并清理，并兜底清掉旧 `memory_embeddings` 残留行。
 - **摘要（summarize）**：`MemoryService::summarize(role_id, keep_recent)` 把较早的一批记忆交给 LLM 合成一条 `summary` 记忆，**先插摘要、再删源条目**（插入失败不丢数据）。三条触发路径共用同一条链路：
   1. 模型主动调 `memory_summarize` 工具；
   2. 写入后条数达到 `AUTO_SUMMARIZE_THRESHOLD`（当前 64）时后台自动压缩（不阻塞本轮工具）；
   3. 插件 `compress_context()` 显式触发（只处理达到阈值的角色，返回 `{ ok, triggered }`）。
-- **检索注入（RAG）**：`MessageGenerator::inject_rag_memories`（仅用户新消息轮）以最近几轮真实对话为 query 调 `MemoryService::search`（hybrid，命中取 `min(memory.top_k, 6)` 条），结果写成 `LineAttribute::Memory` 台词行插在该用户行之前，并替换掉本角色上一轮的检索行。记忆功能关闭 / 嵌入未配置时只清旧行不检索；检索失败只记警告、不影响本轮生成。该行不参与 LAN 同步（对端下条消息自行重建），也从前端历史、上帝 Agent 决策视图与 `chat_message_count` 中排除。
+- **检索注入（RAG）**：`MessageGenerator::inject_rag_memories`（仅用户新消息轮）以最近几轮真实对话为 query 调 `MemoryService::search`（hybrid，命中取 `min(memory.top_k, 6)` 条），结果写成 `LineAttribute::Memory` 台词行插在该用户行之前，并替换掉本角色上一轮的检索行。记忆功能关闭时只清旧行不检索；**未配置嵌入模型时改用纯词法检索**（非嵌入式 RAG），不再整段跳过；检索失败只记警告、不影响本轮生成。该行不参与 LAN 同步（对端下条消息自行重建），也从前端历史、上帝 Agent 决策视图与 `chat_message_count` 中排除。
 - **多端同步**：`memory_embeddings` 随 LAN 记录级同步整表镜像（导出时 `embedding` 转 base64，避免 JSON 数字数组膨胀）；旧对端发来的记录没有该字段时保留本地记忆、不做镜像。
 - **调试**：聊天框输入 `/查看记忆`，后端日志会打印角色短期记忆、记忆服务配置（`memory::describe`）与该角色的长期记忆条数。
 - **浏览 / 删除（UI）**：设置 → 高级设置 → 记忆系统 → 「查看记忆」面板可按角色浏览全部长期记忆（正文、时间、标签，分块已聚合），并逐条删除（`memory_list_roles` / `memory_list` / `memory_delete` 命令，按 `role_id` 作用域删）。只读写库表，不依赖 `memory_enabled` 开关与嵌入配置——功能关闭时也能查看和清理。

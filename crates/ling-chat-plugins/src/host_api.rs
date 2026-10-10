@@ -285,14 +285,14 @@ async fn edit_context_impl(
 ///
 /// 记忆链路迁移到工具驱动的向量记忆后，这里的「压缩」= `MemoryService::summarize`
 /// （LLM 合并 → 先插摘要再删源条目）。调用约定与旧版保持一致：仍返回
-/// `{ ok, triggered }`，没开记忆功能 / 没配嵌入 / 没有角色达到阈值时直接返回
-/// `triggered: 0`。会调用 LLM，可能耗时数秒。
+/// `{ ok, triggered }`，没开记忆功能 / 没有角色达到阈值时直接返回
+/// `triggered: 0`。会调用 LLM，可能耗时数秒。（无嵌入模型时摘要照样可用。）
 async fn compress_context_impl(app: AppHandle) -> serde_json::Value {
     use crate::ai_service::memory::{AUTO_SUMMARIZE_THRESHOLD, DEFAULT_KEEP_RECENT};
 
     let state = app.state::<AppState>();
     let memory = state.memory.clone();
-    if !memory.enabled() || !memory.is_configured() {
+    if !memory.enabled() {
         return serde_json::json!({ "ok": true, "triggered": 0 });
     }
 

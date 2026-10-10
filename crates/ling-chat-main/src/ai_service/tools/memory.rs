@@ -1,8 +1,9 @@
 //! 向量记忆工具：`memory_store` / `memory_query` / `memory_delete` / `memory_summarize`。
 //!
 //! 四个工具共用 `AppState::memory`（[`MemoryService`]），按 `current_role_id`
-//! 隔离记忆。`features.memory_enabled` 关闭或嵌入配置未就绪时直接返回错误，
-//! 不让模型误以为记忆已写入。长期记忆的**自动**检索注入不在此列——它由生成管线
+//! 隔离记忆。`features.memory_enabled` 关闭时直接返回错误，不让模型误以为记忆已写入。
+//! 嵌入模型可选：未配置时检索/写入自动走字符 n-gram 词法模式（非嵌入式 RAG），
+//! 工具依旧可用。长期记忆的**自动**检索注入不在此列——它由生成管线
 //! 在用户新消息轮自动完成（RAG 注入，见 `message_system::generator::inject_rag_memories`）；
 //! `memory_query` 供模型按需主动检索（额外覆盖已带向量的「旧版整合」条目）。
 
@@ -39,18 +40,16 @@ async fn current_role_id(context: &ToolContext) -> Result<i32, ToolError> {
         .ok_or_else(|| ToolError::Execution("当前没有对话角色".into()))
 }
 
-/// 取记忆服务；功能关闭 / 未配置时统一报错。
+/// 取记忆服务；功能关闭时统一报错。
+///
+/// 不再校验嵌入模型是否就绪：没有嵌入模型时检索/写入自动走字符 n-gram 词法模式
+/// （非嵌入式 RAG），记忆工具依旧可用。
 fn require_memory(app: &tauri::AppHandle) -> Result<std::sync::Arc<MemoryService>, ToolError> {
     let state = app.state::<AppState>();
     let memory = state.memory.clone();
     if !memory.enabled() {
         return Err(ToolError::Execution(
             "记忆功能已关闭（设置 → 记忆系统 → 启用记忆）".into(),
-        ));
-    }
-    if !memory.is_configured() {
-        return Err(ToolError::Execution(
-            "嵌入模型未配置且未检测到内置模型：请在设置 → 嵌入模型 中填写接口地址与模型名，或确认内置模型文件完整".into(),
         ));
     }
     Ok(memory)
@@ -175,7 +174,7 @@ impl Tool for MemoryQuery {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "memory_query",
-            "检索当前角色的记忆库：按语义 + 关键词混合检索长期记忆与已导入的旧版存档记忆，返回最相关的若干条。需要回忆用户偏好、过往约定、剧情旧事时调用",
+            "检索当前角色的记忆库：按语义 + 关键词混合检索长期记忆与已导入的旧版存档记忆，返回最相关的若干条（未配置嵌入模型时退化为纯关键词检索）。需要回忆用户偏好、过往约定、剧情旧事时调用",
             json!({
                 "type": "object",
                 "properties": {
