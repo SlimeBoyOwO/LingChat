@@ -111,18 +111,6 @@
   <!-- 短效音效保留默认实现即可，不需要淡入淡出 -->
   <audio ref="soundEffectPlayer"></audio>
 
-  <!-- 全新解耦出来的双轨交叉音乐淡入淡出组件 -->
-  <AudioAcrossFade
-    :src="backgroundMusicSrc"
-    :volume="uiStore.backgroundVolume"
-    :paused="uiStore.bgMusicPaused"
-    :stopped="uiStore.bgMusicStoped"
-    :rate="uiStore.bgMusicPlaybackRate"
-    :duration="800"
-    :loop="uiStore.bgMusicMode === 'loop-single'"
-    @ended="handleTrackEnd"
-  />
-
   <!-- 环境音多轨渲染（每轨独立交叉淡入淡出循环组件，最多8轨并行） -->
   <AmbientLoopPlayer
     v-for="d in displayTracks"
@@ -138,13 +126,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, computed } from "vue";
+import { ref, watch, computed, onMounted, onBeforeUnmount } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { toPlayableMediaUrl } from "@/utils/mediaUrl";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useGameStore } from "../../../stores/modules/game";
 import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
-import AudioAcrossFade from "@/components/ui/AudioAcrossFade.vue";
 import AmbientLoopPlayer from "@/components/ui/AmbientLoopPlayer.vue";
 import StarField from "./particles/StarField.vue";
 import Rain from "./particles/Rain.vue";
@@ -176,30 +163,10 @@ const backgroundSrc = computed(() => {
   return convertFileSrc(bg);
 });
 
-// 统一转换入口：currentBackgroundMusic 存原始路径，此处转可播放 URL（Android 走 blob，见 toPlayableMediaUrl）
-const backgroundMusicSrc = ref("None");
-let bgmLoadSeq = 0;
-watch(
-  () => uiStore.currentBackgroundMusic,
-  async (src) => {
-    const seq = ++bgmLoadSeq;
-    if (!src || src === "None") {
-      backgroundMusicSrc.value = "None";
-      return;
-    }
-    try {
-      const url = await toPlayableMediaUrl(src);
-      // 竞态守卫：期间已切换过歌曲则丢弃过期结果
-      if (seq !== bgmLoadSeq) return;
-      backgroundMusicSrc.value = url;
-    } catch (e) {
-      if (seq !== bgmLoadSeq) return;
-      console.warn("背景音乐加载失败:", src, e);
-      backgroundMusicSrc.value = "None";
-    }
-  },
-  { immediate: true },
-);
+// 向全局 BGM 层（BgmLayer）登记「游戏渲染层在场」：
+// /chat 与剧本编辑器试玩覆盖层都会挂载本组件，BgmLayer 据此决定是否允许出声
+onMounted(() => uiStore.retainGameLayer());
+onBeforeUnmount(() => uiStore.releaseGameLayer());
 
 // 背景光照滤镜
 const bgLightingFilter = computed(() => {
@@ -255,10 +222,6 @@ const snowIntensity = ref<number>(1.5);
 const blizzardIntensity = ref<number>(1);
 const fogIntensity = ref<number>(1);
 
-const handleTrackEnd = (): void => {
-  uiStore.handleBackgroundMusicEnd();
-};
-
 // 星空就绪回调
 const onStarfieldReady = (instance: any): void => {
   console.debug("Starfield ready", instance);
@@ -285,8 +248,6 @@ watch(
     }
   },
 );
-
-// !!! 在此处：因为把背景音乐交给了 AudioCrossFade 组件，所以原先的大段背景音乐逻辑全被彻底删除。
 
 // ========== 环境音多轨管理 ==========
 // 显示用轨道镜像：保留淡出期间的"离场"轨道，避免直接卸载造成点击

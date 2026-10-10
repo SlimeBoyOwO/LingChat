@@ -2,7 +2,7 @@
  * 移动端键盘 / 视觉视口适配 Composable（Android / iOS）
  *
  * 键盘弹出时把可见高度并入 --safe-area-inset-bottom（存在 .pb-safe/pb-safe-gap、
- * 对话框 padding、MusicPlayer 等 var() 用法，UI 自动上移让位）。
+ * 对话框 padding 等 var() 用法，UI 自动上移让位）。
  * WKWebView 固定布局下聚焦输入框弹出键盘时，布局视口不会自动收缩，页面比可视区
  * 高 → 整个 webview 可上下滑动、输入框被键盘盖住；这里跟随 visualViewport
  * （键盘弹出=可视区高度），配合 index.html 的 interactive-widget=resizes-content

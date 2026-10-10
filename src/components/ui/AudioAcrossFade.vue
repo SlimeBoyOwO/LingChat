@@ -46,6 +46,9 @@ const applyRate = (el: HTMLAudioElement | null) => {
 
 let activeIndex = 1; // 1 或 2，表示当前主音频
 let fadeIntervalId: ReturnType<typeof setInterval> | null = null;
+// 是否正处于交叉淡入淡出过程中。此期间两条轨道都可能出声，
+// 暂停/恢复时必须一并处理，否则会漏出新轨的声音或交接后没人播放
+let fadeActive = false;
 const FADE_INTERVAL = 50;
 
 const clearFade = () => {
@@ -53,6 +56,21 @@ const clearFade = () => {
     clearInterval(fadeIntervalId);
     fadeIntervalId = null;
   }
+  fadeActive = false;
+};
+
+const pauseAll = () => {
+  audio1.value?.pause();
+  audio2.value?.pause();
+};
+
+/** 恢复播放：主轨必恢复；仅在淡入淡出进行中才带上备用轨
+    （非淡入时备用轨是上一条已淡出的旧曲，不能复活） */
+const resumeAll = () => {
+  const current = activeIndex === 1 ? audio1.value : audio2.value;
+  const next = activeIndex === 1 ? audio2.value : audio1.value;
+  if (current?.src) current.play().catch(() => {});
+  if (fadeActive && next?.src) next.play().catch(() => {});
 };
 
 onBeforeUnmount(() => {
@@ -87,12 +105,18 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
   if (!currentAudio || !nextAudio) return;
 
+  fadeActive = true;
+
   const currentTargetVolume = props.volume / 100;
   const step = currentTargetVolume / (props.duration / FADE_INTERVAL);
 
   // 1. 如果没有新的 URL (相当于仅仅是停止播放并淡出)
   if (!newUrl || newUrl === "None") {
     fadeIntervalId = setInterval(() => {
+      if (props.paused || props.stopped) {
+        currentAudio.pause();
+        nextAudio.pause();
+      }
       if (currentAudio.volume > 0) {
         currentAudio.volume = Math.max(0, currentAudio.volume - step);
       } else {
@@ -121,6 +145,11 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
   }
 
   fadeIntervalId = setInterval(() => {
+    // 交叉淡入期间被暂停/停止：两条轨道都要静音，否则新轨会一直响到交接之后
+    if (props.paused || props.stopped) {
+      currentAudio.pause();
+      nextAudio.pause();
+    }
     let currentDone = false;
     let nextDone = false;
     const targetVol = props.volume / 100;
@@ -199,12 +228,10 @@ watch(
 watch(
   () => props.paused,
   (isPaused) => {
-    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
-    if (!activeAudio) return;
     if (isPaused) {
-      activeAudio.pause();
-    } else if (!props.stopped && activeAudio.src) {
-      activeAudio.play().catch(() => {});
+      pauseAll();
+    } else if (!props.stopped) {
+      resumeAll();
     }
   },
 );
@@ -213,13 +240,12 @@ watch(
 watch(
   () => props.stopped,
   (isStopped) => {
-    const activeAudio = activeIndex === 1 ? audio1.value : audio2.value;
-    if (!activeAudio) return;
     if (isStopped) {
-      activeAudio.pause();
-      activeAudio.currentTime = 0;
-    } else if (!props.paused && activeAudio.src) {
-      activeAudio.play().catch(() => {});
+      pauseAll();
+      if (audio1.value) audio1.value.currentTime = 0;
+      if (audio2.value) audio2.value.currentTime = 0;
+    } else if (!props.paused) {
+      resumeAll();
     }
   },
 );

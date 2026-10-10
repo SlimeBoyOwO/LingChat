@@ -658,33 +658,6 @@ const togglePlaybackMode = () => {
   else uiStore.bgMusicMode = "loop-list";
 };
 
-// 自动切歌处理 (响应播放结束事件)
-const handleTrackEnd = () => {
-  if (musicList.value.length === 0) return;
-
-  const currentUrl = uiStore.currentBackgroundMusic;
-  const currentIndex = musicList.value.findIndex((m) => m.url === currentUrl);
-
-  let nextMusic: MusicItem | undefined = undefined;
-
-  if (uiStore.bgMusicMode === "loop-single") {
-    // 单曲循环
-    nextMusic = currentIndex !== -1 ? musicList.value[currentIndex] : musicList.value[0];
-  } else if (uiStore.bgMusicMode === "random") {
-    // 随机播放
-    const randomIndex = Math.floor(Math.random() * musicList.value.length);
-    nextMusic = musicList.value[randomIndex];
-  } else {
-    // 列表循环
-    const nextIndex = currentIndex !== -1 ? (currentIndex + 1) % musicList.value.length : 0;
-    nextMusic = musicList.value[nextIndex];
-  }
-
-  if (nextMusic) {
-    playMusic(nextMusic);
-  }
-};
-
 const inferMusicNameFromUrl = (musicUrl: string): string => {
   if (!musicUrl || musicUrl === "None") return t("settings.sound.bgm.noMusicSelected");
   const fileName = decodeURIComponent(musicUrl.split("/").pop() || "");
@@ -880,15 +853,6 @@ watch(
     } else {
       backgroundAudioPlayer.value.play().catch((e) => console.error("播放失败:", e));
     }
-  },
-);
-
-// 监听背景音乐结束事件，通过store中的_musicEndTime触发
-watch(
-  () => uiStore._musicEndTime,
-  () => {
-    // 当音乐结束时，调用handleTrackEnd处理音乐切换
-    handleTrackEnd();
   },
 );
 

@@ -19,6 +19,10 @@
   <AchievementToast v-if="isMainWindow" />
   <AdventureUnlockNotify v-if="isMainWindow" />
   <AppDialog v-if="isMainWindow" />
+
+  <!-- 全局背景音乐层：主窗口常驻，不随路由卸载，故 /chat ↔ /pet 切换时 BGM 不中断。
+       必须按窗口门控：设置窗与日志窗也复用 App.vue，且各自注册了 script:music 监听。 -->
+  <BgmLayer v-if="isMainWindow" />
 </template>
 
 <script setup lang="ts">
@@ -32,6 +36,7 @@ import Notification from "./components/ui/Notification.vue";
 import AchievementToast from "./components/ui/AchievementToast.vue";
 import AdventureUnlockNotify from "./components/ui/AdventureUnlockNotify.vue";
 import AppDialog from "./components/ui/AppDialog.vue";
+import BgmLayer from "./components/ui/BgmLayer.vue";
 import { useAsrInput } from "./composables/asr";
 import { useCanDeliver } from "./composables/useCanDeliver";
 import { useZoom } from "./composables/useZoom";

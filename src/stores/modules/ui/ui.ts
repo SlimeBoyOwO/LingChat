@@ -81,8 +81,9 @@ interface UIState {
   tipsMap: Record<string, { title: string; message: string }>;
   tipsAvailable: boolean;
 
-  // 背景音乐结束时间戳，用于触发音乐切换
-  _musicEndTime: number;
+  // 游戏渲染层（GameBackground）挂载计数。全局 BGM 层据此判断当前是否处于
+  // 「有游戏画面」的场景（/chat、剧本编辑器试玩覆盖层），决定是否允许出声
+  gameLayerCount: number;
 }
 
 // 默认 avatar
@@ -149,8 +150,7 @@ export const useUIStore = defineStore("ui", {
     tipsMap: {},
     tipsAvailable: false,
 
-    // 背景音乐结束时间戳
-    _musicEndTime: 0,
+    gameLayerCount: 0,
   }),
 
   getters: {
@@ -512,14 +512,14 @@ export const useUIStore = defineStore("ui", {
       );
     },
 
-    /**
-     * 处理背景音乐结束事件
-     * 当背景音乐播放结束时调用此方法，通知相关组件处理音乐切换
-     */
-    handleBackgroundMusicEnd() {
-      // 触发一个内部状态变化，让SettingsSound组件能够监听到
-      // 使用时间戳确保每次都能触发watch
-      this._musicEndTime = Date.now();
+    /** 登记一个游戏渲染层（GameBackground 挂载时调用） */
+    retainGameLayer() {
+      this.gameLayerCount++;
+    },
+
+    /** 注销一个游戏渲染层（GameBackground 卸载时调用）。下限 0，防 HMR 下的计数漂移 */
+    releaseGameLayer() {
+      if (this.gameLayerCount > 0) this.gameLayerCount--;
     },
 
     // ========== 环境音轨道管理 ==========
