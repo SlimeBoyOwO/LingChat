@@ -87,6 +87,7 @@ jobs:
       - name: 创建占位文件和初始化
         shell: bash
         run: |
+          rm -rf src-tauri/tauri.windows.conf.json
           mkdir -p data/.official/game_data
           mkdir -p data/third_party
           touch data/.official/game_data/.gitkeep
