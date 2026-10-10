@@ -1,8 +1,9 @@
 //! 可选本地嵌入模型：BAAI/bge-small-zh-v1.5 的中文量化版（int4 transformer + int2 词嵌入表）。
 //!
-//! 二进制产物**不再随仓库 / 应用分发**（`data/third_party/bge_small_zh_v1_5/README.md`
-//! 说明如何自备）；缺失时 [`is_bundled_available`] 返回 false，`MemoryService` 自动
-//! 退化为字符 n-gram 词法检索（非嵌入式 RAG，见 `search.rs` 的 `SearchMode::Lexical`）。
+//! 二进制产物**不再随仓库 / 应用分发**（用户可在设置页「嵌入模型」子页从本地文件夹或
+//! zip/7z 导入，见 `api::embedding_local`）；缺失时 [`is_model_available`] 返回 false，
+//! `MemoryService` 自动退化为字符 n-gram 词法检索（非嵌入式 RAG，见 `search.rs` 的
+//! `SearchMode::Lexical`）。
 //!
 //! ## 产物（`data/third_party/bge_small_zh_v1_5/`，自备后共约 11MB）
 //! - `model_int4.onnx`：Transformer 的 MatMul 全部 int4（MatMulNBits），词嵌入表已从图中
@@ -36,9 +37,16 @@ pub const LOCAL_MODEL_NAME: &str = "bge-small-zh-v1.5";
 /// 模型子目录名（挂在 `data/third_party/` 下）。
 pub const MODEL_DIR: &str = "bge_small_zh_v1_5";
 /// 组件文件名。
-const MODEL_FILE: &str = "model_int4.onnx";
-const TOKENIZER_FILE_GZ: &str = "tokenizer.json.gz";
-const EMBED_FILE: &str = "embedding_int2.bin";
+pub const MODEL_FILE: &str = "model_int4.onnx";
+pub const TOKENIZER_FILE_GZ: &str = "tokenizer.json.gz";
+pub const EMBED_FILE: &str = "embedding_int2.bin";
+/// 参考元信息（可选，加载时不读，仅随模型一起搬运）。
+pub const CONFIG_FILE: &str = "config.json";
+
+/// 缺失任一即判定「未安装」的必需文件。
+pub const REQUIRED_FILES: [&str; 3] = [MODEL_FILE, TOKENIZER_FILE_GZ, EMBED_FILE];
+/// 安装时一并搬运（若存在）的可选文件。
+pub const OPTIONAL_FILES: [&str; 1] = [CONFIG_FILE];
 
 /// 词嵌入维度与输出维度（bge-small-zh-v1.5 隐藏层 512）。
 const EMBED_DIM: usize = 512;
@@ -52,20 +60,19 @@ const INTRA_THREADS: usize = 2;
 // ─── 本地模型路径解析 ─────────────────────────────────────────
 
 /// 本地模型完整目录（`data_dir/third_party/bge_small_zh_v1_5`），与 VAD / 情绪模型同策略。
-/// 目录可选：不存在时 [`is_bundled_available`] 为 false，检索回退为词法。
-pub fn bundled_dir() -> std::path::PathBuf {
+/// 目录可选：不存在时 [`is_model_available`] 为 false，检索回退为词法。
+pub fn model_dir() -> std::path::PathBuf {
     crate::data_dir::get_data_dir()
         .join("third_party")
         .join(MODEL_DIR)
 }
 
 /// 三个必需文件是否齐备（同步、极便宜的文件存在性检查；供 `MemoryService::is_configured` 使用）。
-/// 模型为可选组件，未自备产物时返回 false，记忆改走字符 n-gram 词法检索。
-pub fn is_bundled_available() -> bool {
-    let dir = bundled_dir();
-    dir.join(MODEL_FILE).is_file()
-        && dir.join(TOKENIZER_FILE_GZ).is_file()
-        && dir.join(EMBED_FILE).is_file()
+/// 模型为可选组件（设置页「嵌入模型」子页可导入 / 删除），未自备产物时返回 false，
+/// 记忆改走字符 n-gram 词法检索。
+pub fn is_model_available() -> bool {
+    let dir = model_dir();
+    REQUIRED_FILES.iter().all(|name| dir.join(name).is_file())
 }
 
 // ─── int2 词嵌入表 ────────────────────────────────────────────

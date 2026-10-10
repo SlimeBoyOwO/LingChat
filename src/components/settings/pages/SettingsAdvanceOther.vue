@@ -339,6 +339,104 @@
             </div>
           </section>
 
+          <!-- 本地嵌入模型：从本地导入 / 删除，实时生效（设置页「嵌入模型」子页） -->
+          <section
+            v-if="activeSelection.subcategory === '嵌入模型'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.embeddingLocal.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.embeddingLocal.desc") }}
+            </p>
+
+            <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span
+                class="rounded-md px-2 py-0.5"
+                :class="
+                  embeddingStatus?.installed
+                    ? 'bg-green-500/15 text-green-400'
+                    : 'bg-white/10 text-white/60'
+                "
+              >
+                {{
+                  embeddingStatus?.installed
+                    ? $t("settings.advanceOther.embeddingLocal.statusInstalled")
+                    : $t("settings.advanceOther.embeddingLocal.statusMissing")
+                }}
+              </span>
+              <span class="text-white/60">{{ embeddingModeText }}</span>
+            </div>
+
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <Button type="big" :disabled="embeddingBusy" @click="pickEmbeddingFolder">
+                <FolderOpen :size="18" />
+                {{
+                  embeddingBusy
+                    ? $t("settings.advanceOther.embeddingLocal.importing")
+                    : $t("settings.advanceOther.embeddingLocal.importFolderButton")
+                }}
+              </Button>
+              <button
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="embeddingBusy"
+                @click="pickEmbeddingArchive"
+              >
+                {{ $t("settings.advanceOther.embeddingLocal.importArchiveButton") }}
+              </button>
+              <button
+                v-if="embeddingStatus?.installed"
+                class="cursor-pointer rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-60"
+                :disabled="embeddingBusy"
+                @click="removeEmbeddingLocal"
+              >
+                {{
+                  embeddingBusy
+                    ? $t("settings.advanceOther.embeddingLocal.deleting")
+                    : $t("settings.advanceOther.embeddingLocal.deleteButton")
+                }}
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="embeddingLoading"
+                @click="refreshEmbeddingLocal"
+              >
+                {{ $t("settings.advanceOther.embeddingLocal.refresh") }}
+              </button>
+            </div>
+
+            <p v-if="embeddingError" class="mb-2 text-sm text-red-400">{{ embeddingError }}</p>
+
+            <div class="rounded-lg border border-white/10 bg-black/25 p-3">
+              <div class="mb-2 text-xs break-all text-white/50">
+                {{ $t("settings.advanceOther.embeddingLocal.dirLabel")
+                }}{{ embeddingStatus?.dir ?? "" }}
+              </div>
+              <ul class="m-0 flex list-none flex-col gap-1 p-0">
+                <li
+                  v-for="file in embeddingFiles"
+                  :key="file.name"
+                  class="flex items-center justify-between gap-2 text-xs"
+                >
+                  <span class="text-white/80">
+                    {{ file.name }}
+                    <span v-if="file.required" class="ml-1 text-white/40">
+                      · {{ $t("settings.advanceOther.embeddingLocal.requiredTag") }}
+                    </span>
+                  </span>
+                  <span :class="file.present ? 'text-green-400' : 'text-white/40'">
+                    {{
+                      file.present
+                        ? formatBytes(file.size_bytes)
+                        : $t("settings.advanceOther.embeddingLocal.fileMissing")
+                    }}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
@@ -383,11 +481,15 @@ import { switchLlm } from "@/api/services/llm-providers";
 import {
   deleteMemory,
   deleteMemoryArchive,
+  deleteEmbeddingLocal,
+  getEmbeddingLocalStatus,
   getMemoryArchive,
+  importEmbeddingLocal,
   importLegacyMemories,
   listMemories,
   listMemoryArchives,
   listMemoryRoles,
+  type EmbeddingLocalStatus,
   type LegacyImportResult,
   type MemoryArchiveEntry,
   type MemoryArchiveSummary,
@@ -395,7 +497,8 @@ import {
   type MemoryRoleSummary,
 } from "@/api/services/memory";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
-import { RefreshCw } from "lucide-vue-next";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { FolderOpen, RefreshCw } from "lucide-vue-next";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
@@ -714,6 +817,102 @@ const removeLegacyArchive = async (archive: MemoryArchiveSummary) => {
   }
 };
 
+// --- 本地嵌入模型面板（设置页「嵌入模型」子页：导入 / 删除，实时生效） ---
+const embeddingStatus = ref<EmbeddingLocalStatus | null>(null);
+const embeddingLoading = ref(false);
+const embeddingBusy = ref(false);
+const embeddingError = ref("");
+
+const embeddingFiles = computed(() => embeddingStatus.value?.files ?? []);
+
+const embeddingModeText = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status) return "";
+  if (status.remote_configured) return t("settings.advanceOther.embeddingLocal.modeRemote");
+  return status.retrieval_mode === "hybrid"
+    ? t("settings.advanceOther.embeddingLocal.modeHybrid")
+    : t("settings.advanceOther.embeddingLocal.modeLexical");
+});
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+};
+
+const embeddingErrorText = (error: unknown, key: string) =>
+  t(`settings.advanceOther.embeddingLocal.${key}`, {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const refreshEmbeddingLocal = async () => {
+  if (embeddingLoading.value) return;
+  embeddingLoading.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await getEmbeddingLocalStatus();
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "loadFailed");
+  } finally {
+    embeddingLoading.value = false;
+  }
+};
+
+const importEmbeddingFrom = async (path: string | null) => {
+  if (!path || embeddingBusy.value) return;
+  embeddingBusy.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await importEmbeddingLocal(path);
+    await dialogStore.alert(
+      t("settings.advanceOther.embeddingLocal.importSuccess"),
+      t("settings.advanceOther.embeddingLocal.importTitle"),
+    );
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "importFailed");
+  } finally {
+    embeddingBusy.value = false;
+  }
+};
+
+const pickEmbeddingFolder = async () => {
+  const selection = await openDialog({ directory: true, multiple: false });
+  const path = Array.isArray(selection) ? (selection[0] ?? null) : selection;
+  await importEmbeddingFrom(path);
+};
+
+const pickEmbeddingArchive = async () => {
+  const selection = await openDialog({
+    multiple: false,
+    filters: [{ name: "Model archive", extensions: ["zip", "7z"] }],
+  });
+  const path = Array.isArray(selection) ? (selection[0] ?? null) : selection;
+  await importEmbeddingFrom(path);
+};
+
+const removeEmbeddingLocal = async () => {
+  if (embeddingBusy.value) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.embeddingLocal.deleteConfirm"),
+    t("settings.advanceOther.embeddingLocal.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  embeddingBusy.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await deleteEmbeddingLocal();
+    await dialogStore.alert(
+      t("settings.advanceOther.embeddingLocal.deleteSuccess"),
+      t("settings.advanceOther.embeddingLocal.deleteTitle"),
+    );
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "deleteFailed");
+  } finally {
+    embeddingBusy.value = false;
+  }
+};
+
 const loadConfig = async (selectFirst = true) => {
   isLoading.value = true;
   try {
@@ -789,6 +988,7 @@ onMounted(async () => {
   updateIndicatorPosition();
   setupNavResizeObserver();
   refreshLegacyArchives();
+  refreshEmbeddingLocal();
 });
 
 onUnmounted(() => {

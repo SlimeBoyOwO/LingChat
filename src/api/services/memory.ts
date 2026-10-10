@@ -91,3 +91,45 @@ export function getMemoryArchive(profileId: number): Promise<MemoryArchiveEntry[
 export function deleteMemoryArchive(profileId: number): Promise<boolean> {
   return invoke("memory_archive_delete", { profileId });
 }
+
+// ── 本地嵌入模型（设置页「嵌入模型」子页：从本地导入 / 删除，实时生效） ──
+
+/** 本地嵌入模型单个部件的状态。 */
+export interface EmbeddingLocalFile {
+  /** 文件名（如 model_int4.onnx）。 */
+  name: string;
+  /** 是否必需（缺失即判定未安装）。 */
+  required: boolean;
+  /** 是否已存在。 */
+  present: boolean;
+  /** 文件字节数（不存在时 0）。 */
+  size_bytes: number;
+}
+
+/** 本地嵌入模型状态快照。 */
+export interface EmbeddingLocalStatus {
+  installed: boolean;
+  /** 模型存放目录。 */
+  dir: string;
+  model_name: string;
+  /** 当前检索模式：hybrid（向量 + 词法）或 lexical（纯词法）。 */
+  retrieval_mode: string;
+  /** 是否配置了远程 embeddings 接口。 */
+  remote_configured: boolean;
+  files: EmbeddingLocalFile[];
+}
+
+/** 读取本地嵌入模型状态。 */
+export function getEmbeddingLocalStatus(): Promise<EmbeddingLocalStatus> {
+  return invoke("embedding_local_status");
+}
+
+/** 从本地文件夹或 zip / 7z 压缩包导入本地嵌入模型（导入后立即生效，无需重启）。 */
+export function importEmbeddingLocal(sourcePath: string): Promise<EmbeddingLocalStatus> {
+  return invoke("embedding_local_import", { sourcePath });
+}
+
+/** 删除已安装的本地嵌入模型（删除后立即回退词法检索）。 */
+export function deleteEmbeddingLocal(): Promise<EmbeddingLocalStatus> {
+  return invoke("embedding_local_delete");
+}

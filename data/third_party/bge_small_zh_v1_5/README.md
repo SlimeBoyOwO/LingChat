@@ -7,7 +7,9 @@
 > 未提供模型文件、且未配置远程 `embedding.*` 时，长期记忆会自动退化为
 > **字符 n-gram 词法检索**（非嵌入式 RAG），功能仍可用（见
 > `crates/ling-chat-main/src/ai_service/memory/search.rs`）。
-> 若要启用本地语义检索，把下列四个产物放回本目录即可
+> 若要启用本地语义检索，最省事的方式是在**设置页 → 功能设置 → 嵌入模型 →
+> 「本地嵌入模型」面板**里从本地文件夹或 zip / 7z 压缩包导入下列四个产物
+> （导入后立即生效，无需重启）；也可以手动把产物放回本目录
 > （运行时路径为 `data_dir/third_party/bge_small_zh_v1_5/`，可用
 > `scripts/quantize_bge_embedding.py` 从原始 bge 模型重新生成）。
 

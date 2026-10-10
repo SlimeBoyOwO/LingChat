@@ -102,6 +102,10 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::memory_archive::memory_archive_list,
         api::memory_archive::memory_archive_get,
         api::memory_archive::memory_archive_delete,
+        // ── 本地嵌入模型（设置页「嵌入模型」子页：导入 / 删除 / 状态） ──
+        api::embedding_local::embedding_local_status,
+        api::embedding_local::embedding_local_import,
+        api::embedding_local::embedding_local_delete,
         api::ambient::get_ambient_list,
         api::ambient::upload_ambient,
         api::ambient::delete_ambient,

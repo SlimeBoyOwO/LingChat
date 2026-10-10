@@ -9,6 +9,7 @@ pub mod character;
 pub mod character_create;
 pub mod chat;
 pub mod codex;
+pub mod embedding_local;
 pub mod font;
 pub mod game;
 pub mod live2d;

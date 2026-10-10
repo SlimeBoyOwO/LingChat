@@ -18,7 +18,9 @@
 //! 自动压缩、插件 `compress_context()` 的显式触发。
 //!
 //! 配置（`embedding.*` / `memory.*` / `features.memory_enabled`）在启动时快照，
-//! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。
+//! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。例外：**本地嵌入模型文件
+//! 的存在性是实时的**（[`MemoryService::is_configured`] 每次调用都做文件存在性检查），
+//! 因此在设置页「嵌入模型」子页导入 / 删除本地模型后立即切换向量 / 词法检索，无需重启。
 
 pub mod embedding;
 pub mod local_embedding;
@@ -130,8 +132,6 @@ pub struct MemoryService {
     remote: Option<EmbeddingClient>,
     /// 可选本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
     local: tokio::sync::OnceCell<Arc<LocalEmbedder>>,
-    /// 本地模型的文件是否齐备（同步检查，供 `is_configured` 在懒加载前判定就绪）。
-    local_available: bool,
     search: HybridSearch,
     enabled: bool,
     top_k: usize,
@@ -155,7 +155,7 @@ impl MemoryService {
                 cfg.embedding_model.clone(),
             )
         });
-        let local_available = local_embedding::is_bundled_available();
+        let local_available = local_embedding::is_model_available();
         if remote_configured {
             tracing::info!("记忆嵌入使用远程接口: model={}", cfg.embedding_model);
         } else if local_available {
@@ -170,7 +170,6 @@ impl MemoryService {
             llm,
             remote,
             local: tokio::sync::OnceCell::new(),
-            local_available,
             search: HybridSearch::default(),
             enabled: cfg.memory_enabled,
             top_k: cfg.memory_top_k as usize,
@@ -185,12 +184,18 @@ impl MemoryService {
         self.enabled
     }
 
+    /// 是否配置了远程 embeddings 接口（设置页提示用；本地模型存在与否与之无关）。
+    pub fn remote_configured(&self) -> bool {
+        self.remote.is_some()
+    }
+
     /// 嵌入配置是否就绪：远程已配置，或本地模型文件齐备。
     ///
     /// 注意：这只决定「是否走向量路」；记忆功能本身**不依赖**它——未就绪时检索与
-    /// 写入自动退化为字符 n-gram 词法模式（非嵌入式 RAG）。
+    /// 写入自动退化为字符 n-gram 词法模式（非嵌入式 RAG）。本地模型的存在性是**实时**
+    /// 文件检查，因此在设置页导入 / 删除模型后立即生效，无需重启。
     pub fn is_configured(&self) -> bool {
-        self.remote.is_some() || self.local_available
+        self.remote.is_some() || local_embedding::is_model_available()
     }
 
     /// 当前使用的嵌入模型名（换模型后旧向量不参与检索）。
@@ -213,7 +218,7 @@ impl MemoryService {
 
     /// 取到可用的本地嵌入器（首次调用时在阻塞线程池里懒加载）。
     async fn ensure_local(&self) -> Result<&Arc<LocalEmbedder>> {
-        let dir = local_embedding::bundled_dir();
+        let dir = local_embedding::model_dir();
         self.local
             .get_or_try_init(|| async move {
                 let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
@@ -941,7 +946,7 @@ pub fn describe(service: &MemoryService) -> serde_json::Value {
     json!({
         "enabled": service.enabled(),
         "configured": service.is_configured(),
-        "embedder": if service.remote.is_some() { "remote" } else if service.local_available { "builtin" } else { "none" },
+        "embedder": if service.remote.is_some() { "remote" } else if local_embedding::is_model_available() { "local" } else { "none" },
         "retrieval": service.retrieval_mode(),
         "model": service.model(),
         "top_k": top_k,
