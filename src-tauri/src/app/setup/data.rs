@@ -40,6 +40,7 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     }
 
     ling_chat_main::db::role_sync::sync_roles_from_folder(&db, &data_dir).await?;
+    ling_chat_main::api::character::editor::cleanup_stale_editor_data(&db).await;
 
     // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
     RoleRepo::ensure_user_role(&db).await?;

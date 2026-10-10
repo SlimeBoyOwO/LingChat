@@ -82,7 +82,7 @@
               {{ $t("game.avatar.live2dUnavailable") }}
             </div>
             <ImageCrossFade
-              v-show="!live2dActive"
+              v-show="!live2dActive && !!targetAvatarUrl"
               ref="imageFadeRef"
               class="animate-breathing h-full w-full object-cover"
               :src="targetAvatarUrl"

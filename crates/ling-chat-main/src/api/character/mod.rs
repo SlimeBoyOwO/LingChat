@@ -1,3 +1,10 @@
+//! 角色配置与编辑 API。
+
+pub mod avatars;
+pub mod costumes;
+pub mod editor;
+pub mod voice;
+
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
@@ -277,7 +284,7 @@ fn default_avatar_path(resource_folder: &str) -> String {
             }
         }
     }
-    avatar_dir.to_string_lossy().into_owned()
+    String::new()
 }
 
 /// 在目录中查找文件名（不含扩展名）匹配的图片文件
@@ -661,10 +668,10 @@ pub async fn update_role_settings(
         let voice_updated = gs
             .role_manager
             .update_role_voice_settings(role_id, &validated);
-        let live2d_updated = gs
+        let visual_updated = gs
             .role_manager
-            .update_role_live2d_settings(role_id, &validated);
-        voice_updated || live2d_updated
+            .update_role_visual_settings(role_id, &validated);
+        voice_updated || visual_updated
     };
 
     tracing::info!(

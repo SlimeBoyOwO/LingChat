@@ -6,7 +6,7 @@
       @animationend="emit('animation-end')"
     >
       <ImageAcrossFade
-        v-show="visible"
+        v-show="visible && !!src"
         ref="imageFadeRef"
         class="absolute h-[102%] w-full"
         :class="animationClasses"

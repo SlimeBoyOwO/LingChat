@@ -8,6 +8,9 @@ use serde::Deserialize;
 use crate::db::entities::role::{self, RoleType};
 use crate::utils::yaml_file::resolve_settings_file;
 
+// 手动创建与目录扫描共享锁，避免扫描读到新目录后重复入库。
+pub(crate) static ROLE_SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
 #[derive(Debug, Deserialize)]
 struct CharacterSettings {
     title: Option<String>,
@@ -92,6 +95,7 @@ pub async fn sync_plugin_roles(
 }
 
 pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) -> Result<Vec<i32>> {
+    let _guard = ROLE_SYNC_LOCK.lock().await;
     let characters_dir = data_dir.join("game_data").join("characters");
     if !characters_dir.exists() {
         return Ok(vec![]);

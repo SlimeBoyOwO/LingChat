@@ -37,7 +37,7 @@
     </p>
 
     <template v-if="localSettings">
-      <div class="grid grid-cols-1 gap-4 md:grid-cols-[minmax(0,1fr)_240px]">
+      <div class="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_280px]">
         <div class="space-y-4">
           <label class="flex flex-col gap-2 text-sm text-white/70">
             {{ t("settings.characterInfo.live2d.defaultVariant") }}
@@ -114,7 +114,19 @@
             </button>
             <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
               <div v-for="emotion in emotions" :key="emotion" class="rounded-lg bg-black/15 p-2">
-                <div class="mb-2 text-xs font-medium text-white/70">{{ emotion }}</div>
+                <div
+                  class="mb-2 flex items-center justify-between gap-2 text-xs font-medium text-white/70"
+                >
+                  <span>{{ emotion }}</span>
+                  <button
+                    type="button"
+                    class="preview-button"
+                    :disabled="!previewReady"
+                    @click="testEmotion(emotion)"
+                  >
+                    {{ t("settings.live2dPreview.test") }}
+                  </button>
+                </div>
                 <select v-model="currentVariant.expressions[emotion]" class="live2d-control mb-2">
                   <option value="">{{ t("settings.characterInfo.live2d.noExpression") }}</option>
                   <option v-for="name in expressionOptions" :key="name" :value="name">
@@ -155,6 +167,14 @@
                   />
                   {{ touchPartLabel(part) }}
                 </label>
+                <button
+                  type="button"
+                  class="preview-button mb-2"
+                  :disabled="!previewReady || !touchEnabled(part)"
+                  @click="runPreview(() => stageRef?.previewTouch(roleId, part))"
+                >
+                  {{ t("settings.live2dPreview.testTouch") }}
+                </button>
                 <select
                   class="live2d-control mb-2"
                   :disabled="!touchEnabled(part)"
@@ -204,28 +224,137 @@
           </div>
         </div>
 
-        <div class="h-60 overflow-hidden rounded-lg border border-white/10 bg-black/25">
-          <Live2DStage
-            v-if="previewRole"
-            class="relative! h-full w-full"
-            :roles="[previewRole]"
-            mode="standard"
-            :active-speaker-id="null"
-            :audio-element="null"
-            voice-data-url=""
-          />
-        </div>
+        <aside
+          class="order-first min-w-0 space-y-3 self-start rounded-xl border border-white/10 bg-black/20 p-3 xl:sticky xl:top-0 xl:order-last xl:max-h-[calc(85dvh-12rem)] xl:overflow-y-auto"
+        >
+          <h4 class="text-sm font-semibold text-white/75">
+            {{ t("settings.live2dPreview.title") }}
+          </h4>
+          <div
+            class="relative h-72 overflow-hidden rounded-lg border border-white/10 bg-black/25"
+            :class="{ 'cursor-crosshair': pickingAnchor }"
+            @click="pickAnchor"
+          >
+            <Live2DStage
+              v-if="previewRole"
+              :key="`${roleId}:${selectedVariant}`"
+              ref="stageRef"
+              class="relative! h-full w-full"
+              :roles="[previewRole]"
+              mode="standard"
+              editor-preview
+              :active-speaker-id="null"
+              :audio-element="null"
+              voice-data-url=""
+              @active-change="onPreviewActive"
+              @failed-change="onPreviewFailed"
+              @preview-geometry="anchorPosition = $event"
+            />
+            <span
+              v-if="previewReady && anchorPosition"
+              class="pointer-events-none absolute -translate-x-1/2 -translate-y-1/2 text-xl leading-none text-cyan-200"
+              :style="{ left: `${anchorPosition.x * 100}%`, top: `${anchorPosition.y * 100}%` }"
+              aria-hidden="true"
+              >⊕</span
+            >
+            <span
+              v-if="!previewReady"
+              class="pointer-events-none absolute inset-x-2 bottom-2 text-center text-xs text-white/50"
+              >{{
+                previewFailed
+                  ? t("settings.live2dPreview.loadFailed")
+                  : t("settings.live2dPreview.loading")
+              }}</span
+            >
+          </div>
+          <button
+            type="button"
+            class="preview-button w-full"
+            :class="{ 'bg-cyan-400/20!': pickingAnchor }"
+            :disabled="!previewReady"
+            @click="pickingAnchor = !pickingAnchor"
+          >
+            {{
+              t(
+                pickingAnchor
+                  ? "settings.live2dPreview.cancelPick"
+                  : "settings.live2dPreview.pickAnchor",
+              )
+            }}
+          </button>
+          <p class="text-xs leading-relaxed text-white/45">
+            {{ t("settings.live2dPreview.anchorHint") }}
+          </p>
+          <label class="block space-y-2 text-xs text-white/65">
+            <span>{{ t("settings.live2dPreview.emotion") }}</span>
+            <select
+              v-model="previewEmotionValue"
+              class="live2d-control"
+              @change="testEmotion(previewEmotionValue)"
+            >
+              <option v-for="emotion in emotions" :key="emotion" :value="emotion">
+                {{ emotion }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="preview-button w-full"
+            :disabled="!previewReady"
+            @click="testEmotion(previewEmotionValue)"
+          >
+            {{ t("settings.live2dPreview.replay") }}
+          </button>
+          <label class="block space-y-2 text-xs text-white/65">
+            <span>{{ t("settings.live2dPreview.expression") }}</span>
+            <select v-model="testExpression" class="live2d-control">
+              <option value="">{{ t("settings.live2dPreview.chooseExpression") }}</option>
+              <option v-for="name in expressionOptions" :key="name" :value="name">
+                {{ name }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="preview-button w-full"
+            :disabled="!previewReady || !testExpression"
+            @click="runPreview(() => stageRef?.previewExpression(roleId, testExpression))"
+          >
+            {{ t("settings.live2dPreview.applyExpression") }}
+          </button>
+          <label class="block space-y-2 text-xs text-white/65">
+            <span>{{ t("settings.live2dPreview.motion") }}</span>
+            <select v-model="testMotion" class="live2d-control">
+              <option value="">{{ t("settings.live2dPreview.chooseMotion") }}</option>
+              <option v-for="motion in motionOptions" :key="motion.value" :value="motion.value">
+                {{ motion.label }}
+              </option>
+            </select>
+          </label>
+          <button
+            type="button"
+            class="preview-button w-full"
+            :disabled="!previewReady || !testMotion"
+            @click="playSelectedMotion"
+          >
+            {{ t("settings.live2dPreview.playMotion") }}
+          </button>
+          <p role="status" class="min-h-8 text-xs leading-relaxed text-cyan-100/70">
+            {{ previewStatus || t("settings.live2dPreview.hint") }}
+          </p>
+        </aside>
       </div>
     </template>
   </div>
 </template>
 
 <script setup lang="ts">
+import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+const { importLive2d, inspectLive2d } = useCharacterEditorApi();
 import { open } from "@tauri-apps/plugin-dialog";
-import { computed, ref, watch } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
-import { importLive2d, inspectLive2d } from "@/api/services/character";
 import Live2DStage from "@/components/game/live2d/Live2DStage.vue";
 import { TOUCH_PART_ORDER } from "@/components/game/live2d/live2d-touch";
 import type { GameRole } from "@/stores/modules/game/state";
@@ -253,6 +382,16 @@ const localSettings = computed<Live2dSettings | null>({
 });
 const metadata = ref<Live2dImportResult["models"]>([]);
 const selectedVariant = ref("");
+const stageRef = ref<InstanceType<typeof Live2DStage> | null>(null);
+const previewReady = ref(false);
+const previewFailed = ref(false);
+const previewEmotionValue = ref("正常");
+const testExpression = ref("");
+const testMotion = ref("");
+const previewStatus = ref("");
+const pickingAnchor = ref(false);
+const anchorPosition = ref<{ x: number; y: number } | null>(null);
+let previewSequence = 0;
 const busy = ref(false);
 const errorMessage = ref("");
 
@@ -313,8 +452,8 @@ const previewRole = computed<GameRole | null>(() => {
     roleName: "",
     roleSubTitle: "",
     thinkMessage: "",
-    emotion: "正常",
-    originalEmotion: "正常",
+    emotion: previewEmotionValue.value,
+    originalEmotion: previewEmotionValue.value,
     scale: props.scale ?? 1,
     offsetY: props.offsetY ?? 0,
     offsetX: props.offsetX ?? 0,
@@ -354,6 +493,72 @@ watch(
   },
   { immediate: true },
 );
+
+watch([selectedVariant, () => props.roleId], () => {
+  previewSequence += 1;
+  previewReady.value = false;
+  previewFailed.value = false;
+  previewStatus.value = "";
+  pickingAnchor.value = false;
+  anchorPosition.value = null;
+  testExpression.value = "";
+  testMotion.value = "";
+});
+
+function onPreviewActive(ids: number[]) {
+  const wasReady = previewReady.value;
+  previewReady.value = ids.includes(props.roleId);
+  if (!wasReady && previewReady.value) void testEmotion(previewEmotionValue.value);
+}
+
+function onPreviewFailed(ids: number[]) {
+  previewFailed.value = ids.includes(props.roleId);
+  if (previewFailed.value) previewReady.value = false;
+}
+
+async function runPreview(action: () => boolean | undefined | Promise<boolean | undefined>) {
+  if (!previewReady.value) return;
+  const sequence = ++previewSequence;
+  try {
+    await nextTick();
+    if (sequence !== previewSequence || !previewReady.value) return;
+    const started = await action();
+    if (sequence !== previewSequence) return;
+    previewStatus.value = t(
+      started ? "settings.live2dPreview.started" : "settings.live2dPreview.unavailable",
+    );
+  } catch (error) {
+    console.warn("[Live2D] Preview action failed", error);
+    if (sequence !== previewSequence) return;
+    previewStatus.value = t("settings.live2dPreview.unavailable");
+  }
+}
+
+function testEmotion(emotion: string) {
+  previewEmotionValue.value = emotion;
+  return runPreview(() => stageRef.value?.previewEmotion(props.roleId, emotion));
+}
+
+function playSelectedMotion() {
+  const separator = testMotion.value.lastIndexOf(":");
+  const binding = {
+    group: testMotion.value.slice(0, separator),
+    index: Number(testMotion.value.slice(separator + 1)),
+  };
+  return runPreview(() => stageRef.value?.previewMotion(props.roleId, binding));
+}
+
+function pickAnchor(event: MouseEvent) {
+  if (!pickingAnchor.value || !currentVariant.value) return;
+  const anchor = stageRef.value?.pickFocusAnchor(props.roleId, event.clientX, event.clientY);
+  if (!anchor) {
+    previewStatus.value = t("settings.live2dPreview.outsideModel");
+    return;
+  }
+  currentVariant.value.focus_anchor = anchor;
+  pickingAnchor.value = false;
+  previewStatus.value = t("settings.live2dPreview.anchorPicked");
+}
 
 function setFocusAnchor(axis: "x" | "y", rawValue: string) {
   const variant = currentVariant.value;
@@ -487,6 +692,21 @@ function removeLive2d() {
 </script>
 
 <style scoped>
+.preview-button {
+  border-radius: 0.5rem;
+  background: rgb(255 255 255 / 0.1);
+  padding: 0.4rem 0.65rem;
+  color: rgb(255 255 255 / 0.8);
+  font-size: 0.75rem;
+}
+.preview-button:hover:not(:disabled) {
+  background: rgb(255 255 255 / 0.2);
+}
+.preview-button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 .live2d-control {
   width: 100%;
   border: 1px solid rgb(255 255 255 / 0.1);

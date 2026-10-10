@@ -49,6 +49,7 @@ import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
 import { avatarObjectFit, useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { standardAvatarStyle } from "@/utils/avatar-layout";
 import { prefersLive2d } from "@/types/live2d";
 import "@/assets/styles/avatar-animation.css";
 
@@ -92,21 +93,6 @@ const {
 // 窄屏适配：宽高比 1.0→0.5 区间，高度 100%→80%（rate=40）
 const computedObjectFit = computed(() => avatarObjectFit(uiStore.aspectRatio));
 
-// 窄屏 Y 轴补偿：同步上述区间，0%→20% 视口高度上移（rate=40）
-const narrowScreenYCompensation = computed(() => {
-  const ratio = uiStore.aspectRatio;
-  if (ratio >= 1.0) return 0;
-  const percent = Math.min(20, (1.0 - ratio) * 40);
-  return Math.round((uiStore.viewportHeight * percent) / 100);
-});
-
-const wideScreenYCompensation = computed(() => {
-  const ratio = uiStore.aspectRatio;
-  if (ratio < 2.0) return 0;
-  const percent = Math.min(10, (ratio - 2.0) * 20);
-  return Math.round((uiStore.viewportHeight * percent) / 100);
-});
-
 // --- 样式计算 ---
 const layoutPosition = computed(() => {
   const allIds = gameStore.presentRoleIds;
@@ -129,28 +115,14 @@ const lightingFilter = computed(() => {
 });
 
 const roleLayerStyle = computed(() => {
-  const autoLeft = layoutPosition.value;
-  // 投屏偏移折进位置（正值右移 / 下移），与 Live2D 同一套夹紧：立绘容器撑满视口、
-  // 图片 bottom 锚定在容器底沿，容器底沿（top + 视口高 × 缩放）不越出窗口，
-  // 避免 offsetY 下移时人物下方被窗口 overflow:hidden 截断；缩小才有下移空间。
-  const manualOffset = role.value.offsetX || 0;
-  const scaleTotal = (role.value.scale ?? 1) * (props.castScale ?? 1);
-  const defaultTop =
-    role.value.offsetY - narrowScreenYCompensation.value - wideScreenYCompensation.value;
-  // 投屏垂直偏移（castOffsetY，正值下移）折进顶部位置，但只夹紧「投屏自己下移的那段」：
-  // 角色自身配置的 role.offsetY 不参与夹紧，保持原语义。立绘容器撑满视口、图片 bottom
-  // 锚定在容器底沿，容器底沿（top + 视口高 × 缩放）不越出窗口，下移触底即止。
-  // 水平偏移由投屏窗口的 .cast-role-layer CSS translateX 整层平移（见 CastWindow.vue）。
-  const downLimit = uiStore.viewportHeight * (1 - scaleTotal) - defaultTop;
-  const castOffsetY = props.castOffsetY ?? 0;
-  const effectiveOffsetY =
-    castOffsetY > 0 ? Math.min(castOffsetY, Math.max(0, downLimit)) : castOffsetY;
-  const top = defaultTop + effectiveOffsetY;
-
   const style: Record<string, string> = {
-    left: `calc(${autoLeft}% + ${manualOffset}px)`,
-    top: `${top}px`,
-    transform: `translateX(-50%) scale(${scaleTotal})`,
+    ...standardAvatarStyle(
+      role.value,
+      { width: uiStore.viewportWidth, height: uiStore.viewportHeight },
+      layoutPosition.value,
+      props.castScale,
+      props.castOffsetY,
+    ),
     opacity: `${role.value.show ? 1 : 0}`,
     transition:
       "left 0.5s cubic-bezier(0.25, 0.8, 0.5, 1), top 0.3s ease, opacity 0.3s ease-in-out",

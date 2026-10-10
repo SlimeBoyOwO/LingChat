@@ -93,6 +93,21 @@ impl GameRoleManager {
         self.clothes_overrides.insert(role_id, clothes);
     }
 
+    pub fn remap_character_costume(&mut self, role_id: i32, old: &str, new: &str) {
+        if self
+            .clothes_overrides
+            .get(&role_id)
+            .is_some_and(|name| name == old)
+        {
+            self.clothes_overrides.insert(role_id, new.into());
+        }
+        if let Some(role) = self.loaded_roles.get_mut(&role_id) {
+            if role.current_clothes == old {
+                role.current_clothes = new.into();
+            }
+        }
+    }
+
     /// 获取角色；若未加载则从 DB 惰性注册。
     pub async fn get_role(
         &mut self,
@@ -597,12 +612,12 @@ impl GameRoleManager {
         true
     }
 
-    /// 刷新已加载角色的形象配置：Live2D 模型、主对话/桌宠的显示方式、桌宠无框模式。
+    /// 刷新已加载角色的形象配置和主对话立绘、气泡布局。
     ///
-    /// 这四个字段必须一起拷：内存里的 `role.settings` 是之后
+    /// 这些字段必须一起拷：内存里的 `role.settings` 是之后
     /// `init_game` / 切角色时 `onstage_roles` 的数据源，漏拷会让保存后的
     /// 显示方式在下一次 init 时被打回旧值。
-    pub fn update_role_live2d_settings(
+    pub fn update_role_visual_settings(
         &mut self,
         role_id: i32,
         settings: &CharacterSettings,
@@ -615,6 +630,17 @@ impl GameRoleManager {
         role.settings.avatar_mode = settings.avatar_mode.clone();
         role.settings.avatar_mode_p = settings.avatar_mode_p.clone();
         role.settings.pet_frameless = settings.pet_frameless;
+        role.settings.scale = settings.scale;
+        role.settings.offset_x = settings.offset_x;
+        role.settings.offset_y = settings.offset_y;
+        role.settings.scale_p = settings.scale_p;
+        role.settings.offset_x_p = settings.offset_x_p;
+        role.settings.offset_y_p = settings.offset_y_p;
+        role.settings.bubble_top = settings.bubble_top;
+        role.settings.bubble_left = settings.bubble_left;
+        role.settings.clothes = settings.clothes.clone();
+        role.settings.clothes_name = settings.clothes_name.clone();
+        role.settings.body_part = settings.body_part.clone();
         true
     }
 
@@ -813,7 +839,7 @@ impl GameRoleManager {
 ///
 /// 未启用 TTS / 配置缺失时返回 `None`。对应 Python `GameRole` 构造时调用
 /// `voice_maker = VoiceMaker(...)`。
-fn build_voice_maker(
+pub(crate) fn build_voice_maker(
     data_dir: &Path,
     settings: &CharacterSettings,
     tts_config: &TtsConfig,

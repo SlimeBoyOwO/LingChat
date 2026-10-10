@@ -69,7 +69,13 @@ pub(super) async fn compress_role_to_temp(
             // 发送导出进度事件，前端可复用现有进度条展示。
             let _ = app_for_emit.emit("role:export-progress", &evt);
         };
-        archive::compress(&src_path, fmt, &arc_path, &on_entry)
+        archive::compress_excluding_root_entries(
+            &src_path,
+            fmt,
+            &arc_path,
+            &on_entry,
+            &[".editor-drafts", ".editor-trash"],
+        )
     })
     .await
     .map_err(|e| format!("spawn_blocking join: {e}"))?

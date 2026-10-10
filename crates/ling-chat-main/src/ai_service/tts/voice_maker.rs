@@ -507,6 +507,34 @@ impl VoiceMaker {
         }
     }
 
+    /// 编辑器使用独立 VoiceMaker 直接返回音频，不生成聊天文件或修改聊天失败计数。
+    /// 本地 TTS 的全局开关与云端回退规则与对话一致，文本按所选语言原样合成。
+    pub async fn synthesize_preview(&self, text: &str, emotion: &str) -> Result<Vec<u8>> {
+        if self.tts_type == "localsbv2api"
+            && self
+                .local_runtime
+                .as_ref()
+                .is_some_and(|runtime| !runtime.is_enabled())
+        {
+            let fallback = self
+                .local_cloud_fallback
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("本地 TTS 已禁用，且角色未配置完整的云端回退"))?;
+            use crate::ai_service::tts::provider::TtsAdapter;
+            return fallback
+                .adapter(&self.tts_config.sbv2api_api_url)
+                .generate_voice(text, emotion)
+                .await;
+        }
+        if !self.provider.is_enabled() {
+            return Err(anyhow::anyhow!("语音服务未启用，请检查服务配置"));
+        }
+        self.provider
+            .select(&self.tts_type)?
+            .generate_voice(text, emotion)
+            .await
+    }
+
     pub async fn generate_voice_files(&self, segments: &mut [EmotionSegment]) {
         if self.tts_type.is_empty() {
             return;

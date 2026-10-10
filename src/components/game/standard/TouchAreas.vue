@@ -38,6 +38,7 @@ import type { GameRole } from "@/stores/modules/game/state";
 import {
   fitFromObjectFit,
   hitRegion,
+  touchRegionMessage,
   imageRectInBox,
   parseBodyPart,
   resolveCostumeKey,
@@ -135,7 +136,7 @@ function handleClick(event: MouseEvent) {
   if (now - lastClickAt < CLICK_DEBOUNCE_MS) return;
   lastClickAt = now;
 
-  const message = regions.value[part]?.message || `${gameStore.userName}戳了一下你`;
+  const message = touchRegionMessage(regions.value[part]?.message, gameStore.userName);
   gameStore.currentStatus = "thinking";
   invoke("send_system_message", { text: message }).catch((error) => {
     console.error("发送消息失败:", error);

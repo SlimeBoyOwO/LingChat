@@ -22,6 +22,20 @@
           @saved="handleSettingsSaved"
           @favoredChange="handleCharacterFavoriteChange"
         />
+        <button
+          v-if="currentPage === totalPages"
+          type="button"
+          class="group flex min-h-44 flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-4 text-white/60 backdrop-blur-xl transition-all duration-300 hover:-translate-y-1 hover:border-(--accent-color) hover:bg-white/10 hover:text-white focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-(--accent-color)"
+          @click="newCharacterVisible = true"
+        >
+          <span
+            class="flex h-16 w-16 items-center justify-center rounded-full bg-white/5 transition-colors group-hover:bg-white/10"
+            aria-hidden="true"
+          >
+            <Plus :size="32" />
+          </span>
+          <span class="text-lg font-semibold">{{ $t("settings.character.new.title") }}</span>
+        </button>
       </div>
 
       <div v-if="totalPages > 1" class="flex w-full items-center justify-between px-3 py-2">
@@ -45,6 +59,19 @@
       </div>
     </MenuItem>
     <RoleArchiveProgress />
+    <NewCharacterModal
+      :visible="newCharacterVisible"
+      @close="newCharacterVisible = false"
+      @created="handleCreated"
+    />
+    <SettingsCharacterInfo
+      :visible="createdEditorVisible"
+      :role-id="createdCharacter?.character_id ?? null"
+      :title="createdCharacter?.title"
+      source="game"
+      @close="createdEditorVisible = false"
+      @saved="handleSettingsSaved"
+    />
 
     <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支），整卡隐藏 -->
     <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
@@ -106,14 +133,16 @@
 import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { Birdhouse, FolderOpen, PackageOpen, Rabbit, RefreshCcw } from "lucide-vue-next";
+import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw } from "lucide-vue-next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import CharacterCard from "../../ui/Menu/CharacterCard.vue";
 import { Button } from "../../base";
 import { MenuItem, MenuPage } from "../../ui";
-import { characterGetAll } from "../../../api/services/character";
+import { characterGetAll, type CreatedCharacter } from "../../../api/services/character";
+import NewCharacterModal from "../character/NewCharacterModal.vue";
+import SettingsCharacterInfo from "./SettingsCharacterInfo.vue";
 import {
   getCharacterFavorites,
   saveCharacterFavorites,
@@ -140,6 +169,16 @@ interface CharacterCardData {
 }
 
 const characters = ref<CharacterCardData[]>([]);
+const newCharacterVisible = ref(false);
+const createdEditorVisible = ref(false);
+const createdCharacter = ref<CreatedCharacter>();
+async function handleCreated(character: CreatedCharacter) {
+  createdCharacter.value = character;
+  createdEditorVisible.value = true;
+  await fetchCharacters();
+  const index = allCharacters.value.findIndex((item) => item.id === character.character_id);
+  if (index >= 0) paginate(Math.floor(index / PAGE_SIZE) + 1);
+}
 const allCharacters = ref<CharacterCardData[]>([]);
 const currentPage = ref(1);
 const totalPages = ref(1);
@@ -157,7 +196,8 @@ async function loadCharacterFavorites(): Promise<void> {
 }
 
 function paginate(page: number): void {
-  const pages = Math.max(1, Math.ceil(allCharacters.value.length / PAGE_SIZE));
+  // 新建空位占一个卡片位置，始终排在全部角色之后。
+  const pages = Math.max(1, Math.ceil((allCharacters.value.length + 1) / PAGE_SIZE));
   totalPages.value = pages;
   currentPage.value = Math.min(Math.max(page, 1), pages);
   const start = (currentPage.value - 1) * PAGE_SIZE;

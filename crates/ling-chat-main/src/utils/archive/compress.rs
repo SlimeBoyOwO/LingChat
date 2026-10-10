@@ -19,25 +19,43 @@ pub fn compress(
     out: &Path,
     on_entry: &dyn Fn(EntryEvent),
 ) -> Result<(), ArchiveError> {
+    compress_excluding_root_entries(src_dir, format, out, on_entry, &[])
+}
+
+/// 仅排除源目录第一层的指定条目，不改变通用压缩或同名嵌套资源的行为。
+pub fn compress_excluding_root_entries(
+    src_dir: &Path,
+    format: ArchiveFormat,
+    out: &Path,
+    on_entry: &dyn Fn(EntryEvent),
+    excluded: &[&str],
+) -> Result<(), ArchiveError> {
+    let mut files = Vec::new();
+    collect_files(src_dir, &mut files, excluded)?;
     match format {
-        ArchiveFormat::Zip => compress_zip(src_dir, out, on_entry),
-        ArchiveFormat::SevenZ => compress_sevenz(src_dir, out, on_entry),
+        ArchiveFormat::Zip => compress_zip(src_dir, out, on_entry, &files),
+        ArchiveFormat::SevenZ => compress_sevenz(src_dir, out, on_entry, &files),
     }
 }
 
 // 递归收集目录下所有文件，跳过 macOS metadata。
-fn collect_files(dir: &Path, out: &mut Vec<PathBuf>) -> io::Result<()> {
+fn collect_files(dir: &Path, out: &mut Vec<PathBuf>, excluded: &[&str]) -> io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
         let path = entry.path();
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if excluded.contains(&name.as_ref())
+            || name == "__MACOSX"
+            || name.starts_with("._")
+            || name == ".DS_Store"
+        {
+            continue;
+        }
         if path.is_file() {
             out.push(path);
         } else if path.is_dir() {
-            let name = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if name == "__MACOSX" || name.starts_with("._") {
-                continue;
-            }
-            collect_files(&path, out)?;
+            collect_files(&path, out, &[])?;
         }
     }
     Ok(())
@@ -48,6 +66,7 @@ fn compress_zip(
     src_dir: &Path,
     out: &Path,
     on_entry: &dyn Fn(EntryEvent),
+    files: &[PathBuf],
 ) -> Result<(), ArchiveError> {
     use zip::CompressionMethod;
     use zip::write::SimpleFileOptions;
@@ -58,8 +77,6 @@ fn compress_zip(
         .compression_method(CompressionMethod::Deflated)
         .compression_level(Some(5));
 
-    let mut files = Vec::new();
-    collect_files(src_dir, &mut files)?;
     let total = files.len();
 
     on_entry(EntryEvent {
@@ -110,6 +127,7 @@ fn compress_sevenz(
     src_dir: &Path,
     out: &Path,
     on_entry: &dyn Fn(EntryEvent),
+    files: &[PathBuf],
 ) -> Result<(), ArchiveError> {
     use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
 
@@ -122,8 +140,6 @@ fn compress_sevenz(
     let file = File::create(out)?;
     let mut writer = ArchiveWriter::new(file).map_err(map_sevenz_err)?;
 
-    let mut files = Vec::new();
-    collect_files(src_dir, &mut files)?;
     let total = files.len();
     on_entry(EntryEvent {
         phase: "started",
