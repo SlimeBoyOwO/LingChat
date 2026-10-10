@@ -53,7 +53,7 @@ impl EmbeddingClient {
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         if !self.is_configured() {
             return Err(anyhow!(
-                "嵌入模型未配置（需在设置中填写 embedding 接口地址与模型名，或使用内置本地模型）"
+                "嵌入模型未配置（需在设置中填写 embedding 接口地址与模型名，或自备本地模型；都没有时记忆走词法检索）"
             ));
         }
         let url = format!("{}/embeddings", self.base_url);
@@ -90,7 +90,7 @@ impl EmbeddingClient {
         }
         if !self.is_configured() {
             return Err(anyhow!(
-                "嵌入模型未配置（需在设置中填写 embedding 接口地址与模型名，或使用内置本地模型）"
+                "嵌入模型未配置（需在设置中填写 embedding 接口地址与模型名，或自备本地模型；都没有时记忆走词法检索）"
             ));
         }
         let url = format!("{}/embeddings", self.base_url);

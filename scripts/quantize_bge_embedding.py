@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
-"""量化 bge-small-zh-v1.5 → 内置本地嵌入模型产物。
+"""量化 bge-small-zh-v1.5 → 可选本地嵌入模型产物。
 
-产物随仓库分发（`data/third_party/bge_small_zh_v1_5/`，合计约 11MB）：
+产物**不再随仓库/应用分发**（默认走字符 n-gram 词法检索）；如需本地语义检索，
+把下列产物放回 `data_dir/third_party/bge_small_zh_v1_5/`（仓库同路径仅保留 README）。
+复现后合计约 11MB：
     model_int4.onnx       7.9MB  Transformer 全部 MatMul int4（MatMulNBits），
                                   词嵌入表已从图中摘除，改为外部 fp32 输入 `inputs_embeds`
     embedding_int2.bin    3.4MB  21128×512 词嵌入表 int2 + 每行 8 组 × fp16(scale,zero)

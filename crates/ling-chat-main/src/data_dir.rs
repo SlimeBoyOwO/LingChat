@@ -89,7 +89,7 @@ pub fn seed_data_dir(app: &tauri::AppHandle) -> anyhow::Result<()> {
         let manifest = data_dir.join("data_manifest.json");
         if seeded.exists() && manifest.exists() {
             // 升级安装：从包内清单与本地清单做 diff，只增量补齐新增/变更的
-            // 默认资源（如新内置的 embedding 模型），不覆盖用户自建文件。
+            // 默认资源（如可选的本地 embedding 模型），不覆盖用户自建文件。
             // 增量补齐失败只记警告：旧资源仍可用，不应阻断应用启动。
             if let Err(e) = apply_bundled_updates(app, &data_dir) {
                 tracing::warn!(

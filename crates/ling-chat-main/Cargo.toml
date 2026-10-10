@@ -48,7 +48,7 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "ndarray",
 ] }
 ndarray = "0.17"
-# 内置本地嵌入模型（bge-small-zh-v1.5 中文量化版）：WordPiece 分词 + gzip 解压
+# 可选本地嵌入模型（bge-small-zh-v1.5 中文量化版）：WordPiece 分词 + gzip 解压
 tokenizers = { version = "0.22", default-features = false, features = ["fancy-regex"] }
 flate2 = { version = "1", default-features = false, features = ["rust_backend"] }
 

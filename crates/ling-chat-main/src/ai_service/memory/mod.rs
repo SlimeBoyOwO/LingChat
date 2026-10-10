@@ -3,7 +3,7 @@
 //! 命中结果落成 `LineAttribute::Memory` 台词行注入当轮上下文。
 //!
 //! 对标 BaiShou-Next 的记忆范式，并支持**无嵌入模型**运行（非嵌入式 RAG）：
-//! - 配置了远程 OpenAI 兼容 embeddings 接口或内置模型时，文本变成 L2 归一化向量；
+//! - 配置了远程 OpenAI 兼容 embeddings 接口或自备本地模型时，文本变成 L2 归一化向量；
 //! - **存储**：长期记忆写入每「剧本 × 角色」一张的共用归档表
 //!   `memory_archive_{role_id}`（目录在 `memory_archive_profiles`，与旧版记忆整合
 //!   归档共用同一套表，见 [`store`]）；没有嵌入模型时向量列为 NULL，只存正文；
@@ -126,11 +126,11 @@ enum DedupDecision {
 pub struct MemoryService {
     db: DatabaseConnection,
     llm: LlmSlot,
-    /// 远程 OpenAI 兼容 embeddings 客户端（配置了 `embedding.*` 时启用，优先于内置模型）。
+    /// 远程 OpenAI 兼容 embeddings 客户端（配置了 `embedding.*` 时启用，优先于本地模型）。
     remote: Option<EmbeddingClient>,
-    /// 内置本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
+    /// 可选本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
     local: tokio::sync::OnceCell<Arc<LocalEmbedder>>,
-    /// 内置模型的文件是否齐备（同步检查，供 `is_configured` 在懒加载前判定就绪）。
+    /// 本地模型的文件是否齐备（同步检查，供 `is_configured` 在懒加载前判定就绪）。
     local_available: bool,
     search: HybridSearch,
     enabled: bool,
@@ -145,7 +145,7 @@ pub struct MemoryService {
 impl MemoryService {
     /// 从启动时的配置快照构造。`llm` 是聊天 LLM 槽位，去重合并与摘要复用它。
     pub fn new(db: DatabaseConnection, llm: LlmSlot, cfg: &AppConfig) -> Self {
-        // 显式配置了远程嵌入时优先用远程；否则回落到内置的本地量化模型。
+        // 显式配置了远程嵌入时优先用远程；否则回落到本地量化模型（若自备）。
         let remote_configured =
             !cfg.embedding_base_url.trim().is_empty() && !cfg.embedding_model.trim().is_empty();
         let remote = remote_configured.then(|| {
@@ -159,10 +159,10 @@ impl MemoryService {
         if remote_configured {
             tracing::info!("记忆嵌入使用远程接口: model={}", cfg.embedding_model);
         } else if local_available {
-            tracing::info!("记忆嵌入使用内置本地模型: {}", LOCAL_MODEL_NAME);
+            tracing::info!("记忆嵌入使用本地模型: {}", LOCAL_MODEL_NAME);
         } else {
             tracing::info!(
-                "记忆嵌入未配置：既无远程 embedding 配置，也缺少内置模型文件；检索回退为字符 n-gram 词法模式（非嵌入式 RAG）"
+                "记忆嵌入未配置：既无远程 embedding 配置，也缺少本地模型文件；检索回退为字符 n-gram 词法模式（非嵌入式 RAG）"
             );
         }
         Self {
@@ -185,7 +185,7 @@ impl MemoryService {
         self.enabled
     }
 
-    /// 嵌入配置是否就绪：远程已配置，或内置模型文件齐备。
+    /// 嵌入配置是否就绪：远程已配置，或本地模型文件齐备。
     ///
     /// 注意：这只决定「是否走向量路」；记忆功能本身**不依赖**它——未就绪时检索与
     /// 写入自动退化为字符 n-gram 词法模式（非嵌入式 RAG）。
@@ -218,13 +218,13 @@ impl MemoryService {
             .get_or_try_init(|| async move {
                 let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
                     .await
-                    .context("内置嵌入模型加载线程失败")??;
+                    .context("本地嵌入模型加载线程失败")??;
                 Ok::<Arc<LocalEmbedder>, anyhow::Error>(Arc::new(embedder))
             })
             .await
     }
 
-    /// 嵌入一段文本：远程优先，否则用内置模型。
+    /// 嵌入一段文本：远程优先，否则用本地模型。
     async fn embed_one(&self, text: &str) -> Result<Vec<f32>> {
         if let Some(remote) = &self.remote {
             return remote.embed(text).await;
@@ -232,7 +232,7 @@ impl MemoryService {
         self.ensure_local().await?.embed(text).await
     }
 
-    /// 嵌入多段文本：远程优先，否则用内置模型。
+    /// 嵌入多段文本：远程优先，否则用本地模型。
     async fn embed_many(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
         if let Some(remote) = &self.remote {
             return remote.embed_batch(texts).await;

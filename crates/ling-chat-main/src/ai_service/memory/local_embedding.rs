@@ -1,6 +1,10 @@
-//! 内置本地嵌入模型：BAAI/bge-small-zh-v1.5 的中文量化版（int4 transformer + int2 词嵌入表）。
+//! 可选本地嵌入模型：BAAI/bge-small-zh-v1.5 的中文量化版（int4 transformer + int2 词嵌入表）。
 //!
-//! ## 产物（`data/third_party/bge_small_zh_v1_5/`，共约 11MB）
+//! 二进制产物**不再随仓库 / 应用分发**（`data/third_party/bge_small_zh_v1_5/README.md`
+//! 说明如何自备）；缺失时 [`is_bundled_available`] 返回 false，`MemoryService` 自动
+//! 退化为字符 n-gram 词法检索（非嵌入式 RAG，见 `search.rs` 的 `SearchMode::Lexical`）。
+//!
+//! ## 产物（`data/third_party/bge_small_zh_v1_5/`，自备后共约 11MB）
 //! - `model_int4.onnx`：Transformer 的 MatMul 全部 int4（MatMulNBits），词嵌入表已从图中
 //!   摘除，改为外部输入 `inputs_embeds`（图手术脚本见 `scripts/quantize_bge_embedding.py`）；
 //! - `embedding_int2.bin`：21128×512 词嵌入表，每行分成 8 组 × 64 维，每组一对 fp16
@@ -45,9 +49,10 @@ const MAX_SEQ_LEN: usize = 512;
 /// 避免与情绪分类 / VAD / 本地 TTS 的多个 session 抢 CPU）。
 const INTRA_THREADS: usize = 2;
 
-// ─── 内置模型路径解析 ─────────────────────────────────────────
+// ─── 本地模型路径解析 ─────────────────────────────────────────
 
-/// 内置模型完整目录（`data_dir/third_party/bge_small_zh_v1_5`），与 VAD / 情绪模型同策略。
+/// 本地模型完整目录（`data_dir/third_party/bge_small_zh_v1_5`），与 VAD / 情绪模型同策略。
+/// 目录可选：不存在时 [`is_bundled_available`] 为 false，检索回退为词法。
 pub fn bundled_dir() -> std::path::PathBuf {
     crate::data_dir::get_data_dir()
         .join("third_party")
@@ -55,6 +60,7 @@ pub fn bundled_dir() -> std::path::PathBuf {
 }
 
 /// 三个必需文件是否齐备（同步、极便宜的文件存在性检查；供 `MemoryService::is_configured` 使用）。
+/// 模型为可选组件，未自备产物时返回 false，记忆改走字符 n-gram 词法检索。
 pub fn is_bundled_available() -> bool {
     let dir = bundled_dir();
     dir.join(MODEL_FILE).is_file()
@@ -137,7 +143,7 @@ impl EmbedTable {
             bail!("嵌入表维度 {dim} 与预期 {EMBED_DIM} 不符");
         }
         if bits != 2 {
-            bail!("内置嵌入表位宽 {bits} 未实现（仅支持 2）");
+            bail!("本地嵌入表位宽 {bits} 未实现（仅支持 2）");
         }
         // bits=2 时每行 scale 数为 组数×2（每组一组 scale+zero）
         if scales_per_row % 2 != 0 {
@@ -230,7 +236,7 @@ const ATTENTION_MASK: &str = "attention_mask";
 const TOKEN_TYPE_IDS: &str = "token_type_ids";
 const INPUTS_EMBEDS: &str = "inputs_embeds";
 
-/// 内置本地嵌入器（线程安全：Session 用互斥锁串行化，推理在阻塞线程池执行）。
+/// 可选本地嵌入器（线程安全：Session 用互斥锁串行化，推理在阻塞线程池执行）。
 pub struct LocalEmbedder {
     tokenizer: Tokenizer,
     table: EmbedTable,
@@ -244,19 +250,19 @@ impl LocalEmbedder {
         // ONNX Runtime 不可用（onnxruntime.dll 缺失）时直接降级，绝不创建 Session
         // （ort 在 dll 缺失时首次创建 Session 会 panic，导致应用崩溃）。
         if !crate::utils::onnx::onnx_available() {
-            bail!("ONNX Runtime 不可用（onnxruntime.dll 缺失），内置嵌入模型停用");
+            bail!("ONNX Runtime 不可用（onnxruntime.dll 缺失），本地嵌入模型停用");
         }
         let onnx_path = model_dir.join(MODEL_FILE);
         let tokenizer_gz = model_dir.join(TOKENIZER_FILE_GZ);
         let embed_path = model_dir.join(EMBED_FILE);
         if !onnx_path.is_file() {
-            bail!("内置嵌入模型缺失: {}", onnx_path.display());
+            bail!("本地嵌入模型缺失: {}", onnx_path.display());
         }
         if !tokenizer_gz.is_file() {
-            bail!("内置嵌入词表缺失: {}", tokenizer_gz.display());
+            bail!("本地嵌入词表缺失: {}", tokenizer_gz.display());
         }
         if !embed_path.is_file() {
-            bail!("内置嵌入词嵌入表缺失: {}", embed_path.display());
+            bail!("本地嵌入词嵌入表缺失: {}", embed_path.display());
         }
 
         let session = Session::builder()
@@ -266,7 +272,7 @@ impl LocalEmbedder {
             .with_intra_threads(INTRA_THREADS)
             .map_err(|e| anyhow!("设置线程数失败: {e}"))?
             .commit_from_file(&onnx_path)
-            .map_err(|e| anyhow!("加载内置嵌入模型失败 ({}): {e}", onnx_path.display()))?;
+            .map_err(|e| anyhow!("加载本地嵌入模型失败 ({}): {e}", onnx_path.display()))?;
         let session = Arc::new(Mutex::new(session));
 
         // gzip 解压 tokenizer.json 再交给 tokenizers 解析（不落临时文件）。
@@ -290,7 +296,7 @@ impl LocalEmbedder {
 
         let table = EmbedTable::load(&embed_path)?;
         tracing::info!(
-            "已加载内置嵌入模型: {} (vocab={}, bits={}, groups={})",
+            "已加载本地嵌入模型: {} (vocab={}, bits={}, groups={})",
             onnx_path.display(),
             table.vocab,
             table.bits,
@@ -312,7 +318,7 @@ impl LocalEmbedder {
     pub async fn embed(&self, text: &str) -> Result<Vec<f32>> {
         let texts = vec![text.to_string()];
         let mut vectors = self.embed_batch(&texts).await?;
-        vectors.pop().context("内置嵌入返回空结果")
+        vectors.pop().context("本地嵌入返回空结果")
     }
 
     /// 嵌入多段文本（一次 ONNX 批量推理），返回与输入同序的向量列表。
@@ -339,7 +345,7 @@ impl LocalEmbedder {
             encodings.push(encoding);
         }
         if max_len == 0 {
-            bail!("内置嵌入：输入文本分词后为空");
+            bail!("本地嵌入：输入文本分词后为空");
         }
 
         let mut input_ids = Vec::with_capacity(texts.len() * max_len);
@@ -380,7 +386,7 @@ impl LocalEmbedder {
         tokio::task::spawn_blocking(move || {
             let mut guard = session
                 .lock()
-                .map_err(|_| anyhow!("内置嵌入 Session 锁被污染"))?;
+                .map_err(|_| anyhow!("本地嵌入 Session 锁被污染"))?;
             let ids_tensor = Tensor::from_array((
                 [batch.batch as i64, batch.max_len as i64],
                 batch.input_ids.into_boxed_slice(),
@@ -409,17 +415,17 @@ impl LocalEmbedder {
                     TOKEN_TYPE_IDS => type_tensor,
                     INPUTS_EMBEDS => embeds_tensor,
                 ])
-                .context("内置嵌入 ONNX 推理失败")?;
+                .context("本地嵌入 ONNX 推理失败")?;
 
             let hidden = outputs[0]
                 .try_extract_array::<f32>()
-                .context("内置嵌入输出类型不是 f32")?;
+                .context("本地嵌入输出类型不是 f32")?;
             // [batch, seq, dim]
             let shape = hidden.shape().to_vec();
             if shape.len() != 3 || shape[2] != EMBED_DIM as usize {
-                bail!("内置嵌入输出形状异常: {shape:?}");
+                bail!("本地嵌入输出形状异常: {shape:?}");
             }
-            let slice = hidden.as_slice().context("内置嵌入输出非连续布局")?;
+            let slice = hidden.as_slice().context("本地嵌入输出非连续布局")?;
 
             // bge-small-zh-v1.5 用 CLS 池化：取序列首位（[CLS]）向量，无需 mask 加权。
             let mut result = Vec::with_capacity(batch.batch);
@@ -437,7 +443,7 @@ impl LocalEmbedder {
             Result::<_, anyhow::Error>::Ok(result)
         })
         .await
-        .context("内置嵌入推理线程失败")?
+        .context("本地嵌入推理线程失败")?
     }
 }
 
@@ -460,7 +466,16 @@ mod tests {
     /// 数据来自真实产物 `data/third_party/bge_small_zh_v1_5/embedding_int2.bin`。
     #[test]
     fn decode_matches_python_reference() {
-        let table = EmbedTable::load(&table_path()).expect("嵌入表加载失败");
+        let path = table_path();
+        if !path.is_file() {
+            // 本地模型不再随仓库提供（默认走词法检索）；找不到产物时就跳过该对拍回归。
+            eprintln!(
+                "跳过 decode_matches_python_reference：未找到 {}（本地嵌入模型未随仓库提供）",
+                path.display()
+            );
+            return;
+        }
+        let table = EmbedTable::load(&path).expect("嵌入表加载失败");
         assert_eq!(table.bits, 2);
         assert_eq!(table.vocab, 21_128);
         assert_eq!(table.groups, 8);

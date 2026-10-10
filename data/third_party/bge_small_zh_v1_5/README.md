@@ -1,7 +1,15 @@
-# bge-small-zh-v1.5（内置中文量化版）
+# bge-small-zh-v1.5（可选本地中文量化版）
 
-中文嵌入模型 **BAAI/bge-small-zh-v1.5** 的本地量化产物，
-随应用分发（约 11MB），无需联网 / 无 API Key，开箱即用。
+中文嵌入模型 **BAAI/bge-small-zh-v1.5** 的本地量化产物（约 11MB），
+无需联网 / 无 API Key。
+
+> **注意**：这些二进制产物**不再随仓库 / 应用分发**，本目录只保留说明。
+> 未提供模型文件、且未配置远程 `embedding.*` 时，长期记忆会自动退化为
+> **字符 n-gram 词法检索**（非嵌入式 RAG），功能仍可用（见
+> `crates/ling-chat-main/src/ai_service/memory/search.rs`）。
+> 若要启用本地语义检索，把下列四个产物放回本目录即可
+> （运行时路径为 `data_dir/third_party/bge_small_zh_v1_5/`，可用
+> `scripts/quantize_bge_embedding.py` 从原始 bge 模型重新生成）。
 
 ## 产物
 

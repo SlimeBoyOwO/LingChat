@@ -141,9 +141,10 @@ data/data_manifest.json
 !data/third_party/
 !data/third_party/emotion_model_19emo/
 !data/third_party/emotion_model_19emo/.gitkeep
-# 内置本地嵌入模型（bge-small-zh-v1.5 中文量化版）：随仓库分发，构建不需要联网下载
+# 本地嵌入模型（bge-small-zh-v1.5 中文量化版）：二进制产物不随仓库分发（缺省走字符 n-gram 词法检索），
+# 仅保留说明用 README；如需自备模型产物放回本目录（会被忽略，不会误提交）
 !data/third_party/bge_small_zh_v1_5/
-!data/third_party/bge_small_zh_v1_5/**
+!data/third_party/bge_small_zh_v1_5/README.md
 # 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
 data/game_data/backgrounds/**
 !data/game_data/backgrounds/
