@@ -116,6 +116,8 @@ export interface EmbeddingLocalStatus {
   retrieval_mode: string;
   /** 是否配置了远程 embeddings 接口。 */
   remote_configured: boolean;
+  /** 本地模型文件齐全但无法加载时的原因；此时 retrieval_mode 为 lexical。 */
+  load_error: string | null;
   files: EmbeddingLocalFile[];
 }
 

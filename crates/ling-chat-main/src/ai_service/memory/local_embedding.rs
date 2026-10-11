@@ -75,6 +75,35 @@ pub fn is_model_available() -> bool {
     REQUIRED_FILES.iter().all(|name| dir.join(name).is_file())
 }
 
+/// 本地模型的「指纹」：三个必需文件的 (大小, 修改时间) 组合哈希。
+///
+/// 用于让 [`MemoryService`](super::MemoryService) 的嵌入器缓存**自动失效**——
+/// 在设置页删除 / 重新导入（含换另一份模型）后，指纹变化，下一次嵌入会重新加载，
+/// 无需重启；任一必需文件缺失时返回 `None`。
+pub fn model_fingerprint() -> Option<u64> {
+    fingerprint_at(&model_dir())
+}
+
+/// [`model_fingerprint`] 的目录版（便于单测；`dir` 为模型目录）。
+fn fingerprint_at(dir: &std::path::Path) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    for name in REQUIRED_FILES {
+        let meta = std::fs::metadata(dir.join(name)).ok()?;
+        if !meta.is_file() {
+            return None;
+        }
+        meta.len().hash(&mut hasher);
+        if let Ok(modified) = meta.modified() {
+            if let Ok(since_epoch) = modified.duration_since(std::time::UNIX_EPOCH) {
+                since_epoch.as_nanos().hash(&mut hasher);
+            }
+        }
+    }
+    Some(hasher.finish())
+}
+
 // ─── int2 词嵌入表 ────────────────────────────────────────────
 
 /// 21128×512 的 2-bit 词嵌入表（含每行 8 组 × fp16(scale, zero)）。
@@ -468,6 +497,15 @@ mod tests {
             .join("embedding_int2.bin")
     }
 
+    /// 每个用例独立的临时目录（含进程号与用例名，避免并行测试互相踩踏）。
+    fn unique_dir(tag: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "lingchat_local_embedding_test_{}_{}",
+            tag,
+            std::process::id()
+        ))
+    }
+
     /// 用 Python（`scripts/quantize_bge_embedding.py` 同款算法、同 fp32 链）产出的
     /// 参考值核对 Rust 的位流解码：表头 / f16 scale / LSB-first 解包 / 分组仿射。
     /// 数据来自真实产物 `data/third_party/bge_small_zh_v1_5/embedding_int2.bin`。
@@ -573,5 +611,29 @@ mod tests {
         let mut garbage = vec![0.0f32; EMBED_DIM];
         table.embeds_for_ids(&[u32::MAX - 1], &mut garbage);
         assert_eq!(garbage, vec![0.0f32; EMBED_DIM]);
+    }
+
+    /// 缺文件时指纹为 `None`；文件齐备时指纹随内容（大小）变化——保证删除 / 替换
+    /// 模型后 `MemoryService` 的缓存会失效重载。
+    #[test]
+    fn fingerprint_reflects_model_files() {
+        let dir = unique_dir("fingerprint");
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create dir");
+
+        // 文件不全 → None。
+        for name in &REQUIRED_FILES[..REQUIRED_FILES.len() - 1] {
+            std::fs::write(dir.join(name), b"x").expect("write part");
+        }
+        assert!(fingerprint_at(&dir).is_none());
+
+        // 补齐 → Some，且内容变化后指纹变化。
+        std::fs::write(dir.join(REQUIRED_FILES[REQUIRED_FILES.len() - 1]), b"x").expect("write");
+        let first = fingerprint_at(&dir).expect("fingerprint some");
+        std::fs::write(dir.join(MODEL_FILE), b"xxxxxxxx").expect("rewrite");
+        let second = fingerprint_at(&dir).expect("fingerprint some");
+        assert_ne!(first, second, "内容变化后指纹应变化");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

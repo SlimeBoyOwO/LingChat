@@ -5,8 +5,10 @@
 //! 或 **zip / 7z 压缩包**导入，或删除已安装的副本。
 //!
 //! 模型文件的存在性由 [`crate::ai_service::memory::local_embedding::is_model_available`]
-//! **实时**检查，`MemoryService::is_configured` 每次调用都重新判定，因此导入 / 删除
-//! 后下一次记忆操作立即在「向量 + 词法混合检索」与「纯词法检索」之间切换，无需重启。
+//! **实时**检查，`MemoryService::is_configured` 每次调用都重新判定；嵌入器缓存以文件
+//! 指纹（`local_embedding::model_fingerprint`）为键，文件被删除 / 替换后自动重载。因此
+//! 导入 / 删除 / 更换模型后下一次记忆操作立即在「向量 + 词法混合检索」与「纯词法检索」
+//! 之间切换，无需重启。
 //!
 //! 压缩包解压复用 [`crate::utils::archive`]（zip 炸弹防护、路径清洗、条目数上限）。
 
@@ -42,10 +44,14 @@ pub struct EmbeddingLocalStatus {
     pub dir: String,
     /// 模型名标识。
     pub model_name: String,
-    /// 当前检索模式：`hybrid`（向量 + 词法）或 `lexical`（纯词法）。
+    /// 当前**实际生效**的检索模式：`hybrid`（向量 + 词法）或 `lexical`（纯词法）。
+    /// 已判断过「文件齐备但加载失败」的情况（见 `load_error`），不会误报 hybrid。
     pub retrieval_mode: String,
     /// 是否配置了远程 embeddings 接口（配置了则本地模型是可选的第二选择）。
     pub remote_configured: bool,
+    /// 本地模型文件齐全但**无法加载**时的原因（如产物损坏 / ONNX Runtime 缺失）；
+    /// 此时 `retrieval_mode` 会是 `lexical`。`None` 表示可正常使用或未安装。
+    pub load_error: Option<String>,
     /// 各部件状态。
     pub files: Vec<ModelFileInfo>,
 }
@@ -54,7 +60,7 @@ pub struct EmbeddingLocalStatus {
 #[tauri::command]
 pub async fn embedding_local_status(app: AppHandle) -> Result<EmbeddingLocalStatus, String> {
     let state = app.state::<AppState>();
-    Ok(build_status(&state))
+    Ok(build_status(&state).await)
 }
 
 /// 从本地文件夹或 zip / 7z 压缩包导入本地嵌入模型。
@@ -71,7 +77,7 @@ pub async fn embedding_local_import(
     }
     result?;
     let state = app.state::<AppState>();
-    Ok(build_status(&state))
+    Ok(build_status(&state).await)
 }
 
 /// 删除已安装的本地嵌入模型（只删模型部件，不删目录里的 README 等其它文件）。
@@ -89,12 +95,12 @@ pub async fn embedding_local_delete(app: AppHandle) -> Result<EmbeddingLocalStat
     }
     tracing::info!("本地嵌入模型已删除（检索回退词法）: {}", dir.display());
     let state = app.state::<AppState>();
-    Ok(build_status(&state))
+    Ok(build_status(&state).await)
 }
 
 // ─── 内部实现 ────────────────────────────────────────────────
 
-fn build_status(state: &AppState) -> EmbeddingLocalStatus {
+async fn build_status(state: &AppState) -> EmbeddingLocalStatus {
     let dir = local::model_dir();
     let mut files: Vec<ModelFileInfo> = local::REQUIRED_FILES
         .iter()
@@ -105,12 +111,31 @@ fn build_status(state: &AppState) -> EmbeddingLocalStatus {
             .iter()
             .map(|name| file_info(&dir, name, false)),
     );
+
+    let remote_configured = state.memory.remote_configured();
+    let installed = local::is_model_available();
+    // 已启用远程接口时本地模型只是备选，不必探测（也避免无谓加载）。
+    // 否则若文件齐备就实际加载一次：成功即状态可信（并暖缓存），失败则记下原因，
+    // 让设置页如实显示「已安装但无法加载，实际走词法检索」。
+    let mut load_error = None;
+    if installed && !remote_configured {
+        if let Err(error) = state.memory.probe_local_embedder().await {
+            load_error = Some(error);
+        }
+    }
+    let retrieval_mode = if remote_configured || (installed && load_error.is_none()) {
+        "hybrid"
+    } else {
+        "lexical"
+    };
+
     EmbeddingLocalStatus {
-        installed: local::is_model_available(),
+        installed,
         dir: dir.to_string_lossy().into_owned(),
         model_name: local::LOCAL_MODEL_NAME.to_string(),
-        retrieval_mode: state.memory.retrieval_mode().to_string(),
-        remote_configured: state.memory.remote_configured(),
+        retrieval_mode: retrieval_mode.to_string(),
+        remote_configured,
+        load_error,
         files,
     }
 }

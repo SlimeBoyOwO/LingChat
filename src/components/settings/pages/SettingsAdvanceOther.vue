@@ -352,60 +352,64 @@
             </p>
 
             <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
-              <span
-                class="rounded-md px-2 py-0.5"
-                :class="
-                  embeddingStatus?.installed
-                    ? 'bg-green-500/15 text-green-400'
-                    : 'bg-white/10 text-white/60'
-                "
-              >
-                {{
-                  embeddingStatus?.installed
-                    ? $t("settings.advanceOther.embeddingLocal.statusInstalled")
-                    : $t("settings.advanceOther.embeddingLocal.statusMissing")
-                }}
+              <span class="rounded-md px-2 py-0.5" :class="embeddingStatusClass">
+                {{ embeddingStatusLabel }}
               </span>
               <span class="text-white/60">{{ embeddingModeText }}</span>
             </div>
 
             <div class="mb-3 flex flex-wrap items-center gap-2">
-              <Button type="big" :disabled="embeddingBusy" @click="pickEmbeddingFolder">
+              <Button
+                v-if="!isAndroid"
+                type="big"
+                :disabled="embeddingWorking"
+                @click="pickEmbeddingFolder"
+              >
                 <FolderOpen :size="18" />
                 {{
-                  embeddingBusy
+                  embeddingImporting
                     ? $t("settings.advanceOther.embeddingLocal.importing")
                     : $t("settings.advanceOther.embeddingLocal.importFolderButton")
                 }}
               </Button>
               <button
                 class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
-                :disabled="embeddingBusy"
+                :disabled="embeddingWorking"
                 @click="pickEmbeddingArchive"
               >
-                {{ $t("settings.advanceOther.embeddingLocal.importArchiveButton") }}
+                {{
+                  embeddingImporting
+                    ? $t("settings.advanceOther.embeddingLocal.importing")
+                    : $t("settings.advanceOther.embeddingLocal.importArchiveButton")
+                }}
               </button>
               <button
                 v-if="embeddingStatus?.installed"
                 class="cursor-pointer rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-60"
-                :disabled="embeddingBusy"
+                :disabled="embeddingWorking"
                 @click="removeEmbeddingLocal"
               >
                 {{
-                  embeddingBusy
+                  embeddingDeleting
                     ? $t("settings.advanceOther.embeddingLocal.deleting")
                     : $t("settings.advanceOther.embeddingLocal.deleteButton")
                 }}
               </button>
               <button
                 class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
-                :disabled="embeddingLoading"
+                :disabled="embeddingLoading || embeddingWorking"
                 @click="refreshEmbeddingLocal"
               >
                 {{ $t("settings.advanceOther.embeddingLocal.refresh") }}
               </button>
             </div>
 
+            <p v-if="isAndroid" class="mb-2 text-xs text-white/45">
+              {{ $t("settings.advanceOther.embeddingLocal.androidFolderHint") }}
+            </p>
+            <p v-if="embeddingLoadErrorText" class="mb-2 text-sm text-amber-400">
+              {{ embeddingLoadErrorText }}
+            </p>
             <p v-if="embeddingError" class="mb-2 text-sm text-red-400">{{ embeddingError }}</p>
 
             <div class="rounded-lg border border-white/10 bg-black/25 p-3">
@@ -820,8 +824,17 @@ const removeLegacyArchive = async (archive: MemoryArchiveSummary) => {
 // --- 本地嵌入模型面板（设置页「嵌入模型」子页：导入 / 删除，实时生效） ---
 const embeddingStatus = ref<EmbeddingLocalStatus | null>(null);
 const embeddingLoading = ref(false);
-const embeddingBusy = ref(false);
+const embeddingImporting = ref(false);
+const embeddingDeleting = ref(false);
 const embeddingError = ref("");
+
+// Android 上 plugin-dialog 的 `extensions` 是 MIME 类型（非扩展名），且目录选择返回
+// content:// tree URI，后端的文件暂存桥（saf_bridge）只支持文件，故 Android 隐藏
+// 「从文件夹导入」，只保留压缩包导入（先暂存成真实文件再解压）。
+const isAndroid = /android/i.test(navigator.userAgent);
+
+// 导入或删除进行中（两者互斥，避免并发写模型目录）。
+const embeddingWorking = computed(() => embeddingImporting.value || embeddingDeleting.value);
 
 const embeddingFiles = computed(() => embeddingStatus.value?.files ?? []);
 
@@ -832,6 +845,28 @@ const embeddingModeText = computed(() => {
   return status.retrieval_mode === "hybrid"
     ? t("settings.advanceOther.embeddingLocal.modeHybrid")
     : t("settings.advanceOther.embeddingLocal.modeLexical");
+});
+
+// 文件齐备却加载失败（产物损坏 / ONNX Runtime 缺失）：如实提示，实际走词法检索。
+// 徽章同样区分「可用」与「已安装但不可用」，避免误导。
+const embeddingStatusLabel = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status?.installed) return t("settings.advanceOther.embeddingLocal.statusMissing");
+  if (status.load_error) return t("settings.advanceOther.embeddingLocal.statusBroken");
+  return t("settings.advanceOther.embeddingLocal.statusInstalled");
+});
+
+const embeddingStatusClass = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status?.installed) return "bg-white/10 text-white/60";
+  if (status.load_error) return "bg-amber-500/15 text-amber-400";
+  return "bg-green-500/15 text-green-400";
+});
+
+const embeddingLoadErrorText = computed(() => {
+  const error = embeddingStatus.value?.load_error;
+  if (!error) return "";
+  return t("settings.advanceOther.embeddingLocal.loadError", { error });
 });
 
 const formatBytes = (bytes: number) => {
@@ -847,7 +882,7 @@ const embeddingErrorText = (error: unknown, key: string) =>
   });
 
 const refreshEmbeddingLocal = async () => {
-  if (embeddingLoading.value) return;
+  if (embeddingLoading.value || embeddingWorking.value) return;
   embeddingLoading.value = true;
   embeddingError.value = "";
   try {
@@ -860,19 +895,27 @@ const refreshEmbeddingLocal = async () => {
 };
 
 const importEmbeddingFrom = async (path: string | null) => {
-  if (!path || embeddingBusy.value) return;
-  embeddingBusy.value = true;
+  if (!path || embeddingWorking.value) return;
+  embeddingImporting.value = true;
   embeddingError.value = "";
   try {
     embeddingStatus.value = await importEmbeddingLocal(path);
-    await dialogStore.alert(
-      t("settings.advanceOther.embeddingLocal.importSuccess"),
-      t("settings.advanceOther.embeddingLocal.importTitle"),
-    );
+    const loadError = embeddingStatus.value?.load_error;
+    if (loadError) {
+      // 文件已落盘但加载失败：不谎报成功，直接展示原因（模式已回退词法）。
+      embeddingError.value = t("settings.advanceOther.embeddingLocal.loadError", {
+        error: loadError,
+      });
+    } else {
+      await dialogStore.alert(
+        t("settings.advanceOther.embeddingLocal.importSuccess"),
+        t("settings.advanceOther.embeddingLocal.importTitle"),
+      );
+    }
   } catch (error) {
     embeddingError.value = embeddingErrorText(error, "importFailed");
   } finally {
-    embeddingBusy.value = false;
+    embeddingImporting.value = false;
   }
 };
 
@@ -883,22 +926,33 @@ const pickEmbeddingFolder = async () => {
 };
 
 const pickEmbeddingArchive = async () => {
-  const selection = await openDialog({
-    multiple: false,
-    filters: [{ name: "Model archive", extensions: ["zip", "7z"] }],
-  });
+  // Android 上 `extensions` 是 MIME 类型；zip/7z 无注册 MIME 时退化为
+  // application/octet-stream（与 TTS 语音包导入同一约定）。
+  const filters = isAndroid
+    ? [
+        {
+          name: "Model archive",
+          extensions: [
+            "application/zip",
+            "application/x-7z-compressed",
+            "application/octet-stream",
+          ],
+        },
+      ]
+    : [{ name: "Model archive", extensions: ["zip", "7z"] }];
+  const selection = await openDialog({ multiple: false, filters });
   const path = Array.isArray(selection) ? (selection[0] ?? null) : selection;
   await importEmbeddingFrom(path);
 };
 
 const removeEmbeddingLocal = async () => {
-  if (embeddingBusy.value) return;
+  if (embeddingWorking.value) return;
   const confirmed = await dialogStore.confirm(
     t("settings.advanceOther.embeddingLocal.deleteConfirm"),
     t("settings.advanceOther.embeddingLocal.deleteConfirmTitle"),
   );
   if (!confirmed) return;
-  embeddingBusy.value = true;
+  embeddingDeleting.value = true;
   embeddingError.value = "";
   try {
     embeddingStatus.value = await deleteEmbeddingLocal();
@@ -909,7 +963,7 @@ const removeEmbeddingLocal = async () => {
   } catch (error) {
     embeddingError.value = embeddingErrorText(error, "deleteFailed");
   } finally {
-    embeddingBusy.value = false;
+    embeddingDeleting.value = false;
   }
 };
 

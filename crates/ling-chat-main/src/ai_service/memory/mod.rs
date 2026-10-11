@@ -18,9 +18,11 @@
 //! 自动压缩、插件 `compress_context()` 的显式触发。
 //!
 //! 配置（`embedding.*` / `memory.*` / `features.memory_enabled`）在启动时快照，
-//! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。例外：**本地嵌入模型文件
-//! 的存在性是实时的**（[`MemoryService::is_configured`] 每次调用都做文件存在性检查），
-//! 因此在设置页「嵌入模型」子页导入 / 删除本地模型后立即切换向量 / 词法检索，无需重启。
+//! 修改后需重启生效，与 `api/settings.rs` 的保存提示一致。例外：**本地嵌入模型的
+//! 存在性与内容指纹是实时的**——[`MemoryService::is_configured`] 每次调用都做文件
+//! 存在性检查，嵌入器缓存以文件指纹为键（[`local_embedding::model_fingerprint`]），
+//! 因此在设置页「嵌入模型」子页导入 / 删除 / 更换本地模型后立即切换向量 / 词法检索，
+//! 无需重启。
 
 pub mod embedding;
 pub mod local_embedding;
@@ -131,7 +133,9 @@ pub struct MemoryService {
     /// 远程 OpenAI 兼容 embeddings 客户端（配置了 `embedding.*` 时启用，优先于本地模型）。
     remote: Option<EmbeddingClient>,
     /// 可选本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
-    local: tokio::sync::OnceCell<Arc<LocalEmbedder>>,
+    /// 缓存带上模型指纹（[`local_embedding::model_fingerprint`]），文件被删除 / 替换后
+    /// 指纹变化会自动重新加载，使设置页的导入 / 删除**立即生效**（无需重启）。
+    local: tokio::sync::RwLock<Option<(u64, Arc<LocalEmbedder>)>>,
     search: HybridSearch,
     enabled: bool,
     top_k: usize,
@@ -169,7 +173,7 @@ impl MemoryService {
             db,
             llm,
             remote,
-            local: tokio::sync::OnceCell::new(),
+            local: tokio::sync::RwLock::new(None),
             search: HybridSearch::default(),
             enabled: cfg.memory_enabled,
             top_k: cfg.memory_top_k as usize,
@@ -217,16 +221,45 @@ impl MemoryService {
     }
 
     /// 取到可用的本地嵌入器（首次调用时在阻塞线程池里懒加载）。
-    async fn ensure_local(&self) -> Result<&Arc<LocalEmbedder>> {
+    ///
+    /// 缓存以模型文件指纹为键：指纹一致时复用已加载的 `LocalEmbedder`；文件被
+    /// 删除 / 替换（指纹变化）时重新加载，因此设置页导入 / 删除后立即生效。
+    async fn ensure_local(&self) -> Result<Arc<LocalEmbedder>> {
+        let fingerprint =
+            local_embedding::model_fingerprint().context("本地嵌入模型文件缺失或不可读")?;
+        {
+            let guard = self.local.read().await;
+            if let Some((cached, embedder)) = guard.as_ref() {
+                if *cached == fingerprint {
+                    return Ok(Arc::clone(embedder));
+                }
+            }
+        }
         let dir = local_embedding::model_dir();
-        self.local
-            .get_or_try_init(|| async move {
-                let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
-                    .await
-                    .context("本地嵌入模型加载线程失败")??;
-                Ok::<Arc<LocalEmbedder>, anyhow::Error>(Arc::new(embedder))
-            })
+        let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
             .await
+            .context("本地嵌入模型加载线程失败")??;
+        let embedder = Arc::new(embedder);
+        let mut guard = self.local.write().await;
+        *guard = Some((fingerprint, Arc::clone(&embedder)));
+        Ok(embedder)
+    }
+
+    /// 探测本地嵌入模型是否**真的可用**（不仅文件存在，还能加载）。
+    ///
+    /// 供设置页「嵌入模型」子页的状态展示使用：已配置远程接口时视为可用；否则
+    /// 文件齐备时尝试加载（成功会顺带暖缓存），返回 `Err(原因)` 表示只能走词法。
+    pub async fn probe_local_embedder(&self) -> Result<(), String> {
+        if self.remote.is_some() {
+            return Ok(());
+        }
+        if !local_embedding::is_model_available() {
+            return Err("本地嵌入模型未安装".to_string());
+        }
+        self.ensure_local()
+            .await
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     /// 嵌入一段文本：远程优先，否则用本地模型。
