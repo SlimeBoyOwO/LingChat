@@ -288,7 +288,7 @@ async fn edit_context_impl(
 /// `{ ok, triggered }`，没开记忆功能 / 没有角色达到阈值时直接返回
 /// `triggered: 0`。会调用 LLM，可能耗时数秒。（无嵌入模型时摘要照样可用。）
 async fn compress_context_impl(app: AppHandle) -> serde_json::Value {
-    use crate::ai_service::memory::{AUTO_SUMMARIZE_THRESHOLD, DEFAULT_KEEP_RECENT};
+    use ling_chat_main::ai_service::memory::{AUTO_SUMMARIZE_THRESHOLD, DEFAULT_KEEP_RECENT};
 
     let state = app.state::<AppState>();
     let memory = state.memory.clone();
@@ -296,13 +296,14 @@ async fn compress_context_impl(app: AppHandle) -> serde_json::Value {
         return serde_json::json!({ "ok": true, "triggered": 0 });
     }
 
-    let role_ids = match crate::ai_service::memory::store::role_ids_with_memories(&state.db).await {
-        Ok(role_ids) => role_ids,
-        Err(error) => {
-            tracing::warn!("compress_context 读取记忆角色列表失败: {error}");
-            return serde_json::json!({ "ok": true, "triggered": 0 });
-        },
-    };
+    let role_ids =
+        match ling_chat_main::ai_service::memory::store::role_ids_with_memories(&state.db).await {
+            Ok(role_ids) => role_ids,
+            Err(error) => {
+                tracing::warn!("compress_context 读取记忆角色列表失败: {error}");
+                return serde_json::json!({ "ok": true, "triggered": 0 });
+            },
+        };
 
     let mut triggered = 0u32;
     for role_id in role_ids {

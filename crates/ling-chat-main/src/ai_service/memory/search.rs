@@ -79,8 +79,13 @@ impl HybridSearch {
             .collect();
 
         let merged = self.rank(query_vec, query, &rows, mode, top_k);
+        // 检索按「分块行」打分，但输出按整条记忆聚合：同一 `memory_id` 的多个分块
+        // 都可能命中，这里按 `memory_id` 去重、保留融合排序中位次最高的那块，避免
+        // RAG 注入 / memory_query 返回重复的整条记忆。
+        let mut seen: HashSet<&str> = HashSet::new();
         merged
             .into_iter()
+            .filter(|(index, _, _)| seen.insert(rows[*index].memory_id.as_str()))
             .filter(|(_, score, _)| *score >= min_score)
             .take(top_k)
             .map(|(index, score, source)| {
@@ -384,6 +389,20 @@ mod tests {
         }
     }
 
+    /// 同一记忆的多个分块（id / chunk_index 依次递增）。
+    fn chunk(memory_id: &str, chunk_index: i32, content: &str) -> MemoryRow {
+        MemoryRow {
+            id: chunk_index,
+            memory_id: memory_id.to_string(),
+            chunk_index,
+            content: content.to_string(),
+            tags: None,
+            embedding: Vec::new(),
+            model: String::new(),
+            created_at: 0,
+        }
+    }
+
     #[test]
     fn lexical_matches_related_chinese_content() {
         let rows = vec![
@@ -439,5 +458,33 @@ mod tests {
         assert_eq!(hits.len(), 1);
         assert_eq!(hits[0].memory_id, "a");
         assert_eq!(hits[0].source, "lexical");
+    }
+
+    #[test]
+    fn results_dedupe_multi_chunk_memories() {
+        // 同一记忆被切成两块，两块都与查询相关：输出应只保留一条整条记忆。
+        let rows = vec![
+            chunk(
+                "mem-A",
+                0,
+                "用户喜欢喝冰美式咖啡，每天早上一杯，周末会换冷萃。",
+            ),
+            chunk("mem-A", 1, "用户讨厌被拉进奶茶拼单，只喝不加糖的纯咖啡。"),
+            row("mem-B", "她们约定每周三晚上一起打游戏。"),
+        ];
+        let hits = HybridSearch.run(
+            &[],
+            "用户喜欢喝咖啡",
+            &rows,
+            SearchMode::Lexical,
+            5,
+            0.0,
+            None,
+        );
+        let ids: Vec<&str> = hits.iter().map(|h| h.memory_id.as_str()).collect();
+        assert_eq!(ids, vec!["mem-A"], "只应出一条整条记忆，不应重复: {ids:?}");
+        // 对拍：不分块时同一作答内容也只有一条命中，多分块去重后数量应一致。
+        let dedup_content = hits[0].content.clone();
+        assert!(dedup_content.contains("冰美式咖啡"));
     }
 }

@@ -30,6 +30,7 @@ pub mod search;
 pub mod store;
 
 use std::sync::Arc;
+use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 
 use anyhow::{Context, Result, anyhow};
@@ -126,6 +127,16 @@ enum DedupDecision {
     Store,
 }
 
+/// 本地嵌入器的缓存状态。
+enum LocalCache {
+    /// 尚未加载（第一次嵌入时才懒加载）。
+    Empty,
+    /// 已成功加载：`(模型指纹, 加载器)`。
+    Ready(u64, Arc<LocalEmbedder>),
+    /// 上次加载失败且指纹未变化（模型文件删除 / 替换后指纹变化自然失效重试）。
+    Failed(u64, String),
+}
+
 /// 嵌入 + 向量存储 + 混合检索 + 去重 + 摘要的统一入口。
 pub struct MemoryService {
     db: DatabaseConnection,
@@ -135,7 +146,10 @@ pub struct MemoryService {
     /// 可选本地嵌入模型（懒加载：第一次嵌入时才读表 + 建 ONNX Session）。
     /// 缓存带上模型指纹（[`local_embedding::model_fingerprint`]），文件被删除 / 替换后
     /// 指纹变化会自动重新加载，使设置页的导入 / 删除**立即生效**（无需重启）。
-    local: tokio::sync::RwLock<Option<(u64, Arc<LocalEmbedder>)>>,
+    /// 失败也进缓存（见 [`LocalCache::Failed`]）：模型文件齐备但加载不了的场景下，
+    /// 后续嵌入快速失败而非反复做几百毫秒的完整加载；`is_configured` / `retrieval_mode`
+    /// 同步读取该状态，如实降级为词法检索而非误报 hybrid。
+    local: Mutex<LocalCache>,
     search: HybridSearch,
     enabled: bool,
     top_k: usize,
@@ -173,7 +187,7 @@ impl MemoryService {
             db,
             llm,
             remote,
-            local: tokio::sync::RwLock::new(None),
+            local: Mutex::new(LocalCache::Empty),
             search: HybridSearch::default(),
             enabled: cfg.memory_enabled,
             top_k: cfg.memory_top_k as usize,
@@ -193,13 +207,27 @@ impl MemoryService {
         self.remote.is_some()
     }
 
-    /// 嵌入配置是否就绪：远程已配置，或本地模型文件齐备。
+    /// 嵌入配置是否就绪：远程已配置，或本地模型文件齐备且（若已尝试过）能成功加载。
     ///
     /// 注意：这只决定「是否走向量路」；记忆功能本身**不依赖**它——未就绪时检索与
     /// 写入自动退化为字符 n-gram 词法模式（非嵌入式 RAG）。本地模型的存在性是**实时**
-    /// 文件检查，因此在设置页导入 / 删除模型后立即生效，无需重启。
+    /// 文件检查，因此在设置页导入 / 删除模型后立即生效，无需重启。若本地模型文件齐备
+    /// 但曾加载失败（产物损坏 / ONNX Runtime 缺失），会在首次失败后如实返回 `false`，
+    /// 与设置页展示的 `load_error` 口径一致，直到文件指纹变化后重试。
     pub fn is_configured(&self) -> bool {
-        self.remote.is_some() || local_embedding::is_model_available()
+        if self.remote.is_some() {
+            return true;
+        }
+        let Some(fingerprint) = local_embedding::model_fingerprint() else {
+            return false;
+        };
+        let cache = self.local.lock().unwrap_or_else(|e| e.into_inner());
+        // 已缓存「加载失败且指纹未变」→ 如实视为未配置；其余（空缓存 / 加载成功 /
+        // 指纹已变化）按文件存在性判定。
+        match &*cache {
+            LocalCache::Failed(cached, _) if *cached == fingerprint => false,
+            _ => true,
+        }
     }
 
     /// 当前使用的嵌入模型名（换模型后旧向量不参与检索）。
@@ -224,31 +252,47 @@ impl MemoryService {
     ///
     /// 缓存以模型文件指纹为键：指纹一致时复用已加载的 `LocalEmbedder`；文件被
     /// 删除 / 替换（指纹变化）时重新加载，因此设置页导入 / 删除后立即生效。
+    /// 加载失败也会按指纹缓存原因：指纹不变时后续调用**快速失败**，不会每次重复
+    /// 做几百毫秒的完整加载（坏模型 / ONNX Runtime 缺失场景）。
     async fn ensure_local(&self) -> Result<Arc<LocalEmbedder>> {
         let fingerprint =
             local_embedding::model_fingerprint().context("本地嵌入模型文件缺失或不可读")?;
         {
-            let guard = self.local.read().await;
-            if let Some((cached, embedder)) = guard.as_ref() {
-                if *cached == fingerprint {
+            let cache = self.local.lock().unwrap_or_else(|e| e.into_inner());
+            match &*cache {
+                LocalCache::Ready(cached, embedder) if *cached == fingerprint => {
                     return Ok(Arc::clone(embedder));
-                }
+                },
+                LocalCache::Failed(cached, reason) if *cached == fingerprint => {
+                    return Err(anyhow!("本地嵌入模型加载失败: {reason}"));
+                },
+                _ => {},
             }
         }
         let dir = local_embedding::model_dir();
-        let embedder = tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir))
-            .await
-            .context("本地嵌入模型加载线程失败")??;
-        let embedder = Arc::new(embedder);
-        let mut guard = self.local.write().await;
-        *guard = Some((fingerprint, Arc::clone(&embedder)));
-        Ok(embedder)
+        match tokio::task::spawn_blocking(move || LocalEmbedder::load(&dir)).await {
+            Ok(Ok(embedder)) => {
+                let embedder = Arc::new(embedder);
+                let mut cache = self.local.lock().unwrap_or_else(|e| e.into_inner());
+                *cache = LocalCache::Ready(fingerprint, Arc::clone(&embedder));
+                Ok(embedder)
+            },
+            Ok(Err(error)) => {
+                let reason = format!("{error:#}");
+                let mut cache = self.local.lock().unwrap_or_else(|e| e.into_inner());
+                *cache = LocalCache::Failed(fingerprint, reason.clone());
+                Err(anyhow!("本地嵌入模型加载失败: {reason}"))
+            },
+            Err(error) => Err(anyhow!("本地嵌入模型加载线程失败: {error}")),
+        }
     }
 
     /// 探测本地嵌入模型是否**真的可用**（不仅文件存在，还能加载）。
     ///
-    /// 供设置页「嵌入模型」子页的状态展示使用：已配置远程接口时视为可用；否则
-    /// 文件齐备时尝试加载（成功会顺带暖缓存），返回 `Err(原因)` 表示只能走词法。
+    /// 供设置页「嵌入模型」子页的状态展示、以及旧版记忆向量回填的门禁使用：
+    /// 已配置远程接口时视为可用；否则文件齐备时尝试加载（成功会顺带暖缓存，
+    /// 失败会被 [`ensure_local`](Self::ensure_local) 按指纹缓存），
+    /// 返回 `Err(原因)` 表示只能走词法。
     pub async fn probe_local_embedder(&self) -> Result<(), String> {
         if self.remote.is_some() {
             return Ok(());
@@ -414,7 +458,14 @@ impl MemoryService {
     /// 幂等：只处理还没有向量的行；嵌入配置未就绪时返回 0。分批嵌入，单批失败
     /// 记警告跳过，不因一批失败丢掉整次回填。返回补算成功的条数。
     pub async fn backfill_legacy_embeddings(&self, role_id: Option<i32>) -> Result<usize> {
-        if !self.is_configured() {
+        // 远程已配置直接用；本地模型做一次「真可用」探测（结果与失败原因进缓存）：
+        // 文件齐备但模型加载不了的场景下直接跳过，避免对每条待回填记录逐批刷新失败日志。
+        let configured = if self.remote.is_some() {
+            true
+        } else {
+            self.probe_local_embedder().await.is_ok()
+        };
+        if !configured {
             return Ok(0);
         }
         let pending = store::load_legacy_pending_embeddings(&self.db, role_id).await?;
