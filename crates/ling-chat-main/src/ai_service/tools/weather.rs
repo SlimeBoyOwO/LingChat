@@ -12,12 +12,9 @@ use super::game_status_handle;
 
 // ============ 天气上下文缓存 ============
 //
-// 天气感知定位为"环境上下文"而非"问答工具"：模型应该随时知道外面什么天气
-// （像知道当前时间一样），而不是被问到才临时查。缓存按评审意见放进存档
-// 全局变量（`GameStatus::global_variables`，键 `weather.cache`），随存档
-// 快照持久化到数据库，重启不丢。缓存在两处被填充——query_weather 工具执行
-// 成功时、后台刷新循环（run_refresh_loop）定时拉取时；今日首聊提醒
-// （first_talk_reminder）从缓存读取。
+// 天气缓存：存进存档全局变量（`GameStatus::global_variables`，键
+// `weather.cache`），随存档快照持久化，重启不丢。query_weather 成功与
+// 后台刷新循环两处填充；今日首聊提醒与天气特效同步从缓存读取。
 
 const WEATHER_TTL: Duration = Duration::from_secs(30 * 60);
 
@@ -40,6 +37,14 @@ fn cached_summary_in(gs: &GameStatus) -> Option<String> {
     (unix_now() - fetched_at <= WEATHER_TTL.as_secs() as i64).then_some(summary)
 }
 
+/// 从存档全局变量读取未过期缓存的天气码（自动同步特效用）。
+fn cached_code_in(gs: &GameStatus) -> Option<i64> {
+    let cache = gs.get_variable(CACHE_VAR_KEY)?;
+    let code = cache.get("code")?.as_i64()?;
+    let fetched_at = cache.get("fetched_at")?.as_i64()?;
+    (unix_now() - fetched_at <= WEATHER_TTL.as_secs() as i64).then_some(code)
+}
+
 /// 缓存缺失或已过期（后台刷新循环判断是否需要重新拉取）。
 fn cache_is_stale(gs: &GameStatus) -> bool {
     let fetched_at = gs
@@ -52,10 +57,10 @@ fn cache_is_stale(gs: &GameStatus) -> bool {
     }
 }
 
-fn store_summary_in(gs: &mut GameStatus, summary: String) {
+fn store_summary_in(gs: &mut GameStatus, summary: String, code: i64) {
     gs.set_variable(
         CACHE_VAR_KEY,
-        json!({ "summary": summary, "fetched_at": unix_now() }),
+        json!({ "summary": summary, "code": code, "fetched_at": unix_now() }),
     );
 }
 
@@ -125,10 +130,19 @@ pub async fn run_refresh_loop(app: tauri::AppHandle) {
                 .build()
             {
                 Ok(client) => match fetch_summary_for_city(&client, &city).await {
-                    Ok(summary) => {
-                        let gs = game_status_handle(&app).await;
-                        let mut guard = gs.lock().await;
-                        store_summary_in(&mut guard, summary);
+                    Ok((summary, code)) => {
+                        {
+                            let gs = game_status_handle(&app).await;
+                            let mut guard = gs.lock().await;
+                            store_summary_in(&mut guard, summary, code);
+                        }
+                        // 自动同步开着：把现实天气落到天气特效层
+                        let sync = AppConfig::load(&app)
+                            .map(|c| c.weather_auto_sync)
+                            .unwrap_or(false);
+                        if sync {
+                            sync_weather_effect(&app).await;
+                        }
                     },
                     Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
                 },
@@ -163,6 +177,74 @@ fn effect_hint_for(code: i64) -> &'static str {
         45 | 48 => "none",
         0 | 1 => "StarField 或 none（夜晚适合 StarField）",
         _ => "none",
+    }
+}
+
+/// WMO 天气码 → 前端**天气层**特效名（particles/index.ts 的 WEATHER_EFFECTS 键值）。
+/// 晴/多云返回 "None"（清除天气层）。与 effect_hint_for（氛围层）是两套名字，勿混用。
+fn weather_effect_for(code: i64) -> &'static str {
+    match code {
+        45 | 48 => "Fog",
+        51..=57 => "Drizzle",
+        61..=67 | 80..=82 => "Rain",
+        71..=77 | 85 | 86 => "Snow",
+        95..=99 => "Thunderstorm",
+        _ => "None",
+    }
+}
+
+/// 把缓存中的现实天气应用到天气特效层（广播 `ambient:effect`，带 layer=weather）。
+/// 缓存无货/过期时跳过，等刷新循环拉到新天气再同步。
+pub async fn sync_weather_effect(app: &tauri::AppHandle) {
+    let gs = game_status_handle(app).await;
+    let Some(code) = ({
+        let guard = gs.lock().await;
+        cached_code_in(&guard)
+    }) else {
+        tracing::info!("[WeatherSync] 缓存无货，跳过本次同步");
+        return;
+    };
+    let effect = weather_effect_for(code);
+    let payload = json!({
+        "type": "ambient_effect",
+        "effect": effect,
+        "duration": Value::Null,
+        "layer": "weather",
+    });
+    use tauri::Emitter;
+    if let Err(e) = app.emit("ambient:effect", &payload) {
+        tracing::warn!("[WeatherSync] emit ambient:effect 失败: {e}");
+    } else {
+        tracing::info!("[WeatherSync] 已同步天气层特效: {effect}（code={code}）");
+    }
+}
+
+/// 立即拉取一次天气并同步特效，不等下一个刷新周期。
+/// 由「打开自动同步」「同步开启时改城市」触发（后台执行）；失败静默，刷新循环兜底。
+pub async fn fetch_and_apply_now(app: &tauri::AppHandle) {
+    let Some(city) = AppConfig::load(app).ok().and_then(|c| configured_city(&c)) else {
+        return;
+    };
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+    {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("[WeatherSync] 天气客户端创建失败: {e}");
+            return;
+        },
+    };
+    match fetch_summary_for_city(&client, &city).await {
+        Ok((summary, code)) => {
+            {
+                let gs = game_status_handle(app).await;
+                let mut guard = gs.lock().await;
+                store_summary_in(&mut guard, summary, code);
+            }
+            sync_weather_effect(app).await;
+        },
+        Err(e) => tracing::warn!("[WeatherSync] 天气立即拉取失败（刷新循环会兜底）: {e}"),
     }
 }
 
@@ -230,11 +312,15 @@ fn format_summary(city: &str, current: &Value) -> String {
     )
 }
 
-/// 城市名 → 自然语言摘要（geocode + 拉取 + 组装）。
-async fn fetch_summary_for_city(client: &reqwest::Client, city: &str) -> Result<String, ToolError> {
+/// 城市名 → (自然语言摘要, WMO 天气码)（geocode + 拉取 + 组装）。
+async fn fetch_summary_for_city(
+    client: &reqwest::Client,
+    city: &str,
+) -> Result<(String, i64), ToolError> {
     let (city, lat, lon) = geocode_city(client, city).await?;
     let weather = fetch_current(client, &lat, &lon).await?;
-    Ok(format_summary(&city, &weather["current"]))
+    let code = weather["current"]["weather_code"].as_i64().unwrap_or(-1);
+    Ok((format_summary(&city, &weather["current"]), code))
 }
 
 /// query_weather：查询实时天气（Open-Meteo，免 API key）。
@@ -314,7 +400,7 @@ impl Tool for WeatherTool {
         let summary = format_summary(&city, current);
         let gs = game_status_handle(&app).await;
         let mut guard = gs.lock().await;
-        store_summary_in(&mut guard, summary);
+        store_summary_in(&mut guard, summary, code);
 
         Ok(json!({
             "city": city,

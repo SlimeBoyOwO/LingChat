@@ -7,7 +7,10 @@ use tauri_plugin_store::StoreExt;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::ai_service::game_system::scene_store::{LightingParams, Scene, SceneStore};
+use crate::ai_service::game_system::scene_store::{
+    LightingParams, LocationType, Scene, SceneStore,
+};
+use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
 use crate::api::data_dir;
 use crate::utils::path::{validate_directory_name, validate_path_in_base};
 
@@ -29,6 +32,9 @@ pub struct SceneInfo {
     pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_id: Option<String>,
+    /// 室内外标注："indoor" / "outdoor" / "unknown"；缺省（旧场景）视为 unknown。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub location_type: Option<String>,
 }
 
 // ========== Request types ==========
@@ -190,6 +196,7 @@ fn model_to_info_with_background_index(scene: &Scene, index: &BackgroundIndex) -
             .clone()
             .unwrap_or_else(|| "game".to_string()),
         plugin_id: scene.plugin_id.clone(),
+        location_type: scene.location_type.map(|l| l.as_str().to_string()),
     }
 }
 
@@ -257,7 +264,7 @@ fn now_iso() -> String {
 // ========== Tauri commands ==========
 
 #[tauri::command]
-pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
+pub async fn list_scenes(app: AppHandle) -> Result<Vec<SceneInfo>, String> {
     let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
@@ -290,6 +297,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
 
     let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "svg", "tif", "gif"];
     let mut added = false;
+    let mut new_scene_ids: Vec<String> = Vec::new();
 
     if bg_dir.exists() {
         for path in background_files {
@@ -314,8 +322,9 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
                 .unwrap_or_default();
             let category = category_from_storage_path(&relative);
             let now = now_iso();
+            let id = Uuid::new_v4().to_string();
             scenes.push(Scene {
-                id: Uuid::new_v4().to_string(),
+                id: id.clone(),
                 name,
                 description: String::new(),
                 background: relative,
@@ -324,7 +333,9 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
                 created_at: now.clone(),
                 updated_at: now,
                 plugin_id: None,
+                location_type: None,
             });
+            new_scene_ids.push(id);
             added = true;
         }
     }
@@ -333,6 +344,9 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
         store
             .save_all(&scenes)
             .map_err(|e| format!("保存场景失败: {}", e))?;
+        // 导入的背景自动注册成场景后同样走一次 AI 室内外标注
+        //（批量导入时在单个后台任务里逐个执行；已标注过的场景不会被重标）
+        spawn_location_annotations(app, new_scene_ids);
     }
 
     Ok(scenes
@@ -342,7 +356,7 @@ pub async fn list_scenes(_app: AppHandle) -> Result<Vec<SceneInfo>, String> {
 }
 
 #[tauri::command]
-pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<SceneInfo, String> {
+pub async fn create_scene(app: AppHandle, req: CreateSceneRequest) -> Result<SceneInfo, String> {
     let store = SceneStore::new(&data_dir());
     let mut scenes = store
         .load_all()
@@ -363,13 +377,246 @@ pub async fn create_scene(_app: AppHandle, req: CreateSceneRequest) -> Result<Sc
         created_at: now.clone(),
         updated_at: now,
         plugin_id: None,
+        location_type: None,
     };
+    let scene_id = scene.id.clone();
     let info = model_to_info(&scene);
     scenes.push(scene);
     store
         .save_all(&scenes)
         .map_err(|e| format!("保存场景失败: {}", e))?;
+
+    // 异步 LLM 标注室内外，不阻塞创建；完成后写回并广播
+    spawn_location_annotations(app, vec![scene_id]);
+
     Ok(info)
+}
+
+/// 批量异步标注：单个后台任务里逐个执行，避免批量导入时并发请求 LLM。
+fn spawn_location_annotations(app: AppHandle, scene_ids: Vec<String>) {
+    if scene_ids.is_empty() {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        for id in scene_ids {
+            annotate_scene_location(&app, &id).await;
+        }
+    });
+}
+
+/// LLM 室内外标注（建场景/背景导入后异步执行一次）。
+///
+/// 配置了「视觉模型」时把背景图连同名称、描述一起发给视觉模型（复用截图
+/// 分析的 ScreenAnalyzer 链路）；未配置或视觉请求失败时回退为对话模型纯
+/// 文本判断。只输出「室内 / 室外 / 不确定」，任何失败都安静留在 unknown，
+/// 用户可在场景卡上点击改写。
+async fn annotate_scene_location(app: &AppHandle, scene_id: &str) {
+    let store = SceneStore::new(&data_dir());
+    let Some(scene) = store
+        .find_by_id(scene_id)
+        .ok()
+        .flatten()
+        .filter(|s| s.location_type.is_none())
+    else {
+        return;
+    };
+
+    let prompt = format!(
+        "你是场景分类助手。根据场景名称、描述和背景图判断该地点是室内还是室外。\
+         只输出三个词之一：室内、室外、不确定\n场景名：{}\n描述：{}",
+        scene.name, scene.description
+    );
+
+    // 优先视觉模型：与截图分析共用同一份「视觉模型」配置与请求链路
+    let image_path = super::backgrounds_dir().join(&scene.background);
+    let mut analyzer = ScreenAnalyzer::new(ScreenAnalyzerConfig::resolve(app));
+    if let Some(answer) = analyzer
+        .analyze_image_file(&image_path.to_string_lossy(), &prompt)
+        .await
+    {
+        if let Some(location) = parse_location_answer(&answer) {
+            store_annotation(app, scene_id, location, &scene.name);
+            return;
+        }
+        tracing::info!("[SceneLocation] 视觉标注输出无法解析：{answer}");
+    }
+
+    // 回退：对话模型纯文本判断
+    let Some(llm) = ({
+        let state = app.state::<AppState>();
+        crate::ai_service::llm::slot_snapshot(&state.chat.llm).await
+    }) else {
+        return;
+    };
+    if !llm.config().is_usable() {
+        return;
+    }
+    let msgs = vec![
+        crate::ai_service::types::LlmMessage::system(
+            "你是场景分类助手。根据场景名称和描述判断该地点是室内还是室外。\
+             只输出三个词之一：室内、室外、不确定",
+        ),
+        crate::ai_service::types::LlmMessage::user(format!(
+            "场景名：{}\n描述：{}",
+            scene.name, scene.description
+        )),
+    ];
+    let answer = match llm.complete(&msgs).await {
+        Ok(text) => text.trim().to_string(),
+        Err(e) => {
+            tracing::warn!("[SceneLocation] 场景「{scene_id}」室内外标注失败: {e}");
+            return;
+        },
+    };
+    match parse_location_answer(&answer) {
+        Some(location) => store_annotation(app, scene_id, location, &scene.name),
+        None => tracing::info!("[SceneLocation] 场景「{scene_id}」标注输出无法解析：{answer}"),
+    }
+}
+
+/// 解析标注输出：「不确定/未知」→ Unknown，其次室外，再次室内。
+fn parse_location_answer(answer: &str) -> Option<LocationType> {
+    if answer.contains("不确定") || answer.contains("未知") {
+        Some(LocationType::Unknown)
+    } else if answer.contains("室外") {
+        Some(LocationType::Outdoor)
+    } else if answer.contains("室内") {
+        Some(LocationType::Indoor)
+    } else {
+        None
+    }
+}
+
+/// 把标注写回 scenes.json（仍为空才写入，避免覆盖标注期间用户的手动设置），
+/// 成功后广播给前端就地更新。
+fn store_annotation(app: &AppHandle, scene_id: &str, location: LocationType, scene_name: &str) {
+    let store = SceneStore::new(&data_dir());
+    let mut scenes = match store.load_all() {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("[SceneLocation] 读取场景失败: {e}");
+            return;
+        },
+    };
+    let mut updated = false;
+    if let Some(record) = scenes.iter_mut().find(|s| s.id == scene_id) {
+        if record.location_type.is_none() {
+            record.location_type = Some(location);
+            updated = true;
+        }
+    }
+    if updated {
+        if let Err(e) = SceneStore::new(&data_dir()).save_all(&scenes) {
+            tracing::warn!("[SceneLocation] 标注写回失败: {e}");
+            return;
+        }
+        if let Err(e) = app.emit(
+            "scene:location-updated",
+            serde_json::json!({ "id": scene_id, "location_type": location.as_str() }),
+        ) {
+            tracing::warn!("emit scene:location-updated 失败: {e}");
+        }
+        tracing::info!(
+            "[SceneLocation] 场景「{scene_name}」标注为 {}",
+            location.as_str()
+        );
+    }
+}
+
+/// set_scene_location_type：用户在场景卡上点击标注，手动设置室内外。
+#[tauri::command]
+pub async fn set_scene_location_type(
+    app: AppHandle,
+    id: String,
+    location_type: String,
+) -> Result<(), String> {
+    let location = LocationType::parse(&location_type)
+        .ok_or_else(|| format!("无效的室内外标注: {location_type}"))?;
+    let store = SceneStore::new(&data_dir());
+    let mut scenes = store.load_all().map_err(|e| format!("加载场景失败: {e}"))?;
+    let record = scenes
+        .iter_mut()
+        .find(|s| s.id == id)
+        .ok_or_else(|| format!("场景 {id} 不存在"))?;
+    record.location_type = Some(location);
+    record.updated_at = now_iso();
+    store
+        .save_all(&scenes)
+        .map_err(|e| format!("保存场景失败: {e}"))?;
+
+    // 广播给前端就地更新
+    if let Err(e) = app.emit(
+        "scene:location-updated",
+        serde_json::json!({ "id": id, "location_type": location.as_str() }),
+    ) {
+        tracing::warn!("emit scene:location-updated 失败: {e}");
+    }
+    Ok(())
+}
+
+// ========== 天气同步（城市 + 自动同步现实） ==========
+
+/// get_weather_sync_config：读取天气同步所需的配置（城市 + 自动同步开关）。
+#[tauri::command]
+pub async fn get_weather_sync_config(app: AppHandle) -> Result<serde_json::Value, String> {
+    let config = crate::config::AppConfig::load(&app).map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "city": config.weather_city,
+        "auto_sync": config.weather_auto_sync,
+    }))
+}
+
+/// set_weather_city：保存天气城市；清空城市时一并关闭同步。
+/// 同步开着时改城市，立即按新城市拉取一次天气。
+#[tauri::command]
+pub async fn set_weather_city(app: AppHandle, city: String) -> Result<(), String> {
+    let city = city.trim().to_string();
+    if let Ok(store) = app.store(crate::config::STORE_FILE) {
+        store.set(
+            crate::config::keys::WEATHER_CITY.to_string(),
+            serde_json::Value::String(city.clone()),
+        );
+        if city.is_empty() {
+            store.set(crate::config::keys::WEATHER_AUTO_SYNC.to_string(), false);
+        }
+        let _ = store.save();
+    }
+    let sync_on = crate::config::AppConfig::load(&app)
+        .map(|c| c.weather_auto_sync)
+        .unwrap_or(false);
+    if !city.is_empty() && sync_on {
+        tauri::async_runtime::spawn(async move {
+            crate::ai_service::tools::weather::fetch_and_apply_now(&app).await;
+        });
+    }
+    Ok(())
+}
+
+/// set_weather_auto_sync：切换「自动同步现实天气」。城市为空时拒绝打开；
+/// 打开时应用缓存并立即按城市拉取一次最新天气。
+#[tauri::command]
+pub async fn set_weather_auto_sync(app: AppHandle, enabled: bool) -> Result<(), String> {
+    if enabled {
+        let city = crate::config::AppConfig::load(&app)
+            .ok()
+            .map(|c| c.weather_city)
+            .unwrap_or_default();
+        if city.trim().is_empty() {
+            return Err("请先填写城市，再开启天气同步".into());
+        }
+    }
+    if let Ok(store) = app.store(crate::config::STORE_FILE) {
+        store.set(crate::config::keys::WEATHER_AUTO_SYNC.to_string(), enabled);
+        let _ = store.save();
+    }
+    if enabled {
+        // 先用缓存立即应用一次（若有），再后台拉最新——两步都不阻塞设置页
+        crate::ai_service::tools::weather::sync_weather_effect(&app).await;
+        tauri::async_runtime::spawn(async move {
+            crate::ai_service::tools::weather::fetch_and_apply_now(&app).await;
+        });
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -696,6 +943,8 @@ pub async fn select_background_effect(app: AppHandle, effect: String) -> Result<
     let payload = serde_json::json!({
         "type": "ambient_effect",
         "effect": effect,
+        // 标记手动选择：前端回声只更新对应层，不清另一层
+        "source": "manual",
     });
     if let Err(e) = app.emit("ambient:effect", &payload) {
         tracing::warn!("emit ambient effect 失败: {e}");

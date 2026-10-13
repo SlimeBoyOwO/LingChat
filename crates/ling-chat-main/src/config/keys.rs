@@ -44,6 +44,8 @@ pub const WEATHER_CITY: &str = "features.weather_city";
 /// 今日首次对话时是否注入天气提醒（剧本模式/编辑器试玩从不注入）。
 /// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
 pub const WEATHER_FIRST_TALK: &str = "features.weather_first_talk";
+/// 自动同步现实天气到天气特效层（需配合 WEATHER_CITY；手动或 AI 切换天气特效时自动关闭）。
+pub const WEATHER_AUTO_SYNC: &str = "features.weather_auto_sync";
 
 // ========== AI 自动切换（手动优先锁） ==========
 /// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）

@@ -128,12 +128,18 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
+import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
 import { PictureInPicture } from "lucide-vue-next";
 import { MenuItem } from "@/components/ui";
 import SceneEditModal from "@/components/settings/scene/SceneEditModal.vue";
 import { isAndroid } from "@/utils/platform";
-import { clearEmptyScenes, moveSceneToCategory, type SceneInfo } from "@/api/services/scene";
+import {
+  clearEmptyScenes,
+  moveSceneToCategory,
+  type SceneInfo,
+  type SceneLocationType,
+} from "@/api/services/scene";
 import { openBackgroundsFolder } from "@/api/services/background";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
@@ -366,5 +372,21 @@ onMounted(async () => {
   if (gameStore.currentScene?.background) {
     uiStore.setCurrentBackground(gameStore.currentScene.background);
   }
+
+  // LLM 室内外标注完成：就地更新列表与当前场景，不整表重拉
+  await listen<SceneLocationUpdatedPayload>("scene:location-updated", (event) => {
+    const { id, location_type } = event.payload;
+    const target = scenes.value.find((s) => s.id === id);
+    if (target) target.location_type = location_type;
+    if (gameStore.currentScene?.id === id && gameStore.currentScene) {
+      gameStore.setCurrentScene({ ...gameStore.currentScene, location_type });
+    }
+  });
 });
+
+/** scene:location-updated 事件负载（后端 LLM 标注写回时广播） */
+interface SceneLocationUpdatedPayload {
+  id: string;
+  location_type: SceneLocationType;
+}
 </script>

@@ -38,6 +38,31 @@
           {{ opt.label }}
         </Button>
       </div>
+      <!-- 自动同步现实天气：城市输入 + 同步开关；没填城市禁用，清空自动关闭 -->
+      <div class="mt-3 flex items-center gap-3">
+        <span class="text-sm whitespace-nowrap text-white/70">
+          {{ $t("settings.background.weather.city") }}
+        </span>
+        <input
+          v-model="weatherCityDraft"
+          class="rounded-none border-0 border-b border-white/25 bg-transparent px-1 py-0.5 text-sm text-white/90 transition-[width,border-color] outline-none placeholder:text-white/30 focus:border-cyan-400/60"
+          :style="{ width: weatherCityWidth }"
+          :placeholder="$t('settings.background.weather.cityPlaceholder')"
+          @change="saveWeatherCity"
+        />
+        <button
+          class="shrink-0 rounded-lg border px-3 py-1 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          :class="
+            weatherAutoSync
+              ? 'border-cyan-400/60 bg-cyan-400/20 text-cyan-200'
+              : 'border-white/25 bg-white/10 text-white/80 hover:bg-white/20'
+          "
+          :disabled="!weatherCityDraft.trim()"
+          @click="toggleWeatherSync"
+        >
+          {{ $t("settings.background.weather.autoSync") }}
+        </button>
+      </div>
     </MenuItem>
 
     <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
@@ -327,7 +352,12 @@ import {
   CloudFog,
 } from "lucide-vue-next";
 import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
-import { selectBackgroundEffect } from "../../../api/services/scene";
+import {
+  selectBackgroundEffect,
+  getWeatherSyncConfig,
+  setWeatherCity,
+  setWeatherAutoSync,
+} from "../../../api/services/scene";
 import {
   getCpuInfo,
   redetectCpu,
@@ -476,6 +506,14 @@ const suggestedFps = computed(() =>
 onMounted(async () => {
   // 加载 CPU + GPU 性能信息
   await fetchPerfInfo();
+  // 天气同步配置：页面打开时从后端读一次（与高级设置配置树同键，各自挂载时读即保持一致）
+  try {
+    const cfg = await getWeatherSyncConfig();
+    weatherCityDraft.value = cfg.city;
+    weatherAutoSync.value = cfg.auto_sync;
+  } catch (e) {
+    console.warn("getWeatherSyncConfig 失败:", e);
+  }
 });
 
 async function fetchPerfInfo(): Promise<void> {
@@ -538,6 +576,47 @@ function updateParticle(value: string): void {
 // 而设置页正是要允许两层并存的地方
 function updateWeather(value: string): void {
   uiStore.setWeatherEffect(value);
+  // 手动选了天气特效 → 天气同步自动关闭
+  if (weatherAutoSync.value) {
+    weatherAutoSync.value = false;
+    setWeatherAutoSync(false).catch((e) => console.warn("setWeatherAutoSync 失败:", e));
+  }
+}
+
+// ========== 自动同步现实天气（城市输入 + 同步开关，一行） ==========
+const weatherCityDraft = ref("");
+const weatherAutoSync = ref(false);
+
+// 输入框宽度：默认两个字，随内容自动延长（封顶 12 个汉字）
+const weatherCityWidth = computed(() => {
+  let units = 0;
+  for (const ch of weatherCityDraft.value) {
+    units += ch.charCodeAt(0) > 255 ? 1 : 0.55;
+  }
+  return `${Math.min(12, Math.max(2, units) + 0.6)}em`;
+});
+
+async function saveWeatherCity(): Promise<void> {
+  const city = weatherCityDraft.value.trim();
+  try {
+    await setWeatherCity(city);
+    // 清空城市即失同步资格：本地开关一并弹回关（后端也会关）
+    if (!city) weatherAutoSync.value = false;
+  } catch (e) {
+    console.warn("setWeatherCity 失败:", e);
+  }
+}
+
+async function toggleWeatherSync(): Promise<void> {
+  // 没填城市不允许打开（按钮已置灰，这里兜底）
+  if (!weatherCityDraft.value.trim()) return;
+  const next = !weatherAutoSync.value;
+  try {
+    await setWeatherAutoSync(next);
+    weatherAutoSync.value = next;
+  } catch (e) {
+    console.warn("setWeatherAutoSync 失败:", e);
+  }
 }
 
 function handleMeteorFpsChange(value: number) {

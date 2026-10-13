@@ -307,11 +307,9 @@ impl MessageGenerator {
 
     /// 今日首次对话时，往 game_status 添加一条「系统」天气台词。
     ///
-    /// 遵循项目约定《永远不要插入第二条 system 类型的消息》：不手工拼
-    /// LlmMessage，而是与场景切换旁白同样通过 `add_line` 入列，由正常管线
-    /// 进入角色记忆。剧本系来源（AI 对话/自由对话事件）与编辑器试玩不注入；
-    /// 其余场景由 `first_talk_reminder` 内部的"每日一次 + 配置开关 + 缓存有货"
-    /// 三重门决定是否真正添加。
+    /// 以 `add_line` 入列（User 属性，不产生第二条 system 消息）；
+    /// 剧本系来源与编辑器试玩不注入，其余由 `first_talk_reminder`
+    /// 的"每日一次 + 配置开关 + 缓存有货"三重门决定。
     async fn inject_weather_first_talk(&self, gs: &mut GameStatus) {
         let script_source = matches!(
             self.deps.source,

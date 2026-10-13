@@ -709,6 +709,12 @@ export default {
       delete: "Delete",
       edit: "Edit Scene",
       noDescription: "No description (selecting it won't trigger narration)",
+      location: {
+        indoor: "Indoor",
+        outdoor: "Outdoor",
+        unknown: "Unknown",
+        editTitle: "Click to cycle indoor/outdoor tag",
+      },
       tip: "Tip",
       noDescriptionTip:
         'The scene "{name}" has no description; selecting it won\'t trigger scene narration',
@@ -778,6 +784,9 @@ export default {
       snow: "Snow",
       blizzard: "Blizzard",
       fog: "Fog",
+      city: "City",
+      cityPlaceholder: "e.g. Chengdu",
+      autoSync: "Real-weather Sync",
     },
     animation: {
       switchTitle: "Animation Switches",

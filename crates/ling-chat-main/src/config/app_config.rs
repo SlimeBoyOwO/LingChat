@@ -112,6 +112,9 @@ pub struct AppConfig {
     /// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
     #[serde(default)]
     pub weather_first_talk: bool,
+    /// 自动同步现实天气到天气特效层（需配置 weather_city；手动或 AI 切换天气特效时自动关闭）。
+    #[serde(default)]
+    pub weather_auto_sync: bool,
     // ---- AI 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
     #[serde(default = "default_true")]
     pub ai_auto_clothes: bool,
@@ -172,6 +175,7 @@ impl Default for AppConfig {
             enable_emotion_classifier: default_enable_emotion_classifier(),
             weather_city: String::new(),
             weather_first_talk: false,
+            weather_auto_sync: false,
             ai_auto_clothes: true,
             ai_auto_scene: true,
             ai_auto_effect: true,
@@ -283,6 +287,7 @@ impl AppConfig {
                 keys::WEATHER_FIRST_TALK,
                 default.weather_first_talk,
             ),
+            weather_auto_sync: get_bool(&store, keys::WEATHER_AUTO_SYNC, default.weather_auto_sync),
             ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
             ai_auto_scene: get_bool(&store, keys::AI_AUTO_SCENE, default.ai_auto_scene),
             ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
