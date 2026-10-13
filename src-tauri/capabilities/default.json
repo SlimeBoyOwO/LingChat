@@ -15,6 +15,7 @@
     "core:window:allow-is-maximized",
     "core:window:allow-set-focus",
     "core:window:allow-set-always-on-top",
+    "core:window:allow-set-title",
     "core:window:allow-start-dragging",
     "core:window:allow-set-size",
     "core:window:allow-set-position",

@@ -10,7 +10,7 @@ export default class DialogueProcessor implements IEventProcessor {
     return eventType === "reply";
   }
 
-  async processEvent(event: ScriptDialogueEvent): Promise<void> {
+  async processEvent(event: ScriptDialogueEvent, signal?: AbortSignal): Promise<void> {
     const gameStore = useGameStore();
     const uiStore = useUIStore();
 
@@ -19,6 +19,7 @@ export default class DialogueProcessor implements IEventProcessor {
 
     // 针对剧本模式，获取角色
     const role = await gameStore.getOrCreateGameRole(event.roleId);
+    if (signal?.aborted) return;
     if (!role) {
       console.warn("角色修改的角色似乎并没有被初始化");
       return;

@@ -11,12 +11,32 @@ export class EventQueue {
   private paused = true;
   private currentEvent: ScriptEventType | null = null;
   private currentResolve: (() => void) | null = null;
+  private durationResolve: (() => void) | null = null;
+  private durationTimer: number | null = null;
+  private generation = 0;
+  private abortController = new AbortController();
 
   addEvent(event: ScriptEventType) {
-    if ((event.type === "error" || event.type === "status_reset") && this.currentResolve) {
-      this.currentResolve();
-      this.currentResolve = null;
+    if (event.type === "error" || event.type === "status_reset") {
+      // Error/reset preempts both click waits and timed visual beats.
+      this.generation += 1;
+      this.abortController.abort();
+      this.abortController = new AbortController();
       this.queue = [];
+      this.isProcessing = false;
+      if (this.currentResolve) {
+        this.currentResolve();
+        this.currentResolve = null;
+      }
+      if (this.durationTimer !== null) {
+        window.clearTimeout(this.durationTimer);
+        this.durationTimer = null;
+      }
+      if (this.durationResolve) {
+        this.durationResolve();
+        this.durationResolve = null;
+      }
+      useUIStore().resetHorrorEffects();
       dialogueMerge.armed = false;
     }
 
@@ -57,9 +77,11 @@ export class EventQueue {
   }
 
   private async processQueue() {
+    const runGeneration = this.generation;
+    const signal = this.abortController.signal;
     this.isProcessing = true;
     try {
-      while (this.queue.length > 0) {
+      while (runGeneration === this.generation && this.queue.length > 0) {
         const event = this.queue.shift();
         if (event) {
           // 如果当前事件是thinking类型，且队列后面还有别的事件，则跳过
@@ -68,24 +90,34 @@ export class EventQueue {
           }
           this.currentEvent = event;
           try {
-            await this.processSingleEvent(event);
+            await this.processSingleEvent(event, signal);
           } catch (error) {
             console.error("处理事件失败:", error, event);
             this.resetToInputState();
           }
+          // clear() 会推进代号并解除当前 Promise；旧循环不得复活消费新队列。
+          if (runGeneration !== this.generation) return;
         }
       }
     } finally {
-      this.isProcessing = false;
-      if (this.currentEvent?.isFinal) {
-        this.resetToInputState();
+      if (runGeneration === this.generation) {
+        this.isProcessing = false;
+        if (this.currentEvent?.isFinal) {
+          this.resetToInputState();
+        }
       }
     }
   }
 
-  private async processSingleEvent(event: ScriptEventType): Promise<void> {
-    // 处理事件并等待完成
-    await eventProcessorManager.processEvent(event);
+  private async processSingleEvent(event: ScriptEventType, signal: AbortSignal): Promise<void> {
+    // 处理事件并等待完成；clear() 后异步 processor 不得继续进入等待阶段。
+    await eventProcessorManager.processEvent(event, signal);
+    if (signal.aborted) return;
+
+    // 立绘闪现由独立覆盖层计时，可与紧随其后的音效/背景效果叠加。
+    // 背景特效和突脸则必须占住队列的 authored duration，否则下一项
+    // 会立即覆盖它们，玩家只能看到空白帧甚至完全看不到崩坏场景。
+    if (this.isSelfTimedVisual(event)) return;
 
     // 空文本的收尾 reply 没有任何可展示内容，"等待用户继续"会变成永久等待——
     // 打字机无字可打、自动续打钩子不会触发、用户面对一片空白也无处可点。
@@ -107,6 +139,10 @@ export class EventQueue {
       await this.waitForDuration(event.duration);
       console.log("等待" + event.duration + "秒");
     }
+  }
+
+  private isSelfTimedVisual(event: ScriptEventType): boolean {
+    return event.type === "modify_character" && event.flash === true;
   }
 
   private shouldWaitForUser(event: ScriptEventType): boolean {
@@ -152,10 +188,25 @@ export class EventQueue {
   }
 
   clear() {
+    this.generation += 1;
+    this.abortController.abort();
+    this.abortController = new AbortController();
     this.queue = [];
     this.isProcessing = false;
     this.paused = true;
-    this.currentResolve = null;
+    if (this.currentResolve) {
+      this.currentResolve();
+      this.currentResolve = null;
+    }
+    if (this.durationTimer !== null) {
+      window.clearTimeout(this.durationTimer);
+      this.durationTimer = null;
+    }
+    if (this.durationResolve) {
+      this.durationResolve();
+      this.durationResolve = null;
+    }
+    useUIStore().resetHorrorEffects();
     this.resetToInputState();
   }
 
@@ -191,7 +242,12 @@ export class EventQueue {
 
   private waitForDuration(duration: number): Promise<void> {
     return new Promise((resolve) => {
-      setTimeout(resolve, duration * 1000);
+      this.durationResolve = resolve;
+      this.durationTimer = window.setTimeout(() => {
+        this.durationTimer = null;
+        this.durationResolve = null;
+        resolve();
+      }, duration * 1000);
     });
   }
 }

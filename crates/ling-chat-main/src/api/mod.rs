@@ -22,6 +22,7 @@ pub mod schedule;
 pub mod screenshot;
 pub mod script;
 pub mod script_editor;
+pub(crate) mod script_popups;
 pub mod settings;
 pub mod tool_settings;
 pub mod workshop;
