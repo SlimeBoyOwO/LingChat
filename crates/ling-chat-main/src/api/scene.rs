@@ -506,7 +506,7 @@ fn store_annotation(app: &AppHandle, scene_id: &str, location: LocationType, sce
         }
     }
     if updated {
-        if let Err(e) = SceneStore::new(&data_dir()).save_all(&scenes) {
+        if let Err(e) = store.save_all(&scenes) {
             tracing::warn!("[SceneLocation] 标注写回失败: {e}");
             return;
         }

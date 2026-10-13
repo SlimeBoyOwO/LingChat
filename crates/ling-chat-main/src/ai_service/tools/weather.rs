@@ -115,7 +115,13 @@ pub(crate) fn first_talk_reminder(
 /// 由 src-tauri 的 background.rs 在启动时 spawn。
 pub async fn run_refresh_loop(app: tauri::AppHandle) {
     loop {
-        let city = AppConfig::load(&app).ok().and_then(|c| configured_city(&c));
+        let config = AppConfig::load(&app).ok();
+        let city = config.as_ref().and_then(configured_city);
+        // 自动同步开关与城市同一份配置一次读出，避免刷新时重复读盘
+        let auto_sync = config
+            .as_ref()
+            .map(|c| c.weather_auto_sync)
+            .unwrap_or(false);
 
         // 只在判过期/写缓存时短暂持锁，网络请求期间不持有 game_status 锁
         let stale = {
@@ -125,32 +131,37 @@ pub async fn run_refresh_loop(app: tauri::AppHandle) {
         };
 
         if let (true, Some(city)) = (stale, city) {
-            match reqwest::Client::builder()
-                .timeout(Duration::from_secs(10))
-                .build()
-            {
-                Ok(client) => match fetch_summary_for_city(&client, &city).await {
-                    Ok((summary, code)) => {
-                        {
-                            let gs = game_status_handle(&app).await;
-                            let mut guard = gs.lock().await;
-                            store_summary_in(&mut guard, summary, code);
-                        }
-                        // 自动同步开着：把现实天气落到天气特效层
-                        let sync = AppConfig::load(&app)
-                            .map(|c| c.weather_auto_sync)
-                            .unwrap_or(false);
-                        if sync {
-                            sync_weather_effect(&app).await;
-                        }
-                    },
-                    Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
+            match fetch_into_cache(&app, &city).await {
+                Ok(code) => {
+                    // 自动同步开着：把现实天气落到天气特效层
+                    if auto_sync {
+                        emit_weather_effect(&app, code);
+                    }
                 },
-                Err(e) => tracing::warn!("天气客户端创建失败: {e}"),
+                Err(e) => tracing::warn!("天气缓存刷新失败: {e}"),
             }
         }
         tokio::time::sleep(Duration::from_secs(5 * 60)).await;
     }
+}
+
+/// 天气 HTTP 客户端（统一 10 秒超时）。
+fn weather_client() -> Result<reqwest::Client, reqwest::Error> {
+    reqwest::Client::builder()
+        .timeout(Duration::from_secs(10))
+        .build()
+}
+
+/// 拉取一次天气并写入存档缓存，返回 WMO 天气码。
+/// 后台刷新循环与「立即同步」两处共用，避免重复的客户端构建与缓存写回。
+async fn fetch_into_cache(app: &tauri::AppHandle, city: &str) -> Result<i64, ToolError> {
+    let client =
+        weather_client().map_err(|e| ToolError::Execution(format!("创建 HTTP 客户端失败: {e}")))?;
+    let (summary, code) = fetch_summary_for_city(&client, city).await?;
+    let gs = game_status_handle(app).await;
+    let mut guard = gs.lock().await;
+    store_summary_in(&mut guard, summary, code);
+    Ok(code)
 }
 
 /// WMO weather interpretation code → 中文天气描述。
@@ -194,16 +205,22 @@ fn weather_effect_for(code: i64) -> &'static str {
 }
 
 /// 把缓存中的现实天气应用到天气特效层（广播 `ambient:effect`，带 layer=weather）。
-/// 缓存无货/过期时跳过，等刷新循环拉到新天气再同步。
+/// 缓存无货/过期时跳过，等刷新循环拉到新天气再同步。供「打开自动同步」兜底调用。
 pub async fn sync_weather_effect(app: &tauri::AppHandle) {
-    let gs = game_status_handle(app).await;
-    let Some(code) = ({
+    let code = {
+        let gs = game_status_handle(app).await;
         let guard = gs.lock().await;
         cached_code_in(&guard)
-    }) else {
+    };
+    let Some(code) = code else {
         tracing::info!("[WeatherSync] 缓存无货，跳过本次同步");
         return;
     };
+    emit_weather_effect(app, code);
+}
+
+/// 广播天气层特效；`code` 由调用方保证已从缓存/拉取获得，不再回读缓存。
+fn emit_weather_effect(app: &tauri::AppHandle, code: i64) {
     let effect = weather_effect_for(code);
     let payload = json!({
         "type": "ambient_effect",
@@ -225,25 +242,8 @@ pub async fn fetch_and_apply_now(app: &tauri::AppHandle) {
     let Some(city) = AppConfig::load(app).ok().and_then(|c| configured_city(&c)) else {
         return;
     };
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
-        .build()
-    {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!("[WeatherSync] 天气客户端创建失败: {e}");
-            return;
-        },
-    };
-    match fetch_summary_for_city(&client, &city).await {
-        Ok((summary, code)) => {
-            {
-                let gs = game_status_handle(app).await;
-                let mut guard = gs.lock().await;
-                store_summary_in(&mut guard, summary, code);
-            }
-            sync_weather_effect(app).await;
-        },
+    match fetch_into_cache(app, &city).await {
+        Ok(code) => emit_weather_effect(app, code),
         Err(e) => tracing::warn!("[WeatherSync] 天气立即拉取失败（刷新循环会兜底）: {e}"),
     }
 }
@@ -374,9 +374,7 @@ impl Tool for WeatherTool {
         let app = context.require_app()?;
         let configured = AppConfig::load(&app).ok().and_then(|c| configured_city(&c));
 
-        let client = reqwest::Client::builder()
-            .timeout(std::time::Duration::from_secs(10))
-            .build()
+        let client = weather_client()
             .map_err(|e| ToolError::Execution(format!("创建 HTTP 客户端失败: {e}")))?;
 
         // 城市两级来源：用户当轮明说的 > 设置里手动配置的；都没有就不查、不追问
