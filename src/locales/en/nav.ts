@@ -10,5 +10,5 @@ export default {
   save: "Save",
   advance: "Advanced Settings",
   log: "Logs",
-  plugins: "Plugins / DLC",
+  plugins: "Plugins",
 };

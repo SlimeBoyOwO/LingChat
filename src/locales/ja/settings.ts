@@ -303,8 +303,7 @@ export default {
     },
   },
   plugins: {
-    title: "プラグイン / DLC",
-    tabs: { plugins: "インストール済みプラグイン", dlc: "DLC" },
+    title: "プラグイン",
     envHint: "環境変数（プロセスから読取）：",
     envFromProcess: "プロセス環境から",
     saveConfig: "保存",

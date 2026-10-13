@@ -47,7 +47,6 @@ export default {
     noOutfits: "No outfits available yet",
     confirmSwitch:
       "Switching characters will clear the current character's memory — don't forget to save first if you need it!",
-    switchFailed: "Failed to switch character: {error}",
     fav: "Favorite (move to front)",
     unfav: "Unfavorite",
   },

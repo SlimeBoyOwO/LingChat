@@ -143,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { confirmStoryEntry } from "@lingchat/dlc-ui/composables/useStoryEntry";
 import { computed, ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -199,17 +200,7 @@ const goToCharacterTab = () => {
 
 // 开始游玩独立剧本
 const startStandaloneScript = async (script: ScriptSummary) => {
-  // 带内容警告的剧本（如恐怖向）先弹确认，取消则不启动
-  if (script.content_warning === "horror") {
-    const confirmed = await dialogStore.confirm(
-      i18n.global.t("views.contentWarning.horrorMessage"),
-      i18n.global.t("views.contentWarning.horrorTitle"),
-    );
-    if (!confirmed) return;
-
-    // 确认后先"卡死 → 花屏"再启动（恐怖演出的一部分）
-    await uiStore.beginHorrorEntry();
-  }
+  if (!(await confirmStoryEntry(script))) return;
 
   eventQueue.clear();
   gameStore.enterStoryMode(script.script_name, script.content_warning, script.folder_key);

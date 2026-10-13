@@ -1,37 +1,5 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
-  dlc: {
-    storyEntry: "After enabling, open Start Game → Story Mode.",
-    playEmpty: "No games are enabled. Download and enable them in Settings → Plugins / DLC → DLC.",
-    unsupported: "Embedded games are not supported on this device yet. Please use the desktop app.",
-    title: "DLC",
-    subtitle: "Download and update games and stories.",
-    import: "Import package",
-    source: "Catalog URL",
-    sync: "Sync catalog",
-    updateAll: "Update installed",
-    working: "Working…",
-    empty: "Sync the catalog or import a local DLC package.",
-    version: "Version",
-    installed: "Installed",
-    install: "Download & install",
-    update: "Update",
-    disable: "Disable",
-    enable: "Enable",
-    play: "Play",
-    uninstall: "Uninstall",
-    migrate: "Migrate legacy data",
-    saveNote: "Updates and uninstall keep game saves. Enable newly installed DLC before playing.",
-    synced: "Catalog synchronized.",
-    installedNote: "Installed. Enable newly installed DLC to play.",
-    updated: "Installed DLC updated.",
-    uninstallConfirm: "Uninstall this DLC? Game saves will be kept.",
-    migrateConfirm:
-      "Copy these legacy browser keys into the DLC save? Only a missing save is initialized; original data is kept.",
-    noLegacy: "No legacy data found.",
-    migrated: "Migration complete; existing DLC saves are kept.",
-  },
-
   loader: {
     preparing: "Your little cutie is getting ready",
   },
@@ -54,7 +22,6 @@ export default {
       "Failed to fetch the scenario list — please make sure the backend is running.",
     perfTip:
       "If this page feels laggy, you can turn off the star particles or meteor animation in General Settings.",
-    dlcRecognized: "DLC detected: {names}",
   },
   petMode: {
     settingsWindowTitle: "Settings",
@@ -91,21 +58,8 @@ export default {
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
     cloudWorkshop: "Cloud Workshop",
-    miniGame: "Mini Games",
+    miniGame: "Mini Games (In Development)",
     back: "Back",
-    resetMemoryTitle: "Reset Memory",
-    resetMemory: "Reset Memory",
-    resetMemoryDone2: "Reset",
-    resetMemoryMessage:
-      'This will erase all memories (playthrough progress) of "{name}", restore its declared safe narrative files, and clear its main-menu effect. Your next visit will start from the first playthrough.\n\nAre you sure?',
-    resetMemoryDone: "Memories erased. She no longer remembers you.",
-    resetMemoryEmpty: "This script has no stored memories yet.",
-    resetMemoryFailed: "Reset failed. Please try again later.",
-  },
-  contentWarning: {
-    horrorTitle: "⚠ Content Warning",
-    horrorMessage:
-      "This story contains horror, jumpscares and intense visual corruption effects. Recommended for players aged 16 and above.\nSome horror scripts also create restricted local glitch windows, briefly pull the system pointer while the main window is focused (press Esc to stop), and write harmless .chr narrative markers under the characters folder beside the app data directory. They never click automatically, run external commands, or modify real character files.\nIf you feel unwell while playing, please quit immediately.\n\nAre you sure you want to continue?",
   },
   pet: {
     chatInput: {

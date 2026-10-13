@@ -449,8 +449,7 @@ export default {
     },
   },
   plugins: {
-    title: "插件 / DLC",
-    tabs: { plugins: "已安装插件", dlc: "DLC" },
+    title: "插件",
     envHint: "环境变量（从进程读取）：",
     envFromProcess: "来自进程环境",
     saveConfig: "保存",

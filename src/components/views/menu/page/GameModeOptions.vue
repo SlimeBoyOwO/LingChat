@@ -12,9 +12,9 @@
       }}</StartItem>
     </StartLine>
 
-    <StartLine>
-      <StartItem class="menu-subitem" @click="emit('open-games')">{{
-        $t("views.menu.miniGame")
+    <StartLine v-for="item in menuItems" :key="item.key">
+      <StartItem class="menu-subitem" @click="emit('open-extension', item.key)">{{
+        $t(item.label)
       }}</StartItem>
     </StartLine>
 
@@ -25,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { menuItems } from "@lingchat/dlc-ui/host/menu";
 import { StartItem, StartLine, StartList } from "../base";
 import { useRouter } from "vue-router";
 import { useGameStore } from "@/stores/modules/game";
@@ -33,7 +34,7 @@ import { eventQueue } from "@/core/events/event-queue";
 const emit = defineEmits<{
   (e: "back"): void;
   (e: "open-scripts"): void;
-  (e: "open-games"): void;
+  (e: "open-extension", key: string): void;
 }>();
 
 const router = useRouter();

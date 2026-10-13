@@ -10,5 +10,5 @@ export default {
   save: "存檔",
   advance: "進階設定",
   log: "日誌",
-  plugins: "插件 / DLC",
+  plugins: "插件",
 };

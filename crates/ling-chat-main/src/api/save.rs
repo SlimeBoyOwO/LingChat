@@ -301,9 +301,8 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         let mut ch = state.script_channels.lock().await;
         let _ = ch.input_tx.take();
         let _ = ch.choice_tx.take();
-        let _ = ch.poem_tx.take();
+        ch.extension_state.clear();
         ch.choice_allow_free = false;
-        ch.force_choice_guard = None;
     }
 
     // 被中止的引擎走不到 on_script_end 收尾，is_running 会残留 true——

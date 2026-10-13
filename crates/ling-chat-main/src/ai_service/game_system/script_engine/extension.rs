@@ -1,8 +1,16 @@
 //! Optional script lifecycle integration. Implementations live outside the core engine.
 use crate::ai_service::types::ScriptStatus;
-use std::{collections::HashMap, path::Path, sync::OnceLock};
+use std::{collections::HashMap, future::Future, path::Path, pin::Pin, sync::OnceLock};
 use tauri::AppHandle;
+pub type InitFuture<'a> = Pin<Box<dyn Future<Output = anyhow::Result<()>> + Send + 'a>>;
 pub struct Hooks {
+    pub validate_choice:
+        fn(&mut super::events::ScriptChannels, &str, Option<&str>) -> Result<(), String>,
+    pub check_config: fn(&Path, &str) -> anyhow::Result<()>,
+    pub initialize: for<'a, 'b> fn(
+        &'a ScriptStatus,
+        &'a mut super::events::ScriptContext<'b>,
+    ) -> InitFuture<'a>,
     pub register_events: fn(),
     pub validate_config:
         fn(&Path, &Path, &serde_json::Value, &mut Vec<super::validate::Diagnostic>),
@@ -23,6 +31,34 @@ pub struct Hooks {
 static HOOKS: OnceLock<Hooks> = OnceLock::new();
 pub fn install(hooks: Hooks) {
     assert!(HOOKS.set(hooks).is_ok(), "Script hooks already installed");
+}
+pub fn validate_choice(
+    channels: &mut super::events::ScriptChannels,
+    choice: &str,
+    request: Option<&str>,
+) -> Result<(), String> {
+    if let Some(h) = HOOKS.get() {
+        (h.validate_choice)(channels, choice, request)
+    } else if request.is_some() {
+        Err("当前未注册扩展选择事件".into())
+    } else {
+        Ok(())
+    }
+}
+pub fn check_config(path: &Path, engine: &str) -> anyhow::Result<()> {
+    HOOKS
+        .get()
+        .map_or(Ok(()), |h| (h.check_config)(path, engine))
+}
+pub async fn initialize(
+    script: &ScriptStatus,
+    ctx: &mut super::events::ScriptContext<'_>,
+) -> anyhow::Result<()> {
+    if let Some(h) = HOOKS.get() {
+        (h.initialize)(script, ctx).await
+    } else {
+        Ok(())
+    }
 }
 pub fn register_events() {
     if let Some(h) = HOOKS.get() {

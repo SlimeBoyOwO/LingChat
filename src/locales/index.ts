@@ -1,3 +1,4 @@
+import { extensionMessages } from "@lingchat/dlc-ui/locales";
 import { invoke } from "@tauri-apps/api/core";
 import { createI18n } from "vue-i18n";
 import OpenCC from "opencc-js";
@@ -24,6 +25,13 @@ const BUNDLED: Record<AppLocale, Record<string, unknown>> = {
   ja: ja as Record<string, unknown>,
   en: en as Record<string, unknown>,
 };
+
+for (const locale of SUPPORTED_LOCALES) {
+  BUNDLED[locale.value] = deepMergeMessages(
+    BUNDLED[locale.value],
+    extensionMessages[locale.value] ?? {},
+  );
+}
 
 /**
  * 内置词条版本：对全部内置词条做轻量 hash。

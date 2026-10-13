@@ -54,6 +54,7 @@
 </template>
 
 <script setup lang="ts">
+import { storyPolicy } from "@lingchat/dlc-ui/host/policy";
 import { getEnvConfigByKey } from "@/api/services/config";
 import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import StatusInfoBar from "@/components/tools/StatusInfoBar.vue";
@@ -165,8 +166,8 @@ onMounted(() => {
   }
 });
 
-/** 恐怖剧本运行期间锁定桌宠入口（她不允许你逃去桌宠；正常剧本不受影响） */
-const petLocked = computed(() => gameStore.runningScript?.contentWarning === "horror");
+/** Presentation policy supplied by the current content extension. */
+const petLocked = computed(() => storyPolicy(gameStore.runningScript).lockPet);
 
 // 自动推进调度（AUTO + 台词合并共用一条管道）—— 与桌宠 PetMode 共用同一实现
 const {

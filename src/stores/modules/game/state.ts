@@ -1,6 +1,7 @@
+import { extensionGameState, type ExtensionGameState } from "@lingchat/dlc-ui/host/gameState";
 import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
-import type { ScriptChoiceItem, ScriptPoemGameEvent } from "@/types/script";
+import type { ScriptChoiceItem } from "@/types/script";
 
 export interface GameMessage {
   type: "message" | "reply";
@@ -94,18 +95,11 @@ export interface GameRole {
   negative?: NegativeVector;
 }
 
-export interface GameState {
+export interface GameState extends ExtensionGameState {
   runningScript: ScriptInfo | null;
-  /** 强制选择演出（DDLC 式鼠标拖拽）；非 null 时 ForceChoice 组件接管选择 */
-  forceChoice: { requestId: string; choices: ScriptChoiceItem[]; forced: string } | null;
-  /** 选词写诗全屏互动；非 null 时 PoemGame 接管输入。 */
-  poemGame: ScriptPoemGameEvent | null;
 
   gameRoles: Record<number, GameRole>;
   presentRoleIds: number[];
-  /** 进入剧本前的在场角色快照；剧本演出的 hide_character 会改写 presentRoleIds，
-      退出剧本时据此恢复，否则自由对话立绘消失（与后端 onstage/present 快照配套） */
-  preScriptRoleIds: number[] | null;
   mainRoleId: number;
   currentInteractRoleId: number | null;
 
@@ -148,13 +142,11 @@ export interface GameState {
 }
 
 export const state: GameState = {
+  ...extensionGameState(),
   runningScript: null,
-  forceChoice: null,
-  poemGame: null,
 
   gameRoles: {},
   presentRoleIds: [],
-  preScriptRoleIds: null,
   mainRoleId: -1,
   currentInteractRoleId: -1,
 

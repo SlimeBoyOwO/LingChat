@@ -2093,9 +2093,7 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
         if let Some(tx) = ch.input_tx.take() {
             let _ = tx.send(String::new());
         }
-        if let Some(pending) = ch.poem_tx.take() {
-            let _ = pending.tx.send(String::new());
-        }
+        ch.extension_state.clear();
         ch.choice_allow_free = false;
     }
 

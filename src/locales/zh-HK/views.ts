@@ -1,36 +1,5 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
-  dlc: {
-    storyEntry: "啟用後，從開始遊戲 → 劇情模式進入。",
-    playEmpty: "尚無已啟用的小遊戲。請到設定 → 插件 / DLC → DLC 下載並啟用。",
-    unsupported: "此裝置暫不支援主視窗內的小遊戲。請使用桌面版。",
-    title: "DLC",
-    subtitle: "下載小遊戲與劇本，按需更新。",
-    import: "匯入本機套件",
-    source: "內容目錄網址",
-    sync: "同步目錄",
-    updateAll: "更新已安裝",
-    working: "處理中…",
-    empty: "同步目錄或匯入本機套件，開始新增 DLC。",
-    version: "版本",
-    installed: "已安裝",
-    install: "下載並安裝",
-    update: "更新",
-    disable: "停用",
-    enable: "啟用",
-    play: "開始",
-    uninstall: "解除安裝",
-    migrate: "遷移舊版資料",
-    saveNote: "升級及解除安裝會保留遊戲存檔；新安裝的 DLC 需要先啟用。",
-    synced: "目錄已同步。",
-    installedNote: "安裝完成。首次安裝請先啟用。",
-    updated: "已安裝的 DLC 已更新。",
-    uninstallConfirm: "解除安裝這個 DLC？遊戲存檔會保留。",
-    migrateConfirm: "將以下舊版瀏覽器資料複製到 DLC 存檔？只會在新存檔不存在時寫入，原資料會保留。",
-    noLegacy: "找不到舊版資料。",
-    migrated: "遷移完成；已有 DLC 存檔會保留。",
-  },
-
   loader: {
     preparing: "你嘅小可愛準備緊",
   },
@@ -51,7 +20,6 @@ export default {
     continueFailMessage: "未建立存檔或者系統出咗問題",
     scriptListFailed: "攞劇本列表失敗：請確認後端已經啟動咗",
     perfTip: "如果你覺得喺呢個頁面好卡，可以去 通用設置 度閂咗星星粒子或者流星動畫。",
-    dlcRecognized: "已識別 DLC：{names}",
   },
   petMode: {
     settingsWindowTitle: "設置",
@@ -88,21 +56,8 @@ export default {
     storyMode: "劇情模式",
     scriptEditor: "創意工坊",
     cloudWorkshop: "雲·創意工坊",
-    miniGame: "小遊戲",
+    miniGame: "小遊戲（開發緊）",
     back: "返回",
-    resetMemoryTitle: "重置記憶",
-    resetMemory: "重置記憶",
-    resetMemoryDone2: "已重置",
-    resetMemoryMessage:
-      "將清除《{name}》嘅全部記憶（周目進度），恢復該劇本已聲明嘅安全劇情檔案並清除佢嘅主選單效果；下次進入會由第一週目重新開始。\n\n確定要重置嗎？",
-    resetMemoryDone: "記憶已清除。佢已經唔記得你喇。",
-    resetMemoryEmpty: "呢個劇本仲未有任何記憶。",
-    resetMemoryFailed: "重置失敗，請遲啲再試。",
-  },
-  contentWarning: {
-    horrorTitle: "⚠ 內容警告",
-    horrorMessage:
-      "本劇本包含恐怖、驚嚇同心理不適元素，以及強烈嘅畫面崩壞演出，建議 16 歲或以上玩家遊玩。\n部分恐怖劇本亦會建立受限嘅本機故障視窗、喺主視窗聚焦時短暫牽引系統滑鼠（按 Esc 可即時停止），並喺應用程式 data 目錄旁邊嘅 characters 子目錄寫入自身無害嘅 .chr 劇情標記；唔會自動點擊、執行外部指令或改動真實角色檔案。\n如果遊玩期間感到不適，請立即退出。\n\n確定要繼續嗎？",
   },
   pet: {
     chatInput: {

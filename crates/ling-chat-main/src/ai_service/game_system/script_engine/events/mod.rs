@@ -24,6 +24,7 @@ pub mod present_pic_event;
 pub mod set_variable_event;
 pub mod sound_event;
 
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -43,36 +44,19 @@ use crate::ai_service::llm::LlmClient;
 // 剧本共享通道（剧本运行期间的用户输入/选择）
 // ============================================================
 
-/// 当前 `force_choice` 的一次性能力票据：只允许对应主窗口在短时间内移动鼠标，
-/// 提交时后端还会强制核对 forced 文本，不能只依赖前端 disabled。
-#[derive(Clone, Debug)]
-pub struct ForceChoiceGuard {
-    pub request_id: String,
-    pub forced: String,
-    pub warp_enabled: bool,
-    pub warp_expires_at: std::time::Instant,
-}
-
-/// 绑定一次写诗互动的独立提交通道。
-pub struct PoemSubmissionChannel {
-    pub request_id: String,
-    pub tx: tokio::sync::oneshot::Sender<String>,
-}
-
 /// 剧本运行期间用于用户输入/选择的通道。
 /// 存为 `Arc<Mutex<>>`，使后台任务与 Tauri 命令都能访问，而不必持有 `AIService` 的锁。
 pub struct ScriptChannels {
     pub input_tx: Option<tokio::sync::oneshot::Sender<String>>,
     pub choice_tx: Option<tokio::sync::oneshot::Sender<String>>,
-    /// 写诗小游戏独立通道，不能与普通/强制 choice 互相消费。
-    pub poem_tx: Option<PoemSubmissionChannel>,
+    /// Typed run-local state owned by registered extensions.
+    pub extension_state: HashMap<TypeId, Box<dyn Any + Send>>,
     /// 当前挂起的 `choices` 事件是否接受自由输入文本。
     ///
     /// 镜像正在执行的 [`choice_event::ChoiceEvent`] 的 `allow_free` 字段。
     /// `script_submit_input` 据此判断：当选项挂起时，输入框里打的字可以转投
     /// `choice_tx` 而不是被拒绝——否则选项永远无法解决，剧本永久阻塞。
     pub choice_allow_free: bool,
-    pub force_choice_guard: Option<ForceChoiceGuard>,
     /// 文件监视（watch_file）：目标 .chr 消失时要跳转的章节。
     /// 章节循环在事件之间/事件报错时检查它——监视器会同时丢弃挂起的输入通道，
     /// 让阻塞中的事件立刻以 Err 返回，从而及时让位给目标章节。
@@ -88,13 +72,20 @@ impl Default for ScriptChannels {
 }
 
 impl ScriptChannels {
+    pub fn extension_mut<T: Default + Send + 'static>(&mut self) -> &mut T {
+        self.extension_state
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| Box::new(T::default()))
+            .downcast_mut()
+            .unwrap()
+    }
+
     pub fn new() -> Self {
         Self {
             input_tx: None,
             choice_tx: None,
-            poem_tx: None,
+            extension_state: HashMap::new(),
             choice_allow_free: false,
-            force_choice_guard: None,
             watch_jump: None,
             watch_task: None,
         }

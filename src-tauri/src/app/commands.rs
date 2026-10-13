@@ -7,13 +7,6 @@ use ling_chat_plugins as plugins;
 pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     // 注册所有 API 命令
     let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
-        ling_chat_dlc_runtime::games::catalog::game_catalog_cached,
-        ling_chat_dlc_runtime::games::catalog::game_catalog_sync,
-        ling_chat_dlc_runtime::games::catalog::game_catalog_install,
-        ling_chat_dlc_runtime::games::runtime::game_open,
-        ling_chat_dlc_runtime::games::runtime::game_close,
-        ling_chat_dlc_runtime::games::runtime::game_resize,
-        ling_chat_dlc_runtime::games::runtime::game_seed_save,
         utils::log_bridge::get_log_history,
         utils::log_bridge::open_log_window,
         utils::log_bridge::is_log_window_open,
@@ -145,20 +138,11 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::save::capture_main_window_screenshot,
         api::script::list_scripts,
         api::script::list_standalone_scripts,
-        ling_chat_dlc_runtime::story::commands::get_script_menu_effect,
-        ling_chat_dlc_runtime::story::commands::check_script_ghost_lock,
         api::script::start_script,
         api::script::script_submit_input,
         api::script::script_submit_choice,
-        ling_chat_dlc_runtime::story::commands::script_submit_poem,
-        ling_chat_dlc_runtime::story::commands::show_script_glitch_window,
-        ling_chat_dlc_runtime::story::commands::spawn_script_console_window,
         api::script::close_script_glitch_windows,
-        ling_chat_dlc_runtime::story::commands::reset_script_state,
         api::script::stop_script,
-        ling_chat_dlc_runtime::story::commands::get_script_cursor_position,
-        ling_chat_dlc_runtime::story::commands::warp_cursor,
-        ling_chat_dlc_runtime::story::commands::cancel_script_cursor_warp,
         // ── DLC 剧本包 ──
         // ── 剧本编辑器 ──
         api::script_editor::editor_get_schema,
@@ -314,7 +298,11 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
                 .reject("DLC windows cannot invoke native commands");
             return true;
         }
-        handler(invoke)
+        if let Some(extension) = ling_chat_dlc_runtime::command_handler(invoke.message.command()) {
+            extension(invoke)
+        } else {
+            handler(invoke)
+        }
     })
 }
 

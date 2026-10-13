@@ -13,14 +13,6 @@
       ref="bgRef"
     ></div>
 
-    <!-- 剧本可持久化的预设式标题异常层：只渲染纯文本/CSS，不接受 HTML 或资源路径。 -->
-    <div v-if="menuEffect.theme !== 'normal'" class="script-menu-effect" aria-hidden="true">
-      <div class="script-menu-effect__scanlines"></div>
-      <div v-if="menuEffect.message" class="script-menu-effect__message">
-        {{ menuEffect.message }}
-      </div>
-    </div>
-
     <!-- 流星层（SVG动画）— 设置快照或恐怖主题期间临时暂停 -->
     <MeteorAnimation :meteors-enabled="visualMeteorsEnabled" :meteor-fps="meteorFps" />
 
@@ -78,14 +70,18 @@
             v-if="menuState === 'gameMode'"
             @back="backToMainMenu"
             @open-scripts="showScriptModeMenu"
-            @open-games="menuState = 'miniGames'"
+            @open-extension="menuState = $event"
             :loadingScripts="loadingScripts"
             :scripts="scripts"
           />
         </Transition>
 
         <Transition name="slide-right">
-          <MiniGameOptions v-if="menuState === 'miniGames'" @back="showGameModeMenu" />
+          <component
+            :is="menuPages[menuState]"
+            v-if="menuPages[menuState]"
+            @back="showGameModeMenu"
+          />
         </Transition>
 
         <!-- 剧本模式菜单 -->
@@ -107,20 +103,16 @@
           />
         </Transition>
 
-        <StartLogo :corrupted="menuEffect.theme !== 'normal'" @click="goToGithub" />
+        <StartLogo :src="logo" @click="goToGithub" />
       </StartPage>
     </Transition>
 
-    <!-- DLC 识别提示（右下角小字；有已识别 DLC 时才显示） -->
-    <div v-if="currentPage === 'mainMenu' && dlcNames.length > 0" class="dlc-hint">
-      {{ $t("views.mainMenu.dlcRecognized", { names: dlcNames.join("、") }) }}
-    </div>
+    <MenuOverlay :effect="menuEffect" :names="dlcNames" :visible="currentPage === 'mainMenu'" />
   </div>
 </template>
 
 <script setup lang="ts">
 import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
-import { invoke } from "@tauri-apps/api/core";
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -133,9 +125,10 @@ import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
 import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
-import MiniGameOptions from "@lingchat/dlc-ui/components/views/menu/page/MiniGameOptions.vue";
+import { menuPages, useMenuPresentation } from "@lingchat/dlc-ui/host/menu";
+import MenuOverlay from "@lingchat/dlc-ui/host/MenuOverlay.vue";
 
-const props = withDefaults(defineProps<{ initialMenu?: "main" | "miniGames" }>(), {
+const props = withDefaults(defineProps<{ initialMenu?: string }>(), {
   initialMenu: "main",
 });
 
@@ -149,9 +142,7 @@ const currentPage = ref("mainMenu");
 // 设置面板是否挂载。与 currentPage 分开是因为关闭时面板要留到退场动画播完才卸载，
 // 而菜单需要立刻回场与它重叠
 const settingsMounted = ref(false);
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop" | "miniGames">(
-  props.initialMenu,
-);
+const menuState = ref<string>(props.initialMenu);
 // Returning from a game reopens its list in the existing LC menu shell.
 watch(
   () => props.initialMenu,
@@ -161,32 +152,25 @@ watch(
 );
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
-// 已识别的 DLC 剧本包名（主菜单右下角提示用）
-const dlcNames = computed(() =>
-  scripts.value.filter((script) => script.plugin_id).map((script) => script.script_name),
-);
-type ScriptMenuTheme = "normal" | "blood" | "ghost";
-interface ScriptMenuEffect {
-  theme: ScriptMenuTheme;
-  message?: string;
-  /** 特效归属剧本的 path_key（如 standalone/第七个测试剧本） */
-  owner?: string;
-}
-const menuEffect = ref<ScriptMenuEffect>({ theme: "normal" });
+const {
+  effect: menuEffect,
+  names: dlcNames,
+  className: menuThemeClass,
+  logo,
+  particlesEnabled,
+  refresh: fetchScriptMenuEffect,
+} = useMenuPresentation(scripts);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
-const menuThemeClass = computed(() => `main-menu-page--${menuEffect.value.theme}`);
 const meteorFps = computed(() => settingsStore.meteorFps);
 const starsFps = computed(() => settingsStore.starsFps);
 
 const transientSuspend = ref(false);
 const effectiveStarsEnabled = computed(() => starsEnabled.value && !transientSuspend.value);
 const effectiveMeteorsEnabled = computed(() => meteorsEnabled.value && !transientSuspend.value);
-const visualStarsEnabled = computed(
-  () => effectiveStarsEnabled.value && menuEffect.value.theme === "normal",
-);
+const visualStarsEnabled = computed(() => effectiveStarsEnabled.value && particlesEnabled.value);
 const visualMeteorsEnabled = computed(
-  () => effectiveMeteorsEnabled.value && menuEffect.value.theme === "normal",
+  () => effectiveMeteorsEnabled.value && particlesEnabled.value,
 );
 const parallaxEnabled = computed(() => !transientSuspend.value);
 
@@ -298,21 +282,6 @@ onMounted(() => {
   initializeMenu();
 });
 
-async function fetchScriptMenuEffect() {
-  try {
-    const effect = await invoke<ScriptMenuEffect | null>("get_script_menu_effect");
-    if (effect && ["blood", "ghost"].includes(effect.theme)) {
-      menuEffect.value = effect;
-    } else {
-      menuEffect.value = { theme: "normal" };
-    }
-  } catch {
-    // Invalid/missing state must always fail open to the ordinary accessible menu.
-    menuEffect.value = { theme: "normal" };
-  }
-}
-
-// DLC 管理页导入/卸载后，剧本列表与提示一并刷新
 watch(
   () => uiStore.dlcRefreshToken,
   () => {
@@ -322,7 +291,6 @@ watch(
 );
 </script>
 
-<style src="@lingchat/dlc-ui/styles/menu-effects.css"></style>
 <style scoped>
 @font-face {
   font-family: "Maoken Assorted Sans";
@@ -350,21 +318,6 @@ watch(
   pointer-events: none;
 }
 
-/* DLC 识别提示：右下角半透明黄小字，不挡菜单 */
-.dlc-hint {
-  position: absolute;
-  right: 14px;
-  bottom: 30px;
-  z-index: 5;
-  font-size: 12px;
-  letter-spacing: 0.05em;
-  color: rgba(255, 214, 90, 0.78);
-  text-shadow:
-    0 1px 4px rgba(0, 0, 0, 0.7),
-    0 0 2px rgba(0, 0, 0, 0.45);
-  pointer-events: none;
-}
-
 .slide-left-enter-from,
 .slide-left-leave-to {
   transform: translateX(-120%);
@@ -375,35 +328,6 @@ watch(
 .slide-right-leave-to {
   transform: translateX(120%);
   opacity: 0;
-}
-
-/* ========== 背景层 ========== */
-.video-background {
-  position: absolute;
-  top: 0;
-  left: -10%;
-  width: 120%;
-  height: 100%;
-  background-image: url("../../assets/images/background2.png");
-  background-size: cover;
-  background-position: center;
-  z-index: -2;
-  /* 移除 transition */
-  will-change: transform;
-}
-
-/* ========== 人物图层 ========== */
-.character-image {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-  max-width: 100%;
-  max-height: 100%;
-  z-index: 3;
-  pointer-events: none;
-  /* 移除 transition */
-  will-change: transform;
 }
 
 /* 菜单列整体退场：观感与开始游戏进二级菜单一致地左滑淡出。

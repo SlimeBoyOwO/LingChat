@@ -137,9 +137,8 @@ pub(crate) async fn spawn_script_execution(
         let mut ch = state.script_channels.lock().await;
         let _ = ch.input_tx.take();
         let _ = ch.choice_tx.take();
-        let _ = ch.poem_tx.take();
+        ch.extension_state.clear();
         ch.choice_allow_free = false;
-        ch.force_choice_guard = None;
     }
 
     // A previous frontend may have been closed before consuming script:end.
@@ -251,9 +250,9 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
         // 发送端一掉，阻塞中的 input/choices/free_dialogue 事件立刻收 Err
         channels.input_tx = None;
         channels.choice_tx = None;
-        channels.poem_tx = None;
+        channels.extension_state.clear();
         channels.choice_allow_free = false;
-        channels.force_choice_guard = None;
+
         // 文件监视器一并停掉并丢弃未消费的跳转
         if let Some(task) = channels.watch_task.take() {
             task.abort();
@@ -304,24 +303,6 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
     Err("当前没有等待输入的脚本事件".to_string())
 }
 
-fn validate_force_choice_submission(
-    guard: Option<&crate::ai_service::game_system::script_engine::events::ForceChoiceGuard>,
-    choice: &str,
-    request_id: Option<&str>,
-) -> Result<(), String> {
-    if let Some(guard) = guard {
-        if request_id != Some(guard.request_id.as_str()) {
-            return Err("force_choice 提交票据无效".to_string());
-        }
-        if choice != guard.forced {
-            return Err("force_choice 只能提交 forced 选项".to_string());
-        }
-    } else if request_id.is_some() {
-        return Err("force_choice 已结束或票据已过期".to_string());
-    }
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn script_submit_choice(
     app: AppHandle,
@@ -330,14 +311,15 @@ pub async fn script_submit_choice(
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
-    validate_force_choice_submission(
-        channels.force_choice_guard.as_ref(),
+    crate::ai_service::game_system::script_engine::extension::validate_choice(
+        &mut channels,
         &choice,
         request_id.as_deref(),
     )?;
     if let Some(tx) = channels.choice_tx.take() {
         channels.choice_allow_free = false;
-        channels.force_choice_guard = None;
+
+        channels.extension_state.clear();
         let _ = tx.send(choice);
         Ok(())
     } else {

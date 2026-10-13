@@ -9,5 +9,5 @@ export default {
   save: "存档",
   advance: "高级设置",
   log: "日志",
-  plugins: "插件 / DLC",
+  plugins: "插件",
 };

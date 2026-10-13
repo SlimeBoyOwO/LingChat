@@ -1,3 +1,4 @@
+import { HORROR_EFFECTS } from "@lingchat/dlc-ui/host/effects";
 /**
  * 粒子特效注册表 —— 软件内置背景粒子的**单一真相源**。
  *
@@ -68,26 +69,16 @@ export const WEATHER_EFFECTS: ParticleEffect[] = [
  * 全是全屏量级的叠加件，配合 background_effect 的 "+" 组合使用，
  * 不抢氛围层/天气层的单选槽位，也没有 petSupported。
  */
-export const HORROR_EFFECTS: ParticleEffect[] = [
-  { key: "Glitch", label: "画面故障", i18n: "glitch" },
-  { key: "Shake", label: "画面震动", i18n: "shake" },
-  { key: "Flash", label: "红色闪光", i18n: "flash" },
-  { key: "Blackout", label: "舞台熄灯", i18n: "blackout" },
-  { key: "Tear", label: "画面撕裂", i18n: "tear" },
-  { key: "Static", label: "电视雪花", i18n: "static" },
-  { key: "Invert", label: "颜色反转", i18n: "invert" },
-  { key: "BloodDrip", label: "血滴", i18n: "bloodDrip" },
-  { key: "Veins", label: "血管", i18n: "veins" },
-  { key: "BSOD", label: "蓝屏", i18n: "bsod" },
-  { key: "UiCorrupt", label: "界面损坏", i18n: "uiCorrupt" },
-  { key: "BloodUI", label: "血色界面", i18n: "bloodUI" },
-];
 
 /** 恐怖特效的 key 列表：UI 侧用来识别「当前值里有没有恐怖特效」并做残留清理。 */
-export const HORROR_EFFECT_KEYS = HORROR_EFFECTS.map((effect) => effect.key);
+export { HORROR_EFFECTS, HORROR_EFFECT_KEYS } from "@lingchat/dlc-ui/host/effects";
 
 /** 全部内置特效。给编辑器下拉、大小写纠错与 Rust 清单生成用，不区分它属于哪一层。 */
-export const ALL_EFFECTS: ParticleEffect[] = [...PARTICLE_EFFECTS, ...WEATHER_EFFECTS, ...HORROR_EFFECTS];
+export const ALL_EFFECTS: ParticleEffect[] = [
+  ...PARTICLE_EFFECTS,
+  ...WEATHER_EFFECTS,
+  ...HORROR_EFFECTS,
+];
 
 /** 这个特效是不是天气层的。剧本与存档只记一个特效值，靠它决定落到哪一层。 */
 export const isWeatherEffect = (key: string): boolean =>

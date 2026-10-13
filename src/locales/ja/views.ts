@@ -1,37 +1,4 @@
 export default {
-  dlc: {
-    storyEntry: "有効にした後、ゲーム開始 → ストーリーモードから遊べます。",
-    playEmpty:
-      "有効なゲームがありません。設定 → プラグイン / DLC → DLC でダウンロードして有効にしてください。",
-    unsupported: "この端末ではメイン画面内のゲームに未対応です。デスクトップ版をご利用ください。",
-    title: "DLC",
-    subtitle: "ミニゲームやシナリオをダウンロードして更新できます。",
-    import: "パッケージを読み込む",
-    source: "カタログ URL",
-    sync: "カタログを同期",
-    updateAll: "導入済みを更新",
-    working: "処理中…",
-    empty: "カタログを同期するか、ローカル DLC をインポートしてください。",
-    version: "バージョン",
-    installed: "導入済み",
-    install: "ダウンロードして導入",
-    update: "更新",
-    disable: "無効化",
-    enable: "有効化",
-    play: "プレイ",
-    uninstall: "アンインストール",
-    migrate: "旧データを移行",
-    saveNote: "更新・削除してもセーブデータは残ります。新規 DLC は有効化してください。",
-    synced: "カタログを同期しました。",
-    installedNote: "導入しました。新規 DLC を有効化してください。",
-    updated: "導入済み DLC を更新しました。",
-    uninstallConfirm: "この DLC を削除しますか？セーブデータは残ります。",
-    migrateConfirm:
-      "以下の旧ブラウザデータを DLC にコピーしますか？新しいセーブがない場合のみ書き込み、元のデータは残ります。",
-    noLegacy: "旧データが見つかりません。",
-    migrated: "移行しました。既存の DLC セーブは保持されます。",
-  },
-
   loader: {
     preparing: "きみのかわいい子が準備中だよ",
   },
@@ -54,7 +21,6 @@ export default {
       "シナリオ一覧の取得に失敗しました：バックエンドが起動しているか確認してください",
     perfTip:
       "このページの動作が重い場合は、一般設定で星のパーティクルや流星アニメーションをオフにできます。",
-    dlcRecognized: "DLC 認識済み：{names}",
   },
   petMode: {
     settingsWindowTitle: "設定",
@@ -91,21 +57,8 @@ export default {
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
     cloudWorkshop: "クラウド工房",
-    miniGame: "ミニゲーム",
+    miniGame: "ミニゲーム（開発中）",
     back: "戻る",
-    resetMemoryTitle: "記憶をリセット",
-    resetMemory: "記憶をリセット",
-    resetMemoryDone2: "リセット済み",
-    resetMemoryMessage:
-      "《{name}》のすべての記憶（周回進行）を消去し、宣言済みの安全な物語用ファイルを復元して、このシナリオのメインメニュー効果を解除します。次回は1周目から始まります。\n\n本当にリセットしますか？",
-    resetMemoryDone: "記憶を消去しました。彼女はもうあなたを覚えていません。",
-    resetMemoryEmpty: "このシナリオにはまだ記憶がありません。",
-    resetMemoryFailed: "リセットに失敗しました。後でもう一度お試しください。",
-  },
-  contentWarning: {
-    horrorTitle: "⚠ コンテンツ警告",
-    horrorMessage:
-      "このシナリオにはホラー・驚かせる演出・精神的に不快な内容、および強烈な画面崩壊演出が含まれます。16歳以上のプレイヤーに推奨します。\n一部のホラーシナリオは、制限されたローカルのグリッチウィンドウを表示し、メインウィンドウにフォーカスがある間だけシステムポインターを短時間引き寄せ（Esc で即時停止）、characters サブディレクトリへ無害な .chr 物語マーカーを書き込みます。自動クリック、外部コマンドの実行、実際のキャラクターファイルの変更は行いません。\nプレイ中に気分が悪くなった場合は、すぐに終了してください。\n\n本当に続けますか？",
   },
   pet: {
     chatInput: {

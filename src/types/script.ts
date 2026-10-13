@@ -1,14 +1,4 @@
-import type {
-  ScriptJumpscareEvent,
-  ScriptWaitEvent,
-  ScriptWindowTitleEvent,
-  ScriptGlitchWindowEvent,
-  ScriptConsoleWindowEvent,
-  ScriptVoiceShiftEvent,
-  ScriptForceChoiceEvent,
-  ScriptPoemWord,
-  ScriptPoemGameEvent,
-} from "@lingchat/dlc-ui/types/story";
+import type { ExtensionScriptEvent } from "@lingchat/dlc-ui/types/story";
 export type * from "@lingchat/dlc-ui/types/story";
 export interface ScriptEvent {
   type: string;
@@ -191,11 +181,4 @@ export type ScriptEventType =
   | ScriptPresentPicEvent
   | ScriptProgressEvent
   | ScriptFreeDialogueEvent
-  | ScriptJumpscareEvent
-  | ScriptWaitEvent
-  | ScriptWindowTitleEvent
-  | ScriptGlitchWindowEvent
-  | ScriptConsoleWindowEvent
-  | ScriptVoiceShiftEvent
-  | ScriptForceChoiceEvent
-  | ScriptPoemGameEvent;
+  | ExtensionScriptEvent;

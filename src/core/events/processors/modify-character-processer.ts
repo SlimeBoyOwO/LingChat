@@ -1,7 +1,7 @@
 import type { IEventProcessor } from "../event-processor";
 import type { ScriptModifyCharacterEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
-import { useUIStore } from "../../../stores/modules/ui/ui";
+import { applyCharacterPresentation } from "@lingchat/dlc-ui/host/character";
 
 export default class ModifyCharacterProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -17,24 +17,7 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
     gameStore.currentStatus = "presenting";
 
     if (event.characterId) {
-      // 闪现演出：立绘短暂换成指定情绪后自动还原，不触碰角色真实状态
-      // （后续 dialogue 事件回写 emotion 也不会把闪现冲掉——闪现在组件层做覆盖层）
-      if (event.flash && event.emotion) {
-        // Ensure the role/folder is ready before the avatar overlay starts its
-        // short resolution window; otherwise the authored beat can be missed.
-        await gameStore.getOrCreateGameRole(event.characterId);
-        if (signal?.aborted) return;
-        useUIStore().triggerSpriteFlash(event.characterId, event.emotion, delay > 0 ? delay : 0.45);
-        return;
-      }
-
-      // 噪点侵蚀演出（DDLC n_rects_ghost 式）：常驻到剧本显式 noise:none 清除；
-      // 与 emotion/action 可同拍叠加，所以处理后继续走常规分支
-      if (event.noise !== undefined) {
-        await gameStore.getOrCreateGameRole(event.characterId);
-        if (signal?.aborted) return;
-        useUIStore().triggerSpriteNoise(event.characterId, event.noise, event.noiseFadeIn ?? 0);
-      }
+      if (await applyCharacterPresentation(event, signal)) return;
 
       // 确保游戏初始化包含角色
       const role = await gameStore.getOrCreateGameRole(event.characterId);

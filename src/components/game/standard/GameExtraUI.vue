@@ -16,14 +16,7 @@
     <!-- 5. 自由对话动画与提示区域 -->
     <ScriptFreeDialogueDisplay />
 
-    <!-- 5.5 强制选择（DDLC 式鼠标拖拽演出） -->
-    <ForceChoice />
-
-    <!-- 5.55 选词写诗：全屏接管输入并自行播放带 loop 点的 BGM -->
-    <PoemGame />
-
-    <!-- 5.6 恐怖特效层（压过角色立绘与对话框） -->
-    <HorrorEffectsLayer />
+    <GameOverlay />
 
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
@@ -37,14 +30,12 @@
 </template>
 
 <script setup lang="ts">
+import GameOverlay from "@lingchat/dlc-ui/host/GameOverlay.vue";
 import ChapterNameDisplay from "./extra/ChapterNameDisplay.vue";
 import GameChoices from "./extra/GameChoices.vue";
 import ScriptCompleteDisplay from "./extra/ScriptCompleteDisplay.vue";
 import ScriptPicDisplay from "./extra/ScriptPicDisplay.vue";
 import ScriptFreeDialogueDisplay from "./extra/ScriptFreeDialogueDisplay.vue";
-import ForceChoice from "@lingchat/dlc-ui/components/game/standard/extra/ForceChoice.vue";
-import PoemGame from "@lingchat/dlc-ui/components/game/standard/extra/PoemGame.vue";
-import HorrorEffectsLayer from "@lingchat/dlc-ui/components/game/standard/HorrorEffectsLayer.vue";
 import SoundEffectPanel from "./extra/SoundEffectPanel.vue";
 import AffectionChangeFloat from "./extra/AffectionChangeFloat.vue";
 import SpectrumVisualizer from "./extra/SpectrumVisualizer.vue";
