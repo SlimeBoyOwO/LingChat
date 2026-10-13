@@ -34,6 +34,10 @@ pub async fn plugin_list(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
 /// 事件，所以这里不等它，直接返回。禁用时级联停掉依赖它的插件（前置没了它们跑不通）。
 #[tauri::command]
 pub async fn plugin_set_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
+    let _operation = super::games::LIFECYCLE.lock().await;
+    if !enabled {
+        super::games::runtime::request_close_plugin(&app, &id).await?;
+    }
     let plugin_manager = manager(&app);
     plugin_manager.set_enabled(&id, enabled).await?;
     if enabled {
@@ -65,6 +69,8 @@ pub async fn plugin_save_config(
 /// 重新扫描插件目录（异步，避免阻塞调用线程）。
 #[tauri::command]
 pub async fn plugin_reload(app: AppHandle) -> Result<(), String> {
+    let _operation = super::games::LIFECYCLE.lock().await;
+    super::games::runtime::request_close_all(&app).await?;
     let plugin_manager = manager(&app);
     let reload_manager = plugin_manager.clone();
     tokio::task::spawn_blocking(move || reload_manager.reload())
@@ -84,6 +90,8 @@ pub async fn plugin_reload(app: AppHandle) -> Result<(), String> {
 /// 删除插件（含插件目录与状态记录）。
 #[tauri::command]
 pub async fn plugin_delete(app: AppHandle, id: String) -> Result<(), String> {
+    let _operation = super::games::LIFECYCLE.lock().await;
+    super::games::runtime::request_close_plugin(&app, &id).await?;
     let plugin_manager = manager(&app);
     plugin_manager.delete_plugin(&id).await?;
     // 前置被卸载，依赖它的插件已跑不通，一并停掉。

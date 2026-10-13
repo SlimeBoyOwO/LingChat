@@ -1,5 +1,36 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
+  dlc: {
+    unsupported:
+      "This device does not support separate game windows. Android requires 12L or newer; iOS requires multiple-scene support.",
+    title: "Game DLC",
+    subtitle: "Install games from independent catalogs and update them separately.",
+    import: "Import package",
+    source: "Catalog URL",
+    sync: "Sync catalog",
+    updateAll: "Update installed",
+    working: "Working…",
+    empty: "Sync a catalog or import a package to add games.",
+    version: "Version",
+    installed: "Installed",
+    install: "Download & install",
+    update: "Update",
+    disable: "Disable",
+    enable: "Enable",
+    play: "Play",
+    uninstall: "Uninstall",
+    migrate: "Migrate legacy data",
+    saveNote: "Updates and uninstall keep game saves. Enable newly installed DLC before playing.",
+    synced: "Catalog synchronized.",
+    installedNote: "Installed. Enable newly installed DLC to play.",
+    updated: "Installed DLC updated.",
+    uninstallConfirm: "Uninstall this DLC? Game saves will be kept.",
+    migrateConfirm:
+      "Copy these legacy browser keys into the DLC save? Only a missing save is initialized; original data is kept.",
+    noLegacy: "No legacy data found.",
+    migrated: "Migration complete; existing DLC saves are kept.",
+  },
+
   loader: {
     preparing: "Your little cutie is getting ready",
   },
@@ -58,7 +89,7 @@ export default {
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
     cloudWorkshop: "Cloud Workshop",
-    miniGame: "Mini Games (In Development)",
+    miniGame: "Games / DLC",
     back: "Back",
   },
   pet: {

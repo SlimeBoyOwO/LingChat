@@ -1,4 +1,35 @@
 export default {
+  dlc: {
+    unsupported:
+      "この端末は独立したゲームウィンドウに対応していません。Android 12L 以降、iOS は複数シーンのサポートが必要です。",
+    title: "ミニゲーム DLC",
+    subtitle: "独立したカタログからゲームを導入し、個別に更新できます。",
+    import: "パッケージを読み込む",
+    source: "カタログ URL",
+    sync: "カタログを同期",
+    updateAll: "導入済みを更新",
+    working: "処理中…",
+    empty: "カタログを同期するか、パッケージを読み込んでください。",
+    version: "バージョン",
+    installed: "導入済み",
+    install: "ダウンロードして導入",
+    update: "更新",
+    disable: "無効化",
+    enable: "有効化",
+    play: "プレイ",
+    uninstall: "アンインストール",
+    migrate: "旧データを移行",
+    saveNote: "更新・削除してもセーブデータは残ります。新規 DLC は有効化してください。",
+    synced: "カタログを同期しました。",
+    installedNote: "導入しました。新規 DLC を有効化してください。",
+    updated: "導入済み DLC を更新しました。",
+    uninstallConfirm: "この DLC を削除しますか？セーブデータは残ります。",
+    migrateConfirm:
+      "以下の旧ブラウザデータを DLC にコピーしますか？新しいセーブがない場合のみ書き込み、元のデータは残ります。",
+    noLegacy: "旧データが見つかりません。",
+    migrated: "移行しました。既存の DLC セーブは保持されます。",
+  },
+
   loader: {
     preparing: "きみのかわいい子が準備中だよ",
   },
@@ -57,7 +88,7 @@ export default {
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
     cloudWorkshop: "クラウド工房",
-    miniGame: "ミニゲーム（開発中）",
+    miniGame: "ミニゲーム / DLC",
     back: "戻る",
   },
   pet: {

@@ -4369,16 +4369,20 @@ dependencies = [
  "rustpython-derive",
  "rustpython-pylib",
  "rustpython-vm",
+ "semver",
  "serde",
  "serde_json",
  "serde_yaml",
+ "sha2 0.10.9",
  "tauri",
+ "tempfile",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tokio-util",
  "toml 0.8.2",
  "tracing",
  "uuid",
+ "zip 2.4.2",
 ]
 
 [[package]]

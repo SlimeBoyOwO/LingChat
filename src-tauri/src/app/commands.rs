@@ -6,7 +6,12 @@ use ling_chat_plugins as plugins;
 /// 把全部命令注册到 `builder` 上。
 pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     // 注册所有 API 命令
-    builder.invoke_handler(tauri::generate_handler![
+    let handler: fn(tauri::ipc::Invoke<tauri::Wry>) -> bool = tauri::generate_handler![
+        plugins::games::catalog::game_catalog_cached,
+        plugins::games::catalog::game_catalog_sync,
+        plugins::games::catalog::game_catalog_install,
+        plugins::games::runtime::game_open,
+        plugins::games::runtime::game_seed_save,
         utils::log_bridge::get_log_history,
         utils::log_bridge::open_log_window,
         utils::log_bridge::is_log_window_open,
@@ -281,7 +286,18 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::asr::asr_stop_streaming,
         api::asr::asr_cancel_streaming,
         exit_app,
-    ])
+    ];
+    builder.invoke_handler(move |invoke| {
+        // App commands bypass capability files by default. Downloaded game
+        // windows may use ONLY their scoped HTTP bridge, never native IPC.
+        if invoke.message.webview().label().starts_with("dlc-") {
+            invoke
+                .resolver
+                .reject("DLC windows cannot invoke native commands");
+            return true;
+        }
+        handler(invoke)
+    })
 }
 
 /// 前端确认关闭后调用，终止整个 Tauri 进程。

@@ -258,6 +258,9 @@ pub struct PluginManifest {
     pub env: Vec<EnvDecl>,
     #[serde(default)]
     pub tools: Vec<ToolSpec>,
+    /// Independently built web games. No Python entry point is required.
+    #[serde(default)]
+    pub games: Vec<super::games::GameSpec>,
     /// 插件携带的资源类型声明（空 = 纯工具插件，向后兼容）。
     #[serde(default)]
     pub resources: Vec<ResourceKind>,
@@ -356,6 +359,7 @@ pub struct PluginInfo {
     pub config_schema: Vec<ConfigFieldDecl>,
     pub env: Vec<EnvDecl>,
     pub tools: Vec<String>,
+    pub games: Vec<super::games::GameSpec>,
     /// 该插件声明携带的资源类型（如 `["characters", "musics"]`）。
     pub resources: Vec<String>,
     /// 该插件声明的 WS 连接（含当前运行状态，供插件页展示）。
@@ -377,6 +381,7 @@ impl From<&PluginRecord> for PluginInfo {
             author: record.manifest.author.clone(),
             enabled: record.state.enabled,
             config_schema: record.manifest.config.clone(),
+            games: record.manifest.games.clone(),
             env: record.manifest.env.clone(),
             tools: record
                 .manifest

@@ -26,6 +26,10 @@ uuid = { workspace = true }
 toml = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
+sha2 = "0.10"
+semver = "1"
+tempfile = "3"
+zip = { version = "2", default-features = false, features = ["deflate"] }
 
 # 插件系统：嵌入 RustPython 跑插件 Python 脚本（受限沙箱）。
 rustpython-vm = { version = "0.5", default-features = false, features = [

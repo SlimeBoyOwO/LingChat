@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Preserve Tauri's LAN dev-server behavior in debug builds. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

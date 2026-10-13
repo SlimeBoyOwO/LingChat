@@ -14,6 +14,7 @@
 //! - [`signal::SignalRegistry`](signal::SignalRegistry)：宿主信号登记与插件订阅派发
 
 pub mod commands;
+pub mod games;
 pub mod host_api;
 pub mod importer;
 pub mod manager;

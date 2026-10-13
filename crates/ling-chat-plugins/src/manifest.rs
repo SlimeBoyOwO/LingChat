@@ -86,6 +86,7 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
         );
     }
     if manifest.tools.is_empty()
+        && manifest.games.is_empty()
         && manifest.resources.is_empty()
         && manifest.subscribe.is_empty()
         && manifest.ws.is_empty()
@@ -95,6 +96,10 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             "插件 '{}' 未声明任何工具、资源、信号订阅、WS 连接或启动入口",
             manifest.id
         );
+    }
+    super::games::validate_specs(&manifest.games)?;
+    if !manifest.games.is_empty() {
+        super::games::validate_game_only(manifest)?;
     }
     for path in &manifest.read {
         // 与插件运行期传入的请求路径共用同一份校验（host_api）。

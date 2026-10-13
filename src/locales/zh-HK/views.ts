@@ -1,5 +1,34 @@
 // 繁體中文（香港 · 粵語文體）语言包，由 zh-CN/views.ts（约 44 条） 翻譯維護
 export default {
+  dlc: {
+    unsupported: "目前裝置不支援獨立遊戲視窗。Android 需要 12L 或更新版本，iOS 需要多場景支援。",
+    title: "小遊戲 DLC",
+    subtitle: "從獨立內容倉庫安裝遊戲，按需要更新。",
+    import: "匯入本機套件",
+    source: "內容目錄網址",
+    sync: "同步目錄",
+    updateAll: "更新已安裝",
+    working: "處理中…",
+    empty: "同步目錄或匯入本機套件，開始加入遊戲。",
+    version: "版本",
+    installed: "已安裝",
+    install: "下載並安裝",
+    update: "更新",
+    disable: "停用",
+    enable: "啟用",
+    play: "開始",
+    uninstall: "解除安裝",
+    migrate: "遷移舊版資料",
+    saveNote: "升級及解除安裝會保留遊戲存檔；新安裝的 DLC 需要先啟用。",
+    synced: "目錄已同步。",
+    installedNote: "安裝完成。首次安裝請先啟用。",
+    updated: "已安裝的 DLC 已更新。",
+    uninstallConfirm: "解除安裝這個 DLC？遊戲存檔會保留。",
+    migrateConfirm: "將以下舊版瀏覽器資料複製到 DLC 存檔？只會在新存檔不存在時寫入，原資料會保留。",
+    noLegacy: "找不到舊版資料。",
+    migrated: "遷移完成；已有 DLC 存檔會保留。",
+  },
+
   loader: {
     preparing: "你嘅小可愛準備緊",
   },
@@ -56,7 +85,7 @@ export default {
     storyMode: "劇情模式",
     scriptEditor: "創意工坊",
     cloudWorkshop: "雲·創意工坊",
-    miniGame: "小遊戲（開發緊）",
+    miniGame: "小遊戲 / DLC",
     back: "返回",
   },
   pet: {
