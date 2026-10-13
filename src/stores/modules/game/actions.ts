@@ -8,7 +8,7 @@ import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
 import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
-import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
+import { resetScriptWindowTitle } from "@lingchat/dlc-ui/utils/windowTitleCoordinator";
 
 function clearStoryInteractionState(state: GameState) {
   state.runningScript = null;
@@ -57,7 +57,7 @@ function restoreStoryStage(state: GameState, uiStore: ReturnType<typeof useUISto
 
 function releaseStorySystemResources(notifyBackend: boolean) {
   invoke("close_script_glitch_windows").catch((err) =>
-    console.warn("[Script] 关闭故障窗口失败（非致命）:", err)
+    console.warn("[Script] 关闭故障窗口失败（非致命）:", err),
   );
   if (notifyBackend) {
     invoke("stop_script").catch((err) => console.warn("[Script] stop_script 失败（非致命）:", err));
@@ -140,7 +140,7 @@ export const actions = {
     this: GameState,
     scriptName: string = "unknown",
     contentWarning?: string,
-    folderKey?: string
+    folderKey?: string,
   ) {
     this.poemGame = null;
     this.runningScript = {

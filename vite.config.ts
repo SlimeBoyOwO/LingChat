@@ -13,6 +13,7 @@ export default defineConfig(async () => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@lingchat/host": path.resolve(__dirname, "./src"),
     },
   },
 

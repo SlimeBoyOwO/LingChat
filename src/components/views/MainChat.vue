@@ -72,7 +72,7 @@ import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
-import StageBlackout from "../game/standard/StageBlackout.vue";
+import StageBlackout from "@lingchat/dlc-ui/components/game/standard/StageBlackout.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 

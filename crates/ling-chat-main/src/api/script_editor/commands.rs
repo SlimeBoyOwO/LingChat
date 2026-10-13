@@ -1538,10 +1538,8 @@ pub async fn editor_start_preview(
         )
     };
     // Capture fresh auxiliary/system-window ownership for this preview.
-    crate::api::script_popups::begin_run();
-    let glitch_window_generation = crate::ai_service::game_system::script_engine::events::glitch_window_event::begin_glitch_window_run(
-        &app,
-    );
+    let glitch_window_generation =
+        crate::ai_service::game_system::script_engine::extension::begin(&app);
 
     // 从哪一章开始 —— run_script 以 script.intro_chapter 为起点
     if let Some(from) = from_chapter {
@@ -2110,10 +2108,8 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
     let db = state.db.clone();
     let game_status = state.ai_service.lock().await.game_status.clone();
     session.restore(&db, &game_status).await;
-    crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
-        &app,
-    );
-    crate::api::script_popups::close_all();
+    crate::ai_service::game_system::script_engine::extension::close(&app);
+
     state
         .ai_service
         .lock()

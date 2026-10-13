@@ -29,7 +29,7 @@ const routes = [
   {
     path: "/mini-games/:plugin/:game",
     name: "DlcGamePlayer",
-    component: () => import("../components/views/dlc/GamePlayer.vue"),
+    component: () => import("@lingchat/dlc-ui/components/views/dlc/GamePlayer.vue"),
   },
   {
     path: "/",

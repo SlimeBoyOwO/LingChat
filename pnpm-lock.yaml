@@ -10,6 +10,9 @@ importers:
       7zip-min:
         specifier: ^3.0.1
         version: 3.0.1
+      "@lingchat/dlc-ui":
+        specifier: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.1.0/lingchat-dlc-ui-0.1.0.tgz
+        version: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.1.0/lingchat-dlc-ui-0.1.0.tgz(@tauri-apps/api@2.11.0)(@tauri-apps/plugin-dialog@2.7.2)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3)))(vue-i18n@10.0.8(vue@3.5.34(typescript@5.6.3)))(vue-router@5.0.6(@vue/compiler-sfc@3.5.34)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3)))(vue@3.5.34(typescript@5.6.3)))(vue@3.5.34(typescript@5.6.3))
       "@tailwindcss/vite":
         specifier: ^4.3.0
         version: 4.3.0(vite@6.4.2(@types/node@25.7.0)(jiti@2.7.0)(lightningcss@1.32.0)(yaml@2.9.0))
@@ -905,6 +908,21 @@ packages:
         integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==,
       }
 
+  "@lingchat/dlc-ui@https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.1.0/lingchat-dlc-ui-0.1.0.tgz":
+    resolution:
+      {
+        integrity: sha512-AU3i1Zf/Tv5NPv9zv3LjUE90QEUSeioZU96FIRzboh38v324r87GpX7WiX5cQDKj7xUdRV3mWtpQ8wCOPJjGGQ==,
+        tarball: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.1.0/lingchat-dlc-ui-0.1.0.tgz,
+      }
+    version: 0.1.0
+    peerDependencies:
+      "@tauri-apps/api": ^2.0.0
+      "@tauri-apps/plugin-dialog": ^2.0.0
+      pinia: ^3.0.0
+      vue: ^3.5.0
+      vue-i18n: ">=10 <12"
+      vue-router: ">=4 <6"
+
   "@pixi/colord@2.9.6":
     resolution:
       {
@@ -1660,6 +1678,7 @@ packages:
         integrity: sha512-T4EDRUBVZYRldYApjEJiU0e1stYWaRAX7CuSnKzrpwdZKo53zGV8/pqfzV6FfwNl9YThD2OumQYvqtvjvgG7aQ==,
       }
     engines: { node: ">=10.0.0" }
+    deprecated: this version has critical issues, please update to the latest version
 
   acorn@8.16.0:
     resolution:
@@ -3425,6 +3444,15 @@ snapshots:
     dependencies:
       "@jridgewell/resolve-uri": 3.1.2
       "@jridgewell/sourcemap-codec": 1.5.5
+
+  "@lingchat/dlc-ui@https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.1.0/lingchat-dlc-ui-0.1.0.tgz(@tauri-apps/api@2.11.0)(@tauri-apps/plugin-dialog@2.7.2)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3)))(vue-i18n@10.0.8(vue@3.5.34(typescript@5.6.3)))(vue-router@5.0.6(@vue/compiler-sfc@3.5.34)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3)))(vue@3.5.34(typescript@5.6.3)))(vue@3.5.34(typescript@5.6.3))":
+    dependencies:
+      "@tauri-apps/api": 2.11.0
+      "@tauri-apps/plugin-dialog": 2.7.2
+      pinia: 3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3))
+      vue: 3.5.34(typescript@5.6.3)
+      vue-i18n: 10.0.8(vue@3.5.34(typescript@5.6.3))
+      vue-router: 5.0.6(@vue/compiler-sfc@3.5.34)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.34(typescript@5.6.3)))(vue@3.5.34(typescript@5.6.3))
 
   "@pixi/colord@2.9.6": {}
 

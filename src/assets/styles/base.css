@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@source "../../../node_modules/@lingchat/dlc-ui/src";
 
 @theme {
   /* 字体配置 */

@@ -8,7 +8,10 @@
 <script setup lang="ts">
 import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import { isOwnedByStandaloneDlc, releaseFolderFromEvent } from "@/utils/dlcMediaOwnership";
+import {
+  isOwnedByStandaloneDlc,
+  releaseFolderFromEvent,
+} from "@lingchat/dlc-ui/utils/dlcMediaOwnership";
 
 const props = withDefaults(
   defineProps<{

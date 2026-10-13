@@ -7,7 +7,7 @@ import { WebSocketMessageTypes } from "../../../types";
 import { useAdventureStore } from "@/stores/modules/adventure";
 import router from "@/router";
 import { eventQueue } from "../event-queue";
-import { resetScriptWindowTitle } from "@/utils/windowTitleCoordinator";
+import { resetScriptWindowTitle } from "@lingchat/dlc-ui/utils/windowTitleCoordinator";
 
 export default class ScriptEndProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {

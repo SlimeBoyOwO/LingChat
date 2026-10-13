@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { GameSpec } from "./games";
+import type { GameSpec } from "@lingchat/dlc-ui/api/services/games";
 import type { ArchiveFormat, ArchiveImportResult, PluginConflictPolicy } from "./archive";
 
 export type { ArchiveFormat, PluginConflictPolicy } from "./archive";

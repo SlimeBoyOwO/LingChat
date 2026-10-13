@@ -13,9 +13,9 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use anyhow::{Context, Result, anyhow};
 use serde_json::Value;
 
+use super::extension;
 use crate::ai_service::game_system::script_engine::chapter::Chapter;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
-use crate::ai_service::game_system::script_engine::persistent_state;
 use crate::ai_service::game_system::script_engine::responses::{
     ScriptEndPayload, event_names::SCRIPT_END,
 };
@@ -127,7 +127,7 @@ impl ScriptManager {
             is_running: Arc::new(AtomicBool::new(false)),
         };
         manager.init_all_scripts(data_dir);
-        super::reset_transaction::recover_pending_resets(data_dir, &manager.all_scripts);
+        super::extension::recover(data_dir, &manager.all_scripts);
         manager
     }
 
@@ -300,7 +300,7 @@ impl ScriptManager {
     /// Plugin scripts are registered after initial discovery. Replay their
     /// interrupted reset journals only once their package is available again.
     pub fn recover_plugin_resets(&self, data_dir: &Path) {
-        super::reset_transaction::recover_pending_resets(data_dir, &self.all_scripts);
+        super::extension::recover(data_dir, &self.all_scripts);
     }
 
     // ============================================================
@@ -507,11 +507,7 @@ impl ScriptManager {
         }
         // Story previews are isolated from persistent state. Real runs may opt
         // in to a small allow-list of variables via `persistent_vars`.
-        let active_script = if ctx.is_preview {
-            persistent_state::prepare_preview(script)
-        } else {
-            persistent_state::prepare_playthrough(script, ctx.data_dir)
-        };
+        let active_script = extension::prepare(script, ctx.data_dir, ctx.is_preview);
         ctx.game_status.lock().await.script_status = Some(active_script);
 
         // Load player info from script settings
@@ -865,7 +861,7 @@ impl ScriptManager {
         // 正常完成必须等前端队列消费到 script:end 再重置标题；错误/停止路径
         // 已作废旧队列，可立即通知唯一标题协调器清理。
         if !completed {
-            super::events::window_title_event::restore_window_title(ctx.app);
+            super::extension::restore_title(ctx.app);
         }
 
         // 文件监视器同理：剧本结束必须停掉，否则它会盯着已结束的演出
@@ -901,7 +897,7 @@ impl ScriptManager {
         if !ctx.is_preview {
             let snapshot = ctx.game_status.lock().await.script_status.clone();
             if let Some(snapshot) = snapshot {
-                if let Err(error) = persistent_state::save_playthrough(&snapshot, ctx.data_dir) {
+                if let Err(error) = extension::persist(&snapshot, ctx.data_dir) {
                     tracing::warn!("[ScriptState] 剧本状态保存失败: {:#}", error);
                 }
             }
@@ -979,10 +975,7 @@ impl ScriptManager {
         // queue-ordered script:end processor closes them; stop/error/preview
         // teardown still cleans immediately.
         if !completed && release_running {
-            crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
-                ctx.app,
-            );
-            crate::api::script_popups::close_all();
+            crate::ai_service::game_system::script_engine::extension::close(ctx.app);
         }
 
         if release_running {
@@ -1001,10 +994,8 @@ impl ScriptManager {
             },
         ) {
             // No frontend consumer will arrive to close deferred tickets/windows.
-            crate::ai_service::game_system::script_engine::events::glitch_window_event::close_all_glitch_windows(
-                ctx.app,
-            );
-            crate::api::script_popups::close_all();
+            crate::ai_service::game_system::script_engine::extension::close(ctx.app);
+
             tracing::error!(
                 "[ScriptManager] script:end 发送失败，已执行原生窗口回退清理: {error:#}"
             );

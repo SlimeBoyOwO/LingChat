@@ -1,3 +1,15 @@
+import type {
+  ScriptJumpscareEvent,
+  ScriptWaitEvent,
+  ScriptWindowTitleEvent,
+  ScriptGlitchWindowEvent,
+  ScriptConsoleWindowEvent,
+  ScriptVoiceShiftEvent,
+  ScriptForceChoiceEvent,
+  ScriptPoemWord,
+  ScriptPoemGameEvent,
+} from "@lingchat/dlc-ui/types/story";
+export type * from "@lingchat/dlc-ui/types/story";
 export interface ScriptEvent {
   type: string;
   duration: number;
@@ -137,75 +149,6 @@ export interface ScriptEndEvent extends ScriptEvent {
   completed?: boolean;
   /** 剧本声明 main_character 时进剧本前的主角 id：随队列事件到达，前端据此交还角色 */
   restoredRoleId?: number;
-}
-
-/** 突脸惊吓事件：全屏图片闪现 + 音效 */
-export interface ScriptJumpscareEvent extends ScriptEvent {
-  type: "jumpscare";
-  imagePath: string;
-  soundPath?: string;
-}
-
-/** 玩家可见时间轴上的显式停顿。 */
-export interface ScriptWaitEvent extends ScriptEvent {
-  type: "wait";
-}
-
-/** 队列有序的显式窗口标题意图；空串恢复默认标题。 */
-export interface ScriptWindowTitleEvent extends ScriptEvent {
-  type: "window_title";
-  title: string;
-}
-
-/** Rust 已安全校验、等待在正确剧情位置显示的本地故障窗口票据。 */
-export interface ScriptGlitchWindowEvent extends ScriptEvent {
-  type: "glitch_window";
-  requestId: number;
-}
-
-/** Rust 已校验且绑定当前剧本运行的一次性原生系统窗口票据。 */
-export interface ScriptConsoleWindowEvent extends ScriptEvent {
-  type: "console_window";
-  requestId: number;
-}
-
-/** 必须与目标台词同处前端时间轴的语音变速/变调。 */
-export interface ScriptVoiceShiftEvent extends ScriptEvent {
-  type: "voice_shift";
-  rate?: number;
-  pitch?: number;
-}
-
-/** 强制选择事件：鼠标被拖向 forced 选项，最终只能提交它 */
-export interface ScriptForceChoiceEvent extends ScriptEvent {
-  type: "force_choice";
-  requestId: string;
-  choices: ScriptChoiceItem[];
-  forced: string;
-}
-
-export interface ScriptPoemWord {
-  text: string;
-  warmPoints: number;
-  scriptPoints: number;
-  voidPoints: number;
-  glitch: boolean;
-}
-
-/** 20 轮选词写诗互动；每轮包含 10 个词。 */
-export interface ScriptPoemGameEvent extends ScriptEvent {
-  type: "poem_game";
-  requestId: string;
-  backgroundPath: string;
-  musicPath: string;
-  glitchMusicPath: string;
-  warmStickerPath: string;
-  scriptStickerPath: string;
-  voidStickerPath: string;
-  mode: "normal" | "act2" | "act2_final";
-  rounds: ScriptPoemWord[][];
-  normalLoopStart: number;
-  glitchLoopStart: number;
 }
 
 /** 剧本阅读锚点 —— 引擎每执行一个事件前广播，队列播到它时玩家刚好读完之前的台词 */

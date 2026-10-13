@@ -318,7 +318,7 @@ import { Toggle } from "@/components/base";
 import { i18n } from "@/locales";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import PluginArchiveProgress from "@/components/ui/PluginArchiveProgress.vue";
-import DlcLibrary from "@/components/views/dlc/DlcLibrary.vue";
+import DlcLibrary from "@lingchat/dlc-ui/components/views/dlc/DlcLibrary.vue";
 import { usePluginImport } from "@/composables/usePluginImport";
 import type { PluginConflictPolicy } from "@/api/services/plugins";
 import {

@@ -88,7 +88,7 @@ pub struct FieldSpec {
 }
 
 impl FieldSpec {
-    fn new(key: &'static str, label: &'static str, kind: FieldKind) -> Self {
+    pub fn new(key: &'static str, label: &'static str, kind: FieldKind) -> Self {
         FieldSpec {
             key,
             label,
@@ -103,36 +103,36 @@ impl FieldSpec {
             enabled: true,
         }
     }
-    fn required(mut self) -> Self {
+    pub fn required(mut self) -> Self {
         self.required = true;
         self
     }
-    fn hint(mut self, h: &'static str) -> Self {
+    pub fn hint(mut self, h: &'static str) -> Self {
         self.hint = Some(h);
         self
     }
-    fn placeholder(mut self, p: &'static str) -> Self {
+    pub fn placeholder(mut self, p: &'static str) -> Self {
         self.placeholder = Some(p);
         self
     }
     /// 标注引擎真实默认值（人类可读），供「不设置」选项展示
-    fn default_desc(mut self, d: &'static str) -> Self {
+    pub fn default_desc(mut self, d: &'static str) -> Self {
         self.default_desc = Some(d);
         self
     }
-    fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
+    pub fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
         self.options = opts.into_iter().map(Into::into).collect();
         self
     }
-    fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
+    pub fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
         self.option_labels = labels.into_iter().map(Into::into).collect();
         self
     }
-    fn asset(mut self, kind: &'static str) -> Self {
+    pub fn asset(mut self, kind: &'static str) -> Self {
         self.asset_kind = Some(kind);
         self
     }
-    fn disabled(mut self, why: &'static str) -> Self {
+    pub fn disabled(mut self, why: &'static str) -> Self {
         self.enabled = false;
         self.hint = Some(why);
         self
@@ -218,7 +218,7 @@ fn effect_options() -> Vec<String> {
 }
 
 pub fn build_schema() -> ScriptSchema {
-    let events = vec![
+    let mut events = vec![
         // ---------- 叙事 ----------
         EventSpec {
             type_key: "narration",
@@ -465,211 +465,6 @@ pub fn build_schema() -> ScriptSchema {
                 FieldSpec::new("fade", "淡入淡出", FieldKind::Bool).default_desc("true"),
             ],
         },
-        // ---------- DLC / 恐怖剧本扩展 ----------
-        EventSpec {
-            type_key: "force_choice",
-            label: "强制选项",
-            category: "交互",
-            color: "#ef4444",
-            fields: vec![
-                FieldSpec::new("options", "选项列表", FieldKind::ChoiceOptions)
-                    .required()
-                    .hint("与普通 choices 相同，可给选项配置 condition / lock_hint"),
-                FieldSpec::new("forced", "强制选择文本", FieldKind::Text)
-                    .required()
-                    .hint("必须与一个未锁定选项的 text 完全一致"),
-            ],
-        },
-        EventSpec {
-            type_key: "poem_game",
-            label: "写诗小游戏",
-            category: "交互",
-            color: "#f472b6",
-            fields: vec![
-                FieldSpec::new("backgroundPath", "写诗背景", FieldKind::Asset)
-                    .required()
-                    .asset("background"),
-                FieldSpec::new("musicPath", "正常音乐", FieldKind::Asset)
-                    .required()
-                    .asset("music"),
-                FieldSpec::new("glitchMusicPath", "崩坏音乐", FieldKind::Asset)
-                    .required()
-                    .asset("music"),
-                FieldSpec::new("warmStickerPath", "温暖角色贴纸", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
-                FieldSpec::new("scriptStickerPath", "剧本角色贴纸", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
-                FieldSpec::new("voidStickerPath", "空白角色贴纸", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
-                FieldSpec::new("wordListPath", "词库文件", FieldKind::Text)
-                    .required()
-                    .placeholder("poem_words.yaml")
-                    .hint("只能填写剧本根目录下的文件名"),
-                FieldSpec::new("resultVar", "结果变量", FieldKind::Text)
-                    .placeholder("poem_tone"),
-                FieldSpec::new("rounds", "轮数", FieldKind::Number)
-                    .placeholder("20")
-                    .hint("引擎限制 1–20"),
-                FieldSpec::new("glitch", "强制崩坏词", FieldKind::Bool),
-                FieldSpec::new("mode", "写诗模式", FieldKind::Select)
-                    .options(["normal", "act2", "act2_final"])
-                    .default_desc("normal"),
-            ],
-        },
-        EventSpec {
-            type_key: "wait",
-            label: "等待",
-            category: "流程",
-            color: "#64748b",
-            fields: vec![FieldSpec::new("seconds", "等待秒数", FieldKind::Number)
-                .placeholder("1.0")
-                .hint("用于无需玩家点击的演出停顿")],
-        },
-        EventSpec {
-            type_key: "random_var",
-            label: "随机变量",
-            category: "流程",
-            color: "#a855f7",
-            fields: vec![
-                FieldSpec::new("variable", "变量名", FieldKind::Text).required(),
-                FieldSpec::new("chance", "为 true 的概率", FieldKind::Number)
-                    .placeholder("0.5")
-                    .hint("范围 0–1，超出时会截断"),
-            ],
-        },
-        EventSpec {
-            type_key: "character_file",
-            label: "角色文件",
-            category: "流程",
-            color: "#dc2626",
-            fields: vec![
-                FieldSpec::new("action", "操作", FieldKind::Select)
-                    .required()
-                    .options(["ensure", "exists", "delete", "open_folder"]),
-                FieldSpec::new("file", "标记文件", FieldKind::Text)
-                    .hint("必须在 story_config.script_settings.character_files 白名单中"),
-                FieldSpec::new("resultVar", "检测结果变量", FieldKind::Text)
-                    .hint("exists 操作把布尔结果写入该变量"),
-                FieldSpec::new("result_var", "旧结果变量字段", FieldKind::Deprecated)
-                    .disabled("兼容旧剧本；新剧本请使用 resultVar"),
-            ],
-        },
-        EventSpec {
-            type_key: "watch_file",
-            label: "监视角色文件",
-            category: "流程",
-            color: "#b91c1c",
-            fields: vec![
-                FieldSpec::new("action", "操作", FieldKind::Select)
-                    .options(["start", "stop"])
-                    .default_desc("start"),
-                FieldSpec::new("file", "监视文件", FieldKind::Text)
-                    .hint("start 时必填，且必须在角色文件白名单中"),
-                FieldSpec::new("on_missing", "文件消失后跳转", FieldKind::Chapter)
-                    .hint("start 时必填"),
-            ],
-        },
-        EventSpec {
-            type_key: "voice_shift",
-            label: "语音变调",
-            category: "声音",
-            color: "#7c3aed",
-            fields: vec![
-                FieldSpec::new("rate", "播放倍率", FieldKind::Number)
-                    .placeholder("1.0")
-                    .hint("引擎限制 0.5–1.5；会同时改变语速与音调"),
-                FieldSpec::new("pitch", "纯音高偏移（半音）", FieldKind::Number)
-                    .placeholder("0")
-                    .hint("引擎限制 -12–12；通过 Web Audio detune 实现"),
-            ],
-        },
-        EventSpec {
-            type_key: "horror_log",
-            label: "恐怖日志刷屏",
-            category: "演出",
-            color: "#991b1b",
-            fields: vec![
-                FieldSpec::new("text", "日志文本", FieldKind::Textarea).required(),
-                FieldSpec::new("lines", "重复行数", FieldKind::Number)
-                    .placeholder("1")
-                    .hint("引擎会限制最大行数"),
-            ],
-        },
-        EventSpec {
-            type_key: "console_window",
-            label: "原生系统窗口",
-            category: "演出",
-            color: "#450a0a",
-            fields: vec![
-                FieldSpec::new("title", "窗口标题", FieldKind::Text),
-                FieldSpec::new("text", "窗口正文", FieldKind::Textarea).required(),
-                FieldSpec::new("style", "窗口样式", FieldKind::Select)
-                    .options(["console", "blood_cmd", "error", "warning", "notepad"])
-                    .default_desc("console"),
-                FieldSpec::new("count", "窗口数量", FieldKind::Number)
-                    .placeholder("1")
-                    .hint("引擎限制 1–4"),
-                FieldSpec::new("interval", "窗口间隔（秒）", FieldKind::Number)
-                    .placeholder("0.25"),
-                FieldSpec::new("lifetime", "最长存活（秒）", FieldKind::Number)
-                    .placeholder("4")
-                    .hint("引擎限制 1–12 秒；玩家可提前关闭"),
-            ],
-        },
-        EventSpec {
-            type_key: "jumpscare",
-            label: "突脸惊吓",
-            category: "演出",
-            color: "#7f1d1d",
-            fields: vec![
-                FieldSpec::new("imagePath", "突脸图片", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
-                FieldSpec::new("soundPath", "惊吓音效", FieldKind::Asset).asset("sound"),
-            ],
-        },
-        EventSpec {
-            type_key: "glitch_window",
-            label: "应用内故障窗口",
-            category: "演出",
-            color: "#6b21a8",
-            fields: vec![
-                FieldSpec::new("title", "窗口标题", FieldKind::Text),
-                FieldSpec::new("text", "窗口正文", FieldKind::Textarea).required(),
-                FieldSpec::new("style", "样式", FieldKind::Select)
-                    .required()
-                    .options(["terminal", "error"]),
-                FieldSpec::new("count", "窗口数量", FieldKind::Number).placeholder("1"),
-                FieldSpec::new("interval", "窗口间隔（秒）", FieldKind::Number)
-                    .placeholder("0.25"),
-                FieldSpec::new("lifetime", "存活时间（秒）", FieldKind::Number)
-                    .placeholder("4"),
-            ],
-        },
-        EventSpec {
-            type_key: "window_title",
-            label: "窗口标题故障",
-            category: "演出",
-            color: "#4c1d95",
-            fields: vec![FieldSpec::new("title", "窗口标题", FieldKind::Text)
-                .hint("留空可把标题切回应用默认值")],
-        },
-        EventSpec {
-            type_key: "main_menu_effect",
-            label: "主菜单主题",
-            category: "演出",
-            color: "#581c87",
-            fields: vec![
-                FieldSpec::new("theme", "主题", FieldKind::Select)
-                    .required()
-                    .options(["normal", "blood", "ghost"]),
-                FieldSpec::new("message", "菜单短句", FieldKind::Textarea)
-                    .hint("最多 160 字；主题状态按剧本归属持久化"),
-            ],
-        },
         // ---------- 成就 ----------
         EventSpec {
             type_key: "unlock_achievement",
@@ -691,6 +486,8 @@ pub fn build_schema() -> ScriptSchema {
             ],
         },
     ];
+
+    events.extend(super::extension::schemas());
 
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)

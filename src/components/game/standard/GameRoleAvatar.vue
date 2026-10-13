@@ -72,7 +72,7 @@ import type { GameRole } from "@/stores/modules/game/state";
 import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
-import SpriteNoiseOverlay from "./SpriteNoiseOverlay.vue";
+import SpriteNoiseOverlay from "@lingchat/dlc-ui/components/game/standard/SpriteNoiseOverlay.vue";
 import { avatarObjectFit, useRoleAvatar } from "@/composables/role/useRoleAvatar";
 import { standardAvatarStyle } from "@/utils/avatar-layout";
 import { prefersLive2d } from "@/types/live2d";

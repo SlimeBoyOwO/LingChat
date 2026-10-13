@@ -75,7 +75,7 @@ pub(crate) fn ensure_no_args(arguments: &Value, tool: &str) -> Result<(), String
 /// 将内容写到同目录临时文件，再原子替换目标文件。
 /// `tempfile::persist` 在 Windows 上也支持覆盖已有目标，避免普通 `fs::rename`
 /// 导致工具第一次写入成功、后续更新全部失败。
-pub(crate) fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> {
+pub fn atomic_replace(path: &Path, content: &[u8]) -> Result<(), String> {
     let parent = path
         .parent()
         .ok_or_else(|| format!("目标路径没有父目录: {}", path.display()))?;
