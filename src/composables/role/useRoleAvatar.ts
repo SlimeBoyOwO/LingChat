@@ -149,7 +149,11 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
 
   async function resolveAvatar() {
     const currentId = ++resolveAvatarId;
-    const params = avatarFolderParams(role.value);
+    const params = {
+      ...avatarFolderParams(role.value),
+      roleId: role.value.roleId,
+      scriptName: gameStore.runningScript?.scriptName,
+    };
     try {
       const path = await invoke<string>("get_avatar_file", params);
       if (currentId === resolveAvatarId) {
@@ -237,6 +241,7 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
       role.value.emotion,
       role.value.clothesName,
       role.value.character_folder,
+      gameStore.runningScript?.scriptName,
     ],
     () => resolveAvatar(),
     { immediate: true },

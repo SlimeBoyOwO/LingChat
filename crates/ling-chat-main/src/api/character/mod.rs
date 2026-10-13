@@ -530,71 +530,126 @@ fn script_package_dirs() -> Vec<PathBuf> {
 }
 
 #[tauri::command]
-pub fn get_avatar_file(
+pub async fn get_avatar_file(
+    app: AppHandle,
     character_folder: String,
     emotion: String,
     clothes_name: String,
+    role_id: Option<i32>,
+    script_name: Option<String>,
 ) -> Result<String, String> {
-    let allowed_extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
-
     let clothes_subdir = if clothes_name.is_empty() || clothes_name == "default" {
         String::new()
     } else {
+        avatars::validate_segment(&clothes_name)?;
         clothes_name.clone()
     };
 
     let mut candidate_bases: Vec<PathBuf> = Vec::new();
 
-    // 1. 主角色: characters/{folder}/avatar（插件角色解析到 plugins/<id>/characters/<folder>）
-    let main_avatar = resolve_character_dir(&character_folder).join("avatar");
-    if main_avatar.exists() {
-        candidate_bases.push(main_avatar);
-    }
-
-    // 2. NPC/脚本角色: <剧本目录>/characters/{folder}/avatar
-    for script_dir in script_package_dirs() {
-        let npc_avatar = script_dir
-            .join("characters")
-            .join(&character_folder)
-            .join("avatar");
-        if npc_avatar.exists() {
-            candidate_bases.push(npc_avatar);
-        }
-    }
-
-    for base in &candidate_bases {
-        let search_dir = if clothes_subdir.is_empty() {
-            base.clone()
+    if let Some(role_id) = role_id {
+        // Role IDs retain the script/package owner. Folder-only lookup cannot
+        // distinguish identically named NPCs and does not cover downloaded scripts.
+        let state = app.state::<AppState>();
+        let role = RoleRepo::get_role_by_id(&state.db, role_id)
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or("角色不存在")?;
+        let service = state.ai_service.lock().await;
+        // The backend can finish before the visible FIFO reaches script:end.
+        // Resolve queued portrait overrides from a registered story, never a caller path.
+        let queued_story = script_name
+            .as_deref()
+            .and_then(|name| service.script_manager.get_script(name))
+            .cloned();
+        let game_status = service.game_status.clone();
+        drop(service);
+        let gs = game_status.lock().await;
+        let active_story = gs
+            .script_status
+            .as_ref()
+            .filter(|_| gs.main_role_id == Some(role_id));
+        let script = if role.role_type == RoleType::Main {
+            queued_story.as_ref().or(active_story)
         } else {
-            base.join(&clothes_subdir)
+            None
         };
-
-        if !search_dir.exists() {
-            continue;
+        candidate_bases = role_avatar_bases(&data_dir(), &role, script)?;
+    } else {
+        // Legacy callers without a role ID retain the existing folder lookup.
+        // 1. 主角色: characters/{folder}/avatar（插件角色解析到 plugins/<id>/characters/<folder>）
+        let main_avatar = resolve_character_dir(&character_folder).join("avatar");
+        if main_avatar.exists() {
+            candidate_bases.push(main_avatar);
         }
 
-        if let Some(found) = find_emotion_file(&search_dir, &emotion, &allowed_extensions) {
-            let canon = found
-                .canonicalize()
-                .map_err(|e| format!("路径解析失败: {}", e))?;
-            return Ok(canon.to_string_lossy().into_owned());
-        }
-
-        // 如果情绪是"平静"没找到，回退到"正常"
-        if emotion == "平静" {
-            if let Some(found) = find_emotion_file(&search_dir, "正常", &allowed_extensions) {
-                let canon = found
-                    .canonicalize()
-                    .map_err(|e| format!("路径解析失败: {}", e))?;
-                return Ok(canon.to_string_lossy().into_owned());
+        // 2. NPC/脚本角色: <剧本目录>/characters/{folder}/avatar
+        for script_dir in script_package_dirs() {
+            let npc_avatar = script_dir
+                .join("characters")
+                .join(&character_folder)
+                .join("avatar");
+            if npc_avatar.exists() {
+                candidate_bases.push(npc_avatar);
             }
         }
     }
 
-    Err(format!(
-        "未找到角色头像: folder={}, emotion={}, clothes={}",
-        character_folder, emotion, clothes_name
-    ))
+    find_avatar_in_bases(&candidate_bases, &emotion, &clothes_subdir).ok_or_else(|| {
+        format!(
+            "未找到角色头像: folder={}, emotion={}, clothes={}",
+            character_folder, emotion, clothes_name
+        )
+    })
+}
+
+fn role_avatar_bases(
+    data: &std::path::Path,
+    role: &crate::db::entities::role::Model,
+    active_main_script: Option<&crate::ai_service::types::ScriptStatus>,
+) -> Result<Vec<PathBuf>, String> {
+    let folder = role.resource_folder.as_deref().ok_or("角色资源不存在")?;
+    let mut bases = Vec::new();
+    if let Some(script) =
+        active_main_script.filter(|script| script.main_character.as_deref() == Some(folder))
+    {
+        bases.push(
+            script
+                .script_path
+                .join("characters")
+                .join(folder)
+                .join("avatar"),
+        );
+    }
+    bases.push(
+        super::resolve_role_dir_in(data, &role.role_type, role.script_key.as_deref(), folder)?
+            .join("avatar"),
+    );
+    Ok(bases)
+}
+
+fn find_avatar_in_bases(bases: &[PathBuf], emotion: &str, clothes: &str) -> Option<String> {
+    let extensions = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
+    for base in bases {
+        let search = if clothes.is_empty() {
+            base.clone()
+        } else {
+            base.join(clothes)
+        };
+        let found = find_emotion_file(&search, emotion, &extensions).or_else(|| {
+            (emotion == "平静")
+                .then(|| find_emotion_file(&search, "正常", &extensions))
+                .flatten()
+        });
+        if let Some(found) = found {
+            let root = base.canonicalize().ok()?;
+            let path = found.canonicalize().ok()?;
+            if path.starts_with(root) {
+                return Some(path.to_string_lossy().into_owned());
+            }
+        }
+    }
+    None
 }
 
 /// 手动选装的内部实现（不落锁）。AI 工具 `character_set_clothes` 在通过
@@ -812,4 +867,77 @@ pub async fn delete_character(
     let _ = app.emit("role:list-updated", ());
 
     Ok(())
+}
+
+#[cfg(test)]
+mod story_avatar_tests {
+    use super::*;
+    use crate::db::entities::role::Model;
+    fn npc(owner: &str) -> Model {
+        Model {
+            id: 10,
+            script_key: Some(format!("plugins/{owner}/story")),
+            script_role_key: Some("ql".into()),
+            name: "钦灵".into(),
+            role_type: RoleType::Npc,
+            resource_folder: Some("钦灵".into()),
+        }
+    }
+    #[test]
+    fn same_named_dlc_roles_resolve_their_own_portraits() {
+        let data = tempfile::tempdir().unwrap();
+        for owner in ["one", "two"] {
+            let dir = data.path().join(format!(
+                "plugins/{owner}/scripts/story/characters/钦灵/avatar"
+            ));
+            fs::create_dir_all(&dir).unwrap();
+            fs::write(dir.join("正常.webp"), owner).unwrap();
+            let bases = role_avatar_bases(data.path(), &npc(owner), None).unwrap();
+            let found = find_avatar_in_bases(&bases, "平静", "").unwrap();
+            assert_eq!(fs::read_to_string(found).unwrap(), owner);
+        }
+    }
+    #[test]
+    fn main_portrait_override_is_scoped_to_the_active_story() {
+        use crate::ai_service::game_system::script_engine::ScriptManager;
+        let data = tempfile::tempdir().unwrap();
+        let global = data.path().join("game_data/characters/DeepSeek/avatar");
+        let script_dir = data.path().join("plugins/story/scripts/story");
+        let overlay = script_dir.join("characters/DeepSeek/avatar");
+        fs::create_dir_all(&global).unwrap();
+        fs::create_dir_all(&overlay).unwrap();
+        fs::write(global.join("正常.webp"), "ordinary").unwrap();
+        fs::write(overlay.join("崩坏.webp"), "story-only").unwrap();
+        fs::write(
+            script_dir.join("story_config.yaml"),
+            "script_name: Story\nintro_chapter: main\nmain_character: DeepSeek\n",
+        )
+        .unwrap();
+        let story = ScriptManager::read_script_config(&script_dir).unwrap();
+        let role = Model {
+            id: 4,
+            name: "她".into(),
+            role_type: RoleType::Main,
+            resource_folder: Some("DeepSeek".into()),
+            script_key: None,
+            script_role_key: None,
+        };
+        let bases = role_avatar_bases(data.path(), &role, Some(&story)).unwrap();
+        assert_eq!(
+            fs::read_to_string(find_avatar_in_bases(&bases, "崩坏", "").unwrap()).unwrap(),
+            "story-only"
+        );
+        assert_eq!(
+            fs::read_to_string(find_avatar_in_bases(&bases, "正常", "").unwrap()).unwrap(),
+            "ordinary"
+        );
+        assert!(
+            find_avatar_in_bases(
+                &role_avatar_bases(data.path(), &role, None).unwrap(),
+                "崩坏",
+                ""
+            )
+            .is_none()
+        );
+    }
 }

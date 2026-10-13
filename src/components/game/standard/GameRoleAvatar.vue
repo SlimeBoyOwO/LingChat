@@ -195,6 +195,8 @@ watch(
     let url = "";
     try {
       const path = await invoke<string>("get_avatar_file", {
+        roleId: r.roleId,
+        scriptName: gameStore.runningScript?.scriptName,
         characterFolder: r.character_folder,
         emotion: mappedEmotion,
         clothesName,

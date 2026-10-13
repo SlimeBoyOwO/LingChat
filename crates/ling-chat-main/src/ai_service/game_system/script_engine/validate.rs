@@ -284,6 +284,14 @@ pub fn validate(
     // ---------- 逐章节 ----------
     let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
+    // Declared cross-run variables can be supplied by the persistence layer.
+    if let Some(keys) = config
+        .get("script_settings")
+        .and_then(|s| s.get("persistent_vars"))
+        .and_then(|v| v.as_array())
+    {
+        vars_written.extend(keys.iter().filter_map(|v| v.as_str().map(str::to_owned)));
+    }
     let mut vars_read: BTreeSet<String> = BTreeSet::new();
     // 「解锁成就」事件的键名：内置成就集合 + 本剧本已出现的键名（成就键名必须唯一）
     let builtin_achievement_ids = crate::achievements::manager::builtin_achievement_ids();
@@ -593,7 +601,14 @@ pub fn validate(
                 },
                 "chapter_end" => {
                     has_chapter_end = true;
-                    if i != last_index {
+                    if i != last_index
+                        && obj
+                            .get("condition")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .is_empty()
+                    {
                         diags.push(Diagnostic::event(
                             Severity::Warn,
                             "chapter_end.not_last",

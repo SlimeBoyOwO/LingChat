@@ -112,6 +112,16 @@ impl EventsHandler {
             self.chapter_result = Some(result);
         }
 
+        // Opt-in cross-run state must survive closing the app during a choice,
+        // not only a normal script end. The extension only writes changed,
+        // allow-listed variables; previews never touch the player's state.
+        if !ctx.is_preview {
+            let snapshot = ctx.game_status.lock().await.script_status.clone();
+            if let Some(snapshot) = snapshot {
+                super::extension::persist(&snapshot, ctx.data_dir)?;
+            }
+        }
+
         Ok(())
     }
 }

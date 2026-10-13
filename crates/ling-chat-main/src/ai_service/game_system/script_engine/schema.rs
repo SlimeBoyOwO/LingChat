@@ -416,8 +416,8 @@ pub fn build_schema() -> ScriptSchema {
             color: "#a3e635",
             fields: vec![
                 FieldSpec::new("imagePath", "图片", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
+                    .asset("pic")
+                    .hint("留空收起当前插图"),
                 FieldSpec::new("scale", "缩放", FieldKind::Number).placeholder("1.0"),
             ],
         },
