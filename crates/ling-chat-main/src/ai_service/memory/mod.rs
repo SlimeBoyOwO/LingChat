@@ -29,9 +29,9 @@ pub mod local_embedding;
 pub mod search;
 pub mod store;
 
+use std::collections::HashSet;
 use std::sync::Arc;
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
 
 use anyhow::{Context, Result, anyhow};
 use sea_orm::DatabaseConnection;
@@ -156,8 +156,9 @@ pub struct MemoryService {
     min_score: f64,
     /// 摘要互斥锁：压缩要跨「LLM 生成 + 删源条目」，并发跑会产出重复摘要。
     summarize_lock: tokio::sync::Mutex<()>,
-    /// 后台自动摘要是否正在跑（防止连续写入堆起一串压缩任务）。
-    auto_summarize_running: std::sync::atomic::AtomicBool,
+    /// 正在跑后台自动摘要的角色集合：按角色单独限流，避免连续写入堆起一串压缩任务
+    /// （不同角色可各跑一个，互不阻塞）。
+    auto_summarize_running: Mutex<HashSet<i32>>,
 }
 
 impl MemoryService {
@@ -193,7 +194,7 @@ impl MemoryService {
             top_k: cfg.memory_top_k as usize,
             min_score: cfg.memory_min_score,
             summarize_lock: tokio::sync::Mutex::new(()),
-            auto_summarize_running: std::sync::atomic::AtomicBool::new(false),
+            auto_summarize_running: Mutex::new(HashSet::new()),
         }
     }
 
@@ -338,22 +339,41 @@ impl MemoryService {
         if content.is_empty() {
             return Err(anyhow!("记忆内容不能为空"));
         }
-        let tags_line = if tags.is_empty() {
-            String::new()
-        } else {
-            format!("\n[标签: {}]", tags.join(","))
-        };
-        let full = format!("{content}{tags_line}");
+        // 标签拼成正文尾行 `\n[标签: …]`；`insert_memory` 会用同一函数重建，二者一致。
+        let full = with_tags_suffix(content, tags);
 
-        match self.dedup(role_id, &full).await? {
+        // 去重判定需要一次嵌入。这里先把 `full` 的向量算出来：判定用它，若走到「新存」
+        // 分支还能把同一文本的向量复用给 `insert_memory`，避免同一条内容被嵌入两次
+        // （远程接口下即少一次 HTTP 往返）。嵌入失败则退回词法去重，写入会自行再试。
+        let query_vec = if self.is_configured() {
+            match self.embed_one(&full).await {
+                Ok(vector) => Some(vector),
+                Err(error) => {
+                    tracing::warn!("记忆去重嵌入失败，降级为词法去重: {error}");
+                    None
+                },
+            }
+        } else {
+            None
+        };
+
+        match self.dedup(role_id, &full, query_vec.as_deref()).await? {
             DedupDecision::Skip { similarity } => Ok(StoreOutcome {
                 action: "skipped".into(),
                 memory_id: None,
                 detail: format!("与既有记忆过于相似（相似度 {similarity:.3}），已放弃写入"),
             }),
             DedupDecision::Merge { memory_id, merged } => {
-                store::delete_memory_scoped(&self.db, role_id, &memory_id).await?;
-                let id = self.insert_memory(role_id, &merged, tags).await?;
+                // 先插后删：合并结果（可能含远程嵌入）成功落库后才删旧记忆，插入失败
+                // 不会丢数据（与 `summarize` 的「先插后删」一致）。合并正文里可能已带上
+                // 旧标签行（来自候选列表），先剥掉再由 `insert_memory` 按本次标签重建。
+                let id = self
+                    .insert_memory(role_id, strip_tags_suffix(&merged), tags, None)
+                    .await?;
+                if let Err(error) = store::delete_memory_scoped(&self.db, role_id, &memory_id).await
+                {
+                    tracing::warn!("记忆合并：旧记忆 {memory_id} 删除失败，可能残留重复: {error}");
+                }
                 Ok(StoreOutcome {
                     action: "merged".into(),
                     memory_id: Some(id),
@@ -361,7 +381,9 @@ impl MemoryService {
                 })
             },
             DedupDecision::Store => {
-                let id = self.insert_memory(role_id, &full, tags).await?;
+                let id = self
+                    .insert_memory(role_id, content, tags, query_vec.as_deref())
+                    .await?;
                 let preview = if full.chars().count() > 100 {
                     let head: String = full.chars().take(100).collect();
                     format!("{head}…")
@@ -660,7 +682,7 @@ impl MemoryService {
         let summary = self.llm_summarize(&selected).await?;
         // 先插后删：这一步失败只是没压成，不能反过来先删了源条目。
         let memory_id = self
-            .insert_memory(role_id, &summary, &[SUMMARY_TAG.to_string()])
+            .insert_memory(role_id, &summary, &[SUMMARY_TAG.to_string()], None)
             .await?;
         for entry in &selected {
             store::delete_memory_scoped(&self.db, role_id, &entry.memory_id).await?;
@@ -675,16 +697,22 @@ impl MemoryService {
         })
     }
 
-    /// 尝试占用「后台自动摘要」槽位；已有任务在跑时返回 false。
-    fn try_begin_auto_summarize(&self) -> bool {
-        self.auto_summarize_running
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+    /// 尝试为 `role_id` 占用「后台自动摘要」槽位；该角色已有任务在跑时返回 false。
+    fn try_begin_auto_summarize(&self, role_id: i32) -> bool {
+        let mut running = self
+            .auto_summarize_running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        running.insert(role_id)
     }
 
-    /// 释放自动摘要槽位。
-    fn end_auto_summarize(&self) {
-        self.auto_summarize_running.store(false, Ordering::SeqCst);
+    /// 释放 `role_id` 的自动摘要槽位。
+    fn end_auto_summarize(&self, role_id: i32) {
+        let mut running = self
+            .auto_summarize_running
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        running.remove(&role_id);
     }
 
     /// 让 LLM 把一批较早的记忆压缩成一条摘要正文。
@@ -725,34 +753,27 @@ impl MemoryService {
 
     /// 逐块嵌入并写入一张记忆。
     ///
+    /// `tags` 统一在这里拼成正文尾行 `\n[标签: …]`（写入方只管正文），写入 / 检索 /
+    /// 浏览共用同一种编码，`split_tags_suffix` 再从尾行还原标签。
+    ///
     /// 无嵌入模型（或嵌入失败/数量不匹配）时改为写纯文本记忆（向量列为 NULL），
     /// 检索自动走词法——写入永远不该因为嵌入不可用而失败。
-    async fn insert_memory(&self, role_id: i32, content: &str, tags: &[String]) -> Result<String> {
+    ///
+    /// `known_vector` 是调用方已算好的**整条内容**的向量（去重时的结果）：仅当内容
+    /// 只有一个分块（≤1024 字，绝大多数）时直接复用，省掉一次重复嵌入。
+    async fn insert_memory(
+        &self,
+        role_id: i32,
+        content: &str,
+        tags: &[String],
+        known_vector: Option<&[f32]>,
+    ) -> Result<String> {
         let memory_id = uuid::Uuid::new_v4().to_string();
-        let chunks = chunk_text(content);
-        let embeddings = if self.is_configured() {
-            match self.embed_many(&chunks).await {
-                Ok(vectors) if vectors.len() == chunks.len() => vectors,
-                Ok(vectors) => {
-                    tracing::warn!(
-                        "记忆嵌入数量不匹配（{} != {}），该条改存纯文本",
-                        vectors.len(),
-                        chunks.len()
-                    );
-                    vec![Vec::new(); chunks.len()]
-                },
-                Err(error) => {
-                    tracing::warn!("记忆嵌入失败，改存纯文本记忆: {error}");
-                    vec![Vec::new(); chunks.len()]
-                },
-            }
-        } else {
-            vec![Vec::new(); chunks.len()]
-        };
-        let tags_csv = if tags.is_empty() {
-            None
-        } else {
-            Some(tags.join(","))
+        let tagged = with_tags_suffix(content, tags);
+        let chunks = chunk_text(&tagged);
+        let embeddings = match known_vector {
+            Some(vector) if chunks.len() == 1 => vec![vector.to_vec()],
+            _ => self.embed_chunks(&chunks).await,
         };
         store::insert_memory(
             &self.db,
@@ -760,33 +781,50 @@ impl MemoryService {
             &memory_id,
             &chunks,
             &embeddings,
-            tags_csv,
             self.model(),
         )
         .await?;
         Ok(memory_id)
     }
 
+    /// 逐块嵌入。未配置嵌入模型（或嵌入失败 / 数量不匹配）时返回与分块等长的空向量，
+    /// 该记忆改存纯文本，检索自动走字符 n-gram 词法路。
+    async fn embed_chunks(&self, chunks: &[String]) -> Vec<Vec<f32>> {
+        if !self.is_configured() || chunks.is_empty() {
+            return vec![Vec::new(); chunks.len()];
+        }
+        match self.embed_many(chunks).await {
+            Ok(vectors) if vectors.len() == chunks.len() => vectors,
+            Ok(vectors) => {
+                tracing::warn!(
+                    "记忆嵌入数量不匹配（{} != {}），该条改存纯文本",
+                    vectors.len(),
+                    chunks.len()
+                );
+                vec![Vec::new(); chunks.len()]
+            },
+            Err(error) => {
+                tracing::warn!("记忆嵌入失败，改存纯文本记忆: {error}");
+                vec![Vec::new(); chunks.len()]
+            },
+        }
+    }
+
     /// 三级去重（见模块文档）。
     ///
-    /// 有嵌入模型时用向量余弦；否则（或嵌入失败）退化为字符 n-gram 词法相似度，
-    /// 并使用相应的阈值。
-    async fn dedup(&self, role_id: i32, content: &str) -> Result<DedupDecision> {
+    /// `query_vec` 是调用方按 `content` 预先算好的向量（`store` 会把它复用给写入，
+    /// 避免同一条内容重复嵌入）：`Some` 走向量余弦，`None`（未配置嵌入或嵌入失败）
+    /// 退化为字符 n-gram 词法相似度，并使用相应的阈值。
+    async fn dedup(
+        &self,
+        role_id: i32,
+        content: &str,
+        query_vec: Option<&[f32]>,
+    ) -> Result<DedupDecision> {
         let rows = store::load_role_rows(&self.db, role_id).await?;
-        let mut used_vector = false;
-        let mut scored: Vec<(MemoryRow, f32)> = if self.is_configured() {
-            match self.embed_one(content).await {
-                Ok(query_vec) => {
-                    used_vector = true;
-                    score_rows_by_vector(rows, &query_vec, self.model())
-                },
-                Err(error) => {
-                    tracing::warn!("记忆去重嵌入失败，降级为词法去重: {error}");
-                    lexical_pairs(rows, content)
-                },
-            }
-        } else {
-            lexical_pairs(rows, content)
+        let (mut scored, used_vector): (Vec<(MemoryRow, f32)>, bool) = match query_vec {
+            Some(vector) => (score_rows_by_vector(rows, vector, self.model()), true),
+            None => (lexical_pairs(rows, content), false),
         };
         let (reject_threshold, llm_lower) = if used_vector {
             (DEDUP_REJECT_THRESHOLD, DEDUP_LLM_LOWER)
@@ -862,7 +900,11 @@ impl MemoryService {
             .unwrap_or_default();
         match action {
             "skip" => Ok(DedupDecision::Skip {
-                similarity: DEDUP_LLM_LOWER,
+                // 回传命中的最高相似度（候选已按分数降序），别拿阈值下限冒充。
+                similarity: candidates
+                    .first()
+                    .map(|(_, _, score)| *score)
+                    .unwrap_or(DEDUP_LLM_LOWER),
             }),
             "merge" => {
                 let merged = value
@@ -947,6 +989,18 @@ fn group_entries(rows: Vec<MemoryRow>) -> Vec<MemoryEntry> {
     entries
 }
 
+/// 把标签拼成正文尾行 `\n[标签: a,b]`；无标签时原样返回。
+///
+/// 与 [`split_tags_suffix`] 互逆——写入（`store` / 合并 / 摘要）与读取（浏览面板、
+/// 摘要前剥离标签）共用这一编码，避免各处各拼一份导致不一致。
+fn with_tags_suffix(content: &str, tags: &[String]) -> String {
+    if tags.is_empty() {
+        content.to_string()
+    } else {
+        format!("{content}\n[标签: {}]", tags.join(","))
+    }
+}
+
 /// `store` 会把标签拼进正文末尾（`\n[标签: a,b]`）；拆成「正文 + 标签列表」两部分。
 /// 只有当它是最后一行（其后不再换行）时才拆，避免误伤正文里提到的同名片段。
 fn split_tags_suffix(content: &str) -> (&str, Vec<String>) {
@@ -1006,11 +1060,11 @@ pub fn spawn_auto_summarize_if_needed(memory: Arc<MemoryService>, role_id: i32) 
         if count < AUTO_SUMMARIZE_THRESHOLD {
             return;
         }
-        if !memory.try_begin_auto_summarize() {
+        if !memory.try_begin_auto_summarize(role_id) {
             return;
         }
         let outcome = memory.summarize(role_id, DEFAULT_KEEP_RECENT).await;
-        memory.end_auto_summarize();
+        memory.end_auto_summarize(role_id);
         match outcome {
             Ok(result) if result.action == "summarized" => tracing::info!(
                 role_id,
@@ -1038,4 +1092,34 @@ pub fn describe(service: &MemoryService) -> serde_json::Value {
         "auto_summarize_threshold": AUTO_SUMMARIZE_THRESHOLD,
         "keep_recent": DEFAULT_KEEP_RECENT,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tags_suffix_round_trips() {
+        let tags = vec!["偏好".to_string(), "饮品".to_string()];
+        let tagged = with_tags_suffix("用户喜欢冰美式", &tags);
+        assert_eq!(tagged, "用户喜欢冰美式\n[标签: 偏好,饮品]");
+        let (body, parsed) = split_tags_suffix(&tagged);
+        assert_eq!(body, "用户喜欢冰美式");
+        assert_eq!(parsed, tags);
+    }
+
+    #[test]
+    fn no_tags_leaves_content_unchanged() {
+        assert_eq!(with_tags_suffix("abc", &[]), "abc");
+        assert_eq!(split_tags_suffix("abc").0, "abc");
+        assert!(split_tags_suffix("abc").1.is_empty());
+    }
+
+    /// 正文里出现 `[标签: …]` 字样、但不在最后一行时不应被误拆。
+    #[test]
+    fn mid_content_tag_like_text_is_not_split() {
+        let content = "她提到过\n[标签: 某某]\n后面还有正文";
+        assert_eq!(split_tags_suffix(content).0, content);
+        assert!(split_tags_suffix(content).1.is_empty());
+    }
 }

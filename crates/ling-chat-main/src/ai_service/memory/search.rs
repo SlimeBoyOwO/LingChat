@@ -82,6 +82,12 @@ impl HybridSearch {
         // 检索按「分块行」打分，但输出按整条记忆聚合：同一 `memory_id` 的多个分块
         // 都可能命中，这里按 `memory_id` 去重、保留融合排序中位次最高的那块，避免
         // RAG 注入 / memory_query 返回重复的整条记忆。
+        //
+        // 先把分块按 `memory_id` 分组，命中聚合时直接取对应组，避免每个命中再全表扫描。
+        let mut groups: HashMap<&str, Vec<&MemoryRow>> = HashMap::new();
+        for row in &rows {
+            groups.entry(row.memory_id.as_str()).or_default().push(row);
+        }
         let mut seen: HashSet<&str> = HashSet::new();
         merged
             .into_iter()
@@ -90,9 +96,13 @@ impl HybridSearch {
             .take(top_k)
             .map(|(index, score, source)| {
                 let row = rows[index];
+                let content = match groups.get(row.memory_id.as_str()) {
+                    Some(parts) => aggregate_memory(parts),
+                    None => String::new(),
+                };
                 SearchHit {
                     memory_id: row.memory_id.clone(),
-                    content: aggregate_memory(&rows, &row.memory_id),
+                    content,
                     score,
                     source,
                     created_at: row.created_at,
@@ -113,6 +123,22 @@ impl HybridSearch {
         if rows.is_empty() {
             return Vec::new();
         }
+        let has_vector = !query_vec.is_empty() && mode != SearchMode::Lexical;
+
+        // 纯向量模式：无需求词法分，直接按余弦排序（省去对全表候选分词）。
+        if has_vector && mode == SearchMode::Vector {
+            let mut vector: Vec<(usize, f64)> = rows
+                .iter()
+                .enumerate()
+                .filter(|(_, row)| row.embedding.len() == query_vec.len())
+                .map(|(index, row)| (index, cosine(query_vec, &row.embedding) as f64))
+                .filter(|(_, score)| *score > 0.0)
+                .collect();
+            vector.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            vector.truncate(top_k.max(LEXICAL_CANDIDATES));
+            return vector.into_iter().map(|(i, s)| (i, s, "vector")).collect();
+        }
+
         let lexical = lexical_scores(query, rows);
 
         // 词法候选：得分 > 0 的按覆盖率降序。
@@ -125,22 +151,8 @@ impl HybridSearch {
         lex.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
         lex.truncate(LEXICAL_CANDIDATES.max(top_k));
 
-        let has_vector = !query_vec.is_empty() && mode != SearchMode::Lexical;
         if !has_vector {
             return lex.into_iter().map(|(i, s)| (i, s, "lexical")).collect();
-        }
-
-        if mode == SearchMode::Vector {
-            let mut vector: Vec<(usize, f64)> = rows
-                .iter()
-                .enumerate()
-                .filter(|(_, row)| row.embedding.len() == query_vec.len())
-                .map(|(index, row)| (index, cosine(query_vec, &row.embedding) as f64))
-                .filter(|(_, score)| *score > 0.0)
-                .collect();
-            vector.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-            vector.truncate(top_k.max(LEXICAL_CANDIDATES));
-            return vector.into_iter().map(|(i, s)| (i, s, "vector")).collect();
         }
 
         // Hybrid：RRF 融合（排序按 RRF，展示分优先原始向量余弦）。
@@ -340,15 +352,11 @@ fn is_cjk(c: char) -> bool {
     )
 }
 
-/// 把同一张记忆的所有分块按序拼回完整文本。
-fn aggregate_memory(rows: &[&MemoryRow], memory_id: &str) -> String {
-    let mut parts: Vec<&MemoryRow> = rows
-        .iter()
-        .filter(|row| row.memory_id == memory_id)
-        .copied()
-        .collect();
-    parts.sort_by_key(|row| row.chunk_index);
-    parts
+/// 把同一张记忆的所有分块按序拼回完整文本（`parts` 为同一 `memory_id` 的分块）。
+fn aggregate_memory(parts: &[&MemoryRow]) -> String {
+    let mut ordered: Vec<&MemoryRow> = parts.to_vec();
+    ordered.sort_by_key(|row| row.chunk_index);
+    ordered
         .iter()
         .map(|row| row.content.as_str())
         .collect::<Vec<_>>()
@@ -382,7 +390,6 @@ mod tests {
             memory_id: memory_id.to_string(),
             chunk_index: 0,
             content: content.to_string(),
-            tags: None,
             embedding: Vec::new(),
             model: String::new(),
             created_at: 0,
@@ -396,7 +403,6 @@ mod tests {
             memory_id: memory_id.to_string(),
             chunk_index,
             content: content.to_string(),
-            tags: None,
             embedding: Vec::new(),
             model: String::new(),
             created_at: 0,

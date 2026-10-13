@@ -140,7 +140,6 @@ async fn model_free_memory_roundtrip() -> Result<()> {
             "mem-lex",
             &["用户喜欢喝冰美式咖啡".to_string()],
             &[Vec::new()],
-            None,
             "",
         )
         .await?;

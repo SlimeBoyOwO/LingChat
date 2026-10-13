@@ -178,7 +178,6 @@ pub async fn insert_memory(
     memory_id: &str,
     chunks: &[String],
     embeddings: &[Vec<f32>],
-    _tags: Option<String>,
     model: &str,
 ) -> Result<()> {
     let table = ensure_role_archive(db, role_id)
@@ -404,7 +403,6 @@ pub async fn load_role_rows(db: &DatabaseConnection, role_id: i32) -> Result<Vec
                     memory_id,
                     chunk_index: r.chunk_index,
                     content: r.content,
-                    tags: None,
                     embedding: r
                         .embedding
                         .map(|bytes| bytes_to_f32(&bytes))
@@ -480,7 +478,6 @@ pub async fn load_role_search_rows(
             memory_id,
             chunk_index: if r.kind == "legacy" { 0 } else { r.chunk_index },
             content: r.content,
-            tags: None,
             embedding: r
                 .embedding
                 .map(|bytes| bytes_to_f32(&bytes))
@@ -740,7 +737,6 @@ pub struct MemoryRow {
     pub memory_id: String,
     pub chunk_index: i32,
     pub content: String,
-    pub tags: Option<String>,
     /// L2 归一化后的向量。
     pub embedding: Vec<f32>,
     /// 产生该向量的嵌入模型名。
