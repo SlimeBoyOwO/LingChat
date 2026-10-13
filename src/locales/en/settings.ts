@@ -323,7 +323,8 @@ export default {
     },
   },
   plugins: {
-    title: "Plugins",
+    title: "Plugins / DLC",
+    tabs: { plugins: "Installed plugins", dlc: "DLC" },
     envHint: "Environment variables (read from the process):",
     envFromProcess: "from process env",
     saveConfig: "Save",

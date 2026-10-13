@@ -6,10 +6,12 @@ The initial content repository is <https://github.com/sdfsfsk/LingChat-DLC>.
 
 ## Player flow
 
-Open **Game modes → Games / DLC**, synchronize the catalog, install a package,
+Open **Settings → Plugins / DLC → DLC**, synchronize the catalog, install a package,
 enable it and choose Play. New packages are disabled by default, matching plugins.
 Updates retain their enabled state. Catalog sync never silently downloads or runs
-code. The catalog URL can be changed; local ZIP/7z import reuses plugin import.
+code. The catalog URL is fixed in the host; local ZIP/7z import reuses plugin import.
+Catalog caches from older, custom sources are ignored until the built-in catalog
+is synchronized. The game-mode menu no longer contains a separate DLC entry.
 Uninstall removes the package, while `data/game_saves/<plugin>/<game>.json` remains.
 
 ## Package format
@@ -77,7 +79,7 @@ subscriptions, resource injection and other privileged plugin declarations are
 rejected. The same rule applies to manually imported/sideloaded manifests with
 game entries, so enabling a game cannot silently enable Python capabilities.
 Existing plugins without game entries retain their current behavior.
-The catalog is a trust source chosen by the player; checksums establish integrity
+The catalog is a trust source fixed by the host; checksums establish integrity
 against that catalog, not an independent author signature.
 
 Updates stage under the plugin root, ask active game sessions to flush saves and

@@ -46,8 +46,7 @@ export function newerGameVersion(remote: string, local: string): boolean {
   return false;
 }
 export const cachedGameCatalog = () => invoke<GameCatalogCache>("game_catalog_cached");
-export const syncGameCatalog = (source: string) =>
-  invoke<GameCatalogCache>("game_catalog_sync", { source });
+export const syncGameCatalog = () => invoke<GameCatalogCache>("game_catalog_sync");
 export const installGameDlc = (id: string) => invoke<void>("game_catalog_install", { id });
 export const openDlcGame = (
   pluginId: string,

@@ -14,7 +14,7 @@ use tokio_util::sync::CancellationToken;
 use super::{API_VERSION, LIFECYCLE, valid_id, validate_files};
 use crate::{PluginManager, manifest, types::PluginManifest};
 
-pub const DEFAULT_CATALOG: &str =
+const CATALOG_URL: &str =
     "https://raw.githubusercontent.com/sdfsfsk/LingChat-DLC/main/catalog.json";
 const CATALOG_LIMIT: usize = 1024 * 1024;
 const PACKAGE_LIMIT: usize = 128 * 1024 * 1024;
@@ -42,6 +42,18 @@ pub struct Catalog {
 pub struct Cache {
     pub source: String,
     pub catalog: Catalog,
+}
+
+impl Default for Cache {
+    fn default() -> Self {
+        Self {
+            source: CATALOG_URL.into(),
+            catalog: Catalog {
+                schema_version: 1,
+                packages: vec![],
+            },
+        }
+    }
 }
 
 fn cache_path() -> PathBuf {
@@ -179,18 +191,20 @@ async fn download(
 fn read_cache() -> Result<Cache> {
     let file = cache_path();
     if !file.exists() {
-        return Ok(Cache {
-            source: DEFAULT_CATALOG.into(),
-            catalog: Catalog {
-                schema_version: 1,
-                packages: vec![],
-            },
-        });
+        return Ok(Cache::default());
     }
     if std::fs::metadata(&file)?.len() > CATALOG_LIMIT as u64 {
         bail!("Cached catalog exceeds limit");
     }
-    let cache: Cache = serde_json::from_slice(&std::fs::read(file)?)?;
+    parse_cache(&std::fs::read(file)?)
+}
+
+fn parse_cache(bytes: &[u8]) -> Result<Cache> {
+    let cache: Cache = serde_json::from_slice(bytes)?;
+    // Ignore catalogs saved by older builds with a user-selected source.
+    if cache.source != CATALOG_URL {
+        return Ok(Cache::default());
+    }
     validate_catalog(&cache.catalog)?;
     Ok(cache)
 }
@@ -201,12 +215,15 @@ pub fn game_catalog_cached() -> Result<Cache, String> {
 }
 
 #[tauri::command]
-pub async fn game_catalog_sync(source: String) -> Result<Cache, String> {
-    async fn sync(source: String) -> Result<Cache> {
-        let bytes = download(&source, CATALOG_LIMIT, None).await?;
+pub async fn game_catalog_sync() -> Result<Cache, String> {
+    async fn sync() -> Result<Cache> {
+        let bytes = download(CATALOG_URL, CATALOG_LIMIT, None).await?;
         let catalog: Catalog = serde_json::from_slice(&bytes)?;
         validate_catalog(&catalog)?;
-        let cache = Cache { source, catalog };
+        let cache = Cache {
+            source: CATALOG_URL.into(),
+            catalog,
+        };
         let path = cache_path();
         let mut temp = tempfile::NamedTempFile::new_in(path.parent().unwrap())?;
         serde_json::to_writer(&mut temp, &cache)?;
@@ -214,7 +231,7 @@ pub async fn game_catalog_sync(source: String) -> Result<Cache, String> {
         temp.persist(&path)?;
         Ok(cache)
     }
-    sync(source).await.map_err(|e| e.to_string())
+    sync().await.map_err(|e| e.to_string())
 }
 
 fn verify_archive(bytes: &[u8], entry: &Entry) -> Result<()> {
@@ -373,6 +390,22 @@ mod tests {
             size: bytes.len(),
             api_version: 1,
         }
+    }
+    #[test]
+    fn ignores_old_custom_catalogs_but_keeps_the_builtin_catalog() {
+        let mut cache = Cache {
+            source: "https://example.com/custom-catalog.json".into(),
+            catalog: Catalog {
+                schema_version: 1,
+                packages: vec![entry(b"test")],
+            },
+        };
+        let ignored = parse_cache(&serde_json::to_vec(&cache).unwrap()).unwrap();
+        assert_eq!(ignored.source, CATALOG_URL);
+        assert!(ignored.catalog.packages.is_empty());
+        cache.source = CATALOG_URL.into();
+        let retained = parse_cache(&serde_json::to_vec(&cache).unwrap()).unwrap();
+        assert_eq!(retained.catalog.packages.len(), 1);
     }
     #[test]
     fn rejects_unsafe_catalog_urls_and_duplicate_ids() {

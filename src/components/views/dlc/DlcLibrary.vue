@@ -1,21 +1,13 @@
 <template>
-  <main class="dlc-library">
-    <header>
-      <button @click="router.push('/')">← {{ t("views.menu.back") }}</button>
-      <div>
-        <h1>{{ t("views.dlc.title") }}</h1>
-        <p>{{ t("views.dlc.subtitle") }}</p>
-      </div>
-      <button :disabled="busy" @click="importArchive">{{ t("views.dlc.import") }}</button>
-    </header>
+  <div class="dlc-library">
     <section class="catalog-controls">
-      <label for="dlc-source">{{ t("views.dlc.source") }}</label>
-      <div class="source-row">
-        <input id="dlc-source" v-model="source" type="url" :disabled="busy" />
-        <button :disabled="busy || !source.trim()" @click="sync">{{ t("views.dlc.sync") }}</button>
+      <p>{{ t("views.dlc.subtitle") }}</p>
+      <div class="catalog-actions">
+        <button :disabled="busy" @click="sync">{{ t("views.dlc.sync") }}</button>
         <button :disabled="busy || !updates.length" @click="updateInstalled">
           {{ t("views.dlc.updateAll") }}
         </button>
+        <button :disabled="busy" @click="importArchive">{{ t("views.dlc.import") }}</button>
       </div>
     </section>
     <p v-if="error" role="alert" class="error">{{ error }}</p>
@@ -92,12 +84,11 @@
       </article>
     </section>
     <footer>{{ t("views.dlc.saveNote") }}</footer>
-  </main>
+  </div>
 </template>
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from "vue";
-import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
 import { confirm, open } from "@tauri-apps/plugin-dialog";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
@@ -120,9 +111,8 @@ import {
 } from "@/api/services/plugins";
 import { currentDeviceId } from "@/utils/audioOutputManager";
 
-const router = useRouter();
+const emit = defineEmits<{ changed: [] }>();
 const { t, locale } = useI18n();
-const source = ref("");
 const packages = ref<GameCatalogEntry[]>([]);
 const installed = ref<PluginInfo[]>([]);
 const busy = ref(false),
@@ -180,9 +170,8 @@ async function run(action: () => Promise<void>) {
 }
 const sync = () =>
   run(async () => {
-    const cache = await syncGameCatalog(source.value.trim());
+    const cache = await syncGameCatalog();
     packages.value = cache.catalog.packages;
-    source.value = cache.source;
     await refresh();
     notice.value = t("views.dlc.synced");
   });
@@ -229,6 +218,7 @@ const importArchive = () =>
     if (typeof path !== "string") return;
     await importPluginFromPath({ path, conflict: "abort" });
     await refresh();
+    emit("changed");
     notice.value = t("views.dlc.installedNote");
   });
 const migrate = (id: string, game: GameSpec) =>
@@ -254,7 +244,6 @@ const migrate = (id: string, game: GameSpec) =>
 onMounted(() => {
   void run(async () => {
     const cache = await cachedGameCatalog();
-    source.value = cache.source;
     packages.value = cache.catalog.packages;
     await refresh();
     const stop = await listen<{ received: number; total: number }>(
@@ -275,31 +264,25 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .dlc-library {
-  height: 100%;
-  overflow: auto;
-  padding: calc(28px + env(safe-area-inset-top)) max(24px, env(safe-area-inset-right))
-    calc(24px + env(safe-area-inset-bottom));
-  color: #eaf3f5;
-  background: linear-gradient(135deg, #142b39, #182330 60%, #253643);
+  width: 100%;
+  min-width: 0;
+  color: inherit;
 }
-header,
-.source-row,
+.catalog-controls,
+.catalog-actions,
 .card-heading,
 .actions {
   display: flex;
   align-items: center;
   gap: 14px;
 }
-header {
-  max-width: 1160px;
-  margin: 0 auto 26px;
+.catalog-controls,
+.catalog-actions {
+  flex-wrap: wrap;
 }
-header > div {
+.catalog-controls > p {
   flex: 1;
-}
-h1 {
-  font-size: 28px;
-  margin: 0 0 5px;
+  min-width: 180px;
 }
 h2 {
   font-size: 21px;
@@ -308,7 +291,7 @@ h2 {
 p {
   margin: 8px 0;
 }
-header p,
+.catalog-controls p,
 .version,
 footer {
   color: #acc2cc;
@@ -320,23 +303,8 @@ footer,
 .empty,
 .error,
 .progress,
-main > p {
-  max-width: 1160px;
+.dlc-library > p {
   margin: 16px auto;
-}
-label {
-  display: block;
-  margin-bottom: 9px;
-  font-size: 14px;
-}
-input {
-  flex: 1;
-  min-width: 120px;
-  background: #0d202c;
-  border: 1px solid #507184;
-  border-radius: 9px;
-  padding: 11px 13px;
-  color: inherit;
 }
 button {
   color: inherit;
@@ -364,11 +332,11 @@ button.primary:hover:enabled {
 }
 .game-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 430px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
   gap: 18px;
 }
 article {
-  padding: 24px;
+  padding: 20px;
   background: #ffffff08;
   border: 1px solid #7396ab55;
   border-radius: 18px;
@@ -412,18 +380,6 @@ progress {
   text-align: center;
 }
 @media (max-width: 640px) {
-  header {
-    flex-wrap: wrap;
-  }
-  header > div {
-    min-width: 180px;
-  }
-  .source-row {
-    flex-wrap: wrap;
-  }
-  .source-row input {
-    flex-basis: 100%;
-  }
   article {
     padding: 18px;
   }
