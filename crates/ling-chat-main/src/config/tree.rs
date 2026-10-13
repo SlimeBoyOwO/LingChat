@@ -195,6 +195,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::WEATHER_AUTO_SYNC.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::WEATHER_AUTO_SYNC,
+                            &app_defaults.weather_auto_sync.to_string(),
+                        ),
+                        description: "WEATHER_AUTO_SYNC — 自动同步现实天气到天气特效层（需配置 WEATHER_CITY；设置页手动或 AI 工具切换天气特效时自动关闭）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::AI_AUTO_CLOTHES.to_string(),
                         value: read_setting(
                             app,

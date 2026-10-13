@@ -785,6 +785,12 @@ export default {
       delete: "削除",
       edit: "シーンを編集",
       noDescription: "説明なし（選択してもナレーションは発生しません）",
+      location: {
+        indoor: "屋内",
+        outdoor: "屋外",
+        unknown: "不明",
+        editTitle: "クリックで屋内外タグを切り替え",
+      },
       tip: "ヒント",
       noDescriptionTip:
         "シーン「{name}」には説明がありません。選択してもシーンナレーションは発生しません",
@@ -856,6 +862,9 @@ export default {
       snow: "雪",
       blizzard: "吹雪",
       fog: "霧",
+      city: "都市",
+      cityPlaceholder: "例：成都",
+      autoSync: "天気同期",
     },
     animation: {
       switchTitle: "アニメーション切替",

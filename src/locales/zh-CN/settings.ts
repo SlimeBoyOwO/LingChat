@@ -957,6 +957,12 @@ export default {
       edit: "编辑场景",
       refreshSuccess: "场景列表已刷新",
       noDescription: "暂无描述（选择后不会触发旁白）",
+      location: {
+        indoor: "室内",
+        outdoor: "室外",
+        unknown: "不确定",
+        editTitle: "点击切换室内外标注",
+      },
       tip: "提示",
       noDescriptionTip: '场景"{name}"暂无描述，选择后不会触发场景旁白',
       deleteConfirm: '确定要删除场景"{name}"吗？',
@@ -1025,6 +1031,9 @@ export default {
       snow: "雪景",
       blizzard: "雪暴",
       fog: "雾",
+      city: "城市",
+      cityPlaceholder: "如：成都",
+      autoSync: "天气同步",
     },
     animation: {
       switchTitle: "动画开关",

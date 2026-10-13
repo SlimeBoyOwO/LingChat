@@ -337,6 +337,8 @@ async fn sync_plugin_scenes_cmd(app: &AppHandle) {
             created_at: String::new(),
             updated_at: String::new(),
             plugin_id: Some(e.plugin_id.clone()),
+            // 插件自动注册的场景无室内外标注，缺省 Unknown（None）
+            location_type: None,
         });
     }
     if let Err(err) = store.save_all(&scenes) {

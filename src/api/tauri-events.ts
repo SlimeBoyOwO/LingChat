@@ -6,6 +6,9 @@ import type { ScriptEventType } from "../types";
 import { useAdventureStore } from "../stores/modules/adventure";
 import { useUIStore } from "../stores/modules/ui/ui";
 import { useGameStore } from "../stores/modules/game";
+import { useSettingsStore } from "../stores/modules/settings";
+import { isWeatherEffect } from "@/components/game/standard/particles";
+import { setWeatherAutoSync } from "./services/scene";
 import { applyWebInitData } from "../stores/modules/game/actions";
 import { i18n } from "@/locales";
 import { useScriptEditorStore } from "../stores/modules/script-editor";
@@ -495,16 +498,44 @@ export function initializeTauriEventListeners() {
 
   // === LLM 工具事件（场景 / 换装） ===
 
-  // AI 工具的氛围特效（set_background_effect）：直达更新特效状态，不走对话事件
-  // 队列——剧本通道（script:background-effect）进队列会翻转 currentStatus 并插队
-  // 在未显示的台词前面，把聊天状态机搅乱。
-  // 用 applyEffectValue 落层：特效分氛围/天气两层，单值落到哪层由注册表决定
-  // （Rust 侧 background_effect 是单值），写错层会导致天气系特效渲染不出来。
+  // ambient:effect 按来源落层：
+  //   layer=weather —— 天气自动同步，只写天气层
+  //   source=manual —— 设置页/桌宠手动选择，只写对应层
+  //   其余为 AI 工具调用，只写对应层；动了天气层时关闭天气自动同步
   listen("ambient:effect", (event) => {
-    const payload = event.payload as { type: string; effect: string; duration?: number };
+    const payload = event.payload as {
+      type: string;
+      effect: string;
+      duration?: number;
+      layer?: string;
+      source?: string;
+    };
     console.log("[Tauri] 收到 ambient:effect", payload);
-    const uiStore = useUIStore();
-    uiStore.applyEffectValue(payload.effect);
+    const settings = useSettingsStore();
+    if (payload.source === "manual") {
+      if (isWeatherEffect(payload.effect)) {
+        settings.setWeatherEffect(payload.effect);
+      } else {
+        settings.setBackgroundEffect(payload.effect);
+      }
+      return;
+    }
+    if (payload.layer === "weather") {
+      settings.setWeatherEffect(payload.effect);
+      return;
+    }
+    // AI 动了天气层 → 天气同步自动关闭；none 清除两层
+    if (isWeatherEffect(payload.effect) || payload.effect === "None") {
+      setWeatherAutoSync(false).catch((e) => console.warn("setWeatherAutoSync 失败:", e));
+    }
+    if (isWeatherEffect(payload.effect)) {
+      settings.setWeatherEffect(payload.effect);
+    } else if (payload.effect === "None") {
+      settings.setBackgroundEffect("None");
+      settings.setWeatherEffect("None");
+    } else {
+      settings.setBackgroundEffect(payload.effect);
+    }
   });
 
   listen("scene:switch", (event) => {

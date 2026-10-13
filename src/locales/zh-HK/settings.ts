@@ -770,6 +770,12 @@ export default {
       delete: "刪走",
       edit: "編輯場景",
       noDescription: "冇描述（揀咗都唔會觸發旁白）",
+      location: {
+        indoor: "室內",
+        outdoor: "室外",
+        unknown: "唔確定",
+        editTitle: "㩒一下切換室內外標註",
+      },
       tip: "提提你",
       noDescriptionTip: '場景"{name}"冇描述，揀咗都唔會觸發場景旁白',
       deleteConfirm: '確定要刪走場景"{name}"咩？',
@@ -836,6 +842,9 @@ export default {
       snow: "雪景",
       blizzard: "雪暴",
       fog: "霧",
+      city: "城市",
+      cityPlaceholder: "例如：成都",
+      autoSync: "天氣同步",
     },
     animation: {
       switchTitle: "動畫開關",

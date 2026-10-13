@@ -216,6 +216,35 @@ impl<'de> Deserialize<'de> for LightingParams {
     }
 }
 
+/// 场景室内外标注；`Unknown` 表示无法判定（默认按室外处理）。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum LocationType {
+    Indoor,
+    Outdoor,
+    Unknown,
+}
+
+impl LocationType {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            LocationType::Indoor => "indoor",
+            LocationType::Outdoor => "outdoor",
+            LocationType::Unknown => "unknown",
+        }
+    }
+
+    /// 解析标注字符串（前端回传 / LLM 输出归一化后）。
+    pub fn parse(value: &str) -> Option<LocationType> {
+        match value.trim().to_lowercase().as_str() {
+            "indoor" | "室内" => Some(LocationType::Indoor),
+            "outdoor" | "室外" => Some(LocationType::Outdoor),
+            "unknown" | "不确定" => Some(LocationType::Unknown),
+            _ => None,
+        }
+    }
+}
+
 /// 用户创建的场景：名称 + 描述 + 背景图片 + 光影参数
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Scene {
@@ -235,6 +264,9 @@ pub struct Scene {
     /// 插件背景图自动注册为场景时写入，用于启停 / 隐藏时同步增删。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub plugin_id: Option<String>,
+    /// 室内外标注（None = 未标注，旧场景缺省）；LLM 标注一次，可在场景卡上改写。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location_type: Option<LocationType>,
 }
 
 /// JSON 文件存储，路径为 `<data_dir>/game_data/scenes.json`

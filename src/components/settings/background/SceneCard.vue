@@ -65,17 +65,27 @@
       <span v-else class="text-xs text-yellow-400/60 italic">{{
         $t("settings.background.scene.noDescription")
       }}</span>
+      <!-- 室内外标注：LLM 自动标注一次，点击在 室内 → 室外 → 不确定 间循环 -->
+      <button
+        class="absolute right-2 bottom-2 z-10 rounded-full border border-white/15 bg-black/45 px-2 py-0.5 text-xs text-white/75 backdrop-blur-sm transition-colors hover:bg-black/65 hover:text-white"
+        :title="$t('settings.background.scene.location.editTitle')"
+        @click.stop="cycleLocation"
+      >
+        <component :is="locationMeta.icon" :size="12" class="mr-1 inline align-[-2px]" />
+        {{ $t(`settings.background.scene.location.${currentLocation}`) }}
+      </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed, type Component } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Image, Star, Wrench } from "lucide-vue-next";
+import { CircleHelp, Home, Image, Star, TreePine, Wrench } from "lucide-vue-next";
 import PluginTag from "@/components/ui/PluginTag.vue";
-import type { SceneInfo } from "@/api/services/scene";
+import { setSceneLocationType, type SceneInfo, type SceneLocationType } from "@/api/services/scene";
 
-defineProps<{
+const props = defineProps<{
   scene: SceneInfo;
   /** 是否为当前激活的场景 */
   selected: boolean;
@@ -89,4 +99,27 @@ defineEmits<{
   (e: "toggle-favorite", scene: SceneInfo): void;
   (e: "context-menu", scene: SceneInfo, event: MouseEvent): void;
 }>();
+
+const LOCATION_CYCLE: SceneLocationType[] = ["indoor", "outdoor", "unknown"];
+const LOCATION_ICONS: Record<SceneLocationType, Component> = {
+  indoor: Home,
+  outdoor: TreePine,
+  unknown: CircleHelp,
+};
+
+const currentLocation = computed<SceneLocationType>(() => props.scene.location_type ?? "unknown");
+const locationMeta = computed(() => ({ icon: LOCATION_ICONS[currentLocation.value] }));
+
+/** 点击标注循环切换；乐观更新本地，写后端失败则回退 */
+async function cycleLocation(): Promise<void> {
+  const prev = currentLocation.value;
+  const next = LOCATION_CYCLE[(LOCATION_CYCLE.indexOf(prev) + 1) % LOCATION_CYCLE.length];
+  props.scene.location_type = next;
+  try {
+    await setSceneLocationType(props.scene.id, next);
+  } catch (e) {
+    props.scene.location_type = prev;
+    console.warn("setSceneLocationType 失败:", e);
+  }
+}
 </script>

@@ -165,6 +165,7 @@ impl Tool for SceneSwitch {
                 "scene_description": scene.description,
                 "background": if background.is_empty() { Value::Null } else { json!(background) },
                 "lighting": scene.lighting,
+                "location_type": scene.location_type.map(|l| l.as_str()),
                 "created_at": scene.created_at,
                 "updated_at": scene.updated_at,
             }

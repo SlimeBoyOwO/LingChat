@@ -98,6 +98,26 @@
                     @click="removeDialog"
                   ></Button>
                 </div>
+
+                <!-- 附图指示：贴图/截图后常驻；读取中流动，完成后满格，× 移除附图 -->
+                <div
+                  v-if="pasteLoading || hasScreenshot"
+                  class="mt-1.5 flex items-center gap-2 rounded-md bg-white/8 px-2.5 py-1.5"
+                >
+                  <div class="h-1 flex-1 overflow-hidden rounded-full bg-white/10">
+                    <div
+                      v-if="pasteLoading"
+                      class="paste-progress-bar h-full w-1/3 rounded-full bg-cyan-400"
+                    ></div>
+                    <div v-else class="h-full w-full rounded-full bg-cyan-400/70"></div>
+                  </div>
+                  <button
+                    class="shrink-0 cursor-pointer border-none bg-transparent p-0.5 text-white/50 transition-colors hover:text-white"
+                    @click="clearScreenshot"
+                  >
+                    <X :size="14" />
+                  </button>
+                </div>
               </div>
             </template>
 
@@ -219,6 +239,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { X } from "lucide-vue-next";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
 import { setMobileMenuOpen, useAsrInput } from "../../../composables/asr";
 import { useChatInput } from "../../../composables/chat/useChatInput";
@@ -287,6 +308,9 @@ const {
   start: startScreenshotRaw,
   clear: clearScreenshot,
 } = useScreenshot();
+
+// 粘贴图片读取中（进度条显隐）
+const pasteLoading = ref(false);
 
 const startScreenshot = () =>
   startScreenshotRaw({
@@ -671,13 +695,17 @@ function onPasteImage(event: ClipboardEvent) {
     const file = item.getAsFile();
     if (!file) continue;
     event.preventDefault();
+    pasteLoading.value = true;
     const reader = new FileReader();
     reader.onload = () => {
       // 后端与预览均按裸 base64 处理，去掉 data URL 前缀
       const dataUrl = String(reader.result ?? "");
       screenshotBase64.value = dataUrl.slice(dataUrl.indexOf(",") + 1);
       hasScreenshot.value = true;
+      // 至少展示 400ms，避免读取太快进度条一闪而过
+      setTimeout(() => (pasteLoading.value = false), 400);
     };
+    reader.onerror = () => (pasteLoading.value = false);
     reader.readAsDataURL(file);
     return;
   }
@@ -720,6 +748,19 @@ defineExpose({
 </script>
 
 <style scoped>
+/* 粘贴图片读取进度条：不定长亮段往复滑动 */
+.paste-progress-bar {
+  animation: paste-progress-slide 1.1s ease-in-out infinite;
+}
+@keyframes paste-progress-slide {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
 /* AI 回复显示区：标准/内联模式共用。颜色由两个子容器决定
      （台词区白、动作区灰），这里的灰色仅作 fallback */
 .response-display {
