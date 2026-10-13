@@ -13,6 +13,12 @@
     </StartLine>
 
     <StartLine>
+      <StartItem class="menu-subitem" @click="router.push('/mini-games')">{{
+        $t("views.menu.miniGame")
+      }}</StartItem>
+    </StartLine>
+
+    <StartLine>
       <StartItem class="menu-subitem" @click="emit('back')">{{ $t("views.menu.back") }}</StartItem>
     </StartLine>
   </StartList>

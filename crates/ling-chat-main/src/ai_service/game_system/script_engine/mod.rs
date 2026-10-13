@@ -69,3 +69,4 @@ pub fn init_event_registry() {
 
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }
+pub(crate) mod fs_sync;

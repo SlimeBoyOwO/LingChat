@@ -1,4 +1,4 @@
-# Downloadable game DLC (API v1)
+# Downloadable game and story DLC (API v1)
 
 The host discovers games from plugin manifests. Game code, artwork, music and
 level data are distributed separately; no specific game is compiled into LingChat.
@@ -7,11 +7,12 @@ The initial content repository is <https://github.com/sdfsfsk/LingChat-DLC>.
 ## Player flow
 
 Open **Settings → Plugins / DLC → DLC**, synchronize the catalog, install a package,
-enable it and choose Play. New packages are disabled by default, matching plugins.
+enable it, then use **Start Game → Mini Games** to play inside the main window.
+Native stories appear under **Start Game → Story Mode**. New packages are disabled by default, matching plugins.
 Updates retain their enabled state. Catalog sync never silently downloads or runs
 code. The catalog URL is fixed in the host; local ZIP/7z import reuses plugin import.
 Catalog caches from older, custom sources are ignored until the built-in catalog
-is synchronized. The game-mode menu no longer contains a separate DLC entry.
+is synchronized. Settings manages content; the game-mode menu lists playable content.
 Uninstall removes the package, while `data/game_saves/<plugin>/<game>.json` remains.
 
 ## Package format
@@ -50,7 +51,7 @@ game package needs no Python scripts. Old plugin manifests remain compatible.
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "packages": [
     {
       "id": "example-game",
@@ -60,7 +61,8 @@ game package needs no Python scripts. Old plugin manifests remain compatible.
       "url": "https://example.com/releases/example-game-1.0.0.zip",
       "sha256": "<64 hexadecimal digits>",
       "size": 12345,
-      "api_version": 1
+      "api_version": 1,
+      "kind": "game"
     }
   ]
 }
@@ -74,10 +76,12 @@ rejected. The existing archive extractor also enforces compression-ratio limits.
 The exact download length and SHA-256 are verified before extraction; manifest
 identity/version and entry files are checked before replacement.
 
-Catalog installs accept **game-only** packages: Python tools/startup hooks,
-subscriptions, resource injection and other privileged plugin declarations are
-rejected. The same rule applies to manually imported/sideloaded manifests with
-game entries, so enabling a game cannot silently enable Python capabilities.
+The fixed `catalog-v2.json` supports `kind: "game"` and `kind: "story"`.
+The content repository retains `catalog.json` as a game-only schema-v1 catalog
+for older hosts. Catalog installs reject Python tools/startup hooks,
+subscriptions and privileged plugin declarations. Game packages cannot inject
+resources; native story packages may declare only `resources = ["scripts"]`
+with `story_api_version = 1`. The same restrictions apply to local imports.
 Existing plugins without game entries retain their current behavior.
 The catalog is a trust source fixed by the host; checksums establish integrity
 against that catalog, not an independent author signature.
@@ -91,10 +95,12 @@ Downgrades/equal-version replacement are rejected by catalog installation.
 
 ## Runtime boundary and API
 
-Games run in a distinct `dlc-*` WebView, outside the host DOM. Do not add these
+Desktop games run in a child `dlc-*` WebView inside the main OS window, outside the host DOM. Do not add these
 labels to existing capabilities. The application invoke handler rejects all
-native commands from these windows (application commands otherwise bypass the
-capability files by default). Plugin/core APIs have no matching capabilities.
+native commands from these WebViews (application commands otherwise bypass the
+capability files by default). Capabilities select trusted **webview labels**,
+not the containing window: a child game must not inherit the main window's
+plugin/core capabilities. The trusted host owns the Back button and bounds.
 Navigation is confined to the session URL; popups are denied. Responses enforce
 CSP, no frames, no external scripts/connections, and no MIME sniffing.
 
@@ -104,17 +110,17 @@ requests are rejected. No CORS access is granted. The bridge exposes only:
 
 - `GET <session>/_host/config`: API version and explicitly selected display/audio preferences.
 - `GET/PUT <session>/_host/save`: this game's JSON object, up to 8 MiB, atomically saved.
-- `POST <session>/_host/exit`: close this game window and stop its listener.
+- `POST <session>/_host/exit`: remove this child WebView, stop its listener and return to the game list.
 
 Package code cannot choose arbitrary save paths or invoke host file, shell, LLM
 or settings APIs. Save writes require JSON, and backend identities determine the
-save location. Disabling, updating or deleting a package closes its windows.
-Window destruction cancels the listener; a lifecycle monitor also handles
+save location. Disabling, updating or deleting a package closes its game views.
+Session cancellation stops the listener; a lifecycle monitor also handles
 automatic/dependency-triggered disables.
 
 The content repository SDK loads a save before mounting the game and provides
 synchronous storage getters/setters backed by a serialized save queue. A normal
-window close requests a flush; a second close can force exit. Closing a game
+Back action or application exit requests a flush. Closing a game
 tears down its WebView, Workers, animation loops and AudioContexts. Device routing
 uses `AudioContext.setSinkId` when supported; if the device ID is unavailable in
 the game's origin it retains system routing rather than interrupting playback.
@@ -124,13 +130,38 @@ browser data. It initializes a missing save only; migrate before the first play.
 
 ## Platforms and validation
 
-Desktop uses a separate game window. Android wiring provides a separate
-`DlcActivity` and allows cleartext traffic only to loopback in release builds;
-debug builds retain LAN development-server support. iOS enables scene support
-and local networking. Platforms without Tauri multi-window support return an
-explicit unsupported-platform error (Android support requires API 32+).
+Desktop uses Tauri's child-WebView API. Android and iOS currently return an
+explicit unsupported-platform message for embedded games; the previous separate
+activity is not used as a fallback. Mobile embedding needs native device validation.
 
 Verification must cover host-native command denial, loopback origin/path checks,
 package tampering, interrupted update recovery, storage reload, game exit and
 Worker/audio cleanup. Desktop/phone-size browser tests are not mobile-device
 tests; Android and iOS native integration still requires device CI/manual checks.
+
+## Native story packages
+
+```toml
+id = "example-story"
+name = "Example story"
+description = "A native story DLC"
+version = "1.0.0"
+story_api_version = 1
+resources = ["scripts"]
+```
+
+Put `story_config.yaml`, chapters and assets under `scripts/<folder>/`. Keep the
+story's license and third-party asset notices in the package. The unified manifest
+replaces the legacy importer; do not add `dlc.json` with an unrelated app-version gate.
+Enabling registers the scripts with the existing story engine. Horror content
+retains the normal content warning, native effect tickets, bounded cursor effects,
+window limits, cancellation and declared `.chr` marker rules.
+
+Plugin story state and roles are namespaced by `plugins/<plugin>/<script path>`.
+Updates/uninstall retain persistent state and markers outside the package; the
+story menu's reset action explicitly resets them. Content mutations reserve the
+engine's run flag and reject while a story or editor preview is active.
+Self-contained stories may bind a registered script-local character as MAIN;
+global character folders remain supported. A same-name legacy game script keeps
+priority: back it up and move it outside the scanned script root before enabling
+its replacement DLC. Never delete old saves as part of content installation.

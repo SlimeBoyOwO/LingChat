@@ -1,16 +1,17 @@
 // English language pack, maintained from zh-CN/views.ts（约 44 条）
 export default {
   dlc: {
-    unsupported:
-      "This device does not support separate game windows. Android requires 12L or newer; iOS requires multiple-scene support.",
-    title: "Game DLC",
-    subtitle: "Install games from independent catalogs and update them separately.",
+    storyEntry: "After enabling, open Start Game → Story Mode.",
+    playEmpty: "No games are enabled. Download and enable them in Settings → Plugins / DLC → DLC.",
+    unsupported: "Embedded games are not supported on this device yet. Please use the desktop app.",
+    title: "DLC",
+    subtitle: "Download and update games and stories.",
     import: "Import package",
     source: "Catalog URL",
     sync: "Sync catalog",
     updateAll: "Update installed",
     working: "Working…",
-    empty: "Sync a catalog or import a package to add games.",
+    empty: "Sync the catalog or import a local DLC package.",
     version: "Version",
     installed: "Installed",
     install: "Download & install",
@@ -90,7 +91,7 @@ export default {
     storyMode: "Story Mode",
     scriptEditor: "Workshop",
     cloudWorkshop: "Cloud Workshop",
-    miniGame: "Games / DLC",
+    miniGame: "Mini Games",
     back: "Back",
     resetMemoryTitle: "Reset Memory",
     resetMemory: "Reset Memory",

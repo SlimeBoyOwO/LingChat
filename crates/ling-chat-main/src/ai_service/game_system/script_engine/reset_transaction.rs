@@ -53,8 +53,7 @@ fn ensure_root(data_dir: &Path) -> Result<PathBuf> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             fs::create_dir(&root)
                 .with_context(|| format!("创建剧本重置事务目录失败: {}", root.display()))?;
-            super::dlc_transaction::sync_directory(data_dir)
-                .context("提交剧本重置事务根目录失败")?;
+            super::fs_sync::sync_directory(data_dir).context("提交剧本重置事务根目录失败")?;
         },
         Err(error) => return Err(error).context("读取剧本重置事务目录失败"),
     }
@@ -96,7 +95,7 @@ pub(crate) fn begin_reset(data_dir: &Path, owner: &str) -> Result<PathBuf> {
         .open(&path)
         .and_then(|file| file.sync_all())
         .context("把剧本重置事务刷入磁盘失败")?;
-    super::dlc_transaction::sync_directory(&root).context("提交剧本重置事务目录项失败")?;
+    super::fs_sync::sync_directory(&root).context("提交剧本重置事务目录项失败")?;
     Ok(path)
 }
 
@@ -110,13 +109,13 @@ pub(crate) fn finish_reset(data_dir: &Path, record_path: &Path) -> Result<()> {
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
         Err(error) => return Err(error).context("删除剧本重置事务记录失败"),
     }
-    super::dlc_transaction::sync_directory(&root).context("提交剧本重置事务完成状态失败")?;
+    super::fs_sync::sync_directory(&root).context("提交剧本重置事务完成状态失败")?;
     if fs::read_dir(&root)
         .map(|mut entries| entries.next().is_none())
         .unwrap_or(false)
         && fs::remove_dir(&root).is_ok()
     {
-        let _ = super::dlc_transaction::sync_directory(data_dir);
+        let _ = super::fs_sync::sync_directory(data_dir);
     }
     Ok(())
 }

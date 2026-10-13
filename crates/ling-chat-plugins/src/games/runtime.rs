@@ -12,7 +12,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager};
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use tauri::{LogicalPosition, LogicalSize, WebviewUrl, webview::WebviewBuilder};
 use tokio_util::sync::CancellationToken;
 
 use super::{LIFECYCLE, contained_file, valid_id};
@@ -67,8 +69,9 @@ pub fn close_plugin(app: &AppHandle, plugin: &str) {
     };
     for session in removed {
         session.cancel.cancel();
-        if let Some(window) = app.get_webview_window(&session.label) {
-            let _ = window.destroy();
+        let _ = app.emit_to("main", "dlc:closed", &session.label);
+        if let Some(window) = app.get_webview(&session.label) {
+            let _ = window.close();
         }
     }
 }
@@ -96,7 +99,7 @@ pub async fn request_close_plugin(app: &AppHandle, plugin: &str) -> Result<(), S
         .cloned()
         .collect();
     for session in &active {
-        if let Some(window) = app.get_webview_window(&session.label) {
+        if let Some(window) = app.get_webview(&session.label) {
             window
                 .eval("window.dispatchEvent(new Event('dlc-before-close'))")
                 .map_err(|e| e.to_string())?;
@@ -111,7 +114,7 @@ pub async fn request_close_plugin(app: &AppHandle, plugin: &str) -> Result<(), S
         )
         .await
         .map_err(|_| {
-            "Game did not finish saving. Close its window before updating or removing it."
+            "Game did not finish saving. Return from the game before updating or removing it."
                 .to_string()
         })?;
     }
@@ -192,24 +195,16 @@ pub async fn game_open(
     plugin_id: String,
     game_id: String,
     preferences: Preferences,
+    bounds: GameBounds,
 ) -> Result<(), String> {
     let _operation = LIFECYCLE.lock().await;
-    if !app.supports_multiple_windows() {
-        return Err("DLC_MULTI_WINDOW_UNSUPPORTED".into());
-    }
+    #[cfg(any(target_os = "android", target_os = "ios"))]
+    return Err("DLC_EMBED_UNSUPPORTED".into());
     let manager = app.state::<Arc<PluginManager>>().inner().clone();
     let (root, game) = manager.game(&plugin_id, &game_id).await?;
-    let existing = sessions()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .values()
-        .find(|s| s.plugin == plugin_id && s.game == game_id)
-        .cloned();
-    if let Some(existing) = existing {
-        if let Some(window) = app.get_webview_window(&existing.label) {
-            return window.set_focus().map_err(|e| e.to_string());
-        }
-    }
+    request_close_all(&app).await?;
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    let (position, size) = bounds.checked(&app)?;
     let entry = contained_file(&root, &game.entry).map_err(|e| e.to_string())?;
     let token = uuid::Uuid::new_v4().simple().to_string();
     let label = format!("dlc-{}", uuid::Uuid::new_v4().simple());
@@ -248,50 +243,31 @@ pub async fn game_open(
             .with_graceful_shutdown(shutdown.cancelled_owned())
             .await;
     });
-    let navigation_prefix = base_url.clone();
-    let builder = WebviewWindowBuilder::new(
-        &app,
-        &label,
-        WebviewUrl::External(url.parse().map_err(|e| format!("{e}"))?),
-    )
-    .title(&game.name)
-    .inner_size(1200.0, 760.0)
-    .on_navigation(move |url| url.as_str().starts_with(&navigation_prefix))
-    .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
-    #[cfg(target_os = "android")]
-    let builder = builder
-        .activity_name("com.noiq.lingchat.DlcActivity")
-        .created_by_activity_name("com.noiq.lingchat.MainActivity");
-    let window = match builder.build() {
-        Ok(window) => window,
-        Err(error) => {
-            session.cancel.cancel();
-            return Err(error.to_string());
-        },
-    };
-    sessions()
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(label.clone(), session.clone());
-    let cleanup_label = label.clone();
-    let cancel = session.cancel.clone();
-    let close_window = window.clone();
-    let close_requested = std::sync::atomic::AtomicBool::new(false);
-    window.on_window_event(move |event| {
-        if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-            if !close_requested.swap(true, std::sync::atomic::Ordering::SeqCst) {
-                api.prevent_close();
-                let _ = close_window.eval("window.dispatchEvent(new Event('dlc-before-close'))");
-            }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let navigation_prefix = base_url.clone();
+        let builder = WebviewBuilder::new(
+            &label,
+            WebviewUrl::External(url.parse().map_err(|e| format!("{e}"))?),
+        )
+        .on_navigation(move |url| url.as_str().starts_with(&navigation_prefix))
+        .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny);
+        let main = app.get_window("main").ok_or("Main window unavailable")?;
+        // Register before navigation can call the exit bridge.
+        sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(label.clone(), session.clone());
+        match main.add_child(builder, position, size) {
+            Ok(view) => {
+                let _ = view.set_focus();
+            },
+            Err(error) => {
+                close_plugin(&app, &session.plugin);
+                return Err(error.to_string());
+            },
         }
-        if matches!(event, tauri::WindowEvent::Destroyed) {
-            cancel.cancel();
-            sessions()
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .remove(&cleanup_label);
-        }
-    });
+    }
     // Includes dependency-triggered/automatic disables outside the settings UI.
     tauri::async_runtime::spawn(async move {
         loop {
@@ -305,6 +281,71 @@ pub async fn game_open(
             }
         }
     });
+    Ok(())
+}
+
+/// CSS-pixel rectangle reserved by the trusted main UI for the child WebView.
+#[derive(Clone, Deserialize)]
+pub struct GameBounds {
+    pub x: f64,
+    pub y: f64,
+    pub width: f64,
+    pub height: f64,
+}
+impl GameBounds {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn checked(&self, app: &AppHandle) -> Result<(LogicalPosition<f64>, LogicalSize<f64>), String> {
+        let window = app.get_window("main").ok_or("Main window unavailable")?;
+        let size = window
+            .inner_size()
+            .map_err(|e| e.to_string())?
+            .to_logical::<f64>(window.scale_factor().map_err(|e| e.to_string())?);
+        if ![self.x, self.y, self.width, self.height]
+            .iter()
+            .all(|v| v.is_finite())
+            || self.x < 0.0
+            || self.y < 0.0
+            || self.width <= 0.0
+            || self.height <= 0.0
+            || self.x + self.width > size.width + 1.0
+            || self.y + self.height > size.height + 1.0
+        {
+            return Err("Invalid game bounds".into());
+        }
+        Ok((
+            LogicalPosition::new(self.x, self.y),
+            LogicalSize::new(self.width, self.height),
+        ))
+    }
+}
+
+#[tauri::command]
+pub async fn game_close(app: AppHandle) -> Result<(), String> {
+    let _operation = LIFECYCLE.lock().await;
+    request_close_all(&app).await
+}
+
+#[tauri::command]
+pub async fn game_resize(app: AppHandle, bounds: GameBounds) -> Result<(), String> {
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    {
+        let (position, size) = bounds.checked(&app)?;
+        let active: Vec<_> = sessions()
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .values()
+            .cloned()
+            .collect();
+        for session in active {
+            if let Some(view) = app.get_webview(&session.label) {
+                view.set_bounds(tauri::Rect {
+                    position: position.into(),
+                    size: size.into(),
+                })
+                .map_err(|e| e.to_string())?;
+            }
+        }
+    }
     Ok(())
 }
 
@@ -395,10 +436,7 @@ async fn handle(
         ));
     }
     if path == "_host/exit" && method == Method::POST {
-        if let Some(window) = server.app.get_webview_window(&server.session.label) {
-            let _ = window.destroy();
-        }
-        server.session.cancel.cancel();
+        close_plugin(&server.app, &server.session.plugin);
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
     if method != Method::GET || path.starts_with("_host/") {

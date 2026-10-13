@@ -979,7 +979,11 @@ impl ScriptStatus {
             .collect();
         if let Some(idx) = parts.iter().position(|p| p == "scripts") {
             if idx + 1 < parts.len() {
-                return parts[idx + 1..].join(std::path::MAIN_SEPARATOR_STR);
+                let relative = parts[idx + 1..].join(std::path::MAIN_SEPARATOR_STR);
+                return match self.plugin_id.as_deref() {
+                    Some(id) => format!("plugins/{id}/{}", relative.replace('\\', "/")),
+                    None => relative,
+                };
             }
             return String::new();
         }

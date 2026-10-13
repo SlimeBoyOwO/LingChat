@@ -1,15 +1,17 @@
 export default {
   dlc: {
-    unsupported:
-      "この端末は独立したゲームウィンドウに対応していません。Android 12L 以降、iOS は複数シーンのサポートが必要です。",
-    title: "ミニゲーム DLC",
-    subtitle: "独立したカタログからゲームを導入し、個別に更新できます。",
+    storyEntry: "有効にした後、ゲーム開始 → ストーリーモードから遊べます。",
+    playEmpty:
+      "有効なゲームがありません。設定 → プラグイン / DLC → DLC でダウンロードして有効にしてください。",
+    unsupported: "この端末ではメイン画面内のゲームに未対応です。デスクトップ版をご利用ください。",
+    title: "DLC",
+    subtitle: "ミニゲームやシナリオをダウンロードして更新できます。",
     import: "パッケージを読み込む",
     source: "カタログ URL",
     sync: "カタログを同期",
     updateAll: "導入済みを更新",
     working: "処理中…",
-    empty: "カタログを同期するか、パッケージを読み込んでください。",
+    empty: "カタログを同期するか、ローカル DLC をインポートしてください。",
     version: "バージョン",
     installed: "導入済み",
     install: "ダウンロードして導入",
@@ -89,7 +91,7 @@ export default {
     storyMode: "ストーリーモード",
     scriptEditor: "クリエイティブ工房",
     cloudWorkshop: "クラウド工房",
-    miniGame: "ミニゲーム / DLC",
+    miniGame: "ミニゲーム",
     back: "戻る",
     resetMemoryTitle: "記憶をリセット",
     resetMemory: "記憶をリセット",

@@ -348,7 +348,7 @@ fn ensure_one(script: &ScriptStatus, data_dir: &Path, file: &str) -> Result<bool
                 target.display()
             )
         })?;
-    crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(parent)
+    crate::ai_service::game_system::script_engine::fs_sync::sync_directory(parent)
         .context("提交角色标记恢复失败")?;
     Ok(true)
 }
@@ -425,7 +425,7 @@ pub(crate) fn restore_character_files_snapshot(
             let parent = target
                 .parent()
                 .ok_or_else(|| anyhow!("角色标记回滚目标没有父目录"))?;
-            crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(parent)
+            crate::ai_service::game_system::script_engine::fs_sync::sync_directory(parent)
                 .context("提交角色标记快照回滚失败")?;
         }
     }
@@ -479,7 +479,7 @@ pub(crate) fn remove_character_dir_for_owner(path_key: &str, data_dir: &Path) ->
         .ok_or_else(|| anyhow!("角色目录没有父目录"))?
         .to_path_buf();
     fs::remove_dir_all(&dir).with_context(|| format!("删除角色目录失败: {}", dir.display()))?;
-    crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(&parent)
+    crate::ai_service::game_system::script_engine::fs_sync::sync_directory(&parent)
         .context("提交角色目录删除失败")?;
     Ok(true)
 }
@@ -591,8 +591,10 @@ impl ScriptEvent for CharacterFileEvent {
                         let parent = target
                             .parent()
                             .ok_or_else(|| anyhow!("角色标记删除目标没有父目录"))?;
-                        crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(parent)
-                            .context("提交角色标记删除失败")?;
+                        crate::ai_service::game_system::script_engine::fs_sync::sync_directory(
+                            parent,
+                        )
+                        .context("提交角色标记删除失败")?;
                         tracing::info!("[CharacterFileEvent] 已删除 {}", target.display());
                     },
                     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {

@@ -60,6 +60,7 @@ pub async fn do_import_plugin(
     cancel_token: Arc<CancellationToken>,
 ) -> Result<PluginImportResult, String> {
     let _operation = super::games::LIFECYCLE.lock().await;
+    let _story = super::games::StoryContentGuard::acquire(&app).await?;
     // 1. 以文件头魔数决定真实格式，前端 hint 只用于日志比对。
     let detected = archive::detect_format(tmp_path).map_err(|e| e.to_string())?;
     let format = match format_hint {
@@ -151,7 +152,9 @@ pub async fn do_import_plugin(
     };
     // id 已由 manifest::validate 限定为 [A-Za-z0-9_-]，可直接作为目录名，无穿越风险。
     let plugin_id = manifest.id.clone();
-    if let Err(error) = super::games::validate_files(&extracted_dir, &manifest.games) {
+    if let Err(error) = super::games::validate_files(&extracted_dir, &manifest.games)
+        .and_then(|_| super::games::validate_story_files(&extracted_dir, &manifest))
+    {
         cleanup(&staging_for_cleanup);
         return Err(format!("Invalid game entry: {error}"));
     }

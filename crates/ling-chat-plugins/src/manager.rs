@@ -213,7 +213,9 @@ impl PluginManager {
             return record;
         }
         record.manifest = parsed;
-        if let Err(error) = super::games::validate_files(dir, &record.manifest.games) {
+        if let Err(error) = super::games::validate_files(dir, &record.manifest.games)
+            .and_then(|_| super::games::validate_story_files(dir, &record.manifest))
+        {
             record.error = Some(error.to_string());
             return record;
         }

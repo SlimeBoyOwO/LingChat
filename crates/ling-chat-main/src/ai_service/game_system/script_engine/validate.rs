@@ -284,12 +284,19 @@ pub fn validate(
             .join("characters")
             .join(main_character)
             .join("settings.yml");
-        if !safe_folder || !settings.is_file() {
+        if !safe_folder
+            || (!settings.is_file()
+                && !script_dir
+                    .join("characters")
+                    .join(main_character)
+                    .join("settings.yml")
+                    .is_file())
+        {
             diags.push(Diagnostic::script(
                 Severity::Error,
                 "config.main_character_missing",
                 format!(
-                    "main_character「{}」必须精确匹配全局 characters/ 下含 settings.yml 的目录名",
+                    "main_character「{}」必须匹配剧本或全局 characters/ 下含 settings.yml 的目录名",
                     main_character
                 ),
             ));

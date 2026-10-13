@@ -21,6 +21,16 @@ const WorkshopPage = () => import("../components/views/WorkshopPage.vue");
 // 1. 定义路由表
 const routes = [
   {
+    path: "/mini-games",
+    name: "MiniGames",
+    component: () => import("../components/views/dlc/MiniGames.vue"),
+  },
+  {
+    path: "/mini-games/:plugin/:game",
+    name: "DlcGamePlayer",
+    component: () => import("../components/views/dlc/GamePlayer.vue"),
+  },
+  {
     path: "/",
     name: "MainMenu",
     component: MainMenu,

@@ -71,7 +71,7 @@ fn write_state(data_dir: &Path, state: &RuntimeState) -> Result<()> {
     crate::ai_service::tools::atomic_replace(&path, &content)
         .map_err(anyhow::Error::msg)
         .with_context(|| format!("无法保存剧本运行状态: {}", path.display()))?;
-    super::dlc_transaction::sync_directory(data_dir).context("提交剧本运行状态目录项失败")
+    super::fs_sync::sync_directory(data_dir).context("提交剧本运行状态目录项失败")
 }
 
 /// 有运行状态记录的剧本 path_key 列表（= 至少真正进入过一次的剧本）。

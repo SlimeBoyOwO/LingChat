@@ -11,6 +11,8 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         plugins::games::catalog::game_catalog_sync,
         plugins::games::catalog::game_catalog_install,
         plugins::games::runtime::game_open,
+        plugins::games::runtime::game_close,
+        plugins::games::runtime::game_resize,
         plugins::games::runtime::game_seed_save,
         utils::log_bridge::get_log_history,
         utils::log_bridge::open_log_window,
@@ -314,7 +316,9 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
 
 /// 前端确认关闭后调用，终止整个 Tauri 进程。
 #[tauri::command]
-fn exit_app(app: tauri::AppHandle) {
+async fn exit_app(app: tauri::AppHandle) -> Result<(), String> {
+    plugins::games::runtime::request_close_all(&app).await?;
     api::script::close_script_glitch_windows(app.clone());
     app.exit(0);
+    Ok(())
 }

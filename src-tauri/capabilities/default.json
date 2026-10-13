@@ -2,7 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "Capability for the main window",
-  "windows": ["main", "settings", "log", "screenshot-overlay", "cast", "pet_bubble", "todo_widget"],
   "permissions": [
     "core:default",
     "core:webview:allow-create-webview-window",
@@ -32,7 +31,18 @@
     "android-fs:allow-get-name",
     {
       "identifier": "fs:scope",
-      "allow": [{ "path": "$RESOURCE/**" }, { "path": "$APPCACHE/**" }, { "path": "$APPDATA/**" }]
+      "allow": [
+        {
+          "path": "$RESOURCE/**"
+        },
+        {
+          "path": "$APPCACHE/**"
+        },
+        {
+          "path": "$APPDATA/**"
+        }
+      ]
     }
-  ]
+  ],
+  "webviews": ["main", "settings", "log", "screenshot-overlay", "cast", "pet_bubble", "todo_widget"]
 }

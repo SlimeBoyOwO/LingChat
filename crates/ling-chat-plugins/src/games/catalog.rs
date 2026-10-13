@@ -15,10 +15,17 @@ use super::{API_VERSION, LIFECYCLE, valid_id, validate_files};
 use crate::{PluginManager, manifest, types::PluginManifest};
 
 const CATALOG_URL: &str =
-    "https://raw.githubusercontent.com/sdfsfsk/LingChat-DLC/main/catalog.json";
+    "https://raw.githubusercontent.com/sdfsfsk/LingChat-DLC/main/catalog-v2.json";
 const CATALOG_LIMIT: usize = 1024 * 1024;
 const PACKAGE_LIMIT: usize = 128 * 1024 * 1024;
 const EXTRACT_LIMIT: u64 = 256 * 1024 * 1024;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContentKind {
+    Game,
+    Story,
+}
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -31,6 +38,7 @@ pub struct Entry {
     pub sha256: String,
     pub size: usize,
     pub api_version: u32,
+    pub kind: ContentKind,
 }
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -49,7 +57,7 @@ impl Default for Cache {
         Self {
             source: CATALOG_URL.into(),
             catalog: Catalog {
-                schema_version: 1,
+                schema_version: 2,
                 packages: vec![],
             },
         }
@@ -118,7 +126,7 @@ fn validate_url(text: &str) -> Result<reqwest::Url> {
 }
 
 fn validate_catalog(catalog: &Catalog) -> Result<()> {
-    if catalog.schema_version != 1 || catalog.packages.len() > 256 {
+    if catalog.schema_version != 2 || catalog.packages.len() > 256 {
         bail!("Unsupported or oversized catalog");
     }
     let mut ids = HashSet::new();
@@ -272,22 +280,23 @@ fn check_package(dir: &Path, entry: &Entry) -> Result<PluginManifest> {
         bail!("Manifest exceeds limit");
     }
     let value = manifest::parse(&std::fs::read_to_string(manifest_path)?)?;
-    if value.id != entry.id || value.version != entry.version || value.games.is_empty() {
+    if value.id != entry.id || value.version != entry.version {
         bail!("Package identity/version does not match catalog");
     }
-    // A game catalog cannot silently install Python tools or privileged resources.
-    if !value.tools.is_empty()
-        || !value.resources.is_empty()
-        || !value.subscribe.is_empty()
-        || !value.ws.is_empty()
-        || value.startup.is_some()
-        || !value.read.is_empty()
-        || !value.env.is_empty()
-        || !value.config.is_empty()
-        || value.send_user_message
-        || !value.depends_on.is_empty()
-    {
-        bail!("Game catalog packages must contain games only");
+    match entry.kind {
+        ContentKind::Game => {
+            if value.games.is_empty() {
+                bail!("Game package has no games");
+            }
+            super::validate_game_only(&value)?;
+        },
+        ContentKind::Story => {
+            if value.story_api_version != Some(entry.api_version) {
+                bail!("Missing story API declaration");
+            }
+            super::validate_story_only(&value)?;
+            super::validate_story_files(dir, &value)?;
+        },
     }
     validate_files(dir, &value.games)?;
     Ok(value)
@@ -344,6 +353,9 @@ async fn install(app: AppHandle, id: String) -> Result<()> {
     super::runtime::request_close_plugin(&app, &entry.id)
         .await
         .map_err(anyhow::Error::msg)?;
+    let _story = super::StoryContentGuard::acquire(&app)
+        .await
+        .map_err(anyhow::Error::msg)?;
     let backup = staging.path().join("previous");
     {
         use std::io::Write;
@@ -372,6 +384,7 @@ async fn install(app: AppHandle, id: String) -> Result<()> {
     // new packages follow the plugin manager's disabled-by-default policy.
     let manager = app.state::<Arc<PluginManager>>().inner().clone();
     tokio::task::spawn_blocking(move || manager.reload()).await?;
+    crate::commands::refresh_plugin_content(&app).await;
     let _ = app.emit("dlc:changed", &entry.id);
     Ok(())
 }
@@ -389,14 +402,30 @@ mod tests {
             sha256: format!("{:x}", Sha256::digest(bytes)),
             size: bytes.len(),
             api_version: 1,
+            kind: ContentKind::Game,
         }
+    }
+    #[test]
+    fn catalog_content_kind_must_match_manifest() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join("scripts/example")).unwrap();
+        std::fs::write(
+            dir.path().join("scripts/example/story_config.yaml"),
+            "script_name: Example\nintro_chapter: start\n",
+        )
+        .unwrap();
+        std::fs::write(dir.path().join("manifest.toml"), "id='test'\nname='Test'\ndescription=''\nversion='1.0.0'\nstory_api_version=1\nresources=['scripts']").unwrap();
+        let mut e = entry(b"fixture");
+        assert!(check_package(dir.path(), &e).is_err());
+        e.kind = ContentKind::Story;
+        assert!(check_package(dir.path(), &e).is_ok());
     }
     #[test]
     fn ignores_old_custom_catalogs_but_keeps_the_builtin_catalog() {
         let mut cache = Cache {
             source: "https://example.com/custom-catalog.json".into(),
             catalog: Catalog {
-                schema_version: 1,
+                schema_version: 2,
                 packages: vec![entry(b"test")],
             },
         };
@@ -421,7 +450,7 @@ mod tests {
         let e = entry(b"test");
         assert!(
             validate_catalog(&Catalog {
-                schema_version: 1,
+                schema_version: 2,
                 packages: vec![e.clone(), e]
             })
             .is_err()

@@ -441,7 +441,9 @@ const keepResource = async (id: string, res: PluginResourceEntry) => {
 
 const load = async () => {
   try {
-    plugins.value = (await listPlugins()).filter((plugin) => !plugin.games.length);
+    plugins.value = (await listPlugins()).filter(
+      (plugin) => !plugin.games.length && !plugin.story_api_version,
+    );
     for (const plugin of plugins.value) {
       if (!formState[plugin.id]) {
         formState[plugin.id] = {};

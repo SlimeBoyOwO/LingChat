@@ -97,6 +97,7 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             manifest.id
         );
     }
+    super::games::validate_story_only(manifest)?;
     super::games::validate_specs(&manifest.games)?;
     if !manifest.games.is_empty() {
         super::games::validate_game_only(manifest)?;

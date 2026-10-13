@@ -297,6 +297,12 @@ impl ScriptManager {
         }
     }
 
+    /// Plugin scripts are registered after initial discovery. Replay their
+    /// interrupted reset journals only once their package is available again.
+    pub fn recover_plugin_resets(&self, data_dir: &Path) {
+        super::reset_transaction::recover_pending_resets(data_dir, &self.all_scripts);
+    }
+
     // ============================================================
     // Script listing
     // ============================================================
@@ -550,10 +556,19 @@ impl ScriptManager {
             return Ok(());
         };
 
+        // A self-contained story may declare its own registered role as MAIN.
+        let local = RoleRepo::get_script_roles(ctx.db, &script.path_key())
+            .await?
+            .into_iter()
+            .find(|role| role.resource_folder.as_deref() == Some(folder));
         let roles = RoleRepo::get_all_main_roles(ctx.db).await?;
-        let Some(role_id) = roles
-            .iter()
-            .find(|r| r.resource_folder.as_deref() == Some(folder))
+        let Some(role_id) = local
+            .as_ref()
+            .or_else(|| {
+                roles
+                    .iter()
+                    .find(|r| r.resource_folder.as_deref() == Some(folder))
+            })
             .map(|r| r.id)
         else {
             return Err(anyhow!(

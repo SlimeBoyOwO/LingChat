@@ -35,6 +35,7 @@ pub async fn plugin_list(app: AppHandle) -> Result<Vec<PluginInfo>, String> {
 #[tauri::command]
 pub async fn plugin_set_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
     let _operation = super::games::LIFECYCLE.lock().await;
+    let _story = super::games::StoryContentGuard::acquire(&app).await?;
     if !enabled {
         super::games::runtime::request_close_plugin(&app, &id).await?;
     }
@@ -70,6 +71,7 @@ pub async fn plugin_save_config(
 #[tauri::command]
 pub async fn plugin_reload(app: AppHandle) -> Result<(), String> {
     let _operation = super::games::LIFECYCLE.lock().await;
+    let _story = super::games::StoryContentGuard::acquire(&app).await?;
     super::games::runtime::request_close_all(&app).await?;
     let plugin_manager = manager(&app);
     let reload_manager = plugin_manager.clone();
@@ -91,6 +93,7 @@ pub async fn plugin_reload(app: AppHandle) -> Result<(), String> {
 #[tauri::command]
 pub async fn plugin_delete(app: AppHandle, id: String) -> Result<(), String> {
     let _operation = super::games::LIFECYCLE.lock().await;
+    let _story = super::games::StoryContentGuard::acquire(&app).await?;
     super::games::runtime::request_close_plugin(&app, &id).await?;
     let plugin_manager = manager(&app);
     plugin_manager.delete_plugin(&id).await?;
@@ -278,6 +281,7 @@ pub async fn refresh_plugin_content(app: &AppHandle) {
     sync_plugin_scripts_cmd(app).await;
     sync_plugin_scenes_cmd(app).await;
     let _ = app.emit("role:list-updated", ());
+    let _ = app.emit("dlc:changed", ());
 }
 
 /// 收集当前所有可见插件角色并同步进 DB。
@@ -317,6 +321,9 @@ async fn sync_plugin_scripts_cmd(app: &AppHandle) {
         entries.into_iter().map(|e| (e.plugin_id, e.path)).collect();
     let mut service = state.ai_service.lock().await;
     service.script_manager.apply_plugin_scripts(&plugin_scripts);
+    service
+        .script_manager
+        .recover_plugin_resets(&service.data_dir);
 }
 
 /// 把可见插件背景图同步为 scenes.json 中的插件场景（增删对齐）。

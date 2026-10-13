@@ -8,6 +8,7 @@ export interface GameSpec {
   legacy_storage_keys: string[];
 }
 export interface GameCatalogEntry {
+  kind: "game" | "story";
   id: string;
   name: string;
   description: string;
@@ -53,10 +54,12 @@ export const openDlcGame = (
   gameId: string,
   locale: string,
   outputDevice: string,
+  bounds: { x: number; y: number; width: number; height: number },
 ) =>
   invoke<void>("game_open", {
     pluginId,
     gameId,
+    bounds,
     preferences: {
       locale,
       output_device: outputDevice,

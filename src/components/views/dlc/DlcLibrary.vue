@@ -70,6 +70,7 @@
             </button>
           </template>
         </div>
+        <p v-if="card.installed?.story_api_version">{{ t("views.dlc.storyEntry") }}</p>
         <template v-if="card.installed">
           <button
             v-for="game in card.installed.games.filter((g) => g.legacy_storage_keys.length)"
@@ -97,7 +98,6 @@ import {
   newerGameVersion,
   syncGameCatalog,
   installGameDlc,
-  openDlcGame,
   seedGameSave,
   type GameCatalogEntry,
   type GameSpec,
@@ -109,10 +109,13 @@ import {
   importPluginFromPath,
   type PluginInfo,
 } from "@/api/services/plugins";
-import { currentDeviceId } from "@/utils/audioOutputManager";
+import { useRouter } from "vue-router";
+import { useUIStore } from "@/stores/modules/ui/ui";
+const router = useRouter();
+const uiStore = useUIStore();
 
 const emit = defineEmits<{ changed: [] }>();
-const { t, locale } = useI18n();
+const { t } = useI18n();
 const packages = ref<GameCatalogEntry[]>([]);
 const installed = ref<PluginInfo[]>([]);
 const busy = ref(false),
@@ -149,7 +152,8 @@ const updates = computed(() =>
   ),
 );
 async function refresh() {
-  installed.value = (await listPlugins()).filter((p) => p.games?.length);
+  uiStore.dlcRefreshToken++;
+  installed.value = (await listPlugins()).filter((p) => p.games?.length || p.story_api_version);
 }
 async function run(action: () => Promise<void>) {
   if (busy.value) return;
@@ -195,8 +199,10 @@ const toggle = (plugin: PluginInfo) =>
     await setPluginEnabled(plugin.id, !plugin.enabled);
     await refresh();
   });
-const play = (id: string, game: GameSpec) =>
-  run(() => openDlcGame(id, game.id, locale.value, currentDeviceId.value));
+const play = async (id: string, game: GameSpec) => {
+  uiStore.showSettings = false;
+  await router.push({ name: "DlcGamePlayer", params: { plugin: id, game: game.id } });
+};
 const remove = (id: string) =>
   run(async () => {
     if (

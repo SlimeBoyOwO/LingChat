@@ -15,7 +15,8 @@ pub const API_VERSION: u32 = 1;
 /// library. Applies to manual imports and sideloaded manifests as well as catalogs.
 pub fn validate_game_only(value: &crate::types::PluginManifest) -> Result<()> {
     semver::Version::parse(&value.version).context("Game package version must use SemVer")?;
-    if !value.tools.is_empty()
+    if value.story_api_version.is_some()
+        || !value.tools.is_empty()
         || !value.resources.is_empty()
         || !value.subscribe.is_empty()
         || !value.ws.is_empty()
@@ -29,6 +30,79 @@ pub fn validate_game_only(value: &crate::types::PluginManifest) -> Result<()> {
         bail!("Game packages cannot declare privileged plugin capabilities");
     }
     Ok(())
+}
+
+/// Story DLCs carry declarative scripts/assets, never Python or network hooks.
+pub fn validate_story_only(value: &crate::types::PluginManifest) -> Result<()> {
+    let Some(version) = value.story_api_version else {
+        return Ok(());
+    };
+    semver::Version::parse(&value.version)?;
+    if version != API_VERSION
+        || !value.games.is_empty()
+        || value.resources != [crate::types::ResourceKind::Scripts]
+        || !value.tools.is_empty()
+        || !value.subscribe.is_empty()
+        || !value.ws.is_empty()
+        || !value.ws_allow.is_empty()
+        || value.startup.is_some()
+        || !value.read.is_empty()
+        || !value.env.is_empty()
+        || !value.config.is_empty()
+        || value.send_user_message
+        || !value.depends_on.is_empty()
+    {
+        bail!("Story DLC must declare only scripts and a supported story API");
+    }
+    Ok(())
+}
+
+pub fn validate_story_files(root: &Path, manifest: &crate::types::PluginManifest) -> Result<()> {
+    if manifest.story_api_version.is_none() {
+        return Ok(());
+    }
+    let dirs = crate::resources::script_package_dirs(&root.join("scripts"));
+    if dirs.is_empty() {
+        bail!("Story DLC has no scripts");
+    }
+    for dir in dirs {
+        let relative = dir
+            .strip_prefix(root)?
+            .join("story_config.yaml")
+            .to_string_lossy()
+            .replace('\\', "/");
+        contained_file(root, &relative)?;
+        ling_chat_main::ai_service::game_system::script_engine::ScriptManager::read_script_config(
+            &dir,
+        )?;
+    }
+    Ok(())
+}
+
+/// Shares the native engine's run reservation, so installing/disabling content
+/// cannot race an active script or an editor preview reading the same assets.
+pub struct StoryContentGuard(std::sync::Arc<std::sync::atomic::AtomicBool>);
+impl StoryContentGuard {
+    pub async fn acquire(app: &tauri::AppHandle) -> Result<Self, String> {
+        use std::sync::atomic::Ordering;
+        use tauri::Manager;
+        let state = app.state::<ling_chat_main::AppState>();
+        let flag = state
+            .ai_service
+            .lock()
+            .await
+            .script_manager
+            .is_running
+            .clone();
+        flag.compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .map_err(|_| "请先退出当前剧本或试玩，再管理 DLC / 插件".to_string())?;
+        Ok(Self(flag))
+    }
+}
+impl Drop for StoryContentGuard {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -123,6 +197,63 @@ pub fn validate_files(root: &Path, games: &[GameSpec]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn story_packages_cannot_request_plugin_privileges_or_game_entries() {
+        let good = r#"id="story"
+name="Story"
+description=""
+version="1.0.0"
+story_api_version=1
+resources=["scripts"]
+"#;
+        assert!(crate::manifest::parse(good).is_ok());
+        for extra in [
+            "send_user_message=true",
+            "read=[\"secrets\"]",
+            "resources=[\"characters\"]",
+            "story_api_version=2",
+        ] {
+            let candidate = if extra.starts_with("resources=") {
+                good.replace("resources=[\"scripts\"]", extra)
+            } else if extra.starts_with("story_api_version=") {
+                good.replace("story_api_version=1", extra)
+            } else {
+                format!("{good}\n{extra}")
+            };
+            assert!(crate::manifest::parse(&candidate).is_err(), "{extra}");
+        }
+    }
+    #[test]
+    fn native_story_catalog_validates_and_namespaces_roles() {
+        let root = tempfile::tempdir().unwrap();
+        let story = root.path().join("scripts/example");
+        std::fs::create_dir_all(&story).unwrap();
+        std::fs::write(
+            story.join("story_config.yaml"),
+            "script_name: Example\nintro_chapter: start\n",
+        )
+        .unwrap();
+        let manifest = crate::manifest::parse("id='story'\nname='Story'\ndescription=''\nversion='1.0.0'\nstory_api_version=1\nresources=['scripts']").unwrap();
+        assert!(validate_story_files(root.path(), &manifest).is_ok());
+        let mut script = ling_chat_main::ai_service::game_system::script_engine::ScriptManager::read_script_config(&story).unwrap();
+        script.plugin_id = Some("story".into());
+        assert_eq!(script.path_key(), "plugins/story/example");
+        use ling_chat_main::db::entities::role::RoleType;
+        let role = ling_chat_main::api::resolve_role_dir_in(
+            root.path(),
+            &RoleType::Npc,
+            Some(&script.path_key()),
+            "actor",
+        )
+        .unwrap();
+        assert_eq!(
+            role,
+            root.path()
+                .join("plugins/story/scripts/example/characters/actor")
+        );
+        script.plugin_id = Some("other".into());
+        assert_eq!(script.path_key(), "plugins/other/example");
+    }
     #[test]
     fn rejects_cross_platform_path_escape() {
         for path in [

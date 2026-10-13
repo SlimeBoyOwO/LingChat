@@ -108,7 +108,7 @@ pub(crate) fn restore_menu_effect_snapshot(
         },
     };
     if changed {
-        crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(data_dir)
+        crate::ai_service::game_system::script_engine::fs_sync::sync_directory(data_dir)
             .context("提交菜单特效快照回滚失败")?;
     }
     Ok(())
@@ -156,7 +156,7 @@ fn write_menu_effect(data_dir: &Path, state: &ScriptMenuEffectState) -> Result<(
     let bytes = serde_json::to_vec_pretty(state).context("序列化主菜单特效状态失败")?;
     atomic_replace(&state_path(data_dir), &bytes)
         .map_err(|error| anyhow!("保存主菜单特效状态失败: {error}"))?;
-    crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(data_dir)
+    crate::ai_service::game_system::script_engine::fs_sync::sync_directory(data_dir)
         .context("提交主菜单特效状态失败")
 }
 
@@ -164,10 +164,8 @@ pub fn clear_menu_effect(data_dir: &Path) -> Result<bool> {
     let path = state_path(data_dir);
     match fs::remove_file(path) {
         Ok(()) => {
-            crate::ai_service::game_system::script_engine::dlc_transaction::sync_directory(
-                data_dir,
-            )
-            .context("提交主菜单特效清除失败")?;
+            crate::ai_service::game_system::script_engine::fs_sync::sync_directory(data_dir)
+                .context("提交主菜单特效清除失败")?;
             Ok(true)
         },
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),

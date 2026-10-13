@@ -45,6 +45,7 @@ export interface PluginInfo {
   env: EnvDecl[];
   tools: string[];
   games: GameSpec[];
+  story_api_version: number | null;
   /** 插件声明携带的资源类型（characters / scripts / musics / backgrounds / ambients）。 */
   resources: string[];
   /** 插件声明的 WebSocket 连接（含当前运行状态）。 */
