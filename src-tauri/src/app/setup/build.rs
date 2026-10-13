@@ -23,7 +23,6 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use ling_chat_main::ai_service::emotion::EmotionClassifier;
-use ling_chat_main::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use ling_chat_main::ai_service::god_agent::GodAgentCore;
 use ling_chat_main::ai_service::god_agent::config::resolve_god_agent_provider;
 use ling_chat_main::ai_service::llm::LlmSlot;
@@ -83,18 +82,8 @@ pub(super) fn build_service_graph(
     let mut ai_service = rt.block_on(AIService::new(
         db.clone(),
         data_dir.clone(),
-        llm.clone(),
         app_config.tts.clone(),
         local_tts,
-        app_config.use_persistent_memory,
-        app_config.memory_update_interval,
-        app_config.memory_recent_window,
-        MemorySectionLimits {
-            short_term: app_config.memory_short_term_max_chars as usize,
-            long_term: app_config.memory_long_term_max_chars as usize,
-            user_info: app_config.memory_user_info_max_chars as usize,
-            promises: app_config.memory_promises_max_chars as usize,
-        },
         app_config.memory_inject_continue_user,
     ));
 
@@ -155,6 +144,34 @@ pub(super) fn build_service_graph(
         processor,
         translator,
     };
+
+    // 向量记忆服务：复用聊天 LLM 槽位做去重合并，配置从启动时的 AppConfig 快照。
+    let memory = Arc::new(ling_chat_main::ai_service::memory::MemoryService::new(
+        db.clone(),
+        chat.llm.clone(),
+        &app_config,
+    ));
+    tracing::info!(
+        "记忆服务: enabled={}, configured={}, retrieval={}, top_k={}, min_score={}",
+        memory.enabled(),
+        memory.is_configured(),
+        memory.retrieval_mode(),
+        memory.defaults().0,
+        memory.defaults().1,
+    );
+
+    // 后台为「旧版整合」条目补算向量，使 `memory_query` 能语义检索到它们。
+    // 只在嵌入就绪时真正执行；幂等（只补没有向量的行），失败仅记日志不阻断启动。
+    {
+        let memory = memory.clone();
+        tauri::async_runtime::spawn(async move {
+            match memory.backfill_legacy_embeddings(None).await {
+                Ok(0) => {},
+                Ok(n) => tracing::info!("旧版整合记忆向量回填：{n} 条"),
+                Err(e) => tracing::warn!("旧版整合记忆向量回填失败（可下次启动重试）: {e}"),
+            }
+        });
+    }
 
     // ═══ 原 services.rs：构建其余全部服务 ═══
     // 创建脚本引擎通道
@@ -263,6 +280,7 @@ pub(super) fn build_service_graph(
         db,
         ai_service,
         chat,
+        memory,
         script_channels,
         generation_lock,
         tool_registry,

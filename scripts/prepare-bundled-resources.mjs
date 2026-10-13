@@ -16,7 +16,7 @@ import {
   writeFileSync,
 } from "fs";
 import { createHash } from "crypto";
-import { join, dirname, sep } from "path";
+import { join, dirname } from "path";
 import { fileURLToPath } from "url";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -110,7 +110,10 @@ if (existsSync(androidAssetsDir)) {
 }
 mkdirSync(androidAssetsDir, { recursive: true });
 copyFileSync(archivePath, join(androidAssetsDir, "data.7z"));
-console.log(`Copied data.7z to ${androidAssetsDir}`);
+// 清单旁列一份（27KB）：升级安装时运行时只需读它做 diff，
+// 判定是否需要增量解压 data.7z 里的新资源，不必每次冷启动碰大包。
+copyFileSync(join(buildDir, "data_manifest.json"), join(androidAssetsDir, "data_manifest.json"));
+console.log(`Copied data.7z + data_manifest.json to ${androidAssetsDir}`);
 
 // --- iOS：部署 data.7z 到 Xcode 工程资源目录 ---
 // gen/apple/assets/ 在 project.yml 中以 folder reference（type: folder）参与
@@ -128,7 +131,8 @@ if (existsSync(iosGenApple)) {
   }
   mkdirSync(iosDataDir, { recursive: true });
   copyFileSync(archivePath, join(iosDataDir, "data.7z"));
-  console.log(`Copied data.7z to ${iosDataDir}`);
+  copyFileSync(join(buildDir, "data_manifest.json"), join(iosDataDir, "data_manifest.json"));
+  console.log(`Copied data.7z + data_manifest.json to ${iosDataDir}`);
 } else {
   console.log(
     "⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）",
@@ -158,7 +162,9 @@ function walkDir(base, relDir, manifest) {
   const dir = join(base, relDir);
   for (const entry of readdirSync(dir)) {
     const fullPath = join(dir, entry);
-    const relPath = relDir ? `${relDir}${sep}${entry}` : entry;
+    // 清单 key 一律使用 `/` 分隔（与 7z 条目名、跨平台契约一致；
+    // Windows 上不能用 sep=`\`，否则与 archive entry 名称不匹配）。
+    const relPath = relDir ? `${relDir}/${entry}` : entry;
     if (statSync(fullPath).isDirectory()) {
       walkDir(base, relPath, manifest);
     } else {

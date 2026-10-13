@@ -369,6 +369,19 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
             for msg in &role.memory {
                 tracing::info!("[{}] {}", msg.role, msg.content);
             }
+
+            // 长期记忆（memory_embeddings）：配置摘要 + 当前角色的记忆规模。
+            tracing::info!(
+                "=== 长期记忆 (role_id={}) 配置 ===\n{}",
+                current_id,
+                crate::ai_service::memory::describe(&state.memory)
+            );
+            match state.memory.count_memories(current_id).await {
+                Ok(count) => {
+                    tracing::info!("长期记忆条数: {count}（达到阈值后写入会触发自动摘要）")
+                },
+                Err(error) => tracing::warn!("统计长期记忆失败: {error}"),
+            }
         },
         "/查看台词" => {
             let state = app.state::<AppState>();
@@ -450,7 +463,6 @@ pub async fn rollback_conversation(
             .ok_or_else(|| format!("未找到序号为 {} 的用户消息", message_seq))?;
 
         // truncate(idx) 移除 idx..len（含目标消息及之后所有内容）
-        gs.role_manager.invalidate_memory_history();
         gs.line_list.truncate(idx);
         gs.refresh_memories(&db)
             .await

@@ -6,15 +6,17 @@
 //! 3. 启动 StreamProducer 从 LLM 流中切句子，送入 consumer 并行处理（情绪解析 + 翻译 + TTS）。
 //! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
 //! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
+//! 6. 用户新消息轮做长期记忆 RAG 检索，把命中结果落成台词行（见 `inject_rag_memories`）。
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
@@ -23,6 +25,7 @@ use crate::ai_service::god_agent::capabilities::{
     speaker::{self as god_speaker, SpeakerView},
 };
 use crate::ai_service::llm::LlmClient;
+use crate::ai_service::memory::{SearchHit, SearchMode};
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{
     EmotionSegment, MessageProcessor, UserMessageOutcome,
@@ -36,7 +39,9 @@ use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage}
 use crate::api::data_dir;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{PromptRole, RoundReply, correction_texts, scan_reply_shape};
+use crate::utils::prompt::{
+    NARRATION_TAG, PromptRole, RoundReply, correction_texts, scan_reply_shape,
+};
 
 /// MessageGenerator 的业务调用来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -109,14 +114,16 @@ impl MessageGenerator {
     /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
     pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
         // 1. 处理用户消息
-        let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
+        let mut user_ctx = self.handle_user_message(user_message.as_deref()).await?;
 
         // 1.5. 场景变化检测
         self.detect_scene_change().await?;
 
-        // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应
+        // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应；
+        //    随后做长期记忆 RAG 注入（仅真实用户发言轮，query 取最近几轮对话）
         if user_message.is_some() {
             self.god_agent_pre_select().await?;
+            self.inject_rag_memories(&mut user_ctx).await?;
         }
 
         // 3. 生成循环（God Agent 激活时可能多轮）
@@ -366,12 +373,93 @@ impl MessageGenerator {
             return Ok(());
         };
         let mut gs = self.deps.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
         if let Some(line) = gs.line_list.get_mut(idx) {
             line.base.content = ctx.processed.replace(temp, "");
         }
         gs.refresh_memories(&self.deps.db).await?;
         Ok(())
+    }
+
+    // ============================================================
+    // 长期记忆 RAG
+    // ============================================================
+
+    /// Step 2.5: 长期记忆 RAG 注入。
+    ///
+    /// 仅真实用户发言轮触发：以最近几轮对话为 query 检索该角色的长期记忆，
+    /// 把命中结果写成一条 [`LineAttribute::Memory`] 台词行，**插在本轮用户行之前**。
+    /// 下一次上下文重建时 `MemoryBuilder` 按感知集合把它渲染进 `{...}` 上下文块，
+    /// 本轮回复即可用上；该行同时留在历史里随存档持久化。
+    ///
+    /// 每轮先替换掉上一轮本角色的检索行——历史里最多只保留最近一轮的检索结果，
+    /// 不会越攒越多。记忆功能未开 / 嵌入未配置时只做旧行清理、不检索；
+    /// 检索（远端嵌入）失败只记警告并跳过，不影响本轮生成。
+    async fn inject_rag_memories(&self, ctx: &mut UserMessageContext) -> Result<()> {
+        let Some(idx) = ctx.line_index else {
+            return Ok(());
+        };
+
+        // 快照：本轮响应角色 + 检索 query（远端检索不持 game_status 锁）
+        let (role_id, query) = {
+            let gs = self.deps.game_status.lock().await;
+            let Some(role_id) = gs.current_role_id.filter(|&id| id != 0) else {
+                return Ok(());
+            };
+            if idx >= gs.line_list.len() {
+                return Ok(());
+            }
+            let query = build_rag_query(&gs.line_list, idx);
+            (role_id, query)
+        };
+
+        let memory = self.deps.app.state::<AppState>().memory.clone();
+        // 记忆可用性只看总开关：没有嵌入模型时 search 会自动走词法（非嵌入式 RAG）。
+        let hits = if !memory.enabled() || query.is_empty() {
+            Vec::new()
+        } else {
+            match memory
+                .search(role_id, &query, SearchMode::Hybrid, None, None, None)
+                .await
+            {
+                Ok(hits) => hits,
+                Err(e) => {
+                    tracing::warn!("[RAG] 长期记忆检索失败，本轮跳过注入: {e}");
+                    return Ok(());
+                },
+            }
+        };
+
+        let content = format_rag_content(&hits);
+        let mut gs = self.deps.game_status.lock().await;
+        if idx >= gs.line_list.len() {
+            return Ok(());
+        }
+
+        // 替换上一轮检索行：先数掉落在用户行之前的，修正用户行的新下标
+        let removed_before = gs.line_list[..=idx]
+            .iter()
+            .filter(|l| is_rag_line(l, role_id))
+            .count();
+        gs.line_list.retain(|l| !is_rag_line(l, role_id));
+
+        let mut user_at = idx - removed_before;
+        if !content.is_empty() {
+            let line = LineBase {
+                content,
+                attribute: LineAttributeExt(LineAttribute::Memory),
+                display_name: Some(RAG_LINE_DISPLAY_NAME.to_string()),
+                sender_role_id: None,
+                ..Default::default()
+            };
+            gs.line_list
+                .insert(user_at, GameLine::from_base(line, vec![role_id]));
+            user_at += 1;
+        }
+        // 用户行可能被旧行清理挪了位置，回写修正后的下标，
+        // 后续 temp_message 清理仍按 ctx.line_index 找得准
+        ctx.line_index = Some(user_at);
+
+        gs.refresh_memories(&self.deps.db).await
     }
 
     // ============================================================
@@ -738,7 +826,6 @@ impl MessageGenerator {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
             if gs.preview_generation == self.deps.generation {
-                gs.role_manager.invalidate_memory_history();
                 let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
 
@@ -1198,4 +1285,80 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
     Ok(())
+}
+
+// ============================================================
+// 长期记忆 RAG（用户新消息轮自动检索注入的辅助函数）
+// ============================================================
+
+/// 单轮写入台词的命中条数上限（同时受配置 `memory.top_k` 约束）。
+const RAG_MAX_RESULTS: usize = 6;
+/// 检索 query 取最近多少行对话（用户 + 角色台词）。
+const RAG_QUERY_LINES: usize = 6;
+/// query 单行截断字符数。
+const RAG_QUERY_LINE_MAX_CHARS: usize = 120;
+/// query 总字符预算。
+const RAG_QUERY_MAX_CHARS: usize = 480;
+/// 单条命中写入台词时的截断长度。
+const RAG_HIT_MAX_CHARS: usize = 300;
+/// RAG 台词行的展示名（`/查看台词`、插件 `read_context` 里可一眼识别）。
+const RAG_LINE_DISPLAY_NAME: &str = "长期记忆";
+
+/// 该行是否是 `role_id` 自己留下的 RAG 检索行（每轮被替换，不做跨角色清理）。
+fn is_rag_line(line: &GameLine, role_id: i32) -> bool {
+    matches!(line.attribute(), LineAttribute::Memory) && line.perceived_role_ids.contains(&role_id)
+}
+
+/// 构造 RAG 检索 query：从本轮用户行往前取最近几轮真实对话，
+/// 跳过系统行、旁白（`NARRATION_TAG`）、工具行与既往检索行，逐行截断、总量封顶。
+fn build_rag_query(lines: &[GameLine], upto: usize) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    let mut budget = RAG_QUERY_MAX_CHARS;
+    for line in lines[..=upto].iter().rev() {
+        if parts.len() >= RAG_QUERY_LINES || budget == 0 {
+            break;
+        }
+        if !matches!(
+            line.attribute(),
+            LineAttribute::User | LineAttribute::Assistant
+        ) {
+            continue;
+        }
+        let content = line.base.content.trim();
+        if content.is_empty() || content.starts_with(NARRATION_TAG) {
+            continue;
+        }
+        let take = budget.min(RAG_QUERY_LINE_MAX_CHARS);
+        let text: String = content.chars().take(take).collect();
+        budget -= text.chars().count();
+        parts.push(text);
+    }
+    parts.reverse();
+    parts.join("\n")
+}
+
+/// 把检索命中整理成 RAG 台词行的内容；无命中返回空串（调用方据此只清旧行）。
+fn format_rag_content(hits: &[SearchHit]) -> String {
+    if hits.is_empty() {
+        return String::new();
+    }
+    let mut s = String::from("以下是与当前对话相关的长期记忆检索结果，供本轮回复参考：");
+    for hit in hits.iter().take(RAG_MAX_RESULTS) {
+        s.push_str("\n- ");
+        if hit.created_at > 0 {
+            if let Some(ts) = chrono::DateTime::from_timestamp(hit.created_at.div_euclid(1000), 0) {
+                s.push_str(
+                    &ts.with_timezone(&chrono::Local)
+                        .format("%Y-%m-%d")
+                        .to_string(),
+                );
+                s.push('：');
+            }
+        }
+        // 记忆内容可能带换行（如标签尾行），压成单行再截断，保持条目结构
+        let one_line: String = hit.content.split_whitespace().collect::<Vec<_>>().join(" ");
+        let one_line: String = one_line.chars().take(RAG_HIT_MAX_CHARS).collect();
+        s.push_str(&one_line);
+    }
+    s
 }

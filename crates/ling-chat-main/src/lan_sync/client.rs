@@ -211,7 +211,8 @@ pub async fn fetch_db_records(peer: &PeerInfo) -> Result<super::messages::DbReco
         + records.adventure_unlocks.len()
         + records.lines.len()
         + records.memory_banks.len()
-        + records.line_perceptions.len();
+        + records.line_perceptions.len()
+        + records.memory_embeddings.as_ref().map_or(0, Vec::len);
     info!("拉取数据库记录完成: {} 条记录", total);
     Ok(records)
 }
@@ -228,7 +229,8 @@ pub async fn push_db_records(
         + records.adventure_unlocks.len()
         + records.lines.len()
         + records.memory_banks.len()
-        + records.line_perceptions.len();
+        + records.line_perceptions.len()
+        + records.memory_embeddings.as_ref().map_or(0, Vec::len);
     info!(
         "推送数据库记录到 {}:{} ({} 条)",
         peer.host, peer.port, total

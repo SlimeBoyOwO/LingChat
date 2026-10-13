@@ -218,6 +218,7 @@ impl LineAttributeExt {
             LineAttribute::System => "system",
             LineAttribute::Assistant => "assistant",
             LineAttribute::Tool => "tool",
+            LineAttribute::Memory => "memory",
         }
     }
 }
@@ -246,75 +247,6 @@ impl GameLine {
     }
     pub fn attribute(&self) -> &LineAttribute {
         self.base.attribute.inner()
-    }
-}
-
-// ==========================================
-// MemoryBank
-// ==========================================
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, Default)]
-pub struct GameMemoryBankMeta {
-    #[serde(default)]
-    pub last_processed_global_idx: i64,
-    #[serde(default)]
-    pub updated_at: String,
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GameMemoryBankData {
-    pub short_term: String,
-    pub long_term: String,
-    pub user_info: String,
-    pub promises: String,
-}
-
-impl Default for GameMemoryBankData {
-    fn default() -> Self {
-        Self {
-            short_term: "暂无近期对话摘要。".into(),
-            long_term: "暂无长期关键经历。".into(),
-            user_info: "暂无用户特征记录。".into(),
-            promises: "暂无未完成的约定。".into(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct GameMemoryBank {
-    #[serde(default = "default_schema_version")]
-    pub schema_version: u32,
-    #[serde(default)]
-    pub meta: GameMemoryBankMeta,
-    #[serde(default)]
-    pub data: GameMemoryBankData,
-}
-
-fn default_schema_version() -> u32 {
-    1
-}
-
-impl Default for GameMemoryBank {
-    fn default() -> Self {
-        Self {
-            schema_version: 1,
-            meta: GameMemoryBankMeta::default(),
-            data: GameMemoryBankData::default(),
-        }
-    }
-}
-
-impl GameMemoryBank {
-    pub fn to_prompt_text(&self) -> String {
-        format!(
-            "\n\n====== 核心记忆库 (Memory Bank) ======\n\
-             【用户信息】：{}\n\
-             【重要约定】：{}\n\
-             【长期经历】：{}\n\
-             【近期回顾】：{}\n\
-             ====================================\n",
-            self.data.user_info, self.data.promises, self.data.long_term, self.data.short_term,
-        )
     }
 }
 
@@ -868,7 +800,6 @@ pub struct GameRole {
     pub resource_path: Option<String>,
     pub prompt: Option<String>,
     pub current_clothes: String,
-    pub memory_bank: GameMemoryBank,
     /// 对玩家的六维好感度（持久化在存档全局变量 `affection.{role_id}`）。
     pub affection: AffectionVector,
     /// 对玩家的六维负面情绪强度（同源存档全局变量；评估积累、安抚消解）。

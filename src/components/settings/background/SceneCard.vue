@@ -71,7 +71,7 @@
         :title="$t('settings.background.scene.location.editTitle')"
         @click.stop="cycleLocation"
       >
-        <component :is="locationMeta.icon" :size="12" class="mr-1 inline align-[-2px]" />
+        <component :is="locationIcon" :size="12" class="mr-1 inline align-[-2px]" />
         {{ $t(`settings.background.scene.location.${currentLocation}`) }}
       </button>
     </div>
@@ -108,7 +108,7 @@ const LOCATION_ICONS: Record<SceneLocationType, Component> = {
 };
 
 const currentLocation = computed<SceneLocationType>(() => props.scene.location_type ?? "unknown");
-const locationMeta = computed(() => ({ icon: LOCATION_ICONS[currentLocation.value] }));
+const locationIcon = computed(() => LOCATION_ICONS[currentLocation.value]);
 
 /** 点击标注循环切换；乐观更新本地，写后端失败则回退 */
 async function cycleLocation(): Promise<void> {

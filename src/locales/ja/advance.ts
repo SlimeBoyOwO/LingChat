@@ -35,10 +35,6 @@ export default {
     castTitle: "投写設定",
     castDesc: "ゲーム画面を LAN デバイスへ配信。ポート、解像度、画面の調整を設定します",
     castButton: "投写設定画面へ",
-    memoryTitle: "永続記憶デバッグ",
-    memoryDesc:
-      "キャラクターの記憶バンクと実際のコンテキストを確認し、記憶の圧縮・注入の問題を調査します",
-    memoryButton: "記憶デバッグ画面へ",
     affectionTitle: "好感度システム",
     affectionDesc:
       "好感度システムのマスタースイッチ（保存後すぐ有効）。鼓動・波アニメーションの切替は「その他の詳細設定」にあります",

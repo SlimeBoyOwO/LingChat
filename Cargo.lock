@@ -2178,6 +2178,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "de853764b47027c2e862a995c34978ffa63c1501f2e15f987ba11bd4f9bba193"
 
 [[package]]
+name = "fancy-regex"
+version = "0.14.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6e24cb5a94bcae1e5408b0effca5cd7172ea3c5755049c5f3af4cd283a165298"
+dependencies = [
+ "bit-set",
+ "regex-automata",
+ "regex-syntax",
+]
+
+[[package]]
 name = "fastrand"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4297,6 +4308,7 @@ dependencies = [
  "bytes",
  "chrono",
  "encoding_rs",
+ "flate2",
  "futures-executor",
  "futures-util",
  "genai",
@@ -4330,6 +4342,7 @@ dependencies = [
  "tauri-plugin-store",
  "tempfile",
  "thiserror 2.0.18",
+ "tokenizers",
  "tokio",
  "tokio-tungstenite 0.26.2",
  "tokio-util",
@@ -9154,6 +9167,7 @@ dependencies = [
  "dary_heap",
  "derive_builder",
  "esaxx-rs",
+ "fancy-regex",
  "getrandom 0.3.4",
  "indicatif",
  "itertools 0.14.0",

@@ -114,11 +114,6 @@
         <SettingsCast />
       </div>
 
-      <!-- ====== 永久记忆调试 ====== -->
-      <div v-else-if="advanceTab === 'memory'" class="min-h-0 flex-1">
-        <SettingsMemoryDebug />
-      </div>
-
       <!-- ====== 其他高级设置 ====== -->
       <div v-else class="min-h-0 flex-1">
         <SettingsAdvanceOther
@@ -137,7 +132,6 @@ import SettingsLlmProviders from "./SettingsLlmProviders.vue";
 import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
 import SettingsTts from "./SettingsTts.vue";
 import SettingsAsr from "./SettingsAsr.vue";
-import SettingsMemoryDebug from "./SettingsMemoryDebug.vue";
 import SettingsTools from "./SettingsTools.vue";
 import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
 import { useUIStore } from "@/stores/modules/ui/ui";

@@ -91,7 +91,8 @@
 
 而且 TTS 只占 **4416 / 64174 行 = 6.9%**。它独占的重依赖只有 `tokenizers`、`esaxx-rs`、
 `hound`、`jpreprocess`/`lindera` 词典链和一个多余的 `reqwest 0.12`。**砍不掉的是大头**：
-`ort`（情绪分类器 `ai_service/emotion` 与 `ai_service/asr/vad` 也在用）、`ndarray`、
+`ort`（情绪分类器 `ai_service/emotion` 与 `ai_service/asr/vad`、以及可选的本地嵌入模型
+`ai_service/memory/local_embedding` 都在用）、`ndarray`、
 `wgpu`（`utils/gpu_perf.rs`）、`rustpython`（插件系统）、`windows`。
 
 ### 3.2 成本很高

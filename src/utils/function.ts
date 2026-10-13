@@ -8,7 +8,8 @@ export const convertToGameMessages = (lines: GameLine[]): GameMessage[] => {
       line.attribute !== "SYSTEM" &&
       line.attribute !== "system" &&
       line.attribute !== "tool" &&
-      line.attribute !== "TOOL",
+      line.attribute !== "TOOL" &&
+      line.attribute !== "memory",
   );
 
   return filteredLines.map((line, index, array) => {

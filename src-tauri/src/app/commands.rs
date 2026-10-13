@@ -97,6 +97,19 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::music::delete_music_category,
         api::music::open_music_folder,
         api::locale::get_locale_messages,
+        // ── 长期记忆浏览（设置页「记忆系统」面板） ──
+        api::memory::memory_list_roles,
+        api::memory::memory_list,
+        api::memory::memory_delete,
+        // ── 旧版存档记忆一键整合（「记忆系统」面板） ──
+        api::memory_archive::memory_import_legacy,
+        api::memory_archive::memory_archive_list,
+        api::memory_archive::memory_archive_get,
+        api::memory_archive::memory_archive_delete,
+        // ── 本地嵌入模型（设置页「嵌入模型」子页：导入 / 删除 / 状态） ──
+        api::embedding_local::embedding_local_status,
+        api::embedding_local::embedding_local_import,
+        api::embedding_local::embedding_local_delete,
         api::ambient::get_ambient_list,
         api::ambient::upload_ambient,
         api::ambient::delete_ambient,
@@ -113,8 +126,6 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::game::add_role_to_scene,
         api::game::remove_role_from_scene,
         api::game::notify_player_entry,
-        api::memory::get_memory_debug_overview,
-        api::memory::get_role_memory_snapshot,
         api::affection::get_affection,
         api::chat::send_chat_message,
         api::chat::send_system_message,

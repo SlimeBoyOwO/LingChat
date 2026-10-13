@@ -274,41 +274,19 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "记忆系统".to_string(),
             Subcategory {
-                description: "在这里设定永久记忆效果；本组设置保存后需重启 LingChat 才会应用到压缩引擎".to_string(),
+                description: "工具驱动的长期记忆：AI 主动调用工具存取记忆；未配置嵌入接口时，自备了本地离线模型（无需联网）就用它，否则自动走字符 n-gram 词法检索".to_string(),
                 settings: vec![
                     ConfigSetting {
-                        key: keys::USE_PERSISTENT_MEMORY.to_string(),
+                        key: keys::MEMORY_ENABLED.to_string(),
                         value: read_setting(
                             app,
-                            keys::USE_PERSISTENT_MEMORY,
-                            &app_defaults.use_persistent_memory.to_string(),
+                            keys::MEMORY_ENABLED,
+                            &app_defaults.memory_enabled.to_string(),
                         ),
                         description:
-                            "开启后记忆会自动压缩，减少 token 消耗"
+                            "MEMORY_ENABLED — 记忆工具总开关，关闭后 memory_store / memory_delete / memory_summarize 不可用"
                                 .to_string(),
                         setting_type: "bool".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::MEMORY_UPDATE_INTERVAL.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::MEMORY_UPDATE_INTERVAL,
-                            &app_defaults.memory_update_interval.to_string(),
-                        ),
-                        description: "触发记忆摘要的可见台词数（1–10000，默认 250，重启生效）"
-                            .to_string(),
-                        setting_type: "text".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::MEMORY_RECENT_WINDOW.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::MEMORY_RECENT_WINDOW,
-                            &app_defaults.memory_recent_window.to_string(),
-                        ),
-                        description: "压缩后保留的该角色最近可见台词数（0–10000，默认 30，重启生效）"
-                            .to_string(),
-                        setting_type: "text".to_string(),
                     },
                     ConfigSetting {
                         key: keys::MEMORY_INJECT_CONTINUE_USER.to_string(),
@@ -322,51 +300,52 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::MEMORY_SHORT_TERM_MAX_CHARS.to_string(),
+                        key: keys::MEMORY_TOP_K.to_string(),
                         value: read_setting(
                             app,
-                            keys::MEMORY_SHORT_TERM_MAX_CHARS,
-                            &app_defaults.memory_short_term_max_chars.to_string(),
+                            keys::MEMORY_TOP_K,
+                            &app_defaults.memory_top_k.to_string(),
                         ),
-                        description:
-                            "近期回顾长度上限（字符数，默认 500，0 不截断）"
-                                .to_string(),
+                        description: "MEMORY_TOP_K — 记忆检索返回条数上限（1–200，默认 20）".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::MEMORY_LONG_TERM_MAX_CHARS.to_string(),
+                        key: keys::MEMORY_MIN_SCORE.to_string(),
                         value: read_setting(
                             app,
-                            keys::MEMORY_LONG_TERM_MAX_CHARS,
-                            &app_defaults.memory_long_term_max_chars.to_string(),
+                            keys::MEMORY_MIN_SCORE,
+                            &app_defaults.memory_min_score.to_string(),
                         ),
-                        description:
-                            "长期经历长度上限（字符数，默认 2000，0 不截断）"
-                                .to_string(),
+                        description: "MEMORY_MIN_SCORE — 记忆检索最低相似度阈值（0–1，默认 0.4，低于该分数的结果被过滤）"
+                            .to_string(),
+                        setting_type: "text".to_string(),
+                    },
+                ],
+            },
+        );
+
+        // 嵌入模型
+        feat_subs.insert(
+            "嵌入模型".to_string(),
+            Subcategory {
+                description: "OpenAI 兼容的 embeddings 接口，用于向量记忆的写入与检索；留空时可在本页「本地嵌入模型」处从本地导入 bge-small-zh-v1.5 量化模型使用，否则退化为字符 n-gram 词法检索（非嵌入式 RAG），记忆功能仍可用".to_string(),
+                settings: vec![
+                    ConfigSetting {
+                        key: keys::EMBEDDING_BASE_URL.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_BASE_URL, ""),
+                        description: "EMBEDDING_BASE_URL — embeddings 接口地址，不含 /embeddings 后缀，例如 https://api.openai.com/v1；留空时若在「本地嵌入模型」处已导入模型则用它，否则走词法检索".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::MEMORY_USER_INFO_MAX_CHARS.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::MEMORY_USER_INFO_MAX_CHARS,
-                            &app_defaults.memory_user_info_max_chars.to_string(),
-                        ),
-                        description:
-                            "taの信息长度上限（字符数，默认 800，0 不截断）"
-                                .to_string(),
+                        key: keys::EMBEDDING_API_KEY.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_API_KEY, ""),
+                        description: "EMBEDDING_API_KEY — embeddings 接口的 API Key".to_string(),
                         setting_type: "text".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::MEMORY_PROMISES_MAX_CHARS.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::MEMORY_PROMISES_MAX_CHARS,
-                            &app_defaults.memory_promises_max_chars.to_string(),
-                        ),
-                        description:
-                            "重要约定长度上限（字符数，默认 800，0 不截断）"
-                                .to_string(),
+                        key: keys::EMBEDDING_MODEL.to_string(),
+                        value: read_setting(app, keys::EMBEDDING_MODEL, ""),
+                        description: "EMBEDDING_MODEL — 嵌入模型名，例如 text-embedding-3-small".to_string(),
                         setting_type: "text".to_string(),
                     },
                 ],

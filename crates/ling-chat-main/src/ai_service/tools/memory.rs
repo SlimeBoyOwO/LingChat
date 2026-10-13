@@ -1,98 +1,58 @@
-use sea_orm::DatabaseConnection;
+//! 向量记忆工具：`memory_store` / `memory_query` / `memory_delete` / `memory_summarize`。
+//!
+//! 四个工具共用 `AppState::memory`（[`MemoryService`]），按 `current_role_id`
+//! 隔离记忆。`features.memory_enabled` 关闭时直接返回错误，不让模型误以为记忆已写入。
+//! 嵌入模型可选：未配置时检索/写入自动走字符 n-gram 词法模式（非嵌入式 RAG），
+//! 工具依旧可用。长期记忆的**自动**检索注入不在此列——它由生成管线
+//! 在用户新消息轮自动完成（RAG 注入，见 `message_system::generator::inject_rag_memories`）；
+//! `memory_query` 供模型按需主动检索（额外覆盖已带向量的「旧版整合」条目）。
+
+use std::time::Duration;
+
+use async_trait::async_trait;
 use serde_json::{Value, json};
 use tauri::Manager;
 
 use crate::AppState;
-use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::memory::{
+    DEFAULT_KEEP_RECENT, MemoryService, SearchMode, spawn_auto_summarize_if_needed,
+};
 use crate::ai_service::types::ToolDefinition;
-use crate::api::character::read_character_settings;
-use crate::api::data_dir;
-use crate::db::managers::role_repo::RoleRepo;
-
-use ling_chat_notes::NotesStore;
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use super::game_status_handle;
 
-// ─── 角色名解析（工具层）：把外部角色名映射到笔记库使用的权威展示名 ───
+/// 写记忆：远端嵌入 + LLM 去重判定，可能较慢。
+const STORE_TIMEOUT: Duration = Duration::from_secs(60);
+/// 查询：一次嵌入 + 混合检索。
+const QUERY_TIMEOUT: Duration = Duration::from_secs(30);
+/// 删除：语义删除需要嵌入请求。
+const DELETE_TIMEOUT: Duration = Duration::from_secs(30);
+/// 摘要：一次 LLM 生成 + 一次（或多次）嵌入写入，最慢。
+const SUMMARIZE_TIMEOUT: Duration = Duration::from_secs(120);
 
-/// 取当前对话角色的权威展示名（display_name），与权限系统使用同一个名字来源。
-async fn current_display_name(
-    gs: &mut GameStatus,
-    db: &DatabaseConnection,
-) -> Result<String, ToolError> {
-    let Some(role_id) = gs.current_role_id else {
-        return Err(ToolError::Execution("当前没有对话角色".into()));
-    };
-    let role = gs
-        .get_role(db, role_id)
-        .await
-        .map_err(|e| ToolError::Execution(format!("获取当前角色失败: {e}")))?;
-    role.display_name
-        .clone()
-        .ok_or_else(|| ToolError::Execution("当前角色没有展示名".into()))
-}
-
-/// 把外部传入的角色名解析为 LingChat 权威展示名（ai_name）。
-///
-/// 优先精确匹配 `ai_name`，其次匹配角色 DB 名 `role.name`。
-/// 解析成功后才能定位到对应角色的笔记文件，保证"文件名对齐"。
-async fn resolve_display_name(db: &DatabaseConnection, given: &str) -> Result<String, ToolError> {
-    let given = given.trim();
-    if given.is_empty() {
-        return Err(ToolError::InvalidArguments("role 不能为空".into()));
-    }
-    let roles = RoleRepo::get_all_main_roles(db)
-        .await
-        .map_err(|e| ToolError::Execution(format!("查询角色列表失败: {e}")))?;
-    for role in &roles {
-        let dn =
-            read_character_settings(role.resource_folder.as_deref().unwrap_or_default()).ai_name;
-        if dn == given || dn.trim() == given {
-            return Ok(dn);
-        }
-    }
-    // 兜底：按 DB 角色名匹配，仍返回该角色的 ai_name
-    for role in &roles {
-        if role.name == given {
-            return Ok(read_character_settings(
-                role.resource_folder.as_deref().unwrap_or_default(),
-            )
-            .ai_name);
-        }
-    }
-    Err(ToolError::Execution(format!("未找到角色: {given}")))
-}
-
-/// 取当前角色的权威名，供写操作定位笔记文件。返回后不持有锁。
-async fn current_role_name_for_write(context: &ToolContext) -> Result<String, ToolError> {
+/// 取当前对话角色 ID；无角色时报错。
+async fn current_role_id(context: &ToolContext) -> Result<i32, ToolError> {
     let app = context.require_app()?;
-    let state = app.state::<AppState>();
-    let db = state.db.clone();
     let gs = game_status_handle(&app).await;
-    let mut gs = gs.lock().await;
-    current_display_name(&mut gs, &db).await
+    let gs = gs.lock().await;
+    gs.current_role_id
+        .ok_or_else(|| ToolError::Execution("当前没有对话角色".into()))
 }
 
-fn notes_store() -> NotesStore {
-    NotesStore::new(data_dir())
-}
-
-fn parse_tags(value: Option<&Value>, tool: &str) -> Result<Option<Vec<String>>, ToolError> {
-    let Some(value) = value else {
-        return Ok(None);
-    };
-    let array = value
-        .as_array()
-        .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 的 tags 必须是字符串数组")))?;
-    let mut tags = Vec::with_capacity(array.len());
-    for value in array {
-        let tag = value.as_str().ok_or_else(|| {
-            ToolError::InvalidArguments(format!("{tool} 的 tags 必须全部是字符串"))
-        })?;
-        tags.push(tag.to_string());
+/// 取记忆服务；功能关闭时统一报错。
+///
+/// 不再校验嵌入模型是否就绪：没有嵌入模型时检索/写入自动走字符 n-gram 词法模式
+/// （非嵌入式 RAG），记忆工具依旧可用。
+fn require_memory(app: &tauri::AppHandle) -> Result<std::sync::Arc<MemoryService>, ToolError> {
+    let state = app.state::<AppState>();
+    let memory = state.memory.clone();
+    if !memory.enabled() {
+        return Err(ToolError::Execution(
+            "记忆功能已关闭（设置 → 记忆系统 → 启用记忆）".into(),
+        ));
     }
-    Ok(Some(tags))
+    Ok(memory)
 }
 
 fn require_object<'a>(
@@ -104,111 +64,51 @@ fn require_object<'a>(
         .ok_or_else(|| ToolError::InvalidArguments(format!("{tool} 参数必须是 JSON object")))
 }
 
-// ─── 工具 ───
-
-/// memory_get_current：获取当前角色的自动记忆库文本。
-pub struct GetCurrentMemory;
-
-#[async_trait::async_trait]
-impl Tool for GetCurrentMemory {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            "memory_get_current",
-            "获取当前角色的自动记忆库文本（关于用户的信息、重要约定、长期经历）",
-            json!({
-                "type": "object",
-                "properties": {},
-                "required": [],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    async fn execute(
-        &self,
-        context: &ToolContext,
-        arguments: Value,
-    ) -> Result<ToolResult, ToolError> {
-        ensure_no_args(&arguments, "memory_get_current").map_err(ToolError::Execution)?;
-        let app = context.require_app()?;
-        let gs = game_status_handle(&app).await;
-        let gs = gs.lock().await;
-        let Some(role_id) = gs.current_role_id else {
-            return Err(ToolError::Execution("当前没有对话角色".into()));
-        };
-        let memory = gs.role_manager.get_role_memory_text(role_id).await;
-        Ok(json!({
-            "ok": true,
-            "role_id": role_id,
-            "memory": memory,
-        }))
+fn parse_string(
+    obj: &serde_json::Map<String, Value>,
+    key: &str,
+    tool: &str,
+    required: bool,
+) -> Result<Option<String>, ToolError> {
+    match obj.get(key) {
+        None => {
+            if required {
+                Err(ToolError::InvalidArguments(format!("{tool} 需要 {key}")))
+            } else {
+                Ok(None)
+            }
+        },
+        Some(Value::String(value)) => {
+            if value.trim().is_empty() && required {
+                Err(ToolError::InvalidArguments(format!(
+                    "{tool} 的 {key} 不能为空"
+                )))
+            } else {
+                Ok(Some(value.clone()))
+            }
+        },
+        Some(_) => Err(ToolError::InvalidArguments(format!(
+            "{tool} 的 {key} 必须是字符串"
+        ))),
     }
 }
 
-/// memory_get_notes：获取手动记忆笔记。
-///
-/// 默认读取**当前角色**的笔记；可传 `role` 指定读取**其他角色**的笔记（只读）。
-pub struct GetNotes;
+// ─── memory_store ───
 
-#[async_trait::async_trait]
-impl Tool for GetNotes {
+/// memory_store：把一条关于用户的事实写入长期记忆。
+pub struct MemoryStore;
+
+#[async_trait]
+impl Tool for MemoryStore {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
-            "memory_get_notes",
-            "获取手动记忆笔记（含 id、内容、标签）。默认读取当前角色的笔记；可传 role 指定读取其他角色的笔记（只读，不能写入）",
+            "memory_store",
+            "把关于用户的事实、约定、经历写入长期记忆（自动去重，相似记忆会被合并）",
             json!({
                 "type": "object",
                 "properties": {
-                    "role": {"type": "string", "description": "要读取其笔记的角色名；不传时读取当前角色"}
-                },
-                "required": [],
-                "additionalProperties": false
-            }),
-        )
-    }
-
-    async fn execute(
-        &self,
-        context: &ToolContext,
-        arguments: Value,
-    ) -> Result<ToolResult, ToolError> {
-        let obj = require_object(&arguments, "memory_get_notes")?;
-        let app = context.require_app()?;
-        let state = app.state::<AppState>();
-        let db = state.db.clone();
-        let store = notes_store();
-
-        let notes = if let Some(role_name) = obj.get("role").and_then(Value::as_str) {
-            let dn = resolve_display_name(&db, role_name).await?;
-            store
-                .load(&dn)
-                .map_err(|e| ToolError::Execution(e.to_string()))?
-        } else {
-            let gs = game_status_handle(&app).await;
-            let mut gs = gs.lock().await;
-            let dn = current_display_name(&mut gs, &db).await?;
-            store
-                .load(&dn)
-                .map_err(|e| ToolError::Execution(e.to_string()))?
-        };
-        Ok(json!({ "ok": true, "notes": notes }))
-    }
-}
-
-/// memory_add_note：向当前角色添加一条手动记忆笔记。
-pub struct AddNote;
-
-#[async_trait::async_trait]
-impl Tool for AddNote {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            "memory_add_note",
-            "向当前角色添加一条手动记忆笔记，可附带标签（仅能写入当前角色的笔记）",
-            json!({
-                "type": "object",
-                "properties": {
-                    "content": {"type": "string", "description": "笔记内容"},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "标签，可选"}
+                    "content": {"type": "string", "description": "要记住的事实，一句话到一段话，包含足够上下文"},
+                    "tags": {"type": "array", "items": {"type": "string"}, "description": "分类标签，可选"}
                 },
                 "required": ["content"],
                 "additionalProperties": false
@@ -216,52 +116,8 @@ impl Tool for AddNote {
         )
     }
 
-    async fn execute(
-        &self,
-        context: &ToolContext,
-        arguments: Value,
-    ) -> Result<ToolResult, ToolError> {
-        let obj = require_object(&arguments, "memory_add_note")?;
-        let content = obj
-            .get("content")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .ok_or_else(|| ToolError::InvalidArguments("memory_add_note 需要 content".into()))?;
-        if content.trim().is_empty() {
-            return Err(ToolError::InvalidArguments(
-                "memory_add_note 的 content 不能为空".into(),
-            ));
-        }
-        let tags = parse_tags(obj.get("tags"), "memory_add_note")?.unwrap_or_default();
-
-        let role_name = current_role_name_for_write(context).await?;
-        let id = notes_store()
-            .add(&role_name, content, tags)
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
-        Ok(json!({"ok": true, "id": id}))
-    }
-}
-
-/// memory_update_note：更新当前角色的手动记忆笔记。
-pub struct UpdateNote;
-
-#[async_trait::async_trait]
-impl Tool for UpdateNote {
-    fn definition(&self) -> ToolDefinition {
-        ToolDefinition::new(
-            "memory_update_note",
-            "按 ID 更新当前角色的手动记忆笔记的内容或标签，至少提供一项（仅能修改当前角色的笔记）",
-            json!({
-                "type": "object",
-                "properties": {
-                    "id": {"type": "string", "description": "笔记 ID"},
-                    "content": {"type": "string", "description": "新的笔记内容，可选"},
-                    "tags": {"type": "array", "items": {"type": "string"}, "description": "新的标签，可选"}
-                },
-                "required": ["id"],
-                "additionalProperties": false
-            }),
-        )
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(STORE_TIMEOUT)
     }
 
     async fn execute(
@@ -269,61 +125,70 @@ impl Tool for UpdateNote {
         context: &ToolContext,
         arguments: Value,
     ) -> Result<ToolResult, ToolError> {
-        let obj = require_object(&arguments, "memory_update_note")?;
-        let id = obj
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .ok_or_else(|| ToolError::InvalidArguments("memory_update_note 需要 id".into()))?;
-        let has_content = obj.get("content").is_some();
-        let has_tags = obj.get("tags").is_some();
-        if !has_content && !has_tags {
-            return Err(ToolError::InvalidArguments(
-                "memory_update_note 至少需要 content/tags 中的一项".into(),
-            ));
-        }
-        let content = match obj.get("content") {
-            Some(value) => {
-                let content = value.as_str().ok_or_else(|| {
-                    ToolError::InvalidArguments("memory_update_note 的 content 必须是字符串".into())
-                })?;
-                if content.trim().is_empty() {
-                    return Err(ToolError::InvalidArguments(
-                        "memory_update_note 的 content 不能为空".into(),
-                    ));
+        let obj = require_object(&arguments, "memory_store")?;
+        let content = parse_string(obj, "content", "memory_store", true)?.unwrap_or_default();
+        let tags: Vec<String> = match obj.get("tags") {
+            None => Vec::new(),
+            Some(Value::Array(items)) => {
+                let mut tags = Vec::with_capacity(items.len());
+                for item in items {
+                    let tag = item.as_str().ok_or_else(|| {
+                        ToolError::InvalidArguments("memory_store 的 tags 必须全部是字符串".into())
+                    })?;
+                    tags.push(tag.to_string());
                 }
-                Some(content.to_string())
+                tags
             },
-            None => None,
+            Some(_) => {
+                return Err(ToolError::InvalidArguments(
+                    "memory_store 的 tags 必须是字符串数组".into(),
+                ));
+            },
         };
-        let tags = parse_tags(obj.get("tags"), "memory_update_note")?;
 
-        let role_name = current_role_name_for_write(context).await?;
-        notes_store()
-            .update(&role_name, &id, content, tags)
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
-        Ok(json!({"ok": true, "id": id}))
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+        let outcome = memory
+            .store(role_id, &content, &tags)
+            .await
+            .map_err(|e| ToolError::Execution(format!("写入记忆失败: {e}")))?;
+        // 写入后记忆规模越过阈值时，后台自动把较早的记忆压缩掉（不阻塞本轮）。
+        spawn_auto_summarize_if_needed(memory.clone(), role_id);
+        Ok(json!({
+            "ok": true,
+            "action": outcome.action,
+            "memory_id": outcome.memory_id,
+            "detail": outcome.detail,
+        }))
     }
 }
 
-/// memory_delete_note：删除当前角色的手动记忆笔记。
-pub struct DeleteNote;
+// ─── memory_query ───
 
-#[async_trait::async_trait]
-impl Tool for DeleteNote {
+/// memory_query：主动检索当前角色的记忆（长期记忆 + 已带向量的旧版整合条目）。
+pub struct MemoryQuery;
+
+#[async_trait]
+impl Tool for MemoryQuery {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
-            "memory_delete_note",
-            "按 ID 删除当前角色的手动记忆笔记（仅能删除当前角色的笔记）",
+            "memory_query",
+            "检索当前角色的记忆库：按语义 + 关键词混合检索长期记忆与已导入的旧版存档记忆，返回最相关的若干条（未配置嵌入模型时退化为纯关键词检索）。需要回忆用户偏好、过往约定、剧情旧事时调用",
             json!({
                 "type": "object",
                 "properties": {
-                    "id": {"type": "string", "description": "笔记 ID"}
+                    "query": {"type": "string", "description": "用自然语言描述要回忆什么"},
+                    "top_k": {"type": "integer", "description": "最多返回条数，默认取系统配置（通常 5~8）"}
                 },
-                "required": ["id"],
+                "required": ["query"],
                 "additionalProperties": false
             }),
         )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(QUERY_TIMEOUT)
     }
 
     async fn execute(
@@ -331,17 +196,170 @@ impl Tool for DeleteNote {
         context: &ToolContext,
         arguments: Value,
     ) -> Result<ToolResult, ToolError> {
-        let obj = require_object(&arguments, "memory_delete_note")?;
-        let id = obj
-            .get("id")
-            .and_then(Value::as_str)
-            .map(str::to_string)
-            .ok_or_else(|| ToolError::InvalidArguments("memory_delete_note 需要 id".into()))?;
+        let obj = require_object(&arguments, "memory_query")?;
+        let query = parse_string(obj, "query", "memory_query", true)?.unwrap_or_default();
+        let top_k = match obj.get("top_k") {
+            None => None,
+            Some(Value::Number(value)) => value.as_u64().map(|v| v as usize),
+            Some(_) => {
+                return Err(ToolError::InvalidArguments(
+                    "memory_query 的 top_k 必须是整数".into(),
+                ));
+            },
+        };
 
-        let role_name = current_role_name_for_write(context).await?;
-        notes_store()
-            .delete(&role_name, &id)
-            .map_err(|e| ToolError::Execution(e.to_string()))?;
-        Ok(json!({"ok": true, "id": id}))
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+        let hits = memory
+            .query(role_id, &query, SearchMode::Hybrid, top_k, None, None)
+            .await
+            .map_err(|e| ToolError::Execution(format!("查询记忆失败: {e}")))?;
+
+        let items: Vec<Value> = hits
+            .iter()
+            .map(|hit| {
+                json!({
+                    "memory_id": hit.memory_id,
+                    "content": hit.content,
+                    "score": (hit.score * 1000.0).round() / 1000.0,
+                    "source": hit.source,
+                    "created_at": hit.created_at,
+                })
+            })
+            .collect();
+        Ok(json!({"ok": true, "count": items.len(), "items": items}))
+    }
+}
+
+// ─── memory_delete ───
+
+/// memory_delete：按 ID 或语义查询删除长期记忆。
+pub struct MemoryDelete;
+
+#[async_trait]
+impl Tool for MemoryDelete {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "memory_delete",
+            "删除当前角色的长期记忆：优先按 memory_id 精确删除，否则按语义查询删除相似记忆",
+            json!({
+                "type": "object",
+                "properties": {
+                    "memory_id": {"type": "string", "description": "要删除的记忆 ID（来自 memory_store 或 memory_query 的返回；legacy_ 开头表示旧版整合条目）"},
+                    "query": {"type": "string", "description": "用自然语言描述要删的内容，会语义匹配并删除相似记忆（仅长期记忆）"}
+                },
+                "required": [],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(DELETE_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_delete")?;
+        let memory_id = parse_string(obj, "memory_id", "memory_delete", false)?;
+        let query = parse_string(obj, "query", "memory_delete", false)?;
+        if memory_id.is_none() && query.is_none() {
+            return Err(ToolError::InvalidArguments(
+                "memory_delete 需要 memory_id 或 query 至少一项".into(),
+            ));
+        }
+
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+
+        if let Some(memory_id) = memory_id {
+            let deleted = memory
+                .delete_by_id(role_id, &memory_id)
+                .await
+                .map_err(|e| ToolError::Execution(format!("删除记忆失败: {e}")))?;
+            if deleted == 0 {
+                return Err(ToolError::Execution(format!("记忆 {memory_id} 不存在")));
+            }
+            return Ok(json!({"ok": true, "deleted": deleted, "memory_id": memory_id}));
+        }
+
+        let query = query.unwrap_or_default();
+        let deleted = memory
+            .delete_by_query(role_id, &query)
+            .await
+            .map_err(|e| ToolError::Execution(format!("删除记忆失败: {e}")))?;
+        let items: Vec<Value> = deleted
+            .into_iter()
+            .map(|(content, score)| {
+                json!({"content": content, "score": (score * 1000.0).round() / 1000.0})
+            })
+            .collect();
+        Ok(json!({"ok": true, "deleted": items.len(), "items": items}))
+    }
+}
+
+// ─── memory_summarize ───
+
+/// memory_summarize：把较早的长期记忆压缩合并成一条摘要。
+///
+/// 记忆条数变多后检索质量会下降、去重误判率上升；该工具把「较早的一批」交给 LLM
+/// 合成一条 `summary` 记忆再删掉源条目，最新的 `keep_recent` 条保持原样。
+/// 写入后的自动压缩（阈值 [`AUTO_SUMMARIZE_THRESHOLD`](crate::ai_service::memory::AUTO_SUMMARIZE_THRESHOLD)）
+/// 走的是同一条 `MemoryService::summarize` 链路。
+pub struct MemorySummarize;
+
+#[async_trait]
+impl Tool for MemorySummarize {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            "memory_summarize",
+            "整理长期记忆：把较早的一批记忆压缩合并成一条摘要（最新的若干条原样保留）。当记忆条数明显变多、或用户要求整理记忆时调用",
+            json!({
+                "type": "object",
+                "properties": {
+                    "keep_recent": {"type": "integer", "description": "保留原样的最新记忆条数，默认 20；0 表示全部参与压缩"}
+                },
+                "required": [],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(SUMMARIZE_TIMEOUT)
+    }
+
+    async fn execute(
+        &self,
+        context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let obj = require_object(&arguments, "memory_summarize")?;
+        let keep_recent = match obj.get("keep_recent") {
+            None => DEFAULT_KEEP_RECENT,
+            Some(value) => value.as_u64().ok_or_else(|| {
+                ToolError::InvalidArguments("memory_summarize 的 keep_recent 必须是整数".into())
+            })? as usize,
+        };
+
+        let app = context.require_app()?;
+        let role_id = current_role_id(context).await?;
+        let memory = require_memory(&app)?;
+        let outcome = memory
+            .summarize(role_id, keep_recent)
+            .await
+            .map_err(|e| ToolError::Execution(format!("记忆摘要失败: {e}")))?;
+        Ok(json!({
+            "ok": true,
+            "action": outcome.action,
+            "summarized": outcome.summarized,
+            "memory_id": outcome.memory_id,
+            "detail": outcome.detail,
+        }))
     }
 }

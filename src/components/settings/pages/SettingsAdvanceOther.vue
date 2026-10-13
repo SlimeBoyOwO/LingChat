@@ -145,6 +145,302 @@
             </Toggle>
           </section>
 
+          <!-- 长期记忆浏览：查看/删除各角色已存的长期记忆，不走后端配置树 -->
+          <section
+            v-if="activeSelection.subcategory === '记忆系统'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.memoryViewer.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.memoryViewer.desc") }}
+            </p>
+            <Button type="big" :disabled="memoryLoading" @click="toggleMemoryViewer">
+              <RefreshCw :size="18" :class="{ 'animate-spin': memoryLoading }" />
+              {{
+                memoryViewerOpen
+                  ? $t("settings.advanceOther.memoryViewer.hideButton")
+                  : $t("settings.advanceOther.memoryViewer.viewButton")
+              }}
+            </Button>
+
+            <div v-if="memoryViewerOpen" class="mt-4">
+              <p v-if="memoryError" class="mb-2 text-sm text-red-400">{{ memoryError }}</p>
+
+              <div v-if="!memoryLoading && !memoryRoles.length" class="text-sm text-white/60">
+                {{ $t("settings.advanceOther.memoryViewer.emptyRoles") }}
+              </div>
+
+              <template v-if="memoryRoles.length">
+                <div class="mb-2 flex flex-wrap items-center gap-2">
+                  <select
+                    v-model="memoryRoleId"
+                    class="rounded-lg border border-white/15 bg-black/40 px-3 py-1.5 text-sm text-white outline-none"
+                    @change="loadMemoryList"
+                  >
+                    <option v-for="role in memoryRoles" :key="role.role_id" :value="role.role_id">
+                      {{ memoryRoleLabel(role) }}（{{ role.count }}）
+                    </option>
+                  </select>
+                  <button
+                    class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                    :disabled="memoryLoading"
+                    @click="refreshMemoryViewer"
+                  >
+                    {{ $t("settings.advanceOther.memoryViewer.refresh") }}
+                  </button>
+                </div>
+
+                <p v-if="memoryLoading" class="text-sm text-white/60">
+                  {{ $t("settings.advanceOther.memoryViewer.loading") }}
+                </p>
+                <p v-else-if="!memories.length" class="text-sm text-white/60">
+                  {{ $t("settings.advanceOther.memoryViewer.emptyList") }}
+                </p>
+                <ul v-else class="m-0 flex list-none flex-col gap-2 p-0">
+                  <li
+                    v-for="item in memories"
+                    :key="item.memory_id"
+                    class="rounded-lg border border-white/10 bg-black/25 p-3"
+                  >
+                    <div class="mb-1 flex items-center justify-between gap-2">
+                      <span class="text-xs text-white/50">{{
+                        formatMemoryTime(item.created_at)
+                      }}</span>
+                      <button
+                        class="cursor-pointer border-none bg-transparent text-xs text-red-400 transition-colors hover:text-red-300 disabled:opacity-60"
+                        :disabled="deletingMemoryId === item.memory_id"
+                        @click="removeMemory(item)"
+                      >
+                        {{
+                          deletingMemoryId === item.memory_id
+                            ? $t("settings.advanceOther.memoryViewer.deleting")
+                            : $t("settings.advanceOther.memoryViewer.delete")
+                        }}
+                      </button>
+                    </div>
+                    <p class="m-0 text-sm leading-6 break-words whitespace-pre-wrap text-white/90">
+                      {{ item.content }}
+                    </p>
+                    <p v-if="item.tags.length" class="mt-1 mb-0 text-xs text-white/45">
+                      {{ $t("settings.advanceOther.memoryViewer.tags") }}{{ item.tags.join(", ") }}
+                    </p>
+                  </li>
+                </ul>
+              </template>
+            </div>
+          </section>
+
+          <!-- 旧版存档记忆整合：一键导入 + 浏览/删除独立归档表 -->
+          <section
+            v-if="activeSelection.subcategory === '记忆系统'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.legacyMemory.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.legacyMemory.desc") }}
+            </p>
+            <div class="flex flex-wrap items-center gap-2">
+              <Button type="big" :disabled="legacyImporting" @click="runLegacyImport">
+                <RefreshCw :size="18" :class="{ 'animate-spin': legacyImporting }" />
+                {{
+                  legacyImporting
+                    ? $t("settings.advanceOther.legacyMemory.importing")
+                    : $t("settings.advanceOther.legacyMemory.importButton")
+                }}
+              </Button>
+              <button
+                v-if="legacyArchives.length"
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="legacyLoading"
+                @click="refreshLegacyArchives"
+              >
+                {{ $t("settings.advanceOther.memoryViewer.refresh") }}
+              </button>
+            </div>
+
+            <p v-if="legacyError" class="mt-3 mb-0 text-sm text-red-400">{{ legacyError }}</p>
+
+            <div v-if="legacyLoading" class="mt-3 text-sm text-white/60">
+              {{ $t("settings.advanceOther.memoryViewer.loading") }}
+            </div>
+
+            <div v-else-if="legacyArchives.length" class="mt-3 flex flex-col gap-2">
+              <div
+                v-for="archive in legacyArchives"
+                :key="archive.id"
+                class="rounded-lg border border-white/10 bg-black/25 p-3"
+              >
+                <div class="mb-1 flex flex-wrap items-center justify-between gap-2">
+                  <div class="min-w-0">
+                    <span class="text-sm font-medium break-words text-white">
+                      {{ archive.role_name }}
+                    </span>
+                    <span class="ml-2 text-xs text-white/50">
+                      {{
+                        archive.script_key
+                          ? archive.script_key
+                          : $t("settings.advanceOther.legacyMemory.globalScript")
+                      }}{{ archive.script_role_key ? " / " + archive.script_role_key : "" }}
+                    </span>
+                  </div>
+                  <div class="flex flex-none items-center gap-2 text-xs">
+                    <span class="text-white/50">{{ archive.entry_count }}</span>
+                    <button
+                      class="cursor-pointer rounded-md border border-white/15 bg-white/10 px-2 py-1 text-xs text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                      :disabled="legacyDeletingId === archive.id"
+                      @click="toggleLegacyArchive(archive)"
+                    >
+                      {{
+                        legacyEntries[archive.id] !== undefined
+                          ? $t("settings.advanceOther.legacyMemory.hide")
+                          : $t("settings.advanceOther.legacyMemory.view")
+                      }}
+                    </button>
+                    <button
+                      class="cursor-pointer rounded-md border border-red-400/30 bg-red-400/10 px-2 py-1 text-xs text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-60"
+                      :disabled="legacyDeletingId === archive.id"
+                      @click="removeLegacyArchive(archive)"
+                    >
+                      {{
+                        legacyDeletingId === archive.id
+                          ? $t("settings.advanceOther.legacyMemory.deleting")
+                          : $t("settings.advanceOther.legacyMemory.delete")
+                      }}
+                    </button>
+                  </div>
+                </div>
+
+                <div v-if="legacyEntries[archive.id]" class="mt-2 flex flex-col gap-2">
+                  <p v-if="!legacyEntries[archive.id].length" class="m-0 text-sm text-white/60">
+                    {{ $t("settings.advanceOther.legacyMemory.emptyEntry") }}
+                  </p>
+                  <div
+                    v-for="entry in legacyEntries[archive.id]"
+                    :key="entry.id"
+                    class="rounded-md border border-white/10 bg-black/20 p-2"
+                  >
+                    <span class="mb-1 block text-xs text-white/50">
+                      {{ sectionLabel(entry.section) }}
+                    </span>
+                    <p class="m-0 text-sm leading-6 break-words whitespace-pre-wrap text-white/90">
+                      {{ entry.content }}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div v-else-if="legacyLoaded" class="mt-3 text-sm text-white/60">
+              {{ $t("settings.advanceOther.legacyMemory.empty") }}
+            </div>
+          </section>
+
+          <!-- 本地嵌入模型：从本地导入 / 删除，实时生效（设置页「嵌入模型」子页） -->
+          <section
+            v-if="activeSelection.subcategory === '嵌入模型'"
+            class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
+          >
+            <h3 class="mb-1 text-base font-semibold text-white">
+              {{ $t("settings.advanceOther.embeddingLocal.title") }}
+            </h3>
+            <p class="mb-3 text-sm leading-6 text-white/65">
+              {{ $t("settings.advanceOther.embeddingLocal.desc") }}
+            </p>
+
+            <div class="mb-3 flex flex-wrap items-center gap-2 text-sm">
+              <span class="rounded-md px-2 py-0.5" :class="embeddingStatusClass">
+                {{ embeddingStatusLabel }}
+              </span>
+              <span class="text-white/60">{{ embeddingModeText }}</span>
+            </div>
+
+            <div class="mb-3 flex flex-wrap items-center gap-2">
+              <Button
+                v-if="!isAndroid"
+                type="big"
+                :disabled="embeddingWorking"
+                @click="pickEmbeddingFolder"
+              >
+                <FolderOpen :size="18" />
+                {{
+                  embeddingImporting
+                    ? $t("settings.advanceOther.embeddingLocal.importing")
+                    : $t("settings.advanceOther.embeddingLocal.importFolderButton")
+                }}
+              </Button>
+              <button
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="embeddingWorking"
+                @click="pickEmbeddingArchive"
+              >
+                {{
+                  embeddingImporting
+                    ? $t("settings.advanceOther.embeddingLocal.importing")
+                    : $t("settings.advanceOther.embeddingLocal.importArchiveButton")
+                }}
+              </button>
+              <button
+                v-if="embeddingStatus?.installed"
+                class="cursor-pointer rounded-lg border border-red-400/30 bg-red-400/10 px-3 py-1.5 text-sm text-red-400 transition-colors hover:bg-red-400/20 disabled:opacity-60"
+                :disabled="embeddingWorking"
+                @click="removeEmbeddingLocal"
+              >
+                {{
+                  embeddingDeleting
+                    ? $t("settings.advanceOther.embeddingLocal.deleting")
+                    : $t("settings.advanceOther.embeddingLocal.deleteButton")
+                }}
+              </button>
+              <button
+                class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-sm text-white transition-colors hover:bg-white/20 disabled:opacity-60"
+                :disabled="embeddingLoading || embeddingWorking"
+                @click="refreshEmbeddingLocal"
+              >
+                {{ $t("settings.advanceOther.embeddingLocal.refresh") }}
+              </button>
+            </div>
+
+            <p v-if="isAndroid" class="mb-2 text-xs text-white/45">
+              {{ $t("settings.advanceOther.embeddingLocal.androidFolderHint") }}
+            </p>
+            <p v-if="embeddingLoadErrorText" class="mb-2 text-sm text-amber-400">
+              {{ embeddingLoadErrorText }}
+            </p>
+            <p v-if="embeddingError" class="mb-2 text-sm text-red-400">{{ embeddingError }}</p>
+
+            <div class="rounded-lg border border-white/10 bg-black/25 p-3">
+              <div class="mb-2 text-xs break-all text-white/50">
+                {{ $t("settings.advanceOther.embeddingLocal.dirLabel")
+                }}{{ embeddingStatus?.dir ?? "" }}
+              </div>
+              <ul class="m-0 flex list-none flex-col gap-1 p-0">
+                <li
+                  v-for="file in embeddingFiles"
+                  :key="file.name"
+                  class="flex items-center justify-between gap-2 text-xs"
+                >
+                  <span class="text-white/80">
+                    {{ file.name }}
+                    <span v-if="file.required" class="ml-1 text-white/40">
+                      · {{ $t("settings.advanceOther.embeddingLocal.requiredTag") }}
+                    </span>
+                  </span>
+                  <span :class="file.present ? 'text-green-400' : 'text-white/40'">
+                    {{
+                      file.present
+                        ? formatBytes(file.size_bytes)
+                        : $t("settings.advanceOther.embeddingLocal.fileMissing")
+                    }}
+                  </span>
+                </li>
+              </ul>
+            </div>
+          </section>
+
           <!-- 保存操作区域 -->
           <div
             class="bg-brand inline-flex min-w-30 cursor-pointer flex-col gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
@@ -186,11 +482,32 @@ import { Button, Toggle } from "@/components/base";
 import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
-import { RefreshCw } from "lucide-vue-next";
+import {
+  deleteMemory,
+  deleteMemoryArchive,
+  deleteEmbeddingLocal,
+  getEmbeddingLocalStatus,
+  getMemoryArchive,
+  importEmbeddingLocal,
+  importLegacyMemories,
+  listMemories,
+  listMemoryArchives,
+  listMemoryRoles,
+  type EmbeddingLocalStatus,
+  type LegacyImportResult,
+  type MemoryArchiveEntry,
+  type MemoryArchiveSummary,
+  type MemoryItem,
+  type MemoryRoleSummary,
+} from "@/api/services/memory";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
+import { FolderOpen, RefreshCw } from "lucide-vue-next";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
+const dialogStore = useDialogStore();
 const { t, te } = useI18n();
 
 // 好感度动画开关（前端设置项，即时生效，不入后端配置树）
@@ -326,6 +643,330 @@ const forceReconnectTts = async () => {
   }
 };
 
+// --- 长期记忆浏览面板（设置页「记忆系统」子页） ---
+const memoryViewerOpen = ref(false);
+const memoryLoading = ref(false);
+const memoryError = ref("");
+const memoryRoles = ref<MemoryRoleSummary[]>([]);
+const memoryRoleId = ref<number | null>(null);
+const memories = ref<MemoryItem[]>([]);
+const deletingMemoryId = ref<string | null>(null);
+
+const memoryRoleLabel = (role: MemoryRoleSummary) =>
+  role.name || t("settings.advanceOther.memoryViewer.unknownRole", { id: role.role_id });
+
+const formatMemoryTime = (timestamp: number) => new Date(timestamp).toLocaleString();
+
+const memoryErrorText = (error: unknown) =>
+  t("settings.advanceOther.memoryViewer.loadFailed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const loadMemoryList = async () => {
+  if (memoryRoleId.value === null || memoryLoading.value) return;
+  memoryLoading.value = true;
+  memoryError.value = "";
+  try {
+    memories.value = await listMemories(memoryRoleId.value);
+  } catch (error) {
+    memories.value = [];
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    memoryLoading.value = false;
+  }
+};
+
+/** 拉取「有记忆的角色」清单并刷新当前角色的列表（首次打开 / 切换后刷新 / 删除后重数）。 */
+const refreshMemoryViewer = async () => {
+  if (memoryLoading.value) return;
+  memoryLoading.value = true;
+  memoryError.value = "";
+  try {
+    memoryRoles.value = await listMemoryRoles();
+    if (!memoryRoles.value.some((role) => role.role_id === memoryRoleId.value)) {
+      memoryRoleId.value = memoryRoles.value[0]?.role_id ?? null;
+    }
+    memories.value = memoryRoleId.value === null ? [] : await listMemories(memoryRoleId.value);
+  } catch (error) {
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    memoryLoading.value = false;
+  }
+};
+
+const toggleMemoryViewer = async () => {
+  if (memoryViewerOpen.value) {
+    memoryViewerOpen.value = false;
+    return;
+  }
+  memoryViewerOpen.value = true;
+  await refreshMemoryViewer();
+};
+
+const removeMemory = async (item: MemoryItem) => {
+  if (deletingMemoryId.value || memoryRoleId.value === null) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.memoryViewer.deleteConfirm"),
+    t("settings.advanceOther.memoryViewer.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  deletingMemoryId.value = item.memory_id;
+  try {
+    await deleteMemory(memoryRoleId.value, item.memory_id);
+    await refreshMemoryViewer();
+  } catch (error) {
+    memoryError.value = memoryErrorText(error);
+  } finally {
+    deletingMemoryId.value = null;
+  }
+};
+
+// --- 旧版存档记忆整合面板（每「剧本 × 角色」独立归档表） ---
+const legacyImporting = ref(false);
+const legacyLoading = ref(false);
+const legacyLoaded = ref(false);
+const legacyError = ref("");
+const legacyArchives = ref<MemoryArchiveSummary[]>([]);
+const legacyEntries = ref<Record<number, MemoryArchiveEntry[]>>({});
+const legacyDeletingId = ref<number | null>(null);
+
+const legacyErrorText = (error: unknown) =>
+  t("settings.advanceOther.legacyMemory.loadFailed", {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const sectionLabel = (section: string) =>
+  te(`settings.advanceOther.legacyMemory.sectionLabels.${section}`)
+    ? t(`settings.advanceOther.legacyMemory.sectionLabels.${section}`)
+    : section;
+
+const refreshLegacyArchives = async () => {
+  if (legacyLoading.value) return;
+  legacyLoading.value = true;
+  legacyError.value = "";
+  try {
+    legacyArchives.value = await listMemoryArchives();
+    legacyLoaded.value = true;
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyLoading.value = false;
+  }
+};
+
+const runLegacyImport = async () => {
+  if (legacyImporting.value) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.legacyMemory.importConfirm"),
+    t("settings.advanceOther.legacyMemory.importConfirmTitle"),
+  );
+  if (!confirmed) return;
+  legacyImporting.value = true;
+  legacyError.value = "";
+  try {
+    const result: LegacyImportResult = await importLegacyMemories();
+    await refreshLegacyArchives();
+    await dialogStore.alert(
+      t("settings.advanceOther.legacyMemory.importSum", {
+        legacyRows: result.legacy_rows,
+        imported: result.imported_roles,
+        memories: result.memories_written,
+        skippedExisting: result.skipped_existing,
+        skippedEmpty: result.skipped_empty,
+      }),
+      t("settings.advanceOther.legacyMemory.importTitle"),
+    );
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyImporting.value = false;
+  }
+};
+
+const toggleLegacyArchive = async (archive: MemoryArchiveSummary) => {
+  if (legacyEntries.value[archive.id] !== undefined) {
+    const next = { ...legacyEntries.value };
+    delete next[archive.id];
+    legacyEntries.value = next;
+    return;
+  }
+  legacyError.value = "";
+  try {
+    const entries = await getMemoryArchive(archive.id);
+    legacyEntries.value = { ...legacyEntries.value, [archive.id]: entries };
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  }
+};
+
+const removeLegacyArchive = async (archive: MemoryArchiveSummary) => {
+  if (legacyDeletingId.value !== null) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.legacyMemory.deleteConfirm"),
+    t("settings.advanceOther.legacyMemory.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  legacyDeletingId.value = archive.id;
+  legacyError.value = "";
+  try {
+    await deleteMemoryArchive(archive.id);
+    const next = { ...legacyEntries.value };
+    delete next[archive.id];
+    legacyEntries.value = next;
+    await refreshLegacyArchives();
+  } catch (error) {
+    legacyError.value = legacyErrorText(error);
+  } finally {
+    legacyDeletingId.value = null;
+  }
+};
+
+// --- 本地嵌入模型面板（设置页「嵌入模型」子页：导入 / 删除，实时生效） ---
+const embeddingStatus = ref<EmbeddingLocalStatus | null>(null);
+const embeddingLoading = ref(false);
+const embeddingImporting = ref(false);
+const embeddingDeleting = ref(false);
+const embeddingError = ref("");
+
+// Android 上 plugin-dialog 的 `extensions` 是 MIME 类型（非扩展名），且目录选择返回
+// content:// tree URI，后端的文件暂存桥（saf_bridge）只支持文件，故 Android 隐藏
+// 「从文件夹导入」，只保留压缩包导入（先暂存成真实文件再解压）。
+const isAndroid = /android/i.test(navigator.userAgent);
+
+// 导入或删除进行中（两者互斥，避免并发写模型目录）。
+const embeddingWorking = computed(() => embeddingImporting.value || embeddingDeleting.value);
+
+const embeddingFiles = computed(() => embeddingStatus.value?.files ?? []);
+
+const embeddingModeText = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status) return "";
+  if (status.remote_configured) return t("settings.advanceOther.embeddingLocal.modeRemote");
+  return status.retrieval_mode === "hybrid"
+    ? t("settings.advanceOther.embeddingLocal.modeHybrid")
+    : t("settings.advanceOther.embeddingLocal.modeLexical");
+});
+
+// 文件齐备却加载失败（产物损坏 / ONNX Runtime 缺失）：如实提示，实际走词法检索。
+// 徽章同样区分「可用」与「已安装但不可用」，避免误导。
+const embeddingStatusLabel = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status?.installed) return t("settings.advanceOther.embeddingLocal.statusMissing");
+  if (status.load_error) return t("settings.advanceOther.embeddingLocal.statusBroken");
+  return t("settings.advanceOther.embeddingLocal.statusInstalled");
+});
+
+const embeddingStatusClass = computed(() => {
+  const status = embeddingStatus.value;
+  if (!status?.installed) return "bg-white/10 text-white/60";
+  if (status.load_error) return "bg-amber-500/15 text-amber-400";
+  return "bg-green-500/15 text-green-400";
+});
+
+const embeddingLoadErrorText = computed(() => {
+  const error = embeddingStatus.value?.load_error;
+  if (!error) return "";
+  return t("settings.advanceOther.embeddingLocal.loadError", { error });
+});
+
+const formatBytes = (bytes: number) => {
+  if (!bytes) return "0 B";
+  const units = ["B", "KB", "MB", "GB"];
+  const i = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+  return `${(bytes / 1024 ** i).toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+};
+
+const embeddingErrorText = (error: unknown, key: string) =>
+  t(`settings.advanceOther.embeddingLocal.${key}`, {
+    error: error instanceof Error ? error.message : String(error),
+  });
+
+const refreshEmbeddingLocal = async () => {
+  if (embeddingLoading.value || embeddingWorking.value) return;
+  embeddingLoading.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await getEmbeddingLocalStatus();
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "loadFailed");
+  } finally {
+    embeddingLoading.value = false;
+  }
+};
+
+const importEmbeddingFrom = async (path: string | null) => {
+  if (!path || embeddingWorking.value) return;
+  embeddingImporting.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await importEmbeddingLocal(path);
+    const loadError = embeddingStatus.value?.load_error;
+    if (loadError) {
+      // 文件已落盘但加载失败：不谎报成功，直接展示原因（模式已回退词法）。
+      embeddingError.value = t("settings.advanceOther.embeddingLocal.loadError", {
+        error: loadError,
+      });
+    } else {
+      await dialogStore.alert(
+        t("settings.advanceOther.embeddingLocal.importSuccess"),
+        t("settings.advanceOther.embeddingLocal.importTitle"),
+      );
+    }
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "importFailed");
+  } finally {
+    embeddingImporting.value = false;
+  }
+};
+
+const pickEmbeddingFolder = async () => {
+  const selection = await openDialog({ directory: true, multiple: false });
+  const path = Array.isArray(selection) ? (selection[0] ?? null) : selection;
+  await importEmbeddingFrom(path);
+};
+
+const pickEmbeddingArchive = async () => {
+  // Android 上 `extensions` 是 MIME 类型；zip/7z 无注册 MIME 时退化为
+  // application/octet-stream（与 TTS 语音包导入同一约定）。
+  const filters = isAndroid
+    ? [
+        {
+          name: "Model archive",
+          extensions: [
+            "application/zip",
+            "application/x-7z-compressed",
+            "application/octet-stream",
+          ],
+        },
+      ]
+    : [{ name: "Model archive", extensions: ["zip", "7z"] }];
+  const selection = await openDialog({ multiple: false, filters });
+  const path = Array.isArray(selection) ? (selection[0] ?? null) : selection;
+  await importEmbeddingFrom(path);
+};
+
+const removeEmbeddingLocal = async () => {
+  if (embeddingWorking.value) return;
+  const confirmed = await dialogStore.confirm(
+    t("settings.advanceOther.embeddingLocal.deleteConfirm"),
+    t("settings.advanceOther.embeddingLocal.deleteConfirmTitle"),
+  );
+  if (!confirmed) return;
+  embeddingDeleting.value = true;
+  embeddingError.value = "";
+  try {
+    embeddingStatus.value = await deleteEmbeddingLocal();
+    await dialogStore.alert(
+      t("settings.advanceOther.embeddingLocal.deleteSuccess"),
+      t("settings.advanceOther.embeddingLocal.deleteTitle"),
+    );
+  } catch (error) {
+    embeddingError.value = embeddingErrorText(error, "deleteFailed");
+  } finally {
+    embeddingDeleting.value = false;
+  }
+};
+
 const loadConfig = async (selectFirst = true) => {
   isLoading.value = true;
   try {
@@ -400,6 +1041,8 @@ onMounted(async () => {
   await nextTick();
   updateIndicatorPosition();
   setupNavResizeObserver();
+  refreshLegacyArchives();
+  refreshEmbeddingLocal();
 });
 
 onUnmounted(() => {

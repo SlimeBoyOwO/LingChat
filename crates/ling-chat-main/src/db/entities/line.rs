@@ -12,6 +12,10 @@ pub enum LineAttribute {
     Assistant,
     #[sea_orm(string_value = "tool")]
     Tool,
+    /// 长期记忆 RAG 检索行：用户新消息轮自动写入，插在触发它的用户行之前，
+    /// 由 `MemoryBuilder` 按感知集合渲染进上下文；下一轮检索会替换上一轮的行。
+    #[sea_orm(string_value = "memory")]
+    Memory,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
