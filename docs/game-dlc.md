@@ -9,6 +9,9 @@ The initial content repository is <https://github.com/sdfsfsk/LingChat-DLC>.
 Open **Settings → Plugins / DLC → DLC**, synchronize the catalog, install a package,
 enable it, then use **Start Game → Mini Games** to play inside the main window.
 Native stories appear under **Start Game → Story Mode**. New packages are disabled by default, matching plugins.
+The mini-game list reuses the LC main-menu background, typography and transitions.
+Games fill the content area without a host title/Back toolbar; their own Return
+action reopens that same mini-game menu.
 Updates retain their enabled state. Catalog sync never silently downloads or runs
 code. The catalog URL is fixed in the host; local ZIP/7z import reuses plugin import.
 Catalog caches from older, custom sources are ignored until the built-in catalog
@@ -100,7 +103,7 @@ labels to existing capabilities. The application invoke handler rejects all
 native commands from these WebViews (application commands otherwise bypass the
 capability files by default). Capabilities select trusted **webview labels**,
 not the containing window: a child game must not inherit the main window's
-plugin/core capabilities. The trusted host owns the Back button and bounds.
+plugin/core capabilities. The trusted host controls the full content-area bounds.
 Navigation is confined to the session URL; popups are denied. Responses enforce
 CSP, no frames, no external scripts/connections, and no MIME sniffing.
 
@@ -120,7 +123,7 @@ automatic/dependency-triggered disables.
 
 The content repository SDK loads a save before mounting the game and provides
 synchronous storage getters/setters backed by a serialized save queue. A normal
-Back action or application exit requests a flush. Closing a game
+game Return action or application exit requests a flush. Closing a game
 tears down its WebView, Workers, animation loops and AudioContexts. Device routing
 uses `AudioContext.setSinkId` when supported; if the device ID is unavailable in
 the game's origin it retains system routing rather than interrupting playback.

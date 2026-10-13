@@ -78,9 +78,14 @@
             v-if="menuState === 'gameMode'"
             @back="backToMainMenu"
             @open-scripts="showScriptModeMenu"
+            @open-games="menuState = 'miniGames'"
             :loadingScripts="loadingScripts"
             :scripts="scripts"
           />
+        </Transition>
+
+        <Transition name="slide-right">
+          <MiniGameOptions v-if="menuState === 'miniGames'" @back="showGameModeMenu" />
         </Transition>
 
         <!-- 剧本模式菜单 -->
@@ -128,6 +133,11 @@ import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
 import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+import MiniGameOptions from "./menu/page/MiniGameOptions.vue";
+
+const props = withDefaults(defineProps<{ initialMenu?: "main" | "miniGames" }>(), {
+  initialMenu: "main",
+});
 
 const { t } = useI18n();
 const router = useRouter();
@@ -139,7 +149,16 @@ const currentPage = ref("mainMenu");
 // 设置面板是否挂载。与 currentPage 分开是因为关闭时面板要留到退场动画播完才卸载，
 // 而菜单需要立刻回场与它重叠
 const settingsMounted = ref(false);
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop" | "miniGames">(
+  props.initialMenu,
+);
+// Returning from a game reopens its list in the existing LC menu shell.
+watch(
+  () => props.initialMenu,
+  (menu) => {
+    menuState.value = menu;
+  },
+);
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
 // 已识别的 DLC 剧本包名（主菜单右下角提示用）

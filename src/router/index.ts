@@ -23,7 +23,8 @@ const routes = [
   {
     path: "/mini-games",
     name: "MiniGames",
-    component: () => import("../components/views/dlc/MiniGames.vue"),
+    component: MainMenu,
+    props: { initialMenu: "miniGames" },
   },
   {
     path: "/mini-games/:plugin/:game",
