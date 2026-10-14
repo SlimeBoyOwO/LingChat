@@ -38,7 +38,6 @@
       :style="`z-index:${BACKGROUND_ZINDEX}`"
     />
 
-    已上移到 GameExtraUI 的 HorrorEffectsLayer，压过角色立绘渲染 -->
     <!-- 星辉：原桌宠专用粒子，主界面按全屏尺度放大数量（桌宠圆头像用 60/0.2） -->
     <BAParticles
       v-if="uiStore.currentBackgroundEffect === 'BA'"
