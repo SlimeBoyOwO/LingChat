@@ -32,6 +32,78 @@ pub fn sherpa_onnx_models_root() -> PathBuf {
     crate::data_dir::get_data_dir().join("sherpa_onnx_models")
 }
 
+/// 依据模型目录本身解析实际 `model_type`。
+///
+/// 优先级：
+/// 1. 内置清单（目录名）——随包分发的模型类型是确定的；
+/// 2. `config.json` 里显式声明的 `model_type`；
+/// 3. 目录内文件特征推断（用户手动导入的模型）；
+/// 4. 传入的 `configured`（最终兜底，仍为空则取 `vits`）。
+///
+/// 这样即便角色设置里遗留了默认的错误类型（如 `vits`），也能按模型本体正确加载。
+pub fn resolve_model_type(model_dir: &Path, configured: &str) -> String {
+    if let Some(name) = model_dir.file_name().and_then(|n| n.to_str()) {
+        if let Some(mtype) = crate::api::tts_sherpa::catalog_model_type(name) {
+            return mtype.to_string();
+        }
+    }
+
+    if let Ok(content) = std::fs::read_to_string(model_dir.join("config.json")) {
+        if let Ok(config) = serde_json::from_str::<serde_json::Value>(&content) {
+            if let Some(mtype) = config
+                .get("model_type")
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+            {
+                return mtype.to_string();
+            }
+        }
+    }
+
+    if let Some(mtype) = infer_model_type(model_dir) {
+        return mtype.to_string();
+    }
+
+    let configured = configured.trim();
+    if configured.is_empty() {
+        "vits".to_string()
+    } else {
+        configured.to_string()
+    }
+}
+
+/// 按目录内文件特征推断 `model_type`（顺序即优先级，先匹配特征更强的类型）。
+///
+/// 仅覆盖能由文件布局唯一确定的类型；`kokoro` / `kitten` 共享同一组文件，
+/// 无法区分时按 `kokoro` 处理（内置清单会覆盖内置模型，不受此影响）。
+fn infer_model_type(model_dir: &Path) -> Option<&'static str> {
+    let has = |file: &str| model_dir.join(file).exists();
+
+    if has("fm_decoder.onnx") || has("fm_decoder_int8.onnx") {
+        return Some("zipvoice");
+    }
+    if has("lm_main.int8.onnx") || has("lm_main.onnx") || has("lm_flow.onnx") {
+        return Some("pocket");
+    }
+    if has("duration_predictor.onnx") || has("vector_estimator.onnx") {
+        return Some("supertonic");
+    }
+    if has("model-steps-3.onnx") || has("model-steps-6.onnx") {
+        return Some("matcha");
+    }
+    if has("text_encoder.onnx") {
+        return Some("zipvoice");
+    }
+    if has("voices.bin") && (has("model.int8.onnx") || has("model.onnx")) {
+        return Some("kokoro");
+    }
+    if has("model.onnx") || has("tts-model.onnx") || has("sherpa-onnx-tts.onnx") {
+        return Some("vits");
+    }
+    None
+}
+
 /// Sherpa-ONNX 模型管理器
 #[derive(Debug)]
 pub struct SherpaOnnxManager {
@@ -134,14 +206,16 @@ impl SherpaOnnxManager {
         let metadata = tokio::fs::metadata(&model_path).await?;
         let size_bytes = metadata.len();
 
-        // 解析配置文件（如果存在）
+        // 解析模型类型/配置：类型以「模型目录本身」为准（内置清单 → config.json →
+        // 文件特征），避免角色设置里遗留的错误类型导致按错误类型加载。
         let config_path = model_dir.join("config.json");
-        let (model_type, language, voice) = if config_path.exists() {
+        let (config_type, language, voice) = if config_path.exists() {
             self.load_model_config(&config_path).await?
         } else {
             // 默认值
-            ("vits".to_string(), "zh".to_string(), "female".to_string())
+            (String::new(), "zh".to_string(), "female".to_string())
         };
+        let model_type = resolve_model_type(model_dir, &config_type);
 
         Ok(SherpaOnnxModelInfo {
             model_name,
@@ -323,5 +397,47 @@ mod tests {
         let (size, count) = manager.get_storage_stats().await.unwrap();
         assert_eq!(size, 0);
         assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn resolve_model_type_prefers_catalog_dir() {
+        // 内置模型目录名即权威类型，忽略传入的错误默认值（如 vits）。
+        let dir = Path::new("/nonexistent/sherpa_onnx_models/kokoro-int8-multi-lang-v1_1");
+        assert_eq!(resolve_model_type(dir, "vits"), "kokoro");
+
+        let dir = Path::new("/nonexistent/sherpa_onnx_models/matcha-icefall-zh-baker");
+        assert_eq!(resolve_model_type(dir, "vits"), "matcha");
+    }
+
+    #[test]
+    fn resolve_model_type_infers_from_files() {
+        let temp = tempdir().unwrap();
+        let root = temp.path();
+
+        // Kokoro/Kitten 特征：voices.bin + model(.int8).onnx
+        let kokoro = root.join("my-kokoro");
+        std::fs::create_dir_all(&kokoro).unwrap();
+        std::fs::write(kokoro.join("model.int8.onnx"), b"x").unwrap();
+        std::fs::write(kokoro.join("voices.bin"), b"x").unwrap();
+        assert_eq!(resolve_model_type(&kokoro, "vits"), "kokoro");
+
+        // Matcha 特征：model-steps-*.onnx
+        let matcha = root.join("my-matcha");
+        std::fs::create_dir_all(&matcha).unwrap();
+        std::fs::write(matcha.join("model-steps-3.onnx"), b"x").unwrap();
+        assert_eq!(resolve_model_type(&matcha, "vits"), "matcha");
+
+        // config.json 显式声明优先于文件推断
+        let declared = root.join("my-declared");
+        std::fs::create_dir_all(&declared).unwrap();
+        std::fs::write(declared.join("model.onnx"), b"x").unwrap();
+        std::fs::write(declared.join("config.json"), br#"{"model_type":"kitten"}"#).unwrap();
+        assert_eq!(resolve_model_type(&declared, "vits"), "kitten");
+
+        // 无法识别时回退到配置值；配置为空则取 vits
+        let plain = root.join("my-plain");
+        std::fs::create_dir_all(&plain).unwrap();
+        assert_eq!(resolve_model_type(&plain, "fastspeech2"), "fastspeech2");
+        assert_eq!(resolve_model_type(&plain, ""), "vits");
     }
 }
