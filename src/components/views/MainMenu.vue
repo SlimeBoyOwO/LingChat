@@ -13,7 +13,7 @@
       ref="bgRef"
     ></div>
 
-    <!-- 流星层（SVG动画）— 设置快照或恐怖主题期间临时暂停 -->
+    <!-- 流星层（SVG动画）— 由当前演出策略控制 -->
     <MeteorAnimation :meteors-enabled="visualMeteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
@@ -25,7 +25,7 @@
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="character-image pointer-events-none absolute top-1/2 left-1/2 z-3 h-full w-full transform-[translate(-50%,-50%)] object-cover will-change-transform select-none"
+      class="character-image pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,-50%)] will-change-transform select-none"
       ref="charRef"
       src="../../assets/images/alona.png"
       :alt="$t('views.mainMenu.characterAlt')"

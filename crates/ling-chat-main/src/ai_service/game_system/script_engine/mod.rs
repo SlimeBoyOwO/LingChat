@@ -45,13 +45,6 @@ pub fn init_event_registry() {
     events::ambient_event::register();
     // 注册成就解锁事件处理器
     events::achievement_event::register();
-    // 注册恐怖演出事件处理器（突脸 / 强制选择）
-    // 注册定拍等待事件处理器（DDLC 式时间轴演出）
-    // 剧本边界特效：持久菜单主题、外部角色标记、安全辅助窗口
-    // 真实系统控制台窗口（固定模板、文本净化、自动关闭）
-    // OS 窗口标题乱码（血字/崩坏演出用，剧本结束自动还原）
-    // .chr 文件实时监视（DDLC Act3 空房间：玩家删文件即跳崩坏序列）
-
     extension::register_events();
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }

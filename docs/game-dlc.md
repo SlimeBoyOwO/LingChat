@@ -9,7 +9,7 @@ The host supplies plugin installation, dependency and resource management, scrip
 lifecycle hooks, consent and command registration. Game webviews remain isolated
 from host IPC. Content packages reuse existing plugin manifests and save locations.
 
-See the SDK's `docs/` for the catalog, package format and native story capabilities.
+See the SDK's `docs/` for per-package release discovery, package format and native story capabilities.
 
-The [SDK 0.2 integration API](https://github.com/sdfsfsk/LingChat-DLC/blob/e6eeec233cbc587e6beef536800013e89de994b4/extensions/docs/extension-api.md)
+The [SDK 0.3 integration API](https://github.com/sdfsfsk/LingChat-DLC/blob/3ab33a9d74d650bfa9663f3b2dea6db8fb292b61/extensions/docs/extension-api.md)
 keeps menu items, presentation, translations and native command implementations in the SDK.

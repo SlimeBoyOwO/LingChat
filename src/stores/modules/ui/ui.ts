@@ -1,3 +1,4 @@
+import { resetExtensionQueue } from "@lingchat/dlc-ui/host/queue";
 import { storyActions, storyState, type StoryUIState } from "@lingchat/dlc-ui/stores/storyUI";
 // stores/ui.ts
 import { defineStore } from "pinia";
@@ -226,8 +227,6 @@ export const useUIStore = defineStore("ui", {
      * 落到哪一层由注册表决定。落到某一层时清空另一层，是为了让「剧本说现在是雷阵雨」
      * 与原来的单值语义完全一致，不会叠出作者没写过的组合。
      * 两层的并存只发生在设置页 —— 那是玩家自己的长期偏好，直接调上面两个 action。
-     * 恐怖层的组合特效（"Glitch+BloodDrip" 这类 "+" 叠加）整体视为氛围层值：
-     * isWeatherEffect 对组合返回 false，落到背景层由 GameBackground 逐段渲染。
      */
     applyEffectValue(effect: string) {
       const settings = useSettingsStore();
@@ -617,7 +616,7 @@ export const useUIStore = defineStore("ui", {
 
     /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
     persistAmbientState() {
-      // 剧本运行期间不持久化：剧本的恐怖环境音（rumble 等）不得写进 session
+      // 临时播放状态不写入用户偏好。
       if (this.bgmPersistBlocked) return;
       if (ambientSaveTimer) clearTimeout(ambientSaveTimer);
       ambientSaveTimer = setTimeout(() => {
@@ -641,8 +640,7 @@ export function initUIStore() {
 
   const store = useUIStore();
 
-  // 启动时清掉上次会话残留的恐怖特效（设置是持久化的，血色 UI 不能带进新会话）
-  store.resetHorrorEffects();
+  resetExtensionQueue();
 
   // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
   function syncSafeArea() {

@@ -1,3 +1,4 @@
+import { resetExtensionQueue, isSelfTimedVisual } from "@lingchat/dlc-ui/host/queue";
 import { useGameStore } from "../../stores/modules/game";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
@@ -36,7 +37,7 @@ export class EventQueue {
         this.durationResolve();
         this.durationResolve = null;
       }
-      useUIStore().resetHorrorEffects();
+      resetExtensionQueue();
       dialogueMerge.armed = false;
     }
 
@@ -114,10 +115,7 @@ export class EventQueue {
     await eventProcessorManager.processEvent(event, signal);
     if (signal.aborted) return;
 
-    // 立绘闪现由独立覆盖层计时，可与紧随其后的音效/背景效果叠加。
-    // 背景特效和突脸则必须占住队列的 authored duration，否则下一项
-    // 会立即覆盖它们，玩家只能看到空白帧甚至完全看不到崩坏场景。
-    if (this.isSelfTimedVisual(event)) return;
+    if (isSelfTimedVisual(event)) return;
 
     // 空文本的收尾 reply 没有任何可展示内容，"等待用户继续"会变成永久等待——
     // 打字机无字可打、自动续打钩子不会触发、用户面对一片空白也无处可点。
@@ -139,10 +137,6 @@ export class EventQueue {
       await this.waitForDuration(event.duration);
       console.log("等待" + event.duration + "秒");
     }
-  }
-
-  private isSelfTimedVisual(event: ScriptEventType): boolean {
-    return event.type === "modify_character" && event.flash === true;
   }
 
   private shouldWaitForUser(event: ScriptEventType): boolean {
@@ -206,7 +200,7 @@ export class EventQueue {
       this.durationResolve();
       this.durationResolve = null;
     }
-    useUIStore().resetHorrorEffects();
+    resetExtensionQueue();
     this.resetToInputState();
   }
 

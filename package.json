@@ -50,7 +50,7 @@
     "vue": "^3.5.13",
     "vue-i18n": "^10.0.8",
     "vue-router": "^5.0.6",
-    "@lingchat/dlc-ui": "https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.2.0/lingchat-dlc-ui-0.2.0.tgz"
+    "@lingchat/dlc-ui": "https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.0/lingchat-dlc-ui-0.3.0.tgz"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2",

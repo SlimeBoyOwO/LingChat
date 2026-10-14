@@ -218,7 +218,7 @@ fn effect_options() -> Vec<String> {
 }
 
 pub fn build_schema() -> ScriptSchema {
-    let mut events = vec![
+    let events = vec![
         // ---------- 叙事 ----------
         EventSpec {
             type_key: "narration",
@@ -368,16 +368,7 @@ pub fn build_schema() -> ScriptSchema {
                     .hint(
                     "决定该角色是否出现在后续台词的「感知者」列表里。注意 hide_character 会同时把角色移出感知列表",
                 ),
-                FieldSpec::new("flash", "立绘故障闪现", FieldKind::Bool)
-                    .default_desc("false")
-                    .hint("硬切闪现指定情绪立绘，供短促惊吓演出"),
-                FieldSpec::new("noise", "立绘噪点区域", FieldKind::Select)
-                    .options(["none", "eyes", "mouth", "eyes_mouth"])
-                    .default_desc("none")
-                    .hint("黑噪点侵蚀眼睛/嘴部；none 清除当前侵蚀"),
-                FieldSpec::new("noise_fade_in", "噪点淡入（秒）", FieldKind::Number)
-                    .placeholder("0")
-                    .hint("仅 noise 非 none 时生效；0 表示立即出现"),
+
             ],
         },
         EventSpec {
@@ -403,10 +394,7 @@ pub fn build_schema() -> ScriptSchema {
                     .required()
                     .options(effect_options())
                     .hint("从下拉里选；选「无特效」会清空。运行时支持在 YAML 中用 + 叠加多个特效"),
-                FieldSpec::new("text", "特效文本", FieldKind::Textarea)
-                    .hint("UiCorrupt 等文字侵蚀特效的显示内容"),
-                FieldSpec::new("echo", "回声文本", FieldKind::Text)
-                    .hint("可选的故障回声/残影文本"),
+
             ],
         },
         EventSpec {
@@ -487,14 +475,12 @@ pub fn build_schema() -> ScriptSchema {
         },
     ];
 
-    events.extend(super::extension::schemas());
-
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)
             .hint("设置条件后，只有满足条件时本事件才会执行；留空则必定触发"),
         FieldSpec::new("duration", "事件时长/间隔（秒）", FieldKind::Number)
             .placeholder("由具体事件解释")
-            .hint("仅部分事件读取：台词/选项可作推进时长，jumpscare 用作覆盖层寿命；wait 请使用 seconds"),
+            .hint("仅部分事件读取；具体含义由事件定义说明"),
     ];
 
     let story_config_fields = vec![
@@ -506,14 +492,6 @@ pub fn build_schema() -> ScriptSchema {
             .placeholder("例如：好感度达到 30 之后")
             .hint("展示给玩家看的推荐时机说明，仅作展示，不影响剧情判断"),
         FieldSpec::new("intro_chapter", "开场章节", FieldKind::Chapter).required(),
-        FieldSpec::new("main_character", "剧本主角目录", FieldKind::Text)
-            .hint("正式进入时切换并锁定到全局 characters/ 下的目录名；结束后恢复原主角"),
-        FieldSpec::new("content_warning", "内容警告类型", FieldKind::Select)
-            .options(["horror"])
-            .hint("horror 会在进入前要求玩家确认，并允许受限系统演出授权"),
-        FieldSpec::new("editor_locked", "禁止编辑", FieldKind::Bool)
-            .default_desc("false")
-            .hint("发行版 DLC 可锁定编辑器修改，但仍允许校验和正式游玩"),
     ];
 
     let action_types = vec![
@@ -563,7 +541,7 @@ pub fn build_schema() -> ScriptSchema {
         },
     ];
 
-    ScriptSchema {
+    let mut schema = ScriptSchema {
         events,
         common_fields,
         story_config_fields,
@@ -592,5 +570,7 @@ pub fn build_schema() -> ScriptSchema {
             unsupported: vec!["!", "括号", "算术"],
             note: "== / != 按文字比较，大小比较要求右侧是数字；逻辑符必须写成两侧带空格的 ` && ` / ` || `，且 && 优先于 ||。无空格的 a||b 可继续作为普通字符串值。暂不支持括号、取反和算术表达式。",
         },
-    }
+    };
+    super::extension::configure_schema(&mut schema);
+    schema
 }

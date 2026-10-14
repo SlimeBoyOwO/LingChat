@@ -25,16 +25,7 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
-    pub const SCRIPT_JUMPSCARE: &str = "script:jumpscare";
-    pub const SCRIPT_FORCE_CHOICE: &str = "script:force-choice";
-    pub const SCRIPT_POEM_GAME: &str = "script:poem-game";
-    pub const SCRIPT_VOICE_SHIFT: &str = "script:voice-shift";
-    pub const SCRIPT_WAIT: &str = "script:wait";
-    pub const SCRIPT_GLITCH_WINDOW: &str = "script:glitch-window";
-    pub const SCRIPT_CONSOLE_WINDOW: &str = "script:console-window";
     pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
-    pub const SCRIPT_WINDOW_TITLE: &str = "script:window-title";
-    pub const SCRIPT_WINDOW_TITLE_RESET: &str = "script:window-title-reset";
     pub const SCRIPT_PROGRESS: &str = "script:progress";
 }
 
@@ -85,13 +76,8 @@ pub struct BackgroundEffectPayload {
     pub effect: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
-    /// 可选的演出文本（目前仅 BSOD 假异常窗口使用：trace 行内容）。
-    /// 由剧本自带，引擎组件不再硬编码任何具体剧本的彩蛋文本。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub text: Option<String>,
-    /// 可选的 BSOD 彩蛋独白（延迟淡入的小字），缺省不显示。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub echo: Option<String>,
+    #[serde(flatten)]
+    pub extension: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -113,7 +99,7 @@ pub struct SoundPayload {
     pub duration: Option<f64>,
 }
 
-/// 文件监视跳转：前端收到后应立刻清掉被中断章节的积压事件，让崩坏章节即时上演。
+/// 异步跳转：通知前端取消被中断章节的积压事件。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WatchJumpPayload {
@@ -164,18 +150,8 @@ pub struct ModifyCharacterPayload {
     pub clothes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
-    /// true 时本次情绪切换是"闪现"演出：前端展示 `duration` 秒后自动还原，
-    /// 不覆盖角色当前情绪状态（DDLC 式立绘崩坏一闪）
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub flash: Option<bool>,
-    /// 立绘噪点侵蚀预设（DDLC n_rects_ghost 式）：`eyes` / `mouth` / `eyes_mouth`
-    /// 在角色脸部挂上每帧随机抖动的黑色矩形噪点团；"none" 或未设置时不动现状，
-    /// 显式写 "none" 清除。噪点常驻，直到剧本显式清除或恐怖残留清理兜底。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub noise: Option<String>,
-    /// 噪点淡入秒数（DDLC 用 8s 等待 + 12s easeout 慢侵蚀）；0/未设置 = 立即全显。
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub noise_fade_in: Option<f64>,
+    #[serde(flatten)]
+    pub extension: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]

@@ -38,7 +38,7 @@ export interface ScriptInfo {
   choices: ScriptChoiceItem[];
   isRunning: boolean;
   freeDialogueInfo: FreeDialogueInfo;
-  /** 剧本内容警告标记（如 'horror'）：恐怖剧本运行时用于锁定桌宠入口等 */
+  /** 剧本声明的内容警告标记，由扩展解释。 */
   contentWarning?: string;
 }
 

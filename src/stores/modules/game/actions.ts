@@ -88,7 +88,6 @@ export const actions = {
     contentWarning?: string,
     folderKey?: string,
   ) {
-    this.poemGame = null;
     this.runningScript = {
       scriptName,
       folderKey,

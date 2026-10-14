@@ -12,10 +12,7 @@ import { HORROR_EFFECTS } from "@lingchat/dlc-ui/host/effects";
  * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
  * （每个粒子的 props 各不相同），新增粒子时两边都要动。
  *
- * 特效分三层：氛围层（PARTICLE_EFFECTS）、天气层（WEATHER_EFFECTS）与恐怖层
- * （HORROR_EFFECTS，剧本演出的 DDLC 式恐怖特效，设置页不暴露但剧本可写）。
- * 氛围与天气各自单选、互不干扰，可以同时开着；恐怖层是叠加件，写在剧本的
- * background_effect 里（支持 "+" 组合多个恐怖特效），不抢前两层的槽位。
+ * 扩展特效由 SDK 提供，独立于生成到 Rust 的内置清单。
  */
 export interface ParticleEffect {
   /** 写进设置的值，与 GameBackground 的 v-if 分支对应 */
@@ -62,23 +59,10 @@ export const WEATHER_EFFECTS: ParticleEffect[] = [
   { key: "Fog", label: "雾", i18n: "fog" },
 ];
 
-/**
- * 恐怖层：剧本演出的 DDLC 式恐怖特效（Glitch/血滴/蓝屏…）。
- * 设置页刻意不暴露 —— 玩家不该给日常场景手动挂血滴；但剧本编辑器要能选、
- * 校验器要能认，所以并入 ALL_EFFECTS 一并生成到 Rust。
- * 全是全屏量级的叠加件，配合 background_effect 的 "+" 组合使用，
- * 不抢氛围层/天气层的单选槽位，也没有 petSupported。
- */
-
-/** 恐怖特效的 key 列表：UI 侧用来识别「当前值里有没有恐怖特效」并做残留清理。 */
 export { HORROR_EFFECTS, HORROR_EFFECT_KEYS } from "@lingchat/dlc-ui/host/effects";
 
-/** 全部内置特效。给编辑器下拉、大小写纠错与 Rust 清单生成用，不区分它属于哪一层。 */
-export const ALL_EFFECTS: ParticleEffect[] = [
-  ...PARTICLE_EFFECTS,
-  ...WEATHER_EFFECTS,
-  ...HORROR_EFFECTS,
-];
+/** 仅内置特效；用于生成 Rust 清单，扩展由 SDK 在运行时注册。 */
+export const ALL_EFFECTS: ParticleEffect[] = [...PARTICLE_EFFECTS, ...WEATHER_EFFECTS];
 
 /** 这个特效是不是天气层的。剧本与存档只记一个特效值，靠它决定落到哪一层。 */
 export const isWeatherEffect = (key: string): boolean =>
@@ -92,7 +76,7 @@ export const isWeatherEffect = (key: string): boolean =>
  */
 export const particleEffectOptions = (): { value: string; label: string }[] => [
   { value: "None", label: "无特效" },
-  ...ALL_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
+  ...[...ALL_EFFECTS, ...HORROR_EFFECTS].map((p) => ({ value: p.key, label: p.label })),
 ];
 
 /** 大小写不敏感地映射到特效注册表中的规范 key；组合特效（"+" 连接）逐段规范化。 */
@@ -101,7 +85,9 @@ export const canonicalEffectKey = (value: string): string | null => {
   if (!raw || raw.toLowerCase() === "none") return "None";
   const canonical: string[] = [];
   for (const part of raw.split("+").map((item) => item.trim())) {
-    const match = ALL_EFFECTS.find((effect) => effect.key.toLowerCase() === part.toLowerCase());
+    const match = [...ALL_EFFECTS, ...HORROR_EFFECTS].find(
+      (effect) => effect.key.toLowerCase() === part.toLowerCase(),
+    );
     if (!match) return null;
     canonical.push(match.key);
   }

@@ -1,4 +1,8 @@
-import type { ExtensionScriptEvent } from "@lingchat/dlc-ui/types/story";
+import type {
+  ExtensionScriptEvent,
+  CharacterPresentation,
+  BackgroundPresentation,
+} from "@lingchat/dlc-ui/types/story";
 export type * from "@lingchat/dlc-ui/types/story";
 export interface ScriptEvent {
   type: string;
@@ -69,13 +73,9 @@ export interface ScriptPresentPicEvent extends ScriptEvent {
   scale: number;
 }
 
-export interface ScriptBackgroundEffectEvent extends ScriptEvent {
+export interface ScriptBackgroundEffectEvent extends ScriptEvent, BackgroundPresentation {
   type: "background_effect";
   effect: string;
-  /** BSOD 假异常窗口的 trace 行文本（剧本自带彩蛋，缺省用通用默认） */
-  text?: string;
-  /** BSOD 彩蛋独白（延迟淡入的小字），缺省不显示 */
-  echo?: string;
 }
 
 export interface ScriptSoundEvent extends ScriptEvent {
@@ -104,18 +104,12 @@ export interface ScriptAmbientEvent extends ScriptEvent {
   fade?: boolean;
 }
 
-export interface ScriptModifyCharacterEvent extends ScriptEvent {
+export interface ScriptModifyCharacterEvent extends ScriptEvent, CharacterPresentation {
   type: "modify_character";
   characterId: number;
   emotion?: string;
   action?: string;
   clothes?: string;
-  /** true 时为"闪现"演出：情绪立绘短暂展示 duration 秒后自动还原，不写回角色状态 */
-  flash?: boolean;
-  /** 立绘噪点侵蚀预设（DDLC n_rects_ghost 式）：'eyes' / 'mouth' / 'eyes_mouth'；'none' 清除 */
-  noise?: string;
-  /** 噪点淡入秒数；0/未设置 = 立即全显 */
-  noiseFadeIn?: number;
 }
 
 export interface ScriptInputEvent extends ScriptEvent {

@@ -19,6 +19,13 @@ use crate::ai_service::message_system::events::emit;
 /// `pnpm gen:effects`, never edit the list by hand. Re-exported under the old
 /// path so the schema builder and the validator keep importing it from here.
 pub use super::known_effects::KNOWN_EFFECTS;
+pub fn all_effects() -> Vec<&'static str> {
+    KNOWN_EFFECTS
+        .iter()
+        .copied()
+        .chain(super::super::extension::effect_names())
+        .collect()
+}
 
 /// Names that explicitly mean "no effect" and therefore must not be warned about.
 const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
@@ -26,8 +33,7 @@ const CLEARING_EFFECTS: [&str; 3] = ["none", "None", ""];
 pub struct BackgroundEffectEvent {
     effect: String,
     duration: Option<f64>,
-    text: Option<String>,
-    echo: Option<String>,
+    extension: serde_json::Map<String, Value>,
 }
 
 impl BackgroundEffectEvent {
@@ -42,13 +48,14 @@ impl BackgroundEffectEvent {
         // The warning exists because the failure was previously completely
         // silent: two of the shipped scripts write `starfield` / `Starfield`
         // and get no particles at all with no diagnostic anywhere.
-        // 支持 '+' 组合叠加（如 "Glitch+BloodDrip"），逐段校验
+        // Validate each layer against built-in and registered extension effects.
+        let known_effects = all_effects();
         let all_known = effect
             .split('+')
             .map(|p| p.trim())
-            .all(|p| CLEARING_EFFECTS.contains(&p) || KNOWN_EFFECTS.contains(&p));
+            .all(|p| CLEARING_EFFECTS.contains(&p) || known_effects.contains(&p));
         if !all_known && !CLEARING_EFFECTS.contains(&effect.as_str()) {
-            let hint = KNOWN_EFFECTS
+            let hint = known_effects
                 .iter()
                 .find(|k| k.eq_ignore_ascii_case(&effect));
             match hint {
@@ -60,7 +67,7 @@ impl BackgroundEffectEvent {
                 None => tracing::warn!(
                     "[BackgroundEffectEvent] 未知特效 '{}'，将清空当前特效；可用值: {:?}",
                     effect,
-                    KNOWN_EFFECTS
+                    known_effects
                 ),
             }
         }
@@ -68,14 +75,7 @@ impl BackgroundEffectEvent {
         Self {
             effect,
             duration: parse_duration(data),
-            text: data
-                .get("text")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
-            echo: data
-                .get("echo")
-                .and_then(|v| v.as_str())
-                .map(|s| s.to_string()),
+            extension: super::super::extension::event_fields("background_effect", data),
         }
     }
 }
@@ -84,7 +84,7 @@ impl BackgroundEffectEvent {
 impl ScriptEvent for BackgroundEffectEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
         // 限时特效只是一层瞬时演出，由前端计时并还原；不要把它写进存档快照，
-        // 否则恰好在闪烁期间自动保存，重载后会把血色 UI / Tear 永久恢复出来。
+        // 避免自动保存把瞬时效果恢复成永久效果。
         if self.duration.unwrap_or(0.0) <= 0.0 {
             ctx.game_status.lock().await.background_effect = self.effect.clone();
         }
@@ -92,8 +92,7 @@ impl ScriptEvent for BackgroundEffectEvent {
         let payload = BackgroundEffectPayload {
             effect: self.effect.clone(),
             duration: self.duration,
-            text: self.text.clone(),
-            echo: self.echo.clone(),
+            extension: self.extension.clone(),
         };
         let _ = emit(ctx.app, SCRIPT_BACKGROUND_EFFECT, &payload);
 

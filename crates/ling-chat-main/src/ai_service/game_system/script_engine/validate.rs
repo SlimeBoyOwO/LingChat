@@ -17,7 +17,7 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use super::events::background_effect_event::KNOWN_EFFECTS;
+use super::events::background_effect_event::all_effects;
 use super::events::split_once_unquoted;
 use super::utils::media::{MediaType, resolve_script_media};
 use super::utils::script_function::parse_variable_action;
@@ -539,10 +539,11 @@ pub fn validate(
                     // 同一份生成清单判定，不能把整个组合误报为未知特效。
                     for part in effect.split('+').map(str::trim) {
                         let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
-                        if clearing || KNOWN_EFFECTS.contains(&part) {
+                        if clearing || all_effects().contains(&part) {
                             continue;
                         }
-                        let hint = KNOWN_EFFECTS
+                        let known_effects = all_effects();
+                        let hint = known_effects
                             .iter()
                             .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；

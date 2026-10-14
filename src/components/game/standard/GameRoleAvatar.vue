@@ -32,7 +32,6 @@
 
   <!-- 原有气泡与情绪音效位于共享 Pixi 舞台上方。触摸层已随立绘组件内嵌（见上方 #overlay）。 -->
 
-  <!-- 角色级演出覆盖层：跟随最新 Live2D/静态展示层的位置，同时保留 DLC 恐怖特效。 -->
   <div
     class="role-container-transition pointer-events-none absolute h-full w-full origin-[center_0%]"
     :style="effectsLayerStyle"

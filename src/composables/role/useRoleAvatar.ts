@@ -52,7 +52,7 @@ export interface UseRoleAvatarApi {
 
 /**
  * 解析头像文件前的归一化（纯函数，便于核对映射）：
- * 未指定衣服回落 default，表外情绪回落「正常」。
+ * 未指定衣服回落 default；表外情绪按角色素材名查找，缺图再回落「正常」。
  */
 export function avatarFolderParams(role: GameRole): {
   characterFolder: string;
@@ -61,7 +61,7 @@ export function avatarFolderParams(role: GameRole): {
 } {
   return {
     characterFolder: role.character_folder,
-    emotion: EMOTION_CONFIG_EMO[role.emotion] || "正常",
+    emotion: EMOTION_CONFIG_EMO[role.emotion] || role.emotion || "正常",
     clothesName: role.clothesName === "默认" || !role.clothesName ? "default" : role.clothesName,
   };
 }
@@ -161,7 +161,7 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
           convertFileSrc(path) + (avatarRevision ? `?v=${avatarRevision}` : "");
       }
     } catch {
-      // 演出专用情绪（如"崩坏"）在角色目录里可能没有对应文件，回退到"正常"再试一次
+      // 未提供对应情绪素材时回退到「正常」。
       if (params.emotion !== "正常") {
         try {
           const fallback = await invoke<string>("get_avatar_file", {

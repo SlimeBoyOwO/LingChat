@@ -11,7 +11,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
-    <StageBlackout />
+    <StageOverlay />
     <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
 
     <!-- 原有的菜单按钮 -->
@@ -27,13 +27,12 @@
         <h3 class="hidden xl:block">{{ $t("views.mainChat.auto") }}</h3>
       </Button>
       <!-- 桌宠模式依赖 Windows 透明置顶窗口与 hit-test（lib.rs 为 cfg(windows)），移动端不可用 -->
-      <!-- 剧本运行期间锁定：她不允许你逃去桌宠 -->
       <Button
         v-if="!isMobile()"
         type="nav"
         icon="character"
-        :disabled="petLocked"
-        :title="petLocked ? '锁死了。从打开的那一刻起就锁死了。' : ''"
+        :disabled="entryPolicy.lockPet"
+        :title="entryPolicy.petHint"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -73,7 +72,7 @@ import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
-import StageBlackout from "@lingchat/dlc-ui/components/game/standard/StageBlackout.vue";
+import StageOverlay from "@lingchat/dlc-ui/host/StageOverlay.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -167,7 +166,7 @@ onMounted(() => {
 });
 
 /** Presentation policy supplied by the current content extension. */
-const petLocked = computed(() => storyPolicy(gameStore.runningScript).lockPet);
+const entryPolicy = computed(() => storyPolicy(gameStore.runningScript));
 
 // 自动推进调度（AUTO + 台词合并共用一条管道）—— 与桌宠 PetMode 共用同一实现
 const {

@@ -18,7 +18,9 @@ pub struct Hooks {
     pub begin: fn(&AppHandle) -> u64,
     pub close: fn(&AppHandle),
     pub restore_title: fn(&AppHandle),
-    pub schemas: fn() -> Vec<super::schema::EventSpec>,
+    pub configure_schema: fn(&mut super::schema::ScriptSchema),
+    pub event_fields: fn(&str, &serde_json::Value) -> serde_json::Map<String, serde_json::Value>,
+    pub effect_names: fn() -> Vec<&'static str>,
     pub prepare: fn(&ScriptStatus, &Path, bool) -> ScriptStatus,
     pub persist: fn(&ScriptStatus, &Path) -> anyhow::Result<()>,
     pub entry_error: fn(
@@ -101,8 +103,21 @@ pub fn restore_title(app: &AppHandle) {
         (h.restore_title)(app);
     }
 }
-pub fn schemas() -> Vec<super::schema::EventSpec> {
-    HOOKS.get().map_or_else(Vec::new, |h| (h.schemas)())
+pub fn configure_schema(schema: &mut super::schema::ScriptSchema) {
+    if let Some(h) = HOOKS.get() {
+        (h.configure_schema)(schema);
+    }
+}
+pub fn event_fields(
+    kind: &str,
+    data: &serde_json::Value,
+) -> serde_json::Map<String, serde_json::Value> {
+    HOOKS
+        .get()
+        .map_or_else(Default::default, |h| (h.event_fields)(kind, data))
+}
+pub fn effect_names() -> Vec<&'static str> {
+    HOOKS.get().map_or_else(Vec::new, |h| (h.effect_names)())
 }
 
 pub fn validate_config(

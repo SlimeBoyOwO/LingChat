@@ -8,10 +8,7 @@
 <script setup lang="ts">
 import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
-import {
-  isOwnedByStandaloneDlc,
-  releaseFolderFromEvent,
-} from "@lingchat/dlc-ui/utils/dlcMediaOwnership";
+import { useExtensionAudio, configureExtensionAudio } from "@lingchat/dlc-ui/host/media";
 
 const props = withDefaults(
   defineProps<{
@@ -45,10 +42,7 @@ const audio2 = ref<HTMLAudioElement | null>(null);
 const applyRate = (el: HTMLAudioElement | null) => {
   if (!el) return;
   const r = props.rate;
-  // 恐怖剧本的慢速 BGM 需要随速度一起降调，不能让 WebView 自动保持原音高。
-  el.preservesPitch = false;
-  (el as HTMLAudioElement & { mozPreservesPitch?: boolean }).mozPreservesPitch = false;
-  (el as HTMLAudioElement & { webkitPreservesPitch?: boolean }).webkitPreservesPitch = false;
+  configureExtensionAudio(el);
   el.playbackRate = typeof r === "number" && r > 0 ? r : 1;
 };
 
@@ -96,17 +90,9 @@ const releaseAllAudio = () => {
   releaseAudio(audio2.value);
 };
 
-const handleReleaseDlcMedia = (event: Event) => {
-  const folderKey = releaseFolderFromEvent(event);
-  for (const audio of [audio1.value, audio2.value]) {
-    if (audio && isOwnedByStandaloneDlc(audio.currentSrc || audio.src, folderKey)) {
-      releaseAudio(audio);
-    }
-  }
-};
+useExtensionAudio(() => [audio1.value, audio2.value], releaseAudio);
 
 onBeforeUnmount(() => {
-  window.removeEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
   releaseAllAudio();
 });
 
@@ -213,7 +199,6 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
 // 初始化
 onMounted(() => {
-  window.addEventListener("lingchat:release-dlc-media", handleReleaseDlcMedia);
   // 注册给频谱可视化（未开启该功能时不做任何事，见 utils/audioSpectrum.ts）
   registerSpectrumSource(audio1.value);
   registerSpectrumSource(audio2.value);

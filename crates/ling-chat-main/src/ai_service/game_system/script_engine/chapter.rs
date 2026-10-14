@@ -66,7 +66,7 @@ impl Chapter {
 
         // Execute events one by one
         while !self.events_handler.is_finished() {
-            // watch_file 优先：目标 .chr 消失时立刻让位给崩坏章节（DDLC Act3 的
+            // 异步跳转优先：扩展请求可中断当前章节（例如文件状态变化时的
             // 实时 monika.chr 检查），不等当前章节播完。
             let pending = ctx.channels.lock().await.watch_jump.take();
             if let Some(target) = pending {
@@ -75,8 +75,8 @@ impl Chapter {
                     self.chapter_name,
                     target
                 );
-                // 前端可能还堆着被中断章节的积压事件：先清队列再开崩坏章，
-                // 否则玩家要点完旧台词才能看到崩坏，实时性就丢了。
+                // 前端可能还堆着被中断章节的积压事件：先清队列再开目标章，
+                // 否则玩家要点完旧台词才能看到新章节，实时性就丢了。
                 let _ = emit(
                     ctx.app,
                     SCRIPT_WATCH_JUMP,

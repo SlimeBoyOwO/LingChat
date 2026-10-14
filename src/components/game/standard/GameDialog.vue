@@ -681,8 +681,6 @@ onUnmounted(() => {
   motionWriter = null;
   document.removeEventListener("contextmenu", handleDialogShow);
   window.removeEventListener("resize", updateContainerWidth);
-  // 移动端折叠菜单若开着，复位全局标记，避免卸载后残留（watch 只在开合变化时同步）
-  setMobileMenuOpen(false);
   destroyScreenshot();
 });
 
