@@ -12,6 +12,15 @@
 //   1. 环境变量 SHERPA_ONNX_LIB_DIR（用户手工指定的预编译库目录）
 //   2. cargo 下载缓存 target/sherpa-onnx-prebuilt/**（build.rs 的回落来源）
 // 找不到必需库时非 0 退出，避免打出发车即崩溃的 APK。
+//
+// 另外，sherpa-onnx-sys 的 build.rs **链接期**也要这个目录：不设
+// SHERPA_ONNX_LIB_DIR 时它会走自己那套有 bug 的下载/解压逻辑（上游 Android
+// 归档没有顶层目录，解到 target/sherpa-onnx-prebuilt/jniLibs/<abi>，而
+// build.rs 只在 .../sherpa-onnx-v<ver>-android/jniLibs/<abi> 找），于是直接
+// panic。所以加 `--print-lib-dir`：本脚本把解析出的目录单独打到 stdout，
+// package.json 的 android:* 脚本用 `SHERPA_ONNX_LIB_DIR=$(...)` 捕获并导出，
+// 这样 `pnpm android:devbuild` 无需手工 export。人类可读日志在
+// `--print-lib-dir` 模式下改走 stderr。
 
 import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from "fs";
 import { join, dirname, sep } from "path";
@@ -23,6 +32,11 @@ const projectRoot = join(__dirname, "..");
 // 与 package.json 的 android:build/-devbuild 的 `--target aarch64` 对应；
 // 需要别的 ABI 时用 SHERPA_ANDROID_ABI 覆盖。
 const abi = process.env.SHERPA_ANDROID_ABI || "arm64-v8a";
+
+// `--print-lib-dir`：stdout 只输出解析出的库目录（供 android:* 脚本捕获），
+// 其余人类可读日志一律走 stderr，避免污染命令替换的结果。
+const printLibDir = process.argv.includes("--print-lib-dir");
+const log = printLibDir ? console.error : console.log;
 
 const jniLibsDir = join(
   projectRoot,
@@ -108,11 +122,11 @@ if (!source) {
       `  缺少: ${requiredSo.join(", ")}`,
       `  已查找: SHERPA_ONNX_LIB_DIR=${process.env.SHERPA_ONNX_LIB_DIR || "(未设置)"}`,
       `          ${prebuiltRoot}`,
-      `  解决办法（任选其一）:`,
-      `    1) 导出 SHERPA_ONNX_LIB_DIR 指向含上述 .so 的目录`,
-      `       例: export SHERPA_ONNX_LIB_DIR=~/sherpa-onnx-android/${abi}/lib`,
-      `    2) 设置 SHERPA_ONNX_ARCHIVE_DIR 指向含 sherpa-onnx-v*-android.tar.bz2 的目录，`,
-      `       让 sherpa-onnx-sys 解压到 target/sherpa-onnx-prebuilt 后重试`,
+      `  解决办法:`,
+      `    导出 SHERPA_ONNX_LIB_DIR 指向含上述 .so 的目录，例如`,
+      `      export SHERPA_ONNX_LIB_DIR=~/sherpa-onnx-android/${abi}/lib`,
+      `    （官方 Android 包解压后形如 sherpa-onnx-*/jniLibs/${abi}/，`,
+      `      取其中含 .so 的那个目录即可）`,
     ].join("\n"),
   );
   process.exit(1);
@@ -148,6 +162,10 @@ if (missing.length) {
   process.exit(1);
 }
 
-console.log(
+log(
   `[sherpa-libs] ABI=${abi} 来源=${source} 新增=${copied} 现有=${destSos.length} -> ${jniLibsDir}`,
 );
+
+// `--print-lib-dir` 模式下，stdout 只输出这一行库目录（含末尾换行，
+// 便于 $(...) 命令替换去掉换行后直接用作 SHERPA_ONNX_LIB_DIR）。
+if (printLibDir) process.stdout.write(`${source}\n`);
