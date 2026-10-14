@@ -4,6 +4,7 @@ import { useRoute } from "vue-router";
 
 import { asrLog } from "./log";
 import { canStartAsr, chatActive, isLlamaStream } from "./gates";
+import { refreshSceneHotwords } from "./hotwords";
 import { writePartial } from "./input-bridge";
 import {
   onVadTurnEnd,
@@ -257,6 +258,19 @@ function ensureInit() {
     (done) => {
       asrLog().info(`loadingComplete -> ${done}`);
       updateAsrAvailability();
+    },
+    { immediate: true },
+  );
+  // 场景热词缓存（识别时注入，spec §9.2）：主角或在场角色变化即重取。
+  // 比较合成键而非数组引用：原地增删在场角色同样要触发
+  watch(
+    () => {
+      const game = runtime.gameStore;
+      return `${game?.mainRoleId ?? ""}|${(game?.presentRoleIds ?? []).join(",")}`;
+    },
+    (key) => {
+      asrLog().info(`scene roles -> ${key}`);
+      void refreshSceneHotwords();
     },
     { immediate: true },
   );

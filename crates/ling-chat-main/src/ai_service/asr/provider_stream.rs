@@ -8,7 +8,7 @@
 //! - 客户端事件（文本帧）：
 //!   - run-task（start）：`{"header":{"streaming":"duplex","task_id":"<32 hex>",
 //!     "action":"run-task"},"payload":{"model":"paraformer-realtime-v2",
-//!     "parameters":{"sample_rate":16000,"format":"pcm","language_hints":[...]},
+//!     "parameters":{"sample_rate":16000,"format":"pcm"},
 //!     "input":{},"task":"asr","task_group":"audio","function":"recognition"}}`
 //!   - 音频：**裸 PCM16 二进制帧**（无 DashScope 帧头）
 //!   - finish-task（stop）：`{"header":{"streaming":"duplex","task_id":"...",
@@ -50,8 +50,6 @@ const PROVIDER: &str = "qwen-asr";
 /// 对 fun-asr-realtime / paraformer 系发送很可能直接 400。
 #[derive(Debug, Clone, Default)]
 pub struct StreamParams {
-    /// `parameters.language_hints`；None = 不发。
-    pub language_hint: Option<String>,
     /// `parameters.vocabulary` 即时热词 `{"词": 权重}`；None = 不发。
     pub vocabulary: Option<JsonValue>,
 }
@@ -168,13 +166,6 @@ fn build_run_task_payload(model: &str, params: &StreamParams) -> (String, Vec<u8
         }
     });
     let p = &mut payload["payload"]["parameters"];
-    if let Some(lang) = params
-        .language_hint
-        .as_deref()
-        .filter(|l| !l.trim().is_empty())
-    {
-        p["language_hints"] = json!([lang]);
-    }
     // 即时热词（仅 qwen-audio-3.x 系支持，门控在调用方）
     if let Some(vocab) = &params.vocabulary {
         p["vocabulary"] = vocab.clone();
@@ -391,4 +382,91 @@ pub async fn start_streaming(
     });
 
     Ok(tx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn pcm_f32_to_i16_roundtrip() {
+        // 32767 缩放（±1.0 → ±32767，不取 32768——32768 as i16 会溢出 wrap
+        // 成 -32768，正负满幅不对称）。-1.0 → -32767 = 0x8001 小端 [01, 80]。
+        let bytes = pcm_f32_to_i16(&[1.0, -1.0, 0.0]);
+        assert_eq!(bytes, vec![0xFF, 0x7F, 0x01, 0x80, 0x00, 0x00]);
+        // 超出范围被 clamp
+        let clamped = pcm_f32_to_i16(&[2.0]);
+        assert_eq!(clamped, vec![0xFF, 0x7F]);
+    }
+
+    #[test]
+    fn parse_task_started() {
+        let body = r#"{"header":{"streaming":"duplex","task_id":"abc","action":"run-task","event":"task-started"},"payload":{}}"#;
+        assert_eq!(parse_server_event(body), Some(ServerEvent::Started));
+    }
+
+    #[test]
+    fn parse_partial_sentence() {
+        // 无 end_time → partial
+        let body = r#"{"header":{"event":"result-generated"},"payload":{"output":{"sentence":{"index":0,"time":100,"text":"你好"}}}}"#;
+        assert!(matches!(
+            parse_server_event(body),
+            Some(ServerEvent::Transcript { text, is_final: false, .. }) if text == "你好"
+        ));
+    }
+
+    #[test]
+    fn parse_final_sentence() {
+        // 有 end_time → 定稿
+        let body = r#"{"header":{"event":"result-generated"},"payload":{"output":{"sentence":{"index":0,"time":100,"text":"你好世界","begin_time":0,"end_time":100}}}}"#;
+        assert!(matches!(
+            parse_server_event(body),
+            Some(ServerEvent::Transcript { text, is_final: true, .. }) if text == "你好世界"
+        ));
+    }
+
+    #[test]
+    fn parse_task_finished() {
+        let body = r#"{"header":{"event":"task-finished"},"payload":{"output":{},"usage":{}}}"#;
+        assert_eq!(parse_server_event(body), Some(ServerEvent::Finished));
+    }
+
+    #[test]
+    fn parse_task_failed() {
+        let body = r#"{"header":{"event":"task-failed","error_code":"SomethingWrong","error_message":"识别失败"},"payload":{}}"#;
+        assert!(matches!(
+            parse_server_event(body),
+            Some(ServerEvent::Error { code, message }) if code == "SomethingWrong" && message.contains("识别失败")
+        ));
+    }
+
+    #[test]
+    fn parse_garbage_returns_none() {
+        assert!(parse_server_event("not json").is_none());
+        assert!(parse_server_event(r#"{"foo":1}"#).is_none());
+    }
+
+    #[test]
+    fn run_task_payload_has_required_fields() {
+        let params = StreamParams::default();
+        let (task_id, body) = build_run_task_payload("paraformer-realtime-v2", &params);
+        let v: JsonValue = serde_json::from_slice(&body).expect("合法 JSON");
+        assert_eq!(v["header"]["action"], "run-task");
+        assert_eq!(v["header"]["streaming"], "duplex");
+        assert_eq!(v["header"]["task_id"], task_id);
+        assert_eq!(v["payload"]["model"], "paraformer-realtime-v2");
+        assert_eq!(v["payload"]["task"], "asr");
+        assert_eq!(v["payload"]["task_group"], "audio");
+        assert_eq!(v["payload"]["function"], "recognition");
+        assert_eq!(v["payload"]["parameters"]["format"], "pcm");
+        assert_eq!(v["payload"]["parameters"]["sample_rate"], 16000);
+        // task_id 为 32 位 hex
+        assert_eq!(task_id.len(), 32);
+        assert!(task_id.chars().all(|c| c.is_ascii_hexdigit()));
+        // finish-task 复用同一 task_id
+        let finish: JsonValue =
+            serde_json::from_slice(&build_finish_task_payload(&task_id)).expect("合法 JSON");
+        assert_eq!(finish["header"]["action"], "finish-task");
+        assert_eq!(finish["header"]["task_id"], task_id);
+    }
 }

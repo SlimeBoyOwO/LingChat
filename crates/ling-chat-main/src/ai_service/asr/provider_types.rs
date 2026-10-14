@@ -10,9 +10,6 @@ use serde::Serialize;
 pub struct AsrResult {
     /// 识别出的文本。
     pub text: String,
-    /// provider **检测到**的语言；拿不到时为 `None`（如 qwen 同步端不返回）。
-    /// 不要把入参的 `language_hint` 回填进来。
-    pub language: Option<String>,
     /// provider 报告的置信度 0~1（可选）。
     pub confidence: Option<f32>,
     /// provider id（与 `list_provider_info` 一致）。
@@ -32,8 +29,12 @@ pub struct Hotword {
 impl Hotword {
     /// 默认权重。DashScope 文档推荐从 4 起测。
     pub const DEFAULT_WEIGHT: u8 = 4;
-    /// 权重上界：50 是文档里的「超级热词」特殊值（召回率大幅提升，最多 50 个）。
-    pub const MAX_WEIGHT: u8 = 50;
+    /// 普通热词的权重上界（`[1, 5]` 档）。
+    pub const WEIGHT_CAP: u8 = 5;
+    /// 超级热词的特殊值（召回率大幅提升，一次请求最多 50 个）。
+    pub const SUPER_WEIGHT: u8 = 50;
+    /// 权重下界。
+    pub const MIN_WEIGHT: u8 = 1;
 
     /// 用默认权重构造。
     pub fn new(text: impl Into<String>) -> Self {
@@ -43,11 +44,15 @@ impl Hotword {
         }
     }
 
-    /// 指定权重构造（clamp 到 `1..=MAX_WEIGHT`）。
+    /// 指定权重构造（归一到 `[1, 5] ∪ {50}`，口径与实体层一致）。
+    ///
+    /// 复用实体层的 `normalize_weight`：两侧各写一份离散逻辑迟早会漂移，
+    /// 而 u8 恒在 i32 范围内，转型不会丢信息。
     pub fn with_weight(text: impl Into<String>, weight: u8) -> Self {
+        let weight = crate::db::entities::hotword_weight::normalize_weight(i32::from(weight));
         Self {
             text: text.into(),
-            weight: weight.clamp(1, Self::MAX_WEIGHT),
+            weight: weight as u8,
         }
     }
 
@@ -71,8 +76,6 @@ impl Hotword {
 /// 参数列表会持续膨胀，而调用点数量有限，一次改到位成本更低。
 #[derive(Debug, Clone, Default)]
 pub struct AsrOptions {
-    /// 可选 BCP-47 语言码，如 `"zh"` / `"en"` / `"ja"`。
-    pub language_hint: Option<String>,
     /// **按调用传入**的热词（未来 = 当前角色的热词，随角色切换而变）。
     /// 空 = 无热词；没有配置级回退（`4fed1124` 已移除）。
     pub hotwords: Vec<Hotword>,
@@ -164,6 +167,21 @@ pub struct ModelInfo {
     pub display_name: String,
     /// 是否支持流式协议（前端流式开关可用性的权威判定）。
     pub supports_streaming: bool,
+    /// 是否支持即时热词 `parameters.vocabulary`（qwen-audio-3.x 系专属）。
+    pub supports_inline_vocabulary: bool,
+    /// 热词是否经 `prompt` 上下文偏置生效（llama-asr；权重被忽略，词条仍会发出）。
+    ///
+    /// 与 [`Self::supports_inline_vocabulary`] 是两条并列的「热词会不会被用上」
+    /// 链路，**两个都为 false 时该模型会静默丢弃热词**——前端角色设置页据此显示
+    /// 警告条（spec §9.1 第 1 条提示）。不合并成单个「支持热词」位：两者是
+    /// provider 侧两套不同的协议能力，各自的门控仍分开判定。
+    pub supports_prompt_bias: bool,
+    /// 一次请求可接受的即时热词条数上限；`None` = 不发即时热词或没有条数上限。
+    ///
+    /// ⚠️ 两种情形都可能是 `None`，前端**不能**把 `None` 一律读成「不支持」：
+    /// qwen 的不支持模型（能力位 false）与 llama 的 prompt 偏置（无上限）都是 `None`。
+    /// 判据是能力位，容量只是展示。
+    pub max_hotword_count: Option<usize>,
     /// 是否默认模型（`provider_configs[id].model` 为空时生效）。
     pub is_default: bool,
     /// 端点预设：选中该模型时把对应端点字段填成**当前地域**的默认值。
@@ -172,4 +190,88 @@ pub struct ModelInfo {
     /// 只给类型不给完整 URL：端点是地域相关的，由前端从
     /// [`ProviderInfo::regions`] 取当前地域的默认值，避免两处真相。
     pub endpoint_kind: Option<EndpointKind>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::asr::region::DashScopeRegion;
+
+    #[test]
+    fn provider_credentials_normalizes_trailing_slash() {
+        let c = ProviderCredentials {
+            api_key: "k".into(),
+            endpoint: "http://x.example.com/".into(),
+            ..Default::default()
+        };
+        assert_eq!(c.normalized_endpoint(), "http://x.example.com");
+        assert!(c.has_api_key());
+    }
+
+    #[test]
+    fn provider_credentials_whitespace_api_key_is_empty() {
+        let c = ProviderCredentials {
+            api_key: "   ".into(),
+            ..Default::default()
+        };
+        assert!(!c.has_api_key());
+    }
+
+    #[test]
+    fn effective_endpoints_fall_back_by_region() {
+        let sg = ProviderCredentials {
+            region: "ap-southeast-1".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            sg.effective_http_endpoint(),
+            DashScopeRegion::ApSoutheast1.http_endpoint()
+        );
+        assert_eq!(
+            sg.effective_ws_endpoint(),
+            DashScopeRegion::ApSoutheast1.ws_endpoint()
+        );
+
+        let unknown = ProviderCredentials {
+            region: "火星".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            unknown.effective_http_endpoint(),
+            DashScopeRegion::DEFAULT.http_endpoint()
+        );
+    }
+
+    #[test]
+    fn effective_endpoints_keep_explicit_config() {
+        let c = ProviderCredentials {
+            endpoint: "https://llm-x.cn-beijing.maas.aliyuncs.com/api/v1/x".into(),
+            ws_endpoint: "wss://llm-x.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference".into(),
+            region: "ap-southeast-1".into(),
+            ..Default::default()
+        };
+        assert_eq!(
+            c.effective_http_endpoint(),
+            "https://llm-x.cn-beijing.maas.aliyuncs.com/api/v1/x"
+        );
+        assert_eq!(
+            c.effective_ws_endpoint(),
+            "wss://llm-x.cn-beijing.maas.aliyuncs.com/api-ws/v1/inference"
+        );
+    }
+
+    #[test]
+    fn http_endpoint_rejects_a_ws_address() {
+        // 老数据的坑：唯一的 endpoint 被模型预设写成了 wss://
+        let c = ProviderCredentials {
+            endpoint: "wss://dashscope.aliyuncs.com/api-ws/v1/inference".into(),
+            region: "ap-southeast-1".into(),
+            ..Default::default()
+        };
+        // 拿去发 HTTP 会 builder error，必须回退该地域的同步端点
+        assert_eq!(
+            c.effective_http_endpoint(),
+            DashScopeRegion::ApSoutheast1.http_endpoint()
+        );
+    }
 }

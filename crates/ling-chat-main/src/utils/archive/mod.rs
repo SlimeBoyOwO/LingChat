@@ -20,7 +20,7 @@
 //! ```text
 //! use ling_chat::utils::archive::{compress, ArchiveFormat, extract_zip, resolve_target, ConflictPolicy};
 //! //!
-//! compress(src_dir, ArchiveFormat::Zip, &out_zip, &|ev| {
+//! compress(src_dir, ArchiveFormat::Zip, &out_zip, &[], &[], &|ev| {
 //!     println!("[{} {}/{}] {}", ev.phase, ev.index, ev.total, ev.name);
 //! })?;
 //!

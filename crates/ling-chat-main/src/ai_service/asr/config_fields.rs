@@ -117,3 +117,52 @@ pub(crate) fn llama_asr_config_fields() -> Vec<AsrConfigField> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn region_config_field_matches_region_table() {
+        let fields = qwen_asr_config_fields();
+        let region = fields.iter().find(|f| f.key == "region").unwrap();
+        assert_eq!(region.kind, ConfigFieldKind::Select);
+        let ids: Vec<_> = region.options.iter().map(|o| o.value).collect();
+        let expected: Vec<_> = DashScopeRegion::ALL.iter().map(|r| r.id()).collect();
+        assert_eq!(ids, expected);
+    }
+
+    #[test]
+    fn qwen_api_key_field_is_region_scoped() {
+        let fields = qwen_asr_config_fields();
+        let key = fields.iter().find(|f| f.key == "api_keys").unwrap();
+        assert_eq!(key.kind, ConfigFieldKind::PasswordMap);
+        // 不能再留一个扁平的单键入口：两个入口会并存两份真相，
+        // 用户填了其中一个、另一个静默生效，且分地域存储形同虚设
+        assert!(!fields.iter().any(|f| f.key == "api_key"));
+
+        // llama-asr 无地域概念（regions 为空），Key 保持扁平的单键字段
+        let llama = llama_asr_config_fields();
+        assert!(llama.iter().any(|f| f.key == "api_key"));
+        assert!(!llama.iter().any(|f| f.key == "api_keys"));
+    }
+
+    #[test]
+    fn every_config_field_key_exists_on_provider_config() {
+        // 回归防线：设置页把 config_field.key 写成 ProviderConfig 的顶层键，
+        // 而 ProviderConfig 没有 deny_unknown_fields —— 漏加字段会被 serde
+        // 静默丢弃（用户填了不生效、刷新即失）。这里用序列化往返兜底。
+        for fields in [qwen_asr_config_fields(), llama_asr_config_fields()] {
+            for f in fields {
+                let cfg = crate::ai_service::asr::settings::ProviderConfig::default();
+                let value = serde_json::to_value(&cfg).expect("ProviderConfig 可序列化");
+                let obj = value.as_object().expect("是对象");
+                assert!(
+                    obj.contains_key(f.key),
+                    "config_field '{}' 在 ProviderConfig 上不存在——会被静默丢弃",
+                    f.key
+                );
+            }
+        }
+    }
+}

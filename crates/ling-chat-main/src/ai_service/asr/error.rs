@@ -86,3 +86,40 @@ pub(crate) fn map_reqwest_error(e: reqwest::Error) -> AsrError {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn i18n_code_is_stable() {
+        // 锁定 i18n 码，防止后续重构意外破坏前端 locale 表
+        assert_eq!(
+            AsrError::ModelNotFound(PathBuf::from("/x")).i18n_code(),
+            "ASR_MODEL_MISSING"
+        );
+        assert_eq!(
+            AsrError::ProviderApiError {
+                provider: "openai".into(),
+                message: "401".into(),
+            }
+            .i18n_code(),
+            "ASR_PROVIDER_FAILED"
+        );
+        assert_eq!(
+            AsrError::ProviderTimeout("qwen".into()).i18n_code(),
+            "ASR_PROVIDER_TIMEOUT"
+        );
+        assert_eq!(
+            AsrError::MissingCredentials("openai".into()).i18n_code(),
+            "ASR_MISSING_CREDENTIALS"
+        );
+        assert_eq!(AsrError::SessionBusy.i18n_code(), "ASR_SESSION_BUSY");
+        assert_eq!(AsrError::Canceled.i18n_code(), "ASR_CANCELED");
+        assert_eq!(AsrError::MicPermissionDenied.i18n_code(), "ASR_MIC_DENIED");
+        assert_eq!(
+            AsrError::StreamingNotSupported("openai".into()).i18n_code(),
+            "ASR_STREAMING_UNSUPPORTED"
+        );
+    }
+}
