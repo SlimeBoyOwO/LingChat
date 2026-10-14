@@ -72,6 +72,7 @@ pub fn setup(
     app.manage(utils::cpu_perf::CpuDetectionCache::new());
     app.manage(utils::gpu_perf::GpuDetectionCache::new());
     app.manage(api::role_archive::RoleArchiveState::default());
+    app.manage(api::tts_sherpa::init());
 
     #[cfg(desktop)]
     app.manage(ai_service::asr::global_hotkey::GlobalHotkeyState::default());
