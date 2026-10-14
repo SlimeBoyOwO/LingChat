@@ -25,6 +25,7 @@ pub mod script;
 pub mod script_editor;
 pub mod settings;
 pub mod tool_settings;
+pub mod tts_sherpa;
 pub mod workshop;
 
 use std::path::PathBuf;
