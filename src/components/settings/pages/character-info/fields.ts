@@ -36,11 +36,12 @@ export interface SchemaContext {
   avatarModeOptions: FieldOption[];
   cloudVoices: any[];
   installedVoices: any[];
+  installedSherpaModels: any[];
 }
 
 /** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
 export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> {
-  const { t, avatarModeOptions, cloudVoices, installedVoices } = ctx;
+  const { t, avatarModeOptions, cloudVoices, installedVoices, installedSherpaModels } = ctx;
   return {
     basic: [
       { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
@@ -153,6 +154,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
           { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
           { label: "indextts2", value: "indextts2" },
           { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
+          { label: t("settings.characterInfo.fields.sherpaOnnx"), value: "sherpa-onnx" },
         ],
       },
 
@@ -426,6 +428,87 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         isVoiceModel: true,
         placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
         visibleIf: (s) => s.tts_type === "opentts",
+      },
+
+      // --- Sherpa-ONNX 本地模型 ---
+      {
+        key: "sherpa_onnx_model_name",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelName"),
+        type: "select",
+        isVoiceModel: true,
+        dynamicOptions: () =>
+          installedSherpaModels.length === 0
+            ? [{ label: t("settings.characterInfo.fields.noSherpaModel"), value: "" }]
+            : installedSherpaModels.map((model) => ({
+                label: model.display_name || model.id,
+                value: model.id,
+              })),
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_model_type",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelType"),
+        type: "select",
+        isVoiceModel: true,
+        options: [
+          { label: "vits", value: "vits" },
+          { label: "fastspeech2", value: "fastspeech2" },
+          { label: "matcha", value: "matcha" },
+          { label: "kokoro", value: "kokoro" },
+          { label: "kitten", value: "kitten" },
+          { label: "zipvoice", value: "zipvoice" },
+          { label: "pocket", value: "pocket" },
+          { label: "supertonic", value: "supertonic" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_lang",
+        label: t("settings.characterInfo.fields.sherpaOnnxLanguage"),
+        type: "select",
+        isVoiceModel: true,
+        options: [
+          { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
+          { label: t("settings.characterInfo.voiceLangOptions.en"), value: "en" },
+          { label: t("settings.characterInfo.voiceLangOptions.ja"), value: "ja" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_voice",
+        label: t("settings.characterInfo.fields.sherpaOnnxVoice"),
+        type: "text",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_use_gpu",
+        label: t("settings.characterInfo.fields.sherpaOnnxUseGpu"),
+        type: "switch",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_speed",
+        label: t("settings.characterInfo.fields.sherpaOnnxSpeed"),
+        type: "number",
+        step: "0.05",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_audio_path",
+        label: t("settings.sherpa.refPick"),
+        type: "text",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_text",
+        label: t("settings.sherpa.refText"),
+        type: "text",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
     ],
   };

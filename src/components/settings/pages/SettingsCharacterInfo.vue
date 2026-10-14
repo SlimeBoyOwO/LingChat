@@ -487,8 +487,10 @@ async function discardDraft() {
 const {
   installedVoices,
   cloudVoices,
+  installedSherpaModels,
   refreshLocalVoices,
   refreshCloudVoices,
+  refreshSherpaModels,
   ensureVoiceModels,
   migrateLegacyVoiceModelFields,
   GSV_EMO_CATEGORIES,
@@ -587,6 +589,7 @@ const schemas = computed(() =>
     avatarModeOptions: avatarModeOptions.value,
     cloudVoices: cloudVoices.value,
     installedVoices: installedVoices.value,
+    installedSherpaModels: installedSherpaModels.value,
   }),
 );
 
@@ -724,6 +727,10 @@ watch(
       // 本地 TTS 音色:仅 localsbv2api 需要
       if (ttsType === "localsbv2api") {
         void refreshLocalVoices();
+      }
+      // Sherpa-ONNX 本地模型下拉:仅 sherpa-onnx 需要
+      if (ttsType === "sherpa-onnx") {
+        void refreshSherpaModels();
       }
       // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
       void refreshCloudVoices();
