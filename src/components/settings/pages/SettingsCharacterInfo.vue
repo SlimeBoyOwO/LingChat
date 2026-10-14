@@ -144,6 +144,7 @@
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     class="glass-input"
+                    @change="onSelectChange(field, $event)"
                   >
                     <option
                       v-for="opt in resolveFieldOptions(field)"
@@ -668,6 +669,12 @@ const resolveFieldOptions = (field: FieldSchema) => {
   return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
 };
 
+// 下拉项变更后的副作用钩子（v-model 已先写入值，这里只做联动）。
+const onSelectChange = (field: FieldSchema, event: Event) => {
+  const value = (event.target as HTMLSelectElement).value;
+  field.onChange?.(value, localSettings.value);
+};
+
 // 主对话/桌宠形象共用的选项；按 docs/i18n.md 只翻译标签、不翻译取值
 const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.live2d"), value: "live2d" },
@@ -681,6 +688,7 @@ const schemas = computed(() =>
     cloudVoices: cloudVoices.value,
     installedVoices: installedVoices.value,
     installedSherpaModels: installedSherpaModels.value,
+    applySherpaModelDefaults,
   }),
 );
 
@@ -694,6 +702,17 @@ const currentTabFields = computed(() => {
   // 过滤掉当前不可见的字段
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
+
+// 选中 Sherpa 模型后带出它的类型/语言/音色。模型类型是模型自身的属性
+// （如 Kokoro 必须用 kokoro），留着默认的 vits 会导致按错误类型加载。
+const applySherpaModelDefaults = (modelId: string) => {
+  const model = installedSherpaModels.value.find((m) => m.id === modelId);
+  if (!model) return;
+  const voiceModels = ensureVoiceModels();
+  if (model.model_type) voiceModels.sherpa_onnx_model_type = model.model_type;
+  if (model.language) voiceModels.sherpa_onnx_lang = model.language;
+  if (model.voice) voiceModels.sherpa_onnx_voice = model.voice;
+};
 
 // --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
 

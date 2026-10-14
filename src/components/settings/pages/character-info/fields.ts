@@ -24,6 +24,8 @@ export interface FieldSchema {
   options?: FieldOption[];
   // Dynamic options computed from refs/state; overrides options when set.
   dynamicOptions?: () => { label: string; value: string }[];
+  /** 值变后的副作用（如选中模型后带出类型/语言/音色）；v-model 已先写入值。 */
+  onChange?: (value: string, settings: any) => void;
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
   // When set, the field reads/writes into localSettings.value[parent][key].
@@ -37,11 +39,20 @@ export interface SchemaContext {
   cloudVoices: any[];
   installedVoices: any[];
   installedSherpaModels: any[];
+  /** 选中 Sherpa 模型后带出它的类型/语言/音色（由页面提供，写草稿）。 */
+  applySherpaModelDefaults?: (modelId: string) => void;
 }
 
 /** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
 export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> {
-  const { t, avatarModeOptions, cloudVoices, installedVoices, installedSherpaModels } = ctx;
+  const {
+    t,
+    avatarModeOptions,
+    cloudVoices,
+    installedVoices,
+    installedSherpaModels,
+    applySherpaModelDefaults,
+  } = ctx;
   return {
     basic: [
       { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
@@ -436,6 +447,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         label: t("settings.characterInfo.fields.sherpaOnnxModelName"),
         type: "select",
         isVoiceModel: true,
+        onChange: (value) => applySherpaModelDefaults?.(value),
         dynamicOptions: () =>
           installedSherpaModels.length === 0
             ? [{ label: t("settings.characterInfo.fields.noSherpaModel"), value: "" }]
