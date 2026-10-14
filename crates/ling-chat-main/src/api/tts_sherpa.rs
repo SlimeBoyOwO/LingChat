@@ -162,39 +162,64 @@ const SHERPA_REPO_FILES_API: &str = "https://www.modelscope.cn/api/v1/models/gom
 
 const SHERPA_FILE_DL: &str = "https://www.modelscope.cn/models/gomodels/sherpa/resolve/master";
 
+/// 内置可下载的 Sherpa TTS 模型：(repo 目录, 展示名, 语言, 音色, model_type)。
+const SHERPA_CATALOG_DEFS: &[(&str, &str, &str, &str, &str)] = &[
+    (
+        "kokoro-int8-multi-lang-v1_1",
+        "Kokoro 多语言 (int8)",
+        "zh",
+        "female",
+        "kokoro",
+    ),
+    (
+        "matcha-icefall-zh-baker",
+        "Matcha 中文 (新汉语真人) · icefall",
+        "zh",
+        "female",
+        "matcha",
+    ),
+    (
+        "matcha_tts_zh_en_20251010",
+        "Matcha 中英 (MMTTS)",
+        "zh",
+        "female",
+        "matcha",
+    ),
+    (
+        "sherpa-onnx-zipvoice-distill-zh-en-emilia",
+        "ZipVoice 中英 (Emilia)",
+        "zh",
+        "female",
+        "zipvoice",
+    ),
+];
+
 /// 可下载的 Sherpa TTS 模型（repo 目录 → 适配器所需 model_type）。
 fn sherpa_catalog_defs() -> Vec<(String, String, String, String, String)> {
-    vec![
-        // (dir, display_name, language, voice, model_type)
-        (
-            "kokoro-int8-multi-lang-v1_1".into(),
-            "Kokoro 多语言 (int8)".into(),
-            "zh".into(),
-            "female".into(),
-            "kokoro".into(),
-        ),
-        (
-            "matcha-icefall-zh-baker".into(),
-            "Matcha 中文 (新汉语真人) · icefall".into(),
-            "zh".into(),
-            "female".into(),
-            "matcha".into(),
-        ),
-        (
-            "matcha_tts_zh_en_20251010".into(),
-            "Matcha 中英 (MMTTS)".into(),
-            "zh".into(),
-            "female".into(),
-            "matcha".into(),
-        ),
-        (
-            "sherpa-onnx-zipvoice-distill-zh-en-emilia".into(),
-            "ZipVoice 中英 (Emilia)".into(),
-            "zh".into(),
-            "female".into(),
-            "zipvoice".into(),
-        ),
-    ]
+    SHERPA_CATALOG_DEFS
+        .iter()
+        .map(|(dir, name, lang, voice, mtype)| {
+            (
+                (*dir).to_string(),
+                (*name).to_string(),
+                (*lang).to_string(),
+                (*voice).to_string(),
+                (*mtype).to_string(),
+            )
+        })
+        .collect()
+}
+
+/// 内置清单里「模型目录名 → 适配器 model_type」。非内置（用户导入）模型返回 `None`。
+///
+/// 供模型管理器/适配器按目录反查真实类型：角色设置里遗留的 `sherpa_onnx_model_type`
+/// 默认为 `vits`，若直接采信会导致 Kokoro/ZipVoice 等模型按错误类型加载而报
+/// 「未找到模型文件」。
+pub(crate) fn catalog_model_type(dir: &str) -> Option<&'static str> {
+    SHERPA_CATALOG_DEFS
+        .iter()
+        .find(|(d, ..)| *d == dir)
+        .map(|(_, _, _, _, mtype)| *mtype)
 }
 
 /// 内置可下载模型的元数据（含下载仓库估价，用于列表展示）。

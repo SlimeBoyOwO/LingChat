@@ -42,6 +42,14 @@ impl SherpaOnnxAdapter {
             return Err(anyhow!("Sherpa-ONNX 模型目录不存在: {model_path}"));
         }
 
+        // 以模型目录本身为准解析真实类型：角色设置里的 `sherpa_onnx_model_type`
+        // 默认为 `vits`，若照单全收会让 Kokoro/Matcha 等模型按错误类型加载而报
+        // 「未找到模型文件」。
+        let model_type = crate::ai_service::tts::local::sherpa_onnx_manager::resolve_model_type(
+            model_dir,
+            &model_type,
+        );
+
         let provider = Self::provider_for(use_gpu);
 
         // 按平台选择合适的执行提供方（GPU/专用加速）；不可用或失败时回退 CPU。
