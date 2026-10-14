@@ -96,6 +96,9 @@ windows = { version = "0.62.2", features = [
     "Win32_Security",
     "Win32_System_Threading",
 ] }
+# Windows 桌面使用静态链接，避免运行时缺少 DLL
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
@@ -110,6 +113,10 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
     "webgpu",
 ] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+# sherpa-onnx 1.13.5 的 Rust 代码对 sys 1.13.6 头文件不兼容（缺 window_shift_ratio），
+# 必须钉在 1.13.5，避免 cargo 解析到更新版导致编译失败。
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 # 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
@@ -123,3 +130,11 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "coreml",
 ] }
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+# 钉 sys 1.13.5 与 crate 匹配（见 linux-x86_64 块的注释）
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
+
+# Sherpa-ONNX: Android 只支持 shared 链接（.so），桌面使用 static 链接
+[target.'cfg(target_os = "android")'.dependencies]
+sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
