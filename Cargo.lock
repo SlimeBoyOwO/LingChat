@@ -797,11 +797,31 @@ dependencies = [
 
 [[package]]
 name = "bzip2"
+version = "0.4.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bdb116a6ef3f6c3698828873ad02c3014b3c85cadb88496095628e3ef1e347f8"
+dependencies = [
+ "bzip2-sys",
+ "libc",
+]
+
+[[package]]
+name = "bzip2"
 version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f3a53fac24f34a81bc9954b5d6cfce0c21e18ec6959f44f56e8e90e4bb7c346c"
 dependencies = [
  "libbz2-rs-sys",
+]
+
+[[package]]
+name = "bzip2-sys"
+version = "0.1.13+1.0.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "225bff33b2141874fe80d71e07d6eec4f85c5c216453dd96388240f96e1acc14"
+dependencies = [
+ "cc",
+ "pkg-config",
 ]
 
 [[package]]
@@ -4347,6 +4367,8 @@ dependencies = [
  "serde_yaml",
  "sevenz-rust2",
  "sha2 0.10.9",
+ "sherpa-onnx",
+ "sherpa-onnx-sys",
  "tauri",
  "tauri-plugin-android-fs",
  "tauri-plugin-dialog",
@@ -5652,7 +5674,7 @@ dependencies = [
  "ort-sys",
  "smallvec",
  "tracing",
- "ureq",
+ "ureq 3.3.0",
 ]
 
 [[package]]
@@ -5664,7 +5686,7 @@ dependencies = [
  "glob",
  "hmac-sha256",
  "lzma-rust2 0.15.8",
- "ureq",
+ "ureq 3.3.0",
 ]
 
 [[package]]
@@ -7278,7 +7300,7 @@ dependencies = [
  "tar",
  "thiserror 2.0.21",
  "tokenizers",
- "ureq",
+ "ureq 3.3.0",
  "zstd",
 ]
 
@@ -7782,7 +7804,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b7e6633e9d494e3b8e69b6e806cd76fb19e5d60b7aedcf35ac051e78c4f0c27c"
 dependencies = [
  "aes",
- "bzip2",
+ "bzip2 0.6.1",
  "cbc",
  "crc32fast",
  "getrandom 0.4.3",
@@ -7833,6 +7855,28 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f40ca3c46823713e0d4209592e8d6e826aa57e928f09752619fc696c499637f6"
 dependencies = [
  "lazy_static",
+]
+
+[[package]]
+name = "sherpa-onnx"
+version = "1.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "352a5dbbd9623e800be27e77de514e87fcfe2120256acc4434e6ea87a56bc885"
+dependencies = [
+ "serde",
+ "serde_json",
+ "sherpa-onnx-sys",
+]
+
+[[package]]
+name = "sherpa-onnx-sys"
+version = "1.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1541926ecf70b3d806467a2f100d3d879eef7fd34f8b307028bb074871d7493"
+dependencies = [
+ "bzip2 0.4.4",
+ "tar",
+ "ureq 2.12.1",
 ]
 
 [[package]]

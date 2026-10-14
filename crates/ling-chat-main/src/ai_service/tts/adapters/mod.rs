@@ -20,6 +20,7 @@ pub mod indextts;
 pub mod opentts;
 pub mod sbv2;
 pub mod sbv2api;
+pub mod sherpa_onnx;
 pub mod vits;
 
 use once_cell::sync::Lazy;
