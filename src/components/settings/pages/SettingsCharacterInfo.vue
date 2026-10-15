@@ -496,9 +496,9 @@ import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services
 import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
-import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
-import { wavDialogFilters } from "@/utils/dialogFilters";
+import { audioDialogFilters } from "@/utils/dialogFilters";
 import { decodePathFileName } from "@/utils/path";
 import { Icon } from "../../base";
 import SelectMenu from "../../ui/SelectMenu.vue";
@@ -835,16 +835,15 @@ const refAudioName = (value: unknown): string => decodePathFileName(String(value
  *
  * 存进字段的是后端复制到应用数据目录后的本地路径（不是 dialog 给的原始路径）：
  * Android 的 `content://` URI 无法被 Rust 的 `std::fs` 读取，桌面端原始路径也会
- * 因用户移动/删除源文件而失效。
+ * 因用户移动/删除源文件而失效。后端还会顺手把音频统一转成 sherpa 要的 16-bit
+ * PCM WAV，所以 mp3/flac/m4a 等格式都能直接导入。
  */
 async function importRefAudio(field: FieldSchema): Promise<void> {
   try {
-    const selected = await open({ multiple: false, filters: wavDialogFilters() });
+    const selected = await open({ multiple: false, filters: audioDialogFilters() });
     if (typeof selected !== "string") return;
     audioImportingKey.value = field.key;
-    const imported = await invoke<{ path: string; file_name: string }>("import_sherpa_ref_audio", {
-      path: selected,
-    });
+    const imported = await TtsLocal.importSherpaRefAudio(selected);
     fieldModel(field).value = imported.path;
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
@@ -853,12 +852,13 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
   } catch (error: any) {
     const rawMessage = typeof error === "string" ? error : error?.message || String(error);
     console.error("[SettingsCharacterInfo] 导入参考音频失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_AUDIO_UNSUPPORTED: t("settings.sherpa.refImportUnsupported"),
+      SHERPA_REF_AUDIO_TOO_LONG: t("settings.sherpa.refImportTooLong"),
+    };
     uiStore.showError({
       title: t("settings.sherpa.refImportFailed"),
-      message:
-        rawMessage === "SHERPA_REF_AUDIO_NOT_WAV"
-          ? t("settings.sherpa.refImportNotWav")
-          : rawMessage,
+      message: codeMessages[rawMessage] ?? rawMessage,
     });
   } finally {
     audioImportingKey.value = null;

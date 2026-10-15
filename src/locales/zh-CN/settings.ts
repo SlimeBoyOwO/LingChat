@@ -1732,9 +1732,12 @@ export default {
     refPick: "选择音频",
     refClear: "清除",
     refImporting: "导入中…",
-    refImportNotWav: "参考音频仅支持 WAV 格式，请先转换为 WAV 再导入",
+    refImportUnsupported:
+      "无法识别的音频格式（支持 mp3 / wav / flac / m4a 等常见格式，Opus / WebM 暂不支持）",
+    refImportTooLong: "参考音频过长，请截取其中较短的一段再导入",
     refImportFailed: "导入参考音频失败",
-    refImportHint: "仅支持 WAV 格式；导入后复制到应用数据目录，移动或删除原文件不影响使用",
+    refImportHint:
+      "支持 mp3 / wav / flac / m4a 等常见音频（Opus / WebM 除外）；导入后自动转成 WAV 并复制到应用数据目录",
     refText: "参考文本",
     refTextPlaceholder: "与参考音频对应的文本……",
     test: "试听",

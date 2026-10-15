@@ -248,6 +248,26 @@ export function deleteSherpaModel(modelId: string): Promise<void> {
   return invoke<void>("sherpa_delete_model", { modelId });
 }
 
+/** 参考音频导入结果。 */
+export interface SherpaRefAudioImport {
+  /** 落盘后的本地路径（写回 `sherpa_onnx_ref_audio_path`）。 */
+  path: string;
+  /** 展示用文件名。 */
+  file_name: string;
+}
+
+/**
+ * 导入零样本克隆的参考音频。
+ *
+ * 后端会把文件复制进应用数据目录并统一转成 16-bit PCM WAV（sherpa 只吃这种格式，
+ * Android 上 dialog 给的 `content://` URI 也无法直接读）；失败时可能抛出
+ * `SHERPA_REF_AUDIO_UNSUPPORTED` / `SHERPA_REF_AUDIO_TOO_LONG` 两个错误码，
+ * 由调用方翻译成提示。
+ */
+export function importSherpaRefAudio(path: string): Promise<SherpaRefAudioImport> {
+  return invoke<SherpaRefAudioImport>("import_sherpa_ref_audio", { path });
+}
+
 // ---------------------------------------------------------------------------
 // Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
 // 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）

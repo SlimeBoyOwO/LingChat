@@ -1487,10 +1487,12 @@ export default {
     refPick: "Pick audio",
     refClear: "Clear",
     refImporting: "Importing...",
-    refImportNotWav: "Only WAV reference audio is supported. Convert the file to WAV and try again",
+    refImportUnsupported:
+      "Unrecognized audio format (mp3 / wav / flac / m4a and more are supported; Opus / WebM are not)",
+    refImportTooLong: "The reference audio is too long. Please trim it and import a shorter clip",
     refImportFailed: "Failed to import reference audio",
     refImportHint:
-      "WAV only. The file is copied into the app data directory, so moving or deleting the original does not affect it",
+      "mp3 / wav / flac / m4a and other common audio (except Opus / WebM). The file is converted to WAV and copied into the app data directory",
     refText: "Reference text",
     refTextPlaceholder: "Transcription of the reference audio...",
     test: "Test",

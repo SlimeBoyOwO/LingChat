@@ -157,7 +157,7 @@
               </div>
               <div v-else class="ref-audio-detail">
                 <span class="ref-audio-name">{{ t("settings.sherpa.refNone") }}</span>
-                <span class="ref-audio-status">仅支持 WAV 格式</span>
+                <span class="ref-audio-status">{{ t("settings.sherpa.refImportHint") }}</span>
               </div>
             </div>
             <div class="ref-audio-actions">
@@ -258,12 +258,13 @@ import {
   listSherpaModels,
   downloadSherpaModel,
   deleteSherpaModel,
+  importSherpaRefAudio,
   onSherpaDownloadProgress,
   type SherpaOnnxModelRecord,
 } from "@/api/services/tts/tts-local";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { decodePathFileName } from "@/utils/path";
-import { wavDialogFilters } from "@/utils/dialogFilters";
+import { audioDialogFilters } from "@/utils/dialogFilters";
 import { useUIStore } from "@/stores/modules/ui/ui";
 
 const { t } = useI18n();
@@ -373,15 +374,13 @@ async function pickRefAudio() {
   try {
     const file = await open({
       multiple: false,
-      filters: wavDialogFilters(),
+      filters: audioDialogFilters(),
     });
     if (typeof file !== "string") return;
     importingRefAudio.value = true;
-    // 导入到应用数据目录，而不是把 dialog 给的路径原样存下来：Android 上是
-    // content:// URI，`std::fs` 读不了，试听时参考音频不会生效。
-    const imported = await invoke<{ path: string; file_name: string }>("import_sherpa_ref_audio", {
-      path: file,
-    });
+    // 导入到应用数据目录并统一转成 WAV，而不是把 dialog 给的路径原样存下来：
+    // Android 上是 content:// URI，`std::fs` 读不了，试听时参考音频不会生效。
+    const imported = await importSherpaRefAudio(file);
     config.value.ref_audio_path = imported.path;
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
@@ -390,12 +389,13 @@ async function pickRefAudio() {
   } catch (error: any) {
     const rawMessage = typeof error === "string" ? error : error?.message || String(error);
     console.error("选择参考音频失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_AUDIO_UNSUPPORTED: t("settings.sherpa.refImportUnsupported"),
+      SHERPA_REF_AUDIO_TOO_LONG: t("settings.sherpa.refImportTooLong"),
+    };
     uiStore.showError({
       title: t("settings.sherpa.refImportFailed"),
-      message:
-        rawMessage === "SHERPA_REF_AUDIO_NOT_WAV"
-          ? t("settings.sherpa.refImportNotWav")
-          : rawMessage,
+      message: codeMessages[rawMessage] ?? rawMessage,
     });
   } finally {
     importingRefAudio.value = false;
