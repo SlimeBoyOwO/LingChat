@@ -1461,11 +1461,12 @@ export default {
     refPick: "音声を選択",
     refClear: "クリア",
     refImporting: "インポート中…",
-    refImportNotWav:
-      "参照音声は WAV 形式のみ対応しています。WAV に変換してからインポートしてください",
+    refImportUnsupported:
+      "認識できない音声形式です（mp3 / wav / flac / m4a などの一般的な形式に対応、Opus / WebM は未対応）",
+    refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",
     refImportFailed: "参照音声のインポートに失敗しました",
     refImportHint:
-      "WAV 形式のみ対応。インポート時にアプリのデータディレクトリへコピーされるため、元ファイルを移動・削除しても影響しません",
+      "mp3 / wav / flac / m4a などの一般的な音声に対応（Opus / WebM を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
     refText: "参照テキスト",
     refTextPlaceholder: "参照音声に対応するテキスト……",
     test: "試聴",

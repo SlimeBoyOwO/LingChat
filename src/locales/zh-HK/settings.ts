@@ -1427,9 +1427,12 @@ export default {
     refPick: "選擇音訊",
     refClear: "清除",
     refImporting: "匯入中…",
-    refImportNotWav: "參考音訊只支援 WAV 格式，請先轉換為 WAV 再匯入",
+    refImportUnsupported:
+      "無法識別的音訊格式（支援 mp3 / wav / flac / m4a 等常見格式，Opus / WebM 暫不支援）",
+    refImportTooLong: "參考音訊過長，請先截取較短嘅一段再匯入",
     refImportFailed: "匯入參考音訊失敗",
-    refImportHint: "只支援 WAV 格式；匯入後會複製到應用程式資料目錄，移動或刪除原檔案不影響使用",
+    refImportHint:
+      "支援 mp3 / wav / flac / m4a 等常見音訊（Opus / WebM 除外）；匯入後會自動轉成 WAV 並複製到應用程式資料目錄",
     refText: "參考文字",
     refTextPlaceholder: "與參考音訊對應嘅文字……",
     test: "試聽",

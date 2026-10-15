@@ -37,24 +37,32 @@ export function musicDialogFilters(): { name: string; extensions: string[] }[] {
   return [{ name: "Music", extensions: DESKTOP_MUSIC_EXT }];
 }
 
-/** Android 端零样本克隆参考音频的 mime（仅 WAV）。 */
-const ANDROID_WAV_MIME = [
-  "audio/x-wav", // Android MimeTypeMap 对 wav 的标准映射
+/** Android 端参考音频的 mime（对应后端可解码的容器/编码）。 */
+const ANDROID_AUDIO_MIME = [
+  "audio/mpeg", // mp3
+  "audio/x-wav", // wav —— Android MimeTypeMap 的标准映射
   "audio/wav", // 少数 ROM 用这个
+  "audio/x-flac", // flac —— 部分 ROM 的 MimeTypeMap 没注册
+  "audio/flac",
+  "audio/ogg", // ogg / oga（Vorbis；Opus 在 ogg 里后端解不了，会明确报错）
+  "audio/mp4", // m4a / mp4 容器里的 AAC
+  "audio/x-m4a",
 ];
 
-/** 桌面端只按扩展名过滤。 */
-const DESKTOP_WAV_EXT = ["wav"];
+/** 桌面端用扩展名（Tauri 走 rfd，不经过 mime 转换）。 */
+const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "m4a", "mp4"];
 
 /**
- * 参考音频（零样本声音克隆，仅支持 WAV）导入 dialog 的 filter。
+ * 参考音频导入 dialog 的 filter。
  *
- * 真正的格式判定在 `import_sherpa_ref_audio`（按魔数），这里只是先挡住明显
- * 不合适的文件，避免用户选完才被拒。
+ * 后端 `import_sherpa_ref_audio` 会用 symphonia 解码后统一转成 16-bit PCM WAV，
+ * 所以这里放开常见音频格式；真正能不能解由后端判定（Opus/WebM 不支持，会报
+ * 「格式不支持」）。注意别把原始 `.aac`/`.webm` 列进来：symphonia 0.5 没有 ADTS
+ * 与 Matroska 读取器，选了必然失败。
  */
-export function wavDialogFilters(): { name: string; extensions: string[] }[] {
+export function audioDialogFilters(): { name: string; extensions: string[] }[] {
   if (isAndroid()) {
-    return [{ name: "WAV", extensions: ANDROID_WAV_MIME }];
+    return [{ name: "Audio", extensions: ANDROID_AUDIO_MIME }];
   }
-  return [{ name: "WAV", extensions: DESKTOP_WAV_EXT }];
+  return [{ name: "Audio", extensions: DESKTOP_AUDIO_EXT }];
 }
