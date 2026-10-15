@@ -1,6 +1,6 @@
 import type { ComposerTranslation } from "vue-i18n";
 
-export type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch";
+export type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch" | "audio";
 
 export interface FieldOption {
   label: string;
@@ -41,6 +41,8 @@ export interface SchemaContext {
   installedSherpaModels: any[];
   /** 选中 Sherpa 模型后带出它的类型/语言/音色（由页面提供，写草稿）。 */
   applySherpaModelDefaults?: (modelId: string) => void;
+  /** Sherpa 音色下拉（固定四档 + 当前值，由页面构造）。 */
+  sherpaVoiceOptions?: FieldOption[];
 }
 
 /** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
@@ -52,6 +54,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
     installedVoices,
     installedSherpaModels,
     applySherpaModelDefaults,
+    sherpaVoiceOptions = [],
   } = ctx;
   return {
     basic: [
@@ -489,8 +492,9 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
       {
         key: "sherpa_onnx_voice",
         label: t("settings.characterInfo.fields.sherpaOnnxVoice"),
-        type: "text",
+        type: "select",
         isVoiceModel: true,
+        dynamicOptions: () => sherpaVoiceOptions,
         visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
       {
@@ -511,8 +515,9 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
       {
         key: "sherpa_onnx_ref_audio_path",
         label: t("settings.sherpa.refPick"),
-        type: "text",
+        type: "audio",
         isVoiceModel: true,
+        hint: t("settings.sherpa.refImportHint"),
         visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
       {

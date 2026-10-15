@@ -163,6 +163,48 @@
                       class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
                     ></div>
                   </div>
+                  <!-- 参考音频：导入（复制进应用数据目录）而不是手填路径。
+                       Android 上 dialog 返回 content:// URI，后端会经 SAF 落到
+                       data/sherpa_onnx_ref_audio/，存的是普通文件路径。 -->
+                  <div
+                    v-else-if="field.type === 'audio'"
+                    class="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5"
+                  >
+                    <Icon icon="mic" :size="16" class="shrink-0 text-white/40" />
+                    <span
+                      class="min-w-0 flex-1 truncate text-sm"
+                      :class="fieldValue(field) ? 'text-white' : 'text-white/40'"
+                      :title="String(fieldValue(field) || '')"
+                    >
+                      {{
+                        fieldValue(field)
+                          ? refAudioName(fieldValue(field))
+                          : t("settings.sherpa.refNone")
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="audioImportingKey === field.key"
+                      @click="importRefAudio(field)"
+                    >
+                      {{
+                        audioImportingKey === field.key
+                          ? t("settings.sherpa.refImporting")
+                          : fieldValue(field)
+                            ? t("settings.sherpa.refChange")
+                            : t("settings.sherpa.refPick")
+                      }}
+                    </button>
+                    <button
+                      v-if="fieldValue(field)"
+                      type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                      @click="fieldModel(field).value = ''"
+                    >
+                      {{ t("settings.sherpa.refClear") }}
+                    </button>
+                  </div>
                   <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
                     {{ field.hint }}
                   </p>
@@ -389,7 +431,10 @@ import {
 } from "../../../api/services/character";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
-import { convertFileSrc } from "@tauri-apps/api/core";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { wavDialogFilters } from "@/utils/dialogFilters";
+import { decodePathFileName } from "@/utils/path";
 import { Icon } from "../../base";
 import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
@@ -441,6 +486,8 @@ const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
 const clothesLoading = ref(false);
 let clothesSequence = 0;
 let loadSequence = 0;
+/** 正在导入参考音频的字段 key（同一时刻只会有一个导入在进行）。 */
+const audioImportingKey = ref<string | null>(null);
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
   () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
@@ -590,6 +637,24 @@ const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
 
+// sherpa-onnx 的「音色」是随模型走的标签（适配器只把它当元数据，真正的说话人
+// 固定为 0），所以给固定四档；但模型 config.json 可能带出自定义值（选中模型时
+// `applySherpaModelDefaults` 会写进字段），下拉框没有匹配项会显示空白并在切换时
+// 丢掉原值，因此把当前值并进选项。空值在后端等同 female，与第一项一致。
+const sherpaVoiceOptions = computed<FieldOption[]>(() => {
+  const current = String(ensureVoiceModels().sherpa_onnx_voice ?? "").trim();
+  const options: FieldOption[] = [
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesFemale"), value: "female" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesMale"), value: "male" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesChild"), value: "child" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesElderly"), value: "elderly" },
+  ];
+  if (current && !options.some((option) => option.value === current)) {
+    options.unshift({ label: current, value: current });
+  }
+  return options;
+});
+
 const schemas = computed(() =>
   buildSchemas({
     t,
@@ -598,6 +663,7 @@ const schemas = computed(() =>
     installedVoices: installedVoices.value,
     installedSherpaModels: installedSherpaModels.value,
     applySherpaModelDefaults,
+    sherpaVoiceOptions: sherpaVoiceOptions.value,
   }),
 );
 
@@ -664,6 +730,49 @@ const fieldModel = (field: FieldSchema) => {
     },
   });
 };
+
+/** 读取字段当前值；模板里要多次读同一个字段时，避免重复 new computed。 */
+const fieldValue = (field: FieldSchema): any => fieldModel(field).value;
+
+// 兼容历史遗留的取值：早期版本存的是用户手填的路径，Android 上还可能是
+// `content://` URI（末段是 percent-encoded 的 document id），统一交给公共
+// util 解码后取文件名，避免把一长串 URI 显示给用户。
+const refAudioName = (value: unknown): string => decodePathFileName(String(value ?? ""));
+
+/**
+ * 导入零样本克隆的参考音频。
+ *
+ * 存进字段的是后端复制到应用数据目录后的本地路径（不是 dialog 给的原始路径）：
+ * Android 的 `content://` URI 无法被 Rust 的 `std::fs` 读取，桌面端原始路径也会
+ * 因用户移动/删除源文件而失效。
+ */
+async function importRefAudio(field: FieldSchema): Promise<void> {
+  try {
+    const selected = await open({ multiple: false, filters: wavDialogFilters() });
+    if (typeof selected !== "string") return;
+    audioImportingKey.value = field.key;
+    const imported = await invoke<{ path: string; file_name: string }>("import_sherpa_ref_audio", {
+      path: selected,
+    });
+    fieldModel(field).value = imported.path;
+    uiStore.showSuccess({
+      title: t("settings.sherpa.refLoaded"),
+      message: imported.file_name,
+    });
+  } catch (error: any) {
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
+    console.error("[SettingsCharacterInfo] 导入参考音频失败:", error);
+    uiStore.showError({
+      title: t("settings.sherpa.refImportFailed"),
+      message:
+        rawMessage === "SHERPA_REF_AUDIO_NOT_WAV"
+          ? t("settings.sherpa.refImportNotWav")
+          : rawMessage,
+    });
+  } finally {
+    audioImportingKey.value = null;
+  }
+}
 
 const clothesList = computed({
   get: () => {

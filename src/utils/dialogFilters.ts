@@ -36,3 +36,25 @@ export function musicDialogFilters(): { name: string; extensions: string[] }[] {
   }
   return [{ name: "Music", extensions: DESKTOP_MUSIC_EXT }];
 }
+
+/** Android 端零样本克隆参考音频的 mime（仅 WAV）。 */
+const ANDROID_WAV_MIME = [
+  "audio/x-wav", // Android MimeTypeMap 对 wav 的标准映射
+  "audio/wav", // 少数 ROM 用这个
+];
+
+/** 桌面端只按扩展名过滤。 */
+const DESKTOP_WAV_EXT = ["wav"];
+
+/**
+ * 参考音频（零样本声音克隆，仅支持 WAV）导入 dialog 的 filter。
+ *
+ * 真正的格式判定在 `import_sherpa_ref_audio`（按魔数），这里只是先挡住明显
+ * 不合适的文件，避免用户选完才被拒。
+ */
+export function wavDialogFilters(): { name: string; extensions: string[] }[] {
+  if (isAndroid()) {
+    return [{ name: "WAV", extensions: ANDROID_WAV_MIME }];
+  }
+  return [{ name: "WAV", extensions: DESKTOP_WAV_EXT }];
+}
