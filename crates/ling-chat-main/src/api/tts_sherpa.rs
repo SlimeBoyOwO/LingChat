@@ -654,9 +654,9 @@ pub fn sherpa_onnx_ref_audio_root() -> PathBuf {
 ///   普通文件路径。
 /// - 桌面端：直接用原路径复制，源文件之后被移动/删除也不影响克隆。
 ///
-/// 零样本克隆只接受 WAV（见 `adapters::sherpa_onnx::load_reference_audio`），
-/// 因此这里按魔数校验内容并把落盘扩展名统一成 `.wav`；不合规直接报错（错误码
-/// `SHERPA_REF_AUDIO_NOT_WAV` 由前端翻译），避免「导入成功但合成时不生效」。
+/// 落盘前统一用 `utils::audio` 转成 16-bit PCM WAV：零样本克隆只接受 WAV，
+/// 而且 `load_reference_audio` 是手工解析 RIFF 头、只认 16/32 位 PCM。这样
+/// mp3/flac/ogg/m4a 乃至 24 位或浮点 WAV 都能直接用，不必让用户自己转格式。
 #[tauri::command]
 pub async fn import_sherpa_ref_audio(
     app: AppHandle,
@@ -667,20 +667,8 @@ pub async fn import_sherpa_ref_audio(
         crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: Result<SherpaRefAudioImport, String> = async {
-        // 1. 魔数校验：仅看扩展名会被改名的文件骗过，content:// URI 更是没有可信
-        //    扩展名。`Ok(None)` 表示头部不匹配任何已知格式。
-        let kind =
-            infer::get_from_path(&src.path).map_err(|e| format!("读取参考音频文件头失败: {e}"))?;
-        let is_wav = kind
-            .map(|k| k.mime_type() == "audio/x-wav" || k.extension() == "wav")
-            .unwrap_or(false);
-        if !is_wav {
-            return Err("SHERPA_REF_AUDIO_NOT_WAV".to_string());
-        }
-
-        // 2. 落盘名：取原文件名（去掉路径分隔符与 FAT/NTFS 非法字符），扩展名强制
-        //    wav —— 内容已按魔数确认是 WAV，`.wav` 也是 `load_reference_audio` 的
-        //    硬要求（扩展名不对会被直接拒绝）。
+        // 1. 落盘名：取原文件名（去掉路径分隔符与 FAT/NTFS 非法字符），扩展名固定
+        //    wav —— 转码产物一定是 WAV。
         let stem =
             crate::ai_service::tts::local::saf_bridge::sanitize_staged_filename(&src.display_name)
                 .and_then(|name| {
@@ -697,7 +685,7 @@ pub async fn import_sherpa_ref_audio(
             .await
             .map_err(|e| format!("创建参考音频目录失败: {e}"))?;
 
-        // 3. 同名不覆盖：追加 `_2`/`_3`…（旧文件可能仍被其它角色引用）。计数器兜底
+        // 2. 同名不覆盖：追加 `_2`/`_3`…（旧文件可能仍被其它角色引用）。计数器兜底
         //    上限，避免极端情况下死循环。
         let mut file_name = format!("{stem}.wav");
         let mut counter = 2u32;
@@ -716,10 +704,24 @@ pub async fn import_sherpa_ref_audio(
             counter += 1;
         }
 
+        // 3. 转码落盘。sherpa 侧只认 WAV，格式问题都在这里消化掉。
         let dest = dir.join(&file_name);
-        tokio::fs::copy(&src.path, &dest)
-            .await
-            .map_err(|e| format!("复制参考音频失败: {e}"))?;
+        crate::utils::audio::transcode_to_wav_16bit(&src.path, &dest).map_err(|e| {
+            use crate::utils::audio::TranscodeError;
+            match e {
+                // 用户可自行解决的两种：给错误码，由前端翻译。
+                TranscodeError::Unsupported(reason) => {
+                    tracing::warn!("[tts_sherpa] 参考音频格式不支持: {reason}");
+                    "SHERPA_REF_AUDIO_UNSUPPORTED".to_string()
+                },
+                TranscodeError::TooLong { seconds, .. } => {
+                    tracing::warn!("[tts_sherpa] 参考音频过长: {seconds:.0} 秒");
+                    "SHERPA_REF_AUDIO_TOO_LONG".to_string()
+                },
+                // 其余（IO、写盘）直接给中文说明。
+                TranscodeError::Other(msg) => msg,
+            }
+        })?;
 
         tracing::info!(
             "[tts_sherpa] import_ref_audio: {} -> {}",
