@@ -46,13 +46,24 @@
             <div
               v-for="(save, index) in saves"
               :key="save.id"
-              class="flex flex-col rounded-xl border border-white/10 bg-[rgba(20,20,20,0.45)] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] hover:-translate-y-0.75 hover:border-[rgba(121,217,255,0.35)] hover:bg-[rgba(20,20,20,0.55)] hover:shadow-[0_12px_40px_rgba(121,217,255,0.08)]"
+              class="flex flex-col rounded-xl border p-4 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] hover:-translate-y-0.75 hover:bg-[rgba(20,20,20,0.55)]"
+              :class="
+                isCurrentSave(save.id)
+                  ? 'border-pink-400/45 bg-[rgba(40,20,30,0.5)] hover:border-pink-400/60 hover:shadow-[0_12px_40px_rgba(236,72,153,0.12)]'
+                  : 'border-white/10 bg-[rgba(20,20,20,0.45)] hover:border-[rgba(121,217,255,0.35)] hover:shadow-[0_12px_40px_rgba(121,217,255,0.08)]'
+              "
             >
               <div class="flex gap-4">
                 <!-- Left: Screenshot Preview -->
                 <div
-                  class="h-48 w-1/2 shrink-0 overflow-hidden rounded-lg border border-white/8 bg-black/40"
+                  class="relative h-48 w-1/2 shrink-0 overflow-hidden rounded-lg border border-white/8 bg-black/40"
                 >
+                  <span
+                    v-if="isCurrentSave(save.id)"
+                    class="absolute top-1.5 left-1.5 rounded-full bg-pink-500/80 px-2 py-0.5 text-[10px] font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+                  >
+                    {{ $t("settings.save.list.current") }}
+                  </span>
                   <img
                     v-if="save.screenshot"
                     :src="`${convertFileSrc(save.screenshot)}?v=${save.update_date}`"
@@ -129,13 +140,22 @@
                 </button>
                 <button
                   @click="handleSaveGame(save.id)"
-                  class="flex-1 cursor-pointer rounded-md border border-emerald-500/40 bg-emerald-500/25 px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-white transition-all duration-200 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+                  class="flex-1 cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :class="
+                    isCurrentSave(save.id)
+                      ? 'border-pink-500/40 bg-pink-500/25 hover:bg-pink-500/45 hover:shadow-[0_0_10px_rgba(236,72,153,0.2)]'
+                      : 'border-emerald-500/40 bg-emerald-500/25 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                  "
                   :disabled="actionLoading !== null"
                 >
                   {{
                     actionLoading === save.id
                       ? $t("settings.save.action.saving")
-                      : $t("settings.save.action.overwrite")
+                      : $t(
+                          isCurrentSave(save.id)
+                            ? "settings.save.action.update"
+                            : "settings.save.action.overwrite",
+                        )
                   }}
                 </button>
                 <button
@@ -247,6 +267,9 @@ const handleSaveTitle = async (saveId: number) => {
   }
 };
 
+/** 该存档是不是本局正在进行的那一个（决定「更新存档」按钮与卡片高亮） */
+const isCurrentSave = (saveId: number) => gameStore.currentSaveId === saveId;
+
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -270,15 +293,6 @@ const fetchSaves = async () => {
   }
 };
 
-/** 确保截图已就绪：若最新截图为空但仍有进行中的截图任务，等待它完成。 */
-const ensureScreenshot = async (): Promise<string | null> => {
-  if (gameStore.latestScreenshot) return gameStore.latestScreenshot;
-  if (gameStore.screenshotPending) {
-    await gameStore.screenshotPending;
-  }
-  return gameStore.latestScreenshot;
-};
-
 const handleCreateSave = async () => {
   if (!newSaveTitle.value.trim()) {
     uiStore.showWarning({
@@ -289,19 +303,12 @@ const handleCreateSave = async () => {
   }
   actionLoading.value = -1;
   try {
-    const cursor = gameStore.scriptReadCursor;
-    await invoke<CreateSaveResponse>("create_save", {
+    const result = await invoke<CreateSaveResponse>("create_save", {
       title: newSaveTitle.value.trim(),
-      screenshotPath: await ensureScreenshot(),
-      ...(cursor
-        ? {
-            playerChapter: cursor.chapter,
-            playerEventIndex: cursor.eventIndex,
-            playerLineCount: cursor.lineCount,
-            playerVarsJson: JSON.stringify(cursor.vars),
-          }
-        : {}),
+      ...(await gameStore.collectSaveProgress()),
     });
+    // 新建的档即本局当前存档，之后快速存档就落在它身上
+    gameStore.currentSaveId = result.save_id;
     newSaveTitle.value = "";
     uiStore.showSuccess({
       title: t("settings.save.msg.createSuccessTitle"),
@@ -330,6 +337,8 @@ const handleLoadSave = async (saveId: number) => {
   try {
     const gameInfo = await invoke<WebInitData>("load_save", { saveId });
     applyWebInitData(gameStore.$state, gameInfo);
+    // 读进来的档成为本局当前存档
+    gameStore.currentSaveId = saveId;
 
     // 此处解决了 剧本状态持久化和自动事件clear，注意之后出问题了可以看这里的代码
     gameStore.scriptReadCursor = null;
@@ -364,26 +373,21 @@ const handleLoadSave = async (saveId: number) => {
 };
 
 const handleSaveGame = async (saveId: number) => {
-  const confirmed = await dialogStore.confirm(t("settings.save.msg.overwriteConfirm"));
-  if (!confirmed) return;
+  // 往本局自己的档里写只是把进度落回原处，不丢任何东西，不必再问一次覆盖确认
+  const isCurrent = isCurrentSave(saveId);
+  if (!isCurrent && !(await dialogStore.confirm(t("settings.save.msg.overwriteConfirm")))) return;
   actionLoading.value = saveId;
   try {
-    const cursor = gameStore.scriptReadCursor;
-    await invoke("update_save", {
-      saveId,
-      screenshotPath: await ensureScreenshot(),
-      ...(cursor
-        ? {
-            playerChapter: cursor.chapter,
-            playerEventIndex: cursor.eventIndex,
-            playerLineCount: cursor.lineCount,
-            playerVarsJson: JSON.stringify(cursor.vars),
-          }
-        : {}),
-    });
+    await invoke("update_save", { saveId, ...(await gameStore.collectSaveProgress()) });
     uiStore.showSuccess({
-      title: t("settings.save.msg.overwriteSuccessTitle"),
-      message: t("settings.save.msg.overwriteSuccessMsg"),
+      title: t(
+        isCurrent
+          ? "settings.save.msg.updateSuccessTitle"
+          : "settings.save.msg.overwriteSuccessTitle",
+      ),
+      message: t(
+        isCurrent ? "settings.save.msg.updateSuccessMsg" : "settings.save.msg.overwriteSuccessMsg",
+      ),
     });
     await fetchSaves();
   } catch (e: any) {
@@ -402,6 +406,8 @@ const handleDeleteSave = async (saveId: number) => {
   actionLoading.value = saveId;
   try {
     await invoke("delete_save", { saveId });
+    // 删掉的是本局当前存档：解绑，下次快速存档重新引导建档
+    if (isCurrentSave(saveId)) gameStore.currentSaveId = null;
     uiStore.showSuccess({
       title: t("settings.save.msg.deleteSuccessTitle"),
       message: t("settings.save.msg.deleteSuccessMsg"),

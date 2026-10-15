@@ -8,9 +8,10 @@ use std::time::Duration;
 use futures_util::future::join_all;
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
-use tokio::sync::Mutex;
+use tokio::sync::{Mutex, oneshot};
 use tokio_util::sync::CancellationToken;
 
+use ling_chat_main::ai_service::tools::permissions::DEFAULT_ROLE_GROUP;
 use ling_chat_main::ai_service::tools::registry::ToolRegistry;
 use ling_chat_main::plugin_contract::PluginResourceEntry;
 
@@ -223,7 +224,11 @@ impl PluginManager {
         record
     }
 
-    /// 把插件的所有工具注册进 registry，并并入 available_tools。
+    /// 把插件的所有工具注册进 registry、并入 available_tools，并授权给 default 角色组。
+    ///
+    /// 授权不能省：`available_tools` 只用于展示，真正决定工具是否下发给 LLM
+    /// （以及能否进 Tool RAG 的候选池）的是权限矩阵，而主聊天取的就是 default
+    /// 角色组的工具集——不授权的话插件工具等于声明了也没人看得见。
     fn register_tools(&self, record: &PluginRecord) -> Result<(), String> {
         let mut registered: Vec<String> = Vec::new();
         for spec in &record.manifest.tools {
@@ -239,17 +244,14 @@ impl PluginManager {
                 },
             }
         }
-        let names: Vec<String> = record
-            .manifest
-            .tools
-            .iter()
-            .map(|t| t.name.clone())
-            .collect();
-        self.registry.add_available_tools(&names);
+        // 授权与展示列表都在全部注册成功之后做：中途失败时已注册的工具刚被注销，
+        // 不会留下「注销了却还授着权」的残影。
+        grant_tools_to_default_group(&self.registry, &registered);
+        self.registry.add_available_tools(&registered);
         Ok(())
     }
 
-    /// 注销插件的所有工具，并同步移除 available_tools 展示列表。
+    /// 注销插件的所有工具（含收回授权）。
     fn unregister_tools(&self, record: &PluginRecord) {
         let names: Vec<String> = record
             .manifest
@@ -260,6 +262,7 @@ impl PluginManager {
         for name in &names {
             self.registry.unregister(name);
         }
+        revoke_tools_from_default_group(&self.registry, &names);
         self.registry.remove_available_tools(&names);
     }
 
@@ -285,6 +288,7 @@ impl PluginManager {
             env: python_backend::collect_env(&record.manifest),
             read: record.manifest.read.clone(),
             send_user_message: record.manifest.send_user_message,
+            trigger_proactive: record.manifest.trigger_proactive,
         }
     }
 
@@ -879,6 +883,46 @@ impl PluginManager {
             .map_err(|_| format!("连接 '{conn_id}' 的发送通道已关闭"))
     }
 
+    /// 向某连接发一条请求并登记等待（脚本 `ws_request` 用），返回应答通道。
+    ///
+    /// 只登记不等待：等待与超时归调用方（宿主函数）管，连接任务这边必须保持能收帧，
+    /// 否则响应回来时没人接。
+    pub(crate) fn ws_request(
+        &self,
+        plugin_id: &str,
+        conn_id: &str,
+        request_id: String,
+        payload: String,
+    ) -> Result<oneshot::Receiver<Value>, String> {
+        let table = self.ws.lock().unwrap_or_else(|e| e.into_inner());
+        let conns = table
+            .get(plugin_id)
+            .ok_or_else(|| format!("插件 '{plugin_id}' 没有活动连接"))?;
+        let handle = conns
+            .get(conn_id)
+            .ok_or_else(|| format!("连接 '{conn_id}' 未建立或已关闭"))?;
+        let (tx, rx) = oneshot::channel();
+        handle
+            .pending
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .insert(request_id.clone(), tx);
+        let sent = handle.tx.send(WsCommand::Request {
+            payload,
+            request_id: request_id.clone(),
+        });
+        if sent.is_err() {
+            // 发送通道已关：撤掉刚登记的等待，免得留下永不兑现的条目。
+            handle
+                .pending
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .remove(&request_id);
+            return Err(format!("连接 '{conn_id}' 的发送通道已关闭"));
+        }
+        Ok(rx)
+    }
+
     /// 查询某插件声明的 WS 连接及其当前状态（脚本 `ws_status` 用）。
     ///
     /// `conn_id` 指定时只返回该连接（未声明则报错）；否则返回全部声明。
@@ -1452,6 +1496,38 @@ fn dependency_error(missing: &[String], inactive: &[String]) -> String {
     }
 }
 
+/// 把工具名授权给 default 角色组。
+///
+/// 插件工具注册后必须走这一步才可能被下发：权限矩阵里主聊天取的就是 default
+/// 角色组的工具集，光进 registry 与 available_tools 展示列表都是看不见的。
+fn grant_tools_to_default_group(registry: &ToolRegistry, names: &[String]) {
+    if names.is_empty() {
+        return;
+    }
+    registry.update_permissions(|p| {
+        for name in names {
+            p.set_tool_allowed_for_default_group(name, true);
+        }
+    });
+}
+
+/// 收回 default 角色组对这批工具名的授权。
+fn revoke_tools_from_default_group(registry: &ToolRegistry, names: &[String]) {
+    if names.is_empty() {
+        return;
+    }
+    registry.update_permissions(|p| {
+        // 组不存在时不动权限：那个入口会顺手建一个 enabled = true 的空组，而空
+        // 工具集在 all_tools 场景下等于放行全部工具，一旦被塞进角色就是提权。
+        if !p.role_groups.contains_key(DEFAULT_ROLE_GROUP) {
+            return;
+        }
+        for name in names {
+            p.set_tool_allowed_for_default_group(name, false);
+        }
+    });
+}
+
 /// 按字段声明类型把 JSON 值归一化；无法转换的返回 `None`（调用方忽略该字段）。
 ///
 /// 前端 number 输入框返回的是字符串，这里统一转成数字，保证插件脚本读到的类型正确。
@@ -1478,5 +1554,63 @@ fn coerce_config_value(kind: &ConfigKind, value: &serde_json::Value) -> Option<s
             },
             _ => None,
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use ling_chat_main::ai_service::message_system::generator::GeneratorSource;
+    use ling_chat_main::ai_service::tools::permissions::ToolPermissionConfig;
+
+    /// 造一个「角色归属 default 组」的注册表，权限取自临时目录里的新配置。
+    fn registry_with_role(dir: &Path, role: &str) -> ToolRegistry {
+        let mut permissions =
+            ToolPermissionConfig::load_or_create(dir, std::iter::empty::<String>()).unwrap();
+        permissions
+            .initialize_characters(dir, [role.to_string()])
+            .unwrap();
+        let registry = ToolRegistry::new();
+        registry.set_permissions(permissions);
+        registry
+    }
+
+    /// 插件启停必须同时收放 default 角色组的授权，否则插件工具永远到不了 LLM。
+    #[test]
+    fn plugin_tool_permission_follows_plugin_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let role = "测试角色";
+        let tool = "test_tool";
+        let registry = registry_with_role(dir.path(), role);
+
+        let allowed = registry.allowed_tools(GeneratorSource::UserChat, Some(role));
+        assert!(!allowed.contains(tool), "没授权的工具不该下发");
+
+        grant_tools_to_default_group(&registry, &[tool.to_string()]);
+        let allowed = registry.allowed_tools(GeneratorSource::UserChat, Some(role));
+        assert!(allowed.contains(tool), "插件工具未授权给 default 角色组");
+
+        revoke_tools_from_default_group(&registry, &[tool.to_string()]);
+        let allowed = registry.allowed_tools(GeneratorSource::UserChat, Some(role));
+        assert!(!allowed.contains(tool), "插件注销后仍留着授权");
+    }
+
+    /// 收回授权时不能把不存在的 default 组建出来：空工具集会被当成放行全部工具。
+    #[test]
+    fn revoke_does_not_create_default_group() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut permissions =
+            ToolPermissionConfig::load_or_create(dir.path(), std::iter::empty::<String>()).unwrap();
+        permissions.role_groups.clear();
+        let registry = ToolRegistry::new();
+        registry.set_permissions(permissions);
+
+        revoke_tools_from_default_group(&registry, &["test_tool".to_string()]);
+        assert!(
+            !registry
+                .permissions()
+                .role_groups
+                .contains_key(DEFAULT_ROLE_GROUP)
+        );
     }
 }

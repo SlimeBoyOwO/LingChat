@@ -32,6 +32,14 @@
 # 提示词文本：include_str! 编译期逐字节嵌入二进制，换行符必须固定 LF
 crates/ling-chat-main/src/ai_service/skill_agent/prompts/** text eol=lf
 
+# MC 桥接模组：Java/Gradle 惯例 LF；gradlew 无扩展名，不显式声明会被 autocrlf 检出成 CRLF
+mc-mod/gradlew text eol=lf
+mc-mod/gradle/wrapper/*.jar binary
+*.java text eol=lf
+*.gradle text eol=lf
+*.properties text eol=lf
+*.mcmeta text eol=lf
+
 # Windows脚本
 *.bat text eol=crlf working-tree-encoding=UTF-8
 *.cmd text eol=crlf working-tree-encoding=UTF-8

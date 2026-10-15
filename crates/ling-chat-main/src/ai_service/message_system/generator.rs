@@ -635,6 +635,10 @@ impl MessageGenerator {
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
+        // 句子序号 → 台词表行下标。工具闭环回填时用它抹掉「前导台词」先落的行：
+        // 同一段原文已经在带 tool_call 的助手行里，留着就是同一句话说两遍。
+        let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
+
         // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）。
         // 代号不仅保护最终 DB 写入，也必须在 emit 前检查；否则旧自由对话虽未落库，
         // 流式句子仍会先污染新剧本的 UI 队列。
@@ -672,9 +676,11 @@ impl MessageGenerator {
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
             let thinking_buf = thinking_buf.clone();
+            let sentence_lines = sentence_lines.clone();
             consumer_tasks.push(tokio::spawn(async move {
                 // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
-                let sdeps = SentenceDeps::from(&deps);
+                let mut sdeps = SentenceDeps::from(&deps);
+                sdeps.sentence_lines = Some(sentence_lines.clone());
                 loop {
                     let item = {
                         let mut rx = sentence_rx.lock().await;
@@ -704,6 +710,7 @@ impl MessageGenerator {
                     let resp = match consume_sentence(
                         &sdeps,
                         sentence,
+                        Some(index),
                         &user_message,
                         is_final,
                         user_message_seq,
@@ -751,6 +758,7 @@ impl MessageGenerator {
 
         // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
         let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
+        let completed_turn = published_final || (!output.sent_final && !tool_msgs.is_empty());
         if !tool_msgs.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
@@ -758,6 +766,23 @@ impl MessageGenerator {
                 gs.role_manager.invalidate_memory_history();
                 let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+
+                if !output.preamble_indices.is_empty() {
+                    let doomed: Vec<usize> = {
+                        let ledger = sentence_lines.lock().await;
+                        ledger
+                            .iter()
+                            .filter(|(sentence, _)| output.preamble_indices.contains(sentence))
+                            .map(|(_, line)| *line)
+                            .collect()
+                    };
+                    // 从后往前删，前面的下标才不会被自己挤动
+                    for index in doomed.into_iter().rev() {
+                        if index < gs.line_list.len() {
+                            gs.line_list.remove(index);
+                        }
+                    }
+                }
 
                 for msg in tool_msgs.iter().rev() {
                     let (attribute, content, tool_call) = match msg.role.as_str() {
@@ -792,6 +817,14 @@ impl MessageGenerator {
                         .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
                 }
                 gs.refresh_memories(&self.deps.db).await?;
+            }
+        }
+
+        if completed_turn {
+            let mut gs = self.deps.game_status.lock().await;
+            if gs.preview_generation == self.deps.generation {
+                gs.refresh_memories_after_completed_turn(&self.deps.db)
+                    .await?;
             }
         }
 
@@ -915,6 +948,12 @@ pub struct SentenceDeps {
     /// 试玩代号（写入守卫用）。非试玩时传入当前值即可，守卫恒等。
     pub generation: u64,
     pub is_preview: bool,
+    /// 「这一句正文落成了台词表第几行」的台账（句子序号 → 行下标）。
+    ///
+    /// 工具闭环下前导台词只做呈现，生成结束后要按台账把它先落的那些行抹掉
+    /// （同一段原文已经在带 `tool_call` 的助手行里）。非生成路径（剧本固定台词）
+    /// 传 `None`：那边没有句子序号，也不存在要抹的行。
+    pub sentence_lines: Option<Arc<Mutex<Vec<(usize, usize)>>>>,
 }
 
 impl From<&GeneratorDeps> for SentenceDeps {
@@ -926,6 +965,7 @@ impl From<&GeneratorDeps> for SentenceDeps {
             db: d.db.clone(),
             generation: d.generation,
             is_preview: d.is_preview,
+            sentence_lines: None,
         }
     }
 }
@@ -946,6 +986,7 @@ pub struct ReplyOverrides {
 pub(crate) async fn consume_sentence(
     deps: &SentenceDeps,
     sentence: String,
+    sentence_index: Option<usize>,
     user_message: &str,
     is_final: bool,
     user_message_seq: Option<u32>,
@@ -985,7 +1026,7 @@ pub(crate) async fn consume_sentence(
     }
 
     // 4. 写入 GameStatus
-    add_assistant_line(deps, &response).await?;
+    add_assistant_line(deps, &response, sentence_index).await?;
 
     // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
     // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
@@ -1183,10 +1224,11 @@ async fn build_reply_response(
 }
 
 /// Step D: 将 assistant LINE 写入 GameStatus。
-async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Result<()> {
-    // 试玩代号守卫：试玩任务被中止后，游离的 consumer 任务仍会带着旧代号继续
-    // 生成句子。此时 GameStatus 可能已还原回自由对话，写入会把试玩台词漏进
-    // 自由对话的上下文与历史。捕获代号与当前值不一致即丢弃整条（含记忆同步）。
+async fn add_assistant_line(
+    deps: &SentenceDeps,
+    response: &ReplyResponse,
+    sentence_index: Option<usize>,
+) -> Result<()> {
     {
         let gs = deps.game_status.lock().await;
         if gs.preview_generation != deps.generation {
@@ -1214,5 +1256,10 @@ async fn add_assistant_line(deps: &SentenceDeps, response: &ReplyResponse) -> Re
     };
     let mut gs = deps.game_status.lock().await;
     gs.add_line(&deps.db, line).await?;
+    // 台账：这一句落成了哪一行。工具闭环回填时按它抹掉「前导台词」先落的行。
+    // 记录与写入同在一把锁里，另一个 consumer 插不进来，行下标不会错位。
+    if let (Some(ledger), Some(index)) = (&deps.sentence_lines, sentence_index) {
+        ledger.lock().await.push((index, gs.line_list.len() - 1));
+    }
     Ok(())
 }

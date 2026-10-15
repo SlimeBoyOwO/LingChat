@@ -3,13 +3,16 @@
 //! 三类能力：
 //! - **HTTP**：`http_get` / `http_post`，复用 `factory::build_http_client`
 //!   （webpki-roots，Android 兼容），返回 `{ status, ok, body }`。
-//! - **宿主控制**：`switch_character`（完整切换当前角色）、以及台词历史（上下文
-//!   源）的 `read_context` / `edit_context` / `compress_context`。
+//! - **宿主控制**：`switch_character`（完整切换当前角色）、`set_auto_mode`（切换主界面
+//!   的自动推进），以及台词历史（上下文源）的 `read_context` / `edit_context` /
+//!   `add_prompt_line` / `compress_context`。
 //! - **读素材**：`read_data_file`，把 `data/` 下的文件（角色立绘、TTS 语音等）
 //!   读成 base64 交给插件；只允许 `data/` 内的相对路径，且必须落在该插件
 //!   manifest `read` 声明的前缀之下（未声明一律拒绝）。
 //! - **送消息**：`send_user_message`，把外部消息当成玩家说的话送进对话；
 //!   需 manifest 顶层声明 `send_user_message = true`。
+//! - **请求开口**：`trigger_proactive`，请求宿主主动开一次口（主动对话系统的一次
+//!   投放）；需 manifest 顶层声明 `trigger_proactive = true`。
 //!
 //! 这是**插件专属**面——LLM 拿不到，与 `ctx["call_tool"]` 那条共用通道相对。
 //! 新增宿主能力时，`#[pyfunction]` 直接加在下面的 `plugin_host` 模块里，
@@ -27,9 +30,11 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use ling_chat_main::AppState;
 use ling_chat_main::ai_service::llm::factory;
+use ling_chat_main::ai_service::proactive_system::ProactiveSystem;
 use ling_chat_main::ai_service::tools::game_status_handle;
 use ling_chat_main::ai_service::types::GameLine;
 use ling_chat_main::db::managers::role_repo::RoleRepo;
+use ling_chat_main::utils::prompt::PromptRole;
 
 /// 全局共享的 reqwest Client（连接池复用，进程内单例）。
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
@@ -37,6 +42,13 @@ static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 /// 插件脚本在 spawn_blocking 线程执行，线程上无 tokio runtime 上下文；
 /// 需要异步能力（reqwest / 宿主 async 命令）时，用这个独立多线程 runtime 驱动。
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
+
+/// `ws_request` 默认等待时长。
+const WS_REQUEST_TIMEOUT_MS: u64 = 5000;
+/// 下限：再短本机回环也可能来不及。
+const WS_REQUEST_TIMEOUT_MIN_MS: u64 = 100;
+/// 上限：工具自身 `timeout_ms` 最高 120000，留出余量免得被外层超时先杀掉。
+const WS_REQUEST_TIMEOUT_MAX_MS: u64 = 115_000;
 
 fn client() -> &'static reqwest::Client {
     HTTP_CLIENT.get_or_init(|| {
@@ -213,6 +225,20 @@ async fn switch_character_impl(app: AppHandle, role_id: i32) -> serde_json::Valu
     }
 }
 
+/// `plugin_host.set_auto_mode` 的实现：把主界面的「自动模式」切到指定状态。
+///
+/// 模式的持有者是前端——Pinia 里那个 flag 与推进定时器都在那儿，宿主改不了，所以这里
+/// 只广播一条事件，实际切换由前端完成（与 `switch_character` 同款）。
+fn set_auto_mode_impl(app: &AppHandle, enabled: bool) -> serde_json::Value {
+    match app.emit(
+        "plugin:auto-mode",
+        serde_json::json!({ "enabled": enabled }),
+    ) {
+        Ok(()) => serde_json::json!({ "ok": true }),
+        Err(e) => serde_json::json!({ "ok": false, "error": format!("广播自动模式失败: {e}") }),
+    }
+}
+
 // ── 台词历史（上下文源）的读取 / 编辑 / 压缩 ──
 
 /// 宿主句柄未初始化时的统一返回（插件在 setup 完成前被调用）。
@@ -277,6 +303,96 @@ async fn edit_context_impl(
             serde_json::json!({ "ok": true, "removed": removed, "total": gs.line_list.len() })
         },
         Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+/// 追加一条提示台词（旁白 / 系统提示 / 剧情提示）。
+async fn add_prompt_line_impl(app: AppHandle, role: String, text: String) -> serde_json::Value {
+    let role = match role.trim().to_ascii_lowercase().as_str() {
+        "narrator" => PromptRole::Narrator,
+        "system" => PromptRole::System,
+        "plot" => PromptRole::Plot,
+        other => {
+            return serde_json::json!({
+                "ok": false,
+                "error": format!("未知的提示角色：{other}（可用 narrator / system / plot）"),
+            });
+        },
+    };
+    let text = text.trim();
+    if text.is_empty() {
+        return serde_json::json!({ "ok": false, "error": "提示内容不能为空" });
+    }
+
+    let state = app.state::<AppState>();
+    let db = state.db.clone();
+    let gs = game_status_handle(&app).await;
+    let mut gs = gs.lock().await;
+    match gs.add_prompt_line(&db, role, text).await {
+        Ok(index) => serde_json::json!({ "ok": true, "index": index }),
+        Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
+    }
+}
+
+// ── 请求一次主动对话 ──
+
+thread_local! {
+    /// 当前线程正在执行的插件是否声明了 `trigger_proactive` 能力（由
+    /// `python_backend::run_entry` 设置）。与 `SEND_ALLOW` 同款：未声明的插件
+    /// 调用一律被拒，guard 在 Drop 时还原上一个值。
+    static PROACTIVE_ALLOW: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// 设置当前线程的 `trigger_proactive` 声明；Drop 时还原（见 `PROACTIVE_ALLOW`）。
+pub(crate) struct ProactiveAllowGuard {
+    prev: bool,
+}
+
+impl Drop for ProactiveAllowGuard {
+    fn drop(&mut self) {
+        PROACTIVE_ALLOW.with(|cell| *cell.borrow_mut() = self.prev);
+    }
+}
+
+/// 设置当前线程的 `trigger_proactive` 声明，返回还原用 guard。
+pub(crate) fn set_proactive_allow(allow: bool) -> ProactiveAllowGuard {
+    PROACTIVE_ALLOW.with(|cell| ProactiveAllowGuard {
+        prev: cell.replace(allow),
+    })
+}
+
+fn current_proactive_allow() -> bool {
+    PROACTIVE_ALLOW.with(|cell| *cell.borrow())
+}
+
+/// 请求宿主主动开一次口（主动对话系统的一次投放）。
+///
+/// `text` 为空表示只开一次口、不写任何提示行：要说的内容由插件自己记成旁白，
+/// 再补一句「该注意什么、该不该开口」等于替角色拿主意。
+///
+/// 每次都往宿主日志留一行：拒绝原因只回给插件，而插件的 print 不进日志文件，
+/// 于是「什么都没发生」时这里是唯一的线索。
+async fn trigger_proactive_impl(app: AppHandle, text: String) -> serde_json::Value {
+    let text = text.trim().to_string();
+    let plugin = current_plugin().unwrap_or_else(|| "未知插件".to_string());
+    let head = if text.is_empty() {
+        "（不带提示语）".to_string()
+    } else {
+        text.chars().take(24).collect()
+    };
+    let Some(proactive) = app.state::<AppState>().proactive_system.clone() else {
+        tracing::warn!(plugin = %plugin, "插件请求主动开口被拒：主动对话系统未初始化");
+        return serde_json::json!({ "ok": false, "error": "主动对话系统未初始化" });
+    };
+    match ProactiveSystem::request_deliver(proactive, text).await {
+        Ok(()) => {
+            tracing::info!(plugin = %plugin, "插件请求主动开口已受理：{head}");
+            serde_json::json!({ "ok": true, "triggered": true })
+        },
+        Err(reason) => {
+            tracing::info!(plugin = %plugin, reason, "插件请求主动开口被拒：{head}");
+            serde_json::json!({ "ok": true, "triggered": false, "reason": reason })
+        },
     }
 }
 
@@ -656,6 +772,20 @@ mod plugin_host {
         Ok(super::value_to_pyobject(vm, &result))
     }
 
+    /// 切换主界面的「自动模式」：开启后对话按设置里的延迟自动逐句推进，不用点。
+    ///
+    /// 用法：`set_auto_mode(True)` / `set_auto_mode(False)`
+    ///
+    /// 返回：成功 `{ "ok": true }`；失败 `{ "ok": false, "error": "..." }`（不抛异常）。
+    #[pyfunction]
+    fn set_auto_mode(enabled: bool, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let result = super::set_auto_mode_impl(&app, enabled);
+        Ok(super::value_to_pyobject(vm, &result))
+    }
+
     /// 读取台词历史（上下文源）第 start~end 条，缺省整段。
     ///
     /// 用法：`read_context()`（整段）/ `read_context(start=1, end=3)`
@@ -706,6 +836,46 @@ mod plugin_host {
             return Ok(super::no_host(vm));
         };
         let result = super::runtime().block_on(super::edit_context_impl(app, start, end, lines));
+        Ok(super::value_to_pyobject(vm, &result))
+    }
+
+    /// 往台词表末尾追加一条「提示」台词：旁白 / 系统提示 / 剧情提示。
+    ///
+    /// 用法：`add_prompt_line("narrator", "你已和玩家一起进入 Minecraft 世界")`
+    ///
+    /// 返回 `{ "ok": true, "index": N }`（N 是该行的位置，1 起、与 `read_context`
+    /// 的下标口径一致）或 `{ "ok": false, "error": "..." }`（角色名不认识 / 内容为空）。
+    #[pyfunction]
+    fn add_prompt_line(role: String, text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let result = super::runtime().block_on(super::add_prompt_line_impl(app, role, text));
+        Ok(super::value_to_pyobject(vm, &result))
+    }
+
+    /// 请求宿主主动开一次口（主动对话系统的一次投放）：角色不等玩家说话，自己说一句。
+    ///
+    /// 用法：`trigger_proactive("")` —— 把要说的先记成旁白，再空提示请求开口；
+    /// 传提示语则会被包成 `{旁白: （系统提示：…）}` 写进台词表（截图转述这类要用）。
+    ///
+    /// 返回：`{ "ok": true, "triggered": true }`
+    #[pyfunction]
+    fn trigger_proactive(text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        if !super::current_proactive_allow() {
+            tracing::warn!(
+                plugin = %super::current_plugin().unwrap_or_default(),
+                "插件调用 trigger_proactive 被拒：未在 manifest 顶层声明该能力"
+            );
+            return Ok(super::err_json(
+                vm,
+                "本插件未声明 trigger_proactive 能力（需在 manifest.toml 顶层写 trigger_proactive = true）",
+            ));
+        }
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let result = super::runtime().block_on(super::trigger_proactive_impl(app, text));
         Ok(super::value_to_pyobject(vm, &result))
     }
 
@@ -810,6 +980,74 @@ mod plugin_host {
             .clone();
         let result = manager.ws_send(&plugin_id, &conn_id, cmd);
         Ok(super::result_to_py(vm, result))
+    }
+
+    /// 向已声明的 WS 连接发一条请求，并等它的响应帧。
+    ///
+    /// 用法：`ws_request("gateway", {"type": "get_status", "data": {}}, timeout_ms=5000)`
+    ///
+    /// `data` 必须是对象：宿主会在这层信封上补 `request_id` 再发出，对端原样带回后
+    /// 按同一个 id 兑现。**会阻塞到响应或超时**，所以 `timeout_ms` 要明显小于本工具
+    /// 自身的 `timeout_ms`，否则会被外层执行超时先杀掉。
+    ///
+    /// 返回 `{ "ok": true, "response": <响应帧完整对象> }`；失败一律
+    /// `{ "ok": false, "error": "..." }`（未连接 / 超时 / 连接断开三种已归一化）。
+    #[pyfunction]
+    fn ws_request(
+        conn_id: String,
+        data: PyObjectRef,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        let kwargs = super::kwargs_map(kwargs);
+        let timeout_ms = kwargs
+            .get("timeout_ms")
+            .and_then(|v| super::py_to_value(vm, v).as_u64())
+            .unwrap_or(super::WS_REQUEST_TIMEOUT_MS)
+            .clamp(
+                super::WS_REQUEST_TIMEOUT_MIN_MS,
+                super::WS_REQUEST_TIMEOUT_MAX_MS,
+            );
+
+        let mut payload = super::py_to_value(vm, &data);
+        let Some(map) = payload.as_object_mut() else {
+            return Ok(super::err_json(vm, "ws_request 的 data 必须是对象"));
+        };
+        let request_id = uuid::Uuid::new_v4().to_string();
+        map.insert(
+            "request_id".to_string(),
+            serde_json::Value::String(request_id.clone()),
+        );
+
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let Some(plugin_id) = super::current_plugin() else {
+            return Ok(super::err_json(vm, "无法确定当前插件"));
+        };
+        let manager = app
+            .state::<std::sync::Arc<crate::PluginManager>>()
+            .inner()
+            .clone();
+        let rx = match manager.ws_request(&plugin_id, &conn_id, request_id, payload.to_string()) {
+            Ok(rx) => rx,
+            Err(e) => return Ok(super::err_json(vm, &e)),
+        };
+
+        let waited = super::runtime().block_on(async move {
+            tokio::time::timeout(std::time::Duration::from_millis(timeout_ms), rx).await
+        });
+        let out = match waited {
+            Ok(Ok(response)) => serde_json::json!({ "ok": true, "response": response }),
+            // 通道被丢弃 = 连接断了（连接任务退出时清空等待表）。
+            Ok(Err(_)) => serde_json::json!({ "ok": false, "error": "连接已断开，请求未得到响应" }),
+            // 单人游戏按 Esc 暂停时游戏 tick 停止，模组不处理任何请求，表现就是全部超时。
+            Err(_) => serde_json::json!({
+                "ok": false,
+                "error": "请求超时，游戏可能处于暂停或未响应状态",
+            }),
+        };
+        Ok(super::value_to_pyobject(vm, &out))
     }
 
     /// 查询本插件 WS 连接的当前状态。

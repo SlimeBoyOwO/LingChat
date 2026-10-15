@@ -571,6 +571,13 @@ export function initializeTauriEventListeners() {
     eventQueue.resume();
   });
 
+  // 插件请求切换「自动模式」（plugin_host.set_auto_mode）：插件接上外部程序后会把主界面
+  // 切进自动逐句推进——玩家在那边（游戏里、投屏端）腾不出手点对话框。该模式不落盘，
+  // 也不会因为插件断开而自动还原，插件要还原得自己再请求一次。
+  listen<{ enabled: boolean }>("plugin:auto-mode", (event) => {
+    useUIStore().autoMode = !!event.payload?.enabled;
+  });
+
   console.log(
     "[Tauri] 事件监听已注册（ai + ai:thinking_progress + tts:cleanup + adventure + 自动存档 + affection:changed + 13 个剧本事件 + character:switch + scene:switch + character:clothes-changed + character:full-switch）",
   );

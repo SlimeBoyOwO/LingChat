@@ -125,6 +125,29 @@ export const actions = {
     this.currentScene = null;
   },
 
+  /**
+   * 收集写档载荷：截图（必要时等正在进行的截图）+ 剧本阅读锚点。
+   * 锚点缺失时不下发这几个字段，后端回退引擎当前进度。
+   */
+  async collectSaveProgress(this: GameState): Promise<Record<string, unknown>> {
+    let screenshotPath = this.latestScreenshot;
+    if (!screenshotPath && this.screenshotPending) {
+      screenshotPath = await this.screenshotPending;
+    }
+    const cursor = this.scriptReadCursor;
+    return {
+      screenshotPath,
+      ...(cursor
+        ? {
+            playerChapter: cursor.chapter,
+            playerEventIndex: cursor.eventIndex,
+            playerLineCount: cursor.lineCount,
+            playerVarsJson: JSON.stringify(cursor.vars),
+          }
+        : {}),
+    };
+  },
+
   /** 截图主窗口（1 次 IPC，0 次窗口枚举）。若已有截图进行中则复用同一个 Promise。 */
   async captureScreenshot(this: GameState): Promise<string | null> {
     // 已有截图进行中 → 复用

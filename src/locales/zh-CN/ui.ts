@@ -168,6 +168,9 @@ export default {
     maxToolRoundsHint: "限制主聊中单次回复可连续执行工具的轮数；每轮可能包含多个工具调用。",
     maxToolRoundsUnit: "轮",
     maxToolRoundsRange: "范围 {min}–{max} · 默认 {default}",
+    toolRagTitle: "工具按需检索",
+    toolRagHint:
+      "每次请求只下发常用工具，模型需要时先用一句话检索出合适的工具再调用，省下全部工具说明占用的上下文。关闭后每次请求都下发全部已授权工具。",
     accessModes: {
       manual: { label: "逐次确认", description: "写入、编辑、删除文件和执行命令前都需要你确认。" },
       auto_approve: {
@@ -324,6 +327,7 @@ export default {
     },
     tools: {
       web_search: "网页搜索",
+      tool_search: "检索工具",
       get_current_time: "当前时间",
       schedule_get_all: "查询日程",
       schedule_add_todo: "添加待办",
@@ -393,6 +397,7 @@ export default {
     todoReminderStyle: "待办提醒方式",
     todoReminderStyleRole: "角色提醒",
     todoReminderStyleToast: "弹窗消息提醒",
+    growthRangeHint: "≈ 每轮兴趣增长 {min} ~ {max}（由上面的间隔反推）",
   },
   calendarPage: {
     yearMonth: "{year}年 {month}月",

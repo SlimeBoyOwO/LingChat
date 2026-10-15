@@ -329,7 +329,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_short_term_max_chars.to_string(),
                         ),
                         description:
-                            "近期回顾长度上限（字符数，默认 500，0 不截断）"
+                            "近期回顾语义压缩目标（字符数，默认 500，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -341,7 +341,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_long_term_max_chars.to_string(),
                         ),
                         description:
-                            "长期经历长度上限（字符数，默认 2000，0 不截断）"
+                            "长期经历语义压缩目标（字符数，默认 2000，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -353,7 +353,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_user_info_max_chars.to_string(),
                         ),
                         description:
-                            "taの信息长度上限（字符数，默认 800，0 不截断）"
+                            "玩家资料语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -365,7 +365,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_promises_max_chars.to_string(),
                         ),
                         description:
-                            "重要约定长度上限（字符数，默认 800，0 不截断）"
+                            "重要约定语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -642,6 +642,18 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         ),
                         description: "在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES,
+                            &proactive_defaults.expected_interval_minutes.to_string(),
+                        ),
+                        description: "两次主动搭话之间的期望间隔（分钟，1–60）：数值越小越频繁，\
+                                      程序据此反推每轮兴趣值的增长随机范围"
+                            .to_string(),
+                        setting_type: "number".to_string(),
                     },
                 ],
             },

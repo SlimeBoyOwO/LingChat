@@ -6,7 +6,7 @@
       role="status"
       aria-live="polite"
     >
-      <ShieldAlert :size="18" aria-hidden="true" />
+      <ShieldAlert :size="18" class="shrink-0" aria-hidden="true" />
       <span>{{ $t("ui.toolCalls.fullAccessTopWarning") }}</span>
     </div>
   </Transition>
@@ -72,14 +72,8 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .full-access-warning {
-  position: fixed;
-  top: calc(15px + var(--safe-area-inset-top));
-  left: 50%;
-  z-index: 1001;
   display: flex;
-  height: 40px;
-  max-width: min(44rem, calc(100vw - 34rem));
-  transform: translateX(-50%);
+  max-width: 100%;
   align-items: center;
   gap: 0.45rem;
   padding: 0;
@@ -87,9 +81,10 @@ onBeforeUnmount(() => {
   font-size: 0.875rem;
   font-weight: 700;
   letter-spacing: 0.02em;
-  line-height: 1;
+  line-height: 1.4;
   pointer-events: none;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
+  text-align: center;
   text-shadow:
     0 1px 2px rgb(0 0 0 / 95%),
     0 0 8px rgb(0 0 0 / 75%);
@@ -103,13 +98,5 @@ onBeforeUnmount(() => {
 .full-access-notice-enter-from,
 .full-access-notice-leave-to {
   opacity: 0;
-}
-
-@media (max-width: 1279px) {
-  .full-access-warning {
-    top: calc(54px + var(--safe-area-inset-top));
-    max-width: calc(100vw - 2rem);
-    width: max-content;
-  }
 }
 </style>

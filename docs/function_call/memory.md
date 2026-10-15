@@ -62,6 +62,7 @@ gs.refresh_memories(&self.deps.db).await?;          // 关键：写台词表后�
 - **tool 行**：`content` 存结构化的 `{tool_call_id, result}`，与「角色台词」同表同构，但 `sender_role_id: None`（不是任何角色的发言）；
 - **持久化**：`save_repo.rs` 读写存档时同步读写 `tool_call` 列（含弱匹配去重逻辑），工具历史随存档走；
 - **对玩家不可见**：前端展示历史时过滤 `attribute === 'tool'` 的行（`stores/modules/game/actions.ts`），玩家只看到 assistant 行的自然语言。
+- **前导台词只存一份**：工具前那句话会先随流式管线呈现给玩家，但入库形式只有上表第一行那一种（带 `tool_call` 的 assistant 行）；流式期间先落的普通助手行会在回填时按台账抹掉（见 [architecture.md](architecture.md) §8）。记忆里因此只有一份，顺序也保持「先说话 → 再调工具 → 再收尾」。
 
 ## 3. 提取（Extraction）：`MemoryBuilder` 还原
 

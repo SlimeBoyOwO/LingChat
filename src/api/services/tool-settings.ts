@@ -40,6 +40,8 @@ export interface ToolSettings {
   access_mode: ToolAccessMode;
   /** 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。 */
   max_tool_rounds: number;
+  /** 工具按需检索（Tool RAG）：只下发常驻工具 + 检索激活的工具，而不是全部已授权工具。 */
+  tool_rag: boolean;
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */

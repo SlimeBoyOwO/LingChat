@@ -127,12 +127,14 @@ export default {
       editTitleTip: "Double-click to edit the save title",
       untitled: "Untitled Save",
       noMessage: "No dialogue recorded yet",
+      current: "Current",
     },
     action: {
       reading: "Loading...",
       load: "Load Save",
       saving: "Saving...",
       overwrite: "Overwrite Save",
+      update: "Update Save",
       deleting: "Deleting...",
       delete: "Delete Save",
     },
@@ -155,6 +157,8 @@ export default {
         "Overwriting this save will discard its previous progress. Overwrite anyway?",
       overwriteSuccessTitle: "Saved",
       overwriteSuccessMsg: "Save overwritten",
+      updateSuccessTitle: "Updated",
+      updateSuccessMsg: "Save updated",
       overwriteFailTitle: "Save Failed",
       deleteConfirm: "Are you sure you want to delete this save? This cannot be undone.",
       deleteSuccessTitle: "Deleted",
@@ -281,6 +285,8 @@ export default {
       },
       ENABLE_PROACTIVE_SYSTEM: "Whether to enable the proactive chat system",
       MAX_PROACTIVE_TIMES: "How many times the AI can chat proactively before the user responds",
+      PROACTIVE_EXPECTED_INTERVAL_MINUTES:
+        "Expected interval between proactive chats in minutes, 1–60: smaller means more frequent. The per-cycle interest growth range is derived from it",
       ENABLE_VISUAL_PRECEPTION:
         "Allow proactive visual perception of the desktop (peeking at your screen)",
       SCREEN_WEIGHT:

@@ -14,6 +14,9 @@ use crate::ai_service::types::{
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
 
+/// 全局变量键：剧本临时背景（值 = 解析后的背景图绝对路径）。
+const BACKGROUND_OVERRIDE_VAR_KEY: &str = "background.override";
+
 /// 存储所有运行时共享的游戏状态。
 pub struct GameStatus {
     pub player: Player,
@@ -168,7 +171,18 @@ impl GameStatus {
 
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
         self.role_manager
-            .sync_memories(db, &self.line_list, None)
+            .sync_memories(db, &self.line_list, None, false)
+            .await
+    }
+
+    /// 当前流式回复与工具回填均已结束后刷新记忆。
+    /// 此时允许永久记忆把一个超长、但工具配对完整的回合整体写入摘要。
+    pub async fn refresh_memories_after_completed_turn(
+        &mut self,
+        db: &DatabaseConnection,
+    ) -> Result<()> {
+        self.role_manager
+            .sync_memories(db, &self.line_list, None, true)
             .await
     }
 
@@ -286,24 +300,84 @@ impl GameStatus {
             .unwrap_or_default()
     }
 
+    // ============ 背景（场景 / 剧本临时背景） ============
+
+    /// 当前的剧本临时背景（无记录则为 None）。
+    pub fn background_override(&self) -> Option<String> {
+        self.get_variable(BACKGROUND_OVERRIDE_VAR_KEY)
+            .and_then(|value| value.as_str())
+            .map(str::to_string)
+    }
+
+    /// 记录剧本临时背景：更新展示背景，并写进全局变量随存档一起持久化。
+    /// 路径为空视为没有临时背景，只清掉记录。
+    pub fn set_background_override(&mut self, background: String) {
+        if background.is_empty() {
+            self.global_variables.remove(BACKGROUND_OVERRIDE_VAR_KEY);
+        } else {
+            self.set_variable(
+                BACKGROUND_OVERRIDE_VAR_KEY,
+                Value::String(background.clone()),
+            );
+        }
+        self.background = background;
+    }
+
+    /// 丢弃剧本临时背景记录。切换当前场景时调用——记录只保留到新场景更新为止。
+    pub fn clear_background_override(&mut self) {
+        self.global_variables.remove(BACKGROUND_OVERRIDE_VAR_KEY);
+    }
+
+    /// 按当前场景刷新展示背景，有临时背景记录时不覆盖。
+    ///
+    /// 这是「背景跟随场景」的唯一写入口：初始化与读档时场景可能是自动补出来的
+    /// （不算用户切了景），所以只同步背景、不动临时记录。
+    pub fn sync_background_with_scene(&mut self, scene_background: Option<String>) {
+        if self.background_override().is_some() {
+            return;
+        }
+        self.background = scene_background.unwrap_or_default();
+    }
+
+    /// 追加一条「提示」台词：旁白 / 系统提示 / 剧情提示。返回它的位置（1 起，
+    /// 与 [`Self::read_context_lines`] 的下标口径一致）。
+    ///
+    /// 这类行有三条不变量，错一条这条提示就废了：
+    /// - 属性必须是 USER——SYSTEM 属性会被记忆构建丢弃，提示根本进不了上下文；
+    /// - `sender_role_id` 保持 None，从而不计入玩家消息序号、也不算「真实对话」
+    ///   （自动存档靠这个判「有没有新剧情」，否则登录提示会把旧档顶掉）；
+    /// - 内容必须走 [`PromptRole::build_prompt`]——`{旁白:` 前缀是判定这类行的唯一
+    ///   真相源，系统提示词也靠这个信封告诉模型「大括号里的是提示，不是玩家说的话」。
+    ///
+    /// 与 [`Self::add_line`] 一样是纯追加、不动已有下标，所以生成途中也能插。
+    pub async fn add_prompt_line(
+        &mut self,
+        db: &DatabaseConnection,
+        role: PromptRole,
+        text: &str,
+    ) -> Result<usize> {
+        self.add_line(
+            db,
+            LineBase {
+                content: role.build_prompt(text),
+                attribute: LineAttributeExt(LineAttribute::User),
+                display_name: Some(role.display_name().to_string()),
+                ..Default::default()
+            },
+        )
+        .await?;
+        Ok(self.line_list.len())
+    }
+
     /// 追加一条「系统提示」台词：给模型的运行时指令，既不是旁白也不是玩家发言。
-    /// 必须用 USER 属性——SYSTEM 属性会被记忆构建丢弃，提示根本进不了上下文；
-    /// sender_role_id 保持 None，从而不计入玩家消息序号，也不算「真实对话」。
+    /// 等价于 [`Self::add_prompt_line`] 配 [`PromptRole::System`]，不变量见那里。
     pub async fn add_system_hint_line(
         &mut self,
         db: &DatabaseConnection,
         text: &str,
     ) -> Result<()> {
-        self.add_line(
-            db,
-            LineBase {
-                content: PromptRole::System.build_prompt(text),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
+        self.add_prompt_line(db, PromptRole::System, text).await?;
+        Ok(())
     }
 
     /// 非系统消息数量（用于羁绊冒险解锁条件检测）

@@ -93,6 +93,19 @@
 
                   <Button
                     type="nav"
+                    icon="upload"
+                    :title="$t('game.dialog.quickSave')"
+                    @click="quickSave"
+                  ></Button>
+                  <Button
+                    type="nav"
+                    icon="download"
+                    :title="$t('game.dialog.quickLoad')"
+                    @click="openSaveSettings"
+                  ></Button>
+
+                  <Button
+                    type="nav"
                     icon="close"
                     :title="$t('game.dialog.closeDialog')"
                     @click="removeDialog"
@@ -178,6 +191,18 @@
                 @start="onMobileMenuAction(startScreenshot)"
                 @clear="onMobileMenuAction(clearScreenshot)"
               />
+              <Button
+                type="nav"
+                icon="download"
+                :title="$t('game.dialog.quickSave')"
+                @click="onMobileMenuAction(quickSave)"
+              ></Button>
+              <Button
+                type="nav"
+                icon="upload"
+                :title="$t('game.dialog.quickLoad')"
+                @click="onMobileMenuAction(openSaveSettings)"
+              ></Button>
             </div>
           </div>
         </Transition>
@@ -239,6 +264,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import { invoke } from "@tauri-apps/api/core";
 import { X } from "lucide-vue-next";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
 import { setMobileMenuOpen, useAsrInput } from "../../../composables/asr";
@@ -331,6 +357,44 @@ const updateContainerWidth = () => {
 const openSceneSettings = () => {
   uiStore.toggleSettings(true);
   uiStore.setSettingsTab("background");
+};
+
+// 存档页：快速读档直接打开它；快速存档无档可更新时也把用户导到这里建新档
+const openSaveSettings = () => {
+  uiStore.toggleSettings(true);
+  uiStore.setSettingsTab("save");
+};
+
+// 快速存档：本次会话已绑定存档就直接覆盖它，否则先去存档页建一个
+const quickSave = async () => {
+  const saveId = gameStore.currentSaveId;
+  if (saveId === null) {
+    openSaveSettings();
+    uiStore.showNotification({
+      type: "warning",
+      title: t("settings.save.msg.warnTitle"),
+      message: t("game.dialog.quickSaveNoSave"),
+      skipTipsCheck: true,
+    });
+    return;
+  }
+  try {
+    await invoke("update_save", { saveId, ...(await gameStore.collectSaveProgress()) });
+    uiStore.showNotification({
+      type: "success",
+      title: t("settings.save.msg.updateSuccessTitle"),
+      message: t("settings.save.msg.updateSuccessMsg"),
+      skipTipsCheck: true,
+    });
+  } catch (e: any) {
+    console.error("快速存档失败:", e);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.save.msg.overwriteFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.save.msg.unknownError"),
+      skipTipsCheck: true,
+    });
+  }
 };
 
 // 移动端菜单操作：执行动作后自动收起菜单

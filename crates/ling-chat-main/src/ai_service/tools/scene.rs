@@ -139,10 +139,13 @@ impl Tool for SceneSwitch {
             return Err(ToolError::Execution(format!("未找到场景: {what}")));
         };
         let scene_id = scene.id.clone();
+        let background = crate::api::scene::resolved_background_of(&scene);
 
         let gs = game_status_handle(&app).await;
         let mut gs = gs.lock().await;
         gs.current_scene_id = Some(scene_id.clone());
+        gs.clear_background_override();
+        gs.sync_background_with_scene(background.clone());
 
         // 持久化到 store，便于下次启动恢复（与 api/scene.rs select_scene 一致）
         if let Ok(store) = app.store(crate::config::STORE_FILE) {
@@ -156,14 +159,13 @@ impl Tool for SceneSwitch {
 
         // select_scene 命令由前端自己更新 Pinia；LLM 工具没有这个调用方，必须主动
         // 广播完整场景资料，否则后端 ID 已变化但画面/背景仍停留在旧场景。
-        let background = crate::api::scene::normalize_background(&scene.background);
         let payload = json!({
             "type": "scene_switch",
             "scene": {
                 "id": scene.id,
                 "scene_name": scene.name,
                 "scene_description": scene.description,
-                "background": if background.is_empty() { Value::Null } else { json!(background) },
+                "background": background.map_or(Value::Null, |bg| json!(bg)),
                 "lighting": scene.lighting,
                 "location_type": scene.location_type.map(|l| l.as_str()),
                 "created_at": scene.created_at,

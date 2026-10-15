@@ -108,6 +108,8 @@ pub const COSYVOICE_VOICES: &str = "tts.cosyvoice_voices";
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
+/// 两次主动对话之间的期望间隔（分钟），用于反推兴趣值的增长随机范围。
+pub const PROACTIVE_EXPECTED_INTERVAL_MINUTES: &str = "PROACTIVE_EXPECTED_INTERVAL_MINUTES";
 // 旧的视觉模型独立配置键已废弃，视觉模型统一到大模型管理中配置；
 // 这些常量仅保留给迁移逻辑读取旧配置使用。
 pub const VD_API_KEY: &str = "VD_API_KEY";

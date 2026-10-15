@@ -57,7 +57,12 @@ impl ScriptEvent for BackgroundEvent {
         )
         .unwrap_or_default();
 
-        ctx.game_status.lock().await.background = resolved.clone();
+        // 走临时背景记录而不是直接写 background：剧情换的图未必有对应场景，
+        // 记进全局变量才能随存档恢复，并在读档时盖过场景背景
+        ctx.game_status
+            .lock()
+            .await
+            .set_background_override(resolved.clone());
 
         let payload = BackgroundPayload {
             image_path: resolved,

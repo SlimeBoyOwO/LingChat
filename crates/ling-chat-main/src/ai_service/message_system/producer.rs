@@ -52,11 +52,9 @@ pub struct ProducerOutput {
     /// 模型原始输出（未拆分）。
     pub accumulated: String,
     /// 本轮是否发出过 `is_final=true` 的句子。
-    ///
-    /// 为 `false` 时调用方**必须**自行收尾：`is_final` 是前端队列唯一的复位触发点，
-    /// 缺失它会让界面永远停在等待态。工具闭环下这条路径是可达的——工具后模型
-    /// 若没有产出新正文，本次栅栏已经把残留缓冲清空，EOF 就没有可提升为 final 的内容了。
     pub sent_final: bool,
+    /// 工具前那句「前导台词」占用的句子序号。
+    pub preamble_indices: Vec<usize>,
 }
 
 pub struct StreamProducer {
@@ -104,6 +102,10 @@ impl StreamProducer {
         // 本轮是否已发出收尾句。工具闭环下"工具后无新正文"会让这条保持 false，
         // 调用方据此补一次收尾（否则前端永远停在等待态）。
         let mut sent_final = false;
+        // 本轮（两道栅栏之间）发出的句子序号，与「栅栏之前发出、只做呈现」的那些。
+        // 工具循环落进台词表的助手行里带着同一段原文，所以前者的行稍后要抹掉。
+        let mut round_indices: Vec<usize> = Vec::new();
+        let mut preamble_indices: Vec<usize> = Vec::new();
 
         while let Some(item) = self.llm_stream.next().await {
             match item? {
@@ -141,6 +143,7 @@ impl StreamProducer {
                             &self.tx,
                             &mut sentence,
                             &mut sentence_index,
+                            &mut round_indices,
                             &mut seen_sentences,
                             &mut pending_sentence,
                             &self.tool_calls_seen,
@@ -185,7 +188,14 @@ impl StreamProducer {
                     // `tool_calls_seen`，dispatch 会把句子扣进 `pending_sentence`，
                     // 而那正是我们此刻要放出去的东西。
                     if let Some(pending) = pending_sentence.take() {
-                        Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
+                        Self::send_sentence(
+                            &self.tx,
+                            pending,
+                            &mut sentence_index,
+                            &mut round_indices,
+                            false,
+                        )
+                        .await?;
                     }
 
                     let preamble = std::mem::take(&mut buffer);
@@ -193,8 +203,19 @@ impl StreamProducer {
                     // `is_duplicate` 会顺带把文本记入 `seen_sentences`：工具后模型若原样
                     // 复读这段前导，EOF 收尾时才认得出它是重复（否则会多显示一条）。
                     if !preamble.is_empty() && !Self::is_duplicate(&mut seen_sentences, &preamble) {
-                        Self::send_sentence(&self.tx, preamble, &mut sentence_index, false).await?;
+                        Self::send_sentence(
+                            &self.tx,
+                            preamble,
+                            &mut sentence_index,
+                            &mut round_indices,
+                            false,
+                        )
+                        .await?;
                     }
+
+                    // 到栅栏为止发的都是「工具前说的话」：它们的内容在工具行里已经有一份，
+                    // 全部记进只做呈现的那一档（含本轮更早分出去的那几段）。
+                    preamble_indices.append(&mut round_indices);
 
                     // 栅栏自身占一个索引，且不经 `send_sentence`（item 类型不同）。
                     let index = sentence_index;
@@ -224,7 +245,14 @@ impl StreamProducer {
             if final_is_duplicate {
                 if let Some(pending) = pending_sentence.take() {
                     tracing::info!("[dedupe] 丢弃末尾复读句子: {:.40}", final_content);
-                    Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+                    Self::send_sentence(
+                        &self.tx,
+                        pending,
+                        &mut sentence_index,
+                        &mut round_indices,
+                        true,
+                    )
+                    .await?;
                     sent_final = true;
                 } else {
                     // 工具后模型原样复读前导、且没有产出新正文。**不重放**——重放会让
@@ -236,22 +264,51 @@ impl StreamProducer {
                 }
             } else if !final_content.is_empty() {
                 if let Some(pending) = pending_sentence.take() {
-                    Self::send_sentence(&self.tx, pending, &mut sentence_index, false).await?;
+                    Self::send_sentence(
+                        &self.tx,
+                        pending,
+                        &mut sentence_index,
+                        &mut round_indices,
+                        false,
+                    )
+                    .await?;
                 }
-                Self::send_sentence(&self.tx, final_content, &mut sentence_index, true).await?;
+                Self::send_sentence(
+                    &self.tx,
+                    final_content,
+                    &mut sentence_index,
+                    &mut round_indices,
+                    true,
+                )
+                .await?;
                 sent_final = true;
             } else if let Some(pending) = pending_sentence.take() {
-                Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+                Self::send_sentence(
+                    &self.tx,
+                    pending,
+                    &mut sentence_index,
+                    &mut round_indices,
+                    true,
+                )
+                .await?;
                 sent_final = true;
             }
         } else if let Some(pending) = pending_sentence.take() {
-            Self::send_sentence(&self.tx, pending, &mut sentence_index, true).await?;
+            Self::send_sentence(
+                &self.tx,
+                pending,
+                &mut sentence_index,
+                &mut round_indices,
+                true,
+            )
+            .await?;
             sent_final = true;
         }
 
         Ok(ProducerOutput {
             accumulated,
             sent_final,
+            preamble_indices,
         })
     }
 
@@ -259,6 +316,7 @@ impl StreamProducer {
         tx: &mpsc::Sender<SentenceItem>,
         sentence: &mut String,
         sentence_index: &mut usize,
+        round_indices: &mut Vec<usize>,
         seen: &mut std::collections::HashSet<String>,
         pending: &mut Option<String>,
         tool_calls_seen: &AtomicBool,
@@ -273,22 +331,24 @@ impl StreamProducer {
 
         if tool_calls_seen.load(Ordering::Acquire) {
             if let Some(previous) = pending.replace(s) {
-                Self::send_sentence(tx, previous, sentence_index, false).await?;
+                Self::send_sentence(tx, previous, sentence_index, round_indices, false).await?;
             }
             return Ok(());
         }
 
-        Self::send_sentence(tx, s, sentence_index, false).await
+        Self::send_sentence(tx, s, sentence_index, round_indices, false).await
     }
 
     async fn send_sentence(
         tx: &mpsc::Sender<SentenceItem>,
         sentence: String,
         sentence_index: &mut usize,
+        round_indices: &mut Vec<usize>,
         is_final: bool,
     ) -> Result<()> {
         let idx = *sentence_index;
         *sentence_index += 1;
+        round_indices.push(idx);
         tx.send(SentenceItem::Reply(sentence, idx, is_final))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
@@ -450,6 +510,8 @@ mod tests {
         );
         assert!(items.next().is_none());
         assert!(output.sent_final);
+        // 栅栏前发出的每一句（含一轮里先分出去的那几段）都只做呈现；工具后那句不算
+        assert_eq!(output.preamble_indices, vec![0, 1]);
     }
 
     #[tokio::test]
@@ -485,5 +547,6 @@ mod tests {
             &items[1],
             SentenceItem::BeforeTools { index: 1, .. }
         ));
+        assert_eq!(output.preamble_indices, vec![0]);
     }
 }

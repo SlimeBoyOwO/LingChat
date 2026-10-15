@@ -201,6 +201,8 @@
   <img src="https://contrib.rocks/image?repo=SlimeBoyOwO/LingChat" />
 </a>
 
+![Alt](https://repobeats.axiom.co/api/embed/14581ef6577f5929864e0700d17c88253e01c8fa.svg "Repobeats analytics image")
+
 ## ⭐️ 喜欢这个项目吗？请给我们点一个 Star！
 
 **这是我们提升影响力和持续维护的最大动力！**

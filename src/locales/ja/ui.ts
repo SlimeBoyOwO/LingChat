@@ -163,6 +163,9 @@ export default {
       "メインチャットの1回の返信で連続実行できるツールラウンド数を制限します。1ラウンドに複数のツール呼び出しが含まれる場合があります。",
     maxToolRoundsUnit: "ラウンド",
     maxToolRoundsRange: "範囲 {min}～{max} · 既定値 {default}",
+    toolRagTitle: "ツールのオンデマンド検索",
+    toolRagHint:
+      "各リクエストにはよく使うツールだけを送り、必要になったときモデルが一文でツールを検索してから呼び出します。すべてのツール説明が占めていたコンテキストを節約できます。オフにすると毎回すべての許可済みツールを送信します。",
     accessModes: {
       manual: {
         label: "毎回確認",
@@ -340,6 +343,7 @@ export default {
     },
     tools: {
       web_search: "ウェブ検索",
+      tool_search: "ツール検索",
       get_current_time: "現在時刻",
       schedule_get_all: "スケジュール確認",
       schedule_add_todo: "ToDo 追加",
@@ -409,6 +413,7 @@ export default {
     todoReminderStyle: "ToDoのリマインド方法",
     todoReminderStyleRole: "キャラが声をかける",
     todoReminderStyleToast: "システム通知",
+    growthRangeHint: "≈ 1 サイクルあたりの興味増加 {min} ~ {max}（上の間隔から逆算）",
   },
   calendarPage: {
     yearMonth: "{year}年 {month}月",

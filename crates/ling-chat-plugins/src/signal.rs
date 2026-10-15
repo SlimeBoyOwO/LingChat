@@ -7,11 +7,15 @@
 //! 已登记的信号：
 //!
 //! - [`SIGNAL_AI_REPLY`]：每条助手回复（自由对话、剧本固定台词、主动消息都会触发）
+//! - [`SIGNAL_LINE_SHOWN`]：主界面开始展示某句台词（与回复生成是两个时机）
 //! - [`SIGNAL_WS_MESSAGE`]：插件声明的 WS 连接的建立 / 断开 / 收到帧 / 出错
 //!
 //! 接入新信号时：
 //! 1. 在 [`SignalRegistry::new`] 里 `register` 一条 [`SignalSpec`]（名称 + payload 字段）；
 //! 2. 在对应业务点调用 `PluginManager::dispatch_signal`。
+//!
+//! 「业务点」不一定在 Rust 侧：像 [`SIGNAL_LINE_SHOWN`] 这种时机只有前端知道（台词
+//! 什么时候轮到上屏由前端的事件队列决定），就由前端经 Tauri 命令把载荷转进来再派发。
 //!
 //! 未登记的信号不会被派发；插件对它的订阅只在加载时 warn，不算 manifest 错误，
 //! 这样信号上线前后插件包都能正常安装。
@@ -37,6 +41,9 @@ const MAX_CONCURRENT_HANDLERS: usize = 4;
 
 /// 每条助手回复。payload 与前端收到的 `ai:reply` 事件完全一致（camelCase）。
 pub const SIGNAL_AI_REPLY: &str = "ai_reply";
+
+/// 主界面开始展示某句台词。
+pub const SIGNAL_LINE_SHOWN: &str = "line_shown";
 
 /// WebSocket 连接事件：连接建立 / 断开、收到帧、出错都会发。
 ///
@@ -70,6 +77,31 @@ pub const AI_REPLY_FIELDS: &[&str] = &[
     "thinking",
     "previewGen",
     "avatarDir",
+];
+
+/// [`SIGNAL_LINE_SHOWN`] payload 的顶层字段（camelCase）。
+///
+/// 与 [`AI_REPLY_FIELDS`] 同形——就是那句回复的事件对象本身，只少一个宿主补充的
+/// `avatarDir`（上屏由前端发起，不走宿主那条补字段的路径）。插件读 `message` /
+/// `previewGen` 的方式与 `ai_reply` 完全一致。
+pub const LINE_SHOWN_FIELDS: &[&str] = &[
+    "type",
+    "duration",
+    "isFinal",
+    "character",
+    "roleId",
+    "emotion",
+    "originalTag",
+    "message",
+    "ttsText",
+    "motionText",
+    "audioFile",
+    "originalMessage",
+    "displayName",
+    "displaySubtitle",
+    "userMessageSeq",
+    "thinking",
+    "previewGen",
 ];
 
 /// 宿主登记的一条信号。
@@ -129,6 +161,11 @@ impl SignalRegistry {
             name: SIGNAL_AI_REPLY,
             description: "每条助手回复（自由对话、剧本固定台词、主动消息都会触发）",
             fields: AI_REPLY_FIELDS,
+        });
+        registry.register(SignalSpec {
+            name: SIGNAL_LINE_SHOWN,
+            description: "主界面开始展示某句台词（与回复生成是两个时机）",
+            fields: LINE_SHOWN_FIELDS,
         });
         registry.register(SignalSpec {
             name: SIGNAL_WS_MESSAGE,

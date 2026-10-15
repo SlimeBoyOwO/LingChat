@@ -1,4 +1,5 @@
 use crate::AppState;
+use crate::ai_service::proactive_system::interest_manager::growth_range_for_interval;
 use crate::ai_service::proactive_system::types::UserScheduleSettings;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -69,6 +70,12 @@ pub async fn save_schedules(app: AppHandle, data: UserScheduleSettings) -> Resul
     }
 
     Ok("日程设置已保存！".to_string())
+}
+
+/// 预览「期望间隔 → 每轮兴趣增长随机范围」的换算结果。
+#[tauri::command]
+pub fn preview_proactive_interest_range(minutes: f64) -> (f64, f64) {
+    growth_range_for_interval(minutes)
 }
 
 #[tauri::command]

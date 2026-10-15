@@ -139,6 +139,9 @@ export interface GameState extends ExtensionGameState {
     lineCount: number;
     vars: Record<string, unknown>;
   } | null;
+
+  /** 本次会话绑定的存档 id（读取/创建/更新存档成功后更新）；null = 本次会话还没落过盘 */
+  currentSaveId: number | null;
 }
 
 export const state: GameState = {
@@ -167,4 +170,5 @@ export const state: GameState = {
   screenshotPending: null,
 
   scriptReadCursor: null,
+  currentSaveId: null,
 };

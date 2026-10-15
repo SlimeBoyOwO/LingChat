@@ -3,10 +3,7 @@
     顶部状态栏：时间 / 天气。仅自由对话模式显示，与左上角 FreeModeTools、
     右上角菜单按钮同高同风格（icon + 文字），纯展示不接收点击。
   -->
-  <div
-    v-if="visible"
-    class="pointer-events-none fixed top-[calc(15px+var(--safe-area-inset-top))] left-1/2 z-1000 hidden -translate-x-1/2 items-center lg:flex"
-  >
+  <div v-if="visible" class="pointer-events-none hidden items-center lg:flex">
     <!-- 两侧装饰：与文字同色的渐隐横线 -->
     <div class="h-px w-10 bg-linear-to-r from-transparent to-white/80 xl:w-16"></div>
 

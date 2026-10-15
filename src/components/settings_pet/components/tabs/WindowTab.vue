@@ -157,6 +157,7 @@ const loadConfig = async () => {
   const configKeys = [
     "ENABLE_PROACTIVE_SYSTEM",
     "MAX_PROACTIVE_TIMES",
+    "PROACTIVE_EXPECTED_INTERVAL_MINUTES",
     "ENABLE_VISUAL_PRECEPTION",
     "SCREEN_WEIGHT",
     "ENABLE_TOPIC_CREATER",

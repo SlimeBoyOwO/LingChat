@@ -157,6 +157,8 @@ impl ScriptEvent for DialogueEvent {
                 // 捕获当前试玩代号：中止后游离写入会被 add_assistant_line 的守卫丢弃
                 generation: ctx.game_status.lock().await.preview_generation,
                 is_preview: ctx.is_preview,
+                // 固定台词没有句子序号，也不存在工具前导要抹的行
+                sentence_lines: None,
             }
         };
         let overrides = ReplyOverrides {
@@ -177,6 +179,7 @@ impl ScriptEvent for DialogueEvent {
             match consume_sentence(
                 &sdeps,
                 line.to_string(),
+                None,
                 "",
                 true,
                 None,

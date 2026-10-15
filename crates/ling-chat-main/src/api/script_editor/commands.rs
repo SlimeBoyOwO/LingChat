@@ -763,12 +763,7 @@ fn allowed_extensions(kind: &str) -> &'static [&'static str] {
         .unwrap_or(&[])
 }
 
-/// 列出全局素材（`game_data/backgrounds` / `musics` / `ambient`）。
-///
-/// 注意 background 与 pic 在全局层共享同一个目录 —— 这是 `MediaType::fallback_dir()`
-/// 的既有行为。**音效（sound）例外**：它没有独立的全局目录，此前会 fallback 到
-/// 全局音乐目录，但音效本就该是剧本私有素材，全局列出只会让作者误以为能跨剧本
-/// 复用，所以这里直接返回空（issue #6）。环境音（ambient）仍保留全局列。
+/// 列出全局素材（`game_data/backgrounds` / `musics` / `ambients`）。
 #[tauri::command]
 pub fn editor_list_global_assets() -> Result<AssetIndex, String> {
     let one = |kind: &str| -> Vec<String> {

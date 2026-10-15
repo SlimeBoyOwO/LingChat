@@ -285,6 +285,10 @@ pub struct PluginManifest {
     /// 缺省 false：未声明的插件调用一律被拒。
     #[serde(default)]
     pub send_user_message: bool,
+    /// 是否允许 `trigger_proactive` 请求宿主主动开一次口。
+    /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮 LLM 生成
+    #[serde(default)]
+    pub trigger_proactive: bool,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
@@ -309,6 +313,8 @@ pub struct PluginRunEnv {
     pub read: Vec<String>,
     /// manifest `send_user_message` 声明：是否允许把外部消息送进对话。
     pub send_user_message: bool,
+    /// manifest `trigger_proactive` 声明：是否允许请求宿主主动开口。
+    pub trigger_proactive: bool,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。

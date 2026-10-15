@@ -450,6 +450,7 @@ pub(crate) async fn build_web_init_data(
     let (
         lines,
         current_scene_id,
+        current_scene,
         current_role_id,
         onstage_roles_ids,
         onstage_roles,
@@ -505,19 +506,25 @@ pub(crate) async fn build_web_init_data(
             }
         }
 
-        // 若恢复了场景，更新 GameStatus
+        // 上面补出来的场景只算「补齐当前场景」，不是用户切了景——因此不动剧本临时背景
         if sid != gs.current_scene_id {
             gs.current_scene_id = sid.clone();
-            if let Some(ref scene_id) = sid {
-                let store = SceneStore::new(&service.data_dir);
-                if let Ok(Some(scene)) = store.find_by_id(scene_id) {
-                    let bg = super::scene::normalize_background(&scene.background);
-                    if !bg.is_empty() {
-                        gs.background = bg;
-                    }
-                }
-            }
         }
+
+        let current_scene = sid
+            .as_deref()
+            .and_then(|id| {
+                SceneStore::new(&service.data_dir)
+                    .find_by_id(id)
+                    .ok()
+                    .flatten()
+            })
+            .map(|scene| super::scene::model_to_info(&scene));
+        gs.sync_background_with_scene(
+            current_scene
+                .as_ref()
+                .and_then(|scene| scene.background.clone()),
+        );
 
         // 从 store 恢复场景感知开关
         if let Ok(store) = app.store(config::STORE_FILE) {
@@ -549,6 +556,7 @@ pub(crate) async fn build_web_init_data(
         (
             lines,
             sid,
+            current_scene,
             gs.current_role_id,
             gs.onstage_role_ids.clone(),
             onstage_roles,
@@ -581,18 +589,6 @@ pub(crate) async fn build_web_init_data(
             read_str(config::session::LAST_BGM_MODE),
             read_str(config::session::LAST_AMBIENT_TRACKS),
         )
-    };
-
-    // 从 Scene Store 场景存储中恢复场景信息
-    let current_scene = if let Some(ref sid) = current_scene_id {
-        let store = SceneStore::new(&service.data_dir);
-        store
-            .find_by_id(sid)
-            .ok()
-            .flatten()
-            .map(|s| super::scene::model_to_info(&s))
-    } else {
-        None
     };
 
     let result = WebInitData {

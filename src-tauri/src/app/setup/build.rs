@@ -177,6 +177,15 @@ pub(super) fn build_service_graph(
         tool_settings.clone(),
     )?);
 
+    // 文本嵌入引擎（Tool RAG 的工具语义检索）。模型缺失 / ONNX 不可用都只是
+    // 降级为禁用态，由工具闭环回退到「全量工具下发」。
+    let embedding = ai_service::embedding::EmbeddingEngine::load(
+        &data_dir
+            .join("third_party")
+            .join(ai_service::embedding::MODEL_DIR_NAME),
+    );
+    let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
+
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
     // `app.state::<Arc<PluginManager>>()` 取自己；宿主业务侧只经下面的窄接口读取资源。
@@ -267,6 +276,8 @@ pub(super) fn build_service_graph(
         generation_lock,
         tool_registry,
         tool_settings,
+        embedding,
+        tool_rag,
         plugin_resources,
         proactive_system: Some(proactive),
         achievement_manager,

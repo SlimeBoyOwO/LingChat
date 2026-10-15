@@ -368,11 +368,6 @@ onMounted(async () => {
 
   await fetchScenes();
 
-  // 恢复上次选中的场景
-  if (gameStore.currentScene?.background) {
-    uiStore.setCurrentBackground(gameStore.currentScene.background);
-  }
-
   // LLM 室内外标注完成：就地更新列表与当前场景，不整表重拉
   await listen<SceneLocationUpdatedPayload>("scene:location-updated", (event) => {
     const { id, location_type } = event.payload;

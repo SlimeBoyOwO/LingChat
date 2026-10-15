@@ -157,6 +157,24 @@
             </div>
           </div>
         </div>
+        <div class="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div class="min-w-0">
+              <h3 class="font-semibold text-white">
+                {{ $t("ui.toolCalls.toolRagTitle") }}
+              </h3>
+              <p class="mt-1 text-sm leading-relaxed text-gray-300">
+                {{ $t("ui.toolCalls.toolRagHint") }}
+              </p>
+            </div>
+            <div class="flex shrink-0 items-center">
+              <Toggle
+                :checked="form.tool_rag"
+                @change="(value: boolean) => (form.tool_rag = value)"
+              />
+            </div>
+          </div>
+        </div>
         <div
           v-if="form.access_mode === 'full_access'"
           class="mt-3 rounded-lg border-l-4 border-amber-400/70 bg-amber-400/10 px-4 py-3 text-sm text-amber-200/90"
@@ -611,6 +629,7 @@ const form = reactive<ToolSettings>({
   groups: {},
   access_mode: "manual",
   max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
+  tool_rag: true,
 });
 
 const status = reactive({ message: "", color: "#4ade80" });
@@ -757,6 +776,7 @@ onMounted(async () => {
     Object.assign(form.groups, settings.groups ?? {});
     form.access_mode = settings.access_mode ?? "manual";
     form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT;
+    form.tool_rag = settings.tool_rag ?? true;
     normalizeToolRoundLimit();
     normalizeMediaSettings();
     await loadRuntimeInfo();

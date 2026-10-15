@@ -53,8 +53,22 @@ pub(crate) enum WsCommand {
     Text(String),
     /// 二进制帧。
     Binary(Vec<u8>),
+    /// 请求帧：与 `Text` 一样是文本帧，区别只在**等待方在 [`WsHandle::pending`] 里
+    /// 挂着**，响应帧回来时按 `request_id` 兑现。
+    Request { payload: String, request_id: String },
     /// 关闭连接（client）或停止监听（server）。
     Close,
+}
+
+/// 等待响应帧的请求表：`request_id` → 兑现通道。
+///
+/// 放在句柄上而不是 `WsCommand` 里，是因为 `WsCommand` 必须 `Clone`（server 模式要经
+/// `broadcast` 广播），而 `oneshot::Sender` 不是 `Clone`。
+pub(crate) type PendingMap = Arc<std::sync::Mutex<HashMap<String, oneshot::Sender<Value>>>>;
+
+/// 建一个空的等待表。
+pub(crate) fn new_pending() -> PendingMap {
+    Arc::new(std::sync::Mutex::new(HashMap::new()))
 }
 
 /// 一条活连接的句柄（发送端 + 状态）。client / server 归一到同一个类型。
@@ -63,6 +77,41 @@ pub(crate) struct WsHandle {
     pub(crate) tx: mpsc::UnboundedSender<WsCommand>,
     /// 当前运行状态，由连接的后台任务更新，前端读取。
     state: Arc<AtomicU8>,
+    /// 等待响应帧的请求表（由脚本的 `ws_request` 登记，连接任务兑现）。
+    pub(crate) pending: PendingMap,
+}
+
+/// 把一帧文本交给等待它的请求。命中返回 `true`，调用方据此跳过 `ws_message` 派发
+/// ——这帧是我们自己的响应，没必要再叫醒一次解释器。
+fn take_pending(pending: &PendingMap, text: &str) -> bool {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return false;
+    };
+    let Some(id) = value
+        .get("request_id")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+    else {
+        return false;
+    };
+    let tx = pending
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .remove(&id);
+    match tx {
+        Some(tx) => {
+            // 接收端可能已经超时放弃，发送失败属正常，不算错误。
+            let _ = tx.send(value);
+            true
+        },
+        None => false,
+    }
+}
+
+/// 丢弃全部等待中的请求。连接一断就调，让等待方立刻拿到错误（通道被丢弃）
+/// 而不是傻等满超时。
+fn drain_pending(pending: &PendingMap) {
+    pending.lock().unwrap_or_else(|e| e.into_inner()).clear();
 }
 
 impl WsHandle {
@@ -89,6 +138,8 @@ pub(crate) fn spawn_client(plugin_id: String, conn_id: String, target: ClientTar
     let (tx, mut rx) = mpsc::unbounded_channel::<WsCommand>();
     let state = Arc::new(AtomicU8::new(WsState::Connecting.as_u8()));
     let st = state.clone();
+    let pending = new_pending();
+    let pend = pending.clone();
 
     tauri::async_runtime::spawn(async move {
         let mut backoff = RECONNECT_BACKOFF_START;
@@ -98,7 +149,10 @@ pub(crate) fn spawn_client(plugin_id: String, conn_id: String, target: ClientTar
                     backoff = RECONNECT_BACKOFF_START;
                     set_state(&st, WsState::Connected);
                     emit_conn(&plugin_id, &conn_id, WsMode::Client, "connect", None).await;
-                    match run_client(ws, &mut rx, &plugin_id, &conn_id).await {
+                    let exit = run_client(ws, &mut rx, &plugin_id, &conn_id, &pend).await;
+                    // 连接没了，等待中的请求不可能再被兑现——立刻让它们失败。
+                    drain_pending(&pend);
+                    match exit {
                         ClientExit::Closed => break WsState::Stopped,
                         ClientExit::Disconnected => {
                             emit_conn(&plugin_id, &conn_id, WsMode::Client, "disconnect", None)
@@ -142,7 +196,7 @@ pub(crate) fn spawn_client(plugin_id: String, conn_id: String, target: ClientTar
         tracing::debug!(plugin = %plugin_id, conn = %conn_id, "client 连接任务结束");
     });
 
-    WsHandle { tx, state }
+    WsHandle { tx, state, pending }
 }
 
 /// 启动一个 server 监听（后台任务），立即返回句柄。监听失败会 emit `error` 事件。
@@ -156,6 +210,8 @@ pub(crate) fn spawn_server(
     let (bc_tx, _) = broadcast::channel::<WsCommand>(32);
     let state = Arc::new(AtomicU8::new(WsState::Connecting.as_u8()));
     let st = state.clone();
+    let pending = new_pending();
+    let pend = pending.clone();
 
     tauri::async_runtime::spawn(async move {
         let listener = match TcpListener::bind(&bind).await {
@@ -193,6 +249,14 @@ pub(crate) fn spawn_server(
                     let _ = bc.send(WsCommand::Close);
                     break;
                 }
+                // 请求-响应只对 client 有意义：server 是广播给多个连入客户端，
+                // 谁来回、回哪一条都说不清，直接让等待方失败。
+                if let WsCommand::Request { request_id, .. } = &cmd {
+                    pend.lock()
+                        .unwrap_or_else(|e| e.into_inner())
+                        .remove(request_id);
+                    continue;
+                }
                 let _ = bc.send(cmd);
             }
             // Close 命令、或发送端被丢弃，都会走到这里统一触发服务关停。
@@ -221,7 +285,7 @@ pub(crate) fn spawn_server(
         tracing::debug!(plugin = %plugin_id, conn = %conn_id, "server 监听任务结束");
     });
 
-    WsHandle { tx, state }
+    WsHandle { tx, state, pending }
 }
 
 /// 连接建立的中间结果：成功拿到流，或失败原因。
@@ -263,6 +327,7 @@ async fn run_client<S>(
     rx: &mut mpsc::UnboundedReceiver<WsCommand>,
     plugin_id: &str,
     conn_id: &str,
+    pending: &PendingMap,
 ) -> ClientExit
 where
     S: AsyncRead + AsyncWrite + Unpin,
@@ -281,6 +346,13 @@ where
                         return ClientExit::Error("发送二进制帧失败".into());
                     }
                 },
+                // 请求帧与 Text 一样只写出，**绝不在这里等响应**：一 await 就会堵死
+                // 同一个 select! 的收帧分支，变成自己等自己。
+                Some(WsCommand::Request { payload, .. }) => {
+                    if write.send(Message::Text(payload.into())).await.is_err() {
+                        return ClientExit::Error("发送请求帧失败".into());
+                    }
+                },
                 Some(WsCommand::Close) | None => {
                     let _ = write.close().await;
                     return ClientExit::Closed;
@@ -288,7 +360,10 @@ where
             },
             msg = read.next() => match msg {
                 Some(Ok(Message::Text(t))) => {
-                    emit(plugin_id, conn_id, WsMode::Client, "message", Some(text_data(t.as_str())), false, None).await;
+                    // 先给等待中的请求一次机会；命中就不再派发 ws_message。
+                    if !take_pending(pending, t.as_str()) {
+                        emit(plugin_id, conn_id, WsMode::Client, "message", Some(text_data(t.as_str())), false, None).await;
+                    }
                 },
                 Some(Ok(Message::Binary(b))) => {
                     emit(plugin_id, conn_id, WsMode::Client, "message", Some(binary_data(&b)), true, None).await;
@@ -351,6 +426,9 @@ async fn handle_server_ws(state: ServerState, mut socket: WebSocket) {
                     let _ = socket.send(AxumMessage::Binary(b)).await;
                 },
                 Ok(WsCommand::Close) => break,
+                // 请求帧在转发环节就被挡下（server 无法定位应答者），不会广播到这里；
+                // 保留一支仅为穷尽匹配。
+                Ok(WsCommand::Request { .. }) => {},
                 // 广播落后（容量小、发帧快）丢帧继续；通道关闭仅在服务停止时发生，退出。
                 Err(broadcast::error::RecvError::Lagged(_)) => {},
                 Err(broadcast::error::RecvError::Closed) => break,
@@ -563,6 +641,51 @@ mod tests {
     fn star_allows_any() {
         let allow = vec!["*".to_string()];
         assert!(check_ws_url_allowed("ws://127.0.0.1:9000", &allow).is_ok());
+    }
+
+    #[test]
+    fn request_frame_resolves_pending() {
+        let pending = new_pending();
+        let (tx, mut rx) = oneshot::channel::<Value>();
+        pending.lock().unwrap().insert("r1".to_string(), tx);
+
+        assert!(take_pending(
+            &pending,
+            r#"{"type":"maid_status","request_id":"r1"}"#
+        ));
+        let got = rx.try_recv().unwrap();
+        assert_eq!(got["type"], "maid_status");
+        // 兑现过的条目不能重复命中——重复命中会把后来同 id 的帧吞掉。
+        assert!(!take_pending(
+            &pending,
+            r#"{"type":"maid_status","request_id":"r1"}"#
+        ));
+    }
+
+    #[test]
+    fn unrelated_frame_is_not_taken() {
+        let pending = new_pending();
+        let (tx, _rx) = oneshot::channel::<Value>();
+        pending.lock().unwrap().insert("r1".to_string(), tx);
+
+        // 推送帧（无 request_id）、非法 JSON、未知 id 都不该被当成响应。
+        assert!(!take_pending(&pending, r#"{"type":"event","data":{}}"#));
+        assert!(!take_pending(&pending, "not json"));
+        assert!(!take_pending(&pending, r#"{"request_id":"nope"}"#));
+    }
+
+    #[test]
+    fn drain_fails_waiters() {
+        let pending = new_pending();
+        let (tx, mut rx) = oneshot::channel::<Value>();
+        pending.lock().unwrap().insert("r1".to_string(), tx);
+
+        drain_pending(&pending);
+        // 发送端被丢弃 → 等待方立刻拿到 Closed，而不是等满超时。
+        assert!(matches!(
+            rx.try_recv(),
+            Err(oneshot::error::TryRecvError::Closed)
+        ));
     }
 
     #[test]

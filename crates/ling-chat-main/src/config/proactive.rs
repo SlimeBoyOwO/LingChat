@@ -6,12 +6,22 @@ use tauri_plugin_store::StoreExt;
 
 use super::keys;
 
+/// 两次主动对话之间的期望间隔默认值（分钟）。默认 5 分钟沿用历史上写死的
+/// 每轮增长 5.0~10.0 的手感。
+pub const DEFAULT_EXPECTED_INTERVAL_MINUTES: f64 = 5.0;
+/// 期望间隔的合法区间（分钟）。低于 1 分钟会退化成每轮都搭话，
+/// 高于 1 小时则增长量小到需要网格精度兜底，故两端都设界。
+pub const MIN_EXPECTED_INTERVAL_MINUTES: f64 = 1.0;
+pub const MAX_EXPECTED_INTERVAL_MINUTES: f64 = 60.0;
+
 // ========== ProactiveConfig 结构体 ==========
 
 #[derive(Clone, Debug)]
 pub struct ProactiveConfig {
     pub enable_proactive_system: bool,
     pub max_proactive_times: i32,
+    /// 两次主动对话之间的期望间隔（分钟），兴趣增长随机范围由它反推。
+    pub expected_interval_minutes: f64,
     pub enable_visual_perception: bool,
     pub screen_weight: f64,
     pub enable_topic_creator: bool,
@@ -35,6 +45,7 @@ impl Default for ProactiveConfig {
         Self {
             enable_proactive_system: false,
             max_proactive_times: 3,
+            expected_interval_minutes: DEFAULT_EXPECTED_INTERVAL_MINUTES,
             enable_visual_perception: true,
             screen_weight: 30.0,
             enable_topic_creator: true,
@@ -112,6 +123,10 @@ impl ProactiveConfig {
                 default.enable_proactive_system,
             ),
             max_proactive_times: get_i32(keys::MAX_PROACTIVE_TIMES, default.max_proactive_times),
+            expected_interval_minutes: get_f64(
+                keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES,
+                default.expected_interval_minutes,
+            ),
             enable_visual_perception: get_bool(
                 keys::ENABLE_VISUAL_PRECEPTION,
                 default.enable_visual_perception,

@@ -205,6 +205,8 @@ fn run_entry(
         let _read_guard = host_api::set_read_allow(&run_env.read);
         // send_user_message 只对声明了该能力的插件放行
         let _send_guard = host_api::set_send_allow(run_env.send_user_message);
+        // trigger_proactive 同上
+        let _proactive_guard = host_api::set_proactive_allow(run_env.trigger_proactive);
         // ws_send / ws_open / ws_close 按当前插件定位连接
         let _plugin_guard = host_api::set_current_plugin(&run_env.plugin_id);
         let scope = vm.new_scope_with_builtins();

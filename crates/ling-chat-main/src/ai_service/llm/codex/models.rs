@@ -13,8 +13,9 @@ use crate::ai_service::llm::provider::{LlmModelInfo, ThinkEffortsInfo};
 
 const MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
 // This endpoint gates catalogs by Codex client compatibility, not the LingChat
-// application version. GPT-6 Astra's catalog minimum is 0.153.0.
-const CATALOG_CLIENT_VERSION: &str = "0.153.4";
+// application version. Keep this at a verified Codex version: 0.153.4 silently
+// omits GPT-6.1 Sol, GPT-6 Sol and GPT-6 Luna from otherwise successful responses.
+const CATALOG_CLIENT_VERSION: &str = "0.162.0";
 
 fn catalog_request(http: &Client, mut headers: HeaderMap) -> reqwest::RequestBuilder {
     headers.insert(ACCEPT, HeaderValue::from_static("application/json"));

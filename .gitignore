@@ -83,6 +83,10 @@ src-tauri/binaries/
 ~/.tauri/
 frontend_vue/
 .tsbuildinfo
+# MC 桥接模组（Gradle 工程）：构建输出与 dev 运行目录
+mc-mod/.gradle/
+mc-mod/run/
+mc-mod/
 src-tauri/gen/android/app/src/main/assets/
 # Tauri 自动生成的图标
 src-tauri/icons/*.png
@@ -141,6 +145,11 @@ data/data_manifest.json
 !data/third_party/
 !data/third_party/emotion_model_19emo/
 !data/third_party/emotion_model_19emo/.gitkeep
+# Tool RAG 的嵌入模型同样靠脚本下载（scripts/download_embedding_model.mjs），
+# 只把目录占位符纳入版本控制。
+!data/third_party/embedding_model_bge_small_zh/
+!data/third_party/embedding_model_bge_small_zh/.gitkeep
+!data/third_party/embedding_model_bge_small_zh/README.md
 # 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
 data/game_data/backgrounds/**
 !data/game_data/backgrounds/
@@ -157,6 +166,8 @@ data/game_data/characters/**
 !data/game_data/characters/风雪/**
 !data/game_data/characters/DeepSeek/
 !data/game_data/characters/DeepSeek/**
+!data/game_data/characters/松子/
+!data/game_data/characters/松子/**
 data/game_data/characters/DeepSeek/live2d
 # 开发者本地角色配置（优先于 settings.yml，见 utils/yaml_file.rs）：
 data/game_data/characters/*/settings_local.yml
@@ -184,9 +195,13 @@ data/game_data/skills/**
 !data/game_data/skills/**/
 !data/game_data/skills/**/*
 
-# 插件，仅示例插件保留
+# 插件，仅随仓库分发的插件保留。
+# 父目录必须先取反：父目录被排除时，git 无法重新包含它下面的任何文件。
+!data/plugins/
 data/plugins/*
 !data/plugins/tavily/
+!data/plugins/mc_maid_bridge/
+!data/plugins/mc_maid_bridge/**
 
 # ============================================================
 #        文档和其他工具 (Documentation & Other Tools)

@@ -15,6 +15,8 @@ pub mod settings;
 pub mod skill_files;
 pub mod status;
 pub mod tool_loop;
+pub mod tool_rag;
+pub mod tool_search;
 pub mod weather;
 pub mod web_search;
 
@@ -104,6 +106,9 @@ pub fn built_in_registry(
     let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
+    // Tool RAG 的检索入口：常驻下发（且不归任何设置分组，语义就是「总是可用」），
+    // 让它在注册顺序里紧随网页搜索，两者都是常驻工具。
+    registry.register(Arc::new(tool_search::ToolSearch))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;
     registry.register(Arc::new(UpdateTodo))?;

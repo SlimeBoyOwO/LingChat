@@ -204,6 +204,9 @@ pub struct ToolSettings {
     pub access_mode: ToolAccessMode,
     /// 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。
     pub max_tool_rounds: u32,
+    /// 工具按需检索（Tool RAG）：只下发常驻工具 + 检索激活的工具，
+    /// 而不是把全部已授权工具定义随每次请求下发。关闭即回到全量下发。
+    pub tool_rag: bool,
     /// 以下四项仅用于读取旧版配置。保存后会迁移成 `access_mode`。
     #[serde(default, skip_serializing)]
     pub command_auto_approve: bool,
@@ -226,6 +229,7 @@ impl Default for ToolSettings {
             groups: std::collections::HashMap::new(),
             access_mode: ToolAccessMode::default(),
             max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
+            tool_rag: true,
             command_auto_approve: false,
             command_delete_auto_approve: false,
             file_delete_auto_approve: false,

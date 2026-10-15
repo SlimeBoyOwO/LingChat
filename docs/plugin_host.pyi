@@ -40,6 +40,9 @@ def send_user_message(text: str) -> Dict[str, Any]:
 def switch_character(role_id: int) -> Dict[str, Any]:
     """完整切换当前角色（会清空对话历史）。成功 {ok, role_id, name}。"""
 
+def set_auto_mode(enabled: bool) -> Dict[str, Any]:
+    """切换主界面的「自动模式」（自动逐句推进对话）。不落盘，断开不还原。成功 {ok}。"""
+
 def read_context(
     *,
     start: Optional[int] = ...,
@@ -55,6 +58,16 @@ def edit_context(
 ) -> Dict[str, Any]:
     """用 replacement 替换第 start~end 条台词。返回 {ok, removed, total}。"""
 
+def add_prompt_line(role: str, text: str) -> Dict[str, Any]:
+    """往台词表末尾追加一条提示台词（旁白/系统/剧情），不触发回复。
+    role 取 "narrator" / "system" / "plot"。返回 {ok, index}。"""
+
+def trigger_proactive(text: str) -> Dict[str, Any]:
+    """请求宿主主动开一次口（主动对话系统的一次投放），不等生成。需 manifest 声明
+    trigger_proactive = true。已受理 {ok, triggered: True}；没受理
+    {ok, triggered: False, reason}（reason 见指南，不排队）。
+    text 为空 = 只开口、不往台词表写提示行。"""
+
 def compress_context() -> Dict[str, Any]:
     """触发并等待一次永久记忆压缩。返回 {ok, triggered}。"""
 
@@ -69,3 +82,12 @@ def ws_send(conn_id: str, data: Any) -> Dict[str, Any]:
 
 def ws_status(*, conn_id: Optional[str] = ...) -> Dict[str, Any]:
     """查询 WS 连接状态。返回 {ok, connections} 或单条 {ok, id, mode, state}。"""
+
+def ws_request(
+    conn_id: str, data: Dict[str, Any], *, timeout_ms: Optional[int] = ...
+) -> Dict[str, Any]:
+    """发一条请求并等它的响应帧（data 必须是对象，宿主补 request_id）。
+
+    会阻塞到响应或超时，timeout_ms 要明显小于工具自身的 timeout_ms。
+    返回 {ok, response} 或 {ok: False, error}（未连接 / 超时 / 连接断开已归一化）。
+    """

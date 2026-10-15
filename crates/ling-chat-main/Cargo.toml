@@ -48,6 +48,9 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "ndarray",
 ] }
 ndarray = "0.17"
+# 文本嵌入分词（Tool RAG / 记忆检索）。0.22 已由 sbv2_core 引入依赖图，
+# 同一版本可被 Cargo 统一，不新增编译成本。
+tokenizers = "0.22"
 
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "std",

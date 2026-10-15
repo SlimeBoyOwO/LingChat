@@ -17,6 +17,7 @@ use ling_chat_main::utils::archive::{self, ArchiveImportState, ConflictPolicy};
 
 use super::importer;
 use super::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
+use crate::signal::SIGNAL_LINE_SHOWN;
 
 fn manager(app: &AppHandle) -> Arc<PluginManager> {
     app.state::<Arc<PluginManager>>().inner().clone()
@@ -65,6 +66,19 @@ pub async fn plugin_save_config(
     config: HashMap<String, JsonValue>,
 ) -> Result<(), String> {
     manager(&app).save_config(&id, config).await
+}
+
+/// 主界面开始展示某句台词时由前端调用：派发给订阅了 `line_shown` 的插件。
+#[tauri::command]
+pub async fn plugin_line_shown(app: AppHandle, line: JsonValue) -> Result<(), String> {
+    let plugin_manager = manager(&app);
+    if !plugin_manager.has_signal_subscribers(SIGNAL_LINE_SHOWN) {
+        return Ok(());
+    }
+    plugin_manager
+        .dispatch_signal(&app, SIGNAL_LINE_SHOWN, &line, None)
+        .await;
+    Ok(())
 }
 
 /// 重新扫描插件目录（异步，避免阻塞调用线程）。
