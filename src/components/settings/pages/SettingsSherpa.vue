@@ -161,6 +161,18 @@
               </div>
             </div>
             <div class="ref-audio-actions">
+              <!-- 试听已导入的参考音频：确认导入/转码结果正常（导入时统一转成 WAV） -->
+              <button
+                v-if="config.ref_audio_path"
+                class="btn-secondary"
+                @click="toggleRefAudioPreview"
+              >
+                <Square v-if="refAudioPlaying" :size="16" />
+                <Play v-else :size="16" />
+                {{
+                  refAudioPlaying ? t("settings.sherpa.refStop") : t("settings.sherpa.refListen")
+                }}
+              </button>
               <button class="btn-secondary" :disabled="importingRefAudio" @click="pickRefAudio">
                 <FolderOpen :size="16" />
                 {{
@@ -175,6 +187,7 @@
                 v-if="config.ref_audio_path"
                 class="btn-secondary btn-danger"
                 @click="
+                  stopRefAudioPreview();
                   config.ref_audio_path = '';
                   config.ref_text = '';
                 "
@@ -277,6 +290,7 @@ const deleting = ref<string | null>(null);
 const progressByModel = ref<Record<string, number>>({});
 const testing = ref(false);
 const importingRefAudio = ref(false);
+const refAudioPlaying = ref(false);
 const playlist = ref<HTMLAudioElement | null>(null);
 const testText = ref("你好，这是一段测试语音。");
 
@@ -311,6 +325,7 @@ onMounted(() => {
 onUnmounted(() => {
   progressUnlisten?.();
   progressUnlisten = null;
+  stopRefAudioPreview();
 });
 
 async function loadModels() {
@@ -381,6 +396,7 @@ async function pickRefAudio() {
     // 导入到应用数据目录并统一转成 WAV，而不是把 dialog 给的路径原样存下来：
     // Android 上是 content:// URI，`std::fs` 读不了，试听时参考音频不会生效。
     const imported = await importSherpaRefAudio(file);
+    stopRefAudioPreview();
     config.value.ref_audio_path = imported.path;
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
@@ -424,6 +440,7 @@ async function testVoice() {
       },
     );
     if (result?.audio_path) {
+      refAudioPlaying.value = false; // 合成试听与参考音频试听共用播放器
       playlist.value = await playLocalAudio(result.audio_path);
       playlist.value.onended = () => {
         playlist.value = null;
@@ -445,6 +462,43 @@ async function testVoice() {
 function stopPreview() {
   playlist.value = null;
   stopCurrentAudio();
+}
+
+/** 停止参考音频试听。与合成试听共用同一个播放器（`mediaUrl` 里是单例）。 */
+function stopRefAudioPreview() {
+  refAudioPlaying.value = false;
+  stopCurrentAudio();
+}
+
+/**
+ * 试听已导入的参考音频：导入时后端统一转成了 WAV（mp3/m4a 等会转码），
+ * 这里让用户直接确认转码结果是否正常。
+ */
+async function toggleRefAudioPreview() {
+  if (refAudioPlaying.value) {
+    stopRefAudioPreview();
+    return;
+  }
+  const path = config.value.ref_audio_path;
+  if (!path) return;
+  stopPreview();
+  try {
+    const audio = await playLocalAudio(path);
+    refAudioPlaying.value = true;
+    const done = () => {
+      if (refAudioPlaying.value) refAudioPlaying.value = false;
+    };
+    // 用 addEventListener 而不是覆盖 onended：playLocalAudio 自己也挂了 onended。
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
+  } catch (error: any) {
+    refAudioPlaying.value = false;
+    console.error("试听参考音频失败:", error);
+    uiStore.showError({
+      title: t("settings.sherpa.refPlayFailed"),
+      message: typeof error === "string" ? error : error?.message || String(error),
+    });
+  }
 }
 
 const formatSize = (bytes: number): string => {
