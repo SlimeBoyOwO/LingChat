@@ -16,7 +16,7 @@ use super::HOTWORD_SIDECAR_NAME;
 
 /// 导出内核：压缩 `src_dir` 到 `out`。
 ///
-/// `_db`/`_role_id` 入参保留只为不动调用点（热词旁挂已停用，spec §3.7.1）。
+/// `_db`/`_role_id` 入参保留只为不动调用点（热词旁挂已停用）。
 /// 不依赖 `AppHandle`（`tauri/test` 未启用，取不到 mock）：路径解析与进度 emit 都留给
 /// 外层 [`compress_role_to_temp`]，这里只认显式入参与回调，便于端到端测试。
 async fn compress_role_dir<F: Fn(EntryEvent) + Send + 'static>(
@@ -27,7 +27,7 @@ async fn compress_role_dir<F: Fn(EntryEvent) + Send + 'static>(
     format: ArchiveFormat,
     on_entry: F,
 ) -> Result<(), String> {
-    // 热词旁挂已停用（spec §3.7.1：热词是「人用什么词」的属性，不随角色包移动）。
+    // 热词旁挂已停用：热词是「人用什么词」的属性，不随角色包移动。
     // 但老包导入后旁挂文件会留在角色目录里（导入侧有意不删），仍须按名排除——
     // 否则它会被原样打回新包，在旧版客户端上重新入库。编辑器草稿/回收站同理，
     // 它们只服务于本地编辑流程，不属于角色内容。

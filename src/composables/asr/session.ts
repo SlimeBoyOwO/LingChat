@@ -45,7 +45,7 @@ function resetSession() {
 }
 
 /**
- * 丢弃当前录音：停止本地采集但不触发识别（spec §3.0 —— 路由/抽屉离开时）。
+ * 丢弃当前录音：停止本地采集但不触发识别。
  *
  * 注意：**在飞的云端识别不主动 cancel**（状态门控 plan §4 选 C）——
  * 让它自然完成，结果由 handleResult() 的 §4 判定（currentStatus ≠ input → drop）
@@ -143,7 +143,7 @@ export async function start(source: AsrSource) {
     if (source === "button") {
       runtime.baseText = runtime.inputBridge?.getText() ?? "";
     }
-    // 录音开始时的热词快照（spec §9.2）：流式在这里就下发；llama 流式与非流式
+    // 录音开始时的热词快照：流式在这里就下发；llama 流式与非流式
     // 在 doRecognize 用同一份——录音期间场景变化不重读，两条路拿到的是同一份
     const snapshot = takeHotwordSnapshot();
     runtime.hotwordSnapshot = snapshot;
@@ -299,7 +299,7 @@ async function doRecognize(source: AsrSource, captured: number[]) {
       return;
     }
     const providerId = runtime.asrStore?.settings.active_provider ?? "qwen-asr";
-    // 热词取**录音开始时**的快照（与非流式统一，spec §9.2）。录音期间场景
+    // 热词取**录音开始时**的快照（与非流式统一）。录音期间场景
     // 变过（generation 已变）→ 本次不带热词：宁可不加偏置，也不用错角色的词表
     const snap = runtime.hotwordSnapshot;
     const validSnap = snap !== null && isHotwordSnapshotCurrent(snap) ? snap : null;

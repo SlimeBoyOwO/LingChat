@@ -56,7 +56,7 @@ pub fn build_stream_params(model: &str, opts: &AsrOptions) -> super::provider_st
     let vocabulary = if hotwords.is_empty() {
         None
     } else if let Some(max) = qwen_max_hotword_count(model) {
-        // 截断与真正发出的字节同源（本函数就是构造 vocabulary 的地方，D42）；
+        // 截断与真正发出的字节同源（本函数就是构造 vocabulary 的地方）；
         // 规则本身与同步落点共用 `take_within_capacity`
         Some(hotwords_to_vocabulary_json(take_within_capacity(
             hotwords,

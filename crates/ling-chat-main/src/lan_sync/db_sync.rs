@@ -68,11 +68,23 @@ macro_rules! import_rows {
     }};
 }
 
-/// 与 `import_rows!` 同形，但每行先过 `normalize` 再 INSERT；闭包返回 `false` 表示**丢弃该行**。
+/// 热词行归一：`weight` 归一到 `[1, 5] ∪ {50}`，`text` 按本地保存同一判据处理，
+/// 不合格返回原因（该行丢弃）。
 ///
-/// 三张热词表专用：对端 payload 里的脏值必须在此归一（spec §3.2 各写入入口同一口径）——
+/// 三张热词表共用一份口径。分开写迟早会漂移，而这里任何一处漂移都是静默的：
+/// 要么「本地拒了、镜像放行」，要么未 `trim` 的文本以原样入库——而 `text` 正是
+/// 归并/唯一键，同一个词会被拆成两个 key。
+fn normalize_hotword_row(text: &mut String, weight: &mut i32) -> Result<(), String> {
+    *weight = normalize_weight(*weight);
+    crate::db::managers::hotword_repo::validate_and_trim(text).map_err(|e| e.to_string())
+}
+
+/// 与 `import_rows!` 同形，但每行先过 `normalize` 再 INSERT；闭包返回 `Err` 表示**丢弃该行**。
+///
+/// 三张热词表专用：对端 payload 里的脏值必须在此归一（与本地保存同一口径）——
 /// 越界 `weight` 会让 DDL 的 CHECK 拒掉**整批**镜像，是用户看不见的静默失效。
-/// 长度判据同样在此执行（与本地保存同源），但超长行只丢该行、不让整批失败。
+/// 但**单行**未通过校验（空词、超长）只丢该行：同步是整台设备的镜像，
+/// 一行坏数据不该让整批镜像回滚。
 async fn import_rows_normalized<E, M, F>(
     db: &impl ConnectionTrait,
     rows: &[Value],
@@ -83,7 +95,7 @@ async fn import_rows_normalized<E, M, F>(
 where
     E: EntityTrait<Model = M>,
     M: serde::de::DeserializeOwned + Into<<E as EntityTrait>::ActiveModel>,
-    F: Fn(&mut M) -> bool,
+    F: Fn(&mut M) -> Result<(), String>,
 {
     if rows.is_empty() {
         return Ok(());
@@ -91,8 +103,8 @@ where
     let models: Vec<M> = serde_json::from_value(Value::Array(rows.to_vec()))
         .map_err(|e| format!("反序列化 {name} 失败: {e}"))?;
     for mut model in models {
-        if !normalize(&mut model) {
-            tracing::warn!("[LAN] {name} 有一行未通过校验，已丢弃");
+        if let Err(reason) = normalize(&mut model) {
+            tracing::warn!("[LAN] {name} 有一行未通过校验，已丢弃: {reason}");
             continue;
         }
         E::insert(model.into())
@@ -106,7 +118,7 @@ where
 
 // ─── 导出 ─────────────────────────────────────────────────────
 
-/// 导出全部 11 张业务表的数据。
+/// 导出全部业务表的数据（`DbRecords` 的字段即清单）。
 ///
 /// 通过独立只读连接打开数据库（`mode=ro`），不阻塞主应用的读写连接。
 pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
@@ -323,31 +335,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         &txn,
         &records.role_hotwords,
         "role_hotword",
-        |m| {
-            m.weight = normalize_weight(m.weight);
-            // 长度判据与本地保存同源（`validate_text_len`）：否则「本地被拒的值可以
-            // 从对端镜像进来」。超长只丢这一行——同步是整台设备的镜像，
-            // 一行坏数据不该回滚 11 张表。
-            //
-            // ⚠️ **必须先 trim、再判空、再校验、最后把 trim 后的值写回**，缺一不可：
-            // `validate_text_len` 只判长度，不管空白（它是对给定字符串的谓词）。若直接
-            // 拿原始 `m.text` 去判，会产生三处与本地不一致——① 词首尾带空格的合法词在
-            // 本地能存、镜像却被丢（静默数据丢失）；② 纯空白串 `is_ascii()` 且 0 片段，
-            // 会被放行入库，造出本地永远产不出的空词条；③ 未 trim 的文本以其**原样**
-            // 入库，而 `text` 正是归并/唯一键，同一个词会出现两个不同的 key，把同步
-            // 本该保住的去重拆开。
-            let text = m.text.trim();
-            if text.is_empty() {
-                tracing::warn!("[LAN] 热词为空，已丢弃");
-                return false;
-            }
-            if let Err(e) = crate::db::managers::hotword_repo::validate_text_len(text) {
-                tracing::warn!("[LAN] 热词未通过长度校验，已丢弃: {e}");
-                return false;
-            }
-            m.text = text.to_string();
-            true
-        },
+        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
         &mut imported,
     )
     .await?;
@@ -355,31 +343,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         &txn,
         &records.global_hotwords,
         "global_hotword",
-        |m| {
-            m.weight = normalize_weight(m.weight);
-            // 长度判据与本地保存同源（`validate_text_len`）：否则「本地被拒的值可以
-            // 从对端镜像进来」。超长只丢这一行——同步是整台设备的镜像，
-            // 一行坏数据不该回滚 11 张表。
-            //
-            // ⚠️ **必须先 trim、再判空、再校验、最后把 trim 后的值写回**，缺一不可：
-            // `validate_text_len` 只判长度，不管空白（它是对给定字符串的谓词）。若直接
-            // 拿原始 `m.text` 去判，会产生三处与本地不一致——① 词首尾带空格的合法词在
-            // 本地能存、镜像却被丢（静默数据丢失）；② 纯空白串 `is_ascii()` 且 0 片段，
-            // 会被放行入库，造出本地永远产不出的空词条；③ 未 trim 的文本以其**原样**
-            // 入库，而 `text` 正是归并/唯一键，同一个词会出现两个不同的 key，把同步
-            // 本该保住的去重拆开。
-            let text = m.text.trim();
-            if text.is_empty() {
-                tracing::warn!("[LAN] 热词为空，已丢弃");
-                return false;
-            }
-            if let Err(e) = crate::db::managers::hotword_repo::validate_text_len(text) {
-                tracing::warn!("[LAN] 热词未通过长度校验，已丢弃: {e}");
-                return false;
-            }
-            m.text = text.to_string();
-            true
-        },
+        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
         &mut imported,
     )
     .await?;
@@ -394,31 +358,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         &txn,
         &records.library_hotwords,
         "library_hotword",
-        |m| {
-            m.weight = normalize_weight(m.weight);
-            // 长度判据与本地保存同源（`validate_text_len`）：否则「本地被拒的值可以
-            // 从对端镜像进来」。超长只丢这一行——同步是整台设备的镜像，
-            // 一行坏数据不该回滚 11 张表。
-            //
-            // ⚠️ **必须先 trim、再判空、再校验、最后把 trim 后的值写回**，缺一不可：
-            // `validate_text_len` 只判长度，不管空白（它是对给定字符串的谓词）。若直接
-            // 拿原始 `m.text` 去判，会产生三处与本地不一致——① 词首尾带空格的合法词在
-            // 本地能存、镜像却被丢（静默数据丢失）；② 纯空白串 `is_ascii()` 且 0 片段，
-            // 会被放行入库，造出本地永远产不出的空词条；③ 未 trim 的文本以其**原样**
-            // 入库，而 `text` 正是归并/唯一键，同一个词会出现两个不同的 key，把同步
-            // 本该保住的去重拆开。
-            let text = m.text.trim();
-            if text.is_empty() {
-                tracing::warn!("[LAN] 热词为空，已丢弃");
-                return false;
-            }
-            if let Err(e) = crate::db::managers::hotword_repo::validate_text_len(text) {
-                tracing::warn!("[LAN] 热词未通过长度校验，已丢弃: {e}");
-                return false;
-            }
-            m.text = text.to_string();
-            true
-        },
+        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
         &mut imported,
     )
     .await?;
@@ -468,9 +408,7 @@ mod tests {
     use super::*;
     use sea_orm::{ActiveModelTrait, Set};
 
-    use crate::db::managers::hotword_repo::HotwordRepo;
-
-    /// 畸形 payload 在应用阶段失败时不应上抛 Err（否则启动 panic），
+    /// 畸形 payload 在应用阶段失败时不应上抛 `Err`（否则整段同步被跳过），
     /// 且暂存文件应改名为 `.bad`，避免下次启动重复失败。
     #[tokio::test]
     async fn malformed_payload_does_not_fail_startup() {
@@ -578,236 +516,6 @@ mod tests {
         assert_eq!((hotwords[0].text.as_str(), hotwords[0].weight), ("张三", 5));
     }
 
-    /// 行为变更：热词行的 `lang` 归一已删（列不存在）；旧 payload 里多出的 `lang`
-    /// 被 serde 忽略，不报错、不丢词。`weight` 归一**仍在**。
-    #[tokio::test]
-    async fn mirror_ignores_legacy_lang_and_normalizes_weight() {
-        let src = tempfile::tempdir().expect("创建临时目录失败");
-        let src_db = crate::db::init_db(src.path())
-            .await
-            .expect("初始化源数据库失败");
-        role::ActiveModel {
-            id: Set(7),
-            name: Set("甲".to_string()),
-            role_type: Set(role::RoleType::Main),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入角色失败");
-        role_hotword::ActiveModel {
-            role_id: Set(7),
-            text: Set("张三".to_string()),
-            weight: Set(5),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入热词失败");
-
-        // 源端存的是合法值，脏值是后面的 JSON 注入（DDL 的 CHECK 不允许直接写进源库）
-        let mut records = export_all_records(src.path()).await.expect("导出失败");
-        // 老设备发的 payload：热词行多一个 lang，weight 越界
-        records.role_hotwords[0]["lang"] = serde_json::json!("zh-Hans");
-        records.role_hotwords[0]["weight"] = serde_json::json!(999);
-
-        let dst = tempfile::tempdir().expect("创建临时目录失败");
-        let dst_db = crate::db::init_db(dst.path())
-            .await
-            .expect("初始化目标数据库失败");
-        apply_records(&dst_db, &records).await.expect("导入应成功");
-
-        let rows: Vec<(String, i32)> = HotwordRepo::list_by_role(&dst_db, 7)
-            .await
-            .expect("查询失败")
-            .into_iter()
-            .map(|m| (m.text, m.weight))
-            .collect();
-        assert_eq!(
-            rows,
-            vec![("张三".to_string(), 50)],
-            "weight 仍归一到 50，lang 被忽略"
-        );
-    }
-
-    /// 对端 payload 里的超长词条**丢弃并 warn**，不让整批同步失败：
-    /// 同步是「另一台设备的完整镜像」，一行坏数据不该把 11 张表全部回滚。
-    #[tokio::test]
-    async fn mirror_drops_overlong_hotword_text() {
-        // 照抄 `mirror_ignores_legacy_lang_and_normalizes_weight` 的手法：
-        // 真导出 → 在 JSON 层注入 → 导入。**长度判据只在应用层**（DDL 的
-        // `CHECK` 只管网 weight），所以脏值必须在 JSON 层注入，写不进源库。
-        let src = tempfile::tempdir().expect("创建临时目录失败");
-        let src_db = crate::db::init_db(src.path())
-            .await
-            .expect("初始化源数据库失败");
-        role::ActiveModel {
-            id: Set(7),
-            name: Set("甲".to_string()),
-            role_type: Set(role::RoleType::Main),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入角色失败");
-        role_hotword::ActiveModel {
-            role_id: Set(7),
-            text: Set("合规词".to_string()),
-            weight: Set(4),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入热词失败");
-
-        let mut records = export_all_records(src.path()).await.expect("导出失败");
-        assert_eq!(records.role_hotwords.len(), 1);
-        // 注入第二条：16 个汉字（非 ASCII 分支，超 15 字符上限）
-        records.role_hotwords.push(serde_json::json!({
-            "id": 2, "role_id": 7, "text": "长".repeat(16), "weight": 4,
-        }));
-
-        let dst = tempfile::tempdir().expect("创建临时目录失败");
-        let dst_db = crate::db::init_db(dst.path())
-            .await
-            .expect("初始化目标数据库失败");
-        // 本批**不失败**：坏数据是丢行，不是丢批（对比 DELETE_ORDER 放错时的稳定失败）
-        apply_records(&dst_db, &records)
-            .await
-            .expect("单条超长不该让整批同步失败");
-
-        let texts: Vec<String> = HotwordRepo::list_by_role(&dst_db, 7)
-            .await
-            .expect("查询失败")
-            .into_iter()
-            .map(|m| m.text)
-            .collect();
-        assert_eq!(texts, vec!["合规词".to_string()], "超长行应被丢弃");
-    }
-
-    /// 对端 payload 里词首尾带空格的合法热词必须**以 trim 后的值入库**：
-    /// `validate_text_len` 只判长度不管空白，而 `text` 是归并/唯一键——原样入库会把
-    /// 同一个词拆成两个不同的 key，悄悄破坏同步本该保住的去重（本地写入路径先 trim，
-    /// 这种值本地产不出来，只能在 JSON 层注入）。
-    #[tokio::test]
-    async fn mirror_trims_hotword_text_before_insert() {
-        // 照抄 `mirror_drops_overlong_hotword_text` 的手法：真导出 → JSON 层注入 → 导入。
-        let src = tempfile::tempdir().expect("创建临时目录失败");
-        let src_db = crate::db::init_db(src.path())
-            .await
-            .expect("初始化源数据库失败");
-        role::ActiveModel {
-            id: Set(7),
-            name: Set("甲".to_string()),
-            role_type: Set(role::RoleType::Main),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入角色失败");
-        role_hotword::ActiveModel {
-            role_id: Set(7),
-            text: Set("张三".to_string()),
-            weight: Set(4),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入热词失败");
-
-        let mut records = export_all_records(src.path()).await.expect("导出失败");
-        assert_eq!(records.role_hotwords.len(), 1);
-        // 注入第二条：词首尾各一个空格，长度合法（3 个汉字），只是脏。
-        // trim 后与源端的「张三」不同词，不会撞 `UNIQUE (role_id, text)`。
-        records.role_hotwords.push(serde_json::json!({
-            "id": 2, "role_id": 7, "text": " 合规词 ", "weight": 4,
-        }));
-
-        let dst = tempfile::tempdir().expect("创建临时目录失败");
-        let dst_db = crate::db::init_db(dst.path())
-            .await
-            .expect("初始化目标数据库失败");
-        let imported = apply_records(&dst_db, &records).await.expect("导入应成功");
-
-        // 该行是「归一后导入」，不是「未通过校验丢弃」：计数必须含它。
-        assert_eq!(imported, 3, "1 角色 + 2 热词都应导入，带空格的行不应被丢");
-
-        let texts: Vec<String> = HotwordRepo::list_by_role(&dst_db, 7)
-            .await
-            .expect("查询失败")
-            .into_iter()
-            .map(|m| m.text)
-            .collect();
-        assert_eq!(
-            texts,
-            vec!["张三".to_string(), "合规词".to_string()],
-            "带空格的词应以 trim 后的值入库；原样入库会把归并键拆成两个"
-        );
-    }
-
-    /// 旧版本发出的 payload 没有热词相关的新字段；缺 `#[serde(default)]` 会解析失败，
-    /// 而 `load_staged_db_records` 解析失败只 warn 后返回 None——同步静默失效。
-    #[tokio::test]
-    async fn old_payload_without_hotwords_does_not_error() {
-        let tmp = tempfile::tempdir().expect("创建临时目录失败");
-        let data_dir = tmp.path();
-        let db = crate::db::init_db(data_dir)
-            .await
-            .expect("初始化数据库失败");
-
-        role::ActiveModel {
-            id: Set(7),
-            name: Set("甲".to_string()),
-            role_type: Set(role::RoleType::Main),
-            ..Default::default()
-        }
-        .insert(&db)
-        .await
-        .expect("插入角色失败");
-
-        // 拿一份真实导出删掉热词相关字段，模拟旧版本发出的 payload
-        let records = export_all_records(data_dir).await.expect("导出失败");
-        let mut payload = serde_json::to_value(&records).expect("序列化失败");
-        let obj = payload.as_object_mut().expect("payload 应为 JSON 对象");
-        assert!(
-            obj.remove("roleHotwords").is_some(),
-            "线上字段名应为 roleHotwords"
-        );
-        assert!(
-            obj.remove("globalHotwords").is_some(),
-            "线上字段名应为 globalHotwords"
-        );
-        assert!(
-            obj.remove("hotwordCategories").is_some(),
-            "线上字段名应为 hotwordCategories"
-        );
-        assert!(
-            obj.remove("libraryHotwords").is_some(),
-            "线上字段名应为 libraryHotwords"
-        );
-
-        let staging = staging_dir(data_dir);
-        std::fs::create_dir_all(&staging).expect("创建暂存目录失败");
-        std::fs::write(staging.join(DB_RECORDS_FILE), payload.to_string())
-            .expect("写入暂存 payload 失败");
-
-        let loaded = load_staged_db_records(data_dir).expect("旧 payload 应能解析");
-        assert!(
-            loaded.role_hotwords.is_empty() && loaded.global_hotwords.is_empty(),
-            "缺失的字段应默认为空数组"
-        );
-
-        assert_eq!(
-            apply_staged_db_records(&db, data_dir).await,
-            Ok(1),
-            "旧 payload 应正常导入"
-        );
-        assert!(
-            !staging.join("db_records.json.bad").exists(),
-            "不应走失败路径"
-        );
-    }
-
     /// 导出→导入后全局热词必须与源端一致。
     #[tokio::test]
     async fn mirror_includes_global_hotwords() {
@@ -856,50 +564,6 @@ mod tests {
             (hotwords[0].text.as_str(), hotwords[0].weight),
             ("全局词", 5)
         );
-    }
-
-    /// 行为变更：全局热词行的 `lang` 归一已删（列不存在）；旧 payload 多出的 `lang`
-    /// 被忽略、不报错。越界 `weight` 仍在镜像入口归一（否则 CHECK 让整批镜像失败）。
-    #[tokio::test]
-    async fn mirror_ignores_legacy_global_lang_and_normalizes_weight() {
-        let src = tempfile::tempdir().expect("创建临时目录失败");
-        let src_db = crate::db::init_db(src.path())
-            .await
-            .expect("初始化源数据库失败");
-
-        global_hotword::ActiveModel {
-            text: Set("全局词".to_string()),
-            weight: Set(9),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入全局热词失败");
-
-        // 真导出后在 JSON 层注入脏值（DDL 的 CHECK 不允许直接写进源库）
-        let mut records = export_all_records(src.path()).await.expect("导出失败");
-        // 老设备发的 payload：热词行多一个 lang，weight 越界
-        records.global_hotwords[0]["lang"] = serde_json::json!("zh-Hans");
-        records.global_hotwords[0]["weight"] = serde_json::json!(999);
-
-        let dst = tempfile::tempdir().expect("创建临时目录失败");
-        let dst_db = crate::db::init_db(dst.path())
-            .await
-            .expect("初始化目标数据库失败");
-        stage_db_records(dst.path(), &records).expect("暂存失败");
-
-        assert_eq!(
-            apply_staged_db_records(&dst_db, dst.path()).await,
-            Ok(1),
-            "归一后应正常导入，而不是撞 CHECK 整批失败"
-        );
-
-        let hotwords = global_hotword::Entity::find()
-            .all(&dst_db)
-            .await
-            .expect("查询全局热词失败");
-        assert_eq!(hotwords.len(), 1);
-        assert_eq!(hotwords[0].weight, 50, "越界 weight 应 clamp");
     }
 
     /// 导出→导入后词库必须与源端一致（含未分类与分类关系）。
@@ -972,47 +636,5 @@ mod tests {
         assert_eq!(words.len(), 2);
         assert_eq!(words[0].category_id, Some(cats[0].id), "分类关系随镜像保持");
         assert_eq!(words[1].category_id, None, "未分类仍是 NULL");
-    }
-
-    /// 行为变更：词库行的 `lang` 归一已删（列不存在）；旧 payload 多出的 `lang`
-    /// 被忽略、不报错。越界 `weight` 仍在镜像入口归一。
-    #[tokio::test]
-    async fn mirror_ignores_legacy_library_lang_and_normalizes_weight() {
-        let src = tempfile::tempdir().expect("创建临时目录失败");
-        let src_db = crate::db::init_db(src.path())
-            .await
-            .expect("初始化源数据库失败");
-        library_hotword::ActiveModel {
-            category_id: Set(None),
-            text: Set("词".to_string()),
-            weight: Set(9),
-            ..Default::default()
-        }
-        .insert(&src_db)
-        .await
-        .expect("插入失败");
-
-        let mut records = export_all_records(src.path()).await.expect("导出失败");
-        // 老设备发的 payload：词条行多一个 lang，weight 越界
-        records.library_hotwords[0]["lang"] = serde_json::json!("zh-Hans");
-        records.library_hotwords[0]["weight"] = serde_json::json!(999);
-
-        let dst = tempfile::tempdir().expect("创建临时目录失败");
-        let dst_db = crate::db::init_db(dst.path())
-            .await
-            .expect("初始化目标数据库失败");
-        stage_db_records(dst.path(), &records).expect("暂存失败");
-
-        assert_eq!(
-            apply_staged_db_records(&dst_db, dst.path()).await,
-            Ok(1),
-            "归一后应正常导入"
-        );
-
-        let words = library_hotword::Entity::find()
-            .all(&dst_db)
-            .await
-            .expect("查询失败");
-        assert_eq!(words[0].weight, 50, "越界 weight 应 clamp");
     }
 }

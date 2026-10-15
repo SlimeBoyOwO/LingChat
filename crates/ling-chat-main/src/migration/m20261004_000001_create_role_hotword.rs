@@ -5,7 +5,7 @@ pub struct Migration;
 
 /// `CHECK` 与复合 `UNIQUE` 无法用 `ColumnDef` builder 表达，只能走原始 SQL。
 ///
-/// 两张表都刻意**不写** `FOREIGN KEY`（spec §3.6.2）：本仓库这类外键不提供级联保障
+/// 两张表都刻意**不写** `FOREIGN KEY`：本仓库这类外键不提供级联保障
 /// （删除靠手工清理，且那时 FK 已关闭），却会让旧版二进制 / 旧设备在 `DELETE FROM role` 时失败。
 /// 也不额外建 `(role_id)` 索引：`UNIQUE` 的最左前缀已是 `role_id`。
 const RAW_SQL: &str = "\

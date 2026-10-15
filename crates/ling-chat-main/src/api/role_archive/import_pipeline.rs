@@ -20,7 +20,7 @@ use crate::utils::yaml_file::resolve_settings_file;
 
 use super::{HOTWORD_SIDECAR_VERSION, HotwordSidecar, ImportResult};
 
-/// 旁挂文件体积上限：超过即判非法，**不 parse**（spec §3.7）。`do_import` 对压缩包
+/// 旁挂文件体积上限：超过即判非法，**不 parse**。`do_import` 对压缩包
 /// 本身不设绝对大小限制，高压缩比的巨型 JSON 会先把内存吃满。
 const MAX_SIDECAR_BYTES: u64 = 1024 * 1024;
 
@@ -251,7 +251,7 @@ pub(super) async fn do_import(
     // 10. 查询新角色 ID。
     let role_id = find_role_id_by_folder(&db, &resolution.final_name).await?;
 
-    // 11. 热词旁挂导入已停用（spec §3.7.1）：不回写、不删文件，`warnings` 原样透传。
+    // 11. 热词旁挂导入已停用：不回写、不删文件，`warnings` 原样透传。
     let warnings = summary.warnings;
 
     Ok(ImportResult {
@@ -264,7 +264,7 @@ pub(super) async fn do_import(
     })
 }
 
-/// 导入收尾的热词旁挂处理：**已停用**（spec §3.7.1 的用户决定「这个旁挂导入目前不做」）。
+/// 导入收尾的热词旁挂处理：**已停用**（用户决定「这个旁挂导入目前不做」）。
 ///
 /// 保留函数与其签名（`&mut warnings` 让「是否新增 warning」可测），
 /// 但只记一条 `tracing::warn!`、**不读文件、不写库、不删文件**——老包里的旁挂留在
@@ -319,7 +319,7 @@ async fn read_sidecar_into_db(
         )]);
     }
 
-    // 校验与归一全部交给 `replace_for_role`：weight clamp 到 1..=50、text trim 后
+    // 校验与归一全部交给 `replace_for_role`：weight 归一到 `[1, 5] ∪ {50}`、text trim 后
     // 为空丢弃、超长或超 200 条报错（校验口径与保存路径同一份）。
     let rows: Vec<(String, i32)> = sidecar
         .hotwords
@@ -334,9 +334,9 @@ async fn read_sidecar_into_db(
     Some(Vec::new())
 }
 
-/// 热词在**一个事务**里写入（spec §3.7）：`replace_for_role` 的校验失败（超长 / 超限）
+/// 热词在**一个事务**里写入：`replace_for_role` 的校验失败（超长 / 超限）
 /// 会让整个事务回滚，不会留下半套热词。全程传 `&txn`：SQLite 单连接池下在事务里
-/// 传 `&db` 会自锁（spec §8）。
+/// 传 `&db` 会自锁。
 async fn write_hotwords(
     db: &DatabaseConnection,
     role_id: i32,

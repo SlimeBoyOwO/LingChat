@@ -5,7 +5,7 @@ pub struct Migration;
 
 /// `CHECK` 与复合 `UNIQUE` 无法用 `ColumnDef` builder 表达，只能走原始 SQL。
 ///
-/// 两张表都刻意**不写** `FOREIGN KEY`：无归属对象，且与 role 两表同一取舍（spec §3.6.2）。
+/// 两张表都刻意**不写** `FOREIGN KEY`：无归属对象，且与 role 两表同一取舍。
 /// `global_asr_config` 是**单行表**（id 恒为 0）：语言与热词要能一个事务提交，而塞进
 /// `AsrSettings` 会随 `asr_set_settings` 触发 provider 重建等重副作用。
 /// 注意它**没有** `role_asr_config` 那套「行存在 = 已初始化」语义——那是给 seed 用的，

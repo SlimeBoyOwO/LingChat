@@ -18,7 +18,7 @@ export interface RoleHotword {
 
 /**
  * 角色热词草稿：热词 tab 的编辑态。由弹窗（父组件）持有，编辑只进内存，
- * 随底部「保存」与其余角色设置一次提交；「取消」即丢弃（D6）。
+ * 随底部「保存」与其余角色设置一次提交；「取消」即丢弃。
  */
 export interface RoleHotwordDraft {
   hotwords: RoleHotword[];

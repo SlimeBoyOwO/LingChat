@@ -41,3 +41,29 @@ pub fn normalize_weight(weight: i32) -> i32 {
         SUPER_WEIGHT
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 权重是离散口径而非连续区间，三个 band 各自钉住边界。
+    ///
+    /// 这条是**本地保存路径本来就没有的覆盖**：LAN 镜像测试原先顺带断言过
+    /// 「999 → 50」，但它们已在收尾时删除，若不补这条，整个仓库就没有任何测试
+    /// 约束这个函数——把 `>= 50` 分支改坏不会有测试变红。
+    #[test]
+    fn normalize_weight_is_discrete() {
+        // 下界：非正数一律抬到 1
+        assert_eq!(normalize_weight(-7), MIN_WEIGHT);
+        assert_eq!(normalize_weight(0), MIN_WEIGHT);
+        // 普通档：原样保留
+        assert_eq!(normalize_weight(1), 1);
+        assert_eq!(normalize_weight(5), WEIGHT_CAP);
+        // 非法区：6..=49 就近降到普通档上界（不是抬到 50）
+        assert_eq!(normalize_weight(6), WEIGHT_CAP);
+        assert_eq!(normalize_weight(49), WEIGHT_CAP);
+        // 超级热词：>= 50 一律归 50（含越界存量 999）
+        assert_eq!(normalize_weight(SUPER_WEIGHT), SUPER_WEIGHT);
+        assert_eq!(normalize_weight(999), SUPER_WEIGHT);
+    }
+}

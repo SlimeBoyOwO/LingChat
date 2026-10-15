@@ -173,7 +173,7 @@ pub struct ModelInfo {
     ///
     /// 与 [`Self::supports_inline_vocabulary`] 是两条并列的「热词会不会被用上」
     /// 链路，**两个都为 false 时该模型会静默丢弃热词**——前端角色设置页据此显示
-    /// 警告条（spec §9.1 第 1 条提示）。不合并成单个「支持热词」位：两者是
+    /// 警告条。不合并成单个「支持热词」位：两者是
     /// provider 侧两套不同的协议能力，各自的门控仍分开判定。
     pub supports_prompt_bias: bool,
     /// 一次请求可接受的即时热词条数上限；`None` = 不发即时热词或没有条数上限。

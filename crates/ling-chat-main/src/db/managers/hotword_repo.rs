@@ -5,7 +5,7 @@ use sea_orm::{
 
 use crate::db::entities::{global_hotword, hotword_category, library_hotword, role_hotword};
 
-/// 每作用域条数上限（角色与全局同一口径）：几百条会撞服务端上限，且 llama 的 prompt 按字符预算整体截断（spec §6.4）。
+/// 每作用域条数上限（角色与全局同一口径）：几百条会撞服务端上限，且 llama 的 prompt 按字符预算整体截断。
 const MAX_ROWS_PER_ROLE: usize = 200;
 /// 单条词条的长度判据（**两套，按是否含非 ASCII 分流**，厂商文档口径）：
 /// 含非 ASCII 时按**总字符数** ≤ [`MAX_TEXT_CHARS`]；纯 ASCII 时按**空格切分的片段数**
@@ -17,12 +17,29 @@ const MAX_TEXT_CHARS: usize = 15;
 /// 纯 ASCII 词条的片段数上限。
 const MAX_TEXT_SEGMENTS: usize = 7;
 
+/// 调用方侧的长度判据：先 `trim`、再判空、最后校验，校验的是 `trim` 后的值，
+/// 未通过则返回原因（供调用方记日志并丢弃该行）。
+///
+/// 必须在调用方（而不是塞进 [`validate_text_len`]）做，因为 `text` 是归并/唯一键，
+/// 未 `trim` 就入库会让同一个词出现两个 key（镜像路径尤其需要）。
+pub(crate) fn validate_and_trim(text: &mut String) -> Result<(), anyhow::Error> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return Err(anyhow!("热词为空"));
+    }
+    validate_text_len(trimmed)?;
+    if trimmed.len() != text.len() {
+        *text = trimmed.to_string();
+    }
+    Ok(())
+}
+
 /// 按是否含非 ASCII 分流校验单条词条长度。
 ///
 /// `pub` 供 `lan_sync` 的镜像导入复用：那条路径原先只归一 `weight`、不做任何校验，
 /// 于是「本地拒了、镜像放行」。两侧必须同一份判据。
 ///
-/// ⚠️ **调用方须先 `trim` 并自行丢弃空串**（本地路径见 `validate_and_merge`）：
+/// ⚠️ **调用方须先 `trim` 并自行丢弃空串**（本仓用 [`validate_and_trim`] 包一层）：
 /// 本函数只判长度，纯空白串在 ASCII 分支是 0 片段、会照常放行。
 pub fn validate_text_len(text: &str) -> Result<(), anyhow::Error> {
     if text.is_ascii() {
@@ -96,7 +113,7 @@ fn validate_and_merge(
 pub struct HotwordRepo;
 
 impl HotwordRepo {
-    /// 按 id 升序 = 插入顺序（spec §6.1 的组内顺序）。
+    /// 按 id 升序 = 插入顺序（即场景热词的组内顺序）。
     pub async fn list_by_role<C: ConnectionTrait>(
         db: &C,
         role_id: i32,
@@ -129,7 +146,7 @@ impl HotwordRepo {
     /// 保留首次出现的位置。
     ///
     /// 全部校验通过后才动库：任一条不合格直接 `Err`，整表保持原样。
-    /// 事务由调用方开启——在事务里必须传 `&txn`（SQLite 单连接池，传 `&db` 会自锁，spec §8）。
+    /// 事务由调用方开启——在事务里必须传 `&txn`（SQLite 单连接池，传 `&db` 会自锁）。
     pub async fn replace_for_role<C: ConnectionTrait>(
         db: &C,
         role_id: i32,

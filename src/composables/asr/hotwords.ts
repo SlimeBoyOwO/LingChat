@@ -3,7 +3,7 @@ import { runtime, type HotwordSnapshot } from "./state";
 import { getGlobalHotwords, getSceneHotwords, type RoleHotword } from "@/api/services/hotword";
 
 /**
- * 场景热词缓存的刷新与快照（识别时注入，spec §9.2）。
+ * 场景热词缓存的刷新与快照（识别时注入）。
  *
  * 缓存写入是异步的（DB 往返）、读取是同步的：切角色后 `await` 还没回来时用户就按
  * PTT → 会读到**上一个角色**的词表；而流式会话中途改热词不生效、也不自动
@@ -15,16 +15,16 @@ import { getGlobalHotwords, getSceneHotwords, type RoleHotword } from "@/api/ser
  */
 
 /** 权重 5 = 厂商口径的普通档上界（`db/entities/hotword_weight.rs::WEIGHT_CAP`），
- *  也是 D16.1 指定的「强制偏好」档。 */
+ *  也是角色名热词指定的「强制偏好」档。 */
 const ROLE_NAME_WEIGHT = 5;
 
 /**
- * 主角名 + 在场角色名 → `runtime.roleNameHotwords`（D16.1「在场即注入」）。
+ * 主角名 + 在场角色名 → `runtime.roleNameHotwords`。
  *
  * **不写库、不物化**：角色名不进 `role_hotword`，因此不走 `get_scene_hotwords`
- * 那条读库路径。改名后下次识别自动生效（D3 的物化方案要靠用户手动改）。
+ * 那条读库路径。改名后下次识别自动生效。
  *
- * 顺序 = 主角名在最前、在场角色名依次跟随（与 D7「主角优先」一致）。
+ * 顺序 = 主角名在最前、在场角色名依次跟随（与「主角优先」一致）。
  * 同名去重交给 `build_options`（按 text 取 max、保留首现位置）。
  */
 function syncRoleNameHotwords(): void {
@@ -64,7 +64,7 @@ export async function refreshSceneHotwords(): Promise<void> {
     runtime.hotwords = [];
     return;
   }
-  // 角色名先于任何 await 同步派生（D16.1）：切角色后立刻生效，不经过 DB、
+  // 角色名先于任何 await 同步派生：切角色后立刻生效，不经过 DB、
   // 也不受下面那次刷新成败影响。
   syncRoleNameHotwords();
   // 立即作废旧缓存（清空 + generation+1）再 await：见文件头
@@ -96,9 +96,9 @@ export async function refreshSceneHotwords(): Promise<void> {
   }
 }
 
-/** 录音开始时取快照（流式与非流式统一在此取，spec §9.2）。
+/** 录音开始时取快照（流式与非流式统一在此取）。
  *
- *  角色名**前置拼接**（D16.1）：它在有序列表最前 = 截断时最后被丢。
+ *  角色名**前置拼接**：它在有序列表最前 = 截断时最后被丢。
  *  ⚠️ 要拷贝数组，不能直接引用 `runtime.roleNameHotwords`——它在下一次
  *  `syncRoleNameHotwords` 时整体换新，快照必须冻结住录音开始那一刻的内容。 */
 export function takeHotwordSnapshot(): HotwordSnapshot {

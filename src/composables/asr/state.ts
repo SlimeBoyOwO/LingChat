@@ -60,7 +60,7 @@ export const runtime = {
   baseText: "",
   /** 场景热词缓存：场景角色词 + 全局词（hotwords.ts 的 refreshSceneHotwords 写入） */
   hotwords: [] as RoleHotword[],
-  /** 角色名热词（主角名 + 在场角色名，D16.1「在场即注入」）。
+  /** 角色名热词（主角名 + 在场角色名，「在场即注入」）。
    *
    *  **为什么不并进 `hotwords`**：`hotwords` 是异步 DB 往返的结果、会因刷新失败
    *  而复位成空表（见 hotwords.ts 的文件头）；角色名是**同步派生**的，不该被

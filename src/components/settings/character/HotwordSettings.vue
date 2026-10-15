@@ -44,7 +44,7 @@
       </div>
     </div>
 
-    <!-- 紧凑列：词条占满剩余宽度，权重是固定宽的小控件（D13） -->
+    <!-- 紧凑列：词条占满剩余宽度，权重是固定宽的小控件 -->
     <div v-if="draft.hotwords.length > 0" class="flex items-center gap-2 text-[13px] text-white/40">
       <span class="flex-1">{{ $t("settings.characterInfo.hotword.colText") }}</span>
       <span class="w-24 shrink-0">{{ $t("settings.characterInfo.hotword.colWeight") }}</span>
@@ -148,7 +148,7 @@ const props = defineProps<{
    * `null` = 模型清单尚未加载——不提示，宁可不提示也不误报。
    */
   modelCapability: { modelId: string; supportsHotwords: boolean } | null;
-  /** 草稿：编辑只进这里，提交由父组件负责（D6）。 */
+  /** 草稿：编辑只进这里，提交由父组件负责。 */
   modelValue: RoleHotwordDraft;
 }>();
 

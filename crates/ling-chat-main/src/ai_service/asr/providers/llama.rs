@@ -109,7 +109,7 @@ impl AsrProvider for LlamaAsrProvider {
             );
         // 热词接口：作为 prompt 上下文偏置传入
         //（偏置非强制——提升特定词命中概率，不保证一定识别为热词）
-        // 记账用字符口径：llama 的容量是**字符预算**，不是条数（D44/CapacityD45）
+        // 记账用字符口径：llama 的容量是**字符预算**，不是条数
         if let Some(p) = llama_prompt_from_hotwords(&opts.hotwords) {
             if p.dropped > 0 {
                 debug!(
@@ -209,27 +209,27 @@ impl AsrProvider for LlamaAsrProvider {
 /// 25~100 个词，容易远超文档建议的条数。修复时一并改按条数。
 const LLAMA_PROMPT_MAX_CHARS: usize = 200;
 
-/// 实现实际使用的预算（**测试断言与实现读同一个函数**，不写死 196）。
+/// 实现实际使用的预算。
 ///
-/// ⚠️ 这个值会随 prefix/suffix 变化——见 `llama_prompt_from_hotwords` 的 TODO，
-/// 那次回归修复会把它们删掉、预算随之变成满额。断言写死数字会在那时失效。
+/// ⚠️ 这个值会随 prefix/suffix 变化——修复「prompt 被回吐」那个缺陷时会把它们删掉，
+/// 预算随之变成满额。将来补断言时别写死数字，读本函数。
 pub(crate) fn llama_prompt_capacity() -> usize {
     LLAMA_PROMPT_MAX_CHARS
         .saturating_sub(PROMPT_PREFIX.chars().count() + PROMPT_SUFFIX.chars().count())
 }
 
-/// ⚠️ 这两行是 `4ca2e79c` 引入的回归点（见函数文档 TODO）：裸逗号列表才是
-/// 部署包文档验证过的形式。修的时候连 prefix/suffix 一起去掉，并同步预算算法。
+/// ⚠️ 这两行是 `4ca2e79c` 引入的回归点：裸逗号列表才是部署包文档验证过的形式。
+/// 修的时候连 prefix/suffix 一起去掉，并同步预算算法。
 const PROMPT_PREFIX: &str = "热词：";
 const PROMPT_SUFFIX: &str = "。";
 
-/// 一次 prompt 偏置的构造结果：文本 + **保留与丢弃的计数**（D45 的记账）。
+/// 一次 prompt 偏置的构造结果：文本 + **保留与丢弃的计数**。
 pub(crate) struct LlamaPrompt {
     /// 实际写进 multipart `prompt` 字段的文本。
     pub text: String,
     /// 拼进 `text` 的词数。
     pub used: usize,
-    /// 因超出字符预算而未发的词数（整词丢弃、丢尾部，D43）。
+    /// 因超出字符预算而未发的词数（整词丢弃、丢尾部）。
     pub dropped: usize,
 }
 
@@ -240,31 +240,16 @@ pub(crate) struct LlamaPrompt {
 ///
 /// 保留的两项处理（原实现直接 `join(", ")`，都没有）：
 /// - **去重**：同一角色可能重复配置，重复词只会挤占窗口
-/// - **长度上限**：见上，口径待改
+/// - **长度上限**：见上，口径待改（要改按条数）
 ///
-/// ⚠️ **TODO（2026-10-09 实测发现，待修复）**
+/// ⚠️ **已知缺陷（未修复）：音频过短 / 无有效人声时，本函数的返回值会被模型当成
+/// 已完成的转录原样回吐**，用户拿到的成了词表而不是自己说的话。
 ///
-/// **现象**：音频过短 / 无有效人声时，模型把这段 prompt 当成已完成的转录直接收尾，
-/// **整段 `r.text` 与返回值逐字相同**，用户拿到的是词表而不是说的话
-/// （日志形如 `[ASR] llama-asr 识别结果: 热词：A、B。`）。
+/// 成因是上面那个成句形式（`热词：A、B。`）——它读起来像一句待续的转录文本，
+/// 而被整体回吐的正是这一串字符。修复方向：回到文档验证过的裸逗号列表形式，
+/// 保留去重与长度上限；另可在调用点加「返回值 == 下发文本则判为无结果」的兜底。
 ///
-/// **定性：这是一次回归，不是本形式的固有风险。** 最初实现（`01b047e9`）用的是
-/// `hotwords.join(", ")` 裸逗号列表——与部署包文档的 curl / Rust 示例逐字相同，
-/// 且文档有对照实验与 `input_tokens` 证据（`API接入文档.md` §三「动态热词（已验证）」，
-/// 并明确「无需 `keywords:` 前缀，实测两种都生效」）。
-/// `4ca2e79c` 把它改成 `热词：A、B、C。`，依据是「裸列表容易被当成待续的转录文本」——
-/// **该依据与文档实测相反**：裸列表恰恰是验证过有效的形式，而中文成句更像一句待续的
-/// 转录文本，正是现在被整体回吐的那串字符。
-///
-/// **修复方向（首选第 1 条，其余视情况）**：
-/// 1. 回到文档验证过的**裸逗号列表**，保留去重与长度上限（去重/上限是 `4ca2e79c`
-///    的正当收益，不随形式一起回退）；上限口径同时改按条数
-/// 2. 在 `recognize` / `stream_recognize` 加退化兜底：`r.text` 与本函数返回值相等时
-///    判为无结果（防线，不替代第 1 条）
-/// 3. 下策：不发 `prompt`——等于放弃 llama-asr 的全部热词能力
-///
-/// **修复前请先确认调试期的观测能力不被一并删掉**——退化时这段词表是当前唯一能直接
-/// 看到「模型实际收到哪些热词」的窗口，配合调用点那行 debug 日志一起用于排查。
+/// 排查时注意：那两处记账日志是 `debug!`，需显式调高日志级别才看得到。
 fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<LlamaPrompt> {
     let mut seen = std::collections::HashSet::new();
     let mut words: Vec<&str> = Vec::new();

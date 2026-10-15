@@ -427,7 +427,7 @@ const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
 const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
 
 /**
- * 热词 tab 的草稿：编辑只进内存，随底部「保存」与其余设置一次提交（D6），
+ * 热词 tab 的草稿：编辑只进内存，随底部「保存」与其余设置一次提交，
  * 「取消」即丢弃。
  */
 const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
@@ -1189,8 +1189,8 @@ function applySettingsToRuntime() {
     // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
     // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 角色名参与识别热词（D16.1「在场即注入」）：store 里的 roleName 不改，
-    // 改名要等重启才生效——那正是 D16.1 要消灭的问题。这里与其它字段一并热更。
+    // 角色名参与识别热词：store 里的 roleName 不改，
+    // 改名要等重启才生效——热更正是为了避免它。这里与其它字段一并热更。
     if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
       runtimeRole.roleName = localSettings.value.ai_name.trim();
     }
@@ -1217,7 +1217,7 @@ async function persistSettings(): Promise<boolean> {
     );
     // 运行时缓存与库同步（识别时注入的就是这份）：保存成功后重取。
     // ⚠️ 必须排在 applySettingsToRuntime 里那次 `roleName` 热更**之后**：
-    // refreshSceneHotwords 会**同步**派生角色名热词（D16.1），放在前面派生出的
+    // refreshSceneHotwords 会**同步**派生角色名热词，放在前面派生出的
     // 是旧名字，改名就不能立即生效了。
     void refreshSceneHotwords();
     return true;

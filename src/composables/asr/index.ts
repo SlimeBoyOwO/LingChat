@@ -52,7 +52,7 @@ import { isAndroid } from "@/utils/platform";
  * ChatInput 的 mic 实例共享同一会话。若状态放在函数内，两实例各自持有
  * recorder/phase，mic 按钮看不到录音状态、互不感知。
  *
- * ── 采集链路（spec §3.1）─────────────────────────────────
+ * ── 采集链路─────────────────────────────────
  * 16kHz AudioContext + ScriptProcessor 直接拿 f32 PCM（不经过
  * MediaRecorder webm 编码），停止时合成 16k mono PCM16 WAV 送去识别。
  * auto 模式额外把每 512 samples（30ms）喂 asrVadProcessChunk，
@@ -261,7 +261,7 @@ function ensureInit() {
     },
     { immediate: true },
   );
-  // 场景热词缓存（识别时注入，spec §9.2）：主角或在场角色变化即重取。
+  // 场景热词缓存（识别时注入）：主角或在场角色变化即重取。
   // 比较合成键而非数组引用：原地增删在场角色同样要触发
   watch(
     () => {

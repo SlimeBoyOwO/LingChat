@@ -45,7 +45,7 @@ impl RoleHotword {
     }
 }
 
-/// 词库词条。读写共用——**无 id**：拷贝式下没有任何东西引用词库行 id（spec D20）。
+/// 词库词条。读写共用——**无 id**：拷贝式下没有任何东西引用词库行 id。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LibraryWord {
     /// `None` = 未分类。
@@ -62,7 +62,7 @@ pub struct HotwordLibrary {
     pub words: Vec<LibraryWord>,
 }
 
-/// 场景级热词：主角 → present 顺序 → 组内插入顺序（id），不去重（spec §6.1）。
+/// 场景级热词：主角 → present 顺序 → 组内插入顺序（id），不去重。
 ///
 /// `-1`（尚未选定主角的哨兵）与 `0`（User，玩家本体）不是热词归属角色，两个入口都滤掉；
 /// 主角通常也在 present 里，已排在最前，不再重复追加。
@@ -142,7 +142,7 @@ fn to_rows(hotwords: Vec<HotwordInput>) -> Vec<(String, i32)> {
 /// 保存内核：单事务包 `replace_for_role`。
 ///
 /// 事务即失败语义：校验失败（超长 / 超限）整体回滚，不会留下半套热词。
-/// 全程传 `&txn`：SQLite 单连接池下在事务里传 `&db` 会自锁（spec §8）。
+/// 全程传 `&txn`：SQLite 单连接池下在事务里传 `&db` 会自锁。
 async fn save_settings(
     db: &DatabaseConnection,
     role_id: i32,
@@ -154,7 +154,7 @@ async fn save_settings(
     Ok(())
 }
 
-/// 保存角色的热词：单事务提交，弹窗底部「保存」一次写入（spec §8）。
+/// 保存角色的热词：单事务提交，弹窗底部「保存」一次写入。
 #[tauri::command]
 pub async fn save_role_hotwords(
     app: AppHandle,
@@ -241,7 +241,7 @@ async fn library(db: &DatabaseConnection) -> Result<HotwordLibrary, anyhow::Erro
     })
 }
 
-/// 保存内核（词库）：单事务包 `replace_library`，与角色/全局侧同款（spec §4.2）。
+/// 保存内核（词库）：单事务包 `replace_library`，与角色/全局侧同款。
 async fn save_library(
     db: &DatabaseConnection,
     categories: Vec<String>,

@@ -25,7 +25,7 @@ export const countWords = (draft: LibraryDraft, filter: CategoryFilter): number 
     : draft.words.filter((w) => w.category_index === (filter === "none" ? null : filter)).length;
 
 /**
- * 删除分类（D21 的草稿侧 + spec §5.2.1 的重排不变量）。
+ * 删除分类。
  *
  * 词条只存下标不存名字，所以删掉 `index` 后必须：
  *   ① 丢弃挂在该分类下的词条；② 把 `> index` 的下标各减 1；③ 从数组里移掉分类。

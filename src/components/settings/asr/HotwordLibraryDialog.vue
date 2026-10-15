@@ -409,7 +409,7 @@ const deleteCategory = async (index: number) => {
     t("settings.asr.hotwordLibrary.dialog.categories.deleteConfirm", { count }),
   );
   if (!confirmed) return;
-  // 重排 + 级联删除 + 再次去重全在纯函数里（spec §5.2.1）
+  // 重排 + 级联删除 + 再次去重全在纯函数里
   removeCategory(draft.value, index);
   selected.value = "all";
   invalidCategory.value = null;

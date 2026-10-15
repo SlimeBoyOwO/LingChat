@@ -10,7 +10,6 @@ pub struct Model {
     pub name: String,
 }
 
-/// 表上没有外键、也不需要 join，因此留空。
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {}
 
