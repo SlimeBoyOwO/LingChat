@@ -67,6 +67,21 @@ sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# 参考音频导入：sherpa-onnx 只吃 16-bit PCM WAV，用 symphonia 解码任意常见音频后
+# 交给 hound 重编码（见 utils::audio）。只开需要的容器/编码，别把整个 all 拉进来。
+symphonia = { version = "0.5", default-features = false, features = [
+    "aac",
+    "aiff",
+    "alac",
+    "flac",
+    "isomp4",
+    "mp3",
+    "ogg",
+    "pcm",
+    "vorbis",
+    "wav",
+] }
+hound = "3.5"
 
 # LAN Sync
 axum = { workspace = true }
