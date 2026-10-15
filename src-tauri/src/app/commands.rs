@@ -292,6 +292,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::tts_sherpa::sherpa_download_model,
         api::tts_sherpa::sherpa_delete_model,
         api::tts_sherpa::test_sherpa_onnx_voice,
+        api::tts_sherpa::import_sherpa_ref_audio,
         api::tts_sherpa::open_sherpa_onnx_model_manager,
         api::tts_sherpa::check_sherpa_storage_permission,
         api::tts_sherpa::request_sherpa_storage_permission,

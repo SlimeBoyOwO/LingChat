@@ -1486,6 +1486,11 @@ export default {
     refChange: "Change audio",
     refPick: "Pick audio",
     refClear: "Clear",
+    refImporting: "Importing...",
+    refImportNotWav: "Only WAV reference audio is supported. Convert the file to WAV and try again",
+    refImportFailed: "Failed to import reference audio",
+    refImportHint:
+      "WAV only. The file is copied into the app data directory, so moving or deleting the original does not affect it",
     refText: "Reference text",
     refTextPlaceholder: "Transcription of the reference audio...",
     test: "Test",

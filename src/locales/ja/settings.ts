@@ -1471,6 +1471,12 @@ export default {
     refChange: "音声を変更",
     refPick: "音声を選択",
     refClear: "クリア",
+    refImporting: "インポート中…",
+    refImportNotWav:
+      "参照音声は WAV 形式のみ対応しています。WAV に変換してからインポートしてください",
+    refImportFailed: "参照音声のインポートに失敗しました",
+    refImportHint:
+      "WAV 形式のみ対応。インポート時にアプリのデータディレクトリへコピーされるため、元ファイルを移動・削除しても影響しません",
     refText: "参照テキスト",
     refTextPlaceholder: "参照音声に対応するテキスト……",
     test: "試聴",
