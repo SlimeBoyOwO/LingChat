@@ -12,6 +12,8 @@ resolver = "2"
 version = "0.5.2"
 
 [workspace.dependencies]
+ling-chat-dlc-contract = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "3ab33a9d74d650bfa9663f3b2dea6db8fb292b61" }
+ling-chat-dlc-runtime = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "3ab33a9d74d650bfa9663f3b2dea6db8fb292b61" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"
@@ -52,6 +54,8 @@ tracing-subscriber = { version = "0.3", features = [
 # [patch] 与 [profile] 只能放在 workspace 根：成员 crate 里的这两段会被 Cargo 静默忽略。
 # esaxx-rs 的 patch 路径相对本文件，故补 src-tauri/ 前缀。
 [patch.crates-io]
+ling-chat-main = { path = "crates/ling-chat-main" }
+ling-chat-plugins = { path = "crates/ling-chat-plugins" }
 esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }
 jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
 

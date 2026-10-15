@@ -4285,6 +4285,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "ling-chat-dlc-contract"
+version = "0.2.0"
+source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=3ab33a9d74d650bfa9663f3b2dea6db8fb292b61#3ab33a9d74d650bfa9663f3b2dea6db8fb292b61"
+dependencies = [
+ "anyhow",
+ "ling-chat-main",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "tauri",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "ling-chat-dlc-runtime"
+version = "0.3.0"
+source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=3ab33a9d74d650bfa9663f3b2dea6db8fb292b61#3ab33a9d74d650bfa9663f3b2dea6db8fb292b61"
+dependencies = [
+ "anyhow",
+ "async-trait",
+ "axum",
+ "base64 0.22.1",
+ "ling-chat-dlc-contract",
+ "ling-chat-main",
+ "ling-chat-plugins",
+ "rand 0.8.7",
+ "reqwest 0.13.3",
+ "sea-orm",
+ "semver",
+ "serde",
+ "serde_json",
+ "serde_yaml",
+ "sha2 0.10.9",
+ "tauri",
+ "tempfile",
+ "tokio",
+ "tokio-util",
+ "tracing",
+ "uuid",
+ "windows 0.62.2",
+ "zip 2.4.2",
+]
+
+[[package]]
 name = "ling-chat-main"
 version = "0.5.2"
 dependencies = [
@@ -4365,6 +4411,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "futures-util",
+ "ling-chat-dlc-contract",
  "ling-chat-main",
  "reqwest 0.13.3",
  "rustpython-derive",
@@ -4389,6 +4436,7 @@ version = "0.5.2"
 dependencies = [
  "anyhow",
  "chrono",
+ "ling-chat-dlc-runtime",
  "ling-chat-main",
  "ling-chat-plugins",
  "reqwest 0.13.3",

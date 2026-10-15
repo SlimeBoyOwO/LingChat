@@ -118,12 +118,29 @@ pub fn resolve_role_dir_in(
                 .map(str::trim)
                 .filter(|s| !s.is_empty())
                 .ok_or_else(|| "剧本角色缺少 script_key".to_string())?;
-            Ok(base_data_dir
-                .join("game_data")
-                .join("scripts")
-                .join(script_key)
-                .join("characters")
-                .join(resource_folder))
+            if std::path::Path::new(script_key)
+                .components()
+                .any(|c| !matches!(c, std::path::Component::Normal(_)))
+                || std::path::Path::new(resource_folder)
+                    .components()
+                    .any(|c| !matches!(c, std::path::Component::Normal(_)))
+            {
+                return Err("Invalid script role path".into());
+            }
+            let script_dir = if let Some(rest) = script_key.strip_prefix("plugins/") {
+                let (id, relative) = rest.split_once('/').ok_or("Invalid plugin script key")?;
+                base_data_dir
+                    .join("plugins")
+                    .join(id)
+                    .join("scripts")
+                    .join(relative)
+            } else {
+                base_data_dir
+                    .join("game_data")
+                    .join("scripts")
+                    .join(script_key)
+            };
+            Ok(script_dir.join("characters").join(resource_folder))
         },
         RoleType::System | RoleType::User => Err("系统角色没有磁盘资源目录".to_string()),
     }

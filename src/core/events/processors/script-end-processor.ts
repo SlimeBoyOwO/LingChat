@@ -1,3 +1,4 @@
+import { finishExtensionStory } from "@lingchat/dlc-ui/host/finish";
 import type { IEventProcessor } from "../event-processor";
 import type { ScriptEndEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
@@ -24,8 +25,21 @@ export default class ScriptEndProcessor implements IEventProcessor {
     }
 
     const gameStore = useGameStore();
-    gameStore.exitStoryMode();
     const uiStore = useUIStore();
+    const finishPresentation = await finishExtensionStory(gameStore.runningScript);
+    gameStore.exitStoryMode();
+
+    // 剧本声明 main_character 时，后端把进前主角随 script:end 载荷交还（不能即时
+    // emit——本处理器就是队列有序性的保证）。presentRoleIds 已由 exitStoryMode 按
+    // 进前快照还原，这里只交还「当前对话角色」与主界面标题。
+    if (event.restoredRoleId != null) {
+      const role = await gameStore.getOrCreateGameRole(event.restoredRoleId);
+      gameStore.currentInteractRoleId = event.restoredRoleId;
+      uiStore.showCharacterTitle = role.roleName;
+      uiStore.showCharacterSubtitle = role.roleSubTitle;
+    }
+
     uiStore.showPlayerHintLine = "";
+    await finishPresentation();
   }
 }

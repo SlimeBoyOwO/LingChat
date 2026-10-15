@@ -7,6 +7,12 @@
           <PluginTag v-if="script.source && script.source !== 'game'" :source="script.source" />
         </span>
       </StartItem>
+      <ScriptActions
+        :script="script"
+        :busy="resettingName !== null"
+        :done="resetDoneName === script.script_name"
+        @reset="resetMemory(script)"
+      />
     </StartLine>
 
     <StartLine>
@@ -40,12 +46,13 @@
 import { computed, ref } from "vue";
 import { StartItem, StartLine, StartList } from "../base";
 import PluginTag from "@/components/ui/PluginTag.vue";
-import { useRouter } from "vue-router";
-import { type ScriptSummary, startScript } from "@/api/services/script-info";
-import { useGameStore } from "@/stores/modules/game";
+import type { ScriptSummary } from "@/api/services/script-info";
+import ScriptActions from "@lingchat/dlc-ui/host/ScriptActions.vue";
+import { useStoryEntry } from "@lingchat/dlc-ui/composables/useStoryEntry";
 
 const emit = defineEmits<{
   (e: "back"): void;
+  (e: "script-state-reset"): void;
 }>();
 
 const props = defineProps({
@@ -55,19 +62,10 @@ const props = defineProps({
   },
 });
 
-const router = useRouter();
-const gameStore = useGameStore();
-
 const currentPage = ref(1);
 const pageSize = 3;
-
-const selectScript = async (script: ScriptSummary) => {
-  await router.push("/chat");
-
-  gameStore.enterStoryMode(script.script_name);
-
-  await startScript(script.script_name);
-};
+// 记忆重置按钮状态：resettingName 防连点，resetDoneName 做 ✓ 短暂反馈
+const { resettingName, resetDoneName, resetMemory, selectScript } = useStoryEntry(emit);
 
 const totalPages = computed(() => {
   return Math.ceil(props.scripts.length / pageSize);

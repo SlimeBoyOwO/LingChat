@@ -82,6 +82,41 @@ fn split_key(key: &str) -> Result<Vec<String>, String> {
     Ok(segs)
 }
 
+/// 剧本是否在 `story_config.yaml` 里声明了 `editor_locked: true`。
+///
+/// 锁定由剧本包自己声明（DLC 典型场景：含编辑器不支持的特殊事件，如
+/// jumpscare / force_choice），引擎不再硬编码任何具体剧本名。声明了锁定的
+/// 剧本在路径层直接拦截：枚举不列出、目录解析报错——剧本编辑器与技能 AI
+/// 都读写不到；游戏引擎的剧情加载不经过本模块，游玩不受影响。
+fn script_dir_editor_locked(dir: &Path) -> bool {
+    #[derive(serde::Deserialize)]
+    struct LockProbe {
+        #[serde(default)]
+        editor_locked: bool,
+    }
+    let Ok(content) = std::fs::read_to_string(dir.join("story_config.yaml")) else {
+        return false;
+    };
+    serde_yaml::from_str::<LockProbe>(&content)
+        .map(|p| p.editor_locked)
+        .unwrap_or(false)
+}
+
+/// key 指向的剧本是否声明了编辑器锁定。
+pub fn is_protected_script_key(key: &str) -> bool {
+    let Ok(segs) = split_key(key) else {
+        return false;
+    };
+    if layout_of(key).is_err() {
+        return false;
+    }
+    let mut dir = scripts_root();
+    for seg in &segs {
+        dir.push(seg);
+    }
+    script_dir_editor_locked(&dir)
+}
+
 /// 由 key 推断布局。
 pub fn layout_of(key: &str) -> Result<ScriptLayout, String> {
     let segs = split_key(key)?;
@@ -95,6 +130,10 @@ pub fn layout_of(key: &str) -> Result<ScriptLayout, String> {
 
 /// key → 磁盘目录，并确认它确实在 `scripts/` 之内且已存在。
 pub fn resolve_script_dir(key: &str) -> Result<PathBuf, String> {
+    // 声明了 editor_locked 的剧本在路径层直接拒绝对外解析（编辑器/技能 AI 均走这里）
+    if is_protected_script_key(key) {
+        return Err("该剧本已声明 editor_locked，不开放编辑".to_string());
+    }
     let layout = layout_of(key)?;
     let segs = split_key(key)?;
     debug_assert_eq!(segs.len(), layout.segments());
@@ -267,6 +306,8 @@ pub fn enumerate_script_keys() -> Vec<String> {
         }
     }
 
+    // 声明 editor_locked 的剧本不出现在任何枚举结果里
+    keys.retain(|k| !is_protected_script_key(k));
     keys.sort();
     keys
 }

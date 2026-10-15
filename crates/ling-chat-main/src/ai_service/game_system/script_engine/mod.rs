@@ -45,6 +45,8 @@ pub fn init_event_registry() {
     events::ambient_event::register();
     // 注册成就解锁事件处理器
     events::achievement_event::register();
-
+    extension::register_events();
     tracing::info!("[ScriptEngine] 所有事件处理器已注册");
 }
+
+pub mod extension;

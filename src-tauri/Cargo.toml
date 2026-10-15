@@ -29,6 +29,7 @@ custom-protocol = ["tauri/custom-protocol"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+ling-chat-dlc-runtime = { workspace = true }
 # 业务主 crate 与插件 crate（原 src-tauri/src 下的模块已拆分至此）。
 # 外壳只依赖这两者 + Tauri 及其插件；业务侧的重依赖（ort / sbv2_core / rustpython /
 # axum / wgpu / windows 等）由对应 crate 自带，无需在此重复声明。

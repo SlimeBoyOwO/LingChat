@@ -1,28 +1,31 @@
 <template>
-  <div class="relative h-full w-full overflow-hidden">
+  <div
+    class="main-menu-page relative h-full w-full overflow-hidden"
+    :class="[menuThemeClass, { 'main-menu-page--effects-suspended': transientSuspend }]"
+  >
     <MainChat v-if="currentPage === 'gameMainView'" />
     <!-- 设置面板的挂载时机单独用 settingsMounted 控制：关闭时要等退场动画播完再卸载 -->
     <Settings v-if="settingsMounted" slide-from-right @closed="onSettingsClosed" />
 
     <!-- 背景层（最底层） -->
     <div
-      class="absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.png')] bg-cover bg-center will-change-transform"
+      class="video-background absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.png')] bg-cover bg-center will-change-transform"
       ref="bgRef"
     ></div>
 
-    <!-- 流星层（SVG动画）— 临时暂停不污染持久偏好 -->
-    <MeteorAnimation :meteors-enabled="effectiveMeteorsEnabled" :meteor-fps="meteorFps" />
+    <!-- 流星层（SVG动画）— 由当前演出策略控制 -->
+    <MeteorAnimation :meteors-enabled="visualMeteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
-      :stars-enabled="effectiveStarsEnabled"
+      :stars-enabled="visualStarsEnabled"
       :stars-layer-ref="starsLayerRef"
       :stars-fps="starsFps"
     />
 
     <!-- 人物图层（位于星星之上，菜单之下） -->
     <img
-      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,-50%)] will-change-transform select-none"
+      class="character-image pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,-50%)] will-change-transform select-none"
       ref="charRef"
       src="../../assets/images/alona.png"
       :alt="$t('views.mainMenu.characterAlt')"
@@ -67,8 +70,17 @@
             v-if="menuState === 'gameMode'"
             @back="backToMainMenu"
             @open-scripts="showScriptModeMenu"
+            @open-extension="menuState = $event"
             :loadingScripts="loadingScripts"
             :scripts="scripts"
+          />
+        </Transition>
+
+        <Transition name="slide-right">
+          <component
+            :is="menuPages[menuState]"
+            v-if="menuPages[menuState]"
+            @back="showGameModeMenu"
           />
         </Transition>
 
@@ -77,6 +89,7 @@
           <ScriptModeOptions
             v-if="menuState === 'scriptMode'"
             @back="showGameModeMenu"
+            @script-state-reset="fetchScriptMenuEffect"
             :scripts="scripts"
           />
         </Transition>
@@ -90,9 +103,11 @@
           />
         </Transition>
 
-        <StartLogo @click="goToGithub" />
+        <StartLogo :src="logo" @click="goToGithub" />
       </StartPage>
     </Transition>
+
+    <MenuOverlay :effect="menuEffect" :names="dlcNames" :visible="currentPage === 'mainMenu'" />
   </div>
 </template>
 
@@ -110,6 +125,12 @@ import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
 import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+import { menuPages, useMenuPresentation } from "@lingchat/dlc-ui/host/menu";
+import MenuOverlay from "@lingchat/dlc-ui/host/MenuOverlay.vue";
+
+const props = withDefaults(defineProps<{ initialMenu?: string }>(), {
+  initialMenu: "main",
+});
 
 const { t } = useI18n();
 const router = useRouter();
@@ -121,9 +142,24 @@ const currentPage = ref("mainMenu");
 // 设置面板是否挂载。与 currentPage 分开是因为关闭时面板要留到退场动画播完才卸载，
 // 而菜单需要立刻回场与它重叠
 const settingsMounted = ref(false);
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+const menuState = ref<string>(props.initialMenu);
+// Returning from a game reopens its list in the existing LC menu shell.
+watch(
+  () => props.initialMenu,
+  (menu) => {
+    menuState.value = menu;
+  },
+);
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
+const {
+  effect: menuEffect,
+  names: dlcNames,
+  className: menuThemeClass,
+  logo,
+  particlesEnabled,
+  refresh: fetchScriptMenuEffect,
+} = useMenuPresentation(scripts);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
 const meteorFps = computed(() => settingsStore.meteorFps);
@@ -132,6 +168,10 @@ const starsFps = computed(() => settingsStore.starsFps);
 const transientSuspend = ref(false);
 const effectiveStarsEnabled = computed(() => starsEnabled.value && !transientSuspend.value);
 const effectiveMeteorsEnabled = computed(() => meteorsEnabled.value && !transientSuspend.value);
+const visualStarsEnabled = computed(() => effectiveStarsEnabled.value && particlesEnabled.value);
+const visualMeteorsEnabled = computed(
+  () => effectiveMeteorsEnabled.value && particlesEnabled.value,
+);
 const parallaxEnabled = computed(() => !transientSuspend.value);
 
 // DOM Refs
@@ -236,10 +276,19 @@ onMounted(() => {
     }
 
     fetchScripts();
+    fetchScriptMenuEffect();
   };
 
   initializeMenu();
 });
+
+watch(
+  () => uiStore.dlcRefreshToken,
+  () => {
+    fetchScripts();
+    fetchScriptMenuEffect();
+  },
+);
 </script>
 
 <style scoped>

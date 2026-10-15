@@ -1,3 +1,4 @@
+import { extensionGameState, type ExtensionGameState } from "@lingchat/dlc-ui/host/gameState";
 import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
 import type { ScriptChoiceItem } from "@/types/script";
@@ -31,10 +32,14 @@ export interface FreeDialogueInfo {
 
 export interface ScriptInfo {
   scriptName: string;
+  /** 安装目录键（DLC 卸载时用于资源所有权匹配）。 */
+  folderKey?: string;
   currentChapterName: string;
   choices: ScriptChoiceItem[];
   isRunning: boolean;
   freeDialogueInfo: FreeDialogueInfo;
+  /** 剧本声明的内容警告标记，由扩展解释。 */
+  contentWarning?: string;
 }
 
 /** 六维好感度向量（与 Rust AffectionVector 同 snake_case 键名），各项 0~100 */
@@ -90,7 +95,7 @@ export interface GameRole {
   negative?: NegativeVector;
 }
 
-export interface GameState {
+export interface GameState extends ExtensionGameState {
   runningScript: ScriptInfo | null;
 
   gameRoles: Record<number, GameRole>;
@@ -140,6 +145,7 @@ export interface GameState {
 }
 
 export const state: GameState = {
+  ...extensionGameState(),
   runningScript: null,
 
   gameRoles: {},

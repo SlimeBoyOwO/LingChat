@@ -14,6 +14,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { i18n } from "@/locales";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { beforeExtensionClose } from "@lingchat/dlc-ui/host/policy";
 
 export function useCloseConfirm() {
   const route = useRoute();
@@ -48,7 +49,7 @@ export function useCloseConfirm() {
         saveCompleted = false;
         userConfirmedExit = false;
 
-        if (route.path === "/chat") {
+        if (!(await beforeExtensionClose()) && route.path === "/chat") {
           const confirmed = await dialogStore.confirm(
             i18n.global.t("common.exitMessage"),
             i18n.global.t("common.exitTitle"),

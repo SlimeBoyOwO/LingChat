@@ -1,13 +1,14 @@
 import type { IEventProcessor } from "../event-processor";
 import type { ScriptModifyCharacterEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
+import { applyCharacterPresentation } from "@lingchat/dlc-ui/host/character";
 
 export default class ModifyCharacterProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
     return eventType === "modify_character";
   }
 
-  async processEvent(event: ScriptModifyCharacterEvent): Promise<void> {
+  async processEvent(event: ScriptModifyCharacterEvent, signal?: AbortSignal): Promise<void> {
     const gameStore = useGameStore();
 
     console.log("执行修改角色" + event.characterId + event.emotion + event.action);
@@ -16,8 +17,11 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
     gameStore.currentStatus = "presenting";
 
     if (event.characterId) {
+      if (await applyCharacterPresentation(event, signal)) return;
+
       // 确保游戏初始化包含角色
       const role = await gameStore.getOrCreateGameRole(event.characterId);
+      if (signal?.aborted) return;
 
       if (event.action) {
         switch (event.action) {

@@ -143,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { confirmStoryEntry } from "@lingchat/dlc-ui/composables/useStoryEntry";
 import { computed, ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -156,9 +157,13 @@ import { getAvatarFile } from "@/api/services/character";
 import { Birdhouse, Book, FileText, UserPlus } from "lucide-vue-next";
 import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
 import type { ScriptSummary } from "@/api/services/script-info";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { i18n } from "@/locales";
+import { eventQueue } from "@/core/events/event-queue";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
+const dialogStore = useDialogStore();
 const router = useRouter();
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([]);
@@ -195,11 +200,20 @@ const goToCharacterTab = () => {
 
 // 开始游玩独立剧本
 const startStandaloneScript = async (script: ScriptSummary) => {
+  if (!(await confirmStoryEntry(script))) return;
+
+  eventQueue.clear();
+  gameStore.enterStoryMode(script.script_name, script.content_warning, script.folder_key);
+  uiStore.showSettings = false;
   try {
+    await router.push("/chat");
+    // MainChat 可能已挂载在设置层后方；clear() 后无论是否发生路由切换都要恢复 FIFO。
+    eventQueue.resume();
     await startScriptApi(script.script_name);
-    // 可选：关闭设置面板，开始剧本
-    uiStore.showSettings = false;
   } catch (error) {
+    eventQueue.clear();
+    gameStore.exitStoryMode(false);
+    eventQueue.resume();
     console.error("启动独立剧本失败:", error);
   }
 };

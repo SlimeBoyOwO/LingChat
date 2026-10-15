@@ -189,7 +189,7 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
             .clone()
     };
 
-    crate::api::script::spawn_script_execution(app, script).await;
+    crate::api::script::spawn_script_execution(app, script).await?;
 
     Ok(())
 }

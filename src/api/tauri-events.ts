@@ -1,3 +1,4 @@
+import { registerExtensionListeners } from "@lingchat/dlc-ui/host/listeners";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -63,6 +64,7 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 }
 
 export function initializeTauriEventListeners() {
+  registerExtensionListeners(asEvent);
   const currentWindow = getCurrentWindow();
   const mainWindow = currentWindow.label === "main" ? currentWindow : null;
 
@@ -376,6 +378,7 @@ export function initializeTauriEventListeners() {
 
   // 六维好感度评估结果（几分钟一次、仅实际变化时发）：写回角色数据，
   // 并记录 lastAffectionChange 供面板展示最近一次评估的变化维度与理由
+
   listen("affection:changed", (event) => {
     const payload = event.payload as AffectionChangedPayload;
     console.log("[Tauri] 收到 affection:changed", payload);

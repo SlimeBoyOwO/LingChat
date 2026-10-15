@@ -8,6 +8,7 @@
 <script setup lang="ts">
 import { registerSpectrumSource, unregisterSpectrumSource } from "@/utils/audioSpectrum";
 import { ref, watch, onMounted, onBeforeUnmount } from "vue";
+import { useExtensionAudio, configureExtensionAudio } from "@lingchat/dlc-ui/host/media";
 
 const props = withDefaults(
   defineProps<{
@@ -41,6 +42,7 @@ const audio2 = ref<HTMLAudioElement | null>(null);
 const applyRate = (el: HTMLAudioElement | null) => {
   if (!el) return;
   const r = props.rate;
+  configureExtensionAudio(el);
   el.playbackRate = typeof r === "number" && r > 0 ? r : 1;
 };
 
@@ -73,10 +75,25 @@ const resumeAll = () => {
   if (fadeActive && next?.src) next.play().catch(() => {});
 };
 
-onBeforeUnmount(() => {
+const releaseAudio = (audio: HTMLAudioElement | null) => {
+  if (!audio) return;
+  audio.pause();
+  audio.removeAttribute("src");
+  audio.load();
+};
+
+const releaseAllAudio = () => {
   clearFade();
   unregisterSpectrumSource(audio1.value);
   unregisterSpectrumSource(audio2.value);
+  releaseAudio(audio1.value);
+  releaseAudio(audio2.value);
+};
+
+useExtensionAudio(() => [audio1.value, audio2.value], releaseAudio);
+
+onBeforeUnmount(() => {
+  releaseAllAudio();
 });
 
 // 只派发当前主音频轨道的结束事件，忽略备用轨道的事件
@@ -120,8 +137,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
       if (currentAudio.volume > 0) {
         currentAudio.volume = Math.max(0, currentAudio.volume - step);
       } else {
-        currentAudio.pause();
-        currentAudio.src = ""; // 释放资源
+        releaseAudio(currentAudio);
         clearFade();
       }
     }, FADE_INTERVAL);
@@ -174,7 +190,7 @@ const crossFadeTo = async (newUrl: string | null | undefined) => {
 
     // 完成交接
     if (currentDone && nextDone) {
-      currentAudio.pause();
+      releaseAudio(currentAudio);
       activeIndex = activeIndex === 1 ? 2 : 1; // 切换主轨道身份
       clearFade();
     }

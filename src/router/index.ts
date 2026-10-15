@@ -1,3 +1,4 @@
+import { extensionRoutes } from "@lingchat/dlc-ui/host/routes";
 import { createRouter, createWebHistory } from "vue-router";
 
 // 导入你的组件
@@ -20,6 +21,7 @@ const WorkshopPage = () => import("../components/views/WorkshopPage.vue");
 
 // 1. 定义路由表
 const routes = [
+  ...extensionRoutes,
   {
     path: "/",
     name: "MainMenu",

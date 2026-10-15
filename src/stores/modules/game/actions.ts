@@ -8,6 +8,7 @@ import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
 import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
+import { enterExtensionStory, exitExtensionStory } from "@lingchat/dlc-ui/host/lifecycle";
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
@@ -25,10 +26,16 @@ export const actions = {
     try {
       const gameInfo = await getGameInfo();
       applyWebInitData(this, gameInfo);
-      // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
-      invoke("notify_player_entry").catch((err) =>
-        console.warn("[Entry] 问候触发失败（非致命）:", err),
-      );
+      // 剧本入口会先标记 runningScript 再挂载聊天页。initializeGame 的
+      // backend snapshot 仍可能带回自由对话角色，所以必须在事件队列 resume
+      // 之前再次清台；随后 authored show_character 事件会按顺序重建舞台。
+      if (this.runningScript) {
+        this.presentRoleIds = [];
+      } else {
+        invoke("notify_player_entry").catch((err) =>
+          console.warn("[Entry] 问候触发失败（非致命）:", err),
+        );
+      }
       return gameInfo;
     } catch (error) {
       console.error("初始化游戏信息失败:", error);
@@ -75,9 +82,15 @@ export const actions = {
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = "unknown") {
+  enterStoryMode(
+    this: GameState,
+    scriptName: string = "unknown",
+    contentWarning?: string,
+    folderKey?: string,
+  ) {
     this.runningScript = {
       scriptName,
+      folderKey,
       currentChapterName: "",
       choices: [],
       isRunning: true,
@@ -87,14 +100,14 @@ export const actions = {
         currentRound: 0,
         endLine: "",
       },
+      contentWarning,
     };
     const uiStore = useUIStore();
-    uiStore.bgMusicMode = "loop-single";
+    enterExtensionStory(this, uiStore);
   },
 
-  /** 标记退出剧情模式，回到自由对话模式 */
-  exitStoryMode(this: GameState) {
-    this.runningScript = null;
+  exitStoryMode(this: GameState, notifyBackend = true) {
+    exitExtensionStory(this, notifyBackend);
   },
 
   // 设置当前场景（仅更新 store，不调用 API）

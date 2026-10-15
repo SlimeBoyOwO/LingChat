@@ -1,5 +1,5 @@
 <template>
-  <div class="main-box">
+  <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <div class="main-status-panel">
@@ -15,6 +15,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
+    <StageOverlay />
     <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
 
     <!-- 原有的菜单按钮 -->
@@ -34,6 +35,8 @@
         v-if="!isMobile()"
         type="nav"
         icon="character"
+        :disabled="entryPolicy.lockPet"
+        :title="entryPolicy.petHint"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -54,12 +57,13 @@
 </template>
 
 <script setup lang="ts">
+import { storyPolicy } from "@lingchat/dlc-ui/host/policy";
 import { getEnvConfigByKey } from "@/api/services/config";
 import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import StatusInfoBar from "@/components/tools/StatusInfoBar.vue";
 import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
 import { eventQueue } from "@/core/events/event-queue";
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
@@ -72,6 +76,7 @@ import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
 import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
+import StageOverlay from "@lingchat/dlc-ui/host/StageOverlay.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -163,6 +168,9 @@ onMounted(() => {
     runInitialization();
   }
 });
+
+/** Presentation policy supplied by the current content extension. */
+const entryPolicy = computed(() => storyPolicy(gameStore.runningScript));
 
 // 自动推进调度（AUTO + 台词合并共用一条管道）—— 与桌宠 PetMode 共用同一实现
 const {

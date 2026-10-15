@@ -1,3 +1,5 @@
+import { resetExtensionQueue } from "@lingchat/dlc-ui/host/queue";
+import { storyActions, storyState, type StoryUIState } from "@lingchat/dlc-ui/stores/storyUI";
 // stores/ui.ts
 import { defineStore } from "pinia";
 import { useSettingsStore } from "../settings";
@@ -25,7 +27,7 @@ interface NotificationState {
   duration: number;
 }
 
-interface UIState {
+interface UIState extends StoryUIState {
   showCharacterTitle: string;
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
@@ -98,6 +100,7 @@ let hideTimer: number | null = null;
 
 export const useUIStore = defineStore("ui", {
   state: (): UIState => ({
+    ...storyState(),
     showCharacterTitle: "Lovely You",
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
@@ -212,6 +215,7 @@ export const useUIStore = defineStore("ui", {
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect);
     },
+    ...storyActions,
     // 设置天气特效（写入 settings store）
     setWeatherEffect(effect: string) {
       useSettingsStore().setWeatherEffect(effect);
@@ -602,6 +606,8 @@ export const useUIStore = defineStore("ui", {
 
     /** 持久化 BGM 状态（防抖 500ms），由 $subscribe 自动触发 */
     persistBgmState() {
+      // 剧本运行期间不持久化：剧本 BGM 不得写进 session（防泄漏到下次启动）
+      if (this.bgmPersistBlocked) return;
       if (bgmSaveTimer) clearTimeout(bgmSaveTimer);
       bgmSaveTimer = setTimeout(() => {
         saveBgmState(this.currentBackgroundMusic, this.bgMusicPaused, this.bgMusicMode);
@@ -610,6 +616,8 @@ export const useUIStore = defineStore("ui", {
 
     /** 持久化环境音轨道（防抖 500ms），由 $subscribe 自动触发 */
     persistAmbientState() {
+      // 临时播放状态不写入用户偏好。
+      if (this.bgmPersistBlocked) return;
       if (ambientSaveTimer) clearTimeout(ambientSaveTimer);
       ambientSaveTimer = setTimeout(() => {
         saveAmbientState(JSON.stringify(this.ambientTracks));
@@ -631,6 +639,8 @@ export function initUIStore() {
   initialized = true;
 
   const store = useUIStore();
+
+  resetExtensionQueue();
 
   // 从 CSS 变量同步安全区值（由 Android 原生 / iOS env() 注入）
   function syncSafeArea() {
