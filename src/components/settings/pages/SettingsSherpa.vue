@@ -161,12 +161,14 @@
               </div>
             </div>
             <div class="ref-audio-actions">
-              <button class="btn-secondary" @click="pickRefAudio">
+              <button class="btn-secondary" :disabled="importingRefAudio" @click="pickRefAudio">
                 <FolderOpen :size="16" />
                 {{
-                  config.ref_audio_path
-                    ? t("settings.sherpa.refChange")
-                    : t("settings.sherpa.refPick")
+                  importingRefAudio
+                    ? t("settings.sherpa.refImporting")
+                    : config.ref_audio_path
+                      ? t("settings.sherpa.refChange")
+                      : t("settings.sherpa.refPick")
                 }}
               </button>
               <button
@@ -261,8 +263,11 @@ import {
 } from "@/api/services/tts/tts-local";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { decodePathFileName } from "@/utils/path";
+import { wavDialogFilters } from "@/utils/dialogFilters";
+import { useUIStore } from "@/stores/modules/ui/ui";
 
 const { t } = useI18n();
+const uiStore = useUIStore();
 
 const availableModels = ref<SherpaOnnxModelRecord[]>([]);
 const selectedModelId = ref("");
@@ -270,6 +275,7 @@ const downloading = ref<string | null>(null);
 const deleting = ref<string | null>(null);
 const progressByModel = ref<Record<string, number>>({});
 const testing = ref(false);
+const importingRefAudio = ref(false);
 const playlist = ref<HTMLAudioElement | null>(null);
 const testText = ref("你好，这是一段测试语音。");
 
@@ -367,13 +373,32 @@ async function pickRefAudio() {
   try {
     const file = await open({
       multiple: false,
-      filters: [{ name: "Audio", extensions: ["wav"] }],
+      filters: wavDialogFilters(),
     });
-    if (file) {
-      config.value.ref_audio_path = file as string;
-    }
-  } catch (error) {
+    if (typeof file !== "string") return;
+    importingRefAudio.value = true;
+    // 导入到应用数据目录，而不是把 dialog 给的路径原样存下来：Android 上是
+    // content:// URI，`std::fs` 读不了，试听时参考音频不会生效。
+    const imported = await invoke<{ path: string; file_name: string }>("import_sherpa_ref_audio", {
+      path: file,
+    });
+    config.value.ref_audio_path = imported.path;
+    uiStore.showSuccess({
+      title: t("settings.sherpa.refLoaded"),
+      message: imported.file_name,
+    });
+  } catch (error: any) {
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
     console.error("选择参考音频失败:", error);
+    uiStore.showError({
+      title: t("settings.sherpa.refImportFailed"),
+      message:
+        rawMessage === "SHERPA_REF_AUDIO_NOT_WAV"
+          ? t("settings.sherpa.refImportNotWav")
+          : rawMessage,
+    });
+  } finally {
+    importingRefAudio.value = false;
   }
 }
 

@@ -4,7 +4,7 @@
 //! `ai_service::tts::local::sherpa_onnx_manager::SherpaOnnxManager` 一致。
 //! 角色把 `tts_type` 设为 `sherpa-onnx`/`sherpa` 并选择模型名后即可走该路径合成。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
@@ -584,9 +584,9 @@ pub async fn test_sherpa_onnx_voice(
     match (&ref_audio, &ref_text) {
         (Some(ref_path), Some(ref_text)) => {
             let p = PathBuf::from(ref_path);
-            if let Ok((samples, sr)) = load_ref_audio(&p) {
-                adapter.set_reference_audio(samples, sr, ref_text.clone());
-            }
+            // 加载失败必须报错：静默忽略会让用户以为克隆已启用，实际只是普通合成。
+            let (samples, sr) = load_ref_audio(&p).map_err(|e| format!("参考音频加载失败: {e}"))?;
+            adapter.set_reference_audio(samples, sr, ref_text.clone());
         },
         (Some(_), None) => {
             return Err("已选择参考音频但未填写参考文本：零样本克隆需同时提供两者".to_string());
@@ -628,6 +628,118 @@ pub async fn test_sherpa_onnx_voice(
         success: true,
         audio_path: out_path.to_string_lossy().to_string(),
     }))
+}
+
+/// 参考音频导入结果（零样本声音克隆用）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SherpaRefAudioImport {
+    /// 落盘后的本地路径，前端写回 `sherpa_onnx_ref_audio_path`。
+    pub path: String,
+    /// 展示用文件名。
+    pub file_name: String,
+}
+
+/// 零样本克隆参考音频的落盘目录：`data/sherpa_onnx_ref_audio/`。
+pub fn sherpa_onnx_ref_audio_root() -> PathBuf {
+    crate::data_dir::get_data_dir().join("sherpa_onnx_ref_audio")
+}
+
+/// 导入零样本声音克隆的参考音频（替代「手填路径」）。
+///
+/// 导入会把文件复制进应用数据目录，而不是把用户选的路径原样存进角色设置：
+/// - Android：`plugin-dialog` 返回的是 `content://` URI，`std::fs` 读不了，旧实现
+///   把它直接存进角色设置，`load_reference_audio` 静默失败、用户只会觉得「选了没
+///   反应」。这里先经 SAF bridge 把 URI 落到 cache，再复制到 data 目录，此后就是
+///   普通文件路径。
+/// - 桌面端：直接用原路径复制，源文件之后被移动/删除也不影响克隆。
+///
+/// 零样本克隆只接受 WAV（见 `adapters::sherpa_onnx::load_reference_audio`），
+/// 因此这里按魔数校验内容并把落盘扩展名统一成 `.wav`；不合规直接报错（错误码
+/// `SHERPA_REF_AUDIO_NOT_WAV` 由前端翻译），避免「导入成功但合成时不生效」。
+#[tauri::command]
+pub async fn import_sherpa_ref_audio(
+    app: AppHandle,
+    path: String,
+) -> Result<SherpaRefAudioImport, String> {
+    // Android 的 content:// 先落到 cache；桌面端原路径直通（cleanup 为 false）。
+    let src =
+        crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
+
+    let result: Result<SherpaRefAudioImport, String> = async {
+        // 1. 魔数校验：仅看扩展名会被改名的文件骗过，content:// URI 更是没有可信
+        //    扩展名。`Ok(None)` 表示头部不匹配任何已知格式。
+        let kind =
+            infer::get_from_path(&src.path).map_err(|e| format!("读取参考音频文件头失败: {e}"))?;
+        let is_wav = kind
+            .map(|k| k.mime_type() == "audio/x-wav" || k.extension() == "wav")
+            .unwrap_or(false);
+        if !is_wav {
+            return Err("SHERPA_REF_AUDIO_NOT_WAV".to_string());
+        }
+
+        // 2. 落盘名：取原文件名（去掉路径分隔符与 FAT/NTFS 非法字符），扩展名强制
+        //    wav —— 内容已按魔数确认是 WAV，`.wav` 也是 `load_reference_audio` 的
+        //    硬要求（扩展名不对会被直接拒绝）。
+        let stem =
+            crate::ai_service::tts::local::saf_bridge::sanitize_staged_filename(&src.display_name)
+                .and_then(|name| {
+                    Path::new(&name)
+                        .file_stem()
+                        .and_then(|s| s.to_str())
+                        .map(|s| s.trim().to_string())
+                })
+                .filter(|s| !s.is_empty())
+                .unwrap_or_else(|| "ref_audio".to_string());
+
+        let dir = sherpa_onnx_ref_audio_root();
+        tokio::fs::create_dir_all(&dir)
+            .await
+            .map_err(|e| format!("创建参考音频目录失败: {e}"))?;
+
+        // 3. 同名不覆盖：追加 `_2`/`_3`…（旧文件可能仍被其它角色引用）。计数器兜底
+        //    上限，避免极端情况下死循环。
+        let mut file_name = format!("{stem}.wav");
+        let mut counter = 2u32;
+        while dir.join(&file_name).exists() {
+            if counter > 999 {
+                file_name = format!(
+                    "{stem}_{}.wav",
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_millis())
+                        .unwrap_or(0)
+                );
+                break;
+            }
+            file_name = format!("{stem}_{counter}.wav");
+            counter += 1;
+        }
+
+        let dest = dir.join(&file_name);
+        tokio::fs::copy(&src.path, &dest)
+            .await
+            .map_err(|e| format!("复制参考音频失败: {e}"))?;
+
+        tracing::info!(
+            "[tts_sherpa] import_ref_audio: {} -> {}",
+            src.path.display(),
+            dest.display()
+        );
+
+        Ok(SherpaRefAudioImport {
+            path: dest.to_string_lossy().to_string(),
+            file_name,
+        })
+    }
+    .await;
+
+    // SAF 暂存文件用完即删（桌面端 cleanup_after_import 为 false，不动用户原文件）。
+    if src.cleanup_after_import {
+        let _ = tokio::fs::remove_file(&src.path).await;
+    }
+
+    result
 }
 
 /// 打开 Sherpa 模型目录（文件管理器）。
