@@ -260,6 +260,7 @@ import {
   type SherpaOnnxModelRecord,
 } from "@/api/services/tts/tts-local";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
+import { decodePathFileName } from "@/utils/path";
 
 const { t } = useI18n();
 
@@ -285,9 +286,9 @@ const config = ref({
 });
 
 const refAudioName = computed(() => {
-  const p = config.value.ref_audio_path;
-  if (!p) return "";
-  return p.split(/[/\\]/).pop() || p;
+  // content:// URI 的末段是 percent-encoded 的文档 id（`primary%3AMusic%2F歌.mp3`），
+  // 交给公共 util 解码并取最后一段，避免把 `primary:…` 前缀显示给用户。
+  return decodePathFileName(config.value.ref_audio_path);
 });
 
 onMounted(() => {
