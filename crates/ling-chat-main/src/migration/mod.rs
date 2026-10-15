@@ -15,6 +15,14 @@ impl MigratorTrait for Migrator {
             Box::new(m20260815_000001_add_skill_agent_cached_tokens::Migration),
             // 「我的身份」：存档 → 身份的绑定。必须追加在末尾，保持时间戳单调递增。
             Box::new(m20260918_000001_create_save_identity::Migration),
+            // 以下三条来自 memory 分支：本分支（sherpa-onnx）不实现记忆功能，
+            // 但它们必须留在迁移列表里——`sea_orm_migration` 遇到「数据库已应用、
+            // 但迁移文件不存在」的记录会直接报错，memory 分支建的库因此无法被
+            // 本构建打开（启动即崩）。保留文件即可让两边互相兼容；DDL 全部幂等
+            // （IF NOT EXISTS / DROP IF EXISTS），在别的库上执行无害。
+            Box::new(m20261007_000001_create_memory_embeddings::Migration),
+            Box::new(m20261009_000001_create_memory_archive::Migration),
+            Box::new(m20261010_000001_fix_memory_table_names::Migration),
             // 台词行归属身份：只加列。必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261015_000001_add_line_identity_id::Migration),
             // 身份索引表（文件为真源，本表供查询）：必须追加在末尾，保持时间戳单调递增。
@@ -33,6 +41,9 @@ pub mod m20260807_000001_add_skill_agent_reasoning;
 pub mod m20260814_000001_add_skill_agent_token_usage;
 pub mod m20260815_000001_add_skill_agent_cached_tokens;
 pub mod m20260918_000001_create_save_identity;
+pub mod m20261007_000001_create_memory_embeddings;
+pub mod m20261009_000001_create_memory_archive;
+pub mod m20261010_000001_fix_memory_table_names;
 pub mod m20261015_000001_add_line_identity_id;
 pub mod m20261016_000001_create_player_identity_index;
 pub mod m20261020_000001_add_line_round_id;
