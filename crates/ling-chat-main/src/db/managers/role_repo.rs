@@ -24,7 +24,7 @@ use crate::db::managers::save_repo::SaveRepo;
 pub struct RoleRepo;
 
 /// 临时关闭 SQLite 外键约束。
-/// 警告：调用方必须在 finally 路径中重新打开（建议用 `with_fk_disabled` 闭包形式）。
+/// 警告：调用方必须在 finally 路径中重新打开（[`FkReEnableGuard`] 已封装该逻辑）。
 async fn disable_fk(db: &DatabaseConnection) -> Result<()> {
     db.execute(Statement::from_string(
         DatabaseBackend::Sqlite,

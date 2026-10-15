@@ -186,9 +186,8 @@ pub fn qwen_is_streaming_model(model: &str) -> bool {
 /// 文档明确仅 qwen-audio-3.x 系支持；对 fun-asr-realtime / paraformer 系发这个
 /// 参数很可能直接 400，所以必须门控而不是「有热词就发」。
 ///
-/// ⚠️ **当前无生产调用点**：发送链路已改为按容量门控（`qwen_max_hotword_count`），
-/// 两者由 `capacity_is_consistent_with_the_capability_bit` 钉为等价。本函数保留为
-/// 能力位的单一真相（测试与 `provider` 的重导出都在读它），故显式 `allow`。
+/// ⚠️ **当前无生产调用点**：发送链路已改为按容量门控（`qwen_max_hotword_count`）。
+/// 本函数保留为能力位的单一真相（测试与 `provider` 的重导出都在读它），故显式 `allow`。
 #[allow(dead_code)]
 pub fn qwen_supports_inline_vocabulary(model: &str) -> bool {
     qwen_model_spec(model).is_some_and(|s| s.supports_inline_vocabulary)
