@@ -45,6 +45,9 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
     RoleRepo::ensure_user_role(&db).await?;
 
+    // 热词 seed 已删除（D16.1）：角色名改为「在场即注入」，根本不进库，
+    // 不需要启动时补行。热词从此对启动链路零影响。
+
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(app.handle());
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色

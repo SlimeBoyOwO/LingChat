@@ -215,6 +215,14 @@
                   {{ $t("settings.characterInfo.touch.open") }}
                 </button>
               </div>
+
+              <!-- Hotword Tab (custom UI, outside data-driven block) -->
+              <HotwordSettings
+                v-if="activeTab === 'hotword' && props.roleId"
+                v-model="hotwordDraft"
+                :role-id="props.roleId"
+                :model-capability="modelCapability"
+              />
             </fieldset>
           </div>
         </div>
@@ -314,10 +322,18 @@ import {
   commitCharacterEdit,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import {
+  getRoleHotwords,
+  saveRoleHotwords,
+  type RoleHotwordDraft,
+} from "../../../api/services/hotword";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
+import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import { refreshSceneHotwords } from "@/composables/asr/hotwords";
+import { useAsrModelCapability } from "@/composables/asr/modelCapability";
 import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
@@ -410,6 +426,15 @@ async function discardDraft() {
 const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
 const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
 
+/**
+ * 热词 tab 的草稿：编辑只进内存，随底部「保存」与其余设置一次提交，
+ * 「取消」即丢弃。
+ */
+const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
+
+/** 传给热词 tab 的模型能力（与全局热词弹窗共用同一判定）。 */
+const modelCapability = useAsrModelCapability();
+
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
   if (!props.roleId)
@@ -498,6 +523,7 @@ const tabs = computed(() => [
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
+  { id: "hotword", label: t("settings.characterInfo.tabs.hotword") },
 ]);
 
 const voiceModelKeys = [
@@ -1081,6 +1107,10 @@ watch(
         }
         baseline.value = JSON.stringify(localSettings.value);
         draftClothes.value = [...(props.clothes ?? [])];
+        // 热词：保存是整表替换，读失败必须让弹窗打不开——草稿默认是
+        // 空表，若放行，用户随手点一次「保存」就会静默清空该角色的热词
+        const roleHotwords = await getRoleHotwords(props.roleId);
+        hotwordDraft.value = { hotwords: roleHotwords };
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
@@ -1159,6 +1189,11 @@ function applySettingsToRuntime() {
     // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
     // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
+    // 角色名参与识别热词：store 里的 roleName 不改，
+    // 改名要等重启才生效——热更正是为了避免它。这里与其它字段一并热更。
+    if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
+      runtimeRole.roleName = localSettings.value.ai_name.trim();
+    }
     // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
     runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
   }
@@ -1175,6 +1210,16 @@ async function persistSettings(): Promise<boolean> {
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();
+    // 热词：后端全量覆盖写热词表。失败与角色设置同样处理：提示且不关窗，重试幂等
+    await saveRoleHotwords(
+      props.roleId,
+      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
+    );
+    // 运行时缓存与库同步（识别时注入的就是这份）：保存成功后重取。
+    // ⚠️ 必须排在 applySettingsToRuntime 里那次 `roleName` 热更**之后**：
+    // refreshSceneHotwords 会**同步**派生角色名热词，放在前面派生出的
+    // 是旧名字，改名就不能立即生效了。
+    void refreshSceneHotwords();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);

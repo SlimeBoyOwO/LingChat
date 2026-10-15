@@ -14,10 +14,10 @@ use crate::ai_service::asr::provider::AsrProvider;
 use crate::ai_service::asr::provider_meta::ProviderInfo;
 use crate::ai_service::asr::provider_types::{AsrOptions, ModelInfo, ProviderCredentials};
 use crate::ai_service::asr::providers::llama::{LlamaAsrProvider, parse_llama_models};
-use crate::ai_service::asr::providers::qwen::{QwenAsrProvider, hotwords_to_vocabulary_json};
-use crate::ai_service::asr::qwen_models::{
-    qwen_models, qwen_supports_inline_vocabulary, qwen_supports_language_hints,
+use crate::ai_service::asr::providers::qwen::{
+    QwenAsrProvider, hotwords_to_vocabulary_json, take_within_capacity,
 };
+use crate::ai_service::asr::qwen_models::{qwen_max_hotword_count, qwen_models};
 use crate::ai_service::asr::region::DashScopeRegion;
 
 pub fn list_provider_info() -> Vec<ProviderInfo> {
@@ -55,8 +55,14 @@ pub fn build_stream_params(model: &str, opts: &AsrOptions) -> super::provider_st
     let hotwords = &opts.hotwords;
     let vocabulary = if hotwords.is_empty() {
         None
-    } else if qwen_supports_inline_vocabulary(model) {
-        Some(hotwords_to_vocabulary_json(hotwords))
+    } else if let Some(max) = qwen_max_hotword_count(model) {
+        // 截断与真正发出的字节同源（本函数就是构造 vocabulary 的地方）；
+        // 规则本身与同步落点共用 `take_within_capacity`
+        Some(hotwords_to_vocabulary_json(take_within_capacity(
+            hotwords,
+            max,
+            &format!("流式模型 {model} "),
+        )))
     } else {
         warn!(
             "[ASR] 流式模型 {model} 不支持即时热词，已忽略 {} 条热词\
@@ -67,13 +73,7 @@ pub fn build_stream_params(model: &str, opts: &AsrOptions) -> super::provider_st
     };
 
     super::provider_stream::StreamParams {
-        // 文档：qwen-audio-3.x 最多 4 个、fun-asr-realtime 系只取第一个。
-        // 这里只做能力门控，个数由服务端按各自规则处理
-        language_hint: if qwen_supports_language_hints(model) {
-            opts.language_hint.clone()
-        } else {
-            None
-        },
+        // 条数已由上面的容量截断处理；不再引用「最多 4 个」那条来源不明的说法
         vocabulary,
     }
 }
@@ -177,7 +177,12 @@ async fn llama_models(
             message: "模型列表为空（/v1/models 未返回任何模型）".into(),
         });
     }
-    Ok(names
+    Ok(llama_model_infos(names))
+}
+
+/// 模型名 → ModelInfo。与网络调用分离，纯映射。
+fn llama_model_infos(names: Vec<String>) -> Vec<ModelInfo> {
+    names
         .into_iter()
         .enumerate()
         .map(|(i, id)| ModelInfo {
@@ -185,12 +190,19 @@ async fn llama_models(
             // 结果流式（SSE）：音频整段上传、结果增量返回。与 qwen WS 真流式
             // 语义不同，但前端流式开关可用（录音结束出 partial 而非边录边出）
             supports_streaming: true,
+            // 本地 llama-asr 没有「即时热词」这个概念，但热词经 `prompt` 上下文偏置
+            // 照常发出（权重被忽略）——不是「配了不生效」，UI 不该对它显示警告条。
+            supports_inline_vocabulary: false,
+            supports_prompt_bias: true,
+            // llama 的热词走 `prompt` 上下文偏置，没有条数上限（真机限制是
+            // 部署参数 `-c 4096` token，prompt 与音频共享），故不声明容量。
+            max_hotword_count: None,
             is_default: i == 0,
             // 端点与模型无关（本地服务地址固定）
             endpoint_kind: None,
             id,
         })
-        .collect())
+        .collect()
 }
 
 /// 按 id 创建 provider 实例。
@@ -210,4 +222,45 @@ pub async fn get_provider(
         },
     };
     Ok(provider)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn list_provider_info_has_two_providers() {
+        let info = list_provider_info();
+        assert_eq!(info.len(), 2);
+        assert!(info.iter().any(|p| p.id == "qwen-asr"));
+        assert!(info.iter().any(|p| p.id == "llama-asr"));
+    }
+
+    #[test]
+    fn only_qwen_declares_regions() {
+        let info = list_provider_info();
+        let qwen = info.iter().find(|p| p.id == "qwen-asr").unwrap();
+        let llama = info.iter().find(|p| p.id == "llama-asr").unwrap();
+        assert_eq!(qwen.regions.len(), DashScopeRegion::ALL.len());
+        // 本地服务无地域概念 → 空数组，前端据此不渲染下拉
+        assert!(llama.regions.is_empty());
+    }
+
+    #[test]
+    fn qwen_region_override_only_accepts_a_meaningful_value() {
+        // 显式传地域 → 用它（模型清单不再依赖已落盘的配置）
+        assert_eq!(
+            qwen_region_override(Some("ap-southeast-1")),
+            Some(DashScopeRegion::ApSoutheast1)
+        );
+        // 未知地域按解析规则回退默认，与别处同一套语义
+        assert_eq!(
+            qwen_region_override(Some("火星")),
+            Some(DashScopeRegion::DEFAULT)
+        );
+        // 未传 / 空白 = "未指定"，交给持久化配置，不能被误当成默认地域
+        assert_eq!(qwen_region_override(None), None);
+        assert_eq!(qwen_region_override(Some("")), None);
+        assert_eq!(qwen_region_override(Some("   ")), None);
+    }
 }
