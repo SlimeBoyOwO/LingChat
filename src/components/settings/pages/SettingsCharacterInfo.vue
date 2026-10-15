@@ -199,8 +199,23 @@
                     <button
                       v-if="fieldValue(field)"
                       type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+                      @click="toggleRefAudioPlayback(field)"
+                    >
+                      {{
+                        audioPlayingKey === field.key
+                          ? t("settings.sherpa.refStop")
+                          : t("settings.sherpa.refListen")
+                      }}
+                    </button>
+                    <button
+                      v-if="fieldValue(field)"
+                      type="button"
                       class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                      @click="fieldModel(field).value = ''"
+                      @click="
+                        stopRefAudioPlayback();
+                        fieldModel(field).value = '';
+                      "
                     >
                       {{ t("settings.sherpa.refClear") }}
                     </button>
@@ -435,6 +450,7 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { audioDialogFilters } from "@/utils/dialogFilters";
 import { decodePathFileName } from "@/utils/path";
+import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { Icon } from "../../base";
 import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
@@ -488,6 +504,8 @@ let clothesSequence = 0;
 let loadSequence = 0;
 /** 正在导入参考音频的字段 key（同一时刻只会有一个导入在进行）。 */
 const audioImportingKey = ref<string | null>(null);
+/** 正在试听参考音频的字段 key（同一时刻只会有一个在播放）。 */
+const audioPlayingKey = ref<string | null>(null);
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
   () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
@@ -753,6 +771,7 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
     if (typeof selected !== "string") return;
     audioImportingKey.value = field.key;
     const imported = await TtsLocal.importSherpaRefAudio(selected);
+    stopRefAudioPlayback();
     fieldModel(field).value = imported.path;
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
@@ -771,6 +790,46 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
     });
   } finally {
     audioImportingKey.value = null;
+  }
+}
+
+/** 停止参考音频试听（切换字段、重新导入、离开页面时都要停）。 */
+function stopRefAudioPlayback(): void {
+  stopCurrentAudio();
+  audioPlayingKey.value = null;
+}
+
+/**
+ * 试听已导入的参考音频。
+ *
+ * 导入时后端统一转成了 WAV（mp3/m4a 等会被转码），这里让用户能直接确认转码
+ * 结果是否正常。播放走公共 `playLocalAudio`：Android 上先整个 fetch 成 blob，
+ * 绕开 asset 协议对大文件的分块截断。
+ */
+async function toggleRefAudioPlayback(field: FieldSchema): Promise<void> {
+  const path = String(fieldValue(field) ?? "").trim();
+  if (!path) return;
+  if (audioPlayingKey.value === field.key) {
+    stopRefAudioPlayback();
+    return;
+  }
+  stopRefAudioPlayback();
+  try {
+    const audio = await playLocalAudio(path);
+    audioPlayingKey.value = field.key;
+    const done = () => {
+      if (audioPlayingKey.value === field.key) audioPlayingKey.value = null;
+    };
+    // 用 addEventListener 而不是覆盖 onended：playLocalAudio 自己也挂了 onended。
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
+  } catch (error: any) {
+    audioPlayingKey.value = null;
+    console.error("[SettingsCharacterInfo] 试听参考音频失败:", error);
+    uiStore.showError({
+      title: t("settings.sherpa.refPlayFailed"),
+      message: typeof error === "string" ? error : error?.message || String(error),
+    });
   }
 }
 
@@ -982,6 +1041,7 @@ async function onTouchRegionsApply(value: Record<string, unknown>) {
 
 onUnmounted(() => {
   ++loadSequence;
+  stopRefAudioPlayback();
   void discardDraft().catch(console.error);
 });
 </script>

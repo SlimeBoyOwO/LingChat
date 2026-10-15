@@ -1480,6 +1480,9 @@ export default {
     refPick: "Pick audio",
     refClear: "Clear",
     refImporting: "Importing...",
+    refListen: "Listen",
+    refStop: "Stop",
+    refPlayFailed: "Failed to preview the reference audio",
     refImportUnsupported:
       "Unrecognized audio format (mp3 / wav / flac / m4a and more are supported; Opus / WebM are not)",
     refImportTooLong: "The reference audio is too long. Please trim it and import a shorter clip",
