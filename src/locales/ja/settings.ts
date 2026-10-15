@@ -1472,6 +1472,9 @@ export default {
     refPick: "音声を選択",
     refClear: "クリア",
     refImporting: "インポート中…",
+    refListen: "試聴",
+    refStop: "停止",
+    refPlayFailed: "参照音声の試聴に失敗しました",
     refImportUnsupported:
       "認識できない音声形式です（mp3 / wav / flac / m4a などの一般的な形式に対応、Opus / WebM は未対応）",
     refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",

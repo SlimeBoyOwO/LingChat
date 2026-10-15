@@ -1732,6 +1732,9 @@ export default {
     refPick: "选择音频",
     refClear: "清除",
     refImporting: "导入中…",
+    refListen: "试听",
+    refStop: "停止",
+    refPlayFailed: "试听参考音频失败",
     refImportUnsupported:
       "无法识别的音频格式（支持 mp3 / wav / flac / m4a 等常见格式，Opus / WebM 暂不支持）",
     refImportTooLong: "参考音频过长，请截取其中较短的一段再导入",
