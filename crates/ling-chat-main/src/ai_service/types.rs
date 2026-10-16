@@ -346,6 +346,15 @@ pub struct VoiceModel {
     /// 由其自身文件系统解析，不做本地目录拼接）
     #[serde(default)]
     pub gsv_emo_voice_files: Option<HashMap<String, String>>,
+    /// 合成采样温度，缺省 1.0（调低更稳定、更贴近参考音色）
+    #[serde(default)]
+    pub gsv_temperature: Option<f32>,
+    /// 采样阈值 top_p，缺省 1.0
+    #[serde(default)]
+    pub gsv_top_p: Option<f32>,
+    /// 语速倍率，缺省 1.0
+    #[serde(default)]
+    pub gsv_speed_factor: Option<f32>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
     pub fish_s2_voice: Option<String>,

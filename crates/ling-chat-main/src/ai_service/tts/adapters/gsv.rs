@@ -49,6 +49,10 @@ pub struct GsvAdapter {
     request_lock: Arc<Mutex<()>>,
     /// 六分类参考提示（开关开启时按情绪分类实时选择）：分类 → (音频路径, 文本, 文本语言)。
     emo_prompts: HashMap<String, (String, String, String)>,
+    /// 合成采样参数（角色级可配，缺省与 GPT-SoVITS 默认一致）
+    temperature: f32,
+    top_p: f32,
+    speed_factor: f32,
 }
 
 impl GsvAdapter {
@@ -62,6 +66,9 @@ impl GsvAdapter {
         gpt_model_path: Option<String>,
         sovits_model_path: Option<String>,
         emo_prompts: HashMap<String, (String, String, String)>,
+        temperature: Option<f32>,
+        top_p: Option<f32>,
+        speed_factor: Option<f32>,
     ) -> Self {
         let api_url = api_url.trim_end_matches('/').to_string();
         Self {
@@ -77,6 +84,9 @@ impl GsvAdapter {
             model_initialized: Arc::new(OnceCell::new()),
             request_lock: Arc::new(Mutex::new(())),
             emo_prompts,
+            temperature: temperature.unwrap_or(1.0),
+            top_p: top_p.unwrap_or(1.0),
+            speed_factor: speed_factor.unwrap_or(1.0),
         }
     }
 
@@ -154,11 +164,11 @@ impl TtsAdapter for GsvAdapter {
             "prompt_lang": prompt_lang,
             "text_lang": self.text_lang,
             "media_type": self.audio_format,
-            "speed_factor": 1.0,
+            "speed_factor": self.speed_factor,
             "text_split_method": "cut0",
             "top_k": 15,
-            "top_p": 1.0,
-            "temperature": 1.0,
+            "top_p": self.top_p,
+            "temperature": self.temperature,
             "parallel_infer": self.parallel_infer,
             "text": text,
         });
@@ -202,6 +212,9 @@ impl TtsAdapter for GsvAdapter {
         m.insert("gpt_model_path".into(), json!(self.gpt_model_path));
         m.insert("sovits_model_path".into(), json!(self.sovits_model_path));
         m.insert("audio_format".into(), json!(self.audio_format));
+        m.insert("temperature".into(), json!(self.temperature));
+        m.insert("top_p".into(), json!(self.top_p));
+        m.insert("speed_factor".into(), json!(self.speed_factor));
         m.insert(
             "emo_prompts".into(),
             json!(self.emo_prompts.keys().cloned().collect::<Vec<_>>()),
@@ -213,6 +226,51 @@ impl TtsAdapter for GsvAdapter {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sampling_params_default_to_ones() {
+        let adapter = GsvAdapter::new(
+            "http://127.0.0.1:9880".into(),
+            "ref.wav".into(),
+            "你好。".into(),
+            "zh".into(),
+            "zh".into(),
+            None,
+            None,
+            HashMap::new(),
+            None,
+            None,
+            None,
+        );
+        let params = adapter.get_params();
+        assert_eq!(params["temperature"], json!(1.0));
+        assert_eq!(params["top_p"], json!(1.0));
+        assert_eq!(params["speed_factor"], json!(1.0));
+    }
+
+    #[test]
+    fn sampling_params_passthrough() {
+        let adapter = GsvAdapter::new(
+            "http://127.0.0.1:9880".into(),
+            "ref.wav".into(),
+            "你好。".into(),
+            "zh".into(),
+            "zh".into(),
+            None,
+            None,
+            HashMap::new(),
+            Some(0.8),
+            Some(0.9),
+            Some(1.1),
+        );
+        let params = adapter.get_params();
+        // f32 配置值转 f64 有精度尾差，用近似比较
+        let close =
+            |key: &str, want: f64| (params[key].as_f64().expect("应为数字") - want).abs() < 1e-5;
+        assert!(close("temperature", 0.8));
+        assert!(close("top_p", 0.9));
+        assert!(close("speed_factor", 1.1));
+    }
 
     #[test]
     fn emo_category_covers_all_prompt_emotions() {

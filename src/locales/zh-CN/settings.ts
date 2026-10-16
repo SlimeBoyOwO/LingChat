@@ -663,6 +663,12 @@ export default {
       voiceFilePlaceholder: "填写 GSV 服务端可访问的音频路径（如 /refs/开心.wav）",
       text: "参考文本",
       textPlaceholder: "参考音频对应的文本内容",
+      samplingDesc:
+        "留空使用默认值。调低温度与 top_p 更稳定、更贴近参考音色；语速可按情绪微调（如生气 1.1、难过 0.9）。",
+      temperature: "温度 temperature",
+      topP: "采样阈值 top_p",
+      speed: "语速 speed_factor",
+      samplingPlaceholder: "默认",
     },
     touch: {
       hint: "在立绘上画出可以摸的区域，每个部位配一句发给 AI 的话。每件服装各有一套区域。仅对静态立绘生效，Live2D 角色的可摸范围由模型配置决定。",

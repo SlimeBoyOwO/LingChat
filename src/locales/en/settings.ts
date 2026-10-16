@@ -505,6 +505,12 @@ export default {
       voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
       text: "Reference text",
       textPlaceholder: "Text spoken in the reference audio",
+      samplingDesc:
+        "Leave empty for defaults. Lower temperature / top_p for a steadier voice closer to the reference.",
+      temperature: "Temperature",
+      topP: "Top-p sampling",
+      speed: "Speed factor",
+      samplingPlaceholder: "Default",
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
