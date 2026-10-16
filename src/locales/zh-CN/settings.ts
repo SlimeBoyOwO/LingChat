@@ -1736,12 +1736,12 @@ export default {
     refStop: "停止",
     refPlayFailed: "试听参考音频失败",
     refImportUnsupported:
-      "无法识别的音频格式（支持 mp3 / wav / flac / m4a / ogg（Opus、Vorbis）等常见格式；WebM、原始 AAC 暂不支持）",
+      "无法识别的音频格式（支持 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常见格式；WebM、HE-AAC 暂不支持）",
     refImportOpus: "暂不支持多声道 Opus（如 5.1），请先转成单声道或立体声再导入",
     refImportTooLong: "参考音频过长，请截取其中较短的一段再导入",
     refImportFailed: "导入参考音频失败",
     refImportHint:
-      "支持 mp3 / wav / flac / m4a / ogg（Opus、Vorbis）等常见音频（WebM、原始 AAC 除外）；导入后自动转成 WAV 并复制到应用数据目录",
+      "支持 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常见音频（WebM、HE-AAC 除外）；导入后自动转成 WAV 并复制到应用数据目录",
     refText: "参考文本",
     refTextPlaceholder: "与参考音频对应的文本……",
     test: "试听",
