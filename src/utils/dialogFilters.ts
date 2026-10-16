@@ -46,20 +46,27 @@ const ANDROID_AUDIO_MIME = [
   "audio/flac",
   "audio/ogg", // ogg / oga（Vorbis 或 Opus，后端都支持）
   "audio/opus", // .opus（Telegram / WhatsApp 语音消息）
+  "audio/aac", // 裸 ADTS 流（.aac）
   "audio/mp4", // m4a / mp4 容器里的 AAC
   "audio/x-m4a",
 ];
 
 /** 桌面端用扩展名（Tauri 走 rfd，不经过 mime 转换）。 */
-const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "opus", "m4a", "mp4"];
+const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "opus", "aac", "m4a", "mp4"];
 
 /**
  * 参考音频导入 dialog 的 filter。
  *
  * 后端 `import_sherpa_ref_audio` 会用 symphonia（Opus 走 libopus）解码后统一转成
  * 16-bit PCM WAV，所以这里放开常见音频格式；真正能不能解由后端判定（会报
- * 「格式不支持」）。注意别把原始 `.aac`/`.webm` 列进来：symphonia 0.5 没有 ADTS
- * 与 Matroska 读取器，选了必然失败。
+ * 「格式不支持」）。
+ *
+ * `.aac` 有两种情况：内容是真的 ADTS 裸流（symphonia 的 `aac` feature 里自带
+ * `AdtsReader`，能解 AAC-LC），或者只是扩展名叫 .aac 而内容其实是 mp4/m4a
+ * （探测以内容为准，一样能用）。解不了的是 HE-AAC（SBR/PS）：symphonia 的 AAC
+ * 解码器只认 AAC-LC。
+ *
+ * 别把 `.webm` 列进来：symphonia 0.5 没有 Matroska 读取器，选了必然失败。
  */
 export function audioDialogFilters(): { name: string; extensions: string[] }[] {
   if (isAndroid()) {
