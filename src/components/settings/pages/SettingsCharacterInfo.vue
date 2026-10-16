@@ -256,6 +256,16 @@
                   </p>
                 </div>
 
+                <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
+                <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <summary class="cursor-pointer text-sm font-bold text-white/70">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
+                  </summary>
+                  <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
+                  </p>
+                </details>
+
                 <div v-if="gsvEmoEnabled" class="space-y-3">
                   <div
                     v-for="cat in GSV_EMO_CATEGORIES"

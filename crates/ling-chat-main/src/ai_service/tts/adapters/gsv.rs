@@ -66,6 +66,76 @@ fn resolve_aux_refs<'a>(
         .unwrap_or_default()
 }
 
+/// 合成文本预处理。
+/// 1) 结尾不是标点时按语言显式补句末标点，避免服务端自动补句号的不确定性；
+/// 2) 文本同时含中日韩字符与 ASCII 字母时返回 auto，把分词交给服务端
+///    LangSegmenter，混排句不再整句按单一语言朗读。纯数字不触发（g2p 处理）。
+fn preprocess_text(text: &str, text_lang: &str) -> (String, String) {
+    let trimmed = text.trim_end();
+    if trimmed.is_empty() {
+        return (text.to_string(), text_lang.to_string());
+    }
+    let mut out = String::with_capacity(trimmed.len() + 4);
+    out.push_str(trimmed);
+    if !ends_with_punct(&out) {
+        match text_lang {
+            "zh" | "ja" => out.push('。'),
+            "en" | "ko" => out.push('.'),
+            _ => {},
+        }
+    }
+    let lang = if text_lang != "auto" && contains_cjk(&out) && contains_ascii_letter(&out) {
+        "auto".to_string()
+    } else {
+        text_lang.to_string()
+    };
+    (out, lang)
+}
+
+/// 结尾是否已是句末标点（含中英文常见标点与右引号）。
+fn ends_with_punct(text: &str) -> bool {
+    matches!(
+        text.chars().last(),
+        Some(
+            '。' | '．'
+                | '！'
+                | '？'
+                | '…'
+                | '～'
+                | '~'
+                | '!'
+                | '?'
+                | '.'
+                | '、'
+                | '，'
+                | ','
+                | '；'
+                | ';'
+                | '：'
+                | ':'
+                | '」'
+                | '』'
+                | '）'
+                | ')'
+        )
+    )
+}
+
+/// 是否含中日韩字符（含假名与谚文）。
+fn contains_cjk(text: &str) -> bool {
+    text.chars().any(|c| {
+        matches!(
+            c as u32,
+            0x3040..=0x30FF | 0x3400..=0x4DBF | 0x4E00..=0x9FFF | 0xAC00..=0xD7AF | 0xF900..=0xFAFF
+        )
+    })
+}
+
+/// 是否含 ASCII 字母。
+fn contains_ascii_letter(text: &str) -> bool {
+    text.chars().any(|c| c.is_ascii_alphabetic())
+}
+
 #[derive(Debug, Clone)]
 pub struct GsvAdapter {
     api_url: String,
@@ -206,11 +276,12 @@ impl TtsAdapter for GsvAdapter {
                 self.prompt_lang.as_str(),
             ));
         let inp_refs = resolve_aux_refs(&category, &self.emo_prompts);
+        let (text, text_lang) = preprocess_text(text, &self.text_lang);
         let body = json!({
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
-            "text_lang": self.text_lang,
+            "text_lang": text_lang,
             "media_type": self.audio_format,
             "speed_factor": self.speed_factor,
             "text_split_method": "cut0",
@@ -397,5 +468,60 @@ mod tests {
         // 未知情绪（分类器输出的英文等标签）回退中立
         assert_eq!(gsv_emo_category("AI思考"), "中立");
         assert_eq!(gsv_emo_category("neutral"), "中立");
+    }
+
+    #[test]
+    fn preprocess_adds_ending_punctuation() {
+        assert_eq!(
+            preprocess_text("你好", "zh"),
+            ("你好。".into(), "zh".into())
+        );
+        assert_eq!(
+            preprocess_text("いいね", "ja"),
+            ("いいね。".into(), "ja".into())
+        );
+        assert_eq!(
+            preprocess_text("Hello", "en"),
+            ("Hello.".into(), "en".into())
+        );
+        assert_eq!(preprocess_text("안녕", "ko"), ("안녕.".into(), "ko".into()));
+        // 已有标点不重复补
+        assert_eq!(
+            preprocess_text("你好！", "zh"),
+            ("你好！".into(), "zh".into())
+        );
+        assert_eq!(
+            preprocess_text("Hello?", "en"),
+            ("Hello?".into(), "en".into())
+        );
+        // 空文本与纯空白不动
+        assert_eq!(preprocess_text("", "zh"), ("".into(), "zh".into()));
+        assert_eq!(preprocess_text("   ", "zh"), ("   ".into(), "zh".into()));
+        // 其他语言不补标点
+        assert_eq!(preprocess_text("hola", "es"), ("hola".into(), "es".into()));
+    }
+
+    #[test]
+    fn preprocess_mixed_lang_switches_to_auto() {
+        // 中英混排 → auto
+        assert_eq!(
+            preprocess_text("这么说吧, this is fine", "zh"),
+            ("这么说吧, this is fine。".into(), "auto".into())
+        );
+        // 纯中文不加
+        assert_eq!(
+            preprocess_text("今天天气不错", "zh"),
+            ("今天天气不错。".into(), "zh".into())
+        );
+        // 纯数字不触发混排
+        assert_eq!(
+            preprocess_text("第3章", "zh"),
+            ("第3章。".into(), "zh".into())
+        );
+        // 已是 auto 保持不变
+        assert_eq!(
+            preprocess_text("hello 你好", "auto"),
+            ("hello 你好".into(), "auto".into())
+        );
     }
 }

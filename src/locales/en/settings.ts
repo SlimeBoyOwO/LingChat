@@ -511,6 +511,9 @@ export default {
       topP: "Top-p sampling",
       speed: "Speed factor",
       samplingPlaceholder: "Default",
+      refGuideTitle: "Recording better reference audio",
+      refGuide:
+        "Each clip should be 3–10 seconds, single speaker, natural pace, with no reverb or background sound.\nPreferably record all six clips from the same speaker in one session; otherwise the timbre will jump when switching emotions.\nThe reference text must match the audio word for word (including fillers like \u201cah\u201d or \u201cmm\u201d); mismatches are the biggest source of distortion.",
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
