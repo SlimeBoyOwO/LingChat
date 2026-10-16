@@ -407,6 +407,7 @@ async function pickRefAudio() {
     console.error("选择参考音频失败:", error);
     const codeMessages: Record<string, string> = {
       SHERPA_REF_AUDIO_UNSUPPORTED: t("settings.sherpa.refImportUnsupported"),
+      SHERPA_REF_AUDIO_OPUS: t("settings.sherpa.refImportOpus"),
       SHERPA_REF_AUDIO_TOO_LONG: t("settings.sherpa.refImportTooLong"),
     };
     uiStore.showError({
