@@ -102,14 +102,18 @@ textarea {
   }
 }
 
-/* 滚动条样式 */
+/* 滚动条样式（轨道透明，避免深色轨道在圆角面板边缘露出黑色直角区域，issue #707 图 30） */
 ::-webkit-scrollbar {
   width: 8px; /* 垂直滚动条宽度 */
   height: 8px; /* 水平滚动条高度 */
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: transparent;
+}
+
+::-webkit-scrollbar-corner {
+  background: transparent;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -142,8 +146,9 @@ textarea {
   padding: 0.625rem 0.75rem;
   font-size: 0.875rem;
   color: #fff;
-  backdrop-filter: blur(20px) saturate(150%);
-  transition: all 0.2s;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s;
 }
 .glass-input:focus {
   outline: none;
@@ -156,15 +161,22 @@ textarea {
   color: #fff;
 }
 
+/* 深色下拉弹层：原生 option 不吃 select 的 color，浅色系统主题下弹出来就是白底白字。
+   color-scheme: dark 只对部分平台生效，这里显式兜底。供不便套 .glass-input 的
+   深色 select 用（.glass-input 未分层，套上去后调用点的尺寸类改不动）。 */
+.select-dark option,
+.select-dark optgroup {
+  background: #16202c;
+  color: #fff;
+}
+
 /* 图标按钮基类：设置页里反复出现的 34×34 方形图标按钮（删除/刷新/试听）。
    这些按钮此前是逐个手抄一长串 utility 的，抄出过 cyan/red 抢同一属性的死代码，
    故收敛到此处，hover 意图拆成 danger/primary 两个修饰类。放进 @layer components，
    调用点的工具类（如 ml-auto）仍可覆盖。 */
 @layer components {
   .btn-icon {
-    @apply inline-flex h-8.5 w-8.5 items-center justify-center gap-1.75 rounded-md border
-      border-white/15 bg-white/5 text-white/80 transition-colors duration-200
-      disabled:cursor-not-allowed disabled:opacity-40;
+    @apply inline-flex h-8.5 w-8.5 items-center justify-center gap-1.75 rounded-md border border-white/15 bg-white/5 text-white/80 transition-colors duration-200 disabled:cursor-not-allowed disabled:opacity-40;
   }
   .btn-icon-danger {
     @apply enabled:hover:border-red-400/50 enabled:hover:bg-red-400/10 enabled:hover:text-red-300;

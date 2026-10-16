@@ -10,6 +10,8 @@ const PetMode = () => import("../components/views/PetMode.vue");
 const Second = () => import("../components/views/Second.vue");
 const LogWindow = () => import("../components/views/LogWindow.vue");
 const CastWindow = () => import("../components/views/CastWindow.vue");
+// TODO 小组件：独立窗口，由主窗口的前端创建（见 utils/todoWidget.ts）
+const TodoWidgetWindow = () => import("../components/views/TodoWidgetWindow.vue");
 // 剧本编辑器体量较大，必须懒加载 —— 项目没有配 manualChunks，
 // 非懒加载的 view 会整个进主 chunk
 const ScriptEditor = () => import("../components/views/ScriptEditor.vue");
@@ -52,6 +54,16 @@ const routes = [
     path: "/cast",
     name: "CastWindow",
     component: CastWindow,
+  },
+  {
+    path: "/bubble",
+    name: "BubbleWindow",
+    component: () => import("../components/views/BubbleWindow.vue"),
+  },
+  {
+    path: "/todo-widget",
+    name: "TodoWidget",
+    component: TodoWidgetWindow,
   },
   {
     path: "/script-editor",

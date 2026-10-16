@@ -1,42 +1,42 @@
 <script setup lang="ts">
-  import { useI18n } from "vue-i18n";
-  import { Icon } from "@/components/base";
-  import { MenuPage, MenuItem } from "@/components/ui";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
-  import type { Diagnostic } from "@/api/services/script-editor";
+import { useI18n } from "vue-i18n";
+import { Icon } from "@/components/base";
+import { MenuPage, MenuItem } from "@/components/ui";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import type { Diagnostic } from "@/api/services/script-editor";
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 
-  const diagnosticsOf = (chapterId: string) =>
-    (store.report?.diagnostics ?? []).filter((d) => d.chapter === chapterId);
+const diagnosticsOf = (chapterId: string) =>
+  (store.report?.diagnostics ?? []).filter((d) => d.chapter === chapterId);
 
-  const chapterHas = (chapterId: string) => diagnosticsOf(chapterId).length > 0;
+const chapterHas = (chapterId: string) => diagnosticsOf(chapterId).length > 0;
 
-  const jumpTo = async (d: Diagnostic) => {
-    if (!d.chapter) {
-      store.tab = "config";
-      return;
-    }
-    store.tab = "flow";
-    if (store.chapter?.id !== d.chapter) {
-      // openChapter 可能失败（读盘出错），失败时不要把 selectedEvent 设成别的章节的下标
-      if (!(await store.openChapter(d.chapter))) return;
-    } else {
-      store.level = "chapter";
-    }
-    if (d.eventIndex !== undefined) store.selectedEvent = d.eventIndex;
-  };
+const jumpTo = async (d: Diagnostic) => {
+  if (!d.chapter) {
+    store.tab = "config";
+    return;
+  }
+  store.tab = "flow";
+  if (store.chapter?.id !== d.chapter) {
+    // openChapter 可能失败（读盘出错），失败时不要把 selectedEvent 设成别的章节的下标
+    if (!(await store.openChapter(d.chapter))) return;
+  } else {
+    store.level = "chapter";
+  }
+  if (d.eventIndex !== undefined) store.selectedEvent = d.eventIndex;
+};
 
-  /** 章节头部的「打开」：与 jumpTo 一样要先切到流程页，否则打开结果看不到 */
-  const openChapterFromValidate = async (chapterId: string) => {
-    store.tab = "flow";
-    if (store.chapter?.id !== chapterId) {
-      await store.openChapter(chapterId);
-    } else {
-      store.level = "chapter";
-    }
-  };
+/** 章节头部的「打开」：与 jumpTo 一样要先切到流程页，否则打开结果看不到 */
+const openChapterFromValidate = async (chapterId: string) => {
+  store.tab = "flow";
+  if (store.chapter?.id !== chapterId) {
+    await store.openChapter(chapterId);
+  } else {
+    store.level = "chapter";
+  }
+};
 </script>
 
 <template>
@@ -48,10 +48,7 @@
 
       <div class="mb-3 flex flex-wrap items-center gap-2">
         <button
-          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3
-            py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200
-            hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed
-            disabled:opacity-40"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
           @click="store.runValidation()"
         >
           {{ t("scriptEditor.validate.revalidate") }}
@@ -71,8 +68,7 @@
       </p>
       <p
         v-else-if="store.report.diagnostics.length === 0"
-        class="rounded-xl border border-green-400/30 bg-green-400/10 px-[0.9rem] py-[0.9rem]
-          text-[0.82rem] text-green-300"
+        class="rounded-xl border border-green-400/30 bg-green-400/10 px-[0.9rem] py-[0.9rem] text-[0.82rem] text-green-300"
       >
         {{ t("scriptEditor.validate.clean") }}
       </p>
@@ -84,8 +80,7 @@
           class="mb-3 overflow-hidden rounded-[10px] border border-white/10 bg-black/15"
         >
           <div
-            class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem]
-              py-[0.55rem]"
+            class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]"
           >
             <span class="text-[0.82rem] font-semibold text-white">{{
               t("scriptEditor.validate.scriptLevel")
@@ -95,8 +90,7 @@
           <div
             v-for="(d, i) in store.scriptDiagnostics"
             :key="i"
-            class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75]
-              text-white/75"
+            class="flex items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75"
           >
             <span
               class="mt-[0.55rem] h-1.5 w-1.5 shrink-0 rounded-full"
@@ -118,8 +112,7 @@
           :class="{ 'opacity-55': !chapterHas(c.id) }"
         >
           <div
-            class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem]
-              py-[0.55rem]"
+            class="flex items-center gap-[0.6rem] border-b border-white/[0.07] px-[0.8rem] py-[0.55rem]"
           >
             <span class="text-[0.82rem] font-semibold text-white">{{ c.name || c.id }}</span>
             <span class="font-mono text-[0.66rem] text-white/30">{{ c.id }}.yaml</span>
@@ -141,10 +134,7 @@
               }}</span>
             </span>
             <button
-              class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6
-                px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all
-                duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white
-                disabled:cursor-not-allowed disabled:opacity-40"
+              class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
               @click="openChapterFromValidate(c.id)"
             >
               {{ t("scriptEditor.validate.open") }}
@@ -154,8 +144,7 @@
           <div
             v-for="(d, i) in diagnosticsOf(c.id)"
             :key="i"
-            class="flex cursor-pointer items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem]
-              leading-[1.75] text-white/75 hover:bg-white/5"
+            class="flex cursor-pointer items-start gap-2 px-[0.8rem] py-[0.45rem] text-[0.76rem] leading-[1.75] text-white/75 hover:bg-white/5"
             @click="jumpTo(d)"
           >
             <span

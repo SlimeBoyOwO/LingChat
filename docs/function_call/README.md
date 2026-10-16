@@ -27,7 +27,7 @@ PR #523 的目标：
 
 **「一次流式请求 = 多轮工具调用」：`stream_with_tool_loop` 把流式请求包装成最多 3 轮的工具闭环，每轮把 LLM 请求的工具执行后以 `tool` 消息回填，直到模型不再请求工具；执行前后由权限矩阵裁剪工具集，整个调用历史写入台词表并被记忆构建器还原。**
 
-- 后端：`src-tauri/src/ai_service/tools/`（Rust），分层 `registry / executor / tool_loop / permissions`；
+- 后端：`crates/ling-chat-main/src/ai_service/tools/`（Rust），分层 `registry / executor / tool_loop / permissions`；
 - LLM 层：`LlmChunk::ToolCalls` 新变体；`LlmProvider` trait 新增 `supports_streaming_tools` / `complete_stream_with_tools` / `complete_with_tools` 三组方法；
 - 台词表：`line` 表新增 `tool_call` 列（迁移 `m20260727_add_line_tool_call`），`LineAttribute` 新增 `tool`；
 - 记忆：`MemoryBuilder` 把带 `tool_call` 的 assistant 行与 `tool` 行还原为 `LlmMessage`，参与每个角色的 `role.memory`。
@@ -55,7 +55,7 @@ PR #523 的目标：
 
 ## 关键代码位置
 
-**后端（`src-tauri/src/ai_service/`）**
+**后端（`crates/ling-chat-main/src/ai_service/`）**
 
 | 文件                              | 职责                                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -63,6 +63,8 @@ PR #523 的目标：
 | `tools/registry.rs`               | `ToolRegistry`：注册 / 查找 / 按权限裁剪工具定义                                                  |
 | `tools/executor.rs`               | `Tool` trait、`ToolContext`、`ToolExecutor`（权限校验 → 查找 → 解析 → 2s 超时 → 稳定错误编码）    |
 | `tools/tool_loop.rs`              | `stream_with_tool_loop`：流式工具闭环（最多 3 轮）                                                |
+| `tools/agent.rs`                  | `run_tool_agent`：无头非流式运行器（God Agent 决策用，`max_rounds = 1`，不产前端事件）            |
+| `tools/god_agent.rs`              | God Agent 的两个决策工具 + `god_agent_registry()`（独立注册表，不进权限页）                       |
 | `tools/permissions.rs`            | `ToolPermissionConfig`：「场景组 × 角色组」权限矩阵、`tool_permissions.toml` 读写                 |
 | `tools/clock.rs`                  | 内置示例工具 `CurrentTimeTool`（`get_current_time`）                                              |
 | `llm/mod.rs`                      | `LlmChunk`（含 `ToolCalls`）、`LlmClient`（`complete_stream_with_tools` / `complete_with_tools`） |
@@ -75,12 +77,12 @@ PR #523 的目标：
 
 **数据 / 配置**
 
-| 位置                                                             | 说明                                          |
-| ---------------------------------------------------------------- | --------------------------------------------- |
-| `src-tauri/src/migration/m20260727_000002_add_line_tool_call.rs` | `line` 表加 `tool_call` TEXT 列               |
-| `src-tauri/src/db/entities/line.rs`                              | `LineAttribute::Tool` 变体、`Model.tool_call` |
-| `src-tauri/src/db/managers/save_repo.rs`                         | 存档读写同时持久化 `tool_call`                |
-| `<data_dir>/tool_permissions.toml`                               | 权限配置文件（首次启动自动生成，原子写）      |
+| 位置                                                                         | 说明                                          |
+| ---------------------------------------------------------------------------- | --------------------------------------------- |
+| `crates/ling-chat-main/src/migration/m20260727_000002_add_line_tool_call.rs` | `line` 表加 `tool_call` TEXT 列               |
+| `crates/ling-chat-main/src/db/entities/line.rs`                              | `LineAttribute::Tool` 变体、`Model.tool_call` |
+| `crates/ling-chat-main/src/db/managers/save_repo.rs`                         | 存档读写同时持久化 `tool_call`                |
+| `<data_dir>/tool_permissions.toml`                                           | 权限配置文件（首次启动自动生成，原子写）      |
 
 **前端（`src/`）**
 

@@ -4,7 +4,7 @@ use std::{
 };
 
 use serde::Serialize;
-use tauri::{command, AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Manager, Runtime, command};
 // xcap 不支持 iOS（桌面窗口/显示器截图在 iOS 无意义），
 // iOS 构建时不引入 xcap，各命令走文件末尾的「不支持」桩实现。
 #[cfg(not(target_os = "ios"))]
@@ -164,9 +164,10 @@ pub async fn get_window_screenshot<R: Runtime>(
 ) -> Result<PathBuf, String> {
     // First, try to find the window via xcap's Window::all().
     if let Ok(windows) = Window::all() {
-        if let Some(window) = windows.iter().find(|item| {
-            item.id().is_ok_and(|wid| wid == id)
-        }) {
+        if let Some(window) = windows
+            .iter()
+            .find(|item| item.id().is_ok_and(|wid| wid == id))
+        {
             if window.is_minimized().map_err(|err| err.to_string())? {
                 return Err("Minimized windows can't take screenshots".to_string());
             }
@@ -221,10 +222,17 @@ pub async fn get_monitor_screenshot<R: Runtime>(
 ) -> Result<PathBuf, String> {
     let monitors = Monitor::all().map_err(|err| err.to_string())?;
 
-    if let Some(monitor) = monitors.iter().find(|item| item.id().map_err(|err| err.to_string()).ok() == Some(id)) {
+    if let Some(monitor) = monitors
+        .iter()
+        .find(|item| item.id().map_err(|err| err.to_string()).ok() == Some(id))
+    {
         let image = monitor.capture_image().map_err(|err| err.to_string())?;
 
-        let save_path = get_save_path(app_handle, monitor.id().map_err(|err| err.to_string())?, false)?;
+        let save_path = get_save_path(
+            app_handle,
+            monitor.id().map_err(|err| err.to_string())?,
+            false,
+        )?;
 
         image.save(&save_path).map_err(|err| err.to_string())?;
 

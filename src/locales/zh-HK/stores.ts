@@ -40,6 +40,11 @@ export default {
     notificationTitle: "LingChat 久坐提提你",
     notificationBody: "坐咗有啲耐，記得郁一郁喎",
   },
+  proactiveReminder: {
+    minutesLater: "「{text}」仲有 {count} 分鐘就到截止時間",
+    hoursLater: "「{text}」仲有 {count} 個鐘就到截止時間",
+    daysLater: "「{text}」仲有 {count} 日就到截止時間",
+  },
   lanSync: {
     noPeerSelected: "未揀對等裝置",
     manualRestart: "請手動重新啟動應用程式，先可以套用同步檔案",

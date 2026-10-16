@@ -8,110 +8,131 @@ info: |-
   喜欢粘你，傲娇又可爱的小程序员。
   喜欢变态的玩法，是你的好助手~
 body_part:
-  body:
-    X:
-      - 0.4111
-      - 0.38165
-      - 0.5889
-      - 0.56285
-    Y:
-      - 0.4272
-      - 0.7776
-      - 0.784
-      - 0.4208
-    clothesName: 默认
-    message: 莱姆戳了戳你的肚子
-    windowHeight: 625
-    windowWidth: 883
-  legs:
-    X:
-      - 0.41903
-      - 0.44394
-      - 0.53681
-      - 0.56738
-    Y:
-      - 0.8192
-      - 0.9824
-      - 0.9904
-      - 0.8208
-    clothesName: 默认
-    message: 莱姆摸了一下你的腿
-    windowHeight: 625
-    windowWidth: 883
-  earLeft:
-    X:
-      - 0.41903
-      - 0.39185
-      - 0.33522
-      - 0.3171
-    Y:
-      - 0.176
-      - 0.2992
-      - 0.2784
-      - 0.2176
-    clothesName: 默认
-    message: 莱姆戳了一下你的耳朵
-    windowHeight: 625
-    windowWidth: 883
-  head:
-    X:
-      - 0.41789
-      - 0.4949
-      - 0.57078
-      - 0.58777
-      - 0.53567
-      - 0.4949
-      - 0.43488
-      - 0.39638
-    Y:
-      - 0.1776
-      - 0.1456
-      - 0.192
-      - 0.328
-      - 0.3984
-      - 0.4272
-      - 0.384
-      - 0.28
-    clothesName: 默认
-    message: 莱姆摸了一下你的头
-    windowHeight: 625
-    windowWidth: 883
-  earRight:
-    X:
-      - 0.55606
-      - 0.50057
-      - 0.56512
-    Y:
-      - 0.0256
-      - 0.128
-      - 0.1712
-    clothesName: 默认
-    message: 莱姆戳了一下你的耳朵
-    windowHeight: 625
-    windowWidth: 883
+  默认:
+    耳朵:
+      message: 莱姆摸了摸钦灵的耳朵
+      polygons:
+      - - - 0.23515
+          - 0.14783
+        - - 0.34421
+          - 0.20174
+        - - 0.38835
+          - 0.12
+      - - - 0.58049
+          - 0.0087
+        - - 0.5
+          - 0.09565
+        - - 0.60646
+          - 0.12
+    头:
+      message: 莱姆摸了摸钦灵的头
+      polygons:
+      - - - 0.48702
+          - 0.09217
+        - - 0.39873
+          - 0.11304
+        - - 0.36238
+          - 0.21043
+        - - 0.40133
+          - 0.26783
+        - - 0.60646
+          - 0.25391
+        - - 0.58309
+          - 0.14783
+        - - 0.46365
+          - 0.09391
+    胸:
+      message: 莱姆摸了摸钦灵的胸
+      polygons:
+      - - - 0.4221
+          - 0.29043
+        - - 0.40652
+          - 0.37043
+        - - 0.60646
+          - 0.36
+        - - 0.58049
+          - 0.28174
+    肚子:
+      message: 莱姆摸了摸钦灵的肚子
+      polygons:
+      - - - 0.40393
+          - 0.38435
+        - - 0.40133
+          - 0.48
+        - - 0.60646
+          - 0.46435
+        - - 0.59607
+          - 0.37391
+    手:
+      message: 莱姆握了握钦灵的手
+      polygons:
+      - - - 0.39614
+          - 0.49565
+        - - 0.61685
+          - 0.47478
+        - - 0.60646
+          - 0.55478
+        - - 0.38056
+          - 0.55826
+    腿:
+      message: 莱姆摸了摸钦灵的腿
+      polygons:
+      - - - 0.38315
+          - 0.5687
+        - - 0.4273
+          - 0.8313
+        - - 0.55972
+          - 0.82783
+        - - 0.59088
+          - 0.56174
+    脚:
+      message: 莱姆摸了摸钦灵的脚
+      polygons:
+      - - - 0.4273
+          - 0.84348
+        - - 0.55712
+          - 0.83826
+        - - 0.55453
+          - 0.92174
+        - - 0.42989
+          - 0.92696
+    尾巴:
+      message: 莱姆碰了碰钦灵的尾巴
+      polygons:
+      - - - 0.64541
+          - 0.54957
+        - - 0.59607
+          - 0.61043
+        - - 0.74148
+          - 0.6887
+        - - 0.89727
+          - 0.59652
 scale: 1.45
 offset_x: 0.0
 offset_y: 20.0
 clothes_name: null
 clothes:
-  - name: default
-    prompt: 钦灵换上了自己的日常服装，头上戴着淡蓝色的墨镜，穿着松垮的，半开着的蓝绿色卫衣，里面穿着白色衬衫，不穿裤子，休闲的运动鞋里穿着白色短袜。
-  - name: 泳装
-    prompt: 钦灵换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
+- name: default
+  prompt: 钦灵换上了自己的日常服装，头上戴着淡蓝色的墨镜，穿着松垮的，半开着的蓝绿色卫衣，里面穿着白色衬衫，不穿裤子，休闲的运动鞋里穿着白色短袜。
+- prompt: 钦灵换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
+  name: 泳装
+avatar_mode: live2d
 scale_p: 1.6
 offset_x_p: 0.0
 offset_y_p: 0.0
+avatar_mode_p: live2d
+pet_frameless: null
 voice_models:
-  sva_speaker_id: "0"
+  sva_speaker_id: '0'
   sbv2_name: Ling-v2
-  sbv2_speaker_id: "0"
-  bv2_speaker_id: "0"
+  sbv2_speaker_id: '0'
+  bv2_speaker_id: '0'
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: "0"
-  gsv_voice_text: ""
-  gsv_voice_filename: ""
-  gsv_gpt_model_name: ""
-  gsv_sovits_model_name: ""
+  sbv2api_speaker_id: '0'
+  gsv_voice_text: ''
+  gsv_voice_filename: ''
+  gsv_gpt_model_name: ''
+  gsv_sovits_model_name: ''
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
   opentts_voice: null
   fish_s2_voice: null
@@ -122,8 +143,10 @@ voice_models:
   sbv2_local_sdp_ratio: null
   sbv2_local_cloud_fallback_model: null
   sbv2_local_cloud_fallback_speaker_id: null
+  cosyvoice_voice_id: null
 tts_type: sbv2
 voice_lang: ja
+voice_dialect: null
 thinking_message: 灵灵正在思考中...
 bubble_top: 5
 bubble_left: 20

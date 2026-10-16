@@ -1,7 +1,6 @@
 <template>
   <header
-    class="flex h-14 shrink-0 items-center justify-between border-b px-4 transition-colors
-      duration-300 select-none"
+    class="flex h-14 shrink-0 items-center justify-between border-b px-4 transition-colors duration-300 select-none"
     :class="isDarkMode ? 'border-slate-700 bg-slate-800/90' : 'border-slate-200 bg-white/90'"
     data-tauri-drag-region
   >
@@ -9,8 +8,7 @@
       <div class="h-5 w-1.5 skew-x-[-15deg] rounded-sm bg-sky-400"></div>
       <div>
         <h1
-          class="m-0 flex items-center gap-1.5 text-[15px] font-bold tracking-wide
-            transition-colors"
+          class="m-0 flex items-center gap-1.5 text-[15px] font-bold tracking-wide transition-colors"
           :class="isDarkMode ? 'text-slate-100' : 'text-slate-800'"
         >
           Lingchat-Pal
@@ -34,8 +32,7 @@
       <button
         type="button"
         @click="$emit('toggleTheme')"
-        class="pointer-events-auto mr-1 flex h-8 w-8 items-center justify-center rounded
-          transition-colors"
+        class="pointer-events-auto mr-1 flex h-8 w-8 items-center justify-center rounded transition-colors"
         :class="
           isDarkMode
             ? 'text-amber-300 hover:bg-slate-700 hover:text-amber-200'
@@ -55,8 +52,7 @@
       <button
         type="button"
         @click="$emit('minimizeWindow')"
-        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded
-          transition-colors"
+        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
         :class="
           isDarkMode
             ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
@@ -68,8 +64,7 @@
       <button
         type="button"
         @click="$emit('toggleMaximizeWindow')"
-        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded
-          transition-colors"
+        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
         :class="
           isDarkMode
             ? 'text-slate-400 hover:bg-slate-700 hover:text-sky-400'
@@ -82,8 +77,7 @@
       <button
         type="button"
         @click="$emit('closeWindow')"
-        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded
-          transition-colors"
+        class="pointer-events-auto flex h-8 w-8 items-center justify-center rounded transition-colors"
         :class="
           isDarkMode
             ? 'text-slate-400 hover:bg-rose-500/20 hover:text-rose-400'
@@ -97,17 +91,17 @@
 </template>
 
 <script setup lang="ts">
-  import { Sun, Moon, Minus, Square, Copy, X } from "lucide-vue-next";
+import { Sun, Moon, Minus, Square, Copy, X } from "lucide-vue-next";
 
-  defineProps<{
-    isDarkMode: boolean;
-    isMaximized: boolean;
-  }>();
+defineProps<{
+  isDarkMode: boolean;
+  isMaximized: boolean;
+}>();
 
-  defineEmits<{
-    toggleTheme: [];
-    minimizeWindow: [];
-    toggleMaximizeWindow: [];
-    closeWindow: [];
-  }>();
+defineEmits<{
+  toggleTheme: [];
+  minimizeWindow: [];
+  toggleMaximizeWindow: [];
+  closeWindow: [];
+}>();
 </script>

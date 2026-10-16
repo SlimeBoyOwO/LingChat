@@ -47,6 +47,11 @@ export default {
     notificationTitle: "LingChat 久坐リマインダー",
     notificationBody: "長時間座りっぱなしです。少し体を動かしましょう",
   },
+  proactiveReminder: {
+    minutesLater: "「{text}」の締め切りまであと {count} 分",
+    hoursLater: "「{text}」の締め切りまであと {count} 時間",
+    daysLater: "「{text}」の締め切りまであと {count} 日",
+  },
   lanSync: {
     noPeerSelected: "同期先のデバイスが選択されていません",
     manualRestart: "同期ファイルを適用するには、アプリを手動で再起動してください",

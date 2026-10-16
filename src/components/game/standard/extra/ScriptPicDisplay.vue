@@ -18,36 +18,36 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, watch } from "vue";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
+import { ref, watch } from "vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
 
-  const uiStore = useUIStore();
-  const showPic = ref(false);
+const uiStore = useUIStore();
+const showPic = ref(false);
 
-  // 监听 currentPresentPic 变化
-  watch(
-    () => uiStore.currentPresentPic,
-    (newVal) => {
-      if (newVal && newVal !== "") {
-        showPic.value = true;
-      } else {
-        // 无图片时，淡出
-        showPic.value = false;
-      }
-    },
-    { immediate: true }
-  );
+// 监听 currentPresentPic 变化
+watch(
+  () => uiStore.currentPresentPic,
+  (newVal) => {
+    if (newVal && newVal !== "") {
+      showPic.value = true;
+    } else {
+      // 无图片时，淡出
+      showPic.value = false;
+    }
+  },
+  { immediate: true },
+);
 </script>
 
 <style scoped>
-  .fade-enter-active,
-  .fade-leave-active {
-    transition: opacity 0.5s ease-in-out;
-  }
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.5s ease-in-out;
+}
 
-  .fade-enter-from,
-  .fade-leave-to {
-    opacity: 0;
-  }
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+}
 </style>

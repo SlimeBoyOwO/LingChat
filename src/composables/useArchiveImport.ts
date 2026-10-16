@@ -105,7 +105,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
       (e) => {
         // 后端刚生成 task_id 时立刻发送，前端存下来给 cancel() 用。
         currentTaskId = e.payload?.task_id ?? null;
-      }
+      },
     );
     if (binding.errorEvent) {
       const errorEvent = binding.errorEvent;
@@ -157,7 +157,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
     filePath: string,
     fileName: string,
     format: ArchiveFormat | undefined,
-    conflict: string
+    conflict: string,
   ) {
     store().resetImport();
     store().import.phase = "running";
@@ -176,7 +176,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
       console.log(
         `[${tag}] backend path import: source=%s, androidSaf=%s`,
         filePath,
-        isAndroidContentUri(filePath)
+        isAndroidContentUri(filePath),
       );
       startFakeProgress();
       const result = await binding.invoke({ path: filePath, fileName, format, conflict });
@@ -189,7 +189,7 @@ export function createArchiveImportController(binding: ArchiveImportBinding) {
       console.log(
         `[${tag}] runImport 完成: action=%s, bytes=%d`,
         result.conflict_action,
-        result.bytes_extracted
+        result.bytes_extracted,
       );
     } catch (e: any) {
       console.error(`[${tag}] runImport 失败:`, e);

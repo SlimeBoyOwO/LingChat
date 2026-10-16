@@ -1,6 +1,6 @@
 # 推理设备选择工具（utils/device）
 
-模块：`src-tauri/src/utils/device.rs`
+模块：`crates/ling-chat-main/src/utils/device.rs`
 
 提供 ONNX 推理功能的**统一设备选择**能力。当前使用者：本地 TTS（`ai_service/tts/local`）。
 其他使用 ONNX Runtime 推理的功能（如情绪识别 `ai_service/emotion`）应通过本模块

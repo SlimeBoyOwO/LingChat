@@ -60,7 +60,7 @@ export const DEFAULT_SHORTCUTS: Record<ShortcutAction, ShortcutBinding> = {
   expandProps: { key: "e", ctrl: true },
 };
 
-const isDirKey = (key: string) => key === "arrowup" || key === "arrowdown";
+export const isDirKey = (key: string) => key === "arrowup" || key === "arrowdown";
 
 /** 绑定是否匹配事件：修饰键严格比对，方向键成对，'?' 由 Shift+/ 产生 */
 export const bindingMatches = (b: ShortcutBinding, e: KeyboardEvent): boolean => {
@@ -144,6 +144,23 @@ export const captureFromEvent = (e: KeyboardEvent): CaptureResult => {
   return { kind: "bind", binding };
 };
 
+/**
+ * PTT 绑定 JSON → ShortcutBinding（useAsrInput 运行判定 / SettingsAsr 显示共用，
+ * 统一解析策略）。非法 JSON / 缺 key / Enter → null，调用方自行决定回退。
+ * Enter 拒绝与后端 binding_to_hotkey_str 一致（聊天发送键，误绑发消息会误触发录音）。
+ */
+export const parsePttBinding = (raw: string | null | undefined): ShortcutBinding | null => {
+  if (!raw) return null;
+  try {
+    const b = JSON.parse(raw);
+    // 不用共享 isValidBinding 的入参（unknown）：这里 b 已由 JSON.parse 定型为 object
+    if (isValidBinding(b) && b.key.toLowerCase() !== "enter") return b;
+  } catch {
+    /* 落空 → null */
+  }
+  return null;
+};
+
 /** 绑定数据形状校验（持久化数据可能被旧版本写坏，非法项回退默认） */
 export const isValidBinding = (b: unknown): b is ShortcutBinding =>
   !!b &&
@@ -154,7 +171,7 @@ export const isValidBinding = (b: unknown): b is ShortcutBinding =>
 
 /** 整表校验：非法项用默认键位补齐，合法项保留（用户自定义不被重置） */
 export const sanitizeShortcuts = (
-  rec: Partial<Record<ShortcutAction, ShortcutBinding>>
+  rec: Partial<Record<ShortcutAction, ShortcutBinding>>,
 ): Record<ShortcutAction, ShortcutBinding> => {
   const out = { ...DEFAULT_SHORTCUTS };
   for (const a of SHORTCUT_ACTIONS) {

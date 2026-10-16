@@ -6,6 +6,7 @@ import { initializeTauriEventListeners, initializeCastWindowListeners } from "./
 import App from "./App.vue";
 import "./assets/styles/base.css";
 import "./assets/styles/variables.css";
+import "./assets/styles/dialogue-text.css";
 import { i18n } from "./locales";
 
 // WebSocket handlers 保留用于未来剧本模式参考
@@ -14,6 +15,7 @@ import { i18n } from "./locales";
 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import router from "./router";
+import { installRouteFade } from "./composables/app/useRouteFade";
 import { autoConfigurePerformance } from "./api/services/cpu-perf";
 import { initAudioOutputManager } from "./utils/audioOutputManager";
 
@@ -28,25 +30,42 @@ initializeEventProcessors();
 
 // 投屏窗口是独立 webview：不注册驱动事件队列的全局监听（ai:reply 等），
 // 台词由主窗口镜像（cast:mirror）驱动，只注册投屏需要的即时状态事件。
-const isCastWindow = new URLSearchParams(window.location.search).get("window") === "cast";
+// 气泡窗与 TODO 小组件同样不参与事件队列，各自只挂自己需要的事件。
+const windowKind = new URLSearchParams(window.location.search).get("window");
+const isCastWindow = windowKind === "cast";
+const isBubbleWindow = windowKind === "bubble";
+const isTodoWidgetWindow = windowKind === "todo_widget";
 if (isCastWindow) {
   initializeCastWindowListeners();
-} else {
+} else if (!isBubbleWindow && !isTodoWidgetWindow) {
   initializeTauriEventListeners();
 }
 
 app.use(pinia);
 app.use(i18n);
+
+// 路由黑屏过渡守卫：必须早于 app.use(router) 触发的首次导航，且只注册一次
+installRouteFade(router);
 app.use(router);
 
 // 独立日志窗口：通过 index.html?window=log 打开时直接进入日志路由
-if (new URLSearchParams(window.location.search).get("window") === "log") {
+if (windowKind === "log") {
   router.replace("/log-window");
 }
 
 // 投屏窗口：通过 index.html?window=cast 打开时直接进入投屏路由
 if (isCastWindow) {
   router.replace("/cast");
+}
+
+// 气泡窗口：桌宠模式下由宠物窗创建，只画气泡，不参与事件队列
+if (isBubbleWindow) {
+  router.replace("/bubble");
+}
+
+// TODO 小组件：由主窗口创建，只画倒计时与清单，不参与事件队列
+if (isTodoWidgetWindow) {
+  router.replace("/todo-widget");
 }
 
 app.mount("#app");

@@ -16,7 +16,7 @@ export function achievementTitle(achievement: Pick<Achievement, "id" | "title">)
 
 /** 内置成就的本地化描述；动态成就回退为后端下发的原文 */
 export function achievementDescription(
-  achievement: Pick<Achievement, "id" | "description">
+  achievement: Pick<Achievement, "id" | "description">,
 ): string {
   const key = `settings.achievement.items.${achievement.id}.description`;
   return teRaw(key) ? tRaw(key) : achievement.description;

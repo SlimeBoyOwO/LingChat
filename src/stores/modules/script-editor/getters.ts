@@ -138,7 +138,7 @@ export const useEditorGetters = (s: StateRefs) => {
 
   /** 剧本级（不属于任何章节）的诊断 */
   const scriptDiagnostics = computed<Diagnostic[]>(() =>
-    (s.report.value?.diagnostics ?? []).filter((d) => !d.chapter)
+    (s.report.value?.diagnostics ?? []).filter((d) => !d.chapter),
   );
 
   /** 全剧本出现过的变量名，供变量编辑器做输入补全 */

@@ -6,7 +6,7 @@ import type { TypeWriterStatus } from "../../utils/typewriter/TypeWriter";
 export function useTypeWriter(
   elementRef: Ref<HTMLElement | null>,
   onTextUpdate?: (text: string) => void,
-  writeFn?: (element: HTMLElement, text: string) => void
+  writeFn?: (element: HTMLElement, text: string) => void,
 ) {
   const typeWriter = ref<TypeWriter | null>(null);
   const localStatus = ref<TypeWriterStatus>("idle");

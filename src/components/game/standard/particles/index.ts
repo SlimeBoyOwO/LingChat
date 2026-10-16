@@ -4,34 +4,77 @@
  * 编辑器的「背景特效」下拉从这里取值，作者只能从列表里选，杜绝拼错大小写
  * 导致特效被静默清空（上游复核要求：从前端获取粒子列表、防范输入错误）。
  *
- * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支即可，
- * 不必改后端（后端 background_effect_event 仅做大小写纠错 warn）。
+ * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支 + 补两份词条。
+ * 剧本能写的特效清单由本文件生成到 Rust（`pnpm gen:effects`，已挂在提交钩子上），
+ * 不需要手抄。不跑生成也不会报错，只是编辑器里少了「这不是内置特效」那条警告。
  *
- * 暂未让 GameBackground 读这个表（本轮不动正式游玩渲染层）；粒子稳定后
- * 可让 GameBackground 也改读此处，消除硬编码 v-if。
+ * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
+ * （每个粒子的 props 各不相同），新增粒子时两边都要动。
+ *
+ * 特效分两层：氛围层（PARTICLE_EFFECTS）与天气层（WEATHER_EFFECTS），
+ * 两者各自单选、互不干扰，可以同时开着。天气天生是叠加的（雷阵雨 = 暴雨 + 闪电，
+ * 以后还有雾），不该和雪、樱花抢同一个槽位。
  */
 export interface ParticleEffect {
   /** 写进 YAML 的值，与 GameBackground 的 v-if 分支、引擎的 KNOWN_EFFECTS 对应 */
   key: string;
-  /** 编辑器下拉里给作者看的中文名 */
+  /** 下拉里给作者看的中文名（i18n 词条缺失时的兜底） */
   label: string;
+  /**
+   * 词条后缀：`settings.background.particle.<i18n>`（设置页）
+   * 与 `scriptEditor.schema.particle.<i18n>`（剧本编辑器）共用。
+   * 新增粒子时两处词条都要补。
+   */
+  i18n: string;
+  /** 桌宠头像内是否渲染：桌宠只有一个圆形头像，全屏量级的特效（雨/樱花/雪/烟花）不适用 */
+  petSupported?: boolean;
 }
 
 export const PARTICLE_EFFECTS: ParticleEffect[] = [
-  { key: "StarField", label: "星空" },
-  { key: "Rain", label: "雨" },
-  { key: "Sakura", label: "樱花" },
-  { key: "Snow", label: "雪" },
-  { key: "Fireworks", label: "烟花" },
+  { key: "StarField", label: "星空", i18n: "starField", petSupported: true },
+  { key: "Sakura", label: "樱花", i18n: "sakura" },
+  { key: "Fireworks", label: "烟花", i18n: "fireworks" },
+  // 星辉：原桌宠专属粒子，现已并入主界面可选项（i18n 沿用桌宠既有的「星辉 / Starglow」）
+  { key: "BA", label: "星辉", i18n: "ba", petSupported: true },
+  // 萤火虫：夜场氛围件，不依赖天气。桌宠圆头像里装不下它那套游走与落点，故不进桌宠
+  { key: "Fireflies", label: "萤火虫", i18n: "fireflies" },
+  // 流星雨：夜场氛围件，只画流星不带星空 —— 夜空背景多半本来就画了星星，再叠一层会重
+  { key: "MeteorShower", label: "流星雨", i18n: "meteorShower" },
 ];
 
 /**
+ * 天气层。设置页里是独立的一组按钮，词条前缀也因此不同
+ * （`settings.background.weather.<i18n>`，氛围层是 `...particle.<i18n>`）。
+ * 天气都是全屏量级的，不进桌宠头像，所以没有 petSupported。
+ *
+ * 雨和雪从氛围层挪到了这里：同一种天气的不同档位分属两层，
+ * 就会出现「小雨和雷阵雨同时开着」这种没人想要的状态。把同一族放在一起，
+ * 单选本身就替我们排除了这种组合。
+ */
+export const WEATHER_EFFECTS: ParticleEffect[] = [
+  { key: "Drizzle", label: "小雨", i18n: "drizzle" },
+  { key: "Rain", label: "雨", i18n: "rain" },
+  { key: "Thunderstorm", label: "雷阵雨", i18n: "thunderstorm" },
+  { key: "Snow", label: "雪", i18n: "snow" },
+  { key: "Blizzard", label: "雪暴", i18n: "blizzard" },
+  { key: "Fog", label: "雾", i18n: "fog" },
+];
+
+/** 全部内置特效。给编辑器下拉与大小写纠错用，不区分它属于哪一层。 */
+export const ALL_EFFECTS: ParticleEffect[] = [...PARTICLE_EFFECTS, ...WEATHER_EFFECTS];
+
+/** 这个特效是不是天气层的。剧本与存档只记一个特效值，靠它决定落到哪一层。 */
+export const isWeatherEffect = (key: string): boolean => WEATHER_EFFECTS.some((p) => p.key === key);
+
+/**
  * 给编辑器下拉用的选项：首项「无特效」对应引擎的清空值 None，
- * 其余为各粒子。返回 { value, label } 以便下拉显示中文、写入英文 key。
+ * 其余为各特效。返回 { value, label } 以便下拉显示中文、写入英文 key。
+ *
+ * 两层都列出来：剧本作者不必关心引擎把它们放在哪一层。
  */
 export const particleEffectOptions = (): { value: string; label: string }[] => [
   { value: "None", label: "无特效" },
-  ...PARTICLE_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
+  ...ALL_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
 ];
 
 /**
@@ -47,5 +90,5 @@ export const canonicalEffectKey = (value: string): string | null => {
   const v = value.trim();
   if (!v) return "None";
   if (v.toLowerCase() === "none") return "None";
-  return PARTICLE_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
+  return ALL_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
 };

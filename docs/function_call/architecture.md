@@ -124,19 +124,21 @@ let tool_registry = Arc::new(tools::built_in_registry(role_names)?);
 execute(name, arguments, context)
   ① context.allows(name) 不通过        → {ok:false, error:{code:"tool_not_allowed"}}
   ② registry.get(name) 找不到          → {ok:false, error:{code:"unknown_tool"}}
-  ③ arguments 不是合法 JSON            → {ok:false, error:{code:"invalid_json"}}
-  ④ arguments 不是 JSON object         → {ok:false, error:{code:"invalid_arguments"}}
-  ⑤ tool.execute() 返回 Err            → {ok:false, error:{code:"tool_error", message}}
-  ⑥ 超过 2 秒                          → {ok:false, error:{code:"timeout"}}
-  ⑦ 结果序列化失败                     → {ok:false, error:{code:"serialization_error"}}
-  ⑧ 成功                               → 结果的 JSON 字符串
+  ③ arguments 不是合法 JSON            → {ok:false, error:{code:"invalid_json"}}          （宽松模式跳过）
+  ④ arguments 不是 JSON object         → {ok:false, error:{code:"invalid_arguments"}}     （宽松模式跳过）
+  ⑤ schema 校验不过                    → {ok:false, error:{code:"invalid_arguments"}}     （宽松模式跳过）
+  ⑥ tool.execute() 返回 Err            → {ok:false, error:{code:"tool_error", message}}
+  ⑦ 超过 timeout_hint（默认 2 秒）     → {ok:false, error:{code:"timeout"}}
+  ⑧ 结果序列化失败                     → {ok:false, error:{code:"serialization_error"}}
+  ⑨ 成功                               → 结果的 JSON 字符串
 ```
 
 要点：
 
 - **`ToolContext` 只读**：持有一个 `allowed_tools: HashSet<String>`（本轮由权限矩阵预计算），`Tool` 实现里可自行 `context.allows(name)` 二次校验；
-- **2 秒超时**：`tokio::time::timeout`，慢工具直接返回 `timeout` 错误结果，不卡生成管线；
-- **错误可回填**：错误 JSON 走 `LlmMessage::tool_result` 回填给模型 —— 模型会看到「工具调用了、但报错了」，这是与「工具抛异常导致整轮崩溃」的本质区别。
+- **超时可覆写**：`Tool::timeout_hint()` 默认 `None` → 执行器用 2 秒；God Agent 的 `update_affection` 因为要写库而放宽到 30 秒；
+- **参数校验可放宽**：`Tool::lenient_arguments()` 默认 `false`；覆写为 `true` 则跳过 ③④⑤，改用 `parse_tool_args` 归一化后由工具自行容错解析。只有需要容忍模型把整数写成 `"6"` 的 God Agent 决策工具开了这个口子；
+- **错误可回填**：错误 JSON 走 `LlmMessage::tool_result` 回填给模型 —— 模型会看到「工具调用了、但报错了」，这是与「工具抛异常导致整轮崩溃」的本质区别。上帝 Agent 的决策是单发的，没有回填这一步，所以它必须自己把 `ok:false` 重新提升为 `Err`（见 `god-agent/architecture.md` §4）。
 
 ## 5. 工具循环（stream_with_tool_loop）
 
@@ -288,22 +290,28 @@ async fn run_pipeline(&self, context: Vec<LlmMessage>, ...) -> Result<String> {
 
 这两类行都 `sender_role_id: None`（不是角色台词），插入位置是当时 `line_list` 的末尾，`perceived_role_ids` 取当时的在场角色。随后 `gs.refresh_memories()` 让记忆与台词表一致。
 
-持久化：`save_repo.rs` 读写存档时同步读写 `tool_call` 列；`m20260727_add_line_tool_call` 迁移给 `line` 表加列；前端展示历史时按 `attribute === 'tool'` 过滤（`game/actions.ts`）—— **工具过程对玩家不可见，只活在台词表与记忆里**。
+> **前导台词只有工具行这一份。** 工具执行前模型说的话会先随流式管线呈现给玩家（呈现栅栏保证它先于工具卡片出现），但它**不落成普通助手台词**：`StreamProducer` 把栅栏之前发出的句子序号记进 `ProducerOutput::preamble_indices`，回填时按「句子序号 → 行下标」的台账把这些行从 `line_list` 里删掉（只动内存，台词落盘发生在存档时），只留带 `tool_call` 的助手行里那份原文。否则同一句话会存成两份，模型在记忆里看到自己说了两遍，而且第二遍排在工具结果之后、顺序也是错的。栅栏被丢弃、本轮工具消息根本没入列时**不删**——那时前导台词就是唯一的记录。
 
-## 9. 与既有 God Agent 工具的关系（两条路径并存）
+持久化：`save_repo.rs` 读写存档时同步读写 `tool_call` 列；`m20260727_add_line_tool_call` 迁移给 `line` 表加列；前端展示历史时按 `attribute === 'tool'` 过滤（`game/actions.ts`）—— **工具返回对玩家不可见，只活在台词表与记忆里**。带 `tool_call` 的**助手**行不过滤：它存的正是工具间隙里角色说过的话，本来就该出现在历史里。
 
-PR #523 引入的是「通用聊天工具」路径；God Agent 的「选说话人」是**另一条独立的专用路径**：
+## 9. 与 God Agent 工具的关系（共用基础设施，闭环形态不同）
 
-|          | 通用聊天工具（PR #523）                  | God Agent 选说话人（既有）                         |
-| -------- | ---------------------------------------- | -------------------------------------------------- |
-| 注册     | `ToolRegistry`                           | God Agent 私有 `tools::select_next_speaker_tool()` |
-| 入口     | `complete_stream_with_tools`（流式循环） | `complete_with_tools`（非流式单次）                |
-| 权限     | 「场景组 × 角色组」矩阵                  | 无（硬编码）                                       |
-| 结果去向 | 台词表 + 记忆                            | 仅用于选说话者，不进台词表                         |
+God Agent 的两个能力（`select_next_speaker` / `update_affection`）现在是本子系统的**真实工具**，实现 `Tool` trait、走同一个 `ToolExecutor`，因而共享 schema 校验、超时与统一的错误编码。差别只在注册表与闭环形态：
+
+|          | 通用聊天工具（PR #523）             | God Agent 决策工具                                       |
+| -------- | ----------------------------------- | -------------------------------------------------------- |
+| 注册     | `built_in_registry()`（含权限页）   | `tools::god_agent::god_agent_registry()`（独立注册表）   |
+| 权限     | 「场景组 × 角色组」矩阵             | 无（不进权限矩阵，也不出现在 `tool_permissions.toml`）   |
+| 入口     | `stream_with_tool_loop`（流式闭环） | `tools::agent::run_tool_agent`（非流式，`max_rounds=1`） |
+| 结果去向 | 台词表 + 记忆                       | 副作用就地落地（切说话者 / 改好感度），不进台词表        |
+
+God Agent 的决策是单发的：执行结果不回填给 LLM，因此 `agent.rs` 不需要聊天侧那套 continuation / final-synthesis 提示词，也不产任何前端事件。
+
+为了让这两个工具容忍模型把整数写成 `"6"`、把参数包成 `{"arguments":{...}}`，`Tool` trait 上加了 `lenient_arguments()`（默认 `false`）：覆写为 `true` 时执行器跳过 JSON object 硬门槛与 schema 校验，改用 `parse_tool_args` 归一化。既有 31 个聊天工具不受影响。
 
 ## 10. 设计取舍
 
 1. **工具调用是「写入口」级别的持久化**：没有把工具调用做成独立表，而是复用 `line` 表 + 属性列。理由：台词表本来就有「追加 + 截断还原」语义（试玩快照按 `line_len` 截断即可完整带走工具行），且 `MemoryBuilder` 可以按行序无缝还原成 LLM 消息；
-2. **权限在「下发定义」与「执行」两处都拦**：`allowed_tools` 既用来裁剪 `definitions_for_allowed`（LLM 根本看不到不允许的工具），又放进 `ToolContext` 供 `ToolExecutor` 二次校验（防 `run_pipeline` 之外的调用路径绕过）；但 ToolExecutor 的二次校验实际主要防的是「内部误传」而非对抗恶意 —— 单进程内没有恶意边界；
+2. **权限在「下发定义」与「执行」两处都拦**：`allowed_tools` 用来裁剪 `definitions_for_allowed`（LLM 看不到本轮没下发的工具），`ToolContext` 里的 `base_allowed`（权限集）供 `ToolExecutor` 二次校验（防 `run_pipeline` 之外的调用路径绕过）。ToolExecutor 的二次校验实际主要防的是「内部误传」而非对抗恶意 —— 单进程内没有恶意边界；按权限集而非收窄集复核，是因为 Tool RAG 的收窄只为省 token（激活缓存只在进程内，重启就空），拿它当边界会把「缓存没命中」变成对玩家的「工具被系统拦下来了」；
 3. **工具错误永不抛出**：统一编码成 `{ok:false,...}` 回填，LLM 自主决定下一步 —— 让「工具失败」成为对话语义的一部分而不是管线崩溃；
 4. **流式工具是硬性门槛**：不支持流式工具的 Provider 宁可整个跳过工具闭环，也不做非流式预检 —— 避免用户可感知的延迟抖动。

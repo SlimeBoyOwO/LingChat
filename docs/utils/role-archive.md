@@ -40,6 +40,10 @@
 
 ### 2.2 导出
 
+只导出正式配置与资源，排除角色根目录的 `.editor-drafts/` 和 `.editor-trash/`。
+ZIP 与 7z 共用过滤后的文件清单，进度总数不包含草稿或回滚备份。
+同名嵌套资源目录及其他隐藏文件不受此规则影响，导出不删除磁盘上的任何文件。
+
 ```
 [用户]               [前端]                            [后端 / Rust]
 点 ⋮ 选 .zip ─►  saveDialog({ defaultPath, filters })
@@ -62,7 +66,7 @@
 
 ## 3. Tauri 命令清单
 
-注册位置：`src-tauri/src/lib.rs:488-493`，由 `RoleArchiveState` 注入。
+注册位置：`src-tauri/src/app/commands.rs`（命令注册表），`RoleArchiveState` 由 `src-tauri/src/app/setup/mod.rs` 注入。
 
 | 命令                    | 入口         | 说明                                                                                      |
 | ----------------------- | ------------ | ----------------------------------------------------------------------------------------- |
@@ -119,7 +123,7 @@ idle─┤     └─► error ─► (dismiss)
 
 ## 6. 后端架构
 
-### 6.1 模块拆分（`src-tauri/src/api/role_archive/`）
+### 6.1 模块拆分（`crates/ling-chat-main/src/api/role_archive/`）
 
 | 文件                 | 职责                                                                                                                                              |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -128,7 +132,7 @@ idle─┤     └─► error ─► (dismiss)
 | `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
 | `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                     |
 
-### 6.2 归档工具（`src-tauri/src/utils/archive/`）
+### 6.2 归档工具（`crates/ling-chat-main/src/utils/archive/`）
 
 | 文件              | 职责                                                                                                                                           |
 | ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -179,22 +183,22 @@ Tauri 命令层把所有错误转成 `String`，前端通过 `invoke` 的 `Promi
 
 ## 10. 关键代码位置
 
-| 文件                                                | 用途                   |
-| --------------------------------------------------- | ---------------------- |
-| `src-tauri/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
-| `src-tauri/src/api/role_archive/state.rs`           | 全局状态与守卫         |
-| `src-tauri/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
-| `src-tauri/src/api/role_archive/export_pipeline.rs` | 导出流水线             |
-| `src-tauri/src/utils/archive/mod.rs`                | 公共类型与 API         |
-| `src-tauri/src/utils/archive/safety.rs`             | 路径与压缩比安全       |
-| `src-tauri/src/utils/archive/extract.rs`            | zip / 7z 解压          |
-| `src-tauri/src/utils/archive/compress.rs`           | zip / 7z 压缩          |
-| `src-tauri/src/utils/archive/resolve.rs`            | 冲突策略               |
-| `src/composables/useRoleImportExport.ts`            | 前端调度               |
-| `src/stores/modules/ui/role-archive.ts`             | 进度状态 store         |
-| `src/components/ui/ImportProgressBar.vue`           | 进度条 UI              |
-| `src/components/ui/RoleArchiveProgress.vue`         | 进度条挂载点           |
-| `src/api/services/role-archive.ts`                  | invoke 封装            |
+| 文件                                                            | 用途                   |
+| --------------------------------------------------------------- | ---------------------- |
+| `crates/ling-chat-main/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
+| `crates/ling-chat-main/src/api/role_archive/state.rs`           | 全局状态与守卫         |
+| `crates/ling-chat-main/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
+| `crates/ling-chat-main/src/api/role_archive/export_pipeline.rs` | 导出流水线             |
+| `crates/ling-chat-main/src/utils/archive/mod.rs`                | 公共类型与 API         |
+| `crates/ling-chat-main/src/utils/archive/safety.rs`             | 路径与压缩比安全       |
+| `crates/ling-chat-main/src/utils/archive/extract.rs`            | zip / 7z 解压          |
+| `crates/ling-chat-main/src/utils/archive/compress.rs`           | zip / 7z 压缩          |
+| `crates/ling-chat-main/src/utils/archive/resolve.rs`            | 冲突策略               |
+| `src/composables/useRoleImportExport.ts`                        | 前端调度               |
+| `src/stores/modules/ui/role-archive.ts`                         | 进度状态 store         |
+| `src/components/ui/ImportProgressBar.vue`                       | 进度条 UI              |
+| `src/components/ui/RoleArchiveProgress.vue`                     | 进度条挂载点           |
+| `src/api/services/role-archive.ts`                              | invoke 封装            |
 
 ## 11. 已知约束
 
@@ -211,3 +215,27 @@ Tauri 命令层把所有错误转成 `String`，前端通过 `invoke` 的 `Promi
 - 前端：DevTools → Tauri 标签，监听 `role:import-started` / `role:import-progress` / `role:import-error` / `role:list-updated`。
 - `cancelRoleImport` 失败的常见原因：`taskId` 为空（当前没有进行中的任务，或 `role:import-started` 事件还没到）。
 - 角色目录没出现但进度条显示成功：检查 `data/game_data/characters/<name>/settings.yml` 是否存在；不存在说明归档里没有 `settings.yml`，被识别为非角色压缩包。
+
+## 13. 手动验证草稿清理与导出
+
+以下操作只在可丢弃的测试角色副本上执行，先备份正式配置与素材。
+
+1. 打开配置并替换差分或导入模型，确认正式文件未变、资源修改仅存在于 `.editor-drafts/edit-*`。
+   取消并确认放弃后，本次草稿应消失；其他仍在编辑的会话不能被删除。
+2. 再次编辑并保存，确认新素材与配置生效、本次草稿和 `.editor-trash/edit-backup-*` 清理。
+   再次打开或重启后读取正式内容。保存失败时原素材应恢复，草稿保留供重试。
+3. 用测试实例模拟异常退出：创建草稿后强制结束应用，重启后残留草稿应删除。
+   应用关闭时，在测试角色下分别准备 `.editor-trash/edit-backup-completed`（含 `.committed` 文件）
+   和 `.editor-trash/edit-backup-pending`（不含标记），各放一份测试文件。
+   重启后 completed 应清理，pending 及其中的文件应保留，并出现状态不明备份的警告。
+4. 在根目录的 `.editor-drafts`、`.editor-trash` 放入容易辨认的测试文件，同时保留正式配置、
+   头像和模型。分别导出 ZIP 与 7z，用解压工具查看：两个根目录及其内容均不在包内，
+   正式资源完整；导出前后的源目录内容相同，不能因导出而删除草稿或备份。
+5. 在 `assets/.editor-trash/keep.txt` 和其他自定义隐藏目录放入测试文件，再导出两种格式。
+   这些非根目录的同名资源和自定义隐藏文件应保留；进度只统计实际打包的文件。
+6. 将导出包导入为另一个测试角色，检查名称、提示词、服装、差分和 Live2D。
+   桌面分别验证 ZIP/7z；Android 还需验证 SAF 选择与写入，iOS 验证文件选择与分享流程。
+   记录平台、应用版本、实际结果及错误日志，未运行项目标明「未验证」。
+
+若清理失败，检查日志中的目录和原因；已成功的保存不应被报告为保存失败。
+状态不明的旧备份可能包含中断提交的唯一素材，不能为了让检查通过而直接删除。

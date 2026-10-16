@@ -7,12 +7,14 @@ on:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
+      - "mc-mod/**"
   pull_request:
     branches: ["dev", "dev/**"]
     paths-ignore:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
+      - "mc-mod/**"
   workflow_dispatch:
 
 jobs:
@@ -49,7 +51,7 @@ jobs:
         with:
           cache-on-failure: true
           workspaces: |
-            src-tauri
+            .
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)
@@ -87,6 +89,7 @@ jobs:
       - name: 创建占位文件和初始化
         shell: bash
         run: |
+          rm -rf src-tauri/tauri.windows.conf.json
           mkdir -p data/.official/game_data
           mkdir -p data/third_party
           touch data/.official/game_data/.gitkeep
@@ -105,5 +108,4 @@ jobs:
             ${{ runner.os == 'macOS' && '' || '' }}
         run: |
           pnpm build
-          cd src-tauri
           cargo build

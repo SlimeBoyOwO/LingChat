@@ -11,9 +11,13 @@
  * 在 App.vue 中调用一次以激活全局缩放功能。
  */
 
-import { onUnmounted, ref } from "vue";
+import { onUnmounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { i18n } from "@/locales";
+import { isWindows } from "@/utils/platform";
 
 const ZOOM_STORAGE_KEY = "lingchat-ui-zoom";
 const ZOOM_STEP = 0.05;
@@ -92,16 +96,83 @@ function applyZoom(level: number): void {
   document.body.scrollTop = 0;
 }
 
+/** 已施加的 webview 页面缩放（只由 syncHostZoom 改写，用于累乘校正量） */
+let hostZoom = 1;
+/** 校正串行化：进出桌宠与 resize 会连着触发，排队执行避免中途插队改错缩放 */
+let hostSyncQueue: Promise<void> = Promise.resolve();
+
+/**
+ * 量出 CSS 视口宽相对窗口逻辑宽的偏差。
+ * 1 = 两者相等（正常）；小于 1 = 视口被压缩，按逻辑像素布局的界面会溢出窗口。
+ */
+async function measureViewportError(): Promise<number> {
+  const win = getCurrentWindow();
+  // 两次读取都要在 await 之后再取视口宽：窗口尺寸与视口得是同一时刻的值
+  const [scaleFactor, size] = await Promise.all([win.scaleFactor(), win.innerSize()]);
+  // 窗口尚未落地（尺寸为 0）时量不出偏差，按已对齐处理
+  if (!(size.width > 0) || !(scaleFactor > 0)) return 1;
+  return window.innerWidth / (size.width / scaleFactor);
+}
+
+function syncHostZoom(ownScaling: boolean): void {
+  if (!isWindows()) return;
+  hostSyncQueue = hostSyncQueue.then(async () => {
+    try {
+      // 文本大小只放大不缩小，偏差理应落在 1~0.44；越界的测量值（窗口未落地等）按已对齐处理
+      const error = ownScaling ? await measureViewportError() : 1;
+      const correction = error >= 0.4 && error <= 1.001 ? error : 1;
+      const target = ownScaling ? hostZoom * correction : ZOOM_DEFAULT;
+      // 偏差不足 0.5% 视为已对齐：省掉无谓 IPC，也切断「改缩放 → resize → 再校正」的回环
+      if (Math.abs(target - hostZoom) < 0.005) return;
+      await getCurrentWebview().setZoom(target);
+      hostZoom = target;
+    } catch {
+      // 权限未授予或平台不支持：保持现状
+    }
+  });
+}
+
 /**
  * 激活 Ctrl+滚轮 UI 缩放功能。
  * 应在 App.vue 等始终挂载的根组件中调用一次。
  */
 export function useZoom(): void {
-  // 初始化时应用已保存的缩放
-  applyZoom(currentZoom.value);
+  const route = useRoute();
+  // 桌宠相关窗口自成一套缩放（--pet-ui-scale + 固定尺寸的无边框窗口），必须忽略主界面
+  // 缩放：applyZoom 的尺寸补偿会把 #app 布局盒改成「视口 / z」，而窗口尺寸并没有跟着变，
+  // 结果是布局坐标系与视口不一致 —— inset-x-0 的元素会比视口宽，右侧与底部被窗口裁掉。
+  // 气泡窗（/bubble）同样属于桌宠，漏掉它就会出现「整个气泡窗被裁」。
+  // TODO 小组件是另一个尺寸独立于主窗口的窗口，同理必须豁免。
+  const ownScalingRoutes = new Set(["/pet", "/bubble", "/todo-widget"]);
+  const ownScaling = () => ownScalingRoutes.has(route.path);
+  const effectiveZoom = () => (ownScaling() ? ZOOM_DEFAULT : currentZoom.value);
+
+  // 初始化 + 进出桌宠时都按当前路由重新应用（桌宠/气泡窗里恒为 100%）
+  watch(
+    () => route.path,
+    () => {
+      applyZoom(effectiveZoom());
+      // 同一窗口会在主界面与桌宠之间切路由，页面缩放也要跟着切
+      syncHostZoom(ownScaling());
+    },
+    { immediate: true },
+  );
+
+  // 文本大小改了、桌宠窗尺寸变了都会触发 resize，重量一次偏差（已对齐时是空操作）。
+  // 只认桌宠族路由：主窗口可自由拖拽，拖一次会刷出几十个 resize，别再叠测量 IPC。
+  const handleResize = () => {
+    if (ownScaling()) syncHostZoom(true);
+  };
+  window.addEventListener("resize", handleResize);
 
   const handleWheel = (event: WheelEvent) => {
     if (!event.ctrlKey) return;
+
+    // 桌宠相关窗口：吞掉 Ctrl+滚轮（既不缩放界面，也不让它触发 WebView 原生缩放）
+    if (ownScalingRoutes.has(route.path)) {
+      event.preventDefault();
+      return;
+    }
 
     // 阻止浏览器默认的缩放行为
     event.preventDefault();
@@ -136,5 +207,6 @@ export function useZoom(): void {
 
   onUnmounted(() => {
     window.removeEventListener("wheel", handleWheel);
+    window.removeEventListener("resize", handleResize);
   });
 }

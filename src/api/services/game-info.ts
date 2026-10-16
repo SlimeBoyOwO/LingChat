@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { Live2dSettings } from "@/types/live2d";
+import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
 import type { SceneInfo } from "./scene";
+import type { AffectionVector, NegativeVector } from "@/stores/modules/game/state";
 
 // 1. 定义角色配置接口 (原先摊平的字段现在归属到这里)
 export interface CharacterSettings {
@@ -20,9 +21,17 @@ export interface CharacterSettings {
   bubble_left: number;
   clothes: Record<string, any>;
   clothes_name: string;
+  avatar_mode?: AvatarDisplayMode | null;
   body_part: Record<string, any>;
   live2d?: Live2dSettings | null;
+  avatar_mode_p?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  pet_frameless?: boolean | null;
   character_folder: string;
+  /** 该角色对玩家的六维好感度（由角色目录 affection.yml 载入；未加载时为 null） */
+  affection: AffectionVector | null;
+  /** 负面六维（被冒犯/伤害时增加、安抚时减少；未加载时为 null） */
+  negative: NegativeVector | null;
 }
 
 /// 前端用台词条目（对应 Rust GameLineInit）
@@ -66,6 +75,8 @@ export interface WebInitData {
   last_bgm_mode?: string | null;
   /** 上次会话环境音轨道（JSON 字符串） */
   last_ambient_tracks?: string | null;
+  /** 读档恢复时后端续跑的剧本显示名（null = 存档无剧本进度） */
+  active_script?: string | null;
 }
 
 /**

@@ -131,7 +131,7 @@ if (existsSync(iosGenApple)) {
   console.log(`Copied data.7z to ${iosDataDir}`);
 } else {
   console.log(
-    "⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）"
+    "⚠ gen/apple 不存在，跳过 iOS data.7z 部署（请先在 macOS 上执行 pnpm ios:init 生成 Xcode 工程）",
   );
 }
 

@@ -89,7 +89,7 @@ export function createCharRevealWriter(options: CharRevealOptions): CharRevealWr
         const target = targetFor(element, i, text);
         target.insertAdjacentHTML(
           "beforeend",
-          options.charHtml(text.charAt(i), i, text, addedLen === 1)
+          options.charHtml(text.charAt(i), i, text, addedLen === 1),
         );
       }
       prev = text;

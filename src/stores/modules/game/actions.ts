@@ -6,6 +6,7 @@ import { getRoleInfo } from "../../../api/services/character";
 import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
+import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
 
 export const actions = {
@@ -26,7 +27,7 @@ export const actions = {
       applyWebInitData(this, gameInfo);
       // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
       invoke("notify_player_entry").catch((err) =>
-        console.warn("[Entry] 问候触发失败（非致命）:", err)
+        console.warn("[Entry] 问候触发失败（非致命）:", err),
       );
       return gameInfo;
     } catch (error) {
@@ -56,8 +57,11 @@ export const actions = {
         bubbleTop: roleInfo.bubble_top,
         clothes: roleInfo.clothes,
         clothesName: roleInfo.clothes_name,
+        avatarMode: roleInfo.avatar_mode,
         bodyPart: roleInfo.body_part,
         live2d: roleInfo.live2d,
+        avatarModeP: roleInfo.avatar_mode_p,
+        petFrameless: roleInfo.pet_frameless,
         character_folder: roleInfo.character_folder,
         emotion: "正常",
         originalEmotion: "正常",
@@ -106,6 +110,29 @@ export const actions = {
   // 清除场景（更新 store，API 调用由组件负责）
   clearCurrentScene(this: GameState) {
     this.currentScene = null;
+  },
+
+  /**
+   * 收集写档载荷：截图（必要时等正在进行的截图）+ 剧本阅读锚点。
+   * 锚点缺失时不下发这几个字段，后端回退引擎当前进度。
+   */
+  async collectSaveProgress(this: GameState): Promise<Record<string, unknown>> {
+    let screenshotPath = this.latestScreenshot;
+    if (!screenshotPath && this.screenshotPending) {
+      screenshotPath = await this.screenshotPending;
+    }
+    const cursor = this.scriptReadCursor;
+    return {
+      screenshotPath,
+      ...(cursor
+        ? {
+            playerChapter: cursor.chapter,
+            playerEventIndex: cursor.eventIndex,
+            playerLineCount: cursor.lineCount,
+            playerVarsJson: JSON.stringify(cursor.vars),
+          }
+        : {}),
+    };
   },
 
   /** 截图主窗口（1 次 IPC，0 次窗口枚举）。若已有截图进行中则复用同一个 Promise。 */
@@ -160,9 +187,14 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bubbleTop: settings.bubble_top,
       clothes: settings.clothes,
       clothesName: settings.clothes_name,
+      avatarMode: settings.avatar_mode,
       bodyPart: settings.body_part,
       live2d: settings.live2d,
+      avatarModeP: settings.avatar_mode_p,
+      petFrameless: settings.pet_frameless,
       character_folder: settings.character_folder,
+      affection: settings.affection ?? undefined,
+      negative: settings.negative ?? undefined,
       emotion: "正常",
       originalEmotion: "正常",
       show: true,
@@ -186,9 +218,14 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
       bubbleTop: characterInfo.bubble_top,
       clothes: characterInfo.clothes,
       clothesName: characterInfo.clothes_name,
+      avatarMode: characterInfo.avatar_mode,
       bodyPart: characterInfo.body_part,
       live2d: characterInfo.live2d,
+      avatarModeP: characterInfo.avatar_mode_p,
+      petFrameless: characterInfo.pet_frameless,
       character_folder: characterInfo.character_folder,
+      affection: characterInfo.affection ?? undefined,
+      negative: characterInfo.negative ?? undefined,
       emotion: "正常",
       originalEmotion: "正常",
       show: true,
@@ -209,7 +246,11 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;
 
   if (gameInfo.background !== "") uiStore.setCurrentBackground(gameInfo.background);
-  if (gameInfo.background_effect !== "") uiStore.setBackgroundEffect(gameInfo.background_effect);
+  // 存档里只存了一个特效值，落到氛围层还是天气层由注册表决定（同剧本事件）
+  if (gameInfo.background_effect !== "")
+    uiStore.applyEffectValue(
+      canonicalEffectKey(gameInfo.background_effect) ?? gameInfo.background_effect,
+    );
 
   // 恢复背景音乐：用户上次手动选择优先于场景/剧本设定
   if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== "None") {
@@ -249,6 +290,12 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   } else {
     state.dialogHistory = [];
   }
+
+  // 剧情模式标记不随 init data 传递，而换角色 / 重新 init 都是会话边界：
+  // 后端此刻已把旧剧本停掉，前端的章节名与选项按钮也必须一起清掉，
+  // 否则会挂在新角色界面上继续可点（issue #698）。读档与清空对话
+  // 本来就在本函数之后显式 enterStoryMode / exitStoryMode，不受影响。
+  state.runningScript = null;
 
   state.initialized = true;
 }

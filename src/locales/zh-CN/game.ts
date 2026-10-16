@@ -10,6 +10,9 @@ export default {
     screenshotAsk: "截图提问",
     screenshotRetake: "点击重新截图，右键取消截图",
     closeDialog: "关闭对话",
+    quickSave: "快速存档",
+    quickLoad: "快速读档",
+    quickSaveNoSave: "本次还没有存档，先在存档页创建一个吧",
     moreActions: "更多操作",
     listening: "正在聆听...",
     inputPlaceholder: "在这里输入消息...",
@@ -19,6 +22,9 @@ export default {
     noModelTitle: "提示",
     noModelMessage:
       "还没选择对话模型呢，笨蛋！去高级设置里配置并选择模型就好啦，切换后自动生效哦！",
+    // 剧本模式下提交自由输入被后端拒绝时的提示
+    choiceRequired: "请点击一个选项",
+    inputNotAllowed: "当前无法输入",
   },
   avatar: {
     live2dUnavailable: "Live2D 不可用",
@@ -49,6 +55,26 @@ export default {
     stopAll: "全部停止",
     noAmbientPlaying: "没有正在播放的环境音",
     availableAmbient: "可用环境音",
+    spectrum: {
+      title: "音频频谱",
+      hint: "实时采集正在播放的背景音乐与环境音，显示在主界面右下角；桌宠模式下显示为头像外圈的圆环",
+      palette: "配色",
+      styleMirror: "镜像",
+      styleBars: "柱状",
+      styleRing: "圆环",
+      custom: "自定义",
+      customFrom: "主色",
+      customTo: "辅色",
+    },
+  },
+  // 右下角迷你频谱（与左下角声效按钮对称）
+  spectrum: {
+    title: "音频频谱",
+    expand: "展开频谱面板",
+    collapse: "收起",
+    idle: "静默",
+    paused: "已暂停",
+    ambientCount: "环境音 ×{n}",
   },
   freeDialogue: {
     banner: "进入自由对话",

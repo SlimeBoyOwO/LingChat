@@ -51,5 +51,5 @@ export const useScriptEditorStore = defineStore(
         "propsExpanded",
       ],
     },
-  }
+  },
 );

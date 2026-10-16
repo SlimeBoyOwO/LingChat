@@ -69,7 +69,7 @@ http.interceptors.request.use(
   },
   (error: AxiosError) => {
     return Promise.reject(error);
-  }
+  },
 );
 
 // 响应拦截器
@@ -81,7 +81,7 @@ http.interceptors.response.use(
         return response.data.data;
       } else {
         const error: AppError = new Error(
-          response.data.message || i18n.global.t("api.http.requestFailed")
+          response.data.message || i18n.global.t("api.http.requestFailed"),
         );
         error.code = response.data.code;
         return Promise.reject(error);
@@ -142,7 +142,7 @@ http.interceptors.response.use(
     }
 
     return Promise.reject(enhancedError);
-  }
+  },
 );
 
 export default http;

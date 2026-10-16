@@ -1,7 +1,7 @@
 # LingChat 剧本事件大全（源码级参考）
 
 本文件为 LingChat 脚本引擎全部 17 种事件类型的权威参考，字段与默认值均取自 Rust 源码：
-`src-tauri/src/ai_service/game_system/script_engine/events/events/*.rs`
+`crates/ling-chat-main/src/ai_service/game_system/script_engine/events/events/*.rs`
 
 ---
 

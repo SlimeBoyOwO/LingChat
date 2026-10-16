@@ -1,13 +1,13 @@
 <script setup lang="ts">
-  import { useI18n } from "vue-i18n";
-  import { Button, Icon } from "@/components/base";
-  import { MenuPage, MenuItem } from "@/components/ui";
-  import { useScriptEditorStore } from "@/stores/modules/script-editor";
+import { useI18n } from "vue-i18n";
+import { Button, Icon } from "@/components/base";
+import { MenuPage, MenuItem } from "@/components/ui";
+import { useScriptEditorStore } from "@/stores/modules/script-editor";
 
-  const emit = defineEmits<{ "new-script": [] }>();
+const emit = defineEmits<{ "new-script": [] }>();
 
-  const { t } = useI18n();
-  const store = useScriptEditorStore();
+const { t } = useI18n();
+const store = useScriptEditorStore();
 </script>
 
 <template>
@@ -30,31 +30,26 @@
       <div
         v-for="s in store.scripts"
         :key="s.key"
-        class="hover:border-brand group mb-2 w-full cursor-pointer rounded-[10px] border
-          border-white/10 bg-white/6 px-[13px] py-[11px] transition-all duration-200
-          hover:bg-[rgba(121,217,255,0.08)]"
+        class="hover:border-brand group mb-2 w-full cursor-pointer rounded-[10px] border border-white/10 bg-white/6 px-[13px] py-[11px] transition-all duration-200 hover:bg-[rgba(121,217,255,0.08)]"
         @click="store.openScript(s.key)"
       >
         <div class="flex items-baseline gap-2">
           <span class="font-semibold text-white">{{ s.scriptName }}</span>
           <span
             v-if="s.isAdventure"
-            class="border-brand/35 text-brand bg-brand/12 rounded-full border px-[7px]
-              text-[0.62rem]"
+            class="border-brand/35 text-brand bg-brand/12 rounded-full border px-[7px] text-[0.62rem]"
             >{{ t("scriptEditor.scriptList.adventure") }}</span
           >
           <span
             v-if="!s.loadedByEngine"
-            class="rounded-full border border-amber-300/35 bg-amber-300/12 px-[7px] text-[0.62rem]
-              text-amber-300"
+            class="rounded-full border border-amber-300/35 bg-amber-300/12 px-[7px] text-[0.62rem] text-amber-300"
             >{{ t("scriptEditor.scriptList.notLoaded") }}</span
           >
           <span class="ml-auto text-xs text-white/40">{{
             t("scriptEditor.scriptList.chapters", { count: s.chapterCount })
           }}</span>
           <button
-            class="rounded px-[5px] text-[11px] leading-[1.4] text-white/25 opacity-0 transition-all
-              duration-150 group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-300"
+            class="rounded px-[5px] text-[11px] leading-[1.4] text-white/25 opacity-0 transition-all duration-150 group-hover:opacity-100 hover:bg-red-400/15 hover:text-red-300"
             :title="t('scriptEditor.scriptList.delete')"
             @click.stop="store.deleteScript(s.key, s.scriptName)"
           >

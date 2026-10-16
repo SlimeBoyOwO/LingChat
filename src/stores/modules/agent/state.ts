@@ -33,6 +33,12 @@ export interface ChatRound {
   /** 思考链（thinking 模式开启时才有；已持久化，旧数据缺失时为空）。 */
   reasoning?: string;
   toolRuns: ToolRun[];
+  /**
+   * 已封口：本段是**一项的产出**（或它的标题），后面的工具调用不许再挂进来。
+   * 不封口的话，下一项的第一次工具调用会把这一项的正文变成"工具轮"，
+   * 正文就被折进折叠的思考块里看不见了（真机：一轮 4 项只看得到最后一项）。
+   */
+  sealed?: boolean;
 }
 
 export interface ChatItem {

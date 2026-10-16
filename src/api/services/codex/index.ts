@@ -56,7 +56,7 @@ export async function codexStartLogin(): Promise<DeviceLoginStart> {
 
 export async function codexPollLogin(
   deviceAuthId: string,
-  userCode: string
+  userCode: string,
 ): Promise<CodexPollStatus> {
   return invoke("codex_poll_login", { deviceAuthId, userCode });
 }

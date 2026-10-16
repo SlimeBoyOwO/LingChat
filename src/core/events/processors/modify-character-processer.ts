@@ -33,12 +33,12 @@ export default class ModifyCharacterProcessor implements IEventProcessor {
             if (delay > 0) {
               setTimeout(() => {
                 gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
-                  (id) => id !== event.characterId
+                  (id) => id !== event.characterId,
                 );
               }, delay * 1000);
             } else {
               gameStore.presentRoleIds = gameStore.presentRoleIds.filter(
-                (id) => id !== event.characterId
+                (id) => id !== event.characterId,
               );
             }
             break;

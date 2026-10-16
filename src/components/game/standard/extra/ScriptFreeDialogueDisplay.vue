@@ -7,8 +7,7 @@
     >
       <!-- 中间实体、两端渐变淡出透明的遮罩背景层 -->
       <div
-        class="mask-fade-edges relative flex items-center bg-slate-900/60 px-20 py-4
-          backdrop-blur-md"
+        class="mask-fade-edges relative flex items-center bg-slate-900/60 px-20 py-4 backdrop-blur-md"
       >
         <div class="flex items-center gap-4 opacity-90">
           <!-- 左侧渐隐线 -->
@@ -16,8 +15,7 @@
 
           <!-- 左侧旋转星光 -->
           <svg
-            class="text-brand animate-star-spin h-4 w-4
-              drop-shadow-[0_0_8px_rgba(var(--color-brand),0.8)]"
+            class="text-brand animate-star-spin h-4 w-4 drop-shadow-[0_0_8px_rgba(var(--color-brand),0.8)]"
             viewBox="0 0 24 24"
             fill="currentColor"
           >
@@ -26,16 +24,14 @@
 
           <!-- 核心文字 -->
           <span
-            class="text-shadow-glow text-xl font-bold tracking-[0.2em] text-white
-              drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] md:text-2xl"
+            class="text-shadow-glow text-xl font-bold tracking-[0.2em] text-white drop-shadow-[0_4px_12px_rgba(0,0,0,0.8)] md:text-2xl"
           >
             {{ $t("game.freeDialogue.banner") }}
           </span>
 
           <!-- 右侧反向旋转星光 -->
           <svg
-            class="text-brand animate-star-spin-reverse h-4 w-4
-              drop-shadow-[0_0_8px_rgba(var(--color-brand),0.8)]"
+            class="text-brand animate-star-spin-reverse h-4 w-4 drop-shadow-[0_0_8px_rgba(var(--color-brand),0.8)]"
             viewBox="0 0 24 24"
             fill="currentColor"
           >
@@ -54,8 +50,7 @@
     <div v-if="shouldShowInfo" class="pointer-events-none fixed top-28 left-0 z-40">
       <!-- 带有右侧箭头切角的标签 -->
       <div
-        class="relative flex items-center bg-slate-900/60 py-2 pr-10 pl-5 shadow-md backdrop-blur-md
-          transition-all duration-300"
+        class="relative flex items-center bg-slate-900/60 py-2 pr-10 pl-5 shadow-md backdrop-blur-md transition-all duration-300"
         style="
           clip-path: polygon(0 0, calc(100% - 16px) 0, 100% 50%, calc(100% - 16px) 100%, 0 100%);
         "
@@ -97,173 +92,173 @@
 </template>
 
 <script setup lang="ts">
-  import { ref, computed, watch } from "vue";
-  import { useGameStore } from "@/stores/modules/game";
-  import { useUIStore } from "@/stores/modules/ui/ui";
+import { ref, computed, watch } from "vue";
+import { useGameStore } from "@/stores/modules/game";
+import { useUIStore } from "@/stores/modules/ui/ui";
 
-  const gameStore = useGameStore();
-  const uiStore = useUIStore();
+const gameStore = useGameStore();
+const uiStore = useUIStore();
 
-  // 进入动画控制
-  const showAnimation = ref(false);
-  let animationTimeout: number | null = null;
+// 进入动画控制
+const showAnimation = ref(false);
+let animationTimeout: number | null = null;
 
-  // 信息显示控制
-  const showInfo = ref(false);
+// 信息显示控制
+const showInfo = ref(false);
 
-  // 获取自由对话信息
-  const freeDialogueInfo = computed(() => {
-    return (
-      gameStore.runningScript?.freeDialogueInfo || {
-        isFreeDialogue: false,
-        maxRounds: 0,
-        endLine: "",
-        currentRound: 0,
-      }
-    );
-  });
-
-  // 是否应该显示信息
-  const shouldShowInfo = computed(() => {
-    return uiStore.showSettings ? false : showInfo.value;
-  });
-
-  // 监听自由对话状态变化
-  // immediate：防御「事件先于本组件挂载到达」的边缘路径（如试玩开场即进入自由对话，
-  // isFreeDialogue 初始即 true 时没有 false→true 变化可触发），挂载时直接按当前值显示
-  watch(
-    () => freeDialogueInfo.value.isFreeDialogue,
-    (newVal, oldVal) => {
-      if (newVal === oldVal) return;
-
-      if (newVal && !oldVal) {
-        showAnimation.value = true;
-        showInfo.value = true;
-
-        // 高频事件，动画显示时间缩短至 1.8 秒
-        if (animationTimeout) clearTimeout(animationTimeout);
-        animationTimeout = window.setTimeout(() => {
-          showAnimation.value = false;
-        }, 1800);
-      } else if (!newVal && oldVal) {
-        showInfo.value = false;
-      }
-    },
-    { immediate: true }
+// 获取自由对话信息
+const freeDialogueInfo = computed(() => {
+  return (
+    gameStore.runningScript?.freeDialogueInfo || {
+      isFreeDialogue: false,
+      maxRounds: 0,
+      endLine: "",
+      currentRound: 0,
+    }
   );
+});
 
-  // === JS 生命周期钩子：实现丝滑的高斯模糊缩放淡入淡出 ===
+// 是否应该显示信息
+const shouldShowInfo = computed(() => {
+  return uiStore.showSettings ? false : showInfo.value;
+});
 
-  function beforeEnter(el: Element) {
-    const element = el as HTMLElement;
-    element.style.opacity = "0";
-    element.style.transform = "scale(1.05) translateY(10px)";
-    element.style.filter = "blur(8px)";
-    element.style.transition = "all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)";
-  }
+// 监听自由对话状态变化
+// immediate：防御「事件先于本组件挂载到达」的边缘路径（如试玩开场即进入自由对话，
+// isFreeDialogue 初始即 true 时没有 false→true 变化可触发），挂载时直接按当前值显示
+watch(
+  () => freeDialogueInfo.value.isFreeDialogue,
+  (newVal, oldVal) => {
+    if (newVal === oldVal) return;
 
-  function enter(el: Element, done: () => void) {
-    const element = el as HTMLElement;
+    if (newVal && !oldVal) {
+      showAnimation.value = true;
+      showInfo.value = true;
+
+      // 高频事件，动画显示时间缩短至 1.8 秒
+      if (animationTimeout) clearTimeout(animationTimeout);
+      animationTimeout = window.setTimeout(() => {
+        showAnimation.value = false;
+      }, 1800);
+    } else if (!newVal && oldVal) {
+      showInfo.value = false;
+    }
+  },
+  { immediate: true },
+);
+
+// === JS 生命周期钩子：实现丝滑的高斯模糊缩放淡入淡出 ===
+
+function beforeEnter(el: Element) {
+  const element = el as HTMLElement;
+  element.style.opacity = "0";
+  element.style.transform = "scale(1.05) translateY(10px)";
+  element.style.filter = "blur(8px)";
+  element.style.transition = "all 0.8s cubic-bezier(0.2, 0.8, 0.2, 1)";
+}
+
+function enter(el: Element, done: () => void) {
+  const element = el as HTMLElement;
+  requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        element.style.opacity = "1";
-        element.style.transform = "scale(1) translateY(0)";
-        element.style.filter = "blur(0px)";
-        setTimeout(done, 800);
-      });
+      element.style.opacity = "1";
+      element.style.transform = "scale(1) translateY(0)";
+      element.style.filter = "blur(0px)";
+      setTimeout(done, 800);
     });
-  }
+  });
+}
 
-  function leave(el: Element, done: () => void) {
-    const element = el as HTMLElement;
-    element.style.transition = "all 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
-    element.style.opacity = "0";
-    element.style.transform = "scale(0.98) translateY(-10px)";
-    element.style.filter = "blur(4px)";
-    setTimeout(done, 600);
-  }
+function leave(el: Element, done: () => void) {
+  const element = el as HTMLElement;
+  element.style.transition = "all 0.6s cubic-bezier(0.4, 0, 0.2, 1)";
+  element.style.opacity = "0";
+  element.style.transform = "scale(0.98) translateY(-10px)";
+  element.style.filter = "blur(4px)";
+  setTimeout(done, 600);
+}
 </script>
 
 <style scoped>
-  /* ========== 横幅两端渐隐遮罩 ========== */
-  .mask-fade-edges {
-    /* 中间 60% 区域是不透明的，向两边最后 20% 渐变到完全透明，完美融合进背景 */
-    -webkit-mask-image: linear-gradient(
-      to right,
-      transparent 0%,
-      black 20%,
-      black 80%,
-      transparent 100%
-    );
-    mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
-  }
+/* ========== 横幅两端渐隐遮罩 ========== */
+.mask-fade-edges {
+  /* 中间 60% 区域是不透明的，向两边最后 20% 渐变到完全透明，完美融合进背景 */
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0%,
+    black 20%,
+    black 80%,
+    transparent 100%
+  );
+  mask-image: linear-gradient(to right, transparent 0%, black 20%, black 80%, transparent 100%);
+}
 
-  /* ========== 星光与发光特效 ========== */
-  @keyframes star-spin {
-    0% {
-      transform: rotate(0deg) scale(0.9);
-      opacity: 0.7;
-    }
-    50% {
-      transform: rotate(180deg) scale(1.1);
-      opacity: 1;
-    }
-    100% {
-      transform: rotate(360deg) scale(0.9);
-      opacity: 0.7;
-    }
+/* ========== 星光与发光特效 ========== */
+@keyframes star-spin {
+  0% {
+    transform: rotate(0deg) scale(0.9);
+    opacity: 0.7;
   }
-
-  @keyframes star-spin-reverse {
-    0% {
-      transform: rotate(0deg) scale(0.9);
-      opacity: 0.7;
-    }
-    50% {
-      transform: rotate(-180deg) scale(1.1);
-      opacity: 1;
-    }
-    100% {
-      transform: rotate(-360deg) scale(0.9);
-      opacity: 0.7;
-    }
-  }
-
-  .animate-star-spin {
-    animation: star-spin 4s linear infinite;
-  }
-
-  .animate-star-spin-reverse {
-    animation: star-spin-reverse 4s linear infinite;
-  }
-
-  .text-shadow-glow {
-    text-shadow: 0 0 12px rgba(var(--color-brand), 0.6);
-  }
-
-  /* ========== 左侧标签滑动动画 (保持不变) ========== */
-  .slide-tag-enter-active,
-  .slide-tag-leave-active {
-    transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
-  }
-
-  .slide-tag-enter-from {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
-
-  .slide-tag-enter-to {
+  50% {
+    transform: rotate(180deg) scale(1.1);
     opacity: 1;
-    transform: translateX(0);
   }
+  100% {
+    transform: rotate(360deg) scale(0.9);
+    opacity: 0.7;
+  }
+}
 
-  .slide-tag-leave-from {
+@keyframes star-spin-reverse {
+  0% {
+    transform: rotate(0deg) scale(0.9);
+    opacity: 0.7;
+  }
+  50% {
+    transform: rotate(-180deg) scale(1.1);
     opacity: 1;
-    transform: translateX(0);
   }
+  100% {
+    transform: rotate(-360deg) scale(0.9);
+    opacity: 0.7;
+  }
+}
 
-  .slide-tag-leave-to {
-    opacity: 0;
-    transform: translateX(-100%);
-  }
+.animate-star-spin {
+  animation: star-spin 4s linear infinite;
+}
+
+.animate-star-spin-reverse {
+  animation: star-spin-reverse 4s linear infinite;
+}
+
+.text-shadow-glow {
+  text-shadow: 0 0 12px rgba(var(--color-brand), 0.6);
+}
+
+/* ========== 左侧标签滑动动画 (保持不变) ========== */
+.slide-tag-enter-active,
+.slide-tag-leave-active {
+  transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.slide-tag-enter-from {
+  opacity: 0;
+  transform: translateX(-100%);
+}
+
+.slide-tag-enter-to {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.slide-tag-leave-from {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+.slide-tag-leave-to {
+  opacity: 0;
+  transform: translateX(-100%);
+}
 </style>

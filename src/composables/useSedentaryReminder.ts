@@ -34,8 +34,8 @@ function playReminderSound(): void {
   }
 }
 
-/** 发送久坐提醒系统通知 */
-async function showReminderNotification(): Promise<void> {
+/** 发送系统通知（含权限申请）。久坐提醒与主动系统的待办提醒共用。 */
+export async function sendSystemNotification(title: string, body: string): Promise<void> {
   try {
     let granted = await isPermissionGranted();
     if (!granted) {
@@ -44,20 +44,23 @@ async function showReminderNotification(): Promise<void> {
     }
 
     if (!granted) {
-      console.warn("[SedentaryReminder] 通知权限未授予，跳过本次提醒");
+      console.warn("[Notification] 通知权限未授予，跳过本次提醒");
       return;
     }
 
-    playReminderSound();
-
-    await sendNotification({
-      title: i18n.global.t("stores.sedentaryReminder.notificationTitle"),
-      body: i18n.global.t("stores.sedentaryReminder.notificationBody"),
-      icon: APP_ICON_PATH,
-    });
+    await sendNotification({ title, body, icon: APP_ICON_PATH });
   } catch (e) {
-    console.error("[SedentaryReminder] 发送通知失败:", e);
+    console.error("[Notification] 发送通知失败:", e);
   }
+}
+
+/** 发送久坐提醒系统通知 */
+async function showReminderNotification(): Promise<void> {
+  playReminderSound();
+  await sendSystemNotification(
+    i18n.global.t("stores.sedentaryReminder.notificationTitle"),
+    i18n.global.t("stores.sedentaryReminder.notificationBody"),
+  );
 }
 
 /** 启动定时器（先停止已有的，避免重复） */
@@ -93,7 +96,7 @@ export function useSedentaryReminder(): void {
         stopTimer();
       }
     },
-    { immediate: true }
+    { immediate: true },
   );
 
   onUnmounted(() => {

@@ -124,6 +124,8 @@ export interface ScriptCharacter {
   roleKey: string;
   /** 显示名：后端读 settings.yml 的 name 优先，回落 ai_name，再回落目录名 */
   aiName: string;
+  /** 人设（settings.yml 的 system_prompt）；编辑角色时回填 */
+  systemPrompt: string;
   emotions: string[];
   clothes: string[];
   /** 可用作缩略图的立绘绝对路径（本地优先，回退全局）；都没有则为 null */
@@ -297,7 +299,7 @@ export const listAssetFiles = (key: string, scope: AssetScope) =>
  */
 export const listGlobalBackgrounds = () =>
   invoke<AssetFileIndex>("editor_list_asset_files", { key: "", scope: "global" }).then(
-    (idx) => idx.background
+    (idx) => idx.background,
   );
 
 /** 删除素材。与章节、剧本一致，移到同级 .trash/ 而不是真删 */
@@ -360,8 +362,20 @@ export const createCharacter = (
   key: string,
   folder: string,
   aiName: string,
-  systemPrompt: string
+  systemPrompt: string,
 ) => invoke<ScriptCharacter>("editor_create_character", { key, folder, aiName, systemPrompt });
+
+/**
+ * 改一个剧本内角色（显示名 + 人设）。
+ * 只动这两项，立绘 / 情绪 / 服装 / script_role_key 原样保留；
+ * 目录名不给改 —— 改目录要连带改 script_role_key 与章节里的引用，那是"换个角色"。
+ */
+export const updateCharacter = (
+  key: string,
+  folder: string,
+  aiName: string,
+  systemPrompt: string,
+) => invoke<ScriptCharacter>("editor_update_character", { key, folder, aiName, systemPrompt });
 
 export const rescanScripts = () => invoke<number>("editor_rescan_scripts");
 

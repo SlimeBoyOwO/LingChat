@@ -1,0 +1,1 @@
+本项做的是 `.agent/chapter-details.md` 里 {chap} 的那一节。**同一章的梗概**若因为这次改动过时了，允许顺带把 `.agent/design.md` 里那一行对齐（改可以往上对齐）；`Chapters/` 与 `story_config.yaml` 不归这一项（那是「转成 YAML」）。要删这一章正文时：只删正文那一节，并说一句这一章的 YAML 得另排一项删（队列里会排）。

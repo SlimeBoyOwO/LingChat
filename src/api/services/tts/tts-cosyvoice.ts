@@ -36,7 +36,7 @@ export async function createVoice(
   model: string,
   filePath: string,
   language: string,
-  onProgress: (phase: string) => void
+  onProgress: (phase: string) => void,
 ): Promise<CosyVoiceRecord> {
   const channel = new Channel<CosyvoiceProgress>();
   channel.onmessage = (event) => onProgress(event.phase);
@@ -65,7 +65,7 @@ export function deleteVoice(voiceId: string): Promise<void> {
 export function synthesizePreview(
   model: string,
   voiceId: string,
-  text: string
+  text: string,
 ): Promise<Uint8Array> {
   return invoke<Uint8Array>("cosyvoice_synthesize_preview", { model, voiceId, text });
 }

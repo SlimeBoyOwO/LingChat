@@ -77,7 +77,7 @@ export function trimSilencePcm(
   sampleRate = 16000,
   frameMs = 30,
   threshold = 0.005,
-  padMs = 200
+  padMs = 200,
 ): number[] {
   const frame = Math.floor((sampleRate * frameMs) / 1000); // 480 samples @16k
   let startSample = -1;

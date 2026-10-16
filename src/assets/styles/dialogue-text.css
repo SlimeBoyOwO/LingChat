@@ -1,0 +1,17 @@
+/**
+ * 逐字符淡入+上浮动画。
+ *
+ * 必须全局：应用动画的 span 由 charRevealCharHtml 动态插入，scoped 选择器命中不了。
+ * 此前在主界面 GameDialog.vue 与桌宠 DialogueBox.vue 的非 scoped style 块里各有一份，
+ * 现合并到此处、由 main.ts 统一引入（所有 webview 共用同一入口）。
+ */
+@keyframes tw-char-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.35em);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

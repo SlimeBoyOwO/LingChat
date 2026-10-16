@@ -79,6 +79,6 @@ const body = namespaces.map((ns) => `  ${ns},`).join("\n");
 writeFileSync(
   join(outDir, "index.ts"),
   `// 本文件由 scripts/generate-zh-hk.mjs 自动生成，请勿手改\n${imports}\n\nexport default {\n${body}\n}\n`,
-  "utf-8"
+  "utf-8",
 );
 console.log(`📄 index.ts 已生成，共 ${totalKeys} 条词条`);

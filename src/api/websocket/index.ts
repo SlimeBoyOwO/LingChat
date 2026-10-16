@@ -32,7 +32,7 @@ const shouldShowConnectionError = (): boolean => {
 
 // 显示连接错误并重置状态的辅助函数
 const handleConnectionError = (
-  errorMessage: string = i18n.global.t("api.websocket.connectFailed")
+  errorMessage: string = i18n.global.t("api.websocket.connectFailed"),
 ) => {
   // 检查是否应该显示错误
   if (!shouldShowConnectionError()) {

@@ -59,6 +59,8 @@ export default {
     cloudWorkshop: "クラウド工房",
     miniGame: "ミニゲーム（開発中）",
     back: "戻る",
+    leaveStoryConfirm:
+      "現在のストーリーはまだ終わっていません。フリー会話モードに切り替えると今回のストーリーは中断され、クリア扱いにはなりません。よろしいですか？",
   },
   pet: {
     chatInput: {

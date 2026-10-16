@@ -30,8 +30,7 @@
       >
         <button
           @click="zoomIn"
-          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
-            transition-colors hover:bg-gray-600"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.zoomIn')"
         >
           <svg
@@ -48,8 +47,7 @@
         >
         <button
           @click="zoomOut"
-          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
-            transition-colors hover:bg-gray-600"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.zoomOut')"
         >
           <svg
@@ -63,8 +61,7 @@
         </button>
         <button
           @click="resetZoom"
-          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white
-            transition-colors hover:bg-gray-600"
+          class="flex h-8 w-8 items-center justify-center rounded bg-gray-700 text-white transition-colors hover:bg-gray-600"
           :title="$t('settings.adventurePanel.zoom.reset')"
         >
           <svg
@@ -145,8 +142,7 @@
             <div
               v-for="adventure in adventures"
               :key="adventure.adventure_folder"
-              class="absolute flex cursor-pointer items-center gap-2 rounded-xl border-2 p-2
-                transition-all duration-200"
+              class="absolute flex cursor-pointer items-center gap-2 rounded-xl border-2 p-2 transition-all duration-200"
               :class="getNodeClass(adventure)"
               :style="getNodeStyle(adventure.adventure_folder)"
               @click="handleNodeClick(adventure)"
@@ -154,7 +150,7 @@
               <!-- Icon -->
               <div
                 class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
-                :class="getIconClass(adventure.status)"
+                :class="getIconClass(displayStatus(adventure))"
               >
                 <Book></Book>
               </div>
@@ -164,11 +160,11 @@
                 <div class="mb-1 text-base font-semibold text-white">{{ adventure.name }}</div>
                 <div class="line-clamp-2 text-sm text-gray-400">{{ adventure.description }}</div>
                 <div
-                  v-if="adventure.status === 'locked'"
+                  v-if="displayStatus(adventure) === 'locked'"
                   class="mt-2 flex items-center gap-1 text-xs text-gray-500"
                 >
                   <span>🔒</span>
-                  <span>{{ getUnlockHint(adventure) }}</span>
+                  <span>{{ getNodeHint(adventure) }}</span>
                 </div>
                 <div v-else class="mt-2 flex items-center gap-1 text-xs text-gray-500">
                   <div v-if="adventure.recommand_start">
@@ -182,9 +178,9 @@
               <div class="shrink-0">
                 <span
                   class="rounded-full px-3 py-1.5 text-xs font-medium"
-                  :class="getBadgeClass(adventure.status)"
+                  :class="getBadgeClass(displayStatus(adventure))"
                 >
-                  {{ getStatusText(adventure.status) }}
+                  {{ getStatusText(displayStatus(adventure)) }}
                 </span>
               </div>
             </div>
@@ -196,294 +192,309 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref, watch } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { useAdventureStore } from "@/stores/modules/adventure";
-  import type { AdventureInfo } from "@/api/services/adventure";
-  import { useGameStore } from "@/stores/modules/game";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import { Book } from "lucide-vue-next";
+import { computed, onMounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import { useAdventureStore } from "@/stores/modules/adventure";
+import type { AdventureInfo } from "@/api/services/adventure";
+import { useGameStore } from "@/stores/modules/game";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import { Book } from "lucide-vue-next";
 
-  interface Props {
-    characterFolder: string;
-  }
+interface Props {
+  characterFolder: string;
+}
 
-  interface Connection {
-    from: string;
-    to: string;
-    path: string;
-    lineClass: string;
-    markerEnd: string;
-  }
+interface Connection {
+  from: string;
+  to: string;
+  path: string;
+  lineClass: string;
+  markerEnd: string;
+}
 
-  const gameStore = useGameStore();
-  const uiStore = useUIStore();
-  const { t } = useI18n();
+const gameStore = useGameStore();
+const uiStore = useUIStore();
+const { t } = useI18n();
 
-  const props = defineProps<Props>();
-  const adventureStore = useAdventureStore();
+const props = defineProps<Props>();
+const adventureStore = useAdventureStore();
 
-  const loading = computed(() => adventureStore.loading);
-  const adventures = computed(() => adventureStore.sortedAdventures);
-  const completedCount = computed(() => adventureStore.completedCount);
-  const totalCount = computed(() => adventures.value.length);
+const loading = computed(() => adventureStore.loading);
+const adventures = computed(() => adventureStore.sortedAdventures);
+const completedCount = computed(() => adventureStore.completedCount);
+const totalCount = computed(() => adventures.value.length);
 
-  // 缩放相关
-  const zoomLevel = ref(1);
-  const minZoom = 0.5;
-  const maxZoom = 2;
-  const zoomStep = 0.1;
+// 缩放相关
+const zoomLevel = ref(1);
+const minZoom = 0.5;
+const maxZoom = 2;
+const zoomStep = 0.1;
 
-  const zoomIn = () => (zoomLevel.value = Math.min(maxZoom, zoomLevel.value + zoomStep));
-  const zoomOut = () => (zoomLevel.value = Math.max(minZoom, zoomLevel.value - zoomStep));
-  const resetZoom = () => (zoomLevel.value = 1);
+const zoomIn = () => (zoomLevel.value = Math.min(maxZoom, zoomLevel.value + zoomStep));
+const zoomOut = () => (zoomLevel.value = Math.max(minZoom, zoomLevel.value - zoomStep));
+const resetZoom = () => (zoomLevel.value = 1);
 
-  const graphContainerStyle = computed(() => ({
-    transform: `scale(${zoomLevel.value})`,
-    width: `${graphWidth.value}px`,
-    height: `${graphHeight.value}px`,
-  }));
+const graphContainerStyle = computed(() => ({
+  transform: `scale(${zoomLevel.value})`,
+  width: `${graphWidth.value}px`,
+  height: `${graphHeight.value}px`,
+}));
 
-  // 布局常量
-  const COLUMN_WIDTH = 480;
-  const NODE_WIDTH = 380;
-  const NODE_HEIGHT = 180;
-  const NODE_GAP = 24;
-  const PADDING_X = 40;
-  const PADDING_Y = 40;
+// 布局常量
+const COLUMN_WIDTH = 480;
+const NODE_WIDTH = 380;
+const NODE_HEIGHT = 180;
+const NODE_GAP = 24;
+const PADDING_X = 40;
+const PADDING_Y = 40;
 
-  // 列分配算法
-  const adventureColumns = computed(() => {
-    const columns: AdventureInfo[][] = [];
-    const assigned = new Map<string, number>();
-    const sorted = [...adventures.value].sort((a, b) => a.order - b.order);
+// 列分配算法
+const adventureColumns = computed(() => {
+  const columns: AdventureInfo[][] = [];
+  const assigned = new Map<string, number>();
+  const sorted = [...adventures.value].sort((a, b) => a.order - b.order);
 
-    for (const adv of sorted) {
-      const prereq = adv.unlock_conditions?.find((c) => c.type === "adventure_completed");
+  for (const adv of sorted) {
+    const prereq = adv.unlock_conditions?.find((c) => c.type === "adventure_completed");
 
-      let columnIndex = 0;
-      if (prereq?.adventure_folder) {
-        const prereqColumn = assigned.get(prereq.adventure_folder);
-        if (prereqColumn !== undefined) {
-          columnIndex = prereqColumn + 1;
-        }
+    let columnIndex = 0;
+    if (prereq?.adventure_folder) {
+      const prereqColumn = assigned.get(prereq.adventure_folder);
+      if (prereqColumn !== undefined) {
+        columnIndex = prereqColumn + 1;
       }
-
-      while (columns.length <= columnIndex) {
-        columns.push([]);
-      }
-
-      columns[columnIndex]!.push(adv);
-      assigned.set(adv.adventure_folder, columnIndex);
     }
-    return columns;
-  });
 
-  const graphWidth = computed(() => {
-    const columnCount = adventureColumns.value.length;
-    return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH);
-  });
-
-  const graphHeight = computed(() => {
-    let maxNodesInColumn = 1;
-    for (const column of adventureColumns.value) {
-      maxNodesInColumn = Math.max(maxNodesInColumn, column.length);
+    while (columns.length <= columnIndex) {
+      columns.push([]);
     }
-    const maxColumnHeight = maxNodesInColumn * NODE_HEIGHT + (maxNodesInColumn - 1) * NODE_GAP;
-    return Math.max(500, PADDING_Y * 2 + maxColumnHeight);
-  });
 
-  const nodeLayouts = computed(() => {
-    const layouts = new Map<string, { x: number; y: number; width: number; height: number }>();
+    columns[columnIndex]!.push(adv);
+    assigned.set(adv.adventure_folder, columnIndex);
+  }
+  return columns;
+});
 
-    adventureColumns.value.forEach((column, colIndex) => {
-      const nodeCount = column.length;
-      const totalColumnHeight = nodeCount * NODE_HEIGHT + (nodeCount - 1) * NODE_GAP;
-      const startY = (graphHeight.value - totalColumnHeight) / 2;
+const graphWidth = computed(() => {
+  const columnCount = adventureColumns.value.length;
+  return Math.max(800, PADDING_X * 2 + columnCount * COLUMN_WIDTH + NODE_WIDTH - COLUMN_WIDTH);
+});
 
-      column.forEach((adv, rowIndex) => {
-        layouts.set(adv.adventure_folder, {
-          x: PADDING_X + colIndex * COLUMN_WIDTH,
-          y: startY + rowIndex * (NODE_HEIGHT + NODE_GAP),
-          width: NODE_WIDTH,
-          height: NODE_HEIGHT,
-        });
+const graphHeight = computed(() => {
+  let maxNodesInColumn = 1;
+  for (const column of adventureColumns.value) {
+    maxNodesInColumn = Math.max(maxNodesInColumn, column.length);
+  }
+  const maxColumnHeight = maxNodesInColumn * NODE_HEIGHT + (maxNodesInColumn - 1) * NODE_GAP;
+  return Math.max(500, PADDING_Y * 2 + maxColumnHeight);
+});
+
+const nodeLayouts = computed(() => {
+  const layouts = new Map<string, { x: number; y: number; width: number; height: number }>();
+
+  adventureColumns.value.forEach((column, colIndex) => {
+    const nodeCount = column.length;
+    const totalColumnHeight = nodeCount * NODE_HEIGHT + (nodeCount - 1) * NODE_GAP;
+    const startY = (graphHeight.value - totalColumnHeight) / 2;
+
+    column.forEach((adv, rowIndex) => {
+      layouts.set(adv.adventure_folder, {
+        x: PADDING_X + colIndex * COLUMN_WIDTH,
+        y: startY + rowIndex * (NODE_HEIGHT + NODE_GAP),
+        width: NODE_WIDTH,
+        height: NODE_HEIGHT,
       });
     });
-
-    return layouts;
   });
 
-  // 提供给模板的独立节点样式
-  const getNodeStyle = (folder: string) => {
-    const layout = nodeLayouts.value.get(folder);
-    if (!layout) return { display: "none" };
-    return {
-      left: `${layout.x}px`,
-      top: `${layout.y}px`,
-      width: `${layout.width}px`,
-      height: `${layout.height}px`,
-    };
+  return layouts;
+});
+
+// 提供给模板的独立节点样式
+const getNodeStyle = (folder: string) => {
+  const layout = nodeLayouts.value.get(folder);
+  if (!layout) return { display: "none" };
+  return {
+    left: `${layout.x}px`,
+    top: `${layout.y}px`,
+    width: `${layout.width}px`,
+    height: `${layout.height}px`,
   };
+};
 
-  const connections = computed<Connection[]>(() => {
-    const result: Connection[] = [];
+const connections = computed<Connection[]>(() => {
+  const result: Connection[] = [];
 
-    adventures.value.forEach((toAdv) => {
-      const prereq = toAdv.unlock_conditions?.find((c) => c.type === "adventure_completed");
+  adventures.value.forEach((toAdv) => {
+    const prereq = toAdv.unlock_conditions?.find((c) => c.type === "adventure_completed");
 
-      if (prereq?.adventure_folder) {
-        const fromAdv = adventures.value.find(
-          (a) => a.adventure_folder === prereq.adventure_folder
-        );
-        if (!fromAdv) return;
+    if (prereq?.adventure_folder) {
+      const fromAdv = adventures.value.find((a) => a.adventure_folder === prereq.adventure_folder);
+      if (!fromAdv) return;
 
-        // 直接从字典中取位置，精准无误
-        const fromPos = nodeLayouts.value.get(fromAdv.adventure_folder);
-        const toPos = nodeLayouts.value.get(toAdv.adventure_folder);
+      // 直接从字典中取位置，精准无误
+      const fromPos = nodeLayouts.value.get(fromAdv.adventure_folder);
+      const toPos = nodeLayouts.value.get(toAdv.adventure_folder);
 
-        if (!fromPos || !toPos) return;
+      if (!fromPos || !toPos) return;
 
-        // 计算连接点
-        const fromX = fromPos.x + fromPos.width;
-        const fromY = fromPos.y + fromPos.height / 2;
-        const toX = toPos.x;
-        const toY = toPos.y + toPos.height / 2;
+      // 计算连接点
+      const fromX = fromPos.x + fromPos.width;
+      const fromY = fromPos.y + fromPos.height / 2;
+      const toX = toPos.x;
+      const toY = toPos.y + toPos.height / 2;
 
-        // 贝塞尔曲线控制点（稍微增大 offset 让曲线更平滑）
-        const controlOffset = Math.max(40, Math.abs(toX - fromX) * 0.4);
-        const path = `M ${fromX} ${fromY} C ${fromX + controlOffset} ${fromY}, ${toX - controlOffset} ${toY}, ${toX - 4} ${toY}`;
+      // 贝塞尔曲线控制点（稍微增大 offset 让曲线更平滑）
+      const controlOffset = Math.max(40, Math.abs(toX - fromX) * 0.4);
+      const path = `M ${fromX} ${fromY} C ${fromX + controlOffset} ${fromY}, ${toX - controlOffset} ${toY}, ${toX - 4} ${toY}`;
 
-        let lineClass = "stroke-gray-600 stroke-2 fill-none stroke-dasharray-5";
-        let markerEnd = "url(#arrow-locked)";
+      let lineClass = "stroke-gray-600 stroke-2 fill-none stroke-dasharray-5";
+      let markerEnd = "url(#arrow-locked)";
 
-        if (toAdv.status === "completed") {
-          lineClass = "stroke-green-400 stroke-[2.5] fill-none";
-          markerEnd = "url(#arrow-completed)";
-        } else if (toAdv.status !== "locked") {
-          lineClass = "stroke-brand stroke-[2.5] fill-none";
-          markerEnd = "url(#arrow-unlocked)";
-        }
-
-        result.push({
-          from: fromAdv.adventure_folder,
-          to: toAdv.adventure_folder,
-          path,
-          lineClass,
-          markerEnd,
-        });
+      if (displayStatus(toAdv) === "completed") {
+        lineClass = "stroke-green-400 stroke-[2.5] fill-none";
+        markerEnd = "url(#arrow-completed)";
+      } else if (displayStatus(toAdv) !== "locked") {
+        lineClass = "stroke-brand stroke-[2.5] fill-none";
+        markerEnd = "url(#arrow-unlocked)";
       }
-    });
 
-    return result;
+      result.push({
+        from: fromAdv.adventure_folder,
+        to: toAdv.adventure_folder,
+        path,
+        lineClass,
+        markerEnd,
+      });
+    }
   });
 
-  onMounted(async () => {
-    await fetchAdventures();
-  });
+  return result;
+});
 
-  watch(
-    () => props.characterFolder,
-    async (newFolder) => {
-      if (newFolder) {
-        await fetchAdventures();
-      }
-    }
-  );
+onMounted(async () => {
+  await fetchAdventures();
+});
 
-  async function fetchAdventures() {
-    try {
-      await adventureStore.fetchCharacterAdventures(props.characterFolder);
-    } catch (error) {
-      console.error("[AdventurePanel] Failed to fetch adventures:", error);
+watch(
+  () => props.characterFolder,
+  async (newFolder) => {
+    if (newFolder) {
+      await fetchAdventures();
     }
+  },
+);
+
+async function fetchAdventures() {
+  try {
+    await adventureStore.fetchCharacterAdventures(props.characterFolder);
+  } catch (error) {
+    console.error("[AdventurePanel] Failed to fetch adventures:", error);
   }
+}
 
-  // CSS 和逻辑处理保持你的原始逻辑
-  const getNodeClass = (adventure: AdventureInfo) => {
-    const baseClass = "bg-gray-800/50 border-gray-700 hover:bg-gray-800/80";
-    switch (adventure.status) {
-      case "completed":
-        return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`;
-      case "unlocked":
-      case "in_progress":
-        return `${baseClass} border-brand/50 bg-brand/20 hover:bg-brand/30 hover:shadow-lg hover:shadow-brand/20`;
-      case "locked":
-        return "bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed";
-      default:
-        return baseClass;
-    }
-  };
+/**
+ * 剧本互斥：已经有剧本在跑时，除「正在进行」的那一个之外，其余节点一律按锁定渲染。
+ * 后端 start_adventure 有同款校验兜底，这里只是让玩家点不下去。
+ */
+const lockedByRunningScript = (adventure: AdventureInfo) =>
+  !!gameStore.runningScript && adventure.status !== "in_progress";
 
-  const getIconClass = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500/20 text-green-400";
-      case "locked":
-        return "bg-gray-700/50 text-gray-500";
-      default:
-        return "bg-brand/20 text-brand";
-    }
-  };
+const displayStatus = (adventure: AdventureInfo) =>
+  lockedByRunningScript(adventure) ? "locked" : adventure.status;
 
-  const getBadgeClass = (status: string) => {
-    switch (status) {
-      case "completed":
-        return "bg-green-500/20 text-green-400";
-      case "in_progress":
-        return "bg-blue-500/20 text-blue-400";
-      case "unlocked":
-        return "bg-brand/20 text-brand";
-      default:
-        return "bg-gray-700/50 text-gray-500";
-    }
-  };
+const getNodeClass = (adventure: AdventureInfo) => {
+  const baseClass = "bg-gray-800/50 border-gray-700 hover:bg-gray-800/80";
+  switch (displayStatus(adventure)) {
+    case "completed":
+      return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`;
+    case "unlocked":
+    case "in_progress":
+      return `${baseClass} border-brand/50 bg-brand/20 hover:bg-brand/30 hover:shadow-lg hover:shadow-brand/20`;
+    case "locked":
+      return "bg-gray-800/30 border-gray-700/50 opacity-60 cursor-not-allowed";
+    default:
+      return baseClass;
+  }
+};
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "completed":
-        return t("settings.adventurePanel.status.completed");
-      case "in_progress":
-        return t("settings.adventurePanel.status.inProgress");
-      case "unlocked":
-        return t("settings.adventurePanel.status.unlocked");
-      default:
-        return t("settings.adventurePanel.status.locked");
-    }
-  };
+const getIconClass = (status: string) => {
+  switch (status) {
+    case "completed":
+      return "bg-green-500/20 text-green-400";
+    case "locked":
+      return "bg-gray-700/50 text-gray-500";
+    default:
+      return "bg-brand/20 text-brand";
+  }
+};
 
-  const getUnlockHint = (adventure: AdventureInfo): string => {
-    if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
-      return t("settings.adventurePanel.unlock.autoUnlock");
-    const hints: string[] = [];
-    for (const cond of adventure.unlock_conditions) {
-      if (cond.type === "chat_count")
-        hints.push(t("settings.adventurePanel.unlock.chatCount", { count: cond.threshold }));
-      else if (cond.type === "time_range") hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`);
-      else if (cond.type === "adventure_completed")
-        hints.push(t("settings.adventurePanel.unlock.prereqAdventure"));
-      else if (cond.type === "achievement_unlocked")
-        hints.push(t("settings.adventurePanel.unlock.achievement"));
-    }
-    return hints.join(" · ");
-  };
+const getBadgeClass = (status: string) => {
+  switch (status) {
+    case "completed":
+      return "bg-green-500/20 text-green-400";
+    case "in_progress":
+      return "bg-blue-500/20 text-blue-400";
+    case "unlocked":
+      return "bg-brand/20 text-brand";
+    default:
+      return "bg-gray-700/50 text-gray-500";
+  }
+};
 
-  const handleNodeClick = async (adventure: AdventureInfo) => {
-    if (adventure.status === "locked" || adventure.status === "completed") return;
-    if (adventure.status === "unlocked") {
-      try {
-        uiStore.showSettings = false;
-        gameStore.enterStoryMode(adventure.adventure_folder);
-        await adventureStore.startAdventure(adventure.adventure_folder);
-      } catch (error) {
-        console.error("启动冒险失败:", error);
-      }
-    }
-  };
+const getStatusText = (status: string) => {
+  switch (status) {
+    case "completed":
+      return t("settings.adventurePanel.status.completed");
+    case "in_progress":
+      return t("settings.adventurePanel.status.inProgress");
+    case "unlocked":
+      return t("settings.adventurePanel.status.unlocked");
+    default:
+      return t("settings.adventurePanel.status.locked");
+  }
+};
+
+const getNodeHint = (adventure: AdventureInfo): string => {
+  if (lockedByRunningScript(adventure)) return t("settings.adventurePanel.lock.scriptRunning");
+  if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
+    return t("settings.adventurePanel.unlock.autoUnlock");
+  const hints: string[] = [];
+  for (const cond of adventure.unlock_conditions) {
+    if (cond.type === "chat_count")
+      hints.push(t("settings.adventurePanel.unlock.chatCount", { count: cond.threshold }));
+    else if (cond.type === "time_range") hints.push(`${cond.start_hour}:00-${cond.end_hour}:00`);
+    else if (cond.type === "adventure_completed")
+      hints.push(t("settings.adventurePanel.unlock.prereqAdventure"));
+    else if (cond.type === "achievement_unlocked")
+      hints.push(t("settings.adventurePanel.unlock.achievement"));
+  }
+  return hints.join(" · ");
+};
+
+const handleNodeClick = async (adventure: AdventureInfo) => {
+  if (displayStatus(adventure) !== "unlocked") return;
+  try {
+    uiStore.showSettings = false;
+    gameStore.enterStoryMode(adventure.adventure_folder);
+    await adventureStore.startAdventure(adventure.adventure_folder);
+  } catch (error) {
+    // 后端拒绝（互斥守卫等）时不能留下刚置上的剧情模式标记。
+    // 这条提示必须无条件显示，否则角色没配 tips.txt 时玩家会看到「点了没反应」
+    gameStore.exitStoryMode();
+    console.error("启动冒险失败:", error);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.adventure.lock.title"),
+      message: typeof error === "string" ? error : t("settings.adventure.lock.running"),
+      skipTipsCheck: true,
+    });
+  }
+};
 </script>
 
 <style scoped>
-  .stroke-dasharray-5 {
-    stroke-dasharray: 5, 5;
-  }
+.stroke-dasharray-5 {
+  stroke-dasharray: 5, 5;
+}
 </style>

@@ -35,6 +35,10 @@ export default {
     },
   },
   adventure: {
+    lock: {
+      title: "シナリオを開始できません",
+      running: "すでにシナリオが実行中です。先に現在のシナリオを終了してください",
+    },
     standalone: {
       title: "独立シナリオ",
       empty: "独立シナリオはまだありません",
@@ -116,12 +120,14 @@ export default {
       editTitleTip: "ダブルクリックでセーブのタイトルを変更",
       untitled: "無題のセーブ",
       noMessage: "会話セリフの記録なし",
+      current: "今回のセーブ",
     },
     action: {
       reading: "読み込み中...",
       load: "セーブを読み込む",
       saving: "保存中...",
       overwrite: "セーブを上書き",
+      update: "セーブを更新",
       deleting: "削除中...",
       delete: "セーブを削除",
     },
@@ -143,6 +149,8 @@ export default {
       overwriteConfirm: "セーブを上書きすると以前の進行が失われます。上書きしますか？",
       overwriteSuccessTitle: "保存しました",
       overwriteSuccessMsg: "セーブを上書きしました",
+      updateSuccessTitle: "更新しました",
+      updateSuccessMsg: "セーブを更新しました",
       overwriteFailTitle: "保存に失敗しました",
       deleteConfirm: "このセーブを削除しますか？この操作は元に戻せません。",
       deleteSuccessTitle: "削除しました",
@@ -159,6 +167,12 @@ export default {
       desc: "TTS サービスの再起動後、ここでオフライン状態を解除すると、次回の音声がすぐに再接続されます。モデル・言語・インターフェースのパラメータエラーによる HTTP 400 は、該当する設定の修正が必要です。",
       reconnecting: "再接続中…",
       forceReconnect: "TTS を強制再接続",
+    },
+    affectionAnim: {
+      title: "好感度アニメーション",
+      desc: "好感度ハートの鼓動と赤い液体の波アニメーションの切替（即時反映）。鼓動オフ時はトップバーのハートのみ静止し、好感度パネル内は鼓動を継続します",
+      heartbeat: "鼓動アニメーションを有効化",
+      wave: "波アニメーションを有効化",
     },
     saveButton: "保存",
     loadFailed: "読み込み失敗",
@@ -211,28 +225,21 @@ export default {
     },
     fields: {
       llm: {
-        output_sec_lang: "LLM_OUTPUT_SEC_LANG — 第二言語の出力を許可（オフで中国語のみ）",
-        consumers:
-          "COMSUMERS — 同時コンシューマー数（増やすとストリーム出力が高速化、デフォルト 3）",
+        output_sec_lang: "第二言語の出力を許可（オフで中国語のみ）",
+        consumers: "同時コンシューマー数（増やすとストリーム出力が高速化、デフォルト 3）",
         timeout_secs:
           "LLM リクエストのアイドルタイムアウト（秒）— 初回応答およびストリーム隣接イベントの最大待機時間（10–3600）",
-        no_emotion_limit_prompt:
-          "NO_EMOTION_LIMIT_PROMPT — emotion 数制限を解除（トークン消費が増える場合あり）",
+        no_emotion_limit_prompt: "emotion 数制限を解除（トークン消費が増える場合あり）",
       },
       translate: {
-        enable: "ENABLE_TRANSLATE — AI 翻訳を有効化（中国語会話を第二言語に翻訳）",
+        enable: "AI 翻訳を有効化（中国語会話を第二言語に翻訳）",
       },
       features: {
-        enable_time_sense:
-          "USE_TIME_SENSE — 時間認識を有効化（コンテキストの時刻に応じてシステムリマインドを追加）",
-        enable_emotion_classifier:
-          "ENABLE_EMOTION_CLASSIFIER — 感情分類器を有効化（ONNX モデル、会話 emotion の自動タグ付け）",
-        use_persistent_memory:
-          "USE_PERSISTENT_MEMORY — 記憶を自動圧縮します。保存後の再起動で反映されます",
-        memory_update_interval:
-          "MEMORY_UPDATE_INTERVAL — 要約を開始する可視台詞数（1–10000、既定 250）",
-        memory_recent_window:
-          "MEMORY_RECENT_WINDOW — 圧縮後に保持する役割可視台詞数（0–10000、既定 30）",
+        enable_time_sense: "時間認識を有効化（コンテキストの時刻に応じてシステムリマインドを追加）",
+        enable_emotion_classifier: "感情分類器を有効化（ONNX モデル、会話 emotion の自動タグ付け）",
+        use_persistent_memory: "記憶を自動圧縮します。保存後の再起動で反映されます",
+        memory_update_interval: "要約を開始する可視台詞数（1–10000、既定 250）",
+        memory_recent_window: "圧縮後に保持する役割可視台詞数（0–10000、既定 30）",
       },
       tts: {
         simple_vits_api_url: "Simple-Vits-API アドレス（VITS アダプター）",
@@ -256,28 +263,25 @@ export default {
           "GitHub Token を入力（権限不要、GraphQL API 呼び出し用）。空欄なら REST API を使用し、独立 upvote 数は取得できません（👍 絵文字数で代替）。作成先: https://github.com/settings/tokens",
       },
       log: {
-        enable: "LOG_ENABLE — 実行ログをファイルに書き込む（data/log/app/ ディレクトリ）",
-        retention_days: "LOG_RETENTION_DAYS — ログファイルの保持日数。超過分は起動時に自動削除",
+        enable: "実行ログをファイルに書き込む（data/log/app/ ディレクトリ）",
+        retention_days: "ログファイルの保持日数。超過分は起動時に自動削除",
         llm_request_body:
-          "LOG_LLM_REQUEST_BODY — 各 LLM リクエストの完全な JSON を data/log/llm/ に記録（デフォルトオフ）",
+          "各 LLM リクエストの完全な JSON を data/log/llm/ に記録（デフォルトオフ）",
         genai_debug:
-          "LOG_GENAI_DEBUG — genai SDK のデバッグログを有効化（リクエスト/レスポンス詳細、保存後すぐ有効、デフォルトオフ）",
+          "genai SDK のデバッグログを有効化（リクエスト/レスポンス詳細、保存後すぐ有効、デフォルトオフ）",
       },
-      ENABLE_PROACTIVE_SYSTEM: "ENABLE_PROACTIVE_SYSTEM — 自動会話システムを有効にするか",
-      MAX_PROACTIVE_TIMES: "MAX_PROACTIVE_TIMES — ユーザーが応答するまでの自動会話の最大回数",
-      ENABLE_VISUAL_PRECEPTION:
-        "ENABLE_VISUAL_PRECEPTION — デスクトップ画面の自動視覚認識を許可（画面をのぞき見）",
-      SCREEN_WEIGHT:
-        "SCREEN_WEIGHT — 視覚モード発動の重み（大きいほど画面を見て話しかけやすい、デフォルト 30）",
-      ENABLE_TOPIC_CREATER: "ENABLE_TOPIC_CREATER — 新しい話題を自律的に探して開始することを許可",
-      TOPIC_WEIGHT: "TOPIC_WEIGHT — ランダム話題の発動重み（デフォルト 60）",
-      ENABLE_TODO_PRECEPTION:
-        "ENABLE_TODO_PRECEPTION — 暇な時に未完了 TODO を自動で読み取り穏やかにリマインド",
-      TODO_WEIGHT: "TODO_WEIGHT — TODO リマインドの発動重み（デフォルト 10）",
-      ENABLE_SCHEDULE_REMINDER:
-        "ENABLE_SCHEDULE_REMINDER — 強制スケジュール時報ポップアップを有効化",
-      ENABLE_IMPORTANT_DAY_REMINDER:
-        "ENABLE_IMPORTANT_DAY_REMINDER — 重要な記念日・特別な日の心温まるリマインドを有効化",
+      ENABLE_PROACTIVE_SYSTEM: "自動会話システムを有効にするか",
+      MAX_PROACTIVE_TIMES: "ユーザーが応答するまでの自動会話の最大回数",
+      PROACTIVE_EXPECTED_INTERVAL_MINUTES:
+        "自発的な会話の期待間隔（分、1–60）。小さいほど頻繁になり、1 サイクルあたりの興味増加の範囲はここから逆算されます",
+      ENABLE_VISUAL_PRECEPTION: "デスクトップ画面の自動視覚認識を許可（画面をのぞき見）",
+      SCREEN_WEIGHT: "視覚モード発動の重み（大きいほど画面を見て話しかけやすい、デフォルト 30）",
+      ENABLE_TOPIC_CREATER: "新しい話題を自律的に探して開始することを許可",
+      TOPIC_WEIGHT: "ランダム話題の発動重み（デフォルト 60）",
+      ENABLE_TODO_PRECEPTION: "暇な時に未完了 TODO を自動で読み取り穏やかにリマインド",
+      TODO_WEIGHT: "TODO リマインドの発動重み（デフォルト 10）",
+      ENABLE_SCHEDULE_REMINDER: "強制スケジュール時報ポップアップを有効化",
+      ENABLE_IMPORTANT_DAY_REMINDER: "重要な記念日・特別な日の心温まるリマインドを有効化",
     },
   },
   workshop: {
@@ -317,6 +321,22 @@ export default {
     delete: "削除",
     deleteConfirm:
       "プラグイン「{name}」を削除しますか？プラグインフォルダごと削除され、元に戻せません",
+    dependsOn: "前提プラグイン",
+    wsTitle: "WebSocket 接続",
+    wsState: {
+      stopped: "未接続",
+      connecting: "接続中",
+      connected: "接続済み",
+      error: "エラー",
+    },
+    enableFailedTitle: "プラグインを有効化できません",
+    errors: {
+      PLUGIN_MISSING_DEPENDENCY:
+        "前提プラグインがインストールされていません。先にインストールしてください",
+      PLUGIN_INACTIVE_DEPENDENCY: "前提プラグインが無効です。先に有効化してください",
+      PLUGIN_DEPENDENCY_CYCLE: "前提プラグインが循環参照になっており、起動順を決定できません",
+      PLUGIN_STARTUP_FAILED: "プラグインの起動関数の実行に失敗しました",
+    },
   },
   adventurePanel: {
     header: {
@@ -345,6 +365,9 @@ export default {
       prereqAdventure: "前置アドベンチャーを完了",
       achievement: "特定の実績を解放",
     },
+    lock: {
+      scriptRunning: "現在シナリオが進行中です",
+    },
   },
   characterInfo: {
     header: {
@@ -356,6 +379,7 @@ export default {
       prompts: "プロンプト",
       visuals: "ビジュアル",
       clothes: "衣装",
+      touch: "タッチ領域",
       live2d: "Live2D",
       pet: "デスクトップペット",
       voice: "音声設定",
@@ -376,9 +400,14 @@ export default {
       bubbleTop: "吹き出し上端の距離",
       bubbleLeft: "吹き出し左端の距離",
       thinkingMessage: "思考メッセージテキスト",
+      avatarMode: "ステージ表示方式",
       scaleP: "デスクトップペットのスケール",
       offsetXP: "デスクトップペットの水平オフセット",
       offsetYP: "デスクトップペットの垂直オフセット",
+      avatarModeP: "デスクトップペット表示方式",
+      petFrameless: "フレームなし",
+      petFramelessHint:
+        "外枠と背景を非表示にし、キャラクターだけを表示します。パーティクルも非表示になり、円形の切り抜きも解除されます",
       ttsType: "TTS タイプ",
       voiceLang: "音声言語",
       localVoiceId: "ローカル音声 ID",
@@ -418,6 +447,10 @@ export default {
       ru: "ロシア語",
       pt: "ポルトガル語",
     },
+    avatarModeOptions: {
+      live2d: "Live2D モデル",
+      image: "立ち絵",
+    },
     dialectOptions: {
       mandarin: "標準中国語",
       cantonese: "広東語",
@@ -443,6 +476,38 @@ export default {
       item: "衣装 #{index}",
       empty: "衣装設定がまだありません。「衣装を追加」をクリックして作成してください",
     },
+    gsvEmo: {
+      title: "GSV 感情参照音声",
+      description:
+        "オンにすると感情分類（驚き/喜び/恐怖/悲しみ/怒り/中立）ごとに参照音声とテキストを切り替えます。音声パスとテキストの両方を入力した分類のみ有効で、残りの分類は上の gsv_voice_filename / gsv_voice_text を使用します。",
+      enable: "オン",
+      disable: "オフ",
+      voiceFile: "参照音声ファイル",
+      voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
+      text: "参照テキスト",
+      textPlaceholder: "参照音声に対応するテキスト",
+    },
+    touch: {
+      hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
+      open: "タッチ領域を編集",
+      editorTitle: "タッチ領域エディタ",
+      editorHint:
+        "空白をクリックで開始、ダブルクリックか Enter で閉じる。頂点をドラッグで移動、Delete で削除",
+      addRegion: "領域を追加",
+      addPolygon: "＋多角形",
+      polygon: "{count} 点",
+      newRegion: "新しい領域",
+      namePlaceholder: "領域名",
+      messagePlaceholder: "ここに触れたときのメッセージ",
+      empty: "まだ領域がありません。左の立ち絵を数回クリックして描き始めてください",
+      missingAvatar: "この衣装には立ち絵がないため描けません",
+      unreadableAvatar: "立ち絵を読み込めないため、領域を配置できません",
+      undo: "元に戻す",
+      cancel: "キャンセル",
+      apply: "保存して閉じる",
+      discardTitle: "変更を破棄",
+      discardMessage: "未適用の変更があります。閉じてもよろしいですか？",
+    },
     live2d: {
       importDirectory: "モデルフォルダーをインポート",
       importZip: "ZIP をインポート",
@@ -456,10 +521,18 @@ export default {
         "現在の感情に対応する表情マッピングがない場合のみフォールバックとして使用されます。「正常」感情の表情とは別です。",
       focusAnchorX: "視線基点 X（0-1）",
       focusAnchorY: "視線基点 Y（0-1）",
-      focusAnchorReset: "モデルキャンバスの中心を使用",
+      focusAnchorReset: "モデル描画領域の中心を使用",
       noExpression: "表情を変更しない",
       noMotion: "モーションを再生しない",
       clothesMapping: "衣装とモデルバリアントの対応",
+      touchReactions: "なでられリアクション",
+      touchHint:
+        "部位にチェックを入れると、メイン会話のタッチモードでそこをなでたときに反応します。頭が手の動きに合わせて傾き、手を止めるとここで設定した表情とモーションが再生されます。どちらも空欄なら傾くだけになります。",
+      touchPart_head: "頭",
+      touchPart_body: "体",
+      touchPart_legs: "脚",
+      touchPart_earLeft: "左耳",
+      touchPart_earRight: "右耳",
     },
     footer: {
       cancel: "キャンセル",
@@ -641,10 +714,59 @@ export default {
       delete: "削除",
       edit: "シーンを編集",
       noDescription: "説明なし（選択してもナレーションは発生しません）",
+      location: {
+        indoor: "屋内",
+        outdoor: "屋外",
+        unknown: "不明",
+        editTitle: "クリックで屋内外タグを切り替え",
+      },
       tip: "ヒント",
       noDescriptionTip:
         "シーン「{name}」には説明がありません。選択してもシーンナレーションは発生しません",
       deleteConfirm: "シーン「{name}」を削除しますか？",
+      fav: "お気に入り（先頭へ移動）",
+      unfav: "お気に入りを解除",
+      categoryAll: "すべて",
+      categoryEmpty:
+        "このカテゴリにはシーンがありません。背景をアップロードするか、既存のシーンを移動してください。",
+      categoryNameEmpty: "カテゴリ名を入力してください",
+      categoryNamePlaceholder: "新カテゴリ名",
+      categoryAdd: "カテゴリを追加",
+      categoryCreated: "カテゴリを作成しました",
+      categoryCreatedMsg: "カテゴリ「{name}」を作成しました",
+      categoryCreateFail: "カテゴリの作成に失敗しました",
+      categoryDeleted: "カテゴリを削除しました",
+      categoryDeletedMoved:
+        "カテゴリ「{name}」を削除し、{count} 件の背景をルートフォルダーに移動しました",
+      categoryDeleteFail: "カテゴリの削除に失敗しました",
+      categoryDelete: "カテゴリを削除",
+      categoryDeleteConfirmMove:
+        "カテゴリ「{name}」を削除し、配下の背景をすべてルートに移動しますか？",
+      refresh: "シーンを更新",
+      refreshTip: "背景フォルダーを再スキャンし、最新のシーン（サブフォルダー含む）を同期",
+      refreshDone: "更新完了",
+      refreshDoneMsg: "シーンを同期しました",
+      refreshFail: "更新に失敗しました",
+      refreshConfirm:
+        "シーンを更新すると、背景ファイルが存在しないシーンを削除し、背景フォルダーを再スキャンします。続行しますか？",
+      moveToTitle: "サブカテゴリへ移動",
+      moveToRoot: "ルート",
+      moveNoCategory: "サブカテゴリがありません。上の分類バーで作成してください",
+      moveNoBackground: "このシーンには背景画像がなく、移動できません",
+      movedTitle: "移動完了",
+      movedMsg: "シーン「{name}」を「{category}」に移動しました",
+      moveFail: "移動に失敗しました",
+    },
+    sort: {
+      title: "シーンの並び替え",
+      button: "シーンの並び替え",
+      save: "並び順を保存",
+      cancel: "キャンセル",
+      saved: "並び順を保存しました",
+      empty: "並び替えるシーンがありません",
+      favoredZone: "お気に入り",
+      unfavoredZone: "お気に入り以外",
+      onlyAll: "シーン順を変更する前に「すべて」カテゴリに切り替えてください。",
     },
     pagination: {
       first: "← 最初",
@@ -654,10 +776,24 @@ export default {
       title: "パーティクル選択",
       none: "なし",
       starField: "星空",
-      rain: "雨",
       sakura: "桜",
-      snow: "雪",
       fireworks: "花火",
+      ba: "星の輝き",
+      fireflies: "蛍",
+      meteorShower: "流星群",
+    },
+    weather: {
+      title: "天気",
+      none: "なし",
+      drizzle: "小雨",
+      rain: "雨",
+      thunderstorm: "雷雨",
+      snow: "雪",
+      blizzard: "吹雪",
+      fog: "霧",
+      city: "都市",
+      cityPlaceholder: "例：成都",
+      autoSync: "天気同期",
     },
     animation: {
       switchTitle: "アニメーション切替",
@@ -666,6 +802,10 @@ export default {
       mainMenuMeteors: "メイン画面の流星アニメーションを有効化",
       mouseTrail: "マウス軌跡アニメーションを有効化（グローバル）",
       clickAnimation: "クリックアニメーションを有効化",
+      cursorEngine: {
+        ba: "星の輝きエフェクト（新）",
+        legacy: "クラシックエフェクト",
+      },
       sceneAwareness: "シーン感知を有効化（シーン切替時にナレーションを発生）",
       meteorFps: "流星フレームレート (FPS)",
       starsFps: "星フレームレート (FPS)",
@@ -702,36 +842,6 @@ export default {
       errorTitle: "エラー",
       openFailed: "フォルダーを開けません",
     },
-    dialog: {
-      title: "ダイアログ外観",
-      description: "メイン画面下部のダイアログの背景、透明度、ぼかし、角丸などの外観をカスタマイズ",
-      backgroundImage: "カスタム背景画像",
-      noImage: "画像なし",
-      upload: "画像をアップロード",
-      change: "変更",
-      clear: "クリア",
-      sizeHint: "1MB以下を推奨（ローカルに保存）",
-      opacity: "背景の透明度",
-      blur: "背景のぼかし",
-      borderRadius: "角丸サイズ",
-      gradientColor: "グラデーション色",
-      textColor: "文字色",
-      resetDefault: "デフォルト",
-      resetGradientTitle: "デフォルトのダークブルーに戻す",
-      resetTextTitle: "白色に戻す",
-      preview: "リアルタイムプレビュー",
-      previewName: "ライム Bilibili",
-      previewPlaceholder: "ここにメッセージを入力…",
-      resetAll: "すべてデフォルトに戻す",
-      imageTooLarge: "画像が大きすぎます。2MB以下の画像を選択してください",
-      unsupportedFormat: "対応している画像形式をアップロードしてください: ",
-      readFailed: "画像の読み込みに失敗しました。もう一度お試しください",
-      interaction: "ダイアログ操作",
-      scrollHistory: "スクロール履歴を有効化（マウスホイールで過去のメッセージを表示）",
-      spacebarHide: "スペースキーでダイアログを素早く非表示",
-      autoHideOnThink: "キャラクター思考中にダイアログを自動非表示",
-      noHistory: "履歴メッセージなし",
-    },
   },
   text: {
     font: {
@@ -754,10 +864,6 @@ export default {
       title: "テキストサンプル",
       demo: "Ling Chat: テキスト表示速度のテスト",
     },
-    inlineMotion: {
-      title: "インライン動作テキスト",
-      desc: "有効にすると、動作テキストがセリフと同時に表示され、再クリックは不要です",
-    },
     mergeLine: {
       title: "セリフ結合閾値",
       unit: "文字（0=無効）",
@@ -776,7 +882,7 @@ export default {
     },
     vueDevTools: {
       title: "Vue DevTools 表示",
-      desc: "開発モードのみ有効。全ウィンドウ（メイン / 投屏 / ログ / デスクトップペット）の Vue DevTools フローティングパネル表示を制御します",
+      desc: "開発モードのみ有効。メインウィンドウの Vue DevTools フローティングパネル表示を制御します（ログ/投屏/ペット等の独立ウィンドウでは常に非表示）",
     },
     memory: {
       title: "永続メモリを有効化",
@@ -915,6 +1021,16 @@ export default {
       confirmDelete: "本当に《{name}》を削除しますか？",
       deleteFailed: "音楽の削除に失敗しました",
       uploadFailed: "一部または全部の音楽のアップロードに失敗しました",
+      categoryAll: "すべて",
+      categoryNamePlaceholder: "新カテゴリ名",
+      categoryAdd: "カテゴリを追加",
+      categoryDelete: "カテゴリを削除",
+      categoryDeleteConfirmMove:
+        "カテゴリ「{name}」を削除し、配下の音楽をすべてルートに移動しますか？",
+      refresh: "音楽を更新",
+      openFolder: "フォルダーを開く",
+      fav: "お気に入り（先頭へ移動）",
+      unfav: "お気に入りを解除",
     },
     ambient: {
       title: "環境音管理",
@@ -1228,6 +1344,18 @@ export default {
 
   asr: {
     title: "音声認識",
+    pttKey: "音声ショートカット",
+    pttKeyHint:
+      "押して話す、クリックで録音切替。自動音声認識オン時は自動リスニングを切替。単独キーも可（チャット入力時にも反応します。ファンクションキーか組合せ推奨）",
+    pttKeyCapture: "新しいキーを押してください…（Escでキャンセル）",
+    pttKeyInvalid: "このキーはバインドできません：Enter はメッセージ送信に使用されます",
+    pttKeyReset: "デフォルトに戻す",
+    pttGlobal: "フォーカス喪失時もショートカット有効",
+    pttGlobalHint:
+      "ウィンドウがフォーカスを失ってもショートカットが有効（グローバルショートカット）。英字・数字などの単独キーを割り当てると他のアプリでそのキーが奪われます。自己責任でご利用ください",
+    pttGlobalError: "グローバルショートカットの登録に失敗しました：{reason}",
+    pttGlobalNotRegistered:
+      "キーが他のアプリに使用されている可能性があり、グローバルショートカットが有効になっていません",
     status: {
       ready: "準備完了",
       notReady: "未設定",
@@ -1249,6 +1377,9 @@ export default {
     energyWarmup: "エネルギーモニター起動バッファ（ms）",
     energyWarmupHint:
       "AI の発話終了後、この時間だけ音声トリガーを待機します（デフォルト 100ms。0 で即時トリガー。AI 発話直後の環境音で誤反応する場合は大きくしてください）",
+    vadDebugLog: "詳細 VAD エネルギー検出ログ",
+    vadDebugLogHint:
+      "フレームごとの音声確率（frame/prob/len）をログページに出力します。音声認識が発火しない原因の調査用。デフォルトはオフ、録音中は毎秒約 1 行",
     sendMode: {
       title: "認識後",
       fillOnly: "入力欄に挿入（推奨）",
@@ -1260,8 +1391,8 @@ export default {
       "録音終了後にローカル認識へアップロードし、結果を段階的に表示（llama-server 結果ストリーム）",
     streamNotSupported: "選択中のモデルはストリーム認識に対応していません",
     provider: {
-      title: "音声認識プロバイダー",
-      providerSelect: "プロバイダー",
+      title: "音声認識",
+      providerSelect: "サービス",
       modelRefresh: "モデルリストを更新",
       modelListFailed: "モデルリストの取得に失敗しました：{err}",
       test: "接続テスト",
@@ -1286,6 +1417,65 @@ export default {
       ASR_MISSING_CREDENTIALS: "このプロバイダの API Key を入力してください",
       ASR_STREAMING_UNSUPPORTED: "現在のモデルはストリーミング認識に対応していません",
     },
+  },
+  memoryDebug: {
+    title: "永続記憶デバッグ",
+    rolesTitle: "キャラクター",
+    noRoles: "確認できるキャラクターがいません（先にキャラクターを登場させてください）",
+    selectRoleHint: "左のキャラクターを選ぶと、その永続記憶とコンテキストを表示します",
+    runtimeOn: "記憶オン",
+    runtimeOff: "記憶オフ",
+    runtimeAbsent: "ランタイム未作成",
+    saveBound: "セーブ #{id}",
+    saveNone: "フリーチャット：記憶はメモリ上のみで、再起動すると失われます",
+    refresh: "更新",
+    refreshing: "更新中…",
+    triggerTitle: "圧縮の状態（実行時の有効値）",
+    triggerHint:
+      "しきい値の単位は「そのキャラクターに見える非 System のセリフ」です。他キャラのセリフ・System 行・知覚できないセリフは数えません。",
+    triggerProgress: "蓄積 {visible} / しきい値 {interval} 行",
+    triggerRemaining: "発火まであと {n} 行",
+    triggerReached: "しきい値に到達",
+    pointerOutOfRange:
+      "圧縮ポインタが範囲外です。次回の発火時に 0 へリセットされます（巻き戻し / ロード / クリアで履歴が短くなるため）",
+    runtimeEffective:
+      "上の interval / window は実行時の有効値です。設定の変更は再起動後に反映されます。",
+    storeTitle: "① 記憶バンク（保存されている実体）",
+    storeHint: "完全・切り詰めなし",
+    charsOf: "{stored} 文字 / 上限 {limit} 文字",
+    charsNoLimit: "{stored} 文字 / 上限なし",
+    truncatedTag: "注入時に切り詰め",
+    metaLine: "ポインタ {pointer} · 更新 {updated} · schema v{schema}",
+    section: {
+      short_term: "直近の振り返り（短期要約）",
+      long_term: "長期的な出来事",
+      user_info: "ユーザー情報",
+      promises: "約束",
+    },
+    injectedTitle: "② 注入ビュー",
+    injectedHint: "LLM が実際に受け取る内容（上限で切り詰め済み）",
+    injectedSystem: "system 記憶ブロック（短期要約は含まない）",
+    injectedShortTerm: "短期振り返りの接頭辞（最初の user の前に付与）",
+    injectedShortTermEmpty: "注入なし",
+    contextTitle: "③ 実際のコンテキスト",
+    contextHint: "全 {n} 件。次回リクエストはこれを基に構築されます",
+    contextEmpty: "コンテキストが空です（このキャラクターはまだセリフに参加していません）",
+    toolCalls: "ツール呼び出し",
+    toolCallId: "tool_call_id",
+    stEnabled: "有効",
+    stAiName: "プロンプト内の名前",
+    stIsUpdating: "圧縮中",
+    stHasPending: "同期待ち",
+    stFailCount: "連続失敗",
+    stCooldown: "失敗クールダウン",
+    stRecentWindow: "保持ウィンドウ",
+    stPointer: "ポインタ / 履歴",
+    stHistoryRevision: "履歴バージョン",
+    enabledOn: "オン",
+    enabledOff: "オフ",
+    yes: "はい",
+    no: "いいえ",
+    cooldownValue: "{s} 秒",
   },
   cast: {
     enable: "投屏（スクリーンキャスト）",

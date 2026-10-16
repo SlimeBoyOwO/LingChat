@@ -8,7 +8,7 @@
 
 **根因**：存档里其实存了剧本状态，但读档时没有真正恢复。
 
-- 写入侧（`src-tauri/src/api/save.rs` 的 `create_save`，约 178-191 行）：若 `game_status.script_status` 存在，会把 `folder_key` / `vars` / `current_chapter_key` / `current_event_process` 经 `SaveRepo::upsert_running_script` 落库，并把 `save_id` 关联到 `running_script_id`。
+- 写入侧（`crates/ling-chat-main/src/api/save.rs` 的 `create_save`，约 178-191 行）：若 `game_status.script_status` 存在，会把 `folder_key` / `vars` / `current_chapter_key` / `current_event_process` 经 `SaveRepo::upsert_running_script` 落库，并把 `save_id` 关联到 `running_script_id`。
 - 读取侧（`load_save`，约 262-265 行）：
   ```rust
   // 10. 恢复剧本状态（若有）

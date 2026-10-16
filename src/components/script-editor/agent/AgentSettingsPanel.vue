@@ -5,8 +5,7 @@
         {{ t("scriptEditor.agentSettings.intro") }}
       </p>
       <button
-        class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex items-center
-          gap-1 rounded-lg border px-4 py-1.5 text-[0.82rem] transition-colors"
+        class="border-brand/45 bg-brand/14 text-brand hover:bg-brand/24 inline-flex items-center gap-1 rounded-lg border px-4 py-1.5 text-[0.82rem] transition-colors"
         :disabled="store.loading"
         @click="store.saveSettings()"
       >
@@ -69,8 +68,7 @@
         </Toggle>
         <p
           v-if="store.settings.allowAnyPath && !android"
-          class="-mt-2 rounded-lg border border-red-400/35 bg-red-400/12 px-3 py-2 text-[0.74rem]
-            text-red-300"
+          class="-mt-2 rounded-lg border border-red-400/35 bg-red-400/12 px-3 py-2 text-[0.74rem] text-red-300"
           v-html="t('scriptEditor.agentSettings.allowAnyPathWarn')"
         ></p>
         <p
@@ -170,8 +168,7 @@
         <button
           v-for="s in store.skills"
           :key="s.name"
-          class="hover:border-brand/40 flex items-center gap-2 rounded-[10px] border border-white/10
-            bg-white/6 px-3 py-2.5 text-left transition-all duration-200"
+          class="hover:border-brand/40 flex items-center gap-2 rounded-[10px] border border-white/10 bg-white/6 px-3 py-2.5 text-left transition-all duration-200"
           @click="toggleSkill(s.name)"
         >
           <span class="text-[1rem]">{{ s.location === "global" ? "🌐" : "📦" }}</span>
@@ -195,8 +192,7 @@
             >
           </div>
           <pre
-            class="max-h-72 overflow-y-auto px-3 py-2.5 font-mono text-[0.72rem] leading-relaxed
-              whitespace-pre-wrap text-white/75"
+            class="max-h-72 overflow-y-auto px-3 py-2.5 font-mono text-[0.72rem] leading-relaxed whitespace-pre-wrap text-white/75"
             >{{ preview.content }}</pre
           >
         </div>
@@ -206,70 +202,70 @@
 </template>
 
 <script setup lang="ts">
-  import { computed, onMounted, ref } from "vue";
-  import { useI18n } from "vue-i18n";
-  import { Icon, Toggle } from "@/components/base";
-  import { MenuItem } from "@/components/ui";
-  import { listLlmProviders } from "@/api/services/llm-providers";
-  import { getAgentDefaultDirs, readAgentSkill } from "@/api/services/agent";
-  import type { LlmProviderConfig } from "@/api/services/llm-providers";
-  import { useAgentStore } from "@/stores/modules/agent";
-  import { isAndroid } from "@/utils/platform";
+import { computed, onMounted, ref } from "vue";
+import { useI18n } from "vue-i18n";
+import { Icon, Toggle } from "@/components/base";
+import { MenuItem } from "@/components/ui";
+import { listLlmProviders } from "@/api/services/llm-providers";
+import { getAgentDefaultDirs, readAgentSkill } from "@/api/services/agent";
+import type { LlmProviderConfig } from "@/api/services/llm-providers";
+import { useAgentStore } from "@/stores/modules/agent";
+import { isAndroid } from "@/utils/platform";
 
-  const { t } = useI18n();
-  const store = useAgentStore();
-  const android = isAndroid();
+const { t } = useI18n();
+const store = useAgentStore();
+const android = isAndroid();
 
-  const providers = ref<LlmProviderConfig[]>([]);
-  const preview = ref<{ name: string; content: string } | null>(null);
+const providers = ref<LlmProviderConfig[]>([]);
+const preview = ref<{ name: string; content: string } | null>(null);
 
-  const providerId = ref<string>("");
+const providerId = ref<string>("");
 
-  const systemPromptText = computed({
-    get: () => store.settings.systemPrompt ?? "",
-    set: (v: string) => {
-      store.settings.systemPrompt = v.trim() ? v : null;
-    },
-  });
+const systemPromptText = computed({
+  get: () => store.settings.systemPrompt ?? "",
+  set: (v: string) => {
+    store.settings.systemPrompt = v.trim() ? v : null;
+  },
+});
 
-  /** 思考模式三态：null=跟随模型默认 / true=开启 / false=关闭。 */
-  const enableThinkingValue = computed({
-    get: () => store.settings.enableThinking,
-    set: (v: boolean | null) => {
-      store.settings.enableThinking = v;
-    },
-  });
+/** 思考模式三态：null=跟随模型默认 / true=开启 / false=关闭。 */
+const enableThinkingValue = computed({
+  get: () => store.settings.enableThinking,
+  set: (v: boolean | null) => {
+    store.settings.enableThinking = v;
+  },
+});
 
-  function applyProvider() {
-    store.settings.providerId = providerId.value || null;
+function applyProvider() {
+  store.settings.providerId = providerId.value || null;
+}
+
+async function toggleSkill(name: string) {
+  if (preview.value?.name === name) {
+    preview.value = null;
+    return;
   }
-
-  async function toggleSkill(name: string) {
-    if (preview.value?.name === name) {
-      preview.value = null;
-      return;
-    }
-    try {
-      const res = await readAgentSkill(name);
-      preview.value = { name: res.name, content: res.content };
-    } catch (err) {
-      console.error("readSkillFailed:", err);
-      preview.value = { name, content: t("scriptEditor.agentSettings.readSkillFailed", { err }) };
-    }
+  try {
+    const res = await readAgentSkill(name);
+    preview.value = { name: res.name, content: res.content };
+  } catch (err) {
+    console.error("readSkillFailed:", err);
+    preview.value = { name, content: t("scriptEditor.agentSettings.readSkillFailed", { err }) };
   }
+}
 
-  onMounted(async () => {
-    await store.loadSettings();
-    await store.loadSkills();
-    if (!store.defaultDirs) {
-      store.defaultDirs = await getAgentDefaultDirs();
-    }
-    try {
-      const res = await listLlmProviders();
-      providers.value = res.providers;
-    } catch (err) {
-      console.error(t("scriptEditor.agentSettings.loadProvidersFailed", { err }));
-    }
-    providerId.value = store.settings.providerId ?? "";
-  });
+onMounted(async () => {
+  await store.loadSettings();
+  await store.loadSkills();
+  if (!store.defaultDirs) {
+    store.defaultDirs = await getAgentDefaultDirs();
+  }
+  try {
+    const res = await listLlmProviders();
+    providers.value = res.providers;
+  } catch (err) {
+    console.error(t("scriptEditor.agentSettings.loadProvidersFailed", { err }));
+  }
+  providerId.value = store.settings.providerId ?? "";
+});
 </script>

@@ -2,8 +2,74 @@ import { invoke } from "@tauri-apps/api/core";
 import http from "../http";
 import type { Character, CharacterSelectParams } from "../../types";
 import type { WebInitData } from "./game-info";
-import type { Live2dImportResult, Live2dSettings } from "@/types/live2d";
+import type {
+  AvatarDisplayMode,
+  Live2dImportResult,
+  Live2dSettings,
+  Live2dVariantAssets,
+} from "@/types/live2d";
 import { i18n } from "@/locales";
+
+export const readCharacterReferenceAudio = (path: string) =>
+  invoke<ArrayBuffer | number[]>("read_character_reference_audio", { path });
+
+export const previewCharacterVoice = (
+  roleId: number,
+  settings: Record<string, unknown>,
+  text: string,
+  emotion: string,
+) => invoke<ArrayBuffer | number[]>("preview_character_voice", { roleId, settings, text, emotion });
+
+export interface CharacterAvatarSlot {
+  emotion: string;
+  path: string | null;
+  fallback: boolean;
+}
+
+export interface CharacterCostumeSummary {
+  name: string;
+  preview: string | null;
+  present: number;
+  total: number;
+  missing: string[];
+}
+export const listCharacterCostumes = (roleId: number, editId?: string) =>
+  invoke<CharacterCostumeSummary[]>("list_character_costumes", { roleId, editId });
+
+export const manageCharacterCostume = (
+  roleId: number,
+  action: "create" | "rename" | "remove",
+  oldName: string,
+  newName: string,
+  settings: Record<string, unknown>,
+  editId?: string,
+) =>
+  invoke<Record<string, any>>("manage_character_costume", {
+    roleId,
+    action,
+    oldName,
+    newName,
+    settings,
+    editId,
+  });
+
+export const listCharacterAvatars = (roleId: number, clothes: string, editId?: string) =>
+  invoke<CharacterAvatarSlot[]>("list_character_avatars", { roleId, clothes, editId });
+
+export const writeCharacterAvatar = (
+  roleId: number,
+  clothes: string,
+  emotion: string,
+  bytes: number[],
+  editId?: string,
+) => invoke<void>("write_character_avatar", { roleId, clothes, emotion, bytes, editId });
+
+export const deleteCharacterAvatar = (
+  roleId: number,
+  clothes: string,
+  emotion: string,
+  editId?: string,
+) => invoke<void>("delete_character_avatar", { roleId, clothes, emotion, editId });
 
 interface CharacterSelectResponse {
   success: boolean;
@@ -24,20 +90,20 @@ export interface CharacterPageResult {
 
 export const characterGetAll = async (
   page: number = 1,
-  pageSize: number = 6
+  pageSize: number = 6,
 ): Promise<CharacterPageResult> => {
   try {
     const data = await invoke("get_character_list", { page, pageSize });
     return data as CharacterPageResult;
   } catch (error: any) {
     throw new Error(
-      typeof error === "string" ? error : i18n.global.t("api.character.getListFailed")
+      typeof error === "string" ? error : i18n.global.t("api.character.getListFailed"),
     );
   }
 };
 
 export const characterSelect = async (
-  params: CharacterSelectParams
+  params: CharacterSelectParams,
 ): Promise<CharacterSelectResponse> => {
   try {
     const response = await http.post("/v1/chat/character/select_character", params);
@@ -54,7 +120,7 @@ export const selectCharacter = async (characterId: number): Promise<WebInitData>
     return data;
   } catch (error: any) {
     throw new Error(
-      typeof error === "string" ? error : i18n.global.t("api.character.switchFailed")
+      typeof error === "string" ? error : i18n.global.t("api.character.switchFailed"),
     );
   }
 };
@@ -74,8 +140,12 @@ export interface RoleInfo {
   bubble_left: number;
   clothes: object;
   clothes_name: string;
+  avatar_mode?: AvatarDisplayMode | null;
   body_part: object;
   live2d?: Live2dSettings | null;
+  avatar_mode_p?: AvatarDisplayMode | null;
+  /** 桌宠无框模式：true = 隐藏圆形外框/半透明底/粒子并取消圆形裁剪 */
+  pet_frameless?: boolean | null;
   character_folder: string;
 }
 
@@ -95,7 +165,7 @@ export const getRoleSettings = async (roleId: number): Promise<any> => {
     return await invoke("get_role_settings", { roleId });
   } catch (error: any) {
     throw new Error(
-      typeof error === "string" ? error : i18n.global.t("api.character.getSettingsFailed")
+      typeof error === "string" ? error : i18n.global.t("api.character.getSettingsFailed"),
     );
   }
 };
@@ -105,28 +175,19 @@ export const updateRoleSettings = async (roleId: number, settings: any): Promise
     return await invoke("update_role_settings", { roleId, settings });
   } catch (error: any) {
     throw new Error(
-      typeof error === "string" ? error : i18n.global.t("api.character.updateSettingsFailed")
+      typeof error === "string" ? error : i18n.global.t("api.character.updateSettingsFailed"),
     );
   }
 };
 
-export interface CreateCharacterResponse {
-  success: boolean;
-  data: {
-    character_id: number;
-    title: string;
-    resource_folder: string;
-  };
+export interface CreatedCharacter {
+  character_id: number;
+  title: string;
+  resource_folder: string;
 }
 
-export const createCharacter = async (formData: FormData): Promise<CreateCharacterResponse> => {
-  try {
-    const response = await http.post("/v1/chat/character/create", formData);
-    return response;
-  } catch (error: any) {
-    throw new Error(error.response?.data?.detail || i18n.global.t("api.character.createFailed"));
-  }
-};
+export const createCharacter = (name: string, resourceFolder: string) =>
+  invoke<CreatedCharacter>("create_character", { name, resourceFolder });
 
 export interface SelectClothesResponse {
   success: boolean;
@@ -135,7 +196,7 @@ export interface SelectClothesResponse {
 
 export const selectClothes = async (
   roleId: number,
-  clothesName: string
+  clothesName: string,
 ): Promise<SelectClothesResponse> => {
   try {
     const data = await invoke("select_clothes", { roleId, clothesName });
@@ -143,7 +204,7 @@ export const selectClothes = async (
     return data as SelectClothesResponse;
   } catch (error: any) {
     throw new Error(
-      typeof error === "string" ? error : i18n.global.t("api.character.selectClothesFailed")
+      typeof error === "string" ? error : i18n.global.t("api.character.selectClothesFailed"),
     );
   }
 };
@@ -151,17 +212,33 @@ export const selectClothes = async (
 export const importLive2d = async (
   roleId: number,
   sourcePath: string,
-  sourceKind: "directory" | "zip"
+  sourceKind: "directory" | "zip",
+  editId?: string,
 ): Promise<Live2dImportResult> => {
-  return invoke<Live2dImportResult>("import_live2d", { roleId, sourcePath, sourceKind });
+  return invoke<Live2dImportResult>("import_live2d", { roleId, sourcePath, sourceKind, editId });
 };
 
-export const inspectLive2d = async (roleId: number): Promise<Live2dImportResult> => {
-  return invoke<Live2dImportResult>("inspect_live2d", { roleId });
+export const inspectLive2d = async (
+  roleId: number,
+  editId?: string,
+): Promise<Live2dImportResult> => {
+  return invoke<Live2dImportResult>("inspect_live2d", { roleId, editId });
 };
 
-export const getLive2dFilePath = async (roleId: number, filePath: string): Promise<string> => {
-  return invoke<string>("get_live2d_file", { roleId, filePath });
+export const getLive2dFilePath = async (
+  roleId: number,
+  filePath: string,
+  editId?: string,
+): Promise<string> => {
+  return invoke<string>("get_live2d_file", { roleId, filePath, editId });
+};
+
+export const getLive2dVariantAssets = async (
+  roleId: number,
+  variantName: string,
+  editId?: string,
+): Promise<Live2dVariantAssets> => {
+  return invoke<Live2dVariantAssets>("get_live2d_variant_assets", { roleId, variantName, editId });
 };
 
 /** 获取角色资源文件的绝对路径（供 convertFileSrc 使用） */
@@ -171,7 +248,7 @@ export const getCharacterFilePath = async (filePath: string): Promise<string> =>
 
 export const getAvatarFile = async (
   characterFolder: string,
-  clothesName: string
+  clothesName: string,
 ): Promise<string> => {
   return invoke("get_avatar_file", { characterFolder, emotion: "头像", clothesName });
 };
@@ -185,7 +262,7 @@ export const getAvatarFile = async (
  */
 export const deleteCharacter = async (
   roleId: number,
-  deleteResourceFolder: boolean
+  deleteResourceFolder: boolean,
 ): Promise<void> => {
   try {
     await invoke("delete_character", {
@@ -196,3 +273,13 @@ export const deleteCharacter = async (
     throw new Error(typeof error === "string" ? error : "删除角色失败");
   }
 };
+
+export const beginCharacterEdit = (roleId: number) =>
+  invoke<{ edit_id: string; settings: Record<string, any> }>("begin_character_edit", { roleId });
+export const discardCharacterEdit = (roleId: number, editId: string) =>
+  invoke<void>("discard_character_edit", { roleId, editId });
+export const commitCharacterEdit = (
+  roleId: number,
+  editId: string,
+  settings: Record<string, any>,
+) => invoke<void>("commit_character_edit", { roleId, editId, settings });

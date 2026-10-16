@@ -1,0 +1,206 @@
+//! Serializable payload types for Tauri script events.
+//!
+//! Each struct matches the payload shape expected by the frontend event processors
+//! in `src/core/events/processors/`. The frontend's `asEvent()` helper merges in
+//! `type` and `duration` fields, so those are omitted here.
+
+use serde::Serialize;
+
+// ============================================================
+// Tauri event name constants
+// ============================================================
+
+pub mod event_names {
+    pub const SCRIPT_NARRATION: &str = "script:narration";
+    pub const SCRIPT_PLAYER: &str = "script:player";
+    pub const SCRIPT_CHAPTER_CHANGE: &str = "script:chapter-change";
+    pub const SCRIPT_BACKGROUND: &str = "script:background";
+    pub const SCRIPT_BACKGROUND_EFFECT: &str = "script:background-effect";
+    pub const SCRIPT_MUSIC: &str = "script:music";
+    pub const SCRIPT_SOUND: &str = "script:sound";
+    pub const SCRIPT_AMBIENT: &str = "script:ambient";
+    pub const SCRIPT_PRESENT_PIC: &str = "script:present-pic";
+    pub const SCRIPT_MODIFY_CHARACTER: &str = "script:modify-character";
+    pub const SCRIPT_INPUT: &str = "script:input";
+    pub const SCRIPT_CHOICE: &str = "script:choice";
+    pub const SCRIPT_END: &str = "script:end";
+    pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_PROGRESS: &str = "script:progress";
+}
+
+// ============================================================
+// Payload types (fields match frontend `src/types/script.ts`)
+// ============================================================
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NarrationPayload {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// 事件间隔（秒），来自 YAML 的 `duration`；None = 前端按类型默认节奏
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerPayload {
+    pub text: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChapterChangePayload {
+    pub chapter_name: String,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundPayload {
+    pub image_path: String,
+    #[serde(default)]
+    pub transition: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BackgroundEffectPayload {
+    pub effect: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MusicPayload {
+    pub music_path: String,
+    /// 播放速度倍率（1.0 原速）；None 表示未设置，前端按 1.0 处理
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub playback_speed: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SoundPayload {
+    pub sound_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AmbientPayload {
+    pub ambient_path: String,
+    #[serde(default = "default_ambient_volume")]
+    pub volume: f64,
+    #[serde(default = "default_true", rename = "loop")]
+    pub is_loop: bool,
+    #[serde(default)]
+    pub stop: bool,
+    /// 是否启用淡入淡出，默认 true
+    #[serde(default = "default_true")]
+    pub fade: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PresentPicPayload {
+    pub image_path: String,
+    #[serde(default = "default_scale")]
+    pub scale: f64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[allow(dead_code)]
+fn default_scale() -> f64 {
+    1.0
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModifyCharacterPayload {
+    pub character_id: i32,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub emotion: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub clothes: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InputPayload {
+    pub hint: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+/// 单个选项：文案 + 是否因条件不满足而不可选 + 不可选时的提示（lock_hint）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChoiceItem {
+    pub text: String,
+    /// 条件不满足时为 true，前端应灰显并禁止点击
+    #[serde(default)]
+    pub disabled: bool,
+    /// 作者写的锁定提示文案（lock_hint）；没有时前端给默认文案
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChoicePayload {
+    pub choices: Vec<ChoiceItem>,
+    #[serde(default)]
+    #[serde(rename = "allowFree")]
+    pub allow_free: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FreeDialoguePayload {
+    #[serde(rename = "switch")]
+    pub switch: bool,
+    pub max_rounds: i32,
+    pub end_line: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub duration: Option<f64>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScriptEndPayload {
+    /// `false` when the script was torn down because of an error rather than
+    /// reaching its end. The frontend must not credit the player with an
+    /// adventure completion in that case.
+    pub completed: bool,
+}
+
+/// 阅读锚点：引擎每执行一个事件前广播，事件流进入前端队列、按阅读速度被消费。
+/// 前端记录消费到的锚点，存档时回传作为精确恢复点（章节 + 事件下标 + 台词条数 + 剧本变量）。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct ScriptProgressPayload {
+    pub chapter: String,
+    pub event_index: i32,
+    pub line_count: i32,
+    pub vars: serde_json::Map<String, serde_json::Value>,
+}

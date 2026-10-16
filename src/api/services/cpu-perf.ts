@@ -248,7 +248,7 @@ export async function autoConfigurePerformance(): Promise<void> {
     localStorage.setItem(CONFIGURED_KEY, "1");
 
     console.log(
-      `[Perf] CPU ${cpu.brand}(${cpu.tier}) + GPU(${gpuTier ?? "N/A"}) → ${tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(tier)}`
+      `[Perf] CPU ${cpu.brand}(${cpu.tier}) + GPU(${gpuTier ?? "N/A"}) → ${tier}, 建议帧率 ${fps}FPS, 粒子比例 ${getSuggestedParticleScale(tier)}`,
     );
   } catch (e) {
     console.warn("[Perf] 自动配置失效，使用默认画质", e);

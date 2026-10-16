@@ -21,7 +21,7 @@ export function calculatePetLayout(
   bounds: Live2dLayoutBounds,
   roleScale = 1,
   offsetX = 0,
-  offsetY = 0
+  offsetY = 0,
 ): Live2dPetLayout {
   const width = bounds.width || 1;
   const height = bounds.height || 1;

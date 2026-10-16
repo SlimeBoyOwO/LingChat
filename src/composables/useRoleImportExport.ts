@@ -39,7 +39,7 @@ export function useRoleImportExport() {
       "[RoleArchive] doExport 开始: roleId=%d, roleName=%s, format=%s",
       roleId,
       roleName,
-      format
+      format,
     );
     store.resetExport();
     store.export.phase = "running";
@@ -85,7 +85,7 @@ export function useRoleImportExport() {
         "[RoleArchive] doExport 完成: dest=%s, size=%dB (%dMB)",
         savedPath,
         res.size_bytes,
-        Math.floor(res.size_bytes / 1024 / 1024)
+        Math.floor(res.size_bytes / 1024 / 1024),
       );
     } catch (e: any) {
       console.error("[RoleArchive] doExport 失败:", e);
@@ -114,7 +114,7 @@ export function useRoleImportExport() {
       filePath: string,
       fileName: string,
       format: ArchiveFormat | undefined,
-      conflict: ConflictPolicy
+      conflict: ConflictPolicy,
     ) => archiveImport.runImport(filePath, fileName, format, conflict),
     cancel: archiveImport.cancel,
     doExport,

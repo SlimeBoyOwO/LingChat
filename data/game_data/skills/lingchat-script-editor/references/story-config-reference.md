@@ -1,8 +1,8 @@
 # LingChat story_config.yaml 配置参考（源码级）
 
 `story_config.yaml` 是剧本的配置文件，位于剧本根目录。字段以脚本引擎 Rust 源码
-（`src-tauri/src/ai_service/game_system/script_engine/script_manager.rs`、
-`src-tauri/src/ai_service/types.rs` 中的 `AdventureConfig` 定义）为权威依据。
+（`crates/ling-chat-main/src/ai_service/game_system/script_engine/script_manager.rs`、
+`crates/ling-chat-main/src/ai_service/types.rs` 中的 `AdventureConfig` 定义）为权威依据。
 
 ## 最小配置（独立剧本）
 

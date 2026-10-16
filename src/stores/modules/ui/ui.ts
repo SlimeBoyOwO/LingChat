@@ -4,6 +4,7 @@ import { useSettingsStore } from "../settings";
 import { saveBgmState } from "../../../api/services/music";
 import { saveAmbientState } from "../../../api/services/ambient";
 import { i18n } from "@/locales";
+import { isWeatherEffect } from "@/components/game/standard/particles";
 
 // 通知类型
 export type NotificationType = "error" | "success" | "info" | "warning";
@@ -80,8 +81,9 @@ interface UIState {
   tipsMap: Record<string, { title: string; message: string }>;
   tipsAvailable: boolean;
 
-  // 背景音乐结束时间戳，用于触发音乐切换
-  _musicEndTime: number;
+  // 游戏渲染层（GameBackground）挂载计数。全局 BGM 层据此判断当前是否处于
+  // 「有游戏画面」的场景（/chat、剧本编辑器试玩覆盖层），决定是否允许出声
+  gameLayerCount: number;
 }
 
 // 默认 avatar
@@ -148,8 +150,7 @@ export const useUIStore = defineStore("ui", {
     tipsMap: {},
     tipsAvailable: false,
 
-    // 背景音乐结束时间戳
-    _musicEndTime: 0,
+    gameLayerCount: 0,
   }),
 
   getters: {
@@ -165,6 +166,9 @@ export const useUIStore = defineStore("ui", {
     },
     currentBackgroundEffect(): string {
       return useSettingsStore().backgroundEffect;
+    },
+    currentWeatherEffect(): string {
+      return useSettingsStore().weatherEffect;
     },
     characterVolume(): number {
       return useSettingsStore().characterVolume;
@@ -204,9 +208,31 @@ export const useUIStore = defineStore("ui", {
     setCurrentBackground(background: string) {
       useSettingsStore().setCurrentBackground(background);
     },
-    // 设置背景效果（写入 settings store）
+    // 设置氛围特效（写入 settings store）
     setBackgroundEffect(effect: string) {
       useSettingsStore().setBackgroundEffect(effect);
+    },
+    // 设置天气特效（写入 settings store）
+    setWeatherEffect(effect: string) {
+      useSettingsStore().setWeatherEffect(effect);
+    },
+    /**
+     * 把「一个特效值」落到它该去的那一层，并清空另一层。
+     *
+     * 剧本事件与存档都只认一个特效值（Rust 侧 background_effect 是单值），
+     * 落到哪一层由注册表决定。落到某一层时清空另一层，是为了让「剧本说现在是雷阵雨」
+     * 与原来的单值语义完全一致，不会叠出作者没写过的组合。
+     * 两层的并存只发生在设置页 —— 那是玩家自己的长期偏好，直接调上面两个 action。
+     */
+    applyEffectValue(effect: string) {
+      const settings = useSettingsStore();
+      if (isWeatherEffect(effect)) {
+        settings.setWeatherEffect(effect);
+        settings.setBackgroundEffect("None");
+      } else {
+        settings.setBackgroundEffect(effect);
+        settings.setWeatherEffect("None");
+      }
     },
     // 设置对话音效开关（写入 settings store）
     setEnableChatEffectSound(enabled: boolean) {
@@ -486,14 +512,14 @@ export const useUIStore = defineStore("ui", {
       );
     },
 
-    /**
-     * 处理背景音乐结束事件
-     * 当背景音乐播放结束时调用此方法，通知相关组件处理音乐切换
-     */
-    handleBackgroundMusicEnd() {
-      // 触发一个内部状态变化，让SettingsSound组件能够监听到
-      // 使用时间戳确保每次都能触发watch
-      this._musicEndTime = Date.now();
+    /** 登记一个游戏渲染层（GameBackground 挂载时调用） */
+    retainGameLayer() {
+      this.gameLayerCount++;
+    },
+
+    /** 注销一个游戏渲染层（GameBackground 卸载时调用）。下限 0，防 HMR 下的计数漂移 */
+    releaseGameLayer() {
+      if (this.gameLayerCount > 0) this.gameLayerCount--;
     },
 
     // ========== 环境音轨道管理 ==========
@@ -519,7 +545,7 @@ export const useUIStore = defineStore("ui", {
       const newFileName = getFileName(track.src);
       // 按完整路径或文件名去重，剧本指令优先覆盖手动导入
       this.ambientTracks = this.ambientTracks.filter(
-        (t) => t.src !== track.src && getFileName(t.src) !== newFileName
+        (t) => t.src !== track.src && getFileName(t.src) !== newFileName,
       );
       // 超出上限时移除最早的
       if (this.ambientTracks.length >= MAX_AMBIENT_TRACKS) {
@@ -565,7 +591,7 @@ export const useUIStore = defineStore("ui", {
       if (targetSrc) {
         // 按文件名匹配清除指定轨道
         this.ambientTracks = this.ambientTracks.filter(
-          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc)
+          (t) => !t.src.endsWith(targetSrc) && !t.src.includes(targetSrc),
         );
       } else {
         this.ambientTracks = [];

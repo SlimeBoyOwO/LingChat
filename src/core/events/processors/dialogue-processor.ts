@@ -1,9 +1,14 @@
 import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { IEventProcessor } from "../event-processor";
 import type { ScriptDialogueEvent } from "../../../types";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { isJaLocale, hkify } from "@/locales";
+
+// 只有主窗口在消费对话事件队列（其余窗口即便注册了 ai:reply 也不会 resume），
+// 「这一句上屏了」的外部通知只由它发出，否则外部会收到重复的同一句。
+const isMainWindow = getCurrentWindow().label === "main";
 
 export default class DialogueProcessor implements IEventProcessor {
   canHandle(eventType: string): boolean {
@@ -59,6 +64,12 @@ export default class DialogueProcessor implements IEventProcessor {
     }
 
     uiStore.showCharacterLine = gameStore.currentLine; // TODO: 这部分逻辑之后整合
+    // 告诉插件「这一句上屏了」：外部渲染（游戏内气泡、字幕、投屏）据此跟主界面的节奏
+    // 对齐，而不是跟着模型的生成时间一次涌出去。事件原样转发，插件侧按 previewGen
+    // 过滤试玩流。空台词的收尾 reply 没有可展示内容，不问。
+    if (isMainWindow && (event.message ?? "").trim()) {
+      invoke("plugin_line_shown", { line: event }).catch(() => {});
+    }
     role.emotion = event.emotion || "正常";
     role.originalEmotion = event.originalTag || "正常";
     gameStore.currentInteractRoleId = role.roleId;

@@ -7,12 +7,14 @@ on:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
+      - "mc-mod/**"
   pull_request:
     branches: ["dev", "dev/**"]
     paths-ignore:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
+      - "mc-mod/**"
   workflow_dispatch:
 
 jobs:
@@ -25,19 +27,19 @@ jobs:
           - platform: windows-amd64
             os: windows-latest
             artifact-name: lingchat-dev-windows
-            artifact-path: src-tauri/target/release/ling_chat.exe
+            artifact-path: target/release/ling_chat.exe
           - platform: linux-amd64
             os: ubuntu-latest
             artifact-name: lingchat-dev-linux-amd64
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
           - platform: macos
             os: macos-latest
             artifact-name: lingchat-dev-macos
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
           - platform: linux-aarch64
             os: ubuntu-24.04-arm
             artifact-name: lingchat-dev-linux-aarch64
-            artifact-path: src-tauri/target/release/ling_chat
+            artifact-path: target/release/ling_chat
 
     steps:
       - uses: actions/checkout@v4
@@ -57,7 +59,7 @@ jobs:
         with:
           cache-on-failure: true
           workspaces: |
-            src-tauri
+            .
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
       - name: 安装 Linux 依赖 (Ubuntu)
@@ -94,6 +96,7 @@ jobs:
       - name: 创建占位文件和初始化
         shell: bash
         run: |
+          rm -rf src-tauri/tauri.windows.conf.json
           mkdir -p data/.official/game_data
           mkdir -p data/third_party
           touch data/.official/game_data/.gitkeep
@@ -112,9 +115,21 @@ jobs:
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 
+      - name: 收集产物（Windows 附带 onnxruntime.dll 与 DirectML.dll）
+        shell: bash
+        run: |
+          mkdir -p "${{ runner.temp }}/dist"
+          cp "${{ matrix.artifact-path }}" "${{ runner.temp }}/dist/"
+          # DirectML.dll 是 DML EP 的运行时依赖，缺了它选 GPU 会静默回落 CPU
+          for dll in onnxruntime.dll DirectML.dll; do
+            if [ "${{ runner.os }}" = "Windows" ] && [ -f "target/release/$dll" ]; then
+              cp "target/release/$dll" "${{ runner.temp }}/dist/"
+            fi
+          done
+
       - name: 上传 artifact
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.artifact-name }}
-          path: ${{ matrix.artifact-path }}
+          path: ${{ runner.temp }}/dist
           retention-days: 7

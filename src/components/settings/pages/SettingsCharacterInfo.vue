@@ -6,17 +6,12 @@
       @click="handleClose"
     >
       <div
-        class="flex h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border
-          border-white/20
-          bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)]
-          text-white shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)]
-          backdrop-blur-[30px] backdrop-saturate-180"
+        class="flex h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] text-white shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)]"
         @click.stop
       >
         <!-- Header -->
         <div
-          class="flex items-center justify-between border-b border-white/10
-            bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] p-6"
+          class="flex items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] p-6"
         >
           <div class="flex items-center gap-4">
             <div
@@ -34,8 +29,7 @@
             </div>
           </div>
           <button
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-none
-              bg-white/10 text-white transition-all duration-200 hover:rotate-90 hover:bg-white/20"
+            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-none bg-white/10 text-white transition-all duration-200 hover:rotate-90 hover:bg-white/20"
             @click="handleClose"
           >
             <svg
@@ -59,15 +53,12 @@
         <div class="flex flex-1 flex-row overflow-hidden">
           <!-- Sidebar (vertical scrollable for narrow viewports) -->
           <div
-            class="tab-sidebar-scroll flex w-44 shrink-0 flex-col gap-2 overflow-y-auto border-r
-              border-white/10 bg-black/10 p-3"
+            class="tab-sidebar-scroll flex w-44 shrink-0 flex-col gap-2 overflow-y-auto border-r border-white/10 bg-black/10 p-3"
           >
             <button
               v-for="tab in tabs"
               :key="tab.id"
-              class="w-full cursor-pointer rounded-xl border-none bg-transparent px-4 py-2.5
-                text-left font-medium text-white/60 transition-all duration-200 hover:bg-white/5
-                hover:text-white"
+              class="w-full cursor-pointer rounded-xl border-none bg-transparent px-4 py-2.5 text-left font-medium text-white/60 transition-all duration-200 hover:bg-white/5 hover:text-white"
               :class="{
                 'bg-[rgba(94,114,228,0.2)] font-semibold! text-[#79d9ff]!': activeTab === tab.id,
               }"
@@ -81,12 +72,33 @@
           <div class="relative flex-1 overflow-y-auto p-6">
             <div v-if="loading" class="flex h-full items-center justify-center">
               <div
-                class="h-10 w-10 animate-spin rounded-full border-3 border-white/10
-                  border-t-[#5e72e4]"
+                class="h-10 w-10 animate-spin rounded-full border-3 border-white/10 border-t-[#5e72e4]"
               ></div>
             </div>
 
-            <div v-else class="mx-auto max-w-3xl space-y-6">
+            <fieldset
+              v-else
+              :inert="saving || resourceBusy > 0"
+              :disabled="saving || resourceBusy > 0"
+              class="mx-auto max-w-3xl min-w-0 space-y-6 border-0 p-0"
+            >
+              <p
+                class="rounded-xl border border-cyan-200/15 bg-cyan-400/5 p-3 text-xs leading-relaxed text-cyan-100/70"
+              >
+                {{ t("settings.characterInfo.draft.hint") }}
+              </p>
+              <PetLayoutEditor
+                v-if="activeTab === 'pet' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                :clothes="draftClothes"
+              />
+              <RoleLayoutEditor
+                v-if="activeTab === 'visuals' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                :clothes="draftClothes"
+              />
               <!-- Data-Driven Form (tabs with schemas) -->
               <div v-if="currentTabConfig" class="space-y-4">
                 <div
@@ -104,26 +116,26 @@
                     :type="field.type"
                     :step="field.step"
                     :placeholder="field.placeholder"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5
-                      text-sm text-white transition-all duration-200 outline-none"
-                    @change="handleFieldChange(field)"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+                  <DialogueExamplesEditor
+                    v-else-if="field.type === 'examples'"
+                    v-model="fieldModel(field).value"
+                    :user-name="localSettings.user_name || gameStore.userName"
+                    :character-name="localSettings.ai_name || ''"
                   />
                   <textarea
                     v-else-if="field.type === 'textarea'"
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     :rows="field.rows || 4"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5
-                      font-mono text-sm leading-relaxed text-white transition-all duration-200
-                      outline-none"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 font-mono text-sm leading-relaxed text-white transition-all duration-200 outline-none"
                   ></textarea>
                   <select
                     v-else-if="field.type === 'select'"
                     :id="field.key"
                     v-model="fieldModel(field).value"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5
-                      text-sm text-white transition-all duration-200 outline-none"
-                    @change="handleFieldChange(field)"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
                   >
                     <option
                       v-for="opt in resolveFieldOptions(field)"
@@ -134,8 +146,110 @@
                       {{ opt.label }}
                     </option>
                   </select>
+                  <!-- 开关：轨道本身充当第二个 <label>（与上方的字段名 label 是兄弟，
+                       不能嵌套），滑块用绝对定位的兄弟节点 + peer-checked 联动 -->
+                  <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
+                    <input
+                      :id="field.key"
+                      v-model="fieldModel(field).value"
+                      type="checkbox"
+                      class="peer sr-only"
+                    />
+                    <label
+                      :for="field.key"
+                      class="peer-checked:border-brand peer-checked:bg-brand block h-5 w-9 cursor-pointer rounded-full border border-white/20 bg-white/10 transition-colors"
+                    ></label>
+                    <div
+                      class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
+                    ></div>
+                  </div>
+                  <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
+                    {{ field.hint }}
+                  </p>
                 </div>
               </div>
+
+              <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
+                   分类仍回退到上面的 gsv_voice_filename / gsv_voice_text -->
+              <div
+                v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
+                class="space-y-4"
+              >
+                <div
+                  class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4"
+                >
+                  <div>
+                    <h3 class="text-sm font-bold text-white/70">
+                      {{ $t("settings.characterInfo.gsvEmo.title") }}
+                    </h3>
+                    <p class="mt-1 text-xs text-white/40">
+                      {{ $t("settings.characterInfo.gsvEmo.description") }}
+                    </p>
+                  </div>
+                  <button
+                    role="switch"
+                    :aria-checked="gsvEmoEnabled"
+                    class="cursor-pointer rounded-lg border-none px-3.5 py-1.5 text-xs transition-colors"
+                    :class="
+                      gsvEmoEnabled
+                        ? 'bg-[#5e72e4] text-white hover:bg-[#4a5acf]'
+                        : 'bg-white/10 text-white/60 hover:bg-white/20'
+                    "
+                    @click="toggleGsvEmo"
+                  >
+                    {{
+                      gsvEmoEnabled
+                        ? $t("settings.characterInfo.gsvEmo.enable")
+                        : $t("settings.characterInfo.gsvEmo.disable")
+                    }}
+                  </button>
+                </div>
+
+                <div v-if="gsvEmoEnabled" class="space-y-3">
+                  <div
+                    v-for="cat in GSV_EMO_CATEGORIES"
+                    :key="cat"
+                    class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2"
+                  >
+                    <div class="flex flex-col gap-2">
+                      <label class="text-[13px] font-medium text-white/60">
+                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.voiceFile") }}
+                      </label>
+                      <input
+                        v-model="gsvEmoField(cat, 'gsv_emo_voice_files').value"
+                        type="text"
+                        :placeholder="$t('settings.characterInfo.gsvEmo.voiceFilePlaceholder')"
+                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                      />
+                    </div>
+                    <div class="flex flex-col gap-2">
+                      <label class="text-[13px] font-medium text-white/60">
+                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.text") }}
+                      </label>
+                      <input
+                        v-model="gsvEmoField(cat, 'gsv_emo_texts').value"
+                        type="text"
+                        :placeholder="$t('settings.characterInfo.gsvEmo.textPlaceholder')"
+                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <VoicePreview
+                v-if="activeTab === 'voice' && props.roleId"
+                :role-id="props.roleId"
+                :model-value="localSettings"
+              />
+
+              <AvatarManager
+                v-if="activeTab === 'avatars' && props.roleId"
+                :role-id="props.roleId"
+                :clothes="clothesList"
+                :resource-clothes="draftClothes"
+                :initial-costume="avatarCostume"
+              />
 
               <Live2DSettings
                 v-if="activeTab === 'live2d' && props.roleId"
@@ -148,74 +262,39 @@
                 :offset-y="Number(localSettings.offset_y) || 0"
               />
 
-              <!-- Clothes Tab (custom UI, outside data-driven block) -->
-              <div v-if="activeTab === 'clothes'" class="space-y-4">
-                <div class="flex items-center justify-between">
-                  <h3 class="text-sm font-bold text-white/70">
-                    {{ $t("settings.characterInfo.clothes.listTitle") }}
-                  </h3>
-                  <button
-                    class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs
-                      text-white transition-colors hover:bg-[#4a5acf]"
-                    @click="addClothesItem"
-                  >
-                    + {{ $t("settings.characterInfo.clothes.add") }}
-                  </button>
-                </div>
-                <div
-                  v-for="(item, idx) in clothesList"
-                  :key="idx"
-                  class="space-y-3 rounded-xl border border-white/10 bg-white/5 p-4"
+              <CostumeManager
+                v-if="activeTab === 'clothes' && props.roleId"
+                v-model="localSettings"
+                :role-id="props.roleId"
+                @changed="onCostumeChanged"
+                @edit-avatars="openCostumeAvatars"
+              />
+
+              <!-- Touch Tab：区域绘制放在独立的全屏层里，这里只做入口与概览 -->
+              <div v-if="activeTab === 'touch'" class="space-y-4">
+                <p class="text-[13px] leading-relaxed text-white/50">
+                  {{ $t("settings.characterInfo.touch.hint") }}
+                </p>
+                <button
+                  class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
+                  :disabled="clothesLoading"
+                  @click="touchEditorVisible = true"
                 >
-                  <div class="flex items-center justify-between">
-                    <span class="text-sm font-medium text-white/80">{{
-                      $t("settings.characterInfo.clothes.item", { index: idx + 1 })
-                    }}</span>
-                    <button
-                      class="h-6 w-6 cursor-pointer rounded-full border-none bg-red-500/20 text-xs
-                        text-red-400 transition-colors hover:bg-red-500/40"
-                      @click="removeClothesItem(idx)"
-                    >
-                      x
-                    </button>
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">name</label>
-                    <input
-                      v-model="item.name"
-                      type="text"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5
-                        py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">prompt</label>
-                    <textarea
-                      v-model="item.prompt"
-                      rows="3"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5
-                        py-2.5 font-mono text-sm leading-relaxed text-white transition-all
-                        duration-200 outline-none"
-                    ></textarea>
-                  </div>
-                </div>
-                <div v-if="clothesList.length === 0" class="py-8 text-center text-sm text-white/40">
-                  {{ $t("settings.characterInfo.clothes.empty") }}
-                </div>
+                  {{ $t("settings.characterInfo.touch.open") }}
+                </button>
               </div>
-            </div>
+            </fieldset>
           </div>
         </div>
 
         <!-- Footer -->
         <div
-          class="flex justify-between gap-3 border-t border-white/10
-            bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
+          class="flex justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
         >
           <!-- 危险操作区（左侧）：删除角色 -->
           <div class="flex items-center">
             <button
-              :disabled="deleteState.disabled"
+              :disabled="deleteState.disabled || loading || saving || resourceBusy > 0"
               :title="
                 deleteState.disabled
                   ? deleteState.reason
@@ -225,8 +304,7 @@
                 'rounded-[20px] border px-4 py-2 text-sm font-medium transition-all duration-200',
                 deleteState.disabled
                   ? 'cursor-not-allowed border-white/10 bg-white/5 text-white/25'
-                  : `border-red-400/30 bg-red-500/15 text-red-200 hover:-translate-y-px
-                    hover:bg-red-500/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)]`,
+                  : `border-red-400/30 bg-red-500/15 text-red-200 hover:-translate-y-px hover:bg-red-500/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)]`,
               ]"
               @click="deleteState.disabled ? null : handleDelete()"
             >
@@ -257,24 +335,19 @@
           <!-- 普通操作（右侧）：取消/保存 -->
           <div class="flex gap-3">
             <button
-              class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm
-                font-medium text-white transition-all duration-200 hover:bg-white/20"
+              class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
               @click="handleClose"
             >
               {{ $t("settings.characterInfo.footer.cancel") }}
             </button>
             <button
-              class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm
-                font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px
-                hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)]
-                disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving"
+              class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+              :disabled="saving || loading || resourceBusy > 0 || !editId"
               @click="saveSettings"
             >
               <span
                 v-if="saving"
-                class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2
-                  border-white/30 border-t-white"
+                class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
               ></span>
               {{
                 saving
@@ -284,806 +357,977 @@
             </button>
           </div>
         </div>
+
+        <!-- 触摸区域编辑器：留在弹窗的 DOM 子树内，才能被 Live2D 抚摸的元素守卫一起挡住 -->
+        <TouchRegionsEditor
+          :user-name="gameStore.userName"
+          v-if="touchEditorVisible"
+          :body-part="localSettings.body_part"
+          :clothes="draftClothes"
+          @apply="onTouchRegionsApply"
+          @close="touchEditorVisible = false"
+        />
       </div>
     </div>
   </Transition>
 </template>
 
 <script setup lang="ts">
-  import { computed, onUnmounted, ref, toRaw, watch } from "vue";
-  import { useI18n } from "vue-i18n";
-  import {
-    deleteCharacter as deleteCharacterApi,
-    getRoleSettings,
-    updateRoleSettings,
-  } from "../../../api/services/character";
-  import { Icon } from "../../base";
-  import Live2DSettings from "../character/Live2DSettings.vue";
-  import { isSystemProtectedRole } from "@/constants/character";
-  import { useDialogStore } from "../../../stores/modules/ui/dialog";
-  import { useGameStore } from "@/stores/modules/game";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import * as TtsLocal from "../../../api/services/tts/tts-local";
-  import * as TtsCosyvoice from "../../../api/services/tts/tts-cosyvoice";
+import { computed, onUnmounted, provide, ref, toRaw, watch } from "vue";
+import { useI18n } from "vue-i18n";
+import {
+  deleteCharacter as deleteCharacterApi,
+  beginCharacterEdit,
+  discardCharacterEdit,
+  commitCharacterEdit,
+  listCharacterCostumes,
+} from "../../../api/services/character";
+import { characterEditorKey } from "@/composables/useCharacterEditor";
+import { convertFileSrc } from "@tauri-apps/api/core";
+import { Icon } from "../../base";
+import Live2DSettings from "../character/Live2DSettings.vue";
+import AvatarManager from "../character/AvatarManager.vue";
+import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
+import CostumeManager from "../character/CostumeManager.vue";
+import PetLayoutEditor from "../character/PetLayoutEditor.vue";
+import VoicePreview from "../character/VoicePreview.vue";
+import DialogueExamplesEditor from "../character/DialogueExamplesEditor.vue";
+import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
+import { isSystemProtectedRole } from "@/constants/character";
+import { useDialogStore } from "../../../stores/modules/ui/dialog";
+import { useGameStore } from "@/stores/modules/game";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import * as TtsLocal from "../../../api/services/tts/tts-local";
+import * as TtsCosyvoice from "../../../api/services/tts/tts-cosyvoice";
 
-  const props = defineProps<{
-    visible: boolean;
-    roleId: number | null;
-    title?: string;
-    /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
-    source?: string | null;
-  }>();
+const props = defineProps<{
+  visible: boolean;
+  roleId: number | null;
+  title?: string;
+  /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
+  source?: string | null;
+  /** 该角色实际存在的服装（标题 + 立绘 URL），由设置列表页透传，触摸区域编辑器按它分服装 */
+  clothes?: Array<{ title: string; avatar: string }>;
+}>();
 
-  const emit = defineEmits(["close", "saved"]);
+const emit = defineEmits(["close", "saved"]);
 
-  const activeTab = ref("basic");
-  const loading = ref(false);
-  const saving = ref(false);
-  const deleting = ref(false);
-  const dialogStore = useDialogStore();
-  const { t } = useI18n();
-  const uiStore = useUIStore();
-  const gameStore = useGameStore();
-  const localSettings = ref<any>({});
-  const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
-  const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
+const activeTab = ref("basic");
+const avatarCostume = ref("default");
+const loading = ref(false);
+const saving = ref(false);
+const deleting = ref(false);
+const dialogStore = useDialogStore();
+const { t } = useI18n();
+const uiStore = useUIStore();
+const gameStore = useGameStore();
+const localSettings = ref<any>({});
+const touchEditorVisible = ref(false);
+const editId = ref<string>();
+const editRoleId = ref<number>();
+const resourceBusy = ref(0);
+const resourceRevision = ref(0);
+const baseline = ref("");
+const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
+const clothesLoading = ref(false);
+let clothesSequence = 0;
+let loadSequence = 0;
+provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
+const hasChanges = computed(
+  () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
+);
+async function refreshDraftClothes() {
+  const id = editId.value;
+  const roleId = editRoleId.value;
+  if (!id || !roleId) return;
+  const sequence = ++clothesSequence;
+  clothesLoading.value = true;
+  try {
+    const costumes = await listCharacterCostumes(roleId, id);
+    if (editId.value !== id || sequence !== clothesSequence) return;
+    draftClothes.value = costumes.map((costume) => ({
+      title: costume.name,
+      avatar: costume.preview
+        ? convertFileSrc(costume.preview) + "?v=" + resourceRevision.value
+        : "",
+    }));
+  } finally {
+    if (sequence === clothesSequence) clothesLoading.value = false;
+  }
+}
+watch([resourceRevision, activeTab, editId], () => {
+  if (
+    editId.value &&
+    ["visuals", "avatars", "clothes", "touch", "live2d", "pet"].includes(activeTab.value)
+  ) {
+    void refreshDraftClothes().catch(console.error);
+  }
+});
 
-  // 删除按钮可用性：系统保护角色 / 在场角色不可删
-  const deleteState = computed(() => {
-    if (!props.roleId)
-      return { disabled: true, reason: t("settings.characterInfo.delete.systemProtected") };
-    if (isSystemProtectedRole(props.roleId)) {
-      return { disabled: true, reason: t("settings.characterInfo.delete.systemProtected") };
-    }
-    const onstage =
-      gameStore.mainRoleId === props.roleId || gameStore.presentRoleIds.includes(props.roleId);
-    if (onstage) {
-      return { disabled: true, reason: t("settings.characterInfo.delete.onstage") };
-    }
-    return { disabled: false, reason: "" };
-  });
+async function discardDraft() {
+  ++clothesSequence;
+  clothesLoading.value = false;
+  const id = editId.value;
+  const roleId = editRoleId.value;
+  if (id && roleId) await discardCharacterEdit(roleId, id);
+  if (editId.value === id) {
+    editId.value = undefined;
+    editRoleId.value = undefined;
+  }
+}
+const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
+const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
 
-  // 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
-  const handleDelete = async () => {
-    if (!props.roleId || deleteState.value.disabled) return;
+// 删除按钮可用性：系统保护角色 / 在场角色不可删
+const deleteState = computed(() => {
+  if (!props.roleId)
+    return { disabled: true, reason: t("settings.characterInfo.delete.systemProtected") };
+  if (isSystemProtectedRole(props.roleId)) {
+    return { disabled: true, reason: t("settings.characterInfo.delete.systemProtected") };
+  }
+  const onstage =
+    gameStore.mainRoleId === props.roleId || gameStore.presentRoleIds.includes(props.roleId);
+  if (onstage) {
+    return { disabled: true, reason: t("settings.characterInfo.delete.onstage") };
+  }
+  return { disabled: false, reason: "" };
+});
 
-    // 插件角色不可直接删除：提示去插件设置里隐藏
-    if (props.source && props.source !== "game") {
-      await dialogStore.alert(t("settings.characterInfo.delete.pluginFromPlugin"));
-      return;
-    }
+// 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
+const handleDelete = async () => {
+  if (!props.roleId || deleteState.value.disabled) return;
 
-    const confirmed = await dialogStore.confirm(
-      t("settings.characterInfo.delete.confirmMessage", {
+  // 插件角色不可直接删除：提示去插件设置里隐藏
+  if (props.source && props.source !== "game") {
+    await dialogStore.alert(t("settings.characterInfo.delete.pluginFromPlugin"));
+    return;
+  }
+
+  const confirmed = await dialogStore.confirm(
+    t("settings.characterInfo.delete.confirmMessage", {
+      title: props.title ?? t("settings.characterInfo.delete.button"),
+    }),
+    t("settings.characterInfo.delete.confirmTitle"),
+  );
+  if (!confirmed) return;
+
+  deleting.value = true;
+  try {
+    await deleteCharacterApi(props.roleId, true);
+
+    // 删除成功
+    uiStore.showSuccess({
+      title: t("settings.characterInfo.delete.successTitle"),
+      message: t("settings.characterInfo.delete.successMessage", {
         title: props.title ?? t("settings.characterInfo.delete.button"),
       }),
-      t("settings.characterInfo.delete.confirmTitle")
-    );
-    if (!confirmed) return;
-
-    deleting.value = true;
-    try {
-      await deleteCharacterApi(props.roleId, true);
-
-      // 删除成功
-      uiStore.showSuccess({
-        title: t("settings.characterInfo.delete.successTitle"),
-        message: t("settings.characterInfo.delete.successMessage", {
-          title: props.title ?? t("settings.characterInfo.delete.button"),
-        }),
-      });
-
-      // 通知父组件刷新列表 + 关闭弹窗
-      emit("saved");
-      emit("close");
-    } catch (error: any) {
-      console.error("[SettingsCharacterInfo] 删除角色失败:", error);
-      uiStore.showError({
-        title: t("settings.characterInfo.delete.failTitle"),
-        message: typeof error === "string" ? error : error?.message || "未知错误",
-      });
-    } finally {
-      deleting.value = false;
-    }
-  };
-
-  async function refreshLocalVoices(): Promise<void> {
-    try {
-      const snapshot = await TtsLocal.listInstalled();
-      installedVoices.value = snapshot.voices;
-    } catch (error) {
-      console.warn("refreshLocalVoices failed", error);
-      installedVoices.value = [];
-    }
-  }
-
-  async function refreshCloudVoices(): Promise<void> {
-    try {
-      cloudVoices.value = await TtsCosyvoice.listVoices();
-    } catch (error) {
-      console.warn("refreshCloudVoices failed", error);
-      cloudVoices.value = [];
-    }
-  }
-
-  const tabs = computed(() => [
-    { id: "basic", label: t("settings.characterInfo.tabs.basic") },
-    { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
-    { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
-    { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
-    { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
-    { id: "pet", label: t("settings.characterInfo.tabs.pet") },
-    { id: "voice", label: t("settings.characterInfo.tabs.voice") },
-  ]);
-
-  const voiceModelKeys = [
-    "sva_speaker_id",
-    "sbv2_name",
-    "sbv2_speaker_id",
-    "bv2_speaker_id",
-    "sbv2api_name",
-    "sbv2api_speaker_id",
-    "gsv_voice_text",
-    "gsv_voice_filename",
-    "gsv_gpt_model_name",
-    "gsv_sovits_model_name",
-    "aivis_model_uuid",
-    "opentts_voice",
-    "fish_s2_voice",
-    "cosyvoice_voice_id",
-  ] as const;
-
-  // --- Schema Definition ---
-
-  type FieldType = "text" | "number" | "textarea" | "select";
-
-  interface FieldOption {
-    label: string;
-    value: string;
-    visibleIf?: (settings: any) => boolean;
-  }
-
-  interface FieldSchema {
-    key: string;
-    label: string;
-    type: FieldType;
-    rows?: number;
-    step?: string;
-    placeholder?: string;
-    options?: FieldOption[];
-    // Dynamic options computed from refs/state. Overrides options when set.
-    dynamicOptions?: () => { label: string; value: string }[];
-    visibleIf?: (settings: any) => boolean;
-    isVoiceModel?: boolean;
-    realtime?: boolean;
-    // When set, the field reads/writes into localSettings.value[parent][key].
-    // The parent object is auto-initialised to {} on first write if missing.
-    parent?: string;
-  }
-
-  const resolveFieldOptions = (field: FieldSchema) => {
-    const options: FieldOption[] = field.dynamicOptions
-      ? field.dynamicOptions()
-      : (field.options ?? []);
-    return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
-  };
-
-  const schemas = computed<Record<string, FieldSchema[]>>(() => ({
-    basic: [
-      { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
-      { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
-      { key: "user_name", label: t("settings.characterInfo.fields.userName"), type: "text" },
-      {
-        key: "user_subtitle",
-        label: t("settings.characterInfo.fields.userSubtitle"),
-        type: "text",
-      },
-      { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
-      { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
-    ],
-    prompts: [
-      {
-        key: "system_prompt",
-        label: t("settings.characterInfo.fields.systemPrompt"),
-        type: "textarea",
-        rows: 10,
-      },
-      {
-        key: "system_prompt_example",
-        label: t("settings.characterInfo.fields.systemPromptExample"),
-        type: "textarea",
-        rows: 6,
-      },
-      {
-        key: "system_prompt_example_old",
-        label: t("settings.characterInfo.fields.systemPromptExampleOld"),
-        type: "textarea",
-        rows: 4,
-      },
-    ],
-    visuals: [
-      {
-        key: "scale",
-        label: t("settings.characterInfo.fields.scale"),
-        type: "number",
-        step: "0.01",
-      },
-      {
-        key: "offset_x",
-        label: t("settings.characterInfo.fields.offsetX"),
-        type: "number",
-        step: "0.1",
-      },
-      {
-        key: "offset_y",
-        label: t("settings.characterInfo.fields.offsetY"),
-        type: "number",
-        step: "0.1",
-      },
-      { key: "bubble_top", label: t("settings.characterInfo.fields.bubbleTop"), type: "number" },
-      { key: "bubble_left", label: t("settings.characterInfo.fields.bubbleLeft"), type: "number" },
-      {
-        key: "thinking_message",
-        label: t("settings.characterInfo.fields.thinkingMessage"),
-        type: "text",
-      },
-    ],
-    pet: [
-      {
-        key: "scale_p",
-        label: t("settings.characterInfo.fields.scaleP"),
-        type: "number",
-        step: "0.01",
-      },
-      {
-        key: "offset_x_p",
-        label: t("settings.characterInfo.fields.offsetXP"),
-        type: "number",
-        step: "0.1",
-      },
-      {
-        key: "offset_y_p",
-        label: t("settings.characterInfo.fields.offsetYP"),
-        type: "number",
-        step: "0.1",
-      },
-    ],
-    voice: [
-      {
-        key: "tts_type",
-        label: t("settings.characterInfo.fields.ttsType"),
-        type: "select",
-        realtime: true,
-        options: [
-          { label: "sva", value: "sva" },
-          { label: "sbv2", value: "sbv2" },
-          { label: "bv2", value: "bv2" },
-          { label: "sbv2api", value: "sbv2api" },
-          { label: "gsv", value: "gsv" },
-          { label: "aivis", value: "aivis" },
-          { label: "opentts", value: "opentts" },
-          { label: t("settings.characterInfo.fields.fishS2"), value: "fishs2" },
-          { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
-          { label: "indextts2", value: "indextts2" },
-          { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
-        ],
-      },
-
-      {
-        key: "voice_lang",
-        label: t("settings.characterInfo.fields.voiceLang"),
-        type: "select",
-        realtime: true,
-        options: [
-          // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
-          { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.en"),
-            value: "en",
-            visibleIf: (s) =>
-              ["gsv", "opentts", "sbv2", "sbv2api", "indextts2", "fishs2", "cosyvoice"].includes(
-                s.tts_type
-              ),
-          },
-          { label: t("settings.characterInfo.voiceLangOptions.ja"), value: "ja" },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.de"),
-            value: "de",
-            visibleIf: (s) => s.tts_type === "cosyvoice",
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.fr"),
-            value: "fr",
-            visibleIf: (s) => s.tts_type === "cosyvoice",
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.ru"),
-            value: "ru",
-            visibleIf: (s) => s.tts_type === "cosyvoice",
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.ko"),
-            value: "ko",
-            visibleIf: (s) => ["gsv", "opentts", "cosyvoice"].includes(s.tts_type),
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.pt"),
-            value: "pt",
-            visibleIf: (s) => s.tts_type === "cosyvoice",
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.es"),
-            value: "es",
-            visibleIf: (s) => s.tts_type === "indextts2",
-          },
-          {
-            label: t("settings.characterInfo.voiceLangOptions.ar"),
-            value: "ar",
-            visibleIf: (s) => s.tts_type === "indextts2",
-          },
-        ],
-      },
-
-      {
-        // 中文方言:仅语音克隆TTS + 中文时可选
-        // （v3.5-flash 官方支持的 16 种方言:普通话 + 广东/东北/甘肃/贵州/河南/湖北/江西/
-        //   闽南/宁夏/山西/陕西/山东/上海/四川/天津/云南）
-        key: "voice_dialect",
-        label: t("settings.characterInfo.fields.voiceDialect"),
-        type: "select",
-        realtime: true,
-        options: [
-          { label: t("settings.characterInfo.dialectOptions.mandarin"), value: "" },
-          { label: t("settings.characterInfo.dialectOptions.cantonese"), value: "广东话" },
-          { label: t("settings.characterInfo.dialectOptions.dongbei"), value: "东北话" },
-          { label: t("settings.characterInfo.dialectOptions.gansu"), value: "甘肃话" },
-          { label: t("settings.characterInfo.dialectOptions.guizhou"), value: "贵州话" },
-          { label: t("settings.characterInfo.dialectOptions.henan"), value: "河南话" },
-          { label: t("settings.characterInfo.dialectOptions.hubei"), value: "湖北话" },
-          { label: t("settings.characterInfo.dialectOptions.jiangxi"), value: "江西话" },
-          { label: t("settings.characterInfo.dialectOptions.fujian"), value: "闽南话" },
-          { label: t("settings.characterInfo.dialectOptions.ningxia"), value: "宁夏话" },
-          { label: t("settings.characterInfo.dialectOptions.shanxi"), value: "山西话" },
-          { label: t("settings.characterInfo.dialectOptions.shaanxi"), value: "陕西话" },
-          { label: t("settings.characterInfo.dialectOptions.shandong"), value: "山东话" },
-          { label: t("settings.characterInfo.dialectOptions.shanghai"), value: "上海话" },
-          { label: t("settings.characterInfo.dialectOptions.sichuan"), value: "四川话" },
-          { label: t("settings.characterInfo.dialectOptions.tianjin"), value: "天津话" },
-          { label: t("settings.characterInfo.dialectOptions.yunnan"), value: "云南话" },
-        ],
-        visibleIf: (s) => s.tts_type === "cosyvoice" && s.voice_lang === "zh",
-      },
-
-      {
-        key: "sva_speaker_id",
-        label: "sva_speaker_id",
-        type: "text",
-        isVoiceModel: true,
-        visibleIf: (s) => s.tts_type === "sva",
-      },
-
-      {
-        key: "sbv2_name",
-        label: "sbv2_name",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "sbv2",
-      },
-      {
-        key: "sbv2_speaker_id",
-        label: "sbv2_speaker_id",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "sbv2",
-      },
-
-      {
-        key: "bv2_speaker_id",
-        label: "bv2_speaker_id",
-        type: "text",
-        isVoiceModel: true,
-        visibleIf: (s) => s.tts_type === "bv2",
-      },
-
-      {
-        key: "sbv2api_name",
-        label: "sbv2api_name",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "sbv2api",
-      },
-      {
-        key: "sbv2api_speaker_id",
-        label: "sbv2api_speaker_id",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "sbv2api",
-      },
-
-      {
-        key: "gsv_voice_text",
-        label: "gsv_voice_text",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
-      },
-      {
-        key: "gsv_voice_filename",
-        label: "gsv_voice_filename",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
-      },
-      {
-        key: "gsv_gpt_model_name",
-        label: "gsv_gpt_model_name",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
-      },
-      {
-        key: "gsv_sovits_model_name",
-        label: "gsv_sovits_model_name",
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        visibleIf: (s) => s.tts_type === "gsv",
-      },
-
-      {
-        key: "opentts_voice",
-        label: t("settings.characterInfo.fields.openttsVoice"),
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        placeholder: t("settings.characterInfo.placeholders.openttsVoice"),
-        visibleIf: (s) => s.tts_type === "opentts",
-      },
-
-      {
-        key: "aivis_model_uuid",
-        label: "aivis_model_uuid",
-        type: "text",
-        isVoiceModel: true,
-        visibleIf: (s) => s.tts_type === "aivis",
-      },
-
-      {
-        key: "fish_s2_voice",
-        label: t("settings.characterInfo.fields.fishS2Voice"),
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        placeholder: t("settings.characterInfo.placeholders.fishS2Voice"),
-        visibleIf: (s) => s.tts_type === "fishs2",
-      },
-
-      // --- 云端语音克隆 (cosyvoice) ---
-      {
-        key: "cosyvoice_voice_id",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.cosyVoiceVoice"),
-        type: "select",
-        realtime: true,
-        dynamicOptions: () =>
-          cloudVoices.value.length === 0
-            ? [{ label: t("settings.characterInfo.fields.noCloudVoice"), value: "" }]
-            : cloudVoices.value.map((voice) => ({
-                label: voice.name ? `${voice.name} (${voice.voice_id})` : voice.voice_id,
-                value: voice.voice_id,
-              })),
-        visibleIf: (s) => s.tts_type === "cosyvoice",
-      },
-
-      // --- Local SBV2 (localsbv2api) ---
-      {
-        key: "sbv2_local_voice_id",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.localVoiceId"),
-        type: "select",
-        dynamicOptions: () =>
-          installedVoices.value.length === 0
-            ? [{ label: t("settings.characterInfo.fields.noLocalModel"), value: "" }]
-            : installedVoices.value.map((voice) => ({
-                label: voice.display_name
-                  ? `${voice.display_name} (${voice.voice_id})`
-                  : voice.voice_id,
-                value: voice.voice_id,
-              })),
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_speaker_id",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.speakerId"),
-        type: "number",
-        step: "1",
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_style_id",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.styleId"),
-        type: "number",
-        step: "1",
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_length_scale",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.lengthScale"),
-        type: "number",
-        step: "0.05",
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_sdp_ratio",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.sdpRatio"),
-        type: "number",
-        step: "0.05",
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_cloud_fallback_model",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.cloudFallbackModel"),
-        type: "text",
-        placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "sbv2_local_cloud_fallback_speaker_id",
-        parent: "voice_models",
-        label: t("settings.characterInfo.fields.cloudFallbackSpeakerId"),
-        type: "text",
-        placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
-        visibleIf: (s) => s.tts_type === "localsbv2api",
-      },
-      {
-        key: "opentts_voice",
-        label: t("settings.characterInfo.fields.openttsVoiceLabel"),
-        type: "text",
-        isVoiceModel: true,
-        realtime: true,
-        placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
-        visibleIf: (s) => s.tts_type === "opentts",
-      },
-    ],
-  }));
-
-  // --- Computed Properties ---
-
-  const currentTabConfig = computed(() => schemas.value[activeTab.value]);
-
-  // voice model 子区域已移除，所有字段统一在主表单渲染
-  const currentTabFields = computed(() => {
-    const fields = currentTabConfig.value || [];
-    // 过滤掉当前不可见的字段（visibleIf 为 false），避免留下空 div 占位
-    return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
-  });
-
-  const ensureVoiceModels = () => {
-    if (
-      !localSettings.value.voice_models ||
-      typeof localSettings.value.voice_models !== "object" ||
-      Array.isArray(localSettings.value.voice_models)
-    ) {
-      localSettings.value.voice_models = {};
-    }
-    return localSettings.value.voice_models as Record<string, unknown>;
-  };
-
-  const migrateLegacyVoiceModelFields = () => {
-    const voiceModels = ensureVoiceModels();
-    for (const key of voiceModelKeys) {
-      const legacyValue = localSettings.value[key];
-      if ((voiceModels[key] === undefined || voiceModels[key] === null) && legacyValue != null) {
-        voiceModels[key] = legacyValue;
-      }
-      delete localSettings.value[key];
-    }
-  };
-
-  const fieldModel = (field: FieldSchema) => {
-    return computed({
-      get: () => {
-        let target: any;
-        if (field.parent) {
-          const parentObj = localSettings.value[field.parent];
-          target =
-            parentObj && typeof parentObj === "object"
-              ? parentObj
-              : (localSettings.value[field.parent] = {});
-        } else if (field.isVoiceModel) {
-          target = ensureVoiceModels();
-        } else {
-          target = localSettings.value;
-        }
-        return target[field.key];
-      },
-      set: (val: any) => {
-        const coerced = field.type === "number" ? Number(val) : val;
-        let target: any;
-        if (field.parent) {
-          if (
-            !localSettings.value[field.parent] ||
-            typeof localSettings.value[field.parent] !== "object"
-          ) {
-            localSettings.value[field.parent] = {};
-          }
-          target = localSettings.value[field.parent];
-        } else if (field.isVoiceModel) {
-          target = ensureVoiceModels();
-        } else {
-          target = localSettings.value;
-        }
-        target[field.key] = coerced;
-      },
     });
-  };
 
-  const clothesList = computed({
-    get: () => {
-      if (!Array.isArray(localSettings.value.clothes)) {
-        localSettings.value.clothes = [];
-      }
-      return localSettings.value.clothes as Array<{ name: string; prompt: string }>;
+    // 通知父组件刷新列表 + 关闭弹窗
+    emit("saved");
+    emit("close");
+  } catch (error: any) {
+    console.error("[SettingsCharacterInfo] 删除角色失败:", error);
+    uiStore.showError({
+      title: t("settings.characterInfo.delete.failTitle"),
+      message: typeof error === "string" ? error : error?.message || "未知错误",
+    });
+  } finally {
+    deleting.value = false;
+  }
+};
+
+async function refreshLocalVoices(): Promise<void> {
+  try {
+    const snapshot = await TtsLocal.listInstalled();
+    installedVoices.value = snapshot.voices;
+  } catch (error) {
+    console.warn("refreshLocalVoices failed", error);
+    installedVoices.value = [];
+  }
+}
+
+async function refreshCloudVoices(): Promise<void> {
+  try {
+    cloudVoices.value = await TtsCosyvoice.listVoices();
+  } catch (error) {
+    console.warn("refreshCloudVoices failed", error);
+    cloudVoices.value = [];
+  }
+}
+
+const tabs = computed(() => [
+  { id: "basic", label: t("settings.characterInfo.tabs.basic") },
+  { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
+  { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
+  { id: "avatars", label: t("settings.avatars.title") },
+  { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
+  { id: "touch", label: t("settings.characterInfo.tabs.touch") },
+  { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
+  { id: "pet", label: t("settings.characterInfo.tabs.pet") },
+  { id: "voice", label: t("settings.characterInfo.tabs.voice") },
+]);
+
+const voiceModelKeys = [
+  "sva_speaker_id",
+  "sbv2_name",
+  "sbv2_speaker_id",
+  "bv2_speaker_id",
+  "sbv2api_name",
+  "sbv2api_speaker_id",
+  "gsv_voice_text",
+  "gsv_voice_filename",
+  "gsv_gpt_model_name",
+  "gsv_sovits_model_name",
+  "aivis_model_uuid",
+  "opentts_voice",
+  "fish_s2_voice",
+  "cosyvoice_voice_id",
+] as const;
+
+// --- Schema Definition ---
+
+type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch";
+
+interface FieldOption {
+  label: string;
+  value: string;
+  visibleIf?: (settings: any) => boolean;
+}
+
+interface FieldSchema {
+  key: string;
+  label: string;
+  type: FieldType;
+  rows?: number;
+  step?: string;
+  placeholder?: string;
+  options?: FieldOption[];
+  // Dynamic options computed from refs/state. Overrides options when set.
+  dynamicOptions?: () => { label: string; value: string }[];
+  // One-line explainer rendered under the control (switch fields especially need it)
+  hint?: string;
+  visibleIf?: (settings: any) => boolean;
+  isVoiceModel?: boolean;
+  // When set, the field reads/writes into localSettings.value[parent][key].
+  // The parent object is auto-initialised to {} on first write if missing.
+  parent?: string;
+}
+
+const resolveFieldOptions = (field: FieldSchema) => {
+  const options: FieldOption[] = field.dynamicOptions
+    ? field.dynamicOptions()
+    : (field.options ?? []);
+  return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
+};
+
+// 主对话/桌宠形象共用的两个选项。value 是落盘的协议值（settings.yml 的
+// avatar_mode / avatar_mode_p），按 docs/i18n.md 只翻译标签、不翻译取值。
+const avatarModeOptions = computed<FieldOption[]>(() => [
+  { label: t("settings.characterInfo.avatarModeOptions.live2d"), value: "live2d" },
+  { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
+]);
+
+const schemas = computed<Record<string, FieldSchema[]>>(() => ({
+  basic: [
+    { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
+    { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
+    { key: "user_name", label: t("settings.characterInfo.fields.userName"), type: "text" },
+    {
+      key: "user_subtitle",
+      label: t("settings.characterInfo.fields.userSubtitle"),
+      type: "text",
     },
-    set: (val) => {
-      localSettings.value.clothes = val;
+    { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
+    { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
+  ],
+  prompts: [
+    {
+      key: "system_prompt",
+      label: t("settings.characterInfo.fields.systemPrompt"),
+      type: "textarea",
+      rows: 10,
+    },
+    {
+      key: "system_prompt_example",
+      label: t("settings.characterInfo.fields.systemPromptExample"),
+      type: "examples",
+      rows: 6,
+    },
+    {
+      key: "system_prompt_example_old",
+      label: t("settings.characterInfo.fields.systemPromptExampleOld"),
+      type: "examples",
+      rows: 4,
+    },
+  ],
+  visuals: [
+    {
+      key: "avatar_mode",
+      label: t("settings.characterInfo.fields.avatarMode"),
+      type: "select",
+      // 没有 Live2D 模型时只有「静态立绘」一种可能，整项隐藏（schemas 是 computed，
+      // 在本弹窗的 Live2D tab 导入模型后回到本 tab 会自动出现）
+      visibleIf: (s) => Boolean(s.live2d),
+      options: avatarModeOptions.value,
+    },
+    {
+      key: "scale",
+      label: t("settings.characterInfo.fields.scale"),
+      type: "number",
+      step: "0.01",
+    },
+    {
+      key: "offset_x",
+      label: t("settings.characterInfo.fields.offsetX"),
+      type: "number",
+      step: "0.1",
+    },
+    {
+      key: "offset_y",
+      label: t("settings.characterInfo.fields.offsetY"),
+      type: "number",
+      step: "0.1",
+    },
+    { key: "bubble_top", label: t("settings.characterInfo.fields.bubbleTop"), type: "number" },
+    { key: "bubble_left", label: t("settings.characterInfo.fields.bubbleLeft"), type: "number" },
+    {
+      key: "thinking_message",
+      label: t("settings.characterInfo.fields.thinkingMessage"),
+      type: "text",
+    },
+  ],
+  pet: [
+    {
+      key: "avatar_mode_p",
+      label: t("settings.characterInfo.fields.avatarModeP"),
+      type: "select",
+      visibleIf: (s) => Boolean(s.live2d),
+      options: avatarModeOptions.value,
+    },
+    {
+      key: "pet_frameless",
+      label: t("settings.characterInfo.fields.petFrameless"),
+      type: "switch",
+      hint: t("settings.characterInfo.fields.petFramelessHint"),
+    },
+    {
+      key: "scale_p",
+      label: t("settings.characterInfo.fields.scaleP"),
+      type: "number",
+      step: "0.01",
+    },
+    {
+      key: "offset_x_p",
+      label: t("settings.characterInfo.fields.offsetXP"),
+      type: "number",
+      step: "0.1",
+    },
+    {
+      key: "offset_y_p",
+      label: t("settings.characterInfo.fields.offsetYP"),
+      type: "number",
+      step: "0.1",
+    },
+  ],
+  voice: [
+    {
+      key: "tts_type",
+      label: t("settings.characterInfo.fields.ttsType"),
+      type: "select",
+      options: [
+        { label: "sva", value: "sva-vits" },
+        { label: "sbv2", value: "sbv2" },
+        { label: "bv2", value: "sva-bv2" },
+        { label: "sbv2api", value: "sbv2api" },
+        { label: "gsv", value: "gsv" },
+        { label: "aivis", value: "aivis" },
+        { label: "opentts", value: "opentts" },
+        { label: t("settings.characterInfo.fields.fishS2"), value: "fishs2" },
+        { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
+        { label: "indextts2", value: "indextts2" },
+        { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
+      ],
+    },
+
+    {
+      key: "voice_lang",
+      label: t("settings.characterInfo.fields.voiceLang"),
+      type: "select",
+      options: [
+        // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
+        { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.en"),
+          value: "en",
+          visibleIf: (s) =>
+            ["gsv", "opentts", "sbv2", "sbv2api", "indextts2", "fishs2", "cosyvoice"].includes(
+              s.tts_type,
+            ),
+        },
+        { label: t("settings.characterInfo.voiceLangOptions.ja"), value: "ja" },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.de"),
+          value: "de",
+          visibleIf: (s) => s.tts_type === "cosyvoice",
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.fr"),
+          value: "fr",
+          visibleIf: (s) => s.tts_type === "cosyvoice",
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.ru"),
+          value: "ru",
+          visibleIf: (s) => s.tts_type === "cosyvoice",
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.ko"),
+          value: "ko",
+          visibleIf: (s) => ["gsv", "opentts", "cosyvoice"].includes(s.tts_type),
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.pt"),
+          value: "pt",
+          visibleIf: (s) => s.tts_type === "cosyvoice",
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.es"),
+          value: "es",
+          visibleIf: (s) => s.tts_type === "indextts2",
+        },
+        {
+          label: t("settings.characterInfo.voiceLangOptions.ar"),
+          value: "ar",
+          visibleIf: (s) => s.tts_type === "indextts2",
+        },
+      ],
+    },
+
+    {
+      // 中文方言:仅语音克隆TTS + 中文时可选
+      // （v3.5-flash 官方支持的 16 种方言:普通话 + 广东/东北/甘肃/贵州/河南/湖北/江西/
+      //   闽南/宁夏/山西/陕西/山东/上海/四川/天津/云南）
+      key: "voice_dialect",
+      label: t("settings.characterInfo.fields.voiceDialect"),
+      type: "select",
+      options: [
+        { label: t("settings.characterInfo.dialectOptions.mandarin"), value: "" },
+        { label: t("settings.characterInfo.dialectOptions.cantonese"), value: "广东话" },
+        { label: t("settings.characterInfo.dialectOptions.dongbei"), value: "东北话" },
+        { label: t("settings.characterInfo.dialectOptions.gansu"), value: "甘肃话" },
+        { label: t("settings.characterInfo.dialectOptions.guizhou"), value: "贵州话" },
+        { label: t("settings.characterInfo.dialectOptions.henan"), value: "河南话" },
+        { label: t("settings.characterInfo.dialectOptions.hubei"), value: "湖北话" },
+        { label: t("settings.characterInfo.dialectOptions.jiangxi"), value: "江西话" },
+        { label: t("settings.characterInfo.dialectOptions.fujian"), value: "闽南话" },
+        { label: t("settings.characterInfo.dialectOptions.ningxia"), value: "宁夏话" },
+        { label: t("settings.characterInfo.dialectOptions.shanxi"), value: "山西话" },
+        { label: t("settings.characterInfo.dialectOptions.shaanxi"), value: "陕西话" },
+        { label: t("settings.characterInfo.dialectOptions.shandong"), value: "山东话" },
+        { label: t("settings.characterInfo.dialectOptions.shanghai"), value: "上海话" },
+        { label: t("settings.characterInfo.dialectOptions.sichuan"), value: "四川话" },
+        { label: t("settings.characterInfo.dialectOptions.tianjin"), value: "天津话" },
+        { label: t("settings.characterInfo.dialectOptions.yunnan"), value: "云南话" },
+      ],
+      visibleIf: (s) => s.tts_type === "cosyvoice" && s.voice_lang === "zh",
+    },
+
+    {
+      key: "sva_speaker_id",
+      label: "sva_speaker_id",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sva-vits",
+    },
+
+    {
+      key: "sbv2_name",
+      label: "sbv2_name",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sbv2",
+    },
+    {
+      key: "sbv2_speaker_id",
+      label: "sbv2_speaker_id",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sbv2",
+    },
+
+    {
+      key: "bv2_speaker_id",
+      label: "bv2_speaker_id",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sva-bv2",
+    },
+
+    {
+      key: "sbv2api_name",
+      label: "sbv2api_name",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sbv2api",
+    },
+    {
+      key: "sbv2api_speaker_id",
+      label: "sbv2api_speaker_id",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "sbv2api",
+    },
+
+    {
+      key: "gsv_voice_text",
+      label: "gsv_voice_text",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "gsv",
+    },
+    {
+      key: "gsv_voice_filename",
+      label: "gsv_voice_filename",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "gsv",
+    },
+    {
+      key: "gsv_gpt_model_name",
+      label: "gsv_gpt_model_name",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "gsv",
+    },
+    {
+      key: "gsv_sovits_model_name",
+      label: "gsv_sovits_model_name",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "gsv",
+    },
+
+    {
+      key: "opentts_voice",
+      label: t("settings.characterInfo.fields.openttsVoice"),
+      type: "text",
+      isVoiceModel: true,
+      placeholder: t("settings.characterInfo.placeholders.openttsVoice"),
+      visibleIf: (s) => s.tts_type === "opentts",
+    },
+
+    {
+      key: "aivis_model_uuid",
+      label: "aivis_model_uuid",
+      type: "text",
+      isVoiceModel: true,
+      visibleIf: (s) => s.tts_type === "aivis",
+    },
+
+    {
+      key: "fish_s2_voice",
+      label: t("settings.characterInfo.fields.fishS2Voice"),
+      type: "text",
+      isVoiceModel: true,
+      placeholder: t("settings.characterInfo.placeholders.fishS2Voice"),
+      visibleIf: (s) => s.tts_type === "fishs2",
+    },
+
+    // --- 云端语音克隆 (cosyvoice) ---
+    {
+      key: "cosyvoice_voice_id",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.cosyVoiceVoice"),
+      type: "select",
+      dynamicOptions: () =>
+        cloudVoices.value.length === 0
+          ? [{ label: t("settings.characterInfo.fields.noCloudVoice"), value: "" }]
+          : cloudVoices.value.map((voice) => ({
+              label: voice.name ? `${voice.name} (${voice.voice_id})` : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === "cosyvoice",
+    },
+
+    // --- Local SBV2 (localsbv2api) ---
+    {
+      key: "sbv2_local_voice_id",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.localVoiceId"),
+      type: "select",
+      dynamicOptions: () =>
+        installedVoices.value.length === 0
+          ? [{ label: t("settings.characterInfo.fields.noLocalModel"), value: "" }]
+          : installedVoices.value.map((voice) => ({
+              label: voice.display_name
+                ? `${voice.display_name} (${voice.voice_id})`
+                : voice.voice_id,
+              value: voice.voice_id,
+            })),
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_speaker_id",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.speakerId"),
+      type: "number",
+      step: "1",
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_style_id",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.styleId"),
+      type: "number",
+      step: "1",
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_length_scale",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.lengthScale"),
+      type: "number",
+      step: "0.05",
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_sdp_ratio",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.sdpRatio"),
+      type: "number",
+      step: "0.05",
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_cloud_fallback_model",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.cloudFallbackModel"),
+      type: "text",
+      placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "sbv2_local_cloud_fallback_speaker_id",
+      parent: "voice_models",
+      label: t("settings.characterInfo.fields.cloudFallbackSpeakerId"),
+      type: "text",
+      placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
+      visibleIf: (s) => s.tts_type === "localsbv2api",
+    },
+    {
+      key: "opentts_voice",
+      label: t("settings.characterInfo.fields.openttsVoiceLabel"),
+      type: "text",
+      isVoiceModel: true,
+      placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
+      visibleIf: (s) => s.tts_type === "opentts",
+    },
+  ],
+}));
+
+// --- Computed Properties ---
+
+const currentTabConfig = computed(() => schemas.value[activeTab.value]);
+
+// voice model 子区域已移除，所有字段统一在主表单渲染
+const currentTabFields = computed(() => {
+  const fields = currentTabConfig.value || [];
+  // 过滤掉当前不可见的字段（visibleIf 为 false），避免留下空 div 占位
+  return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
+});
+
+const ensureVoiceModels = () => {
+  if (
+    !localSettings.value.voice_models ||
+    typeof localSettings.value.voice_models !== "object" ||
+    Array.isArray(localSettings.value.voice_models)
+  ) {
+    localSettings.value.voice_models = {};
+  }
+  return localSettings.value.voice_models as Record<string, unknown>;
+};
+
+const migrateLegacyVoiceModelFields = () => {
+  const voiceModels = ensureVoiceModels();
+  for (const key of voiceModelKeys) {
+    const legacyValue = localSettings.value[key];
+    if ((voiceModels[key] === undefined || voiceModels[key] === null) && legacyValue != null) {
+      voiceModels[key] = legacyValue;
+    }
+    delete localSettings.value[key];
+  }
+};
+
+// --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
+
+const GSV_EMO_CATEGORIES = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"] as const;
+
+const gsvEmoEnabled = computed({
+  get: () => Boolean(localSettings.value.voice_models?.gsv_emo_enabled),
+  set: (val: boolean) => {
+    ensureVoiceModels().gsv_emo_enabled = val;
+  },
+});
+
+const toggleGsvEmo = () => {
+  gsvEmoEnabled.value = !gsvEmoEnabled.value;
+};
+
+/** 分类参考值的读写入口，与 voice_models 下的平级字段同样只落草稿。 */
+const gsvEmoField = (cat: string, key: "gsv_emo_texts" | "gsv_emo_voice_files") =>
+  computed({
+    get: () => (ensureVoiceModels()[key] as Record<string, string> | undefined)?.[cat] ?? "",
+    set: (val: string) => {
+      const voiceModels = ensureVoiceModels();
+      const map = (voiceModels[key] as Record<string, string> | undefined) ?? {};
+      map[cat] = val;
+      voiceModels[key] = map;
     },
   });
 
-  const addClothesItem = () => {
+const fieldModel = (field: FieldSchema) => {
+  return computed({
+    get: () => {
+      let target: any;
+      if (field.parent) {
+        const parentObj = localSettings.value[field.parent];
+        target =
+          parentObj && typeof parentObj === "object"
+            ? parentObj
+            : (localSettings.value[field.parent] = {});
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels();
+      } else {
+        target = localSettings.value;
+      }
+      return target[field.key];
+    },
+    set: (val: any) => {
+      const coerced = field.type === "number" ? Number(val) : val;
+      let target: any;
+      if (field.parent) {
+        if (
+          !localSettings.value[field.parent] ||
+          typeof localSettings.value[field.parent] !== "object"
+        ) {
+          localSettings.value[field.parent] = {};
+        }
+        target = localSettings.value[field.parent];
+      } else if (field.isVoiceModel) {
+        target = ensureVoiceModels();
+      } else {
+        target = localSettings.value;
+      }
+      target[field.key] = coerced;
+    },
+  });
+};
+
+const clothesList = computed({
+  get: () => {
     if (!Array.isArray(localSettings.value.clothes)) {
       localSettings.value.clothes = [];
     }
-    localSettings.value.clothes.push({ name: "", prompt: "" });
-  };
+    return localSettings.value.clothes as Array<{ name: string; prompt: string }>;
+  },
+  set: (val) => {
+    localSettings.value.clothes = val;
+  },
+});
 
-  const removeClothesItem = (idx: number) => {
-    if (Array.isArray(localSettings.value.clothes)) {
-      localSettings.value.clothes.splice(idx, 1);
+// --- Watchers & Methods ---
+
+watch(
+  () => [props.visible, props.roleId] as const,
+  async ([newVal]) => {
+    const sequence = ++loadSequence;
+    if (!newVal) {
+      await discardDraft();
+      return;
     }
-  };
-
-  // --- Watchers & Methods ---
-
-  watch(
-    () => props.visible,
-    async (newVal) => {
-      if (!newVal) {
-        clearRealtimeSaveTimer();
-      }
-      if (newVal && props.roleId) {
-        loading.value = true;
-        try {
-          const data = await getRoleSettings(props.roleId);
-          localSettings.value = JSON.parse(JSON.stringify(data));
-          migrateLegacyVoiceModelFields();
-          if (!localSettings.value.voice_lang) {
-            localSettings.value.voice_lang = "ja";
-          }
-        } catch (e) {
-          console.error("Failed to load character settings", e);
-          emit("close");
-        } finally {
-          loading.value = false;
-        }
-      }
-    }
-  );
-
-  // Refresh installed local voices whenever the voice tab is shown while the
-  // dialog is visible. The dropdown only matters when tts_type=localsbv2api,
-  // but loading early keeps things simple and the list is cheap to fetch.
-  watch(
-    () => [props.visible, activeTab.value, localSettings.value.tts_type],
-    ([visible, tab, ttsType]) => {
-      if (visible && tab === "voice") {
-        // 本地 TTS 音色:仅 localsbv2api 需要
-        if (ttsType === "localsbv2api") {
-          void refreshLocalVoices();
-        }
-        // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
-        void refreshCloudVoices();
-      }
-    }
-  );
-
-  const REALTIME_SAVE_DEBOUNCE_MS = 300;
-  let realtimeSaveTimer: ReturnType<typeof setTimeout> | null = null;
-
-  const clearRealtimeSaveTimer = () => {
-    if (realtimeSaveTimer !== null) {
-      clearTimeout(realtimeSaveTimer);
-      realtimeSaveTimer = null;
-    }
-  };
-
-  const handleClose = () => {
-    clearRealtimeSaveTimer();
-    emit("close");
-  };
-
-  const handleFieldChange = (field: FieldSchema) => {
-    if (!field.realtime || !props.roleId) return;
-
-    // 防抖逻辑
-    const roleId = props.roleId;
-    clearRealtimeSaveTimer();
-    realtimeSaveTimer = setTimeout(async () => {
-      realtimeSaveTimer = null;
-      if (!props.visible || props.roleId !== roleId) return;
+    if (newVal && props.roleId) {
+      loading.value = true;
       try {
-        await updateRoleSettings(roleId, localSettings.value);
+        await discardDraft();
+        if (sequence !== loadSequence || !props.visible) return;
+        const roleId = props.roleId;
+        const draft = await beginCharacterEdit(roleId);
+        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+          await discardCharacterEdit(roleId, draft.edit_id);
+          return;
+        }
+        editId.value = draft.edit_id;
+        editRoleId.value = roleId;
+        resourceRevision.value = 0;
+        localSettings.value = JSON.parse(JSON.stringify(draft.settings));
+        migrateLegacyVoiceModelFields();
+        if (!localSettings.value.voice_lang) {
+          localSettings.value.voice_lang = "ja";
+        }
+        // 形象缺省值兜底：老配置里这两个键不存在，不回填的话 <select v-model> 没有
+        // 任何 option 匹配、会显示为空白。回填成 live2d 与实际渲染行为一致
+        // （`prefersLive2d` 也是「非 image 即 live2d」）。
+        if (!localSettings.value.avatar_mode) {
+          localSettings.value.avatar_mode = "live2d";
+        }
+        if (!localSettings.value.avatar_mode_p) {
+          localSettings.value.avatar_mode_p = "live2d";
+        }
+        baseline.value = JSON.stringify(localSettings.value);
+        draftClothes.value = [...(props.clothes ?? [])];
       } catch (e) {
-        console.error(`实时更新 ${field.key} 失败:`, e);
-        // 使用国际化
-        await dialogStore.alert(
-          t("settings.characterInfo.messages.realtimeUpdateFailed", { label: field.label })
-        );
+        console.error("Failed to load character settings", e);
+        emit("close");
+      } finally {
+        if (sequence === loadSequence) loading.value = false;
       }
-    }, REALTIME_SAVE_DEBOUNCE_MS);
-  };
-
-  const saveSettings = async () => {
-    if (!props.roleId) return;
-    clearRealtimeSaveTimer();
-    saving.value = true;
-    try {
-      await updateRoleSettings(props.roleId, localSettings.value);
-      const runtimeRole = gameStore.gameRoles[props.roleId];
-      if (runtimeRole) {
-        runtimeRole.live2d = localSettings.value.live2d
-          ? structuredClone(toRaw(localSettings.value.live2d))
-          : null;
-      }
-      emit("saved");
-      emit("close");
-    } catch (e) {
-      console.error("Failed to save settings", e);
-      await dialogStore.alert(t("settings.characterInfo.messages.saveFailed"));
-    } finally {
-      saving.value = false;
     }
-  };
+  },
+);
 
-  onUnmounted(clearRealtimeSaveTimer);
+// Refresh installed local voices whenever the voice tab is shown while the
+// dialog is visible. The dropdown only matters when tts_type=localsbv2api,
+// but loading early keeps things simple and the list is cheap to fetch.
+watch(
+  () => [props.visible, activeTab.value, localSettings.value.tts_type],
+  ([visible, tab, ttsType]) => {
+    if (visible && tab === "voice") {
+      // 本地 TTS 音色:仅 localsbv2api 需要
+      if (ttsType === "localsbv2api") {
+        void refreshLocalVoices();
+      }
+      // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
+      void refreshCloudVoices();
+    }
+  },
+);
+
+const handleClose = async () => {
+  if (saving.value || resourceBusy.value) return;
+  if (
+    !loading.value &&
+    hasChanges.value &&
+    !(await dialogStore.confirm(
+      t("settings.characterInfo.draft.discardMessage"),
+      t("settings.characterInfo.draft.discardTitle"),
+    ))
+  )
+    return;
+  ++loadSequence;
+  try {
+    await discardDraft();
+  } catch (error) {
+    console.error("清理角色草稿失败", error);
+  }
+  touchEditorVisible.value = false;
+  emit("close");
+};
+
+function openCostumeAvatars(name: string) {
+  avatarCostume.value = name;
+  activeTab.value = "avatars";
+}
+
+function onCostumeChanged(change: { oldName: string; newName: string }) {
+  if (avatarCostume.value === change.oldName) avatarCostume.value = change.newName;
+}
+
+function applySettingsToRuntime() {
+  if (!props.roleId) return;
+  const runtimeRole = gameStore.gameRoles[props.roleId];
+  if (runtimeRole) {
+    runtimeRole.scale = Number(localSettings.value.scale ?? 1);
+    runtimeRole.offsetX = Number(localSettings.value.offset_x ?? 0);
+    runtimeRole.offsetY = Number(localSettings.value.offset_y ?? 0);
+    runtimeRole.scaleP = Number(localSettings.value.scale_p ?? 1);
+    runtimeRole.offsetXP = Number(localSettings.value.offset_x_p ?? 0);
+    runtimeRole.offsetYP = Number(localSettings.value.offset_y_p ?? 0);
+    runtimeRole.bubbleTop = Number(localSettings.value.bubble_top ?? 5);
+    runtimeRole.bubbleLeft = Number(localSettings.value.bubble_left ?? 20);
+    runtimeRole.live2d = localSettings.value.live2d
+      ? structuredClone(toRaw(localSettings.value.live2d))
+      : null;
+    // 形象一并热更，保存后舞台立刻切换（Live2DStage 的 watch 依赖含这两个字段）
+    runtimeRole.avatarMode = localSettings.value.avatar_mode ?? null;
+    runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
+    // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
+    // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
+    runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
+    runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
+  }
+  const role = gameStore.gameRoles[props.roleId];
+  if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
+}
+
+/** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
+async function persistSettings(): Promise<boolean> {
+  if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  saving.value = true;
+  try {
+    await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
+    editId.value = undefined;
+    editRoleId.value = undefined;
+    applySettingsToRuntime();
+    return true;
+  } catch (e) {
+    console.error("Failed to save settings", e);
+    await dialogStore.alert(
+      t("settings.characterInfo.draft.saveFailed", {
+        error: e instanceof Error ? e.message : String(e),
+      }),
+    );
+    return false;
+  } finally {
+    saving.value = false;
+  }
+}
+
+const saveSettings = async () => {
+  if (await persistSettings()) {
+    emit("saved");
+    emit("close");
+  }
+};
+
+/** 子编辑器只应用到弹窗草稿，统一由底部保存提交。 */
+async function onTouchRegionsApply(value: Record<string, unknown>) {
+  if (Object.keys(value).length) localSettings.value.body_part = value;
+  else delete localSettings.value.body_part;
+  touchEditorVisible.value = false;
+}
+
+onUnmounted(() => {
+  ++loadSequence;
+  void discardDraft().catch(console.error);
+});
 </script>
 
 <style scoped>
-  /* 表单控件 :focus 选中状态 */
-  /* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
-  .tab-sidebar-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-  }
-  .tab-sidebar-scroll::-webkit-scrollbar {
-    width: 6px;
-  }
-  .tab-sidebar-scroll::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  .tab-sidebar-scroll::-webkit-scrollbar-thumb {
-    background: rgba(255, 255, 255, 0.18);
-    border-radius: 3px;
-  }
-  .tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.32);
-  }
+/* 表单控件 :focus 选中状态 */
+/* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
+.tab-sidebar-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar {
+  width: 6px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.18);
+  border-radius: 3px;
+}
+.tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.32);
+}
 
-  .form-control:focus {
-    border-color: #79d9ff;
-    background: rgba(0, 0, 0, 0.3);
-    box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
-  }
+.form-control:focus {
+  border-color: #79d9ff;
+  background: rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
+}
 </style>

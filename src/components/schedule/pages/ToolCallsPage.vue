@@ -8,8 +8,7 @@
     <div class="mb-6">
       <p class="mb-3 text-sm text-gray-300">{{ $t("ui.toolCalls.settingsMovedHint") }}</p>
       <div
-        class="bg-brand inline-flex cursor-pointer items-center gap-2 rounded-lg border-none px-5
-          py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
+        class="bg-brand inline-flex cursor-pointer items-center gap-2 rounded-lg border-none px-5 py-2.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-[#0056b3]"
         @click="goToToolSettings"
       >
         <Wrench :size="16" />
@@ -23,9 +22,7 @@
         <h3 class="text-brand font-bold">{{ $t("ui.toolCalls.historyTitle") }}</h3>
         <button
           v-if="recentToolCalls.length > 0"
-          class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/20 px-3
-            py-1.5 text-xs text-white/70 transition-colors duration-200 hover:bg-white/10
-            hover:text-white"
+          class="flex cursor-pointer items-center gap-1.5 rounded-lg border border-white/20 px-3 py-1.5 text-xs text-white/70 transition-colors duration-200 hover:bg-white/10 hover:text-white"
           @click="clearToolCallRecords"
         >
           <Trash2 :size="14" />
@@ -39,8 +36,7 @@
         <li
           v-for="(record, index) in recentToolCalls"
           :key="index"
-          class="cursor-pointer rounded-lg bg-white/5 px-3 py-2 text-sm transition-colors
-            duration-200 hover:bg-white/10"
+          class="cursor-pointer rounded-lg bg-white/5 px-3 py-2 text-sm transition-colors duration-200 hover:bg-white/10"
           @click="toggleExpand(index)"
         >
           <div class="flex items-center gap-3">
@@ -62,16 +58,14 @@
             <div>
               <p class="mb-1 text-xs text-gray-400">{{ $t("ui.toolCalls.detailArgs") }}</p>
               <pre
-                class="max-h-40 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all
-                  whitespace-pre-wrap text-white/80"
+                class="max-h-40 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all whitespace-pre-wrap text-white/80"
                 >{{ prettyJson(record.arguments) }}</pre
               >
             </div>
             <div>
               <p class="mb-1 text-xs text-gray-400">{{ $t("ui.toolCalls.detailResult") }}</p>
               <pre
-                class="max-h-60 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all
-                  whitespace-pre-wrap text-white/80"
+                class="max-h-60 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all whitespace-pre-wrap text-white/80"
                 >{{ prettyJson(record.result) }}</pre
               >
             </div>
@@ -83,50 +77,48 @@
 </template>
 
 <script setup lang="ts">
-  import { ref } from "vue";
-  import { useUIStore } from "@/stores/modules/ui/ui";
-  import {
-    recentToolCalls,
-    clearToolCallRecords,
-    toolDisplayName,
-    type ToolCallRecord,
-  } from "@/api/services/tool-settings";
-  import { CheckCircle2, XCircle, Wrench, Trash2, ChevronDown } from "lucide-vue-next";
-  import { i18n } from "@/locales";
+import { ref } from "vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  recentToolCalls,
+  clearToolCallRecords,
+  toolDisplayName,
+  type ToolCallRecord,
+} from "@/api/services/tool-settings";
+import { CheckCircle2, XCircle, Wrench, Trash2, ChevronDown } from "lucide-vue-next";
+import { i18n } from "@/locales";
 
-  const uiStore = useUIStore();
+const uiStore = useUIStore();
 
-  const toolLabel = toolDisplayName;
+const toolLabel = toolDisplayName;
 
-  // 展开详情：同一时间只展开一条记录
-  const expandedIndex = ref<number | null>(null);
+// 展开详情：同一时间只展开一条记录
+const expandedIndex = ref<number | null>(null);
 
-  const toggleExpand = (index: number) => {
-    expandedIndex.value = expandedIndex.value === index ? null : index;
-  };
+const toggleExpand = (index: number) => {
+  expandedIndex.value = expandedIndex.value === index ? null : index;
+};
 
-  // 无参工具的摘要会退化成 "{}"，显示为友好文案
-  const displaySummary = (record: ToolCallRecord) => {
-    const summary = record.summary.trim();
-    return summary === "{}" || summary === ""
-      ? i18n.global.t("ui.toolCalls.noArgs")
-      : record.summary;
-  };
+// 无参工具的摘要会退化成 "{}"，显示为友好文案
+const displaySummary = (record: ToolCallRecord) => {
+  const summary = record.summary.trim();
+  return summary === "{}" || summary === "" ? i18n.global.t("ui.toolCalls.noArgs") : record.summary;
+};
 
-  // 尝试把 JSON 字符串格式化展示，失败则原样返回
-  const prettyJson = (raw: string) => {
-    if (!raw) return "—";
-    try {
-      return JSON.stringify(JSON.parse(raw), null, 2);
-    } catch {
-      return raw;
-    }
-  };
+// 尝试把 JSON 字符串格式化展示，失败则原样返回
+const prettyJson = (raw: string) => {
+  if (!raw) return "—";
+  try {
+    return JSON.stringify(JSON.parse(raw), null, 2);
+  } catch {
+    return raw;
+  }
+};
 
-  // 跳转到「高级设置 → 工具配置」子标签（打开设置面板会自动遮住日程弹窗）
-  const goToToolSettings = () => {
-    uiStore.advanceTab = "tools";
-    uiStore.setSettingsTab("advance");
-    uiStore.toggleSettings(true);
-  };
+// 跳转到「高级设置 → 工具配置」子标签（打开设置面板会自动遮住日程弹窗）
+const goToToolSettings = () => {
+  uiStore.advanceTab = "tools";
+  uiStore.setSettingsTab("advance");
+  uiStore.toggleSettings(true);
+};
 </script>

@@ -82,7 +82,7 @@ export const useLlmProvidersStore = defineStore("llm-providers", {
     },
     async assignRole(
       role: "chat" | "translate" | "god_agent" | "vision",
-      providerId: string | null
+      providerId: string | null,
     ) {
       await setLlmRole(role, providerId);
       await this.load();

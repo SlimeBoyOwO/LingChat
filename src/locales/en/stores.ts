@@ -44,6 +44,11 @@ export default {
     notificationTitle: "LingChat Sedentary Reminder",
     notificationBody: "You've been sitting for a while — time to stretch a little!",
   },
+  proactiveReminder: {
+    minutesLater: '"{text}" is due in {count} min',
+    hoursLater: '"{text}" is due in {count} h',
+    daysLater: '"{text}" is due in {count} d',
+  },
   lanSync: {
     noPeerSelected: "No peer device selected",
     manualRestart: "Please restart the app manually to apply the synced files",

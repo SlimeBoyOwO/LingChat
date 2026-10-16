@@ -39,6 +39,7 @@ export enum WebSocketMessageTypes {
   SCRIPT_INPUT = "input", // 玩家输入
   SCRIPT_CHOICE = "choice", // 玩家选择分支
   SCRIPT_END = "script_end", // 剧本结束
+  SCRIPT_PROGRESS = "progress", // 剧本阅读锚点（引擎事件进度广播）
 
   SCRIPT_BACKGROUND_EFFECT = "background_effect",
   SCRIPT_MUSIC = "music",

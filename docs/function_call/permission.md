@@ -117,17 +117,25 @@ allowed_tools(source, role_name, all_names)
 ```text
 run_pipeline
    ├─ stream_with_tool_loop
-   │     allowed   = registry.allowed_tools(source, role_name)     // 第一次：算集合
-   │     definitions = registry.definitions_for_allowed(&allowed)   // 裁剪定义 → 下发给 LLM
-   │     context    = ToolContext::new(allowed)                      // 塞进执行上下文
+   │     base_allowed = registry.allowed_tools(source, role_name)   // 第一次：算权限集
+   │     allowed      = effective_allowed(base_allowed, tool_rag…)   // Tool RAG 收窄（省 token）
+   │     definitions  = registry.definitions_for_allowed(&allowed)   // 按收窄后的集下发定义
+   │     context      = ToolContext::new(allowed).with_base_allowed(base_allowed)
    │     ...
    │     executor.execute(name, args, &context)
-   │         ├─ context.allows(name) ?                              // 第二次：执行前复核
+   │         ├─ context.allows(name) ?   // 第二次：权限集 ∪ 本轮下发集
    │         └─ registry.get(name) → 执行
    └─ ...
 ```
 
-两次校验的意义：**LLM 视角（下发定义）** 与 **执行视角（放行集合）** 使用同一个允许集合，杜绝「定义下发时过滤了，执行时却能调」或反之的口径不一致。
+两次校验用**两个不同的集合**，这是有意的：
+
+- **下发**决定模型看得见哪些工具的完整参数表。开了 Tool RAG 时它被收窄成「常驻工具 + 检索激活的工具」，纯粹为省 token；
+- **放行**看**权限集并上本轮下发集**（`base_allowed ∪ allowed_tools`）：前者是真正的边界，后者兜住「下发了但不在权限集里」的那一个成员——`tool_search` 是检索入口，权限集非空时无条件注入，本身不在任何角色组的工具列表里（`effective_allowed` 的不变量就是 `⊆ base_allowed ∪ {tool_search}`）。
+
+两个集合刻意不同，因为**下发**不是边界：模型的记忆是持久的，激活缓存却只在进程内——重启之后模型依旧记得「我有 maid_sit_down」，若这时按「本轮没下发」拒掉，它只会回报玩家「工具被系统拦下来了」。权限集才是边界，收窄只会做减法，所以按权限放行不可能带来任何提权（见 [tool_rag.md](tool_rag.md) 的权限不变量）。
+
+模型调了一个本轮没下发的工具时，`tool_loop` 会顺手把它重新激活（`ToolRag::touch`），从下一轮起它的完整参数表重新下发——免得模型一直靠记忆里的旧 schema 猜参数。
 
 ## 7. 常见操作示例
 

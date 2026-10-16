@@ -39,6 +39,11 @@ export default {
     notificationTitle: "LingChat 久坐提醒",
     notificationBody: "久坐时间有点长，记得活动一下哦",
   },
+  proactiveReminder: {
+    minutesLater: "「{text}」还有 {count} 分钟就到截止时间了",
+    hoursLater: "「{text}」还有 {count} 小时就到截止时间了",
+    daysLater: "「{text}」还有 {count} 天就到截止时间了",
+  },
   lanSync: {
     noPeerSelected: "未选择对等设备",
     manualRestart: "请手动重启应用以应用同步文件",
