@@ -170,6 +170,50 @@
                 </div>
               </div>
 
+              <!-- 该角色对「我」的称呼/副标题：按「我的身份」分别设置，落到 user_aliases -->
+              <div v-if="activeTab === 'basic'" class="flex flex-col gap-2">
+                <label class="text-[13px] font-medium text-white/60">{{
+                  $t("settings.characterInfo.alias.identityLabel")
+                }}</label>
+                <SelectMenu v-model="aliasIdentityId" :options="aliasIdentityOptions" />
+
+                <template v-if="aliasIdentityId">
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.nameLabel")
+                  }}</label>
+                  <input
+                    v-model="aliasName"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.alias.namePlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.affectionLabel")
+                  }}</label>
+                  <input
+                    v-model.number="aliasInitialAffection"
+                    type="number"
+                    min="-100"
+                    max="100"
+                    :placeholder="$t('settings.characterInfo.alias.affectionPlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+                  <p class="text-[11px] leading-relaxed text-white/40">
+                    &lt; 0 {{ $t("settings.characterInfo.initialAffection.tiers.estranged") }} ·
+                    0-20 {{ $t("settings.characterInfo.initialAffection.tiers.initial") }} · 21-40
+                    {{ $t("settings.characterInfo.initialAffection.tiers.calm") }} · 41-60
+                    {{ $t("settings.characterInfo.initialAffection.tiers.familiar") }} · 61-80
+                    {{ $t("settings.characterInfo.initialAffection.tiers.deep") }} · 81-100
+                    {{ $t("settings.characterInfo.initialAffection.tiers.blazing") }}
+                  </p>
+
+                  <p class="text-[12px] leading-relaxed text-white/40">
+                    {{ $t("settings.characterInfo.alias.hint") }}
+                  </p>
+                </template>
+              </div>
+
               <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
               <div
                 v-if="activeTab === 'basic' && props.roleId"
@@ -185,18 +229,8 @@
                       {{ $t("settings.characterInfo.relations.hint") }}
                     </p>
                   </div>
-                  <button
-                    class="relation-btn shrink-0"
-                    :disabled="relationsSaving || relationsLoading"
-                    @click="saveRelations"
-                  >
-                    {{
-                      relationsSaving
-                        ? $t("settings.shared.loading")
-                        : $t("settings.characterInfo.relations.save")
-                    }}
-                  </button>
                 </div>
+
                 <div v-if="relationsLoading" class="text-xs text-white/40">
                   {{ $t("settings.shared.loading") }}
                 </div>
@@ -218,6 +252,13 @@
                   <button class="relation-btn" @click="addRelationRow">
                     {{ $t("settings.identity.addRelation") }}
                   </button>
+                  <!-- 空关系栏标红：不填会被对话就绪门拦下 -->
+                  <p
+                    v-if="relationRows.length === 0"
+                    class="text-xs leading-relaxed text-red-300/70"
+                  >
+                    {{ $t("game.relationGuard.emptyWarn") }}
+                  </p>
                 </template>
               </div>
 
@@ -444,6 +485,11 @@ import {
   type PlayerIdentitySummary,
 } from "../../../api/services/player-identity";
 import type { Character as ApiCharacter } from "../../../types";
+import {
+  useRelationEditor,
+  type RelationTargetOption,
+} from "../../../composables/useRelationEditor";
+import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
@@ -1212,48 +1258,80 @@ const removeClothesItem = (idx: number) => {
   }
 };
 
-// 关系（AI 角色视角）：读写独立的 relations.yml，与底部保存按钮互不影响
-interface RelationTarget {
-  value: string;
-  label: string;
-  group: "ai" | "me";
-}
+const playerIdentities = ref<PlayerIdentitySummary[]>([]);
+const aliasIdentityId = ref("");
 
-const relationTargets = ref<RelationTarget[]>([]);
-/** 编辑中的关系行（目标 + 文本）；保存时折成 {关系键: 文本} 映射 */
-const relationRows = ref<{ target: string; text: string }[]>([]);
-const relationsLoading = ref(false);
-const relationsSaving = ref(false);
+const aliasIdentityOptions = computed(() => [
+  { label: t("settings.characterInfo.alias.noneOption"), value: "" },
+  ...playerIdentities.value.map((identity) => ({ label: identity.name, value: identity.id })),
+]);
 
-/** 目标已不存在时保留原值并标注 */
-const isMissingTarget = (target: string) =>
-  !!target && !relationTargets.value.some((t) => t.value === target);
+/** user_aliases 条目形状；initial_affection 为该身份专享的初始好感度覆写（null = 用卡片默认） */
+type UserAliasEntry = { name: string; subtitle: string; initial_affection?: number | null };
 
-/** 下拉选项：其他行已选过的目标置灰不可再选（本行当前值除外） */
-const relationOptionsFor = (row: { target: string }) => {
-  const used = new Set(relationRows.value.map((r) => r.target).filter(Boolean));
-  const options: { label: string; value: string; group?: string; disabled: boolean }[] =
-    relationTargets.value.map((item) => ({
-      label: item.label,
-      value: item.value,
-      group:
-        item.group === "ai"
-          ? t("settings.identity.targetAi")
-          : t("settings.identity.targetMe"),
-      disabled: item.value !== row.target && used.has(item.value),
-    }));
-  // 目标已被删除时保留原值，避免静默丢数据
-  if (isMissingTarget(row.target)) {
-    options.unshift({
-      label: t("settings.characterInfo.relations.missing", { key: row.target }),
-      value: row.target,
-      disabled: false,
-    });
+const aliasEntry = computed<UserAliasEntry | null>(() => {
+  const id = aliasIdentityId.value;
+  if (!id) return null;
+  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry> | undefined;
+  return map?.[id] ?? null;
+});
+
+const ensureAliasEntry = () => {
+  const id = aliasIdentityId.value;
+  if (!id) return null;
+  if (!localSettings.value.user_aliases || typeof localSettings.value.user_aliases !== "object") {
+    localSettings.value.user_aliases = {};
   }
-  return options;
+  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry>;
+  if (!map[id]) map[id] = { name: "", subtitle: "", initial_affection: null };
+  return map[id];
 };
 
-/** 下拉要覆盖全部角色，不只当前分页。 */
+const aliasName = computed({
+  get: () => aliasEntry.value?.name ?? "",
+  set: (value: string) => {
+    const entry = ensureAliasEntry();
+    if (entry) entry.name = value;
+  },
+});
+
+/** 该身份的初始好感度覆写；留空（""）表示用卡片默认值（保存为 null） */
+const aliasInitialAffection = computed<number | "">({
+  get: () => aliasEntry.value?.initial_affection ?? "",
+  set: (value) => {
+    const entry = ensureAliasEntry();
+    if (!entry) return;
+    entry.initial_affection =
+      typeof value === "number" && !Number.isNaN(value) ? Math.trunc(value) : null;
+  },
+});
+
+const loadPlayerIdentities = async () => {
+  try {
+    playerIdentities.value = await listPlayerIdentities();
+  } catch (e) {
+    console.error("读取身份列表失败:", e);
+    playerIdentities.value = [];
+  }
+};
+
+// 关系（AI 角色视角）：读写独立的 relations.yml，与底部保存按钮互不影响
+const relationTargets = ref<RelationTargetOption[]>([]);
+const {
+  rows: relationRows,
+  syncRows,
+  addRow,
+  removeRow: removeRelationRow,
+  fold: buildRelationsMap,
+  optionsFor: relationOptionsFor,
+} = useRelationEditor(relationTargets, (key) =>
+  t("settings.characterInfo.relations.missing", { key }),
+);
+const relationsLoading = ref(false);
+const relationsSaving = ref(false);
+/** 关系是否已成功加载；未成功时提交会跳过，避免把关系覆盖成空 */
+const relationsLoaded = ref(false);
+
 const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
   const pageSize = 100;
   const first = await characterGetAll(1, pageSize);
@@ -1275,7 +1353,6 @@ const loadRelations = async (roleId: number) => {
       listPlayerIdentities().catch(() => [] as PlayerIdentitySummary[]),
     ]);
 
-    // 排除本角色自己
     const selfFolder = localSettings.value?.character_folder as string | undefined;
     relationTargets.value = [
       ...chars
@@ -1283,19 +1360,18 @@ const loadRelations = async (roleId: number) => {
         .map((c) => ({
           value: aiKey(c.resource_folder as string),
           label: c.name,
-          group: "ai" as const,
+          group: t("settings.identity.targetAi"),
         })),
       ...identities.map((i) => ({
         value: meKey(i.id),
         label: i.name,
-        group: "me" as const,
+        group: t("settings.identity.targetMe"),
       })),
     ];
 
     const saved = await getRoleRelations(roleId);
-    relationRows.value = Object.entries(saved || {})
-      .filter(([target, text]) => !!target && !!text)
-      .map(([target, text]) => ({ target, text }));
+    syncRows(saved);
+    relationsLoaded.value = true;
   } catch (e: any) {
     console.error("读取角色关系失败:", e);
     uiStore.showError({
@@ -1303,40 +1379,28 @@ const loadRelations = async (roleId: number) => {
       message: typeof e === "string" ? e : e?.message || "",
     });
     relationRows.value = [];
+    relationsLoaded.value = false;
   } finally {
     relationsLoading.value = false;
   }
 };
 
 const addRelationRow = () => {
-  // 目标默认留空（不预选角色）；保存时空目标的行走丢弃逻辑
-  relationRows.value.push({ target: "", text: "" });
+  addRow();
 };
 
-const removeRelationRow = (idx: number) => {
-  relationRows.value.splice(idx, 1);
-};
-
-const saveRelations = async () => {
+const submitRelations = async (silent = false): Promise<void> => {
   const roleId = props.roleId;
   if (!roleId) return;
   relationsSaving.value = true;
   try {
-    // 空目标 / 空文本直接丢弃（后端也会再过滤一次）
-    const map: Record<string, string> = {};
-    for (const row of relationRows.value) {
-      if (row.target && row.text.trim()) map[row.target] = row.text.trim();
+    await saveRoleRelations(roleId, buildRelationsMap());
+    if (!silent) {
+      uiStore.showSuccess({
+        title: t("settings.characterInfo.relations.msg.savedTitle"),
+        message: t("settings.characterInfo.relations.msg.savedMsg"),
+      });
     }
-    await saveRoleRelations(roleId, map);
-    uiStore.showSuccess({
-      title: t("settings.characterInfo.relations.msg.savedTitle"),
-      message: t("settings.characterInfo.relations.msg.savedMsg"),
-    });
-  } catch (e: any) {
-    uiStore.showError({
-      title: t("settings.characterInfo.relations.msg.saveFailTitle"),
-      message: typeof e === "string" ? e : e?.message || "",
-    });
   } finally {
     relationsSaving.value = false;
   }
@@ -1349,6 +1413,7 @@ watch(
   async ([newVal]) => {
     const sequence = ++loadSequence;
     if (!newVal) {
+      relationsLoaded.value = false;
       await discardDraft();
       return;
     }
@@ -1372,6 +1437,9 @@ watch(
           localSettings.value.voice_lang = "ja";
         }
         // 关系单独放在 relations.yml（不在 localSettings 里），需要另取一次
+        relationsLoaded.value = false;
+        aliasIdentityId.value = gameStore.playerIdentityId ?? "";
+        void loadPlayerIdentities();
         void loadRelations(props.roleId);
         // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
         if (!localSettings.value.avatar_mode) {
@@ -1467,8 +1535,17 @@ function applySettingsToRuntime() {
 /** 落盘 + 运行时热更；返回是否成功 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  const confirmed = await confirmSaveEffect(
+    (save) => t("settings.characterInfo.saveConfirm", { save }),
+    t("settings.characterInfo.saveConfirmNoSave"),
+  );
+  if (!confirmed) return false;
   saving.value = true;
   try {
+    // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
+    if (relationsLoaded.value) {
+      await submitRelations(true);
+    }
     await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
     editId.value = undefined;
     editRoleId.value = undefined;
