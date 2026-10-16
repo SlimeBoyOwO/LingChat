@@ -1485,6 +1485,8 @@ export default {
     refPlayFailed: "Failed to preview the reference audio",
     refImportUnsupported:
       "Unrecognized audio format (mp3 / wav / flac / m4a and more are supported; Opus / WebM are not)",
+    refImportOpus:
+      "Opus-encoded audio is not supported yet (common in Telegram / WhatsApp voice messages and .webm). Please convert it to mp3 / wav / flac / m4a first",
     refImportTooLong: "The reference audio is too long. Please trim it and import a shorter clip",
     refImportFailed: "Failed to import reference audio",
     refImportHint:
