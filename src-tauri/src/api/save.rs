@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
+use crate::ai_service::game_system::save_service::{SaveService, SaveTarget};
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
@@ -128,71 +129,18 @@ pub async fn create_save(
     screenshot_path: Option<String>,
 ) -> Result<CreateSaveResponse, String> {
     let state = app.state::<AppState>();
-    let db = &state.db;
-
-    let mut service = state.ai_service.lock().await;
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 1. 创建 save 行
-    let save_model = SaveRepo::create_save(db, &title)
-        .await
-        .map_err(|e| format!("创建存档失败: {}", e))?;
-    let save_id = save_model.id;
+    let outcome = SaveService::save(&state.ai_service, SaveTarget::Create(title), None)
+        .await.map_err(|e| format!("创建存档失败: {e:#}"))?
+        .ok_or_else(|| "存档未提交".to_string())?;
+    let save_id = outcome.save_id;
 
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
         let _ = save_screenshot_file(save_id, path).await;
     }
 
-    // 2. 同步台词
-    if !lines.is_empty() {
-        SaveRepo::sync_lines(db, save_id, &lines)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-    }
-
-    // 3. 设置主角
-    if let Some(main_id) = service.game_status.lock().await.main_role_id {
-        SaveRepo::update_save_main_role(db, save_id, Some(main_id))
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
-    }
-
-    // 4. 写入 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 标记当前活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 6. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 7. 持久化剧本状态（若有）
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
-    }
-
-    // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
-    let baseline_hash = auto_save::hash_of_real_lines(&lines);
-    drop(service);
+    // 保存协调锁已释放，再获取自动存档管理器，避免反向取锁。
+    let baseline_hash = outcome.baseline_hash;
     state
         .auto_save_manager
         .lock()
@@ -209,6 +157,8 @@ pub async fn create_save(
 pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+    let saves = state.ai_service.lock().await.save_service.clone();
+    let save_guard = saves.gate.lock().await;
 
     let mut service = state.ai_service.lock().await;
 
@@ -268,6 +218,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let result = build_web_init_data(&service, &app).await?;
     // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
+    drop(save_guard);
     state
         .auto_save_manager
         .lock()
@@ -283,63 +234,16 @@ pub async fn update_save(
     screenshot_path: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let db = &state.db;
-
-    let mut service = state.ai_service.lock().await;
-
-    // 1. 校验存档存在
-    SaveRepo::get_save_by_id(db, save_id)
-        .await
-        .map_err(|e| format!("查询存档失败: {}", e))?
-        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+    let outcome = SaveService::save(&state.ai_service, SaveTarget::Update(save_id), None)
+        .await.map_err(|e| format!("保存失败: {e:#}"))?
+        .ok_or_else(|| "存档未提交".to_string())?;
 
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
         let _ = save_screenshot_file(save_id, path).await;
     }
 
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines)
-        .await
-        .map_err(|e| format!("同步台词失败: {}", e))?;
-
-    // 3. 标记活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 4. 更新 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 6. 持久化剧本状态
-    if let Some(ref script_status) = service.game_status.lock().await.script_status {
-        let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-        let _ = SaveRepo::upsert_running_script(
-            db,
-            save_id,
-            &script_status.folder_key,
-            &vars_json,
-            &script_status.current_chapter_key,
-            script_status.current_event_process,
-        )
-        .await
-        .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
-    }
-
-    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
-    let baseline_hash = auto_save::hash_of_real_lines(&lines);
-    drop(service);
+    let baseline_hash = outcome.baseline_hash;
     state
         .auto_save_manager
         .lock()
@@ -353,6 +257,8 @@ pub async fn update_save(
 pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+    let saves = state.ai_service.lock().await.save_service.clone();
+    let _save_guard = saves.gate.lock().await;
 
     let service = state.ai_service.lock().await;
 

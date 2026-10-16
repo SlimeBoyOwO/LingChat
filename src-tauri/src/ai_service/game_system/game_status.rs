@@ -15,6 +15,8 @@ use crate::utils::prompt::PromptRole;
 
 /// 存储所有运行时共享的游戏状态。
 pub struct GameStatus {
+    /// 会话替换后使旧存档任务的完成回写失效（不持久化）。
+    pub session_epoch: u64,
     pub player: Player,
 
     /// 台词列表，用于记忆构建和历史记忆
@@ -67,6 +69,7 @@ pub struct GameStatus {
 impl GameStatus {
     pub fn new(role_manager: GameRoleManager) -> Self {
         Self {
+            session_epoch: 0,
             player: Player::default(),
             line_list: Vec::new(),
             role_manager,

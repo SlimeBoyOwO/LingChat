@@ -23,6 +23,7 @@ pub struct AIService {
     pub db: DatabaseConnection,
     pub data_dir: PathBuf,
     pub game_status: Arc<Mutex<GameStatus>>,
+    pub save_service: Arc<crate::ai_service::game_system::save_service::SaveService>,
     pub config: AIServiceConfig,
 
     pub init_character_id: Option<i32>, // 注释：这个是用于标记游戏状态初始化角色的
@@ -66,6 +67,7 @@ impl AIService {
             db,
             data_dir,
             game_status,
+            save_service: Arc::new(Default::default()),
             config: AIServiceConfig::default(),
             init_character_id: None,
             prompt_options: None,
@@ -177,6 +179,7 @@ impl AIService {
 
     async fn clear_game_status(&mut self) {
         let mut gs = self.game_status.lock().await;
+        gs.session_epoch = gs.session_epoch.wrapping_add(1);
         gs.role_manager.invalidate_memory_history();
         gs.role_manager.reset_roles();
         gs.line_list.clear();
@@ -200,6 +203,7 @@ impl AIService {
             let mut gs = self.game_status.lock().await;
             gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
+            gs.session_epoch = gs.session_epoch.wrapping_add(1);
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
             }

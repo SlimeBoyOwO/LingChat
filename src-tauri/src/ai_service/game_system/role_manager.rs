@@ -570,6 +570,16 @@ impl GameRoleManager {
         vm.update_lang_and_refresh(&voice_cfg, &tts_type, &name, lang);
     }
 
+    /// 同步已经完成的压缩结果并复制记忆，不执行数据库 I/O。
+    pub fn snapshot_memory_banks(&mut self) -> Vec<(i32, crate::ai_service::types::GameMemoryBank)> {
+        for (rid, role) in &mut self.loaded_roles {
+            if let Some(sys) = self.memory_bank_systems.get(rid) {
+                sys.sync_to_role(role);
+            }
+        }
+        self.loaded_roles.iter().map(|(&rid, role)| (rid, role.memory_bank.clone())).collect()
+    }
+
     pub async fn persist_memory_banks_to_db(
         &mut self,
         db: &DatabaseConnection,
