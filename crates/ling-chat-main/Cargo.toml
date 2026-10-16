@@ -82,6 +82,12 @@ symphonia = { version = "0.5", default-features = false, features = [
     "wav",
 ] }
 hound = "3.5"
+# Opus 解码：symphonia 0.5 没有 Opus 解码器，而 `.ogg` / `.opus` 里塞 Opus 极常见
+# （Telegram / WhatsApp 的语音消息）。opusic-sys 默认 bundled：自带 libopus 源码、
+# 用 cmake 编成静态库，不需要预编译产物，也不用往 Android 的 jniLibs 塞 .so
+# （Android 交叉编译靠 ANDROID_NDK_HOME，见 scripts/resolve-android-ndk.mjs）。
+# 许可证 BSD-3-Clause，无 GPL 问题。
+opus = "0.4"
 
 # LAN Sync
 axum = { workspace = true }
@@ -153,3 +159,7 @@ sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 [target.'cfg(target_os = "android")'.dependencies]
 sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shared"] }
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
+
+[dev-dependencies]
+# 测试里自造 OGG/Opus 素材（配合 opus 的编码器），避免提交二进制 fixture。
+ogg = "0.9"
