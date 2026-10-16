@@ -64,6 +64,8 @@ export interface GameRole {
   thinkMessage: string;
   emotion: string;
   originalEmotion: string;
+  /** 情绪演出版号：新回复、情绪变化或连续第三次同情绪时递增。 */
+  emotionRevision?: number;
   scale: number;
   offsetY: number;
   offsetX: number;
