@@ -1737,6 +1737,8 @@ export default {
     refPlayFailed: "试听参考音频失败",
     refImportUnsupported:
       "无法识别的音频格式（支持 mp3 / wav / flac / m4a 等常见格式，Opus / WebM 暂不支持）",
+    refImportOpus:
+      "暂不支持 Opus 编码的音频（Telegram、WhatsApp 的语音消息和 .webm 常见），请先转成 mp3 / wav / flac / m4a 再导入",
     refImportTooLong: "参考音频过长，请截取其中较短的一段再导入",
     refImportFailed: "导入参考音频失败",
     refImportHint:

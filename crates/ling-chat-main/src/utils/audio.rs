@@ -10,7 +10,7 @@ use std::io::BufWriter;
 use std::path::Path;
 
 use symphonia::core::audio::SampleBuffer;
-use symphonia::core::codecs::DecoderOptions;
+use symphonia::core::codecs::{CODEC_TYPE_OPUS, DecoderOptions};
 use symphonia::core::errors::Error as SymphoniaError;
 use symphonia::core::formats::FormatOptions;
 use symphonia::core::io::MediaSourceStream;
@@ -29,6 +29,11 @@ pub enum TranscodeError {
     /// 容器 / 编码识别不了或当前不支持（上层给前端「格式不支持」提示）。
     #[error("不支持的音频格式: {0}")]
     Unsupported(String),
+    /// 音频是 Opus 编码（symphonia 0.5 没有 Opus 解码器）。单独成一档是因为
+    /// `.ogg` / `.webm` 里塞 Opus 太常见（Telegram、WhatsApp 的语音消息），
+    /// 笼统的「无法识别」会让人以为是文件坏了。
+    #[error("不支持的音频编码: Opus")]
+    OpusCodec,
     /// 超过 [`MAX_REFERENCE_AUDIO_SECONDS`]。
     #[error("音频过长: {seconds:.0} 秒 (上限 {limit} 秒)")]
     TooLong { seconds: f64, limit: u64 },
@@ -81,6 +86,12 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
         .ok_or_else(|| TranscodeError::Unsupported("文件中没有音频轨道".into()))?
         .clone();
     let track_id = track.id;
+
+    // Opus 单独拦：`make()` 只会回一句 unsupported codec，分不出是「文件坏了」
+    // 还是「编码没支持」，这里先说清楚。
+    if track.codec_params.codec == CODEC_TYPE_OPUS {
+        return Err(TranscodeError::OpusCodec);
+    }
 
     // 能提前算出总时长就提前拒（wav/flac/带 Xing 头的 mp3 都给了总帧数），
     // 免得白解码一整首歌才发现超长。

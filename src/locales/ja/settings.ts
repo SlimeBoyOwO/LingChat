@@ -1477,6 +1477,8 @@ export default {
     refPlayFailed: "参照音声の試聴に失敗しました",
     refImportUnsupported:
       "認識できない音声形式です（mp3 / wav / flac / m4a などの一般的な形式に対応、Opus / WebM は未対応）",
+    refImportOpus:
+      "Opus エンコードの音声には未対応です（Telegram / WhatsApp のボイスメッセージや .webm で一般的）。mp3 / wav / flac / m4a に変換してからインポートしてください",
     refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",
     refImportFailed: "参照音声のインポートに失敗しました",
     refImportHint:
