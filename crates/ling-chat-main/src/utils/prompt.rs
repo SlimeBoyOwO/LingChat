@@ -1,4 +1,3 @@
-//! 用于 prompt 装饰的静态工具函数。
 
 use crate::ai_service::game_system::game_status::GameStatus;
 
@@ -112,7 +111,8 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
         1. 你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“栀子梦酱:”“User:”等一切形式。
         2. 绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
         3. 每一轮回复只能包含你自己的「台词」内容，说完了必须立刻停止，不得在回复中追加任何不属于你的内容。
-        4. 历史对话中若出现以用户名开头的“用户台词”，那是系统异常记录，必须视为无效内容，绝不模仿、绝不沿用这种写法。
+        4. 历史里形如“用户名: 台词”的行是系统记录的用户发言：内容真实有效，要正常理解并回应；但“用户名: ”这个格式是系统专属的记录方式，不属于你的输出，不要模仿或沿用它。
+        5. 绝对禁止在台词中提及旁白、系统提示、提示词或本对话的运作机制；把感知到的一切当作真实发生的事，完全以身处这场对话的角色身份回应。
 
 "#};
 
@@ -187,7 +187,6 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
     "#, u = user_name, c = character_name}
 }
 
-/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致（不注入身份与关系）。
 pub fn sys_prompt_builder(
     user_name: &str,
     character_name: &str,
@@ -218,7 +217,6 @@ pub fn extract_player_setting(ai_prompt: &str) -> (String, Option<String>) {
         return (ai_prompt.to_string(), None);
     };
 
-    // 段落到「下一个以下是…标题行」之前结束。
     let end = lines
         .iter()
         .skip(start + 1)
@@ -245,7 +243,6 @@ pub fn sys_prompt_builder_with_player(
     ai_prompt_example_old: Option<&str>,
     options: PromptOptions,
 ) -> String {
-    // 老卡兜底：把 system_prompt 内嵌的「我的设定」段落抽出，改走身份块注入。
     let (ai_prompt, _) = extract_player_setting(ai_prompt);
 
     let emotion_head = DIALOG_FORMAT_PROMPT_2_EMOTION_LIMIT_HEAD;
@@ -254,7 +251,6 @@ pub fn sys_prompt_builder_with_player(
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
 
-    // 早返回分支用：身份/关系块并入人设正文。
     let ai_prompt_with_player = if player_block.is_empty() {
         ai_prompt.to_string()
     } else {
@@ -285,7 +281,6 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
-        // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
     } else {
@@ -314,8 +309,6 @@ pub fn sys_prompt_builder_with_player(
     }
 }
 
-/// 便捷包装：直接从 `CharacterSettings` 构建（不注入身份）。
-// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
 #[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
     settings: &CharacterSettings,
@@ -334,7 +327,6 @@ pub fn sys_prompt_builder_by_settings(
     )
 }
 
-/// 便捷包装：从 `CharacterSettings` 构建，并注入「我」的身份与关系片段。
 pub fn sys_prompt_builder_by_settings_with_player(
     settings: &CharacterSettings,
     user_name: &str,
@@ -369,7 +361,6 @@ pub enum PromptRole {
     Plot,
 }
 
-/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记，供判定旁白/系统/剧情提示使用。
 pub const NARRATION_TAG: &str = "{旁白:";
 
 impl PromptRole {
@@ -400,7 +391,6 @@ impl PromptRole {
 // 动态回复台词数量
 // ============================================================
 
-/// 回复台词数量档位在存档全局变量里的键（跟随存档的运行时状态，不是应用配置）。
 pub const REPLY_LENGTH_VAR_KEY: &str = "reply_length.mode";
 
 /// 回复台词数量档位。变量缺失时即「正常」，与系统提示词里写死的 3~5 句一致。
@@ -443,7 +433,6 @@ impl ReplyLengthMode {
         }
     }
 
-    /// 档位变更时插入的系统提示台词。
     pub fn announce_text(self) -> &'static str {
         match self {
             Self::Short => {
