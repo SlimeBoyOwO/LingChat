@@ -38,6 +38,9 @@ interface UIState {
   /** 高级设置内的子标签（menu / llm / tts / other / tools） */
   advanceTab: string;
 
+  /** 关系引导「去填写」的待处理意图：聊天页写入，设置页消费后清空 */
+  pendingRelationGuide: { kind: "role" | "identity"; roleId: number } | null;
+
   currentBackgroundTransition: number;
   currentPresentPic: string;
   currentPresentPicScale: number;
@@ -108,6 +111,7 @@ export const useUIStore = defineStore("ui", {
     showSettings: false,
     currentSettingsTab: "text",
     advanceTab: "menu",
+    pendingRelationGuide: null,
     currentBackgroundTransition: 300,
     currentPresentPic: "",
     currentPresentPicScale: 1,
@@ -244,6 +248,10 @@ export const useUIStore = defineStore("ui", {
     },
     setSettingsTab(tab: string) {
       this.currentSettingsTab = tab;
+    },
+
+    setPendingRelationGuide(guide: UIState["pendingRelationGuide"]) {
+      this.pendingRelationGuide = guide;
     },
 
     // ========== Notification Actions ==========

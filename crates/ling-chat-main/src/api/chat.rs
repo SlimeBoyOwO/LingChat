@@ -5,6 +5,7 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::player_identity::relation_ready_all;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -36,7 +37,26 @@ pub async fn send_chat_message(
         return handle_debug_command(&app, &text).await;
     }
 
+    // 关系未就绪（角色侧或身份侧的关系栏为空）时拒绝玩家发言，前端据错误码弹引导
+    if !relation_ready_now(&app).await {
+        return Err("RELATION_NOT_READY".to_string());
+    }
+
     dispatch_chat_turn(app, Some(text), screenshot_base64, None).await
+}
+
+/// 当前阵容所有在场角色与当前身份的关系是否已就绪；尚未进入对话时不拦。
+async fn relation_ready_now(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let svc = state.ai_service.lock().await;
+    let gs = svc.game_status.lock().await;
+    let role_ids = gs.onstage_role_ids.clone();
+    if role_ids.is_empty() {
+        return true;
+    }
+    let identity_id = gs.player.identity_id.clone().unwrap_or_default();
+    let statuses = relation_ready_all(&gs, &crate::api::data_dir(), &identity_id, &role_ids);
+    statuses.iter().all(|s| s.role_side && s.identity_side)
 }
 
 #[tauri::command]

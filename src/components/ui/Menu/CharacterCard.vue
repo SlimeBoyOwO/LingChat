@@ -53,6 +53,13 @@
         {{ title }}
       </h4>
       <PluginTag :source="source" />
+      <!-- 关系未就绪角标 -->
+      <span
+        v-if="!relationReady"
+        class="mt-1 rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-100"
+      >
+        {{ $t("game.relationGuard.badge") }}
+      </span>
     </div>
 
     <div class="flex h-full min-h-36 flex-1 flex-col justify-between pl-4">
@@ -229,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
@@ -366,6 +373,18 @@ const leaveScene = async () => {
 const openSettingsModal = () => (isSettingsModalVisible.value = true);
 const closeSettingsModal = () => (isSettingsModalVisible.value = false);
 const handleSettingsSaved = () => emit("saved");
+
+// 关系就绪角标：与对话前的门用同一个后端判定
+const relationReady = ref(true);
+async function checkRelationReady() {
+  try {
+    const status = await invoke<{ ready: boolean }>("check_relation_ready", { roleId: props.id });
+    relationReady.value = status.ready;
+  } catch (error) {
+    console.error("[CharacterCard] 检查关系就绪失败:", error);
+  }
+}
+onMounted(() => void checkRelationReady());
 </script>
 
 <style scoped>

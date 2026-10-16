@@ -147,6 +147,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::player_identity::start_new_game_with_identity,
         api::player_identity::get_role_relations,
         api::player_identity::save_role_relations,
+        api::player_identity::check_relation_ready,
         api::script::list_scripts,
         api::script::list_standalone_scripts,
         api::script::start_script,
