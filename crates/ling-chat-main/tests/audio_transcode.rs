@@ -358,3 +358,43 @@ fn rejects_multichannel_opus() {
     );
     assert!(!dest.exists(), "失败时不应留下半成品");
 }
+
+/// ADTS 裸流里的一个 AAC-LC 静音帧：7 字节 ADTS 头 + 4 字节帧数据。
+///
+/// AAC 帧没法像 WAV 那样用代码合成，这里内嵌 ffmpeg 生成的静音帧
+/// （`ffmpeg -f lavfi -i anullsrc=r=44100:cl=mono -c:a aac -f adts` 的第 2 帧；
+/// 第 1 帧里塞了 ffmpeg 的版本字符串）。44.1 kHz 单声道的静音帧只有 4 字节，
+/// 正好适合内嵌；ADTS 每帧独立，重复写就能凑出时长。
+const AAC_LC_SILENCE_FRAME: [u8; 11] = [
+    0xFF, 0xF1, 0x50, 0x40, 0x01, 0x7F, 0xFC, 0x01, 0x18, 0x20, 0x07,
+];
+
+/// 裸 `.aac`（ADTS）能导入。
+///
+/// ADTS 读取器藏在 symphonia 的 `aac` feature 里（`symphonia-codec-aac::AdtsReader`），
+/// 光看 `symphonia-format-*` 的名单看不出来 —— 曾经因此误判 `.aac` 不支持、把它挡在
+/// 导入对话框外。另外内容其实是 mp4/m4a、只是扩展名叫 `.aac` 的文件也能用（探测以
+/// 内容为准）。解不了的是 HE-AAC（SBR/PS），symphonia 的 AAC 解码器只认 AAC-LC。
+#[test]
+fn accepts_raw_aac_adts() {
+    let dir = tempfile::tempdir().expect("创建临时目录");
+    let src = dir.path().join("source.aac");
+    let mut data = Vec::new();
+    for _ in 0..25 {
+        data.extend_from_slice(&AAC_LC_SILENCE_FRAME);
+    }
+    std::fs::write(&src, &data).expect("写 ADTS 文件");
+
+    let dest = dir.path().join("out.wav");
+    transcode_to_wav_16bit(&src, &dest).expect("ADTS 应能转码");
+
+    let (spec, samples) = read_wav(&dest);
+    assert_eq!(spec.channels, 1);
+    assert_eq!(spec.sample_rate, 44_100);
+    // 一个 ADTS 帧 = 1024 个样本
+    assert_eq!(samples.len(), 25 * 1024);
+    assert!(
+        samples.iter().all(|s| s.abs() < 64),
+        "静音帧应解出接近 0 的样本"
+    );
+}
