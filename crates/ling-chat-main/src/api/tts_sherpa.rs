@@ -709,7 +709,7 @@ pub async fn import_sherpa_ref_audio(
         crate::utils::audio::transcode_to_wav_16bit(&src.path, &dest).map_err(|e| {
             use crate::utils::audio::TranscodeError;
             match e {
-                // 用户可自行解决的两种：给错误码，由前端翻译。
+                // 用户可自行解决的几种：给错误码，由前端翻译。
                 TranscodeError::Unsupported(reason) => {
                     tracing::warn!("[tts_sherpa] 参考音频格式不支持: {reason}");
                     "SHERPA_REF_AUDIO_UNSUPPORTED".to_string()
@@ -718,8 +718,10 @@ pub async fn import_sherpa_ref_audio(
                     tracing::warn!("[tts_sherpa] 参考音频过长: {seconds:.0} 秒");
                     "SHERPA_REF_AUDIO_TOO_LONG".to_string()
                 },
-                TranscodeError::OpusCodec => {
-                    tracing::warn!("[tts_sherpa] 参考音频是 Opus 编码，暂不支持");
+                TranscodeError::OpusMultichannel(channels) => {
+                    tracing::warn!(
+                        "[tts_sherpa] 参考音频是多声道 Opus（{channels} 声道），暂不支持"
+                    );
                     "SHERPA_REF_AUDIO_OPUS".to_string()
                 },
                 // 其余（IO、写盘）直接给中文说明。

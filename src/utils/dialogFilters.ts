@@ -44,19 +44,20 @@ const ANDROID_AUDIO_MIME = [
   "audio/wav", // 少数 ROM 用这个
   "audio/x-flac", // flac —— 部分 ROM 的 MimeTypeMap 没注册
   "audio/flac",
-  "audio/ogg", // ogg / oga（Vorbis；Opus 在 ogg 里后端解不了，会明确报错）
+  "audio/ogg", // ogg / oga（Vorbis 或 Opus，后端都支持）
+  "audio/opus", // .opus（Telegram / WhatsApp 语音消息）
   "audio/mp4", // m4a / mp4 容器里的 AAC
   "audio/x-m4a",
 ];
 
 /** 桌面端用扩展名（Tauri 走 rfd，不经过 mime 转换）。 */
-const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "m4a", "mp4"];
+const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "opus", "m4a", "mp4"];
 
 /**
  * 参考音频导入 dialog 的 filter。
  *
- * 后端 `import_sherpa_ref_audio` 会用 symphonia 解码后统一转成 16-bit PCM WAV，
- * 所以这里放开常见音频格式；真正能不能解由后端判定（Opus/WebM 不支持，会报
+ * 后端 `import_sherpa_ref_audio` 会用 symphonia（Opus 走 libopus）解码后统一转成
+ * 16-bit PCM WAV，所以这里放开常见音频格式；真正能不能解由后端判定（会报
  * 「格式不支持」）。注意别把原始 `.aac`/`.webm` 列进来：symphonia 0.5 没有 ADTS
  * 与 Matroska 读取器，选了必然失败。
  */
