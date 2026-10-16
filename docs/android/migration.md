@@ -3,6 +3,13 @@
 本文档记录了 LingChat 从 Windows 桌面端移植到 Android (Tauri v2) 的过程，
 重点说明资源打包方案的来龙去脉、当前实现细节，以及未来改进方向。
 
+> **现状（2026-10 合入 `upstream/dev` 后）**：上游已把移动端资源方案改成
+> `data.7z`（7z 打包 + `sevenz_rust2` 进程内解压，代码见
+> `crates/ling-chat-main/src/data_dir.rs`），安装目录也改为应用专属外部存储
+> `/storage/emulated/0/Android/data/com.noiq.lingchat/files`。
+> 本文档下面关于 `data.zip` / `static_copy.rs` / `ling_chat` 包名的描述属于**合入前**的
+> 历史实现，只作背景参考；与当前实现相关的坑见文末「已知问题（Android 侧）」。
+
 ## 整体架构
 
 ```
@@ -269,6 +276,47 @@ pnpm tauri android dev --target aarch64
   构建，即使把 provider 设为 `nnapi`，C 库也会打印
   `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`。
   日志里的「使用推理后端: nnapi」只是我们请求的值，不是实际后端（实测输出与 cpu 一致）。
+
+- **APK 内的 `data.7z` 必须以 `Stored`（不压缩）方式存放**：aapt2 默认会对
+  `assets/data/data.7z` 做 DEFLATE，而 `tauri-plugin-fs` 读 APK 内资源的方式是
+  「先 `AssetManager.openFd()`（压缩资源拿不到 fd）→ 退化成正把整个文件
+  `assets.open(path, ACCESS_BUFFER)` 拷进 `cacheDir`」。这条路在 Android ≤ 15 上能过
+  （首次启动多花 ~25s 拷 84MB），但 **Android 16（SDK 36）会直接抛异常**：表现为「启动即崩、
+  `setup: 数据层 bootstrap 失败: failed to read data.7z`」，而同一个 APK 在 Android 15
+  手机上正常（实测平板 TB710FU / Android 16 + 手机 2201123C / Android 15）。
+  修法是在 `src-tauri/gen/android/app/build.gradle.kts` 的 `android {}` 里加：
+
+  ```kotlin
+  androidResources {
+      noCompress += "7z"   // data.7z 本身已压缩，再 DEFLATE 毫无收益
+  }
+  ```
+
+  注意 `src-tauri/gen/android/**` 是**被 git 跟踪**的，`tauri android init` 不带 `--force`
+  时不会覆盖它，所以这个改动能留下来（`pnpm android:devbuild` 也不会重新 init）。
+
+- **`tauri-plugin-fs` 必须 ≥ 2.7.1**：2.5.1 的 Android 实现在 `openFd()` 成功时只把裸 fd 交给
+  Rust，**丢掉了 `AssetFileDescriptor.startOffset`**，于是 Rust 从 APK 文件偏移 0 开始读，
+  读到的是 ZIP 头 → `failed to extract data.7z: BadSignature([80, 75, 3, 4, 0, 0])`。
+  上游 2.7.x 已改为「APK 内资源一律先拷到 `cacheDir` 再给 fd」（其 Kotlin 注释里写明原因）。
+  所以两个条件必须**同时**满足：
+
+  | `data.7z` 存放方式     | `tauri-plugin-fs` | 结果                                                                              |
+  | ---------------------- | ----------------- | --------------------------------------------------------------------------------- |
+  | DEFLATE（aapt2 默认）  | 2.5.1             | Android ≤ 15 可启动（首次启动拷 84MB 到 cacheDir，~25s）；**Android 16 启动即崩** |
+  | Stored（`noCompress`） | 2.5.1             | 读到 APK 自身的 ZIP 头 → `BadSignature` 崩溃                                      |
+  | Stored（`noCompress`） | 2.7.1             | 正常                                                                              |
+
+  升级方式（Rust crate 与 NPM 包的 major/minor **必须一致**，
+  否则 `tauri android build` 直接报 `Found version mismatched Tauri packages`）：
+
+  ```bash
+  cargo update -p tauri-plugin-fs --precise 2.7.1    # 连带 tauri 2.11.1 → 2.12.4
+  pnpm update @tauri-apps/api @tauri-apps/plugin-fs  # JS 侧跟上（package.json 范围无需改）
+  ```
+
+  自己重新签名 APK 时也要注意：用 `zipalign` + `apksigner` 这类**只签名、不重新打包**的工具，
+  别用会重新压缩资源的工具，否则 `data.7z` 可能被重新 DEFLATE，又回到 Android 16 崩的那一档。
 
 ## 相关 PR
 

@@ -51,6 +51,16 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    // data.7z 是内置资源包（~84MB，本身已压缩，再 DEFLATE 毫无收益）。
+    // 若不声明 noCompress，aapt2 会把它压缩存放在 APK 里，于是
+    // AssetManager.openFd() 无法直接打开（抛 FileNotFoundException），
+    // tauri-plugin-fs 只能退化成「把整个 84MB 拷进 cacheDir 再读」，
+    // 首次启动慢几十秒、多占一份内部存储，且依赖各 Android 版本对
+    // 「压缩资源 + ACCESS_BUFFER」的兼容性（曾导致启动即崩溃）。
+    // 声明后资源以 Stored 方式存放，openFd 直接可用。
+    androidResources {
+        noCompress += "7z"
+    }
 }
 
 rust {
