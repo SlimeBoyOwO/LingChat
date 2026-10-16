@@ -1,7 +1,8 @@
 //! GPT-SoVITS 适配器，对应 `ling_chat/core/TTS/gsv_adapter.py`。
 
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as SyncMutex};
+use std::time::Instant;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
@@ -15,6 +16,11 @@ use crate::ai_service::tts::provider::TtsAdapter;
 /// GSV 六情绪参考语音的分类名，同时是 `gsv_emo_texts` / `gsv_emo_voice_files`
 /// 的配置键。
 pub const GSV_EMO_CATEGORIES: [&str; 6] = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"];
+
+/// 短句阈值：不超过该字符数（不含空白）的片段沿用上一片段的分类。
+const SHORT_SENTENCE_MAX_CHARS: usize = 3;
+/// 迟滞窗口：距上次合成超过该时长后不再沿用旧分类。
+const SHORT_CARRY_WINDOW: Duration = Duration::from_secs(15);
 
 /// 把情绪映射到六分类。映射已与 `utils/prompt.rs` 的提示词情绪清单对齐：
 /// 慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、
@@ -31,6 +37,33 @@ pub fn gsv_emo_category(emo: &str) -> &'static str {
         // 正常/平静/认真/疑惑 及未识别情绪
         _ => "中立",
     }
+}
+
+/// 短句沿用上一片段的分类（迟滞），减少参考音频在短促台词间频繁跳动；
+/// 距上次合成超过窗口则按当前情绪分类。
+fn resolve_speak_category(text: &str, current: &str, last: Option<(&str, Duration)>) -> String {
+    if text.chars().count() > SHORT_SENTENCE_MAX_CHARS {
+        return current.to_string();
+    }
+    match last {
+        Some((cat, elapsed)) if elapsed < SHORT_CARRY_WINDOW => cat.to_string(),
+        _ => current.to_string(),
+    }
+}
+
+/// 主参考非中立且配置了中立分类时，把中立音频作为辅助参考（inp_refs）
+/// 一起交给服务端做音色融合，让相邻句共享音色底子、降低情绪切换的突变感。
+fn resolve_aux_refs<'a>(
+    category: &str,
+    emo_prompts: &'a HashMap<String, (String, String, String)>,
+) -> Vec<&'a str> {
+    if category == "中立" {
+        return Vec::new();
+    }
+    emo_prompts
+        .get("中立")
+        .map(|(path, _, _)| vec![path.as_str()])
+        .unwrap_or_default()
 }
 
 #[derive(Debug, Clone)]
@@ -53,6 +86,8 @@ pub struct GsvAdapter {
     temperature: f32,
     top_p: f32,
     speed_factor: f32,
+    /// 上一片段实际使用的分类与时刻（短句迟滞用）。GSV 请求已串行，普通 Mutex 即可。
+    last_category: Arc<SyncMutex<(Option<String>, Instant)>>,
 }
 
 impl GsvAdapter {
@@ -87,6 +122,7 @@ impl GsvAdapter {
             temperature: temperature.unwrap_or(1.0),
             top_p: top_p.unwrap_or(1.0),
             speed_factor: speed_factor.unwrap_or(1.0),
+            last_category: Arc::new(SyncMutex::new((None, Instant::now()))),
         }
     }
 
@@ -148,16 +184,28 @@ impl TtsAdapter for GsvAdapter {
         self.ensure_model_loaded().await?;
         // 开关开启时按当前片段的情绪分类切换参考语音与文本；该分类在配置里
         // 没填全（不在 emo_prompts 表中）时回退默认 gsv_voice_* 配置。
-        let category = gsv_emo_category(emo);
+        // 短句沿用上一片段的分类（迟滞），避免参考音频在短促台词间频繁跳动。
+        let now = Instant::now();
+        let category = {
+            let mut last = self.last_category.lock().expect("last_category poisoned");
+            let prev = last
+                .0
+                .as_ref()
+                .map(|cat| (cat.as_str(), now.duration_since(last.1)));
+            let picked = resolve_speak_category(text, gsv_emo_category(emo), prev);
+            *last = (Some(picked.clone()), now);
+            picked
+        };
         let (ref_audio_path, prompt_text, prompt_lang) = self
             .emo_prompts
-            .get(category)
+            .get(&category)
             .map(|(p, t, l)| (p.as_str(), t.as_str(), l.as_str()))
             .unwrap_or((
                 self.ref_audio_path.as_str(),
                 self.prompt_text.as_str(),
                 self.prompt_lang.as_str(),
             ));
+        let inp_refs = resolve_aux_refs(&category, &self.emo_prompts);
         let body = json!({
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
@@ -170,6 +218,7 @@ impl TtsAdapter for GsvAdapter {
             "top_p": self.top_p,
             "temperature": self.temperature,
             "parallel_infer": self.parallel_infer,
+            "inp_refs": inp_refs,
             "text": text,
         });
         let mut retry_error = None;
@@ -270,6 +319,47 @@ mod tests {
         assert!(close("temperature", 0.8));
         assert!(close("top_p", 0.9));
         assert!(close("speed_factor", 1.1));
+    }
+
+    #[test]
+    fn short_sentence_carries_last_category() {
+        // 长句按当前分类
+        assert_eq!(
+            resolve_speak_category(
+                "今天天气真不错呢",
+                "开心",
+                Some(("生气", Duration::from_secs(1)))
+            ),
+            "开心"
+        );
+        // 短句无历史按当前分类
+        assert_eq!(resolve_speak_category("嗯", "开心", None), "开心");
+        // 短句沿用窗口内的历史分类
+        assert_eq!(
+            resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(2)))),
+            "生气"
+        );
+        // 短句超出窗口后不再沿用
+        assert_eq!(
+            resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(20)))),
+            "开心"
+        );
+    }
+
+    #[test]
+    fn aux_refs_uses_neutral_only() {
+        let mut map = HashMap::new();
+        map.insert(
+            "中立".into(),
+            ("neutral.wav".into(), "平静。".into(), "zh".into()),
+        );
+        map.insert(
+            "开心".into(),
+            ("happy.wav".into(), "好耶。".into(), "zh".into()),
+        );
+        assert_eq!(resolve_aux_refs("开心", &map), vec!["neutral.wav"]);
+        assert!(resolve_aux_refs("中立", &map).is_empty());
+        assert!(resolve_aux_refs("开心", &HashMap::new()).is_empty());
     }
 
     #[test]
