@@ -221,6 +221,22 @@ pnpm tauri android dev --target aarch64
 #   (release 需用 apksigner 签名后才能安装)
 ```
 
+### 构建依赖
+
+| 依赖                   | 用途                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| Android NDK            | `pnpm android:*` 会自动解析并导出 `ANDROID_NDK_HOME`（见下）         |
+| cmake（+ ninja，可选） | 编译 libopus（参考音频的 Opus 解码，`opus` crate 的 bundled 静态库） |
+
+`ANDROID_NDK_HOME` 由 `scripts/resolve-android-ndk.mjs` 解析：优先用已设置的值，其次是
+`NDK_HOME`、`$ANDROID_HOME/ndk`、`$ANDROID_SDK_ROOT/ndk` 和默认安装位置里版本最高的一个。
+之所以要显式导出，是因为 libopus 的 `build.rs` 只认 `ANDROID_NDK_HOME`，而 Tauri CLI
+只处理 `ANDROID_HOME` / `NDK_HOME`；缺了它 libopus 会用宿主编译器编出 x86_64 的目标文件，
+链接阶段直接失败。桌面端构建只需要 cmake 在 PATH 上。
+
+构建完 `libopus.a` 会被静态链进 `libling_chat_lib.so`，**不需要**往 `jniLibs` 里加新的 `.so`
+（`jniLibs` 里仍然只有 sherpa-onnx / onnxruntime）。
+
 ## 关键配置文件
 
 | 文件                                    | 作用                                          |
