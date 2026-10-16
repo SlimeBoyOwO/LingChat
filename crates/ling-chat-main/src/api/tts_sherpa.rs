@@ -718,6 +718,10 @@ pub async fn import_sherpa_ref_audio(
                     tracing::warn!("[tts_sherpa] 参考音频过长: {seconds:.0} 秒");
                     "SHERPA_REF_AUDIO_TOO_LONG".to_string()
                 },
+                TranscodeError::OpusCodec => {
+                    tracing::warn!("[tts_sherpa] 参考音频是 Opus 编码，暂不支持");
+                    "SHERPA_REF_AUDIO_OPUS".to_string()
+                },
                 // 其余（IO、写盘）直接给中文说明。
                 TranscodeError::Other(msg) => msg,
             }
