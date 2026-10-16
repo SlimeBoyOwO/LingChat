@@ -7,9 +7,10 @@ pub mod role_relations;
 pub mod runtime_relations;
 pub mod store;
 
-pub use guard::ensure_identity_switchable;
+pub use guard::{RoleRelationStatus, ensure_identity_switchable, relation_ready_all};
 pub use resolve::{
-    RelationEndpoint, ScenePeer, build_peers_block, build_player_block, resolve_relation,
+    AliasEntry, RelationEndpoint, ScenePeer, build_peers_block, build_player_block,
+    effective_user_alias, resolve_relation,
 };
 pub use store::IdentityStore;
 

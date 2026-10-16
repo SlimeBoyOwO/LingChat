@@ -10,8 +10,8 @@ use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
 use crate::ai_service::game_system::player_identity::{
-    IdentityStore, RelationEndpoint, build_player_block, resolve_relation,
-    runtime_relations,
+    AliasEntry, IdentityStore, RelationEndpoint, build_player_block, effective_user_alias,
+    resolve_relation, runtime_relations,
 };
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
@@ -146,16 +146,36 @@ impl AIService {
             ),
             Some(effective_prompt.as_str()),
         );
-        let user_name = identity.display_name().to_string();
+        let init_alias = effective_user_alias(
+            &settings,
+            if identity.id.trim().is_empty() {
+                None
+            } else {
+                Some(identity.id.as_str())
+            },
+            &identity.name,
+        );
+        let roster = vec![AliasEntry {
+            name: settings.ai_name.clone(),
+            alias: init_alias.clone(),
+            is_self: true,
+        }];
+        let player_view = identity
+            .relations
+            .get(&RelationEndpoint::Ai(settings.character_folder.clone()).key())
+            .map(|text| text.trim().to_string())
+            .filter(|text| !text.is_empty());
         let player_block = build_player_block(
-            &user_name,
-            &identity.subtitle,
+            identity.display_name(),
+            &init_alias,
             &effective_prompt,
             relation.as_ref(),
+            player_view.as_deref(),
+            &roster,
         );
 
         let ai_prompt = sys_prompt_builder_with_player(
-            &user_name,
+            &init_alias,
             &settings.ai_name.clone(),
             &player_block,
             &settings.system_prompt.clone().unwrap_or(default_prompt),
@@ -215,6 +235,16 @@ impl AIService {
         Ok(())
     }
 
+    /// 播种初始好感：把（该身份覆写 → 卡片默认）的 initial_affection 写进本局全局变量。
+    /// 已有值（该身份专属值或旧档共享默认）不覆盖。
+    pub async fn seed_initial_affection(&mut self, cid: i32) -> Result<()> {
+        let mut gs = self.game_status.lock().await;
+        let identity_id = gs.player.identity_id.clone();
+        gs.seed_identity_affection(&self.db, cid, identity_id.as_deref())
+            .await?;
+        Ok(())
+    }
+
     pub async fn reset_game_status(&mut self) -> Result<()> {
         self.clear_game_status().await;
         let prompt_options = match self.prompt_options {
@@ -226,6 +256,9 @@ impl AIService {
         };
         self.init_game_intro_character(self.init_character_id, prompt_options)
             .await?;
+        if let Some(cid) = self.init_character_id {
+            self.seed_initial_affection(cid).await?;
+        }
         Ok(())
     }
 
