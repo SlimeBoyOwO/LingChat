@@ -478,6 +478,12 @@ export default {
       voiceFilePlaceholder: "填寫 GSV 伺服器可存取嘅音頻路徑（如 /refs/開心.wav）",
       text: "參考文本",
       textPlaceholder: "參考音頻對應的文本內容",
+      samplingDesc:
+        "留空用預設值。調低 temperature 與 top_p 更穩定、更貼近參考音色；語速可按情緒微調。",
+      temperature: "溫度 temperature",
+      topP: "採樣門檻 top_p",
+      speed: "語速 speed_factor",
+      samplingPlaceholder: "預設",
     },
     touch: {
       hint: "喺立繪上面畫出可以摸嘅範圍，每個部位配一句發畀 AI 嘅話。每件服裝各自一套範圍。淨係對靜態立繪有效，Live2D 角色嘅可摸範圍由模型配置決定。",
