@@ -249,6 +249,27 @@ pnpm tauri android dev --target aarch64
 | `src-tauri/Cargo.toml`                  | tauri-plugin-fs、zip = "2"                    |
 | `.gitignore`                            | src-tauri/gen/ 已忽略                         |
 
+## 已知问题（Android 侧）
+
+- **sherpa-onnx 的 kokoro int8 模型在 arm64 Android 上不可用**：会输出纯静音或钉死的
+  垃圾样本（上游 [k2-fsa/sherpa-onnx#3754](https://github.com/k2-fsa/sherpa-onnx/issues/3754)，
+  未量化版本不受影响）。实机对比（同一段代码、同一台设备）：
+
+  | 模型                      | 输出                                |
+  | ------------------------- | ----------------------------------- |
+  | `kokoro-int8-...`         | 4.350s 全静音（峰值 0）             |
+  | `kokoro-...`（fp32）      | 中文 2.648s / 英文 2.815s，音量正常 |
+  | `matcha-icefall-zh-baker` | 2.357s 正常                         |
+
+  因此内置模型清单在 Android 上提供未量化版本（HuggingFace `csukuangfj/kokoro-multi-lang-v1_1`，
+  下载走 `hf-mirror.com`），桌面端保留体积更小的 int8；适配器对 Android 上的 int8
+  kokoro 直接报错并提示换模型，已安装的 int8 版本在设置页会被标注「当前平台不可用」。
+
+- **NNAPI 实际不会生效**：预编译的 `sherpa-onnx-v1.13.5-android.tar.bz2` 基于 API level 21
+  构建，即使把 provider 设为 `nnapi`，C 库也会打印
+  `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`。
+  日志里的「使用推理后端: nnapi」只是我们请求的值，不是实际后端（实测输出与 cpu 一致）。
+
 ## 相关 PR
 
 - [#449](https://github.com/SlimeBoyOwO/LingChat/pull/449) — 首个 Android 移植（将资源直接放 `gen/android/app/src/main/assets/data/`，使用 Git LFS）

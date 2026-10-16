@@ -237,10 +237,28 @@ impl SherpaOnnxAdapter {
     ) -> Result<OfflineTts> {
         let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
         let voices = find_file(model_dir, &["voices.bin"])?;
-        // kokoro-int8-multi-lang-v1_1 支持 auto/zh/en 等 lang；默认交给模型自动判断。
-        let lang = match language {
-            "zh" | "en" | "ja" => language.to_string(),
-            _ => "auto".to_string(),
+        // Android/arm64 上 kokoro 的 int8 量化会输出纯静音或钉死的垃圾样本（上游
+        // k2-fsa/sherpa-onnx#3754；同一设备换 fp32 立即恢复，已在实机验证）。这里
+        // 直接报错，避免用户只听到一段静音却看不出原因。桌面端不受影响。
+        if cfg!(target_os = "android")
+            && model
+                .file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.contains("int8"))
+        {
+            return Err(anyhow!(
+                "Android 上 int8 量化的 Kokoro 模型会输出静音/杂音（上游缺陷 \
+                 sherpa-onnx#3754），请改用未量化版本（Kokoro 多语言 103 音色 (未量化)）\
+                 或其他模型"
+            ));
+        }
+        // 多语言模型：只有日文需要显式指定——不指定时会被逐字当成中文念（27 字要
+        // 16 秒）。中文/英文/中英混合以及数字都交给模型自行判断即可；显式传 "zh"
+        // 反而会把句子里的英文片段和数字整段丢掉（音素化失败后静默跳过）。
+        // 注意不能传 "auto"：它会让纯英文/日文片段音素化失败并让整次合成直接报错。
+        let lang = match language.trim() {
+            "ja" => Some("ja".to_string()),
+            _ => None,
         };
 
         let kokoro_config = OfflineTtsKokoroModelConfig {
@@ -252,8 +270,8 @@ impl SherpaOnnxAdapter {
             length_scale: 1.0,
             dict_dir: find_dir_optional(model_dir, &["dict"])
                 .map(|p| p.to_string_lossy().to_string()),
-            lexicon: None,
-            lang: Some(lang),
+            lexicon: kokoro_lexicons(model_dir),
+            lang,
         };
 
         let config = OfflineTtsConfig {
@@ -537,6 +555,56 @@ fn find_dir_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
         .iter()
         .map(|name| dir.join(name))
         .find(|p| p.is_dir())
+}
+
+/// 收集 Kokoro 需要的 lexicon 文件（逗号分隔）。
+///
+/// 顺序与官方示例一致：英文 → 中文，其余 `lexicon*.txt` 兜底追加。
+/// 英文只挂一份：`lexicon-us-en.txt` 与 `lexicon-gb-en.txt` 内容高度重叠，
+/// 同时挂载会刷出上千行 "Duplicated word ... Ignore it" 告警。
+///
+/// Kokoro 不挂 lexicon 时中文只能退到 espeak-ng 的音素化，实测合成中文几乎出不来
+/// 有效音频（只有 0.2~0.5 秒的噪声或纯静音），因此这里必须显式挂载。
+fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
+    const ENGLISH: &[&str] = &["lexicon-us-en.txt", "lexicon-gb-en.txt"];
+    const CHINESE: &[&str] = &["lexicon-zh.txt"];
+
+    let mut files: Vec<PathBuf> = Vec::new();
+    for group in [ENGLISH, CHINESE] {
+        if let Some(path) = find_file_optional(model_dir, group) {
+            files.push(path);
+        }
+    }
+
+    // 自定义模型可能只带 lexicon.txt 之类，兜底扫描目录内其余 lexicon*.txt。
+    if let Ok(entries) = std::fs::read_dir(model_dir) {
+        let mut extra: Vec<PathBuf> = entries
+            .flatten()
+            .map(|entry| entry.path())
+            .filter(|path| {
+                path.is_file()
+                    && path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .is_some_and(|name| name.starts_with("lexicon") && name.ends_with(".txt"))
+                    && !files.contains(path)
+                    && !ENGLISH.iter().any(|name| path.ends_with(name))
+            })
+            .collect();
+        extra.sort();
+        files.extend(extra);
+    }
+
+    if files.is_empty() {
+        return None;
+    }
+    Some(
+        files
+            .iter()
+            .map(|path| path.to_string_lossy().to_string())
+            .collect::<Vec<_>>()
+            .join(","),
+    )
 }
 
 /// 定位 ZipVoice 数据目录：该目录需直接包含 phontab/phondata/phonindex。

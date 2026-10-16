@@ -68,9 +68,21 @@ async fn get_manager(
 }
 
 fn record_from(info: &SherpaOnnxModelInfo) -> SherpaModelRecord {
+    let entry = catalog_entry(&info.model_name);
+    // 已装模型优先显示清单里的友好名。
+    let mut display_name = entry
+        .map(|e| e.display_name.to_string())
+        .unwrap_or_else(|| info.model_name.clone());
+    // 桌面专用模型在 Android 上已知会输出静音/垃圾样本（kokoro int8，上游 #3754），
+    // 已在实机验证；在已装列表里直接标出来，便于用户删除后换用未量化版本。
+    if entry
+        .is_some_and(|e| e.platforms == SherpaPlatforms::DesktopOnly && cfg!(target_os = "android"))
+    {
+        display_name.push_str("（当前平台不可用，建议删除）");
+    }
     SherpaModelRecord {
         id: info.model_name.clone(),
-        display_name: info.model_name.clone(),
+        display_name,
         model_type: info.model_type.clone(),
         language: info.language.clone(),
         voice: info.voice.clone(),
@@ -100,9 +112,10 @@ pub async fn sherpa_list_models(
     // 未安装的清单模型：拉取仓库大小（用于展示“模型大小”）
     let mut size_tasks = Vec::new();
     for rec in records.iter().filter(|r| !installed.contains_key(&r.id)) {
-        let dir = rec.id.clone();
-        let dir_for_size = rec.id.clone();
-        size_tasks.push(async move { (dir, repo_dir_total_bytes(&dir_for_size).await) });
+        let id = rec.id.clone();
+        if let Some(entry) = catalog_entry(&id) {
+            size_tasks.push(async move { (id, repo_dir_total_bytes(entry).await) });
+        }
     }
     let sizes: std::collections::HashMap<String, u64> = futures_util::future::join_all(size_tasks)
         .await
@@ -155,59 +168,127 @@ pub async fn sherpa_delete_model(
 }
 
 // ---------------------------------------------------------------------------
-// Sherpa 模型清单（下载源 github/gomodels/sherpa，含全部 TTS 模型）
+// Sherpa 模型清单
+//
+// 内置模型默认走 modelscope 的 `gomodels/sherpa` 镜像（国内直连稳定）。例外是
+// Android 需要**未量化**的 kokoro：该镜像里只有 int8 版，而 int8 在 arm64 Android
+// 上会输出静音/钉死值（上游 k2-fsa/sherpa-onnx#3754；实测同一台设备换成 fp32
+// 立刻恢复正常），那份只有 HuggingFace 上有，因此按平台分别提供。
 // ---------------------------------------------------------------------------
 
-const SHERPA_REPO_FILES_API: &str = "https://www.modelscope.cn/api/v1/models/gomodels/sherpa/repo/files?Revision=master&Recursive=true";
+/// 模型文件的来源站点。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SherpaSource {
+    /// modelscope：接口按「仓库」列出所有文件，需按模型目录前缀过滤。
+    ModelScope,
+    /// HuggingFace：仓库即模型目录，直接取文件树；国内走 hf-mirror 镜像。
+    HuggingFace,
+}
 
-const SHERPA_FILE_DL: &str = "https://www.modelscope.cn/models/gomodels/sherpa/resolve/master";
+/// 模型适用的平台。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SherpaPlatforms {
+    All,
+    /// 仅桌面（Windows/Linux/macOS）。
+    DesktopOnly,
+    /// 仅 Android。
+    AndroidOnly,
+}
 
-/// 内置可下载的 Sherpa TTS 模型：(repo 目录, 展示名, 语言, 音色, model_type)。
-const SHERPA_CATALOG_DEFS: &[(&str, &str, &str, &str, &str)] = &[
-    (
-        "kokoro-int8-multi-lang-v1_1",
-        "Kokoro 多语言 (int8)",
-        "zh",
-        "female",
-        "kokoro",
-    ),
-    (
-        "matcha-icefall-zh-baker",
-        "Matcha 中文 (新汉语真人) · icefall",
-        "zh",
-        "female",
-        "matcha",
-    ),
-    (
-        "matcha_tts_zh_en_20251010",
-        "Matcha 中英 (MMTTS)",
-        "zh",
-        "female",
-        "matcha",
-    ),
-    (
-        "sherpa-onnx-zipvoice-distill-zh-en-emilia",
-        "ZipVoice 中英 (Emilia)",
-        "zh",
-        "female",
-        "zipvoice",
-    ),
+impl SherpaPlatforms {
+    fn matches_current(self) -> bool {
+        match self {
+            SherpaPlatforms::All => true,
+            SherpaPlatforms::DesktopOnly => !cfg!(target_os = "android"),
+            SherpaPlatforms::AndroidOnly => cfg!(target_os = "android"),
+        }
+    }
+}
+
+/// 内置可下载模型。
+struct SherpaCatalogEntry {
+    /// 模型目录名。同时是前端 `id`、磁盘目录名，以及适配器按目录反查类型的键。
+    dir: &'static str,
+    /// 下载仓库：modelscope / HuggingFace 都是 `owner/repo`。
+    repo: &'static str,
+    source: SherpaSource,
+    display_name: &'static str,
+    language: &'static str,
+    voice: &'static str,
+    /// 适配器加载该模型所需的 `model_type`。
+    model_type: &'static str,
+    platforms: SherpaPlatforms,
+}
+
+const MS_ENDPOINT: &str = "https://www.modelscope.cn";
+/// HuggingFace 官方站国内访问不稳，统一走 hf-mirror 镜像。
+const HF_ENDPOINT: &str = "https://hf-mirror.com";
+
+const SHERPA_CATALOG: &[SherpaCatalogEntry] = &[
+    SherpaCatalogEntry {
+        dir: "kokoro-int8-multi-lang-v1_1",
+        repo: "gomodels/sherpa",
+        source: SherpaSource::ModelScope,
+        display_name: "Kokoro 多语言 103 音色 (int8)",
+        language: "zh",
+        voice: "female",
+        model_type: "kokoro",
+        // int8 在 arm64 Android 上会输出静音或钉死的垃圾样本（上游 #3754），
+        // 只在桌面端提供；Android 用下面的未量化版本。
+        platforms: SherpaPlatforms::DesktopOnly,
+    },
+    SherpaCatalogEntry {
+        dir: "kokoro-multi-lang-v1_1",
+        repo: "csukuangfj/kokoro-multi-lang-v1_1",
+        source: SherpaSource::HuggingFace,
+        display_name: "Kokoro 多语言 103 音色 (未量化)",
+        language: "zh",
+        voice: "female",
+        model_type: "kokoro",
+        platforms: SherpaPlatforms::AndroidOnly,
+    },
+    SherpaCatalogEntry {
+        dir: "matcha-icefall-zh-baker",
+        repo: "gomodels/sherpa",
+        source: SherpaSource::ModelScope,
+        display_name: "Matcha 中文 (新汉语真人) · icefall",
+        language: "zh",
+        voice: "female",
+        model_type: "matcha",
+        platforms: SherpaPlatforms::All,
+    },
+    SherpaCatalogEntry {
+        dir: "matcha_tts_zh_en_20251010",
+        repo: "gomodels/sherpa",
+        source: SherpaSource::ModelScope,
+        display_name: "Matcha 中英 (MMTTS)",
+        language: "zh",
+        voice: "female",
+        model_type: "matcha",
+        platforms: SherpaPlatforms::All,
+    },
+    SherpaCatalogEntry {
+        dir: "sherpa-onnx-zipvoice-distill-zh-en-emilia",
+        repo: "gomodels/sherpa",
+        source: SherpaSource::ModelScope,
+        display_name: "ZipVoice 中英 (Emilia)",
+        language: "zh",
+        voice: "female",
+        model_type: "zipvoice",
+        platforms: SherpaPlatforms::All,
+    },
 ];
 
-/// 可下载的 Sherpa TTS 模型（repo 目录 → 适配器所需 model_type）。
-fn sherpa_catalog_defs() -> Vec<(String, String, String, String, String)> {
-    SHERPA_CATALOG_DEFS
+/// 当前平台可下载的内置模型。
+fn catalog_entries() -> impl Iterator<Item = &'static SherpaCatalogEntry> {
+    SHERPA_CATALOG
         .iter()
-        .map(|(dir, name, lang, voice, mtype)| {
-            (
-                (*dir).to_string(),
-                (*name).to_string(),
-                (*lang).to_string(),
-                (*voice).to_string(),
-                (*mtype).to_string(),
-            )
-        })
-        .collect()
+        .filter(|entry| entry.platforms.matches_current())
+}
+
+/// 按目录名查清单条目（不过滤平台：已装模型需要能反查类型）。
+fn catalog_entry(dir: &str) -> Option<&'static SherpaCatalogEntry> {
+    SHERPA_CATALOG.iter().find(|entry| entry.dir == dir)
 }
 
 /// 内置清单里「模型目录名 → 适配器 model_type」。非内置（用户导入）模型返回 `None`。
@@ -216,22 +297,18 @@ fn sherpa_catalog_defs() -> Vec<(String, String, String, String, String)> {
 /// 默认为 `vits`，若直接采信会导致 Kokoro/ZipVoice 等模型按错误类型加载而报
 /// 「未找到模型文件」。
 pub(crate) fn catalog_model_type(dir: &str) -> Option<&'static str> {
-    SHERPA_CATALOG_DEFS
-        .iter()
-        .find(|(d, ..)| *d == dir)
-        .map(|(_, _, _, _, mtype)| *mtype)
+    catalog_entry(dir).map(|entry| entry.model_type)
 }
 
-/// 内置可下载模型的元数据（含下载仓库估价，用于列表展示）。
+/// 列出当前平台的内置模型（未带安装状态，由 `sherpa_list_models` 补全）。
 pub fn sherpa_catalog() -> Vec<SherpaModelRecord> {
-    sherpa_catalog_defs()
-        .into_iter()
-        .map(|(dir, name, lang, voice, mtype)| SherpaModelRecord {
-            id: dir,
-            display_name: name,
-            model_type: mtype,
-            language: lang,
-            voice,
+    catalog_entries()
+        .map(|entry| SherpaModelRecord {
+            id: entry.dir.to_string(),
+            display_name: entry.display_name.to_string(),
+            model_type: entry.model_type.to_string(),
+            language: entry.language.to_string(),
+            voice: entry.voice.to_string(),
             size_bytes: 0,
             installed: false,
             path: String::new(),
@@ -242,16 +319,16 @@ pub fn sherpa_catalog() -> Vec<SherpaModelRecord> {
 /// 各模型目录需跳过的冗余文件（节省流量；onnx 为推理唯一所需）。
 /// - int8 vits 变体仅在无 int8 时才需要；有非 int8 则跳过 int8。
 /// - pytorch_model*.bin 与 .wav（示例音频）不是推理必需。
-fn skip_repo_file(dir: &str, path: &str) -> bool {
-    if path.ends_with("pytorch_model.bin") || path.ends_with("pytorch_model_sherpa.bin") {
+fn skip_repo_file(dir: &str, rel: &str) -> bool {
+    if rel.ends_with("pytorch_model.bin") || rel.ends_with("pytorch_model_sherpa.bin") {
         return true;
     }
-    if path.ends_with(".wav") || path.ends_with(".gitattributes") {
+    if rel.ends_with(".wav") || rel.ends_with(".gitattributes") {
         return true;
     }
     // ZipVoice：若存在非 int8 的 encoder/decoder，则跳过 int8 冗余
     if dir == "sherpa-onnx-zipvoice-distill-zh-en-emilia"
-        && (path.ends_with("fm_decoder_int8.onnx") || path.ends_with("text_encoder_int8.onnx"))
+        && (rel.ends_with("fm_decoder_int8.onnx") || rel.ends_with("text_encoder_int8.onnx"))
     {
         return true;
     }
@@ -264,12 +341,38 @@ struct RepoFile {
     size: u64,
 }
 
-/// 从 modelscope 文件 API 拉取某模型目录下的文件清单（过滤目录项 / 跳过项）。
-async fn fetch_repo_files(dir: &str) -> Result<Vec<RepoFile>, String> {
+/// 列出仓库全部文件的接口地址。
+fn repo_files_api(entry: &SherpaCatalogEntry) -> String {
+    match entry.source {
+        SherpaSource::ModelScope => format!(
+            "{MS_ENDPOINT}/api/v1/models/{}/repo/files?Revision=master&Recursive=true",
+            entry.repo
+        ),
+        SherpaSource::HuggingFace => format!(
+            "{HF_ENDPOINT}/api/models/{}/tree/main?recursive=true&blobs=true",
+            entry.repo
+        ),
+    }
+}
+
+/// 单个模型文件的下载地址。
+fn repo_file_url(entry: &SherpaCatalogEntry, rel: &str) -> String {
+    let rel = rel.replace(' ', "%20");
+    match entry.source {
+        SherpaSource::ModelScope => format!(
+            "{MS_ENDPOINT}/models/{}/resolve/master/{}/{rel}",
+            entry.repo, entry.dir
+        ),
+        SherpaSource::HuggingFace => format!("{HF_ENDPOINT}/{}/resolve/main/{rel}", entry.repo),
+    }
+}
+
+/// 拉取某模型目录下的文件清单（过滤目录项 / 跳过项）。
+async fn fetch_repo_files(entry: &SherpaCatalogEntry) -> Result<Vec<RepoFile>, String> {
     let client = crate::utils::download::build_download_client()
         .map_err(|e| format!("创建下载客户端失败: {e}"))?;
     let resp = client
-        .get(SHERPA_REPO_FILES_API)
+        .get(repo_files_api(entry))
         .send()
         .await
         .map_err(|e| format!("请求模型清单失败: {e}"))?;
@@ -281,32 +384,59 @@ async fn fetch_repo_files(dir: &str) -> Result<Vec<RepoFile>, String> {
         .await
         .map_err(|e| format!("读取清单失败: {e}"))?;
     let value: serde_json::Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
-    let prefix = format!("{}/", dir);
+
     let mut out = Vec::new();
-    if let Some(files) = value.pointer("/Data/Files").and_then(|f| f.as_array()) {
-        for f in files {
-            let path = f.get("Path").and_then(|v| v.as_str()).unwrap_or_default();
-            if !path.starts_with(&prefix) {
-                continue;
+    match entry.source {
+        SherpaSource::ModelScope => {
+            // modelscope 返回整个仓库的文件，需按 `<dir>/` 前缀过滤。
+            let prefix = format!("{}/", entry.dir);
+            if let Some(files) = value.pointer("/Data/Files").and_then(|f| f.as_array()) {
+                for f in files {
+                    let path = f.get("Path").and_then(|v| v.as_str()).unwrap_or_default();
+                    if !path.starts_with(&prefix) {
+                        continue;
+                    }
+                    // 目录项（Type=tree）跳过
+                    let is_tree = f
+                        .get("Type")
+                        .map(|v| v.as_str() == Some("tree"))
+                        .unwrap_or(false);
+                    if is_tree {
+                        continue;
+                    }
+                    let rel = path[prefix.len()..].to_string();
+                    if rel.is_empty() || skip_repo_file(entry.dir, &rel) {
+                        continue;
+                    }
+                    let size = f.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
+                    out.push(RepoFile { rel, size });
+                }
             }
-            // 只要文件（is_lfs 或无 Type=tree）；Size==0 且 Name 无拓展名的可能是空占位，忽略
-            let is_tree = f
-                .get("Type")
-                .map(|v| v.as_str() == Some("tree"))
-                .unwrap_or(false);
-            if is_tree {
-                continue;
+        },
+        SherpaSource::HuggingFace => {
+            // HuggingFace 的 tree 接口直接返回该仓库（即模型目录）的文件数组。
+            if let Some(files) = value.as_array() {
+                for f in files {
+                    if f.get("type").and_then(|v| v.as_str()) == Some("directory") {
+                        continue;
+                    }
+                    let rel = f
+                        .get("path")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    if rel.is_empty() || skip_repo_file(entry.dir, &rel) {
+                        continue;
+                    }
+                    let size = f.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
+                    out.push(RepoFile { rel, size });
+                }
             }
-            let rel = path[prefix.len()..].to_string();
-            if rel.is_empty() || skip_repo_file(dir, path) {
-                continue;
-            }
-            let size = f.get("Size").and_then(|v| v.as_u64()).unwrap_or(0);
-            out.push(RepoFile { rel, size });
-        }
+        },
     }
+
     if out.is_empty() {
-        return Err(format!("模型 {dir} 的文件清单为空"));
+        return Err(format!("模型 {} 的文件清单为空", entry.dir));
     }
     Ok(out)
 }
@@ -318,10 +448,12 @@ pub async fn sherpa_download_model(
     state: State<'_, SherpaModelsState>,
     model_id: String,
 ) -> Result<(), String> {
-    let (dir, _name, _lang, _voice, _mtype) = sherpa_catalog_defs()
-        .into_iter()
-        .find(|(d, _, _, _, _)| d == &model_id)
-        .ok_or_else(|| format!("未知的 Sherpa 模型: {model_id}"))?;
+    let entry =
+        catalog_entry(&model_id).ok_or_else(|| format!("未知的 Sherpa 模型: {model_id}"))?;
+    // 清单里按平台分档（如 int8/未量化的 kokoro），挡住前端误传不适用于本平台的项。
+    if !entry.platforms.matches_current() {
+        return Err(format!("模型 {model_id} 不适用于当前平台"));
+    }
 
     {
         let mut in_flight = state.downloading.lock().await;
@@ -331,7 +463,7 @@ pub async fn sherpa_download_model(
         in_flight.insert(model_id.clone());
     }
 
-    let result = run_download(&app, &state, &dir).await;
+    let result = run_download(&app, &state, entry).await;
     {
         let mut in_flight = state.downloading.lock().await;
         in_flight.remove(&model_id);
@@ -340,9 +472,8 @@ pub async fn sherpa_download_model(
 }
 
 /// 计算模型目录总大小（字节），供列表展示“模型大小”。
-async fn repo_dir_total_bytes(dir: &str) -> u64 {
-    let files = fetch_repo_files(dir).await;
-    match files {
+async fn repo_dir_total_bytes(entry: &SherpaCatalogEntry) -> u64 {
+    match fetch_repo_files(entry).await {
         Ok(files) => files.iter().map(|f| f.size).sum(),
         Err(_) => 0,
     }
@@ -351,14 +482,15 @@ async fn repo_dir_total_bytes(dir: &str) -> u64 {
 async fn run_download(
     app: &AppHandle,
     state: &State<'_, SherpaModelsState>,
-    dir: &str,
+    entry: &'static SherpaCatalogEntry,
 ) -> Result<(), String> {
+    let dir = entry.dir;
     let mgr = get_manager(state).await?;
     let model_root = mgr.model_dir();
     let target_dir = model_root.join(dir);
     let _ = tokio::fs::create_dir_all(&target_dir).await;
 
-    let files = fetch_repo_files(dir).await?;
+    let files = fetch_repo_files(entry).await?;
     let total: u64 = files.iter().map(|f| f.size).sum();
     if total == 0 {
         return Err(format!("模型 {dir} 无可下载文件（大小未知）"));
@@ -376,7 +508,6 @@ async fn run_download(
     let sem = Arc::new(tokio::sync::Semaphore::new(concurrency));
     let app_progress = app.clone();
     let mid = dir.to_string();
-    let dir_owned = dir.to_string();
     let total_f = total as f64;
 
     let mut tasks = Vec::new();
@@ -388,7 +519,6 @@ async fn run_download(
         let app_progress = app_progress.clone();
         let done_for_file = done.clone();
         let mid = mid.clone();
-        let dir_owned = dir_owned.clone();
 
         tasks.push(tokio::spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore");
@@ -409,7 +539,7 @@ async fn run_download(
             if let Some(parent) = dest.parent() {
                 let _ = tokio::fs::create_dir_all(parent).await;
             }
-            let url = format!("{SHERPA_FILE_DL}/{dir_owned}/{}", f.rel.replace(' ', "%20"));
+            let url = repo_file_url(entry, &f.rel);
             let result =
                 crate::utils::download::download_to_file(&client, &url, &dest, None, None, f.size)
                     .await;
