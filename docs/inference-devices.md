@@ -237,3 +237,72 @@ WebGPU EP 的 `deviceId` 选项是否被 ORT 采纳需真机双显卡复核—�
 | EP 组装     | `sbv2_core`（git 依赖 shadow01a/sbv2-api）的 `src/model.rs`（`webgpu` 分支，`with_device_id`） |
 | 前端选择器  | `src/components/settings/pages/SettingsTts.vue`                                                |
 | 依赖        | `crates/ling-chat-main/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）       |
+
+## 9. 桌面端 sherpa-onnx 的 CUDA 变体
+
+上面的 WebGPU/DirectML 是 sbv2 那条线；sherpa-onnx（TTS）走的是另一条线：官方预编译包
+默认是 CPU 版，桌面还可以链接**官方 CUDA 包**，由 `SHERPA_ONNX_GPU` 选择变体。
+
+### 9.1 怎么构建
+
+```bash
+pnpm tauri:build:gpu                 # = node scripts/package-desktop-sherpa-gpu-libs.mjs --variant=cuda12 --build
+node scripts/package-desktop-sherpa-gpu-libs.mjs --variant cuda13   # 只准备库 + 打印命令
+```
+
+拆开看是三步（`scripts/package-desktop-sherpa-gpu-libs.mjs` 已串好）：
+
+1. `scripts/fetch-sherpa-onnx-libs.mjs` 按**本次编译的版本**下官方 CUDA 包。版本从
+   `Cargo.lock` 里 `sherpa-onnx-sys` 的锁定版本取，包名走 GitHub Release API 匹配
+   （`...-cuda-<主版本>.…-{linux-x64-gpu,win-x64-cuda}.tar.bz2`，不硬编码
+   `cudnn-9.x-onnxruntime1.27.1` 这类标签，升级 ORT/cuDNN 不用改代码），下载带
+   断点续传 + 重试 + sha256 校验（digest 来自 Release API），直连失败会自动换杭州/官方
+   镜像（`SHERPA_ONNX_DOWNLOAD_MIRROR` 可覆盖，`none` 关闭）。解压到
+   `target/sherpa-onnx-prebuilt/<包名>/`，与上游 build.rs 的缓存同目录。
+2. 把该目录导出成 `SHERPA_ONNX_LIB_DIR`：上游 `sherpa-onnx-sys` 的 build.rs 见到它就
+   **跳过自己下载**，直接用这份库（`-L` + `dylib=` 链接）。
+3. 用 `--features sherpa-shared` 走 shared 链接。官方 CUDA 包只有 `.so`/`.dll`，而上游
+   build.rs 里 static 与 shared 同时开是硬报错，所以链接方式由 Cargo feature 决定，
+   没开时是 static（Windows/Linux/macOS 的 CPU 构建都如此）。
+
+不想用官方包（要自己控编译选项/打 C++ 补丁）可以自编：
+`node scripts/fetch-sherpa-onnx-libs.mjs --variant=cuda12 --from=cmake`。它会下源码、
+用 `-DSHERPA_ONNX_ENABLE_GPU=ON -DBUILD_SHARED_LIBS=ON` 编 sherpa 本体，并把产物汇总成
+一个 lib 目录。注意 GPU 侧的执行提供方仍然是 ONNX Runtime 官方的预编译产物
+（`onnxruntime-linux-x64-gpu_cuda12-<ver>-patched.zip`），所以自编只影响 sherpa 本体那层，
+不改变运行期对 CUDA/cuDNN 的要求；也正因为这个包固定是 CUDA 12 版，自编只支持
+`--variant=cuda12`（CUDA 13 请用官方预编译包）。
+
+### 9.2 运行期要求与降级
+
+目标机器需要 NVIDIA 驱动 + CUDA 12（或 13）+ cuDNN 9；库本身随安装包走（见 9.3）。
+**缺 CUDA 运行时时，请求 `cuda` 会被 ONNX Runtime 抛 C++ 异常并 abort 整个进程**
+（ORT 1.27 provider 加载失败穿不过 FFI），所以
+`crates/ling-chat-main/src/ai_service/tts/adapters/sherpa_onnx.rs` 的 `cuda_ep_ready`
+会先确认 provider 库与 CUDA 运行时都在，缺了就打警告并回退 CPU。探测方式**不能**改成
+「自己 dlopen provider 库」：provider 的静态初始化会调用 `Provider_GetHost()`，该指针由
+ORT 在加载 provider 之前设置，自己先加载会段错误。
+
+编译期常量 `GPU_VARIANT`（`cpu` / `cuda12` / `cuda13`）由
+`crates/ling-chat-main/build.rs` 发射，依据是 `SHERPA_ONNX_GPU` + `SHERPA_ONNX_LIB_DIR`
+实际指向的目录（目录里没有 CUDA provider 库时会退回 `cpu` 并打 warning），运行时据此决定
+要不要真的把 GPU provider 交给 sherpa。
+
+### 9.3 打包
+
+- Linux：`scripts/stage-desktop-runtime-libs.mjs` 按可执行文件的 `DT_NEEDED` 把库暂存到
+  `src-tauri/.runtime-libs/`，再由 `tauri.conf.json` 的 `bundle.linux.*.files` 映射到
+  `/usr/lib`。**不能放在可执行文件旁边**：`cargo:rustc-link-arg` 加的 `$ORIGIN` rpath 到不了
+  最终二进制（实测无 RPATH/RUNPATH），而加载器不搜可执行文件所在目录。
+- Windows：资源根目录即安装目录，`package-desktop-sherpa-gpu-libs.mjs` 生成 `--config`
+  把 DLL 逐文件映射过去（与 `tauri.windows.conf.json` 里 `onnxruntime.dll` 的方式一致）。
+- 打包入口与 `--features sherpa-shared`、`SHERPA_ONNX_LIB_DIR` 三者必须一致，
+  `pnpm tauri:build:gpu` 内部已保证（`SHERPA_ONNX_GPU` 会传给 `beforeBundleCommand`，
+  暂存脚本看到的变体与链接进来的包一致）。
+
+### 9.4 实测（GTX 1060 3GB / Pascal CC 6.1，`cuda12`）
+
+- provider 正常加载、权重进显存（约 400~900MB），推理期间 `nvidia-smi` 利用率峰值 78% ——
+  ORT 1.27 的 CUDA 12 包内含 sm_61 内核，Pascal 可用。
+- matcha 中文长句（72 字 / 12.7s 音频）：1.01s → 0.36s（约 2.8x）。
+- kokoro int8：几乎无差别（21.1s → 19.4s），int8 算子基本落回 CPU，不建议为它开 GPU。

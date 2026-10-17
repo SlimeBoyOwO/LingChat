@@ -14,6 +14,18 @@ use sherpa_onnx::{
 use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
 
+/// 本次编译链接进来的 sherpa-onnx 预编译包变体：`cpu` / `cuda12` / `cuda13`。
+///
+/// 由本 crate 的 build.rs 按 `SHERPA_ONNX_GPU`（以及 `SHERPA_ONNX_LIB_DIR` 实际
+/// 指向的库目录）决定 —— 见 `crates/ling-chat-main/build.rs` 的
+/// `emit_sherpa_gpu_variant`。判定依据是「真的链了哪套库」：CPU 包里 sherpa 自己会把
+/// GPU provider 降级到 CPU，而 CUDA 包里 provider 会被真的交给 ONNX Runtime。
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "linux", target_arch = "x86_64")
+))]
+const GPU_VARIANT: &str = env!("SHERPA_ONNX_GPU_VARIANT");
+
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
     sid: i32,
@@ -166,13 +178,13 @@ impl SherpaOnnxAdapter {
     }
 
     /// 链接进来的 sherpa-onnx 预编译包是不是官方 CUDA 包（见
-    /// `crates/sherpa-onnx-sys/build.rs`）。
+    /// `crates/ling-chat-main/build.rs` 的 `emit_sherpa_gpu_variant`）。
     #[cfg(any(
         target_os = "windows",
         all(target_os = "linux", target_arch = "x86_64")
     ))]
     fn cuda_package_linked() -> bool {
-        matches!(sherpa_onnx_sys::GPU_VARIANT, "cuda12" | "cuda13")
+        matches!(GPU_VARIANT, "cuda12" | "cuda13")
     }
 
     /// CUDA 执行提供方（CUDA EP）能不能用。
@@ -286,7 +298,7 @@ impl SherpaOnnxAdapter {
         all(target_os = "linux", target_arch = "x86_64")
     ))]
     fn cuda_runtime_sonames() -> &'static [&'static str] {
-        let cuda13 = sherpa_onnx_sys::GPU_VARIANT == "cuda13";
+        let cuda13 = GPU_VARIANT == "cuda13";
 
         if cfg!(target_os = "windows") {
             return if cuda13 {

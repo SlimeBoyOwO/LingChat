@@ -117,8 +117,9 @@ windows = { version = "0.62.2", features = [
     "Win32_Security",
     "Win32_System_Threading",
 ] }
-# Windows 桌面使用静态链接，避免运行时缺少 DLL
-sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+# sherpa-onnx 的链接方式（static / shared）由 Cargo feature 决定，见文件末尾的
+# [features]：默认（都不开）上游 build.rs 就是 static，桌面 GPU 变体走 sherpa-shared。
+sherpa-onnx = { version = "=1.13.5", default-features = false }
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
@@ -140,7 +141,7 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
     "webgpu",
 ] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
-sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+sherpa-onnx = { version = "=1.13.5", default-features = false }
 # sherpa-onnx 1.13.5 的 Rust 代码对 sys 1.13.6 头文件不兼容（缺 window_shift_ratio），
 # 必须钉在 1.13.5，避免 cargo 解析到更新版导致编译失败。
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
@@ -157,14 +158,27 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "coreml",
 ] }
-sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["static"] }
+sherpa-onnx = { version = "=1.13.5", default-features = false }
 # 钉 sys 1.13.5 与 crate 匹配（见 linux-x86_64 块的注释）
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
-# Sherpa-ONNX: Android 只支持 shared 链接（.so），桌面使用 static 链接
+# Sherpa-ONNX: Android 只支持 shared 链接（.so），桌面默认走 static（见 [features]）
 [target.'cfg(target_os = "android")'.dependencies]
 sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shared"] }
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
+
+[features]
+# 桌面端官方 CUDA 预编译包**只有动态库**，而 sherpa-onnx-sys 的 build.rs 里
+# static / shared 同时开是硬报错（`Features \`static\` and \`shared\` cannot be
+# enabled at the same time`），所以「用哪种链接」必须由 Cargo feature 决定 ——
+# 不能像以前那样在 build.rs 里按环境变量把 static 顶掉。
+#
+#   - 默认（都不开）：上游 build.rs 落回 Static。Windows/Linux/macOS 的 CPU 构建
+#     都是这样（避免运行时缺 DLL/.so）。
+#   - GPU 变体：`--features sherpa-shared`，配合 scripts/fetch-sherpa-onnx-libs.mjs
+#     导出的 SHERPA_ONNX_LIB_DIR（官方 CUDA 包）或 --from=cmake 的自编产物。
+#     `pnpm tauri:build:gpu` 会把这两步串起来。
+sherpa-shared = ["sherpa-onnx/shared", "sherpa-onnx-sys/shared"]
 
 [dev-dependencies]
 # 测试里自造 OGG/Opus 素材（配合 opus 的编码器），避免提交二进制 fixture。
