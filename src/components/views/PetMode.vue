@@ -175,6 +175,7 @@ import {
   CHAT_BASE_PB,
   DIALOG_MAX_BASE,
   FLOATING_LOGICAL_WIDTH,
+  PET_SPECTRUM_TOP_PAD_BASE,
   PET_WINDOW_H_BASE,
   WINDOW_WIDTH_BASE,
 } from "../pet/constants";
@@ -1795,35 +1796,120 @@ const collapsePet = async () => {
   scheduleHeightReport();
 };
 
+/**
+ * 「设置窗正在创建中」的**防重入闸门**。
+ *
+ * ## 为什么必须有（2026-10-03，真机 ANR 后补）
+ *
+ * Android 上「建窗」这一步会**死锁**，而连续点两次「设置」正好能踩中：
+ *
+ * 1. 第一次点击 → `new WebviewWindow("settings")` 走 JavaBridge 线程的 Tauri IPC，
+ *    **持有 Tauri 内部的 `webviews_lock()`**，然后要回到主线程才能把 Activity 建出来；
+ * 2. 第二次点击在第一次还没落地时进来 —— 此时窗口登记表里**可能已经有** "settings"
+ *    （Tauri 是先登记再建窗），于是走到 `focusSettings()`，而原生实例**还没建出来**，
+ *    返回 `false` → 代码**掉进新建分支**，再发一次建窗；
+ * 3. 与此同时，任何一个 WebView 页面加载完成 → `Rust.onPageLoaded` → Tauri 的
+ *    页面加载回调 → 也要拿 `webviews_lock()` → **被 ① 挡住**；
+ * 4. 主线程被挡 → 跑不了事件循环 → ①永远等不到窗口 → **互锁** → 5 秒后 ANR。
+ *
+ * 真机证据：`dumpsys activity exit-info` 里 14:58/14:59/15:00 三次
+ * `Input dispatching timed out ... Sys2038:.../MainActivity, Waited 5000ms`，
+ * ANR 转储里 `main` 卡在 `Rust.onPageLoaded`、`JavaBridge` 卡在 `Ipc.postMessage`，
+ * 两者都在 Rust 的 futex 上。**这是老 bug**（当天 10:45、01:11 的转储栈帧完全同形，
+ * 都早于本次改动），连续点击只是把它变得容易复现。
+ *
+ * 所以：**建窗期间，任何后续点击一律忽略。**
+ */
+let settingsOpening = false;
+
+/** 闸门兜底超时：万一 `created` / `error` 都没来，也不能把闸门永久锁死。 */
+let settingsOpenTimer: ReturnType<typeof setTimeout> | null = null;
+
+const SETTINGS_OPEN_TIMEOUT_MS = 8000;
+
+/**
+ * 建窗期间**暂停一切会走 Tauri IPC 的定时器**。
+ *
+ * 建窗那一步会持有 Tauri 内部的 `webviews_lock()`（见 [settingsOpening] 的说明），
+ * 而桌宠态下有三个定时器在周期性发起 IPC：
+ *
+ * | 定时器              | 周期  | 动作                                  |
+ * | ------------------- | ----- | ------------------------------------- |
+ * | `metricsTimer`      | 500ms | `getFloatingPetStatus()`              |
+ * | `selfHealTimer`     | 500ms | 内容高度变了才 `resizeFloatingPet()`  |
+ * | `heightReportTimer` | 200ms | 去抖后一次 `resizeFloatingPet()`      |
+ *
+ * 它们会和建窗抢同一把锁 —— 把「本来就慢的建窗」进一步拖成卡顿甚至 ANR。
+ * 所以建窗一开始就停掉，等闸门释放（成功 / 失败 / 超时）再起回来。
+ *
+ * 三个停止函数都是**幂等**的（没启动时直接 return），所以非桌宠态下调用无害。
+ */
+const pauseIpcTimers = () => {
+  stopMetricsPolling();
+  stopSelfHeal();
+  if (heightReportTimer !== undefined) {
+    window.clearTimeout(heightReportTimer);
+    heightReportTimer = undefined;
+  }
+};
+
+/** 恢复 [pauseIpcTimers] 停掉的定时器。只在桌宠态才需要起回来。 */
+const resumeIpcTimers = () => {
+  if (!floatingWindowMode.value) return;
+  startMetricsPolling();
+  startSelfHeal();
+};
+
+/** 释放防重入闸门。`created` / `error` / 超时 / 同步抛异常四条路都走它。 */
+const releaseSettingsOpenGate = () => {
+  if (settingsOpenTimer !== null) {
+    clearTimeout(settingsOpenTimer);
+    settingsOpenTimer = null;
+  }
+  settingsOpening = false;
+  resumeIpcTimers();
+};
+
 const handleOpenSettings = async () => {
+  // ★ 防重入：上一次建窗还没落地时再点，直接忽略（见 settingsOpening 的说明）。
+  if (settingsOpening) return;
+
   try {
-    const existing = await WebviewWindow.getByLabel("settings");
-    if (existing) {
-      // ★ Android：**不能**用 `setFocus()`。
-      //
-      // 设置窗的「关闭」语义是「不销毁 + 退到后台」（`moveTaskToBack`，见
-      // `SettingsActivity` 头注释），所以关掉之后窗口仍然活着、只是整个任务
-      // 退到了后台。再点「设置」时前端拿到的是这个活着的窗口，需要把它拉回前台。
-      //
-      // 而 `WebviewWindow.setFocus()` 在 Android 上**是空实现** ——
-      // `tao-0.35.2/src/platform_impl/android/mod.rs`：
-      //   `pub fn set_focus(&self) { warn!("set_focus not yet implemented on Android"); }`
-      // 没有这条原生桥，用户第二次点「设置」就是**毫无反应**。
-      //
-      // 桥由 MainActivity 在 `onWebViewCreate` 时挂到主窗口的 WebView 上
-      // （见 `MainActivity.installSettingsBridge`）。
-      const bridge = (window as unknown as { LingChatApp?: { focusSettings?: () => boolean } })
-        .LingChatApp;
-      if (isAndroid() && typeof bridge?.focusSettings === "function") {
-        if (bridge.focusSettings()) return;
-        // 返回 false = 原生那边实例已经没了（但窗口登记还在，属于罕见的
-        // 不同步）。不 return，往下走新建流程，交给 `tauri://error` 兜底。
-        console.warn("[PetMode] 设置窗实例已不存在，改为新建");
-      } else {
+    const bridge = (window as unknown as { LingChatApp?: { focusSettings?: () => boolean } })
+      .LingChatApp;
+    const focusSettings = bridge?.focusSettings;
+
+    // ★ Android：**先问原生**。
+    //
+    // `LingChatApp.focusSettings()` 是「`SettingsActivity` 实例还在不在」的
+    // **唯一权威**（桥由 `MainActivity.installSettingsBridge` 挂上）。
+    // 而 `WebviewWindow.getByLabel("settings")` 只反映 Tauri 自己的窗口登记表，
+    // 两者可能不同步 —— 旧代码正是先信登记表、原生返回 false 后**掉进新建分支**，
+    // 那一步就会踩上面的死锁。
+    //
+    // 所以这里改成：**原生说在，就拉回前台、到此为止，绝不往下走。**
+    //
+    // （`WebviewWindow.setFocus()` 在 Android 上是空实现 ——
+    // `tao-0.35.2/src/platform_impl/android/mod.rs`：
+    // `pub fn set_focus(&self) { warn!("set_focus not yet implemented on Android"); }`
+    // —— 所以拉回前台必须走这条原生桥。）
+    if (isAndroid() && typeof focusSettings === "function") {
+      if (focusSettings.call(bridge)) return;
+    } else {
+      // 非 Android（或原生桥不可用，理论上不该发生）：退回用窗口登记表判断。
+      // 桌面端 `setFocus()` 是真实现，够用。
+      const existing = await WebviewWindow.getByLabel("settings");
+      if (existing) {
         await existing.setFocus();
         return;
       }
     }
+
+    // ★ 走到这里说明「原生实例确实不存在，必须新建」。立刻上闸，
+    // 并把会抢 `webviews_lock()` 的前端轮询全部停掉（见 pauseIpcTimers）。
+    settingsOpening = true;
+    pauseIpcTimers();
+    settingsOpenTimer = setTimeout(releaseSettingsOpenGate, SETTINGS_OPEN_TIMEOUT_MS);
 
     // ★ Android 必须显式给出承载窗口的 Activity。
     //
@@ -1843,19 +1929,31 @@ const handleOpenSettings = async () => {
       resizable: true,
       shadow: false,
       decorations: false,
-      transparent: true,
+      // ★ `transparent` 按平台给（2026-10-03）。
+      //
+      // 桌面端设置窗是「桌宠风格」的圆角透明窗，需要它；
+      // Android 上 `SettingsActivity` 用的是**不透明主题**
+      // （`themes.xml` 的 `Theme.ling_chat.settings`，见文档 4.7.3），
+      // 传 `transparent: true` 只会让 wry 把 WebView 背景也置成全透明
+      // —— 没有任何视觉收益，却把 WebView 推进软件合成路径，
+      // **拖慢建窗**（对应用户反馈的「切设置会卡一下」）。
+      transparent: !isAndroid(),
       alwaysOnTop: false,
       ...(isAndroid() ? { activityName: "SettingsActivity" } : {}),
     });
 
     webview.once("tauri://created", () => {
       console.log("桌宠轻量设置窗口创建成功");
+      releaseSettingsOpenGate();
     });
 
     webview.once("tauri://error", (e) => {
       console.error("创建桌宠轻量设置窗口失败:", e);
+      releaseSettingsOpenGate();
     });
   } catch (error) {
+    // `new WebviewWindow` 在标签重名等情况下会**同步抛**，此时 created/error 都不会来
+    releaseSettingsOpenGate();
     console.error("打开设置窗口时出错:", error);
   }
 };

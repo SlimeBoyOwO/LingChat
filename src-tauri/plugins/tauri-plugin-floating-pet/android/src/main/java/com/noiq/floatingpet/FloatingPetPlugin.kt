@@ -34,8 +34,17 @@ import app.tauri.annotation.TauriPlugin
 import app.tauri.plugin.Invoke
 import app.tauri.plugin.JSObject
 import app.tauri.plugin.Plugin
+import java.io.File
 
 private const val TAG = "FloatingPet"
+
+/**
+ * 「屏幕视奸」截图的落盘文件名（位于 `cacheDir` 下，每次覆盖）。
+ *
+ * 只做一次「原生写 → Rust 读」的交接，不是长期存储：内容每 2 分钟就会被下一帧
+ * 覆盖，App 卸载时随 `cacheDir` 一起清掉。
+ */
+private const val SCREEN_CAPTURE_FILE_NAME = "screen_capture.jpg"
 
 /**
  * 悬浮窗内页面的**逻辑尺寸**（dp）。
@@ -155,13 +164,42 @@ private const val KEEP_ALIVE_GRACE_MS = 20000L
 private const val HIDE_DELAY_MS = 80L
 
 /**
- * 「让悬浮窗可获焦」到「弹出输入法」之间的等待。
+ * 「让悬浮窗可获焦」到「弹出输入法」之间的等待（毫秒）。
  *
  * 必须先让 `updateViewLayout` 摘掉 `FLAG_NOT_FOCUSABLE` 并由系统完成窗口焦点
- * 切换，`showSoftInput` 才有窗口可依附 —— 同步调用会被丢掉（IME 只服务于
- * 已经持有输入焦点的窗口）。80ms 是够走完一次窗口焦点事务的最小值。
+ * 切换，`showSoftInput` 才有窗口可依附 —— 同步调用会被丢掉。
+ *
+ * ## ★★ 为什么从 80ms 改成 250ms（2026-10-03 四修）
+ *
+ * 80ms 只够走完**窗口**焦点切换，不够让**页面**把焦点落到输入框上。
+ * 而 `InputMethodManager.showSoftInput(view, …)` 对 WebView 还有第二个前提：
+ * WebView 此刻必须**已经建立输入连接**，也就是页面里有个聚焦的可编辑元素
+ * （`View.onCheckIsTextEditor()` 为 true）。否则这个调用**不报错、不抛异常，
+ * 只是什么都不做** —— 真机表现就是「点输入框，什么都没发生」。
+ *
+ * 而页面聚焦这件事由**前端**做（`ChatInput.vue` 在 touchstart 后 ~100ms
+ * 调 `textarea.focus()`），因为点下去的那一刻窗口还不可获焦，浏览器根本没
+ * 把焦点落上去。所以原生必须**等前端做完**再弹：
+ *
+ * ```
+ * 0ms    前端 touchstart → invoke set_ime_focus(true)
+ * 0ms    原生摘 FLAG_NOT_FOCUSABLE + updateViewLayout + requestFocus
+ * ~100ms 前端 textarea.focus()   ← 页面这一侧就绪
+ * 250ms  原生 showSoftInput       ← 这时才有输入连接可依附
+ * ```
+ *
+ * 顺序反了（原来的 80ms 早于前端的 150ms）就是静默失效。
  */
-private const val IME_SHOW_DELAY_MS = 80L
+private const val IME_SHOW_DELAY_MS = 250L
+
+/**
+ * 输入法还没起来时的重试间隔与次数。
+ *
+ * 页面聚焦偶尔会晚于 [IME_SHOW_DELAY_MS]（主线程正忙、WebView 在重排）。
+ * `showSoftInput` 幂等，多试几次无害；试满还不行就记日志说明页面一直没聚焦。
+ */
+private const val IME_SHOW_RETRY_DELAY_MS = 300L
+private const val IME_SHOW_MAX_ATTEMPTS = 5
 
 /**
  * 桌宠搬进悬浮窗后，把 App 自己退到后台的延迟（毫秒）。
@@ -482,6 +520,15 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      */
     private var lastRotation = Int.MIN_VALUE
 
+    /**
+     * [freshDisplayInfoPx] 失败只记**一次**日志的去抖标记（2026-10-03 五修）。
+     *
+     * 隐藏 API 被非 SDK 接口限制拦掉是**持续**状态：它会一直失败下去。
+     * 而 [screenSizePx] 每 500ms 被 [keepAliveTick] 读一次，
+     * 每次都记日志就是刷屏白烧电 —— 所以只在第一次记。
+     */
+    private var freshSourceBrokenLogged = false
+
     /** [displayListener] 的延时体：把「回调到达」与「真正重排」错开，见 [CONFIG_SETTLE_MS]。 */
     private val reapplyRunnable = Runnable { maybeReapplyForScreenChange() }
 
@@ -583,14 +630,27 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     }
 
     /**
-     * 当前显示旋转角（`Surface.ROTATION_0/90/180/270`）。
+     * 当前显示旋转角（只会返回 `ROTATION_0` 或 `ROTATION_90`）。
      *
-     * 与 [screenSizePx] 同一个来源（`Display.getRotation()` 直读 `DisplayInfo`，
-     * 不经 Resources / DisplayAdjustments），所以拿到的就是**物理**旋转。
-     * 读不到时返回 `Int.MIN_VALUE`，调用方据此跳过这一轮判定。
+     * ★ 2026-10-03 四修：**不再直读 `Display.getRotation()`**。
+     *
+     * 那个值在后台会冻结（真机实测见 [screenSizePx] 的注释）。冻结的旋转角
+     * 和活的尺寸会**互相打架**：可能在某次解冻时凭空多出一次「旋转变了」，
+     * 把用户正拖着的桌宠拽回边缘；也可能反过来一直判「没变」。
+     *
+     * 所以这里改成**从 [screenSizePx] 推导**，保证两个判据永远一致：
+     * 宽 > 高 即横屏。代价是分辨不出 180°（尺寸不变），但手机基本不允许
+     * 180° 旋转，而且 180° 只影响贴哪条边，不影响可用性。
+     *
+     * 读不到尺寸时返回 `Int.MIN_VALUE`，调用方据此跳过这一轮判定。
      */
     private fun displayRotation(): Int = try {
-        displayManager().getDisplay(Display.DEFAULT_DISPLAY)?.rotation ?: Int.MIN_VALUE
+        val (w, h) = screenSizePx()
+        when {
+            w <= 0 || h <= 0 -> Int.MIN_VALUE
+            w > h -> Surface.ROTATION_90
+            else -> Surface.ROTATION_0
+        }
     } catch (t: Throwable) {
         Log.w(TAG, "读取显示旋转角失败（可忽略）", t)
         Int.MIN_VALUE
@@ -770,15 +830,51 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * （`shouldReportMaxBounds()` 为真时更直接：走 `getMaxBoundsMetrics`，
      * 那本来就是拿 `mResources.getConfiguration()` 算的。）
      *
-     * ## 正确的来源：两个直读 DisplayInfo 的读数
+     * ## 第 4 版来源：`WindowMetrics`（前 3 版都被真机打回来了）
      *
-     * `Display.getRotation()` 和 `Display.getMode()` 都只读 `mDisplayInfo`
-     * 自己的字段，**不经过任何 Resources / DisplayAdjustments**：
+     * 上面那三版都建立在同一个假设上：**「读 `DisplayInfo` 就与 App 可不可见
+     * 无关」**。2026-10-03 用 `adb` 无线调试抓 logcat，把这个假设**证伪了**。
      *
-     * - `getRotation()` → `mDisplayInfo.rotation`，物理旋转，实时
-     * - `getMode()` → 物理分辨率，**不随旋转**（但方向约定不保证，见下）
+     * 实测时间线（vivo V2118A / Android 14，桌宠浮着、LingChat 在后台，
+     * 用户手动横→竖→横转屏三次）：
      *
-     * 两者组合就是「当前旋转下的屏幕尺寸」，与 App 可不可见完全无关。
+     * ```
+     * 11:59:57.254  系统真值 ROTATION_0（竖屏）   插件读到 rotation=1  ❌
+     * 12:00:04.435  系统真值 ROTATION_90（横屏）  插件读到 rotation=1  ✓
+     * 12:00:13.286  系统真值 ROTATION_0（竖屏）   插件读到 rotation=1  ❌
+     * 12:00:18.764  系统真值 ROTATION_90（横屏）  插件读到 rotation=1  ✓
+     * ```
+     *
+     * 「系统真值」取自无影 App 的 `onConfigurationChanged` 打印的
+     * `mDisplayRotation`（同一毫秒窗口，可信）。
+     *
+     * 结论：**`Display.getRotation()` 读的 `mDisplayInfo` 在后台是冻结的**，
+     * 停在「App 最后一次在前台时」的方向。而 `onDisplayChanged` 回调
+     * **照常送达** —— 回调是活的，读数却是死的。于是判定永远等于「没变」，
+     * 重排一次都不会跑，桌宠就一直停在旧坐标系里。
+     *
+     * ## 怎么找到活的那条路的
+     *
+     * 同一个类里的 [safeInsetsPx] 走的是
+     * `WindowManager.getCurrentWindowMetrics().windowInsets`，
+     * 它的读数**跟着方向正确变化**（`safe=T100` ↔ `T108`，见日志）。
+     * 同一次 `onDisplayChanged` 里，一个活一个死 —— 差别只在来源。
+     * 所以这里换成同一条路：`WindowManager.getCurrentWindowMetrics().bounds`。
+     *
+     * ⚠️ 是 `current`，**不是** `maximum` —— 后者与 Resources 同源，
+     * 后台同样冻结，三修已经证伪过一次。
+     *
+     * ⚠️ `screenDebugInfo()` 会**同时**打印两个来源（`wm=` 和 `dispRot=`），
+     * 就是为了以后再出这类问题时能一眼看出是哪条路死了。别把它简化掉。
+     *
+     * ## 兜底路径（保留）
+     *
+     * 下面的 `DisplayInfo` 组合仍然留着，作为 API < 30 的兜底：
+     *
+     * - `getRotation()` → `mDisplayInfo.rotation`（后台可能冻结）
+     * - `getMode()` → 物理分辨率，**不随旋转**（方向约定还不保证，见下）
+     *
+     * 两者组合就是「当前旋转下的屏幕尺寸」。
      * ⚠️ 组合方式**不是**「按 rotation 交换 pw/ph」——那个写法只对「自然方向」
      * 一种约定成立，换成「当前方向」的机型就会把横屏又算回竖屏。
      * 正确写法是取短/长边再按 rotation 分配，见 [screenSizePx] 内的说明。
@@ -789,7 +885,95 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 读数失败时退回 `resources.displayMetrics`：宁可边界偏小，也不能让
      * 拖拽 / 吸附整条路径抛异常。
      */
+    /**
+     * ★ 唯一**保证新鲜**的来源：直接向 `DisplayManagerService` 要 `DisplayInfo`。
+     *
+     * ## 为什么必须走到这一步
+     *
+     * 真机实测（vivo V2118A / Android 14，桌宠浮着、LingChat 在后台、
+     * 用户手动转屏）表明：**进程退到后台后，进程内能读到的一切都冻结**。
+     *
+     * | 来源 | 后台是否活 |
+     * |---|---|
+     * | `Resources` 系（`displayMetrics` / `getSystem()`） | ❌ 冻 |
+     * | `DisplayManager.getDisplay().rotation` | ❌ 冻 |
+     * | `Display.getMode()` / `getRealMetrics()` | ❌ 冻 |
+     * | `WindowManager.currentWindowMetrics.bounds` | ❌ 冻 |
+     * | `currentWindowMetrics.windowInsets` | 时活时死 |
+     * | **本方法（binder 直呼）** | ✅ 活 |
+     *
+     * ## 根因
+     *
+     * 上面那些**全是客户端缓存**：`DisplayInfo` 的副本、客户端的 `DisplayArea`
+     * 树、`Resources` 的 `Configuration`。它们靠系统「推送配置变更」来刷新，
+     * 而进程在后台时**收不到那次推送** —— 但 `onDisplayChanged` 却照常送达。
+     * **回调是活的，数据是死的。** 判据永远等于「没变」，重排一次都不跑。
+     *
+     * 而 `DisplayManagerGlobal.getDisplayInfo()` 走的是
+     * `IDisplayManager.getDisplayInfo()` **binder 调用**，每次现问服务端，
+     * 不经过任何客户端缓存。
+     *
+     * ## 代价与约束
+     *
+     * `DisplayManagerGlobal` 是**隐藏 API**，只能反射调用；被系统的非 SDK 接口
+     * 限制拦掉时返回 `null`。所以它**必须**有兜底，不能是唯一路径 ——
+     * 见 [screenSizePx] 的分级。
+     *
+     * @return `(宽, 高, rotation)`；读不到返回 `null`。
+     */
+    private fun freshDisplayInfoPx(): Triple<Int, Int, Int>? = try {
+        val cls = Class.forName("android.hardware.display.DisplayManagerGlobal")
+        val inst = cls.getMethod("getInstance").invoke(null)
+        val info = cls.getMethod("getDisplayInfo", Int::class.javaPrimitiveType)
+            .invoke(inst, Display.DEFAULT_DISPLAY)
+        if (info == null) {
+            null
+        } else {
+            val ic = info.javaClass
+            val w = ic.getField("logicalWidth").getInt(info)
+            val h = ic.getField("logicalHeight").getInt(info)
+            val r = ic.getField("rotation").getInt(info)
+            if (w > 0 && h > 0) Triple(w, h, r) else null
+        }
+    } catch (t: Throwable) {
+        // 只在第一次失败时记一条：隐藏 API 被拦是**持续**状态，每次刷屏没意义。
+        if (!freshSourceBrokenLogged) {
+            freshSourceBrokenLogged = true
+            Log.w(TAG, "反射 DisplayManagerGlobal.getDisplayInfo 不可用（隐藏 API 被拦？），退回客户端缓存来源", t)
+        }
+        null
+    }
+
     private fun screenSizePx(): Pair<Int, Int> {
+        // ── 来源 0（首选，2026-10-03 五修）：binder 直呼 DisplayManagerService ──
+        //
+        // 这是唯一在**后台**也新鲜的来源，理由见 [freshDisplayInfoPx] 的注释。
+        // 它排在最前面，其余全部降级为兜底。
+        //
+        // 注：`DisplayInfo.logicalWidth/Height` 已经是**当前旋转下**的宽高
+        // （AOSP 在合成 `DisplayInfo` 时就按 rotation 换过），所以不需要
+        // 再拿短边/长边重排一次 —— 直接 `first to second` 即可。
+        // 这里不解构成 `(w, h, _)`：下划线占位在旧版 Kotlin 编译器上会报错，
+        // 而本工程用的是随 Tauri 走的编译器版本，不值得为省一个字符冒险。
+        freshDisplayInfoPx()?.let { info -> return info.first to info.second }
+
+        // ── 来源 1：WindowManager 的窗口度量（前台新鲜，后台冻结）────────────
+        //
+        // ⚠️ 只能用 `currentWindowMetrics`，**不能用 `maximumWindowMetrics`**：
+        //    后者读的是 `windowConfiguration.getMaxBounds()`，与 Resources
+        //    同源，后台时同样停在竖屏 —— 这条路 2026-10-03 三修已经证伪过一次
+        //    （verify-pet-apk.sh 里有对应的 absent 断言兜着）。
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val wm = activity.getSystemService(WindowManager::class.java)
+                val b = wm?.currentWindowMetrics?.bounds
+                if (b != null && b.width() > 0 && b.height() > 0) {
+                    return b.width() to b.height()
+                }
+            } catch (t: Throwable) {
+                Log.w(TAG, "读取 WindowMetrics 失败，退回 DisplayManager", t)
+            }
+        }
         try {
             val display = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
             if (display != null) {
@@ -837,17 +1021,66 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * 屏幕调试信息（只用于日志）。
      *
      * 真机排查「转屏后位置不对」时，光看 `screenSizePx()` 的结果分不清是
-     * 「旋转没读到」还是「读到但算错了」。把 rotation 与物理分辨率一起打出来，
-     * 一眼就能判断。
+     * 「旋转没读到」还是「读到但算错了」。把每条来源各自打出来，
+     * 一眼就能判断是哪条路死了。
      */
     private fun screenDebugInfo(): String = try {
+        // ★ 每条来源**各打各的**，别简化成只打一个 —— 这正是五修能定位的关键。
+        //
+        // 2026-10-03 实测（App 退到后台后物理转屏）：
+        //   fresh= 跟着方向变（binder 直呼，唯一新鲜）
+        //   cur=   冻在 1080x2408（WindowMetrics 是客户端缓存）
+        //   dispRot= 冻在 0（DisplayInfo 副本，同一份缓存）
+        //   panel= 不随旋转（面板自然方向，本来就不该变）
+        //   safe=  时活时死 —— 可当独立佐证：横屏时挖孔在左（L 大 / T 小），
+        //          竖屏时在顶（T 大 / L 小），它必须和 fresh= 同向。
+        //
+        // 以后若再出「转屏没反应」，看这一行就能分段：
+        //   · fresh= 不跟着变 → 反射那条路也被拦了（退回缓存，问题在来源）
+        //   · fresh= 变了但没重排 → 问题在判据（lastScreenW/lastRotation）
+        val fresh = freshDisplayInfoPx()
+        val wmBounds = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                activity.getSystemService(WindowManager::class.java)?.currentWindowMetrics?.bounds
+            }.getOrNull()
+        } else {
+            null
+        }
         val d = displayManager().getDisplay(Display.DEFAULT_DISPLAY)
         val m = d?.mode
         val s = safeInsetsPx()
-        "rotation=${d?.rotation}, mode=${m?.physicalWidth}x${m?.physicalHeight}, " +
+        "fresh=${fresh?.let { "${it.first}x${it.second}@rot${it.third}" } ?: "不可用"}（binder，唯一后台新鲜）, " +
+            "cur=${wmBounds?.width() ?: -1}x${wmBounds?.height() ?: -1}（WindowMetrics，后台冻结）, " +
+            "dispRot=${d?.rotation}（DisplayInfo 副本，后台冻结）, " +
+            "panel=${m?.physicalWidth}x${m?.physicalHeight}（不随旋转）, " +
+            "cut=${rawCutoutDebug()}（原始，未筛主导边）, " +
             "safe=L${s.left}/T${s.top}/R${s.right}/B${s.bottom}"
     } catch (t: Throwable) {
         "unavailable"
+    }
+
+    /**
+     * `DisplayCutout` 的**原始**安全区内缩（未按「主导边」筛过），仅供诊断。
+     *
+     * ## 为什么需要它（2026-10-03 七修）
+     *
+     * [safeInsetsPx] 会把四条边里**不是最大**的那些丢掉（那是三修的「主导边」
+     * 口径），所以它打出来的 `safe=` 看不到被丢掉的那几条边。而七修正是要
+     * 「把 left 加回来」—— 加回来之后一旦回归，光看 `safe=` 无法判断
+     * 是「系统压根没在左边报挖孔」还是「报了但被主导边筛掉了」。
+     *
+     * 所以这里把四个 `safeInset*` 原样打出来。真机横屏时应当看到
+     * `cut=L100/...`（挖孔在左），竖屏时 `cut=.../T100/...`。
+     */
+    private fun rawCutoutDebug(): String {
+        return try {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return "API<30 无挖孔概念"
+            val wm = activity.getSystemService(WindowManager::class.java) ?: return "无 WindowManager"
+            val cut = wm.currentWindowMetrics.windowInsets.displayCutout ?: return "无"
+            "L${cut.safeInsetLeft}/T${cut.safeInsetTop}/R${cut.safeInsetRight}/B${cut.safeInsetBottom}"
+        } catch (t: Throwable) {
+            "读取失败"
+        }
     }
 
     /** 系统安全区（挖孔 / 圆角 / 手势条）在屏幕四周的内缩，单位 px。 */
@@ -897,21 +1130,32 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 var r = 0
                 var b = 0
                 insets.displayCutout?.let { cut ->
-                    // ⚠️ 这里与 `SafeAreaInsets.kt`（WebView 侧）**故意不一致**，
-                    // 别顺手"对齐"回去（2026-10-03 三修）。
-                    //
                     // 1. 只认「主导边」—— `DisplayCutout` 会把同一块挖孔在相邻边上的
                     //    投影也报出来，四边照单全收会给整条边加出一条内缩；
-                    // 2. ★ **left 一律不吃挖孔** —— 用户明确要求
-                    //    「横屏下右边边界内缩，而左边边界完全不变」。
+                    // 2. ★ **四边都吃挖孔，含 left**（2026-10-03 七修）。
                     //
-                    // 而 `SafeAreaInsets.kt` 那边四边都吃挖孔（含 left），因为
-                    // 设置页 / 主界面是**整页内容**，左边被挖孔压住会切掉字；
-                    // 悬浮窗只有一小块，贴左沿时让出去一点点比多一大截空白更自然。
+                    // ## 为什么三修时 left 是故意跳过的，现在又要加回来
                     //
-                    // 用户明确要求这次**只动悬浮窗**，所以两边口径就是不一样的。
+                    // 三修的理由是「横屏下右边边界内缩，而左边边界完全不变」——
+                    // 那是**真机观察**，但观察到的只是现象，不是原因：
+                    //
+                    //   六修之前窗口没声明挖孔模式，横屏时系统把父容器按挖孔内缩，
+                    //   父容器起点是 `x=100`。于是 `params.x=0` **实际落在屏幕 100**，
+                    //   左边是**被这个 bug 顺带躲开的**，并不是「本来就不需要内缩」。
+                    //
+                    // 六修补上挖孔模式后父容器归零（真机 `parent=[0,0][2408,1080]`），
+                    // `x=0` 就真的贴在屏幕物理左沿 —— 而横屏时挖孔恰好在**左侧**，
+                    // 于是桌宠左半边直接压进挖孔里（真机 `frame=[0,142][550,859]`，
+                    // `mAppBounds=Rect(100, 0 - 2408, 1080)`）。用户反馈：
+                    // 「右边好了，左边是会卡进刘海屏里」。
+                    //
+                    // 所以现在 left 必须参与，四边口径一致。
+                    //
+                    // 与 `SafeAreaInsets.kt` 的差别只剩「主导边」这一条：
+                    // 那边四边都吃，这边只吃最大的那条边。
                     val cutMax =
                         maxOf(cut.safeInsetLeft, cut.safeInsetTop, cut.safeInsetRight, cut.safeInsetBottom)
+                    if (cut.safeInsetLeft == cutMax) l = maxOf(l, cut.safeInsetLeft)
                     if (cut.safeInsetTop == cutMax) t = maxOf(t, cut.safeInsetTop)
                     if (cut.safeInsetRight == cutMax) r = maxOf(r, cut.safeInsetRight)
                     if (cut.safeInsetBottom == cutMax) b = maxOf(b, cut.safeInsetBottom)
@@ -1054,6 +1298,86 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 put("height", if (params != null) params.height / density.toDouble() else 0.0)
             }
         )
+    }
+
+    // ─── 屏幕视奸（主动窥屏）取景 ─────────────────────────────
+
+    /**
+     * 截一帧当前屏幕，返回 JPEG 的**本地文件路径**。
+     *
+     * 这是桌面端 `capture_screen_as_jpeg()`（GDI `BitBlt`）在 Android 上的对位
+     * 实现 —— 那条链路在 Android 上原本是 `None`，导致整个 `SCREEN` 主动策略
+     * 永不触发。截图本身由 `LingChatAccessibilityService` 完成，这里只负责
+     * 编排「取字节 → 落盘 → 回路径」。
+     *
+     * ## 为什么返回路径而不是字节
+     *
+     * 一帧 1024 长边的 JPEG 约 100~300 KB。走 `invoke.resolveObject` 得先 base64
+     * 塞进 JSON（体积再涨 33%），两端还要各做一次编解码 —— 而这条链路每 2 分钟
+     * 就会走一次。写到 `cacheDir` 再让 Rust 读文件，代价低得多，也不占内存。
+     *
+     * 文件固定为 `cacheDir/screen_capture.jpg`（每次覆盖），Rust 侧读完即用，
+     * **不做长期保存**。
+     *
+     * ## 返回字段
+     *
+     * | 字段 | 说明 |
+     * | --- | --- |
+     * | `ok` | 是否截到了图 |
+     * | `path` | 成功时的 JPEG 绝对路径 |
+     * | `foregroundPackage` | 最近观察到的前台包名（可能为空串），用作语境 |
+     * | `reason` | 失败原因，便于前端/日志区分（服务未开 / API 过低 / 截图失败） |
+     *
+     * ⚠️ 本命令**不在主线程**上跑（Tauri 插件命令走自己的线程池），因此可以安全
+     * 使用 `LingChatAccessibilityService.captureJpeg()` 那个阻塞实现（上限 5s）。
+     * 反过来，`takeScreenshot` 的回调也**不能**在主线程上等 —— 这里已经绕开了。
+     */
+    @Command
+    fun captureScreen(invoke: Invoke) {
+        val pkg = LingChatAccessibilityService.foregroundPackage ?: ""
+
+        if (!LingChatAccessibilityService.isReady()) {
+            // 最常见的失败：用户还没在系统设置里开无障碍。返回结构化结果而不是
+            // reject —— 这不是「错误」，是「功能未启用」，调用方要能区分。
+            invoke.resolveObject(
+                JSObject().apply {
+                    put("ok", false)
+                    put("path", "")
+                    put("foregroundPackage", pkg)
+                    put("reason", "accessibility_service_disabled")
+                }
+            )
+            return
+        }
+
+        val bytes = LingChatAccessibilityService.captureJpeg()
+        if (bytes == null) {
+            invoke.resolveObject(
+                JSObject().apply {
+                    put("ok", false)
+                    put("path", "")
+                    put("foregroundPackage", pkg)
+                    put("reason", "capture_failed")
+                }
+            )
+            return
+        }
+
+        try {
+            val file = File(activity.cacheDir, SCREEN_CAPTURE_FILE_NAME)
+            file.writeBytes(bytes)
+            invoke.resolveObject(
+                JSObject().apply {
+                    put("ok", true)
+                    put("path", file.absolutePath)
+                    put("foregroundPackage", pkg)
+                    put("reason", "")
+                }
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "写入截图文件失败", e)
+            invoke.reject("写入截图文件失败: ${e.message}")
+        }
     }
 
     // ─── 搬运主 WebView ───────────────────────────────────────
@@ -1210,12 +1534,74 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                             View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or
                             View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
                     }
+
+                    // ── ★★ 声明挖孔模式：否则横屏时窗口坐标系会整体偏移 100px ──
+                    //
+                    // 这是「横屏时桌宠右边溢出屏幕」的**真根因**（2026-10-03 六修）。
+                    //
+                    // ## 症状
+                    //
+                    // 横屏时桌宠贴右沿，右边会跑到屏幕外约 76px。左沿正常。
+                    // 竖屏一切正常。两种横屏方向（ROTATION_90 / 270）都会。
+                    //
+                    // ## 为什么
+                    //
+                    // `TYPE_APPLICATION_OVERLAY` 窗口如果不声明挖孔模式，默认
+                    // （`LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT`）**系统会把它的
+                    // 父容器按挖孔内缩**。真机 `dumpsys window` 实测：
+                    //
+                    // ```
+                    // 主界面 MainActivity（manifest 里声明了 always）：
+                    //   Frames: parent=[0,0][2408,1080]        ← 起点 0
+                    // 桌宠悬浮窗（没声明）：
+                    //   mAttrs={(2231,346)(153x153) ... fl=... LAYOUT_NO_LIMITS ...}
+                    //   Frames: parent=[100,0][2408,1080]      ← 起点 100！
+                    //           frame=[2331,346][2484,499]     ← 右边缘 2484 > 屏幕宽 2408
+                    // ```
+                    //
+                    // 横屏时挖孔在**左侧**（`mDisplayCutout.insets=Rect(100,0-0,0)`，
+                    // 深 100px），于是父容器从 x=100 开始。而 `params.x` 是相对
+                    // **父容器**的坐标，我们的 `clampIntoScreen` / `snapToEdge`
+                    // 却按「相对屏幕原点」算：
+                    //
+                    // ```
+                    // 期望：x = screenW(2408) - width(153) - margin(24) = 2231
+                    // 实际：绝对左 = 2231 + 100 = 2331
+                    //       绝对右 = 2331 + 153 = 2484  ← 超出屏幕 76px
+                    // ```
+                    //
+                    // 竖屏时挖孔在**顶部**，父容器的 x 起点仍是 0，所以只有横屏发作。
+                    //
+                    // ## 修法
+                    //
+                    // 声明挖孔模式，让窗口的父容器就是整块屏幕（起点 0,0），
+                    // 于是 `params.x` 与我们的屏幕坐标系一致。这同时也让桌宠
+                    // **可以**贴到挖孔所在的那条短边上 —— 正是文档 4.7.20 里
+                    // 用户要的「左边边界完全不变」（贴左沿时钻到摄像头下一点点，
+                    // 比凭空多出一大截空白自然）。
+                    //
+                    // ⚠️ 别改成 `NEVER` 或删掉：那样父容器又会内缩，bug 复现。
+                    // ⚠️ 也别顺手把 `FLAG_LAYOUT_NO_LIMITS` 去掉 —— 那个是让气泡
+                    //    能绘制到窗口外的，与本次无关。
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        // API 30+：与 manifest 里 MainActivity 的口径一致
+                        layoutInDisplayCutoutMode =
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                    } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        // API 28–29：ALWAYS 还不存在，用 SHORT_EDGES。
+                        // 手机上挖孔就在短边（竖屏顶部 / 横屏左右），够用。
+                        layoutInDisplayCutoutMode =
+                            WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+                    }
+                    // API 24–27：没有挖孔概念，无需处理。
                 }
 
                 applyTouchableFlag(params, touchable)
 
                 val wm = activity.getSystemService(Context.WINDOW_SERVICE) as WindowManager
                 wm.addView(webView, params)
+                // 首次挂窗后也验一次坐标原点（见 [warnIfWindowOriginOffset]）。
+                warnIfWindowOriginOffset(webView, params)
 
                 // 兜底：失去窗口焦点时无条件让出输入焦点。
                 // 见 watchWindowFocus —— 只靠页面的 blur 不够可靠，
@@ -1887,6 +2273,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             clampIntoScreen(params)
 
             windowManager?.updateViewLayout(view, params)
+            // 旋转是最容易暴露「坐标原点偏移」的时机（挖孔在横屏时挪到侧边），
+            // 每次重排后都验一次。见 [warnIfWindowOriginOffset]。
+            warnIfWindowOriginOffset(view, params)
             // 窗口宽度可能变了（分屏 / 折叠屏），必须把新的权威系数推给页面，
             // 否则页面还按旧宽度缩放 —— 那正是「展开后一大片空白」的配方。
             notifyMetrics(params, view)
@@ -1934,6 +2323,59 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         val minY = safe.top
         val maxY = screenH - safe.bottom - params.height
         params.y = if (maxY <= minY) minY else params.y.coerceIn(minY, maxY)
+    }
+
+    /**
+     * ★★ 永久守卫：检查窗口的**坐标原点**是否还等于屏幕原点（2026-10-03 六修）。
+     *
+     * ## 为什么需要这条日志
+     *
+     * `WindowManager.LayoutParams.x/y` 是相对**父容器**的坐标，不是屏幕坐标。
+     * 父容器起点平时是 (0,0)，但**一旦窗口没声明挖孔模式**，横屏时系统会把
+     * 父容器按挖孔内缩 —— 真机实测父容器起点变成 x=100。此时所有
+     * 「按屏幕尺寸算 x/y」的代码（[clampIntoScreen] / [snapToEdge] /
+     * [reapplyWindowAfterConfigChange]）会整体偏 100px，桌宠贴右沿时右边缘
+     * 直接跑到屏幕外 76px。
+     *
+     * 这个偏移**在应用内部读不到**（`currentWindowMetrics.bounds` 给的是整块
+     * 屏幕，不含父容器偏移），只能靠 `View.getLocationOnScreen()` 反推：
+     *
+     * ```
+     * 偏移 = getLocationOnScreen() - params.x/y
+     * ```
+     *
+     * 所以这里在每次布局之后算一次，**非零就告警**。
+     * 它不修正、只报告 —— 修正是 `layoutInDisplayCutoutMode` 的职责，
+     * 如果这里又开始报警，说明那个声明被删了或被 ROM 忽略了，别用补偿掩盖。
+     *
+     * ⚠️ 必须在 `updateViewLayout` **之后**、且下一帧（`post`）里读 ——
+     *    布局还没走完时 `getLocationOnScreen()` 返回的仍是旧值。
+     */
+    private fun warnIfWindowOriginOffset(view: View, params: WindowManager.LayoutParams) {
+        val expectX = params.x
+        val expectY = params.y
+        view.post {
+            try {
+                val loc = IntArray(2)
+                view.getLocationOnScreen(loc)
+                val dx = loc[0] - expectX
+                val dy = loc[1] - expectY
+                if (dx != 0 || dy != 0) {
+                    // ⚠️ 这条文案里**故意不写字段名**（不写 `layoutInDisplayCutoutMode`）。
+                    //    验证脚本靠 grep DEX 里的字段名来证明「挖孔模式声明还在」，
+                    //    文案里出现同一个词会让那条断言变成假阳性 —— 就算把声明删了，
+                    //    光凭这句日志它照样能匹配上。见 verify-pet-apk.sh 六修段。
+                    Log.w(
+                        TAG,
+                        "⚠️ 窗口坐标原点偏移 ${dx},${dy} —— params.x/y 不再等于屏幕坐标，" +
+                            "贴右沿会溢出屏幕。检查窗口的挖孔模式声明是否被删" +
+                            "（期望 0,0；params=$expectX,$expectY 实际落点=${loc[0]},${loc[1]}）",
+                    )
+                }
+            } catch (t: Throwable) {
+                // 纯诊断，失败就算了，不能影响布局。
+            }
+        }
     }
 
     /**
@@ -2146,13 +2588,47 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         }
     }
 
-    /** 弹出输入法。失败只记日志 —— 输入框本身仍可用（外接键盘 / 候选栏）。 */
-    private fun showIme(view: View) {
+    /**
+     * 弹出输入法。失败只记日志 —— 输入框本身仍可用（外接键盘 / 候选栏）。
+     *
+     * ## ★★ 为什么带重试（2026-10-03 四修）
+     *
+     * `showSoftInput` 对 WebView 有一个**静默**前提：WebView 必须已经建立
+     * 输入连接（页面里有个聚焦的可编辑元素）。不满足时它**不报错、不抛异常，
+     * 只是什么都不做** —— 这正是「点了输入框没反应」最难查的地方。
+     *
+     * 而页面聚焦由前端在 ~100ms 做（见 [IME_SHOW_DELAY_MS]），可能因为主线程
+     * 忙或 WebView 重排而更晚。所以这里按 [IME_SHOW_RETRY_DELAY_MS] 重试几次，
+     * 每次都用 `onCheckIsTextEditor()` 问一句「页面准备好了没」。
+     */
+    private fun showIme(view: View, attempt: Int = 1) {
         try {
             val imm =
                 activity.getSystemService(Context.INPUT_METHOD_SERVICE) as? InputMethodManager
                     ?: return
-            imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+            // 页面这一侧就绪了没：WebView 只有在页面里有聚焦的可编辑元素时
+            // 才认为自己是个「文本编辑器」。
+            val ready = view.onCheckIsTextEditor()
+            Log.i(
+                TAG,
+                "弹出输入法（第 $attempt/$IME_SHOW_MAX_ATTEMPTS 次）：" +
+                    "页面就绪=$ready 窗口有焦点=${view.hasWindowFocus()}",
+            )
+            if (ready) {
+                // 顺手再要一次视图焦点：窗口刚变可获焦时 requestFocus 可能太早
+                view.requestFocus()
+                imm.showSoftInput(view, InputMethodManager.SHOW_IMPLICIT)
+                return
+            }
+            if (attempt < IME_SHOW_MAX_ATTEMPTS) {
+                view.postDelayed({ showIme(view, attempt + 1) }, IME_SHOW_RETRY_DELAY_MS)
+            } else {
+                Log.w(
+                    TAG,
+                    "输入法没弹出来：重试 $IME_SHOW_MAX_ATTEMPTS 次后页面仍未把焦点落到输入框上" +
+                        "（检查前端 touchstart 是否触发、isInFloatingWindow() 是否为真）",
+                )
+            }
         } catch (t: Throwable) {
             Log.w(TAG, "弹出输入法失败（可忽略）", t)
         }

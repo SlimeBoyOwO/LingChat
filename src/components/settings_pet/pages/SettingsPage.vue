@@ -128,7 +128,7 @@ const PET_SCALE_DEFAULT = 1.0;
 const PET_SCALE_MAX = 1.3;
 const PET_SCALE_MIN = 0.7;
 import { useGameStore } from "../../../stores/modules/game";
-import { isMobile } from "@/utils/platform";
+import { isAndroid, isMobile } from "@/utils/platform";
 
 // 引入 Lucide 图标
 import { Ruler, Book, Cat, CheckCircle2 } from "@lucide/vue";
@@ -380,15 +380,18 @@ const toggleMaximizeWindow = async () => {
  * 所以手机端改调 `SettingsActivity` 通过 `onWebViewCreate` 注入的接口
  * （见 `gen/android/.../com/noiq/lingchat/SettingsActivity.kt`）。
  *
- * ⚠️ **2026-10-03 起那个接口做的是 `moveTaskToBack`，不再是 `finish()`**：
+ * ⚠️ **2026-10-03 起那个接口做的是「退回」，不再是 `finish()`**：
  *
  * - `finish()` 会销毁设置窗（每次重开都要重建 WebView + 重载页面），
  *   而且**会落到 MainActivity，也就是聊天页** —— 用户报的「关掉设置却回到
  *   聊天页」就是这条；
- * - `moveTaskToBack` 只把整个任务退到后台，设置窗（连同标签页选择、
- *   滚动位置）原样保留，再点「设置」由原生拉回前台即可。
+ * - 现在设置窗独占一个任务栈（见 `AndroidManifest.xml` 里 `SettingsActivity`
+ *   的 `taskAffinity` / `singleInstance`），接口做的是
+ *   `SettingsActivity.sendWholeAppToBack()`：设置任务 + 聊天任务一起退到后台，
+ *   露出**进来之前那个 App**；设置窗（连同标签页选择、滚动位置）原样保留，
+ *   再点「设置」由原生 `moveTaskToFront` 拉回前台即可。
  *
- * 语义的完整说明与「推到后台就隐藏」的守卫见 `SettingsActivity` 头注释。
+ * 语义的完整说明见 `SettingsActivity` 头注释「关闭语义」。
  *
  * 接口拿不到时（理论上不该发生）退回原来的行为，至少不会更差。
  */
@@ -398,6 +401,20 @@ const closeWindow = async () => {
       .LingChatSettings;
     if (typeof bridge?.close === "function") {
       bridge.close();
+      return;
+    }
+    // ★ 桥没挂上时**绝不能**落到下面的 `appWindow.close()`（2026-10-17）。
+    //
+    // Android 上 `Window::close()` 没有对应实现：Tauri 只会销毁 WebView、
+    // 而承载它的 Activity 还在 —— 一块黑屏。更糟的是这条路径一旦真的走到了
+    // `finish()`，设置窗就退回「每次重开都要重建 WebView + 重载页面」的老毛病，
+    // 而这正是 10-03 那轮「设置页被连续建四次」的其中一条可疑来源。
+    //
+    // 桥按理在 `onWebViewCreate` 就会注入，拿不到说明注入时机出了问题。
+    // 这时什么都不做最安全：窗口本来就还在，只是可能被别的任务盖住，
+    // 用户可以再点一次「设置」（走 `bringToFront()` 拉回前台）。
+    if (isAndroid()) {
+      console.warn("[Settings] 原生关闭桥未注入，忽略本次关闭请求（不走 appWindow.close）");
       return;
     }
   }

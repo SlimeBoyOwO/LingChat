@@ -92,3 +92,12 @@ pub fn set_scale<R: Runtime>(
 pub fn status<R: Runtime>(_app: &AppHandle<R>, _state: &FloatingPetState) -> Result<PetStatus> {
     Err(Error::NotSupported)
 }
+
+/// 「屏幕视奸」取景 —— 桌面端**不需要**这条通道。
+///
+/// 桌面端的截屏由 `crates/ling-chat-main` 的 `capture_screen_as_jpeg()`
+/// 直接用 GDI（`BitBlt` + `GetDIBits`）完成，根本不经过本插件。
+/// 这里保留一个同名函数只为让 `lib.rs` 的转发在两端都能编译。
+pub fn capture_screen<R: Runtime>(_app: &AppHandle<R>) -> Result<ScreenCapture> {
+    Err(Error::NotSupported)
+}

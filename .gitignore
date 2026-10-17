@@ -221,3 +221,11 @@ data/plugins/*
 prev-build-*/
 
 .dsh-ops/
+
+# 本地诊断脚本与抓包产物
+# ⚠️ 内含 MT 签名私钥（_diag/mtkey/testkey.pk8）与整包 APK 副本，绝不入库
+_diag/
+
+# 工作区记忆与技能缓存
+.workbuddy-ai/
+

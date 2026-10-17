@@ -178,3 +178,26 @@ pub fn set_scale<R: Runtime>(
 pub fn status<R: Runtime>(app: &AppHandle<R>, _state: &FloatingPetState) -> Result<PetStatus> {
     call(app, "status", ())
 }
+
+/// 「屏幕视奸」（主动窥屏）取景：让原生截一帧，返回 JPEG 的**文件路径**。
+///
+/// ## 为什么是路径不是字节
+///
+/// 一帧约 100~300 KB。走 `run_mobile_plugin` 要 base64 塞进 JSON（体积再涨
+/// 33%），两端还得各编解码一次 —— 而这条链路每 2 分钟就会走一次。原生写到
+/// `cacheDir`、Rust 读文件，代价低得多。
+///
+/// ## 谁在用它
+///
+/// `crates/ling-chat-main::ai_service::screen_analyzer::capture_screen_as_jpeg()`
+/// 的 Android 分支 —— 那个函数通过一个**全局注册的回调**拿到本函数
+/// （见 `set_android_screen_capture` 的说明），所以 `ling-chat-main`
+/// 不需要直接依赖本插件。
+///
+/// ## 失败语义
+///
+/// `ok = false` 是**正常结果**（用户还没开无障碍服务 / API < 30 / 截屏失败），
+/// 不抛错；调用方据此降级。只有写文件失败才会 reject。
+pub fn capture_screen<R: Runtime>(app: &AppHandle<R>) -> Result<ScreenCapture> {
+    call(app, "captureScreen", ())
+}
