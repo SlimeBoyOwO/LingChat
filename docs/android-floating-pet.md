@@ -2866,6 +2866,12 @@ transparent: !isAndroid(),
 
 #### 4.7.30 ★ 屏幕视奸：Android 端补上「截一帧」（无障碍服务）
 
+> **⚠️ 本节已作废（2026-10-17）**：无障碍方案已被整体移除，改用
+> `MediaProjection`。保留本节只为记录当时的取舍过程 —— 当时的判断
+> （「每次冷启动都被弹一次投屏授权不可接受」）在**真机长期使用**这个前提下
+> 是成立的，但代价是「为了截一张图去开一个无障碍服务」，权限过重，且部分
+> ROM / 虚拟化环境会直接挡掉。最终反转，见 **4.7.31**。
+
 **背景**：项目的「视觉感受与主动窥屏」（README「👀」）在桌面端是完整的，Android 端
 **整条不触发**：
 
@@ -2928,6 +2934,299 @@ pub fn set_android_screen_capture(f: ScreenCaptureFn) { let _ = ANDROID_SCREEN_C
 **⚠️ 用户必须手动开启**：设置 → 无障碍 → 已安装的服务 → 「LingChat 屏幕感知」。
 App 无法自行开启，也没有授权弹窗。未开启时回调返回 `None`，屏幕策略照旧不触发 ——
 与改造前行为一致，**不引入新的错误路径**。
+
+#### 4.7.31 ★ 屏幕视奸：无障碍 → MediaProjection（推翻 4.7.30）
+
+**用户拍板**：_「无障碍就不要了吧。有点大材小用啊。」_
+
+4.7.30 的取舍只算了「授权频率」这一笔账，漏掉了两笔更重的：
+
+1. **权限过重**。无障碍服务是一个「能读整个界面、能代用户操作」的超级权限。
+   我们只用它调一个 `takeScreenshot`，用户却要在系统设置里翻到「已安装的服务」
+   给它开一个全局开关 —— 收益与风险完全不成比例。
+2. **可移植性差**。`takeScreenshot` 要 API 30（Android 11）+，而且部分 ROM 和
+   虚拟化环境（如某些定制容器）会直接挡掉或需要额外确认。
+
+`MediaProjection` 是系统为「截屏/录屏」设计的正规通道，授权框就是用户描述的那句
+**「允许 LingChat 开始截取您的屏幕内容吗？」** —— 语义精确、一次会话一次授权、
+API 21 起可用、没有任何审核风险。
+
+**代价（明确接受）**：每次进程重启要重新授权一次。授权框挂在「用户点桌宠」那一刻
+（而不是后台定时触发时），见下文第 6 条。
+
+**★ 一个必须踩过才知道的坑：前台服务**
+
+第一版实现直接 `getMediaProjection(resultCode, data)`，用户明明点了「立即开始」，
+仍然抛：
+
+```
+java.lang.SecurityException: Media projections require a foreground service of type
+  ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION
+    at android.media.projection.MediaProjectionManager.getMediaProjection(...)
+```
+
+**这条约束从 Android 10（API 29）就存在，不是 14 才有** —— 直觉上「14 才开始要
+前台服务」是错的。而且要求的是「调用 `getMediaProjection()` 那一刻，本 App 已经有
+一个 `foregroundServiceType="mediaProjection"` 的前台服务**在跑**」，光在 manifest
+里声明不够。
+
+顺序因此被系统钉死：
+
+```
+用户点「立即开始」
+  → MainActivity.onActivityResult
+  → ScreenCaptureService.start(授权结果)              ← startForegroundService
+  → onStartCommand: startForeground(TYPE_MEDIA_PROJECTION)   ← 必须在前
+  → ScreenCaptureManager.adoptProjection(...)                ← 此时才 getMediaProjection
+```
+
+`startForeground` 是异步的（要等 `onStartCommand`），所以**换 token 不能在
+`onActivityResult` 里同步做**，只能交给服务。副作用：`onPermissionResult` 返回
+true 之后，`isReady()` 还要过几十毫秒才变 true —— 调用方要轮询等，不能假设立即可用。
+
+**实现（七处）**：
+
+1. **`ScreenCaptureManager.kt`**（插件模块，新建，`object` 单例）
+   - `requestIntent()` 只造 `createScreenCaptureIntent()`，**不启动**
+   - `onPermissionResult()` 只验证「用户点了允许」并把结果交给前台服务，**不换 token**
+   - `adoptProjection()` 才真正 `getMediaProjection` + 注册 `MediaProjection.Callback`
+     （不注册的话 Android 14+ 的 `createVirtualDisplay` 会抛 `SecurityException`；
+     顺带能感知「用户从状态栏停止投屏」）
+   - `captureJpeg()`：**每次临时建 `VirtualDisplay` + `ImageReader`，截完立刻释放**。
+     长期持有会让屏幕持续被合成到 Surface 上 —— 对「偶尔瞄一眼」纯属耗电
+   - ⚠️ 取尺寸用 `Display.getRealMetrics()` 而不是 `resources.displayMetrics`：
+     后者在分屏 / 自由窗口下给的是**窗口**尺寸，建出来的 `VirtualDisplay` 比例不对，
+     系统不拉伸、只加黑边
+   - ⚠️ `rowStride` 可能 **大于** `width * pixelStride`（硬件按行对齐），
+     必须按 padding 后的宽度建图再裁回，否则画面是斜的
+   - 缩到最长边 1024 → JPEG(85)；等帧上限 3s，40ms 轮询
+2. **`ScreenCaptureService.kt`**（插件模块，新建）—— 只为满足上面那条系统约束。
+   不持有窗口、不做别的事；`START_NOT_STICKY`，跟着授权一起活到进程结束
+   （**不随单次截图起停**，否则每截一张就要弹一次框）。
+   不复用 `PetForegroundService`：它是以 `specialUse` 起的，而系统检查的是
+   「**当前在跑的**前台服务有没有 mediaProjection 类型」
+3. **`MainActivity.onActivityResult`**（app 模块）—— 转发给
+   `ScreenCaptureManager.onPermissionResult`。`WryActivity` / `TauriActivity`
+   **都没有覆写**这个方法（已 grep 确认），拿过来不抢框架的东西
+4. **插件命令 `captureScreen`** —— 未授权时返回 `reason = permission_required`
+   （不 reject：这是正常状态，不是链路故障）
+5. **插件命令 `requestScreenCapture`**（新增）—— 给将来设置页按钮用；当前主路径
+   不经过它
+6. **★ 授权框挂在「进入桌宠」这一刻**（`FloatingPetPlugin.maybeAskScreenCapture`，
+   在 `show()` 成功之后调用）
+   - **为什么不在后台定时触发时弹**：主动策略是后台每 2 分钟跑一次的，那时候弹一个
+     系统对话框既没有上下文，用户也不知道是哪个 App 在问（授权框上只有应用名）
+   - **为什么不在启动时弹**：用户还没表达任何意图
+   - 用户主动点桌宠进来，语义正好是「我把你叫出来了，你随便看看」
+   - `ScreenCaptureManager.shouldPrompt()` = 没授权 **且** 本进程没问过；
+     用户拒绝后不再纠缠（真拒绝了还反复弹，只会被卸载），下次开 App 才再问
+7. **app 层注入闭包**（`setup/mod.rs`）—— 只做「取图」，不弹任何框。拿不到就
+   返回 `None`，屏幕策略本轮作罢
+
+**★ 两次拒绝都要有反馈**（`PetVoice.kt`）
+
+两个权限都可能被用户拒掉，而两次拒绝的**感知时机**不一样：
+
+| 请求                                         | 拒绝怎么发现                                                                                 | 时机             |
+| -------------------------------------------- | -------------------------------------------------------------------------------------------- | ---------------- |
+| 悬浮窗（`ACTION_MANAGE_OVERLAY_PERMISSION`） | 系统设置页**不回传结果**，只能在 `MainActivity.onResume` 里重新 `Settings.canDrawOverlays()` | 用户从设置页返回 |
+| 屏幕截取（`MediaProjection`）                | `onActivityResult` 的 `resultCode != RESULT_OK`                                              | 用户点「取消」   |
+
+两处都调 `PetVoice.toastDenied(context)`，台词：
+
+> **哇呜呜，口是心非的人类，居然不允许我的请求**
+
+用 Android Toast 而不是页面气泡，是因为这两刻页面都不可靠：前者 MainActivity
+刚 resume、WebView 可能还在恢复；后者页面可能正停在桌宠布局里。`evaluateJavascript`
+在这两处都可能丢（见「原生 → 页面不可靠」那节的说明）。
+
+**删掉的东西**（一并清理，避免 manifest 里留一个永不启用的服务）：
+`LingChatAccessibilityService.kt`、`res/xml/lingchat_screen_accessibility.xml`、
+插件 manifest 里的 `<service>` 块与 `BIND_ACCESSIBILITY_SERVICE`、
+`strings.xml` 里的 `accessibility_service_label` / `accessibility_service_description`。
+
+**`reason` 语义变更**：`accessibility_service_disabled`（旧）→
+`permission_required`（新）。`capture_failed` 保留（已授权但等帧超时 / 投屏被中断）。
+
+**`foregroundPackage` 恒为空串**：`MediaProjection` 只给画面、不给包名。
+无障碍方案顺带能拿到前台包名，这是唯一丢掉的能力 —— 它只用于日志/提示，
+不参与策略判断，影响可忽略。
+
+**★ adb 自检入口**（`MainActivity.maybeRunScreenSelfTest`）
+
+授权是进程级的，而正式链路要等主动策略随机选中 SCREEN，验证一次太慢。
+所以留了个入口，一条命令跑完「授权 + 取帧」：
+
+```bash
+adb shell am start -n com.noiq.lingchat/.MainActivity \
+    -a android.intent.action.MAIN -c android.intent.category.LAUNCHER \
+    --ez lingchat_screen_selftest true
+adb logcat -s LingChatMain ScreenCapture ScreenCaptureSvc
+```
+
+结果只写日志（字节数 / 耗时 / JPEG 头），**不落盘** —— `MainActivity` 是
+`exported="true"`（launcher 需要），任何 App 都能发这个 intent；不落盘就没有
+静默取景的可能，最坏情况只是弹一次授权框。字节数本身就是「有没有真截到画面」
+的强信号：全黑图压 JPEG q85 只有几 KB，真实界面在 1024 长边下是 80~300 KB。
+
+#### 4.7.32 ★★ 键盘弹不出来：前端那条路是死的，改由原生问 DOM
+
+**症状**：桌宠展开后点输入框，键盘不出来。用户原话：
+「弹不出键盘的问题还是存在，在桌宠下」。
+
+**排查过程（值得记住的是「怎么定位」，不是结论）**
+
+1. `dumpsys input_method` 显示窗口**已经**可获焦、`softInputMode=ADJUST_RESIZE`、
+   `mServedView` 已指向 `RustWebView` —— 看着一切正常。
+2. 流式 logcat 抓全流程，发现**从头到尾没有 `输入框获得焦点：悬浮窗改为可获焦`
+   这一行**。而旧代码只有**成功**才打日志，于是「页面根本没发命令」和
+   「发了但被 `NOT_VISIBLE` 拒了」在日志里长得一模一样，**无法区分**。
+   → 第一件事是给 `setImeFocus` 加**入口日志**，不然永远在猜。
+3. 一路排除到 Rust：命令名对得上（`floating-pet|set_ime_focus`）、
+   `generate_handler!` 里注册了、`mobile.rs` 的 `if !state.is_visible()` 守卫
+   也**不是**元凶 —— `set_expanded` 有同样的守卫而展开是成功的。
+4. 结论：**JS 侧就没发**。`ChatInput.vue` 的 `acquireImeFocus` 有两道闸
+   （`isInFloatingWindow()` / `imeFocusHeld`），且 `.catch(() => {})` 把一切
+   失败吞掉。实测装机后整场会话 `setImeFocus 收到` 出现 **0 次**。
+
+**★ 教训：不要在前端放「置位后只能靠某个事件复位」的闩锁**
+
+`imeFocusHeld = true` 之后只有 `blur` 才复位。而原生在悬浮窗**失去窗口焦点**时
+会自己把 `FLAG_NOT_FOCUSABLE` 加回去（见 `watchWindowFocus`），却没有任何办法
+告诉页面「我已经让出了」。一次意外失焦就能把这条闩锁**永久**卡死，
+之后页面再点输入框一声不吭什么都不做。
+
+**修法：原生侧自己问 DOM，完全绕开页面状态**
+
+`buildPetTouchListener` 的 `ACTION_UP`（非拖动）里起一次探针
+`probeImeAfterTap(webView, event.x, event.y)`：
+
+```kotlin
+// 判据是「这个位置底下是什么元素」，不是「有没有元素聚焦」
+document.elementFromPoint(cssX, cssY)  →  textarea / input / [contenteditable] ?
+```
+
+- 命中 → `ensureImeFocus(view, focusJs)`：摘 `FLAG_NOT_FOCUSABLE` +
+  `ADJUST_RESIZE` + `updateViewLayout` + `requestFocus`，
+  再（等窗口焦点切换完）替页面 `p.focus()`，最后 `showIme()`
+- 没命中 → 什么都不做（点头像、点按钮都不会误弹键盘）
+
+**⚠️ 判据不能是 `document.activeElement`**：窗口带着 `FLAG_NOT_FOCUSABLE` 时
+页面里的 `textarea` **压根聚焦不上**，这个判据在窗口可获焦之前恒为 false ——
+拿它当触发条件就是自证死循环（前端注释里已经踩过同一个坑）。
+`elementFromPoint` 问的是「底下是什么」，跟窗口有没有焦点无关，永远可答。
+
+**⚠️ 坐标要换成 CSS 像素**：`event.x / displayMetrics.density`。
+展开态窗口 648px ≈ **216 CSS px**，与布局里 `--pet-fit` 的推导一致。
+
+**同一轮修的第二个缺陷：`watchWindowFocus` 会和输入法抢**
+
+输入法弹出的**那一瞬间**，悬浮窗会短暂失一次窗口焦点（IME 窗口接管输入）。
+旧代码当场就把 `FLAG_NOT_FOCUSABLE` 加回去 = 刚弹出来就关掉，表现为
+「闪一下没了」甚至「完全弹不出来」。改成延迟
+`FOCUS_RELEASE_DEBOUNCE_MS`（600ms）确认：期间焦点回来了、
+或 `imm.isAcceptingText` 为真，就什么都不做。
+
+**验证（Pixel 4 / Android 11）**
+
+```
+20:14:24.066 悬浮窗单击 (354,940) 窗口=648x845@(0,266)
+20:14:24.087 输入法探针：(118,224)CSS 处是可编辑元素=true
+20:14:24.539 弹出输入法（第 1/5 次）：页面就绪=true 窗口有焦点=true 输入法活跃=true 接受输入=true
+```
+
+探针命中 5 次，5 次键盘都起来了；点头像/按钮时正确返回 `false`。
+失焦防抖也生效：
+
+```
+20:15:17.018 悬浮窗窗口失焦，等待 600ms 确认
+20:15:17.628 窗口失焦但输入法正在接受输入，暂不让出焦点
+```
+
+**遗留**：`ChatInput.vue` 的 `acquireImeFocus` / `releaseImeFocus` 现在是死代码
+（`imeFocusHeld` 置位后也不复位）。功能上已被原生探针覆盖，但彻底清理要改前端
+（会触发 `.so` 重链，13 分钟）。真要清的时候记得同时做两件事：
+① 去掉硬闩锁，改成短去抖；② `.catch` 里把失败**打出来**而不是吞掉。
+
+#### 4.7.33 ★★ 进桌宠的门禁：悬浮窗 + 截屏，两项齐备；手机不再框选
+
+**背景（用户定的规矩）**
+
+1. 进桌宠必须**同时**有悬浮窗权限和屏幕截取授权，缺一项就不许进；
+2. 拒绝提示走**应用内 toast**（`uiStore.showWarning`），不用系统 `Toast`；
+3. 进之前加一个弹窗解释「为什么要看屏幕」，文案要短；
+4. **手机不做框选** —— 整屏送进去；桌面才框选；
+5. 分工：桌宠模式按相机键 = 截图，聊天页 = 选图。
+
+**为什么手机不该框选**
+
+桌面元素杂（多个窗口、任务栏、侧边栏），框选是省 token 也是提高准确率。
+手机一屏就那么点内容，框选只是多一步操作；而且桌宠态下我们的 WebView 被搬在
+`TYPE_APPLICATION_OVERLAY` 悬浮窗里，**根本开不出全屏覆盖窗口**去框选。
+
+所以两条链路彻底分开：
+
+| 场景                 | 命令                     | 交互                                                                        |
+| -------------------- | ------------------------ | --------------------------------------------------------------------------- |
+| 桌面 · 聊天页 / 桌宠 | `start_screenshot`       | 抓全屏 → 建 `screenshot-overlay` 窗口 → 拖框 → `confirm_screenshot(base64)` |
+| 手机 · 桌宠          | `take_screenshot_base64` | 直接抓一帧，整张 base64 返回，无中间 UI                                     |
+| 手机 · 聊天页        | `start_screenshot`       | 弹底部 sheet（拍照 / 相册），未改                                           |
+
+`take_screenshot_base64` 在 `ling-chat-main` 里，底层复用
+`capture_screen_as_jpeg()`（Android 走注入槽 → `ScreenCaptureManager` 的
+MediaProjection），放 `spawn_blocking` 里跑（等帧上限 3s，不能堵异步运行时）。
+
+**为什么门禁要放在前端而不是原生**
+
+原生没有「页面的上下文」——它不知道用户是点了桌宠按钮、还是后台策略在跑。
+`FloatingPetPlugin.show()` 早先会在末尾调 `maybeAskScreenCapture()` 自动弹框，
+后果是：用户点桌宠 → 突然冒出系统对话框、没有任何解释。现在那个函数整个删掉，
+授权时机收口到 `MainChat.goToPetMode`：
+
+```
+status 查询 → 不支持/未查询到 → toast 收尾
+           → 悬浮窗未授权 → 说明弹窗 → 跳系统设置 → 回来自动续跑
+           → 截屏未授权   → 说明弹窗 → 系统授权框 → 回来自动续跑
+           → 两项齐备     → router.replace('/pet') → show()
+```
+
+**防死循环**：`screenCaptureAsked` 记住「本次尝试已经问过一次」。用户点取消后
+回到前台，`handleVisibilityChange` 会自动重试 `goToPetMode`；这一次不再弹框，
+静默收尾（拒绝的 toast 已由原生 `onActivityResult` 派发过，不重复）。
+
+**竞态：授权回来那一刻 `isReady()` 还是 false**
+
+授权 token 是在前台服务的 `onStartCommand` 里换的（系统要求），
+`onActivityResult` 返回时可能还没换好。所以 `isScreenCaptureReady` 命令
+**不会立刻回答 false**，而是在后台线程轮询最多 `SCREEN_READY_WAIT_MS`（1.5s）。
+
+这一条很关键：如果不加，用户明明授权了却因为「抢答 false」被门禁挡在外面，
+而防死循环逻辑又让它静默 —— 表现就是老问题「点了没反应」。
+轮询必须放后台线程，占住主线程反而会让 token 永远换不上来。
+
+**Toast 为什么从系统搬到 Vue**
+
+系统 `Toast` 是灰底黑字的系统气泡，跟 App 视觉完全脱节，也不受主题控制。
+现在 `MainActivity.notifyPermissionDenied(which)` 用 `evaluateJavascript`
+派发一个 DOM `CustomEvent('pet-permission-denied')`（与 `pet-attached` /
+`pet-metrics` 同一套做法，省一次 IPC 往返），前端
+`onPetPermissionDenied` 收到后弹 `uiStore.showWarning`。
+
+`PetVoice` 因此从 70 行缩到 40 行，只剩 `awaitingOverlayPermission` 一个状态位
+——它跨 `MainActivity` / 插件模块共享，仍需要一个载体。
+
+**⚠️ 踩到的坑：ACL 白名单是手写的**
+
+`permissions/autogenerated/commands/*.toml` 只负责给每个 `#[Command]` 生成
+`allow-xxx` 权限文件，**真正放不放行由 `permissions/default.toml` 的
+`permissions = [...]` 决定**。新增 `is_screen_capture_ready` /
+`request_screen_capture` 后忘了加进白名单，前端调用会被 ACL 直接拒掉
+（`plugin floating-pet not allowed`），表现同样是「点了没反应」。
+排查插件命令「没反应」时，**先看这份清单**。
+
+**顺带清掉的死状态**：`ScreenCaptureManager` 的 `promptShown` /
+`shouldPrompt()` / `markPromptShown()` 已无调用方。留一个没人写的布尔，
+只会让后来者误以为「置 true 就代表问过了」，直接删。
 
 ## 五、手机端的交互设计
 
