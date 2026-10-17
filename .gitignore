@@ -232,3 +232,6 @@ _diag/
 # 工作区记忆与技能缓存
 .workbuddy-ai/
 
+# DSH 的工作记忆（见 $DSH_HOME/AGENTS.md）。.dsh/skills 仍然入库，只忽略 memory
+.dsh/memory/
+
