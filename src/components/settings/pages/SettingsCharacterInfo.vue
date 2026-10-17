@@ -1148,7 +1148,7 @@ const gsvEmoField = (cat: string, key: "gsv_emo_texts" | "gsv_emo_voice_files") 
   });
 
 // 合成采样参数：空串删除键（留空=后端默认），非空转数字。
-// 预创建 computed 供模板直接绑定，避免在 v-for 里每次渲染动态建 computed。
+// 预创建 computed 供模板稳定绑定，避免每次渲染重建。
 const gsvSamplingField = (key: "gsv_temperature" | "gsv_top_p" | "gsv_speed_factor") =>
   computed({
     get: () => {

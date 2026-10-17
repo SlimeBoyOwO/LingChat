@@ -75,13 +75,17 @@ fn preprocess_text(text: &str, text_lang: &str) -> (String, String) {
     if trimmed.is_empty() {
         return (text.to_string(), text_lang.to_string());
     }
-    let mut out = String::with_capacity(trimmed.len() + 4);
-    out.push_str(trimmed);
-    if !ends_with_punct(&out) {
-        match text_lang {
-            "zh" | "ja" => out.push('。'),
-            "en" | "ko" => out.push('.'),
-            _ => {},
+    let mut out = String::with_capacity(text.len() + 4);
+    out.push_str(text);
+    if !ends_with_punct(trimmed) {
+        let punct = match text_lang {
+            "zh" | "ja" => Some('。'),
+            "en" | "ko" => Some('.'),
+            _ => None,
+        };
+        if let Some(p) = punct {
+            // 标点补在尾部空白之前，不改写输入文本自身的空白
+            out.insert(trimmed.len(), p);
         }
     }
     let lang = if text_lang != "auto" && contains_cjk(&out) && contains_ascii_letter(&out) {
@@ -189,7 +193,7 @@ fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
     }
     let mut pos = 12usize;
     let mut is_16bit = false;
-    let mut data_start = None;
+    let mut data = None; // (起始偏移, 块大小)
     while pos + 8 <= bytes.len() {
         let id = &bytes[pos..pos + 4];
         let size = u32::from_le_bytes(bytes[pos + 4..pos + 8].try_into().ok()?) as usize;
@@ -202,18 +206,19 @@ fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
                 is_16bit = u16::from_le_bytes([bytes[body + 14], bytes[body + 15]]) == 16;
             },
             b"data" => {
-                data_start = Some(body);
+                // 样本只算 data 块内的字节，块后的附加 chunk 不参与
+                data = Some((body, size.min(bytes.len().saturating_sub(body))));
                 break;
             },
             _ => {},
         }
         pos = body + size + (size & 1);
     }
-    let start = data_start?;
+    let (start, size) = data?;
     if !is_16bit {
         return None;
     }
-    Some((start, (bytes.len() - start) / 2))
+    Some((start, size / 2))
 }
 
 #[derive(Debug, Clone)]
@@ -580,6 +585,11 @@ mod tests {
         assert_eq!(preprocess_text("   ", "zh"), ("   ".into(), "zh".into()));
         // 其他语言不补标点
         assert_eq!(preprocess_text("hola", "es"), ("hola".into(), "es".into()));
+        // 尾部空白保留，标点补在空白之前
+        assert_eq!(
+            preprocess_text("你好 ", "zh"),
+            ("你好。 ".into(), "zh".into())
+        );
     }
 
     #[test]
