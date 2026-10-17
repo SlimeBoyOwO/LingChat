@@ -1484,13 +1484,13 @@ export default {
     refStop: "Stop",
     refPlayFailed: "Failed to preview the reference audio",
     refImportUnsupported:
-      "Unrecognized audio format (mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and more are supported; WebM and HE-AAC are not)",
+      "Unrecognized audio format (mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and more are supported; WebM is not)",
     refImportOpus:
       "Multichannel Opus (e.g. 5.1) is not supported yet. Please convert it to mono or stereo first",
     refImportTooLong: "The reference audio is too long. Please trim it and import a shorter clip",
     refImportFailed: "Failed to import reference audio",
     refImportHint:
-      "mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and other common audio are supported (except WebM and HE-AAC). The file is converted to WAV and copied into the app data directory",
+      "mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and other common audio are supported (except WebM). The file is converted to WAV and copied into the app data directory",
     refText: "Reference text",
     refTextPlaceholder: "Transcription of the reference audio...",
     test: "Test",

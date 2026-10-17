@@ -63,8 +63,11 @@ const DESKTOP_AUDIO_EXT = ["mp3", "wav", "flac", "ogg", "oga", "opus", "aac", "m
  *
  * `.aac` 有两种情况：内容是真的 ADTS 裸流（symphonia 的 `aac` feature 里自带
  * `AdtsReader`，能解 AAC-LC），或者只是扩展名叫 .aac 而内容其实是 mp4/m4a
- * （探测以内容为准，一样能用）。解不了的是 HE-AAC（SBR/PS）：symphonia 的 AAC
- * 解码器只认 AAC-LC。
+ * （探测以内容为准，一样能用）。
+ *
+ * HE-AAC（SBR/PS）也不拦：symphonia 的 AAC 解码器只认 AAC-LC，会把 SBR 层丢掉、
+ * 只解出 11 kHz 以下的 LC 核心 —— 实机（平板 Android 16）验证过音量与时长正常，
+ * 做音色克隆够用，所以归到「能导入」而不是「格式不支持」。
  *
  * 别把 `.webm` 列进来：symphonia 0.5 没有 Matroska 读取器，选了必然失败。
  */

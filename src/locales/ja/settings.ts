@@ -1465,13 +1465,13 @@ export default {
     refStop: "停止",
     refPlayFailed: "参照音声の試聴に失敗しました",
     refImportUnsupported:
-      "認識できない音声形式です（mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な形式に対応。WebM と HE-AAC は未対応）",
+      "認識できない音声形式です（mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な形式に対応。WebM は未対応）",
     refImportOpus:
       "マルチチャンネルの Opus（5.1 など）には未対応です。モノラルまたはステレオに変換してからインポートしてください",
     refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",
     refImportFailed: "参照音声のインポートに失敗しました",
     refImportHint:
-      "mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な音声に対応（WebM、HE-AAC を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
+      "mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な音声に対応（WebM を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
     refText: "参照テキスト",
     refTextPlaceholder: "参照音声に対応するテキスト……",
     test: "試聴",

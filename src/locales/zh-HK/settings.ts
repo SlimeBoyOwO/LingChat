@@ -1642,12 +1642,12 @@ export default {
     refStop: "停止",
     refPlayFailed: "試聽參考音訊失敗",
     refImportUnsupported:
-      "無法識別的音訊格式（支援 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常見格式；WebM、HE-AAC 暫不支援）",
+      "無法識別的音訊格式（支援 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常見格式；WebM 暫不支援）",
     refImportOpus: "暫不支援多聲道 Opus（例如 5.1），請先轉成單聲道或立體聲再匯入",
     refImportTooLong: "參考音訊過長，請先截取較短嘅一段再匯入",
     refImportFailed: "匯入參考音訊失敗",
     refImportHint:
-      "支援 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常見音訊（WebM、HE-AAC 除外）；匯入後會自動轉成 WAV 並複製到應用程式資料目錄",
+      "支援 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常見音訊（WebM 除外）；匯入後會自動轉成 WAV 並複製到應用程式資料目錄",
     refText: "參考文字",
     refTextPlaceholder: "與參考音訊對應嘅文字……",
     test: "試聽",
