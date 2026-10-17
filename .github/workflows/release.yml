@@ -141,8 +141,8 @@ jobs:
       # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` 软链到 target/release。
       #
       # 分发侧由 tauri.linux.conf.json 解决：beforeBundleCommand 调
-      # scripts/prepare-linux-libs.mjs 把库解引用复制进 src-tauri/linux-libs/，
-      # 作为 bundle 资源落到 /usr/lib/LingChat/lib（deb）与 AppDir/usr/lib/LingChat/lib（AppImage）；
+      # scripts/prepare-linux-libs.mjs（Dawn）与 scripts/stage-desktop-runtime-libs.mjs
+      # （Dawn + sherpa CUDA 运行库），分别落到 /usr/lib/LingChat/lib 与 /usr/lib；
       # 可执行文件的 RPATH 由 src-tauri/build.rs 写入 $ORIGIN/../lib/LingChat/lib。
       #
       # 这里额外放到系统库路径，只为让 linuxdeploy 打 AppImage 时能解析该依赖，

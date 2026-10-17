@@ -6,7 +6,8 @@
 # will have schema files for capabilities auto-completion
 /gen/schemas
 
-# 桌面端 GPU 打包产物（scripts/package-desktop-sherpa-gpu-libs.mjs 生成）：
-# CUDA 版 sherpa-onnx 运行库的暂存目录，以及引用它的 Tauri 配置覆盖文件。
-/.sherpa-gpu-libs/
+# 桌面端打包的运行库暂存目录（scripts/stage-desktop-runtime-libs.mjs 生成，
+# 由 tauri.conf.json 的 bundle.linux.*.files 映射进安装包），以及 CUDA 版
+# Windows 打包时生成的 Tauri 配置覆盖文件。
+/.runtime-libs/
 /tauri.sherpa-gpu.conf.json
