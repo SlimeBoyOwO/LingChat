@@ -32,6 +32,9 @@
 # 提示词文本：include_str! 编译期逐字节嵌入二进制，换行符必须固定 LF
 crates/ling-chat-main/src/ai_service/skill_agent/prompts/** text eol=lf
 
+# ZipVoice 音素表：同上，CRLF 会让行尾音素带上 \r 而全部查不到
+crates/ling-chat-main/src/ai_service/tts/adapters/zipvoice-lexicon-zh-en.txt text eol=lf
+
 # MC 桥接模组：Java/Gradle 惯例 LF；gradlew 无扩展名，不显式声明会被 autocrlf 检出成 CRLF
 extension/maid_mod/gradlew text eol=lf
 extension/maid_mod/gradle/wrapper/*.jar binary
