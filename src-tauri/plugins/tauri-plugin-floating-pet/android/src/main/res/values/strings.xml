@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="floating_pet_permission_hint">桌宠需要「显示在其他应用上层」权限</string>
+
+    <!-- 无障碍服务的「标签」与「说明」——系统设置里那一页显示的就是这两条。 -->
+    <string name="accessibility_service_label">LingChat 屏幕感知</string>
+    <string name="accessibility_service_description">开启后，LingChat 的桌宠角色可以偶尔看一眼你的屏幕，主动关心你在做什么（对应桌面端的「视觉感受与主动窥屏」）。本服务只截取画面，不读取任何控件内容或输入文字。</string>
 </resources>

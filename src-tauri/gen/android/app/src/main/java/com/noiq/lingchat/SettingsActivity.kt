@@ -2,6 +2,7 @@ package com.noiq.lingchat
 
 import android.app.ActivityManager
 import android.content.Context
+import android.content.Intent
 import android.content.res.Configuration
 import android.os.Bundle
 import android.util.Log
@@ -54,47 +55,86 @@ import java.lang.ref.WeakReference
  * ⚠️ 别和「裸 `WebView(activity)`」混为一谈 —— 那个没有
  * `addJavascriptInterface`，是个读不到数据、发不出消息的空壳（见文档 4.1）。
  *
- * ## ★ 关闭语义：不销毁 + 退到后台（2026-10-03 重写）
+ * ## ★ 关闭语义：退回 + 不销毁 + 独占任务栈（2026-10-03 重写）
  *
  * 早先「关闭」= `finish()`，三个后果都被真机反馈打到了：
  *
  * 1. **每次都重建**。设置页的 WebView、Pinia store、标签页选择全部重来一遍，
  *    反复调起时明显卡一下；
  * 2. **`finish()` 会落到 MainActivity** —— 也就是**聊天页**。用户报的
- *    「折叠态下可能会触发回到聊天页」就是这条：他点的是「关掉设置」，
+ *    「关掉设置却回到聊天页」就是这条：他点的是「关掉设置」，
  *    结果被扔进了另一个页面；
  * 3. 返回键（无历史时）同样走 `finish()`，症状一样。
  *
- * 现在两条路都改成 [`moveTaskToBack`]：
+ * 现在**任何一条路都不再 `finish()`**，实例与它的 WebView 全程保留：
  *
- * | 动作        | 行为                                     | 实例 |
- * | ----------- | ---------------------------------------- | ---- |
- * | 点 ✕ / 返回 | `moveTaskToBack(true)`（整个任务退后台） | 保留 |
- * | 再点「设置」| 原生把任务拉回前台（见 [bringToFront]）  | 复用 |
+ * | 动作                        | 行为                                             | 实例 |
+ * | --------------------------- | ------------------------------------------------ | ---- |
+ * | 点 ✕ / 返回键               | [sendWholeAppToBack]：设置任务 + 聊天任务一起退后台 | 保留 |
+ * | 桌宠的「返回主页 / 返回键」 | 原生 `moveTaskToFront(聊天任务)`，设置任务留在后面 | 保留 |
+ * | 再点「设置」                | 原生把设置任务拉回前台（见 [bringToFront]）        | 复用 |
  *
- * `moveTaskToBack(true)` 的参数是 `nonRoot`：**必须传 `true`** —— 传 `false`
- * 时只有「本 Activity 是任务根」才生效，而这里是任务根之上的第二个 Activity，
- * 会静默什么都不做。
+ * ### 为什么必须独占一个任务栈
  *
- * ## ★ 「推到后台就隐藏」怎么保证
+ * 本 Activity 在 `AndroidManifest.xml` 里声明了
+ * `taskAffinity` + `launchMode="singleInstance"` + `excludeFromRecents`。
+ * 那不是风格选择，是**上面表格第二行能成立的前提**：
  *
- * 光靠 `moveTaskToBack` 只解决了「用户主动关」这一半。另一半是：设置窗在后台
- * 活着的时候，用户从**别的入口**回到 App（桌面图标、桌宠的「返回主页」、
- * 通知……），系统会把整个任务拉到前台，**栈顶仍是设置窗** —— 用户想看聊天页，
- * 却看到设置页。用户明确要求这两种情况都必须隐藏。
+ * 设置窗原先与 MainActivity 同一个任务栈，于是「按桌宠返回键要回到聊天页」
+ * 这件事根本无解 —— `moveTaskToBack` 是**任务级**的（会把聊天页一起退到后台，
+ * 用户看到的是桌面），而 `FloatingPetPlugin.bringActivityToFront()` 的
+ * `moveTaskToFront(MainActivity.taskId)` 拉的是**整个任务**、栈顶仍是设置窗
+ * （**真机反馈的正是这条**：「进入桌宠设置后，直接按桌宠上的返回键，
+ * 设置页没有收起来」）。
  *
- * 判据是 [`pendingShow`]：
+ * 让设置窗独占任务栈之后，`moveTaskToFront(聊天任务)` 只把聊天页翻到最前面，
+ * 设置窗原样留在它自己的任务里 —— 退回、且不销毁。
  *
- * - `onCreate` 与 [bringToFront] 会把它置真 —— 这两条是「用户主动要设置」；
- * - `onStop` 记下「确实退过后台」；
- * - `onResume` 时若**既不是主动要设置、又确实退过后台** → 自己 `finish()`。
+ * ### `moveTaskToBack` 的参数
  *
- * 用 `onStop` 而不是 `onPause`：`onPause` 会被权限弹窗、通知栏下拉这类
- * 短暂打断触发，只看它会把正常使用中的设置窗误杀。
+ * 参数是 `nonRoot`：**必须传 `true`**。传 `false` 时只有「本 Activity 是
+ * 任务根」才生效；`true` 表示「任务里任意一个 Activity 都能把整个任务退到
+ * 后台」。（本 Activity 现在恰好是设置任务的根，但传 `true` 才是不依赖这个
+ * 前提的写法。）
  *
- * 走到这条分支时实例会被销毁（WebView 也就没了），但这是**用户已经离开设置
- * 语境**的情况，下次再点设置重新建一个即可 —— 而「短时间内反复调起」那条
- * 主路径（关 → 再点设置）不经过这里，实例是保留的。
+ * ### ✕ / 返回键为什么要连聊天任务一起退
+ *
+ * 独占任务栈之后，`moveTaskToBack(true)` 只退设置任务，底下的聊天任务会顺势
+ * 浮到前台 —— 用户点「关掉设置」看到的会是聊天页。而他要的是「回到进来之前
+ * 那个 App」（第 2 条真机反馈说的就是这个），所以两个任务都要退。顺序也有讲究，
+ * 见 [sendWholeAppToBack]。
+ *
+ * ## ★ 「推到后台就自己 finish()」的守卫已**删除**（2026-10-03，真机 ANR 后）
+ *
+ * 原先 `onResume` 里有一条兜底：若这次回到前台**不是**用户主动要设置、
+ * 且确实退过后台，就自己 `finish()`。它已经整个拆掉，原因有两条：
+ *
+ * ### 1. 它是「Tauri 窗口登记表」与「Android 实例」失同步的**唯一来源**
+ *
+ * 前端的 `handleOpenSettings` 要靠 `LingChatApp.focusSettings()` 判断
+ * 「实例还在不在」（见 `MainActivity.installSettingsBridge`），而这个判据读的
+ * 就是本类 `companion object` 里的 `instanceRef`。
+ *
+ * 一旦这里 `finish()`，`instanceRef` 变 null，但 **Tauri 那边的窗口登记还在**
+ * —— 于是前端会以为「实例没了」，掉进新建分支再发一次建窗。而 `launchMode` 是
+ * `singleInstance`：系统**复用**已有实例走 `onNewIntent`，`onCreate` 不再触发，
+ * `tao` 的 `create_activity` 就永远等不到回信 —— 那条路上还要拿着 Tauri 的
+ * `webviews_lock()`，会把主线程一起拖住。**这就是真机 5 秒 ANR 的成因之一。**
+ *
+ * ### 2. 它跟「设置页只用退回、不要关闭」的既定方向冲突
+ *
+ * 用户明确要求设置页**退回而不销毁**（省掉 WebView / store 的重建开销）。
+ * 一个会在某些入口下偷偷 `finish()` 的守卫，正好是这个方向的漏洞。
+ *
+ * ### 那「从别的入口回 App 看到设置页」怎么办
+ *
+ * 不靠守卫，靠**任务栈隔离**：本 Activity 声明了 `taskAffinity` +
+ * `singleInstance` + `excludeFromRecents`，桌面图标 / 桌宠返回键拉起的都是
+ * **聊天任务**，设置任务只会留在后面、不会被 resume —— 本来就不会出现
+ * 「想看聊天页却看到设置页」。守卫是当年同栈时代的补丁，现在没有存在必要。
+ *
+ * ⚠️ 现在的语义是：**本 Activity 一旦创建就活到进程结束**（或被系统回收）。
+ * 所有「关闭」都是 `moveTaskToBack`，不销毁。见上面的「关闭语义」表。
  *
  * ## `configChanges` 必须与 MainActivity 对齐
  *
@@ -109,15 +149,6 @@ class SettingsActivity : TauriActivity() {
     /** 上一次已知的 WebView 尺寸。只有真的变了才派发 resize，见 [watchSizeChanges]。 */
     private var lastWebViewW = 0
     private var lastWebViewH = 0
-
-    /**
-     * 是否**确实退过后台**（走过 `onStop`）。
-     *
-     * 见头注释「推到后台就隐藏」：只有退过后台再回来、且这次回来不是用户主动
-     * 要设置，才认定是「从别的入口回到 App」，需要自己退场。
-     * 不用 `onPause` 是为了不被权限弹窗这类短暂打断误触发。
-     */
-    private var wentToBackground = false
 
     companion object {
         private const val TAG = "SettingsActivity"
@@ -134,17 +165,6 @@ class SettingsActivity : TauriActivity() {
         fun current(): SettingsActivity? = instanceRef?.get()
 
         /**
-         * 「下一次回到前台是用户主动要打开设置」。
-         *
-         * 由 `onCreate`（首次创建）与 [bringToFront]（复用时拉回前台）置位，
-         * 在 `onResume` 里被消费掉。见头注释「推到后台就隐藏」。
-         *
-         * `@Volatile`：[bringToFront] 可能从 JS 桥线程进来，`onResume` 在 UI 线程读。
-         */
-        @Volatile
-        private var pendingShow = false
-
-        /**
          * 把存活的设置窗拉回前台。
          *
          * ## 为什么必须有这个，而不是前端 `setFocus()`
@@ -159,21 +179,27 @@ class SettingsActivity : TauriActivity() {
          * }
          * ```
          *
-         * 而「关闭」现在是 `moveTaskToBack`（不 `finish()`），窗口活着但整个任务
-         * 在后台。没有这条通道，用户再点「设置」就是**毫无反应** —— 窗口明明在，
-         * 却永远浮不上来。
+         * 而「关闭」现在既不 `finish()` 也不销毁 —— 窗口活着，只是它所在的那个
+         * 设置任务退到了后台（见头注释「关闭语义」）。没有这条通道，用户再点
+         * 「设置」就是**毫无反应**：窗口明明在，却永远浮不上来。
          *
          * ## 为什么用 `moveTaskToFront` 而不是 `startActivity`
          *
          * `startActivity` 那条路在这个项目上被证伪过两次（见
          * `FloatingPetPlugin.bringActivityToFront` 的注释）：MainActivity 是
-         * `singleTask`，用 `startActivity` 拉它会把**它上面所有 Activity 销毁**，
-         * 设置窗正好在它上面。`moveTaskToFront` 只调整任务栈顺序，不销毁任何东西。
+         * `singleTask`，用 `startActivity` 拉它会把**它上面所有 Activity 销毁**。
+         * `moveTaskToFront` 只调整任务栈顺序，不销毁任何东西 —— 而且设置窗现在
+         * 有自己的任务栈，拉它本来也只该走这条路。
          *
          * 需要 `REORDER_TASKS` 权限 —— `AndroidManifest.xml` 里已声明
          * （与桌宠「返回主页」共用同一条）。
          *
-         * @return 是否成功发起。实例已不存在时返回 `false`，调用方应改为新建窗口。
+         * @return 是否成功发起。实例已不存在时返回 `false`。
+         *
+         * ⚠️ 调用方**只有在拿到 `false` 时**才允许新建窗口，而且新建那一步必须
+         * 防重入（见 `PetMode.vue` 的 `settingsOpening`）：连续两次建窗会踩到
+         * Tauri `webviews_lock()` 与页面加载回调的互锁 —— 真机上表现为
+         * 「点桌宠没反应」，5 秒后 ANR。
          */
         fun bringToFront(): Boolean {
             val activity = current()
@@ -183,15 +209,10 @@ class SettingsActivity : TauriActivity() {
             }
             return try {
                 val am = activity.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-                // 先置位再拉：moveTaskToFront 会同步触发 onRestart → onResume，
-                // 标记必须在那一刻之前就绪，否则会被 onResume 当成「非用户主动」而自杀。
-                pendingShow = true
                 am.moveTaskToFront(activity.taskId, 0)
                 Log.i(TAG, "设置窗已拉回前台（taskId=${activity.taskId}）")
                 true
             } catch (t: Throwable) {
-                // 失败要把标记退回去，否则下一次「从别的入口回 App」会误判成主动打开
-                pendingShow = false
                 Log.w(TAG, "把设置窗拉回前台失败", t)
                 false
             }
@@ -210,9 +231,6 @@ class SettingsActivity : TauriActivity() {
         super.onCreate(savedInstanceState)
 
         instanceRef = WeakReference(this)
-        // 首次创建也是「用户主动要设置」—— 不置位的话下面 onResume 的守卫
-        // 会在第一次打开时就把设置窗关掉。
-        pendingShow = true
 
         // 返回键：与「关闭」同一语义（退到后台），见头注释。
         //
@@ -224,7 +242,75 @@ class SettingsActivity : TauriActivity() {
     }
 
     /**
-     * 注册一个「返回 = 退到后台」的回调。
+     * 实例被复用时的回调（`singleTask` 下再次 `startActivity` 走到这里）。
+     *
+     * ## 为什么需要它
+     *
+     * `singleTask` 复用已有实例时**不会**再走 `onCreate`，所以「每次被拉到前台
+     * 都该做一次」的事必须在这里补一遍，否则第二次打开设置页会带着上一次的
+     * insets / 布局状态。
+     *
+     * ## ⚠️ 前端**不应该**走到这里
+     *
+     * 按 manifest 里的硬约束，`PetMode.handleOpenSettings` 会先问原生
+     * `bringToFront()`，实例还在就 `moveTaskToFront` 拉回、**不再调 tao 建窗** ——
+     * 因为 tao 建窗后会等 `ACTIVITY_CREATED` 回调，而复用实例根本不触发它，
+     * 那次建窗会白等 5 秒然后失败。
+     *
+     * 这个覆写是**防御性**的：万一某条路径真的又发了 `startActivity`
+     * （比如用户在最近任务里点回设置卡片），至少让实例正确回到前台并重排，
+     * 而不是停在一个尺寸已经过期的画面上。
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        Log.i(TAG, "设置窗实例被复用（onNewIntent，taskId=$taskId）")
+        // 复用后视口可能与上次不同（分屏、折叠屏展开、转屏后切回），补一次重排。
+        window.decorView.requestApplyInsets()
+        settingsWebView?.let { webView ->
+            webView.requestLayout()
+            webView.evaluateJavascript(
+                "window.dispatchEvent(new Event('resize'));",
+                null,
+            )
+        }
+    }
+
+    /**
+     * 收起设置页：把**整个 App**（设置任务 + 聊天任务）退到后台。
+     *
+     * ## 为什么是「两个任务」而不是自己一个
+     *
+     * 设置窗从 2026-10-03 起独占一个任务栈（见头注释「关闭语义」与
+     * `AndroidManifest.xml`），所以 `moveTaskToBack(true)` **只退设置任务** ——
+     * 底下的聊天任务会顺势浮到前台，用户点「关掉设置」看到的会是**聊天页**。
+     *
+     * 而他要的是「回到进来之前那个 App」：这条真机反馈过（`finish()` 时代
+     * 「关掉设置却回到聊天页」），也正是 ✕ / 返回键一直以来的语义。
+     * 所以这里要把聊天任务也退掉。
+     *
+     * ## 顺序不能反
+     *
+     * **先**退聊天任务、**再**退自己：
+     *
+     * - 按这个顺序，第一步执行时设置页还在最前面，屏幕上看不出任何变化；
+     *   第二步才把设置页收走，直接露出**进来之前那个 App**。
+     * - 反过来的话，设置任务先退、聊天任务会短暂成为前台 —— 用户会瞥见一眼
+     *   聊天页，然后才被退到后台。
+     *
+     * `MainActivity.sendTaskToBack()` 是同步的（它内部用 `runOnUiThread`，
+     * 而当前本来就在主线程上，所以是直接内联执行），两步之间的顺序稳定成立。
+     *
+     * 拿不到 MainActivity 实例时（理论上只在进程重启的瞬间）只退自己 ——
+     * 退化成「露出聊天页」，不是崩，可接受。
+     */
+    private fun sendWholeAppToBack() {
+        MainActivity.sendTaskToBack()
+        moveTaskToBack(true)
+    }
+
+    /**
+     * 注册一个「返回 = 收起设置页」的回调。
      *
      * ## 为什么要注册两次
      *
@@ -245,7 +331,7 @@ class SettingsActivity : TauriActivity() {
             this,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
-                    moveTaskToBack(true)
+                    sendWholeAppToBack()
                 }
             },
         )
@@ -277,8 +363,9 @@ class SettingsActivity : TauriActivity() {
      * 更确定（后者在 WebView 还没建出来时会直接 `return`，静默失效）。
      *
      * 接口名 `LingChatSettings` 与前端 `SettingsPage.vue` 的 `closeWindow` 对应。
-     * `@JavascriptInterface` 的方法跑在 WebView 的 JavaBridge 线程上，
-     * `moveTaskToBack` 必须回 UI 线程，所以套一层 `runOnUiThread`。
+     * `@JavascriptInterface` 的方法跑在 WebView 的 JavaBridge 线程上，而
+     * [sendWholeAppToBack] 里两步任务栈操作都该在主线程上做，所以套一层
+     * `runOnUiThread`。
      */
     override fun onWebViewCreate(webView: WebView) {
         settingsWebView = webView
@@ -298,7 +385,7 @@ class SettingsActivity : TauriActivity() {
             object {
                 @JavascriptInterface
                 fun close() {
-                    runOnUiThread { moveTaskToBack(true) }
+                    runOnUiThread { sendWholeAppToBack() }
                 }
             },
             "LingChatSettings",
@@ -336,45 +423,36 @@ class SettingsActivity : TauriActivity() {
         }
     }
 
-    /** 记下「确实退过后台」，供 [onResume] 的守卫判断。见头注释。 */
-    override fun onStop() {
-        super.onStop()
-        wentToBackground = true
-    }
-
-    /**
-     * 回到前台时决定：正常显示，还是自己退场。
-     *
-     * 见头注释「推到后台就隐藏」。三种情况：
-     *
-     * 1. 首次创建后第一次 resume → [pendingShow] 已由 `onCreate` 置位，正常显示；
-     * 2. 用户点「设置」把它拉回来 → [pendingShow] 由 [bringToFront] 置位，正常显示；
-     * 3. 用户从桌面图标 / 桌宠「返回主页」等**别的入口**回到 App
-     *    → 没人置位，且 `wentToBackground` 为真 → `finish()`，把栈顶让给
-     *    MainActivity（否则用户想看聊天页却看到设置页）。
-     *
-     * `finish()` 用 post 而不是直接调：`onResume` 里同步结束自己会踩到
-     * 生命周期回调的重入，post 到下一帧最稳。
-     */
-    override fun onResume() {
-        super.onResume()
-
-        val requested = pendingShow
-        pendingShow = false
-        if (requested) {
-            // 用户主动要的，正常显示；顺手清掉「退过后台」的痕迹
-            wentToBackground = false
-            return
-        }
-
-        if (wentToBackground) {
-            wentToBackground = false
-            Log.i(TAG, "非用户主动回到前台，设置窗自行退场")
-            window.decorView.post { finish() }
-        }
-    }
+    // ─── `onStop` / `onResume` 的「退到后台就自己 finish()」守卫已删除 ───
+    //
+    // 原先是 `onStop` 记 `wentToBackground = true`，`onResume` 里若这次回来不是
+    // 用户主动要设置、又确实退过后台，就 `window.decorView.post { finish() }`。
+    //
+    // 整个拆掉了，理由见头注释「推到后台就自己 finish() 的守卫已删除」：
+    // 它是「Tauri 窗口登记表」与「Android 实例」失同步的唯一来源，会把前端推进
+    // 那条「实例没了 → 再建一次窗」的路，而那条路在 Android 上会死锁（5s ANR）；
+    // 而且它跟「设置页只用退回、不要关闭」的既定方向冲突。
+    //
+    // 现在本 Activity 没有覆写 `onStop` / `onResume` —— 回到前台就正常显示，
+    // 不存在「自己退场」这条分支。
 
     override fun onDestroy() {
+        // ★ 诊断埋点：「设置窗被谁销毁」是 2026-10-03 那轮 ANR 里唯一没有定论
+        // 的一环。真机上观察到它被连续建了四次（t1900 → t1901 → t1902 → t1903），
+        // 每次 2~4 秒后就消失，而本类与 `MainActivity.sendTaskToBack()` 里
+        // **都没有** `finish()`（全走 `moveTaskToBack`）。
+        //
+        // 这三个标记能区分三种来源：
+        //   · isFinishing = true       → 有人明确调了 finish()（tao 的 close，或系统）
+        //   · isChangingConfigurations → 配置变更导致的正常重建（不该发生，
+        //                                manifest 里已声明 configChanges）
+        //   · 两者都 false             → 系统直接回收（内存 / task 清理）
+        Log.i(
+            TAG,
+            "onDestroy：isFinishing=$isFinishing " +
+                "isChangingConfigurations=$isChangingConfigurations " +
+                "taskId=$taskId",
+        )
         // 只清掉指向自己的那份引用；新的实例会在自己的 onCreate 里重新登记
         if (instanceRef?.get() === this) instanceRef = null
         super.onDestroy()
@@ -390,7 +468,7 @@ class SettingsActivity : TauriActivity() {
      */
     @Deprecated("覆写只为兜底，主路径是 OnBackPressedDispatcher")
     override fun onBackPressed() {
-        moveTaskToBack(true)
+        sendWholeAppToBack()
     }
 
     /**

@@ -76,6 +76,27 @@ pub fn setup(
     #[cfg(desktop)]
     app.manage(ai_service::asr::global_hotkey::GlobalHotkeyState::default());
 
+    // Android「屏幕视奸」（主动窥屏）：把截屏通道**注入**给 ling-chat-main。
+    //
+    // 方向是反的：`ling-chat-main` 是底层 crate，不能依赖
+    // `tauri-plugin-floating-pet`（那是个 Tauri 插件）。所以由这里（app 层）把
+    // 「怎么截一帧」注册进去 —— 闭包里转发到插件的 `capture_screen` 命令，那条
+    // 命令再落到无障碍服务的 `takeScreenshot`。详见
+    // `screen_analyzer::set_android_screen_capture` 的说明。
+    //
+    // 桌面端**不注册**：Windows 那条路自己走 GDI（`capture_screen_as_jpeg` 的
+    // windows 分支），既读不到这个槽位也不需要它。
+    //
+    // ⚠️ 注册成功 ≠ 能截到图。用户还没在系统设置里开启无障碍服务时，回调返回
+    // `None`，屏幕策略照旧不触发 —— 与改造前行为一致，不引入新的错误路径。
+    #[cfg(target_os = "android")]
+    {
+        let capture_handle = app.handle().clone();
+        ai_service::screen_analyzer::set_android_screen_capture(Box::new(move || {
+            tauri_plugin_floating_pet::capture_screen_bytes(&capture_handle)
+        }));
+    }
+
     // Android 修复：Tauri 在 setup 闭包执行前已创建 webview 窗口，前端 invoke
     // 命令会在 IPC runtime worker 上立即 dispatch；如果 AppState 还没 manage
     // 就会 panic "state() called before manage()"。所以 setup 一开始就 manage

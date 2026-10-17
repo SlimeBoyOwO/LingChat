@@ -8,7 +8,9 @@ import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import java.lang.ref.WeakReference
 
 private const val TAG = "LingChatMain"
 
@@ -27,14 +29,27 @@ class MainActivity : TauriActivity() {
     enableEdgeToEdge()
     super.onCreate(savedInstanceState)
 
+    instanceRef = WeakReference(this)
+
     // 透明窗口背景，配合 themes.xml 的 windowShowWallpaper 透出系统壁纸
     // （WebView 本身仍需单独置透明，见 prepareWebView）
     window.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+
+    // 返回键：见 installBackCallback 的说明。这里这一份只是兜底
+    // （`onCreate` 早于 WebView 构造，可能排在 Chromium 那份**前面**而轮不到），
+    // 真正稳定生效的是 `onWebViewCreate` 里那一份。
+    installBackCallback()
 
     // 兜底路径：见 onWebViewCreate 的说明。这里找不到 WebView 就什么都不做。
     window.decorView.post {
       SafeAreaInsets.findWebView(window.decorView as ViewGroup)?.let(::prepareWebView)
     }
+  }
+
+  override fun onDestroy() {
+    // 只清掉指向自己的那份引用；重建后的新实例会在自己的 onCreate 里重新登记
+    if (instanceRef?.get() === this) instanceRef = null
+    super.onDestroy()
   }
 
   /**
@@ -55,6 +70,10 @@ class MainActivity : TauriActivity() {
    */
   override fun onWebViewCreate(webView: WebView) {
     mainWebView = webView
+    // ★ 必须在这里再注册一次：`onBackPressedDispatcher` 按注册顺序**倒序**派发，
+    // 而 Chromium 自带的返回回调是在 WebView 构造时注册的 —— 本钩子必然晚于它，
+    // 于是我们这一份稳定排在最后 = 稳定优先。详见 installBackCallback。
+    installBackCallback()
     prepareWebView(webView)
   }
 
@@ -160,8 +179,9 @@ class MainActivity : TauriActivity() {
    *
    * ## 为什么必须有它
    *
-   * `SettingsActivity` 的「关闭」语义是**不销毁 + 退到后台**（`moveTaskToBack`），
-   * 所以窗口会一直活着。用户再点「设置」时，前端走的是
+   * `SettingsActivity` 的「关闭」语义是**退回、不销毁**：它独占一个任务栈
+   * （见 `AndroidManifest.xml`），关掉时整个设置任务退到后台，Activity 实例
+   * 一直活着。用户再点「设置」时，前端走的是
    * `WebviewWindow.getByLabel("settings")` → `setFocus()`。
    *
    * 但 `setFocus()` **在 Android 上是空实现** ——
@@ -195,5 +215,94 @@ class MainActivity : TauriActivity() {
       },
       "LingChatApp",
     )
+  }
+
+  /**
+   * 返回键：**退到后台**（不销毁）。
+   *
+   * ## 为什么必须自己注册
+   *
+   * `TauriActivity` 把 `handleBackNavigation` 覆写成了 `false`，于是
+   * `WryActivity.setWebView` **不注册**它那个「能回退就 `goBack()`」的回调。
+   * 但 **Chromium 的 `WebView` 自己会注册一个** —— 返回键于是被它截走，
+   * 变成「主 WebView 的历史回退」。
+   *
+   * 真机症状（用户原话）：「软件在前台主活动，按返回键会导致桌宠里面被返回」。
+   * 原因就是主 WebView 的历史里通常留着 `/pet`：从桌宠回到聊天页之后按返回键，
+   * `goBack()` 直接**退回了桌宠页**。
+   *
+   * ## 为什么注册两次
+   *
+   * `OnBackPressedDispatcher` 按**注册顺序倒序**派发（后注册的先被问），而
+   * Chromium 那份是在 WebView 构造时注册的。`onCreate` 里那一份可能排在它
+   * **前面**（永远轮不到），[onWebViewCreate] 里那一份才稳定生效。
+   * 两份行为完全一致，旧的那份不用移除 —— 同一时刻只有最后一个会被派发。
+   *
+   * ## 为什么是 `moveTaskToBack` 而不是 `finish()`
+   *
+   * 与设置页同一套理由（见 `SettingsActivity` 头注释「关闭语义」）：用户明确
+   * 要求「尽量只用退回，不要用关闭，以节省性能」。退到后台后 WebView、Pinia
+   * store、桌宠状态全部保留，再回来是原样。
+   *
+   * ## ⚠️ 代价：页面内的「返回上一级」不再由返回键承担
+   *
+   * 注册之后返回键**不再**走 `goBack()`，也就是「聊天页 → 主菜单」这类页内
+   * 后退不能再靠返回键完成（改由页面上的按钮承担）。这是刻意的取舍 ——
+   * 「根页面按返回键应该退出 App」比「浏览器式后退」更符合用户预期。
+   * 将来若要两者兼得，需要前端上报「当前是不是根路由」，原生据此分流。
+   */
+  private fun installBackCallback() {
+    onBackPressedDispatcher.addCallback(
+      this,
+      object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+          moveTaskToBack(true)
+        }
+      },
+    )
+  }
+
+  companion object {
+    /**
+     * 当前存活的主界面实例。
+     *
+     * 用 [WeakReference] 而不是强引用：Activity 归系统管，长期持强引用会把一个
+     * 已经该回收的 Activity（连同它的 WebView）钉在内存里。
+     *
+     * 只在 `onCreate` / `onDestroy` 里写，读它的只有 [sendTaskToBack]。
+     */
+    private var instanceRef: WeakReference<MainActivity>? = null
+
+    /**
+     * 把**聊天页所在的任务**退到后台。
+     *
+     * ## 谁需要它
+     *
+     * 只有 `SettingsActivity` 的 ✕ / 返回键（见 `sendWholeAppToBack`）。
+     * 设置窗从 2026-10-03 起独占一个任务栈（见 `AndroidManifest.xml`），
+     * 于是它自己的 `moveTaskToBack(true)` **只退设置任务**，底下的聊天任务
+     * 会顺势浮到前台 —— 用户点「关掉设置」看到的会是**聊天页**。
+     * 而他要的是「回到进来之前那个 App」（`finish()` 时代真机反馈过这条），
+     * 所以必须把聊天任务也退掉。
+     *
+     * ## 为什么是静态方法而不是 JS 桥
+     *
+     * 调用方是同进程的另一个 Activity，直调即可；走 JS 桥反而要绕一圈
+     * 且得先拿到主窗口的 WebView 引用。
+     *
+     * ## 线程
+     *
+     * 调用方必须在主线程上调。这里用 `runOnUiThread` 保证 `moveTaskToBack`
+     * 落在主线程，同时 —— 因为 `runOnUiThread` 在「当前就是主线程」时会**直接
+     * 内联执行** —— 让「先退聊天任务、再退设置任务」的顺序同步成立
+     * （见 `SettingsActivity.sendWholeAppToBack` 对顺序的说明）。
+     *
+     * @return 是否确实发起（主界面实例已被回收时返回 `false`）。
+     */
+    fun sendTaskToBack(): Boolean {
+      val activity = instanceRef?.get() ?: return false
+      activity.runOnUiThread { activity.moveTaskToBack(true) }
+      return true
+    }
   }
 }

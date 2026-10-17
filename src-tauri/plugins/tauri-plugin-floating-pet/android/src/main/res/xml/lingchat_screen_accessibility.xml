@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  「屏幕视奸」无障碍服务的配置。
+
+  这份文件在系统设置里决定了三件事：这个服务能做什么、会在什么时候被唤起、
+  以及用户看到的说明文案。字段含义见
+  https://developer.android.com/reference/android/R.styleable#AccessibilityService
+
+  · accessibilityEventTypes —— 只订阅「窗口状态变化」。
+    我们**不需要**内容变化（typeWindowContentChanged）等高频事件：
+    前台包名靠窗口切换就够了，多订阅只会白白唤醒进程。
+
+  · canRetrieveWindowContent="false" —— 明确**不读控件树**。
+    截屏（canTakeScreenshot）与读控件是两件独立的能力，这里只要前者。
+    保持 false 是刻意的隐私边界：不碰用户输入框、列表内容、密码框。
+
+  · canTakeScreenshot="true" —— 允许 AccessibilityService.takeScreenshot()
+    （API 30+）。这是本服务存在的全部理由；低版本设备上该属性被忽略，
+    服务依然能连上，只是截不了图（见 LingChatAccessibilityService 的说明）。
+
+  · notificationTimeout —— 事件合并窗口（毫秒）。100 是默认量级，够用。
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagDefault"
+    android:canRetrieveWindowContent="false"
+    android:canTakeScreenshot="true"
+    android:description="@string/accessibility_service_description"
+    android:notificationTimeout="100"
+    android:summary="@string/accessibility_service_label" />

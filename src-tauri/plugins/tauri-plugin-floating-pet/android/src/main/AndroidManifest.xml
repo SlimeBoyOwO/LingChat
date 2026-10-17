@@ -41,6 +41,37 @@
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
                 android:value="desktop_pet_overlay" />
         </service>
+
+        <!--
+          「屏幕视奸」（主动窥屏）的取景通道。详见 LingChatAccessibilityService.kt。
+
+          三条声明缺一不可：
+          · `android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"`
+            —— 这是**系统绑定**该服务的凭据。没有它，系统设置里根本看不到这个服务，
+            第三方 App 反而能随便绑定。这是无障碍服务的安全边界，必须写。
+          · `<intent-filter>` 的 `android.accessibilityservice.AccessibilityService`
+            —— 系统靠它枚举「哪些服务是可用的无障碍服务」。
+          · `<meta-data>` 指向 res/xml 的配置（canTakeScreenshot 等能力声明）。
+
+          ⚠️ `android:exported="true"` 是**必需**的：绑定的发起方是系统（另一个
+          进程）。这不是「对外暴露」—— 真正的门槛是上面那条 BIND 权限。
+
+          ⚠️ 用户必须在「设置 → 无障碍 → 已安装的服务」里手动开启，App 无法
+          自行开启，也没有授权弹窗。未开启时 `isReady()` 为 false，截图直接返回
+          null（调用方降级处理）。
+        -->
+        <service
+            android:name="com.noiq.floatingpet.LingChatAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/lingchat_screen_accessibility" />
+        </service>
     </application>
 
 </manifest>

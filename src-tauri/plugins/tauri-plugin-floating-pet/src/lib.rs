@@ -227,6 +227,58 @@ fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetStat
     }
 }
 
+/// 「屏幕视奸」（主动窥屏）取景。
+///
+/// Android 独有：桌面端的截屏由 `ling-chat-main` 直接走 GDI，不经过本插件
+/// （桌面端调用本命令会得到 `NotSupported`）。
+///
+/// 返回的是 JPEG 的**文件路径**而不是字节 —— 理由见 `mobile.rs::capture_screen`。
+/// 消费方是 `ling-chat-main::ai_service::screen_analyzer::capture_screen_as_jpeg()`，
+/// 它通过 `set_android_screen_capture()` 注册的全局回调拿到本命令的结果，
+/// 因此 `ling-chat-main` **不需要**反向依赖本插件。
+///
+/// ⚠️ 与其它命令不同，**未启用时也 resolve**（`ok = false`）——
+/// 「用户还没在系统设置里开无障碍服务」是正常状态，不是错误。
+#[tauri::command]
+fn capture_screen<R: Runtime>(app: AppHandle<R>) -> Result<ScreenCapture> {
+    imp::capture_screen(&app)
+}
+
+/// 截一帧屏幕，返回 JPEG 字节。
+///
+/// 这是给 `ling-chat-main` 的截屏注入点用的**高层封装** —— 它把
+/// 「调原生命令 → 拿到路径 → 读文件」三步收在一起，调用方只需一行。
+///
+/// 失败统一返回 `None`（未开无障碍服务 / API < 30 / 截屏失败 / 读文件失败），
+/// 不向调用方区分原因 —— 对它来说都是「这一轮没图，跳过」。具体原因在
+/// `log` 里留痕。
+///
+/// ⚠️ 本函数会**读一次磁盘**，且内部那次原生调用是阻塞的（上限 5s，
+/// 见 `LingChatAccessibilityService`）。别在主线程上用它。
+pub fn capture_screen_bytes<R: Runtime>(app: &AppHandle<R>) -> Option<Vec<u8>> {
+    let capture = match imp::capture_screen(app) {
+        Ok(capture) => capture,
+        Err(e) => {
+            log::debug!("[floating-pet] 屏幕取景不可用: {e}");
+            return None;
+        },
+    };
+
+    if !capture.ok || capture.path.is_empty() {
+        // 「用户没开无障碍服务」会走到这里，是正常状态，不打 warn 免得刷屏
+        log::debug!("[floating-pet] 屏幕取景未成功: reason={}", capture.reason);
+        return None;
+    }
+
+    match std::fs::read(&capture.path) {
+        Ok(bytes) => Some(bytes),
+        Err(e) => {
+            log::warn!("[floating-pet] 读取截图文件失败 ({}): {e}", capture.path);
+            None
+        },
+    }
+}
+
 pub fn init<R: Runtime>() -> TauriPlugin<R> {
     Builder::new("floating-pet")
         .invoke_handler(tauri::generate_handler![
@@ -243,6 +295,7 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             set_scale,
             is_visible,
             status,
+            capture_screen,
         ])
         .setup(|app, api| {
             app.manage(FloatingPetState::default());

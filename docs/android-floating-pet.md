@@ -1236,7 +1236,7 @@ override fun onWebViewCreate(webView: WebView) {
     webView.addJavascriptInterface(
         object {
             @JavascriptInterface
-            fun close() { runOnUiThread { moveTaskToBack(true) } }
+            fun close() { runOnUiThread { sendWholeAppToBack() } }
         },
         "LingChatSettings",
     )
@@ -1246,8 +1246,9 @@ override fun onWebViewCreate(webView: WebView) {
 前端 `SettingsPage.closeWindow` 在移动端优先调 `window.LingChatSettings.close()`，
 拿不到接口时才退回 `appWindow.close()`。
 
-> ⚠️ **这个接口里原来是 `finish()`，2026-10-03 改成了 `moveTaskToBack`** ——
-> 语义与理由见 **4.7.12**。`finish()` 会连带把用户扔回聊天页。
+> ⚠️ **这个接口里原来是 `finish()`，2026-10-03 改成「退回」** —— 语义与理由见
+> **4.7.12**。`finish()` 会连带把用户扔回聊天页，而且每次都重建整个设置页。
+> 现在的 `sendWholeAppToBack()` = 设置任务 + 聊天任务一起退到后台。
 
 **为什么用 `onWebViewCreate` 而不是 `window.decorView.post { findWebView() }`**：
 翻 `wry/src/android/main_pipe.rs`，`CreateWebView` 消息按 `activity_id` 找到
@@ -1255,8 +1256,9 @@ override fun onWebViewCreate(webView: WebView) {
 **之后**才 `load_url`。所以 `onWebViewCreate` 是**确定**拿得到 WebView 的时机；
 `decorView.post` 则可能在 WebView 还没建出来时直接 `return`，**静默失效**。
 
-> `@JavascriptInterface` 的方法跑在 WebView 的 JavaBridge 线程上，
-> `finish()` 必须回 UI 线程，所以套了一层 `runOnUiThread`。
+> `@JavascriptInterface` 的方法跑在 WebView 的 JavaBridge 线程上，而
+> `sendWholeAppToBack()` 里两步任务栈操作都该在主线程上做，所以套了一层
+> `runOnUiThread`。
 
 #### 4.7.5 ⚠️ `PluginManager.onDestroy` **没有**守卫 —— 关设置窗会误拆悬浮窗
 
@@ -1454,7 +1456,7 @@ override fun onConfigurationChanged(newConfig: Configuration) {
 → 收起态 `snapToEdge` → **先 `notifyMetrics` 再 `updateViewLayout`**
 （页面要先拿到新的 `--pet-fit`，否则会有几帧按旧系数渲染而溢出）。
 
-#### 4.7.12 ★ 设置页的「关闭 / 返回键」= **不销毁 + 退到后台**（2026-10-03 重写）
+#### 4.7.12 ★ 设置页的「关闭 / 返回键」= **退回 + 不销毁 + 独占任务栈**（2026-10-03 重写）
 
 **真机反馈**（用户原话）：
 
@@ -1462,31 +1464,138 @@ override fun onConfigurationChanged(newConfig: Configuration) {
 > 一推到后台就隐藏。……折叠态下可能会触发回到聊天页，这个我不知道怎么复现。
 > 然后设置页应该配置返回键。
 
-三条诉求，对应三个缺陷：
+> 具体是你进入桌宠设置后，如果直接按桌宠上的返回键，设置页没有收起来
 
-| 诉求                   | 旧行为（`finish()`）                                       |
-| ---------------------- | ---------------------------------------------------------- |
-| 反复调起不销毁         | 每次重建 Activity + WebView + Pinia store，重开必卡一下    |
-| 「折叠态下回到聊天页」 | `finish()` 落到 MainActivity，也就是**聊天页** —— 就是这条 |
-| 返回键要配好           | 无历史时同样走 `finish()`，症状与「关闭」一模一样          |
+> 前面不是说吗？设置页尽量只用退回，不要用关闭，以节省性能
 
-##### 4.7.12.1 改法：`moveTaskToBack(true)`
+四条诉求，对应四个缺陷：
 
-```kotlin
-// 关闭（✕）
-fun close() { runOnUiThread { moveTaskToBack(true) } }
+| 诉求                       | 旧行为（`finish()`）                                       |
+| -------------------------- | ---------------------------------------------------------- |
+| 反复调起不销毁             | 每次重建 Activity + WebView + Pinia store，重开必卡一下    |
+| 「关掉设置却回到聊天页」   | `finish()` 落到 MainActivity，也就是**聊天页** —— 就是这条 |
+| 返回键要配好               | 无历史时同样走 `finish()`，症状与「关闭」一模一样          |
+| **桌宠返回键要收起设置页** | 见下 —— 这一条**不是** `finish()` 能修的                   |
 
-// 返回键
-onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-    override fun handleOnBackPressed() { moveTaskToBack(true) }
-})
-```
+最后一条是 2026-10-03 新报的，也是最难的一条：设置窗当时和 MainActivity
+**同一个任务栈**，于是「收起设置页」和「露出聊天页」这两件事**不可能同时成立**。
+真正的修法是**给设置窗一个独立任务栈**（4.7.12.2）。
+
+##### 4.7.12.1 结论：三条路都不再 `finish()`，实例全程保留
+
+| 动作                      | 行为                                                  | 实例 |
+| ------------------------- | ----------------------------------------------------- | ---- |
+| 点 ✕ / 返回键             | `sendWholeAppToBack()`：设置任务 + 聊天任务一起退后台 | 保留 |
+| 桌宠「返回主页 / 返回键」 | 原生 `moveTaskToFront(聊天任务)`，设置任务留在后面    | 保留 |
+| 再点「设置」              | 原生 `moveTaskToFront(设置任务)` 拉回前台（4.7.12.7） | 复用 |
 
 `moveTaskToBack` 的参数是 `nonRoot`，**必须传 `true`**：传 `false` 时只有
-「本 Activity 是任务根」才生效，而设置窗是任务根（MainActivity）**之上**的第二个
-Activity，会静默什么都不做。
+「本 Activity 是任务根」才生效；传 `true` 表示「任务里任意一个 Activity 都能把
+整个任务退到后台」，不依赖「自己是不是根」这个前提。
 
-##### 4.7.12.2 返回键为什么要注册**两次**
+##### 4.7.12.2 ★ 为什么设置窗必须独占一个任务栈
+
+`AndroidManifest.xml` 里给 `SettingsActivity` 加了三个属性，**缺一不可**：
+
+```xml
+android:taskAffinity="${applicationId}.settings"
+android:launchMode="singleInstance"
+android:excludeFromRecents="true"
+```
+
+**为什么同一个任务栈里做不到**（设置窗原先和 MainActivity 同在 MainActivity 的任务里）：
+
+| 做法                                          | 结果                                                                                             |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| `SettingsActivity.moveTaskToBack(true)`       | **任务级**操作 → 连 MainActivity 一起退到后台，用户看到桌面                                      |
+| `bringActivityToFront()`（`moveTaskToFront`） | 拉的是**整个任务**，栈顶仍是设置窗 → 按了返回键却还停在设置页（**真机反馈的正是这条**）          |
+| `startActivity(MainActivity)`                 | MainActivity 是 `singleTask`，会把它上面的 Activity 一并销毁 → 设置窗没了（等于变相 `finish()`） |
+
+让设置窗独占任务栈之后，`moveTaskToFront(聊天任务)` **只把聊天页翻到最前面**，
+设置窗原样留在它自己的任务里 —— 退回、且不销毁。这一条就是那个 bug 的全部修法，
+桌宠那边一行代码都不用改（`FloatingPetPlugin.hide()` 里本来就有
+`bringActivityToFront()`）。
+
+**为什么是 `launchMode` 而不是只写 `taskAffinity`**：
+
+`taskAffinity` **只在 `FLAG_ACTIVITY_NEW_TASK` 下才参与任务选择**。而 tao 建窗走的
+是 `WryActivity.startActivity(cls)`，它构造的是裸 `Intent(this, cls)`，**一个 flag
+都没加**：
+
+```kotlin
+// generated/WryActivity.kt（自动生成，不能改）
+fun startActivity(cls: Class<*>): Int {
+    val intent = Intent(this, cls)
+    intent.putExtra(ACTIVITY_ID_KEY, id)
+    startActivity(intent)          // ← 没有 addFlags(FLAG_ACTIVITY_NEW_TASK)
+    return id
+}
+```
+
+所以光写 `taskAffinity` 会被忽略，设置窗照样落进调用者（MainActivity）的任务栈。
+`singleInstance`（`singleTask` 同理）由系统的 `ActivityStarter` **自动补上
+`NEW_TASK`** —— 这是 manifest 里**唯一**能拿到「另起任务」的杠杆。
+
+> 为什么不去改 `WryActivity.kt` 加 flag：那是 tao 的自动生成文件，头部写着
+> `THIS FILE IS AUTO-GENERATED. DO NOT MODIFY!!`，而且被
+> `app/.gitignore` 的 `/src/main/**/generated` 忽略、**根本不入库** ——
+> 改了不落库，还会在下次 `tauri android init` 时被覆盖。
+
+**`excludeFromRecents`**：独占任务栈的副作用是「最近任务」里会多出一张设置页卡片，
+加这个属性把整个设置任务从最近任务里去掉。
+
+**⚠️ 已知代价：实例已存在时不能再走 tao 建窗。** tao 建窗后会等 Activity 的创建
+回调（`ACTIVITY_CREATED`，超时 5 秒），而 `singleInstance` 在**复用已有实例**时走的是
+`onNewIntent`、不会再触发 `onCreate`，回调也就不会来 —— 那次建窗会白等 5 秒然后失败。
+所以「实例还在时绝不能再调 tao 建窗」是硬约束，由前端保证（见 4.7.12.7）。
+设置窗改成永不销毁之后，实例要么「不存在（首次创建）」要么「存在且被复用」，
+不会出现「实例在、tao 又建窗」。
+
+> 顺带确认过 `ACTIVITY_CREATED` 的发送逻辑（`tao/.../ndk_glue.rs::onActivityCreate`）：
+> 它按 `activity.getId()` 去 `ACTIVITY_CREATED_SENDERS` 里 `remove` 并回信，而
+> `getId()` 就是 `WryActivity.id`（从 intent 的 `__wryActivityId` 读）。首次创建
+> 一定有 `onCreate`，所以**建窗这条主路径不受 `singleInstance` 影响**。
+
+##### 4.7.12.3 ✕ / 返回键 = `sendWholeAppToBack()`（两个任务一起退）
+
+独占任务栈之后，`moveTaskToBack(true)` 只退设置任务，底下的聊天任务会顺势浮到
+前台 —— 用户点「关掉设置」看到的是**聊天页**。而他要的是「回到进来之前那个 App」
+（「关掉设置却回到聊天页」那条真机反馈说的就是这个），所以**两个任务都要退**：
+
+```kotlin
+private fun sendWholeAppToBack() {
+    MainActivity.sendTaskToBack()   // 先退聊天任务
+    moveTaskToBack(true)            // 再退自己
+}
+```
+
+**顺序不能反**：
+
+- 按这个顺序，第一步执行时设置页还在最前面，**屏幕上看不出任何变化**；
+  第二步才把设置页收走，直接露出**进来之前那个 App**。
+- 反过来的话，设置任务先退、聊天任务会短暂成为前台 —— 用户会瞥见一眼聊天页，
+  然后才被退到后台。
+
+`MainActivity.sendTaskToBack()` 是同步的（内部用 `runOnUiThread`，而调用时本来就在
+主线程上，所以直接内联执行），两步之间的顺序稳定成立。拿不到 MainActivity 实例时
+（理论上只在进程重启的瞬间）只退自己 —— 退化成「露出聊天页」，不是崩，可接受。
+
+##### 4.7.12.4 桌宠「返回主页 / 返回键」为什么现在自动就对了
+
+`FloatingPetPlugin.hide()` 里本来就有这一段（`HIDE_DELAY_MS = 80ms` 之后）：
+
+```kotlin
+bringActivityToFront()      // moveTaskToFront(MainActivity.taskId, MOVE_TASK_NO_USER_ACTION)
+restoreWebViewToActivity()  // 把 WebView 从悬浮窗搬回 Activity 视图树
+```
+
+设置窗独占任务栈之后，`moveTaskToFront(聊天任务)` 把聊天页翻上来、设置窗留在后面，
+「按桌宠返回键 → 设置页收起来 → 聊天页可见」**自动成立**。
+
+反过来说：这条路径**不能**靠 `finish()` 或 `moveTaskToBack` 来修 —— 前者销毁实例
+（用户明确不要），后者把聊天页一起退到后台（用户看到桌面）。任务栈隔离是唯一解。
+
+##### 4.7.12.5 返回键为什么要注册**两次**
 
 `OnBackPressedDispatcher` 按**注册顺序倒序**派发（后注册的先被问）。WebView 自己
 会在初始化时注册一个「能回退就 `goBack()`」的回调，时点不确定；它一旦排在后面，
@@ -1498,19 +1607,20 @@ Activity，会静默什么都不做。
 > 预测性返回手势下 `onBackPressed()` 根本不会被调用，注册回调才会被 androidx
 > 接到 `OnBackInvokedCallback` 上。
 
-##### 4.7.12.3 「拉到后台就隐藏」—— `pendingShow` 守卫
+##### 4.7.12.6 ⚠️ 「拉到后台就隐藏」守卫**已删除**（2026-10-03，真机 ANR 后）
 
-`moveTaskToBack` 只解决了「用户主动关」。另一半是：设置窗在后台活着时，用户从
-**别的入口**回到 App（桌面图标、桌宠「返回主页」、通知……），系统把整个任务拉到
-前台，**栈顶仍是设置窗** —— 用户想看聊天页却看到设置页。用户明确要求这种情况必须隐藏。
+> **本节描述的是已经拆掉的代码，留在这里是为了说明「为什么拆」。**
+> 现行 `SettingsActivity.kt` 里**没有** `onStop` / `onResume` 覆写，也**没有**
+> `wentToBackground` / `pendingShow` 两个字段（`grep` 只会命中注释）。
 
-判据是一个静态标记 + 一个实例标记：
+原先的守卫是这样的：`moveTaskToBack` 只解决「用户主动关」，另一半是「设置窗在
+后台活着时，用户从**别的入口**回到 App（桌面图标、桌宠「返回主页」、通知……），
+系统把整个任务拉到前台，栈顶仍是设置窗」—— 于是用「`onStop` 记标记 + `onResume`
+里若非用户主动就 `finish()`」把它杀掉：
 
 ```kotlin
-// companion
-@Volatile private var pendingShow = false      // 下一次回前台是不是「用户主动要设置」
-
-// onCreate 与 bringToFront() 里置真
+// ❌ 已删除
+@Volatile private var pendingShow = false
 override fun onStop() { super.onStop(); wentToBackground = true }
 override fun onResume() {
     super.onResume()
@@ -1520,14 +1630,31 @@ override fun onResume() {
 }
 ```
 
-用 `onStop` 而不是 `onPause`：`onPause` 会被权限弹窗、下拉通知栏这类**短暂打断**
-触发，只看它会把正常使用中的设置窗误杀。
+（当年选 `onStop` 而不是 `onPause`，是因为 `onPause` 会被权限弹窗、下拉通知栏这类
+**短暂打断**触发，只看它会把正常使用中的设置窗误杀。）
 
-走到 `finish()` 那一支时实例会销毁，但那是**用户已经离开设置语境**的情况；而
-「关 → 再点设置」这条主路径（也就是用户说的「短时间内反复调起」）不经过这里，
-实例是保留的。
+**为什么拆**，两条：
 
-##### 4.7.12.4 再点「设置」必须有原生通道 —— `setFocus()` 是空实现
+**1. 它是「Tauri 窗口登记表」与「Android 实例」失同步的唯一来源。**
+`finish()` 把 `instanceRef` 置空，但 Tauri 那边的窗口登记还在 —— 前端于是以为
+「实例没了」，掉进「再建一次窗」分支；而 `singleInstance` 复用实例时不会再发
+`onCreate` 回调，tao 建窗那条路会白等 5 秒、还一路持有 `webviews_lock()`
+（详见 **4.7.27**）。它是那场 5 秒 ANR 的成因之一。
+
+**2. 它与「设置页只用退回、不要关闭」的既定方向冲突**（用户原话：「前面不是说吗？
+设置页尽量只用退回，不要用关闭，以节省性能」）。一个会在某些入口下偷偷 `finish()`
+的守卫，正好是这个方向的漏洞。
+
+**那「从别的入口回 App 看到设置页」怎么办？** 不靠守卫，靠**任务栈隔离**
+（4.7.12.2）：设置任务声明了 `taskAffinity` + `singleInstance` +
+`excludeFromRecents`，桌面图标 / 桌宠返回键拉起的都是**聊天任务**，设置任务只会
+留在后面、不会被 resume —— 本来就不会出现「想看聊天页却看到设置页」。守卫是当年
+同栈时代的补丁，现在没有存在必要。
+
+⚠️ 现行语义：**设置 Activity 一旦创建就活到进程结束**（或被系统回收），
+所有「关闭」都是 `moveTaskToBack`，不销毁。
+
+##### 4.7.12.7 再点「设置」必须有原生通道 —— `setFocus()` 是空实现
 
 前端发现窗口已存在时走的是 `WebviewWindow.getByLabel("settings")` → `setFocus()`。
 但 `tao-0.35.2/src/platform_impl/android/mod.rs` 里：
@@ -1538,8 +1665,8 @@ pub fn set_focus(&self) {
 }
 ```
 
-**空实现。** 而「关闭」现在是 `moveTaskToBack`（窗口活着但在后台），没有替代通道
-的话，用户第二次点「设置」就是**毫无反应**。
+**空实现。** 而「关闭」现在是「退回」（窗口活着，只是它所在的设置任务在后台），
+没有替代通道的话，用户第二次点「设置」就是**毫无反应**。
 
 所以 `MainActivity` 在主窗口的 WebView 上挂了一条 JS 桥：
 
@@ -1554,17 +1681,24 @@ webView.addJavascriptInterface(object {
 `bringToFront()` 用 `ActivityManager.moveTaskToFront(taskId, 0)`：
 
 - **不能用 `startActivity`** —— MainActivity 是 `singleTask`，用 `startActivity` 拉它
-  会把**它上面所有 Activity 销毁**，设置窗正好在它上面（这条在
-  `FloatingPetPlugin.bringActivityToFront` 的注释里已经被证伪过两次）；
+  会把它上面的 Activity 一并销毁（这条在 `FloatingPetPlugin.bringActivityToFront`
+  的注释里已经被证伪过两次）。而设置窗现在有自己的任务栈，拉它本来也只该走
+  `moveTaskToFront`；
 - 需要 `REORDER_TASKS`，`AndroidManifest.xml` 里已声明（与桌宠「返回主页」共用）；
-- 先置 `pendingShow` 再 `moveTaskToFront`：后者会同步触发 `onRestart → onResume`，
-  标记必须在那之前就绪，否则会被守卫当成「非用户主动」而自杀。
+- ⚠️ 早先这里需要「先置 `pendingShow` 再 `moveTaskToFront`」：`moveTaskToFront` 会
+  同步触发 `onRestart → onResume`，标记必须在那之前就绪，否则会被守卫当成
+  「非用户主动」而自杀。**`onResume` 守卫删除后（4.7.12.6）这条前提不存在了** ——
+  `bringToFront()` 现在只剩一句 `moveTaskToFront`；
+- **返回值的语义（2026-10-03 新增）**：`bringToFront()` 返回 `Boolean` ——
+  实例不存在返回 `false`，存在（并已拉回前台）返回 `true`。这个布尔值是
+  **「Android 侧实例还在不在」的唯一权威判据**：前端**只有在拿到 `false` 时才允许
+  新建窗口**，而且新建那一步必须防重入（见 **4.7.27**）。
 
 **为什么是 JS 桥而不是 Tauri 命令**：`SettingsActivity` 在 app 模块，而
 `tauri-plugin-floating-pet` 是它依赖的 library 模块，插件反向引用 app 的类得靠反射。
 JS 桥同模块直调，编译期就能查错。
 
-##### 4.7.12.5 ⚠️ 顺带确认的硬约束：**一个 Tauri 窗口 = 一个 Activity**
+##### 4.7.12.8 ⚠️ 顺带确认的硬约束：**一个 Tauri 窗口 = 一个 Activity**
 
 一度考虑过「去掉 SettingsActivity，把设置页渲染进 MainActivity 那个 WebView」。
 不行，两个原因：
@@ -1896,7 +2030,7 @@ webView.viewTreeObserver.addOnWindowFocusChangeListener { hasFocus ->
 
 ```ts
 void setFloatingPetImeFocus(true).catch(() => {});
-window.setTimeout(() => textareaRef.value?.focus(), 150); // > 原生的 80ms
+window.setTimeout(() => textareaRef.value?.focus(), 100); // 必须**早于**原生的 250ms
 ```
 
 ##### 4.7.19.2 断言
@@ -1907,6 +2041,57 @@ window.setTimeout(() => textareaRef.value?.focus(), 150); // > 原生的 80ms
 不具区分度。Vue 的 `.passive` 修饰符会把事件名编译成 `onTouchstartPassive`
 （后缀式，运行时据此回挂 passive 监听），它是**对象字面量的键名** ——
 esbuild 不改对象键，所以能可靠地证明这行绑定真的进了包。
+
+##### 4.7.19.3 ★★ 四修：`showSoftInput` 的**第二个**前提 —— 页面必须先就绪
+
+4.7.19.1 那个 150ms 的补偿是**错的**（比原生的 80ms 还晚），键盘依旧不弹。
+四修时才发现真正的原因：
+
+> **`InputMethodManager.showSoftInput(view, …)` 对 WebView 有两个前提，不是一个。**
+
+| #   | 前提                                                                                         | 不满足时                         |
+| --- | -------------------------------------------------------------------------------------------- | -------------------------------- |
+| 1   | 窗口持有**输入焦点**（不能带 `FLAG_NOT_FOCUSABLE`）                                          | 请求被丢掉                       |
+| 2   | WebView **已建立输入连接**（页面里有聚焦的可编辑元素，`View.onCheckIsTextEditor()` 为 true） | **不报错、不抛异常，什么都不做** |
+
+第 1 条 4.7.18 已经处理了（摘 flag + 隔一帧）。第 2 条是四修才补上的 ——
+而它恰恰是最难查的，因为**完全静默**。
+
+正确的时序（三件事必须按这个顺序）：
+
+```
+0ms     前端 touchstart → invoke set_ime_focus(true)
+0ms     原生 摘 FLAG_NOT_FOCUSABLE + updateViewLayout + requestFocus
+~100ms  前端 textarea.focus()      ← 页面这一侧就绪，WebView 建立输入连接
+250ms   原生 showSoftInput          ← 这时才有输入连接可依附
+```
+
+原来错在哪：前端 150ms、原生 80ms —— 原生弹的时候页面还没就绪。
+
+配套改动：
+
+- `IME_SHOW_DELAY_MS`：`80` → `250`
+- `showIme()` 带**重试**（每 300ms，最多 5 次），每次都先问
+  `view.onCheckIsTextEditor()`「页面准备好了没」——就绪了才 `showSoftInput`
+- 日志 `弹出输入法（第 n/5 次）：页面就绪=… 窗口有焦点=…`
+  —— 这是**唯一**能区分「没送到」和「送到了但静默失效」的线索
+- 重试耗尽时记 `输入法没弹出来：重试 5 次后页面仍未把焦点落到输入框上`
+  —— 这句话直接把矛头指向前端（touchstart 有没有触发 / `isInFloatingWindow()` 真假）
+
+##### 4.7.19.4 排查用的日志分段
+
+| 日志                                               | 说明                                                       |
+| -------------------------------------------------- | ---------------------------------------------------------- |
+| `输入框获得焦点：悬浮窗改为可获焦，准备弹出输入法` | 命令**送到了**原生                                         |
+| `弹出输入法（第 n/5 次）：页面就绪=false`          | 送到了，但**页面没聚焦** → 前端问题                        |
+| `弹出输入法（第 n/5 次）：页面就绪=true`           | 页面就绪，`showSoftInput` 已发出 → 若仍不弹则是系统/ROM 层 |
+| `输入法没弹出来：重试 5 次后…`                     | 页面始终没聚焦                                             |
+
+一条命令：
+
+```bash
+adb logcat -s FloatingPetPlugin | grep -E "输入框获得焦点|弹出输入法|输入法没弹出来|输入框失焦"
+```
 
 #### 4.7.20 ★ 悬浮窗的左右安全区：左边界**完全不变**
 
@@ -2057,6 +2242,692 @@ if (petDetached && petNeedsResume && isScreenInteractive()) { … }
 
 `verify-pet-apk.sh` 用 **absent** 断言兜住它：`calc(100% - 1rem)` 现在只出现在
 代码注释里，而 Vue 生产构建会剥掉注释，所以「搜不到」就是改动进了包的证据。
+
+#### 4.7.24 ★ 转屏后桌宠不重排的真根因：后台时 `DisplayInfo` 是冻结的
+
+**这一条推翻了 4.7.21 的前提。** 4.7.21 加 `lastRotation` 时假设
+「`Display.getRotation()` 直读 `DisplayInfo`，所以与 App 可不可见无关」——
+这个假设是**错的**，2026-10-03 用无线调试抓 logcat 证伪了。
+
+**怎么抓到的**
+
+手机（vivo V2118A / Android 14）用 Tailscale 无线调试接上 `adb`，
+桌宠浮着、LingChat 在后台，让用户手动横→竖→横转屏三次，把两条日志按毫秒对齐：
+
+```
+11:59:57.254  无影 onConfigurationChanged  mDisplayRotation=ROTATION_0（竖屏）
+11:59:57.292  FloatingPet 收到 onDisplayChanged（rotation=1 …）        ❌
+12:00:04.435  无影 onConfigurationChanged  mDisplayRotation=ROTATION_90（横屏）
+12:00:04.495  FloatingPet 收到 onDisplayChanged（rotation=1 …）        ✓
+12:00:13.286  无影 onConfigurationChanged  mDisplayRotation=ROTATION_0（竖屏）
+12:00:13.343  FloatingPet 收到 onDisplayChanged（rotation=1 …）        ❌
+12:00:18.764  无影 onConfigurationChanged  mDisplayRotation=ROTATION_90（横屏）
+12:00:18.807  FloatingPet 收到 onDisplayChanged（rotation=1 …）        ✓
+```
+
+「系统真值」取的是无影 App 自己的 `onConfigurationChanged`（同一毫秒窗口，
+它读的是系统给的 `Configuration`，可信）。
+
+**结论：屏幕确实在转，但插件读到的 `rotation` 从头到尾卡在 `1`。**
+`Display.getRotation()` 读的是 `mDisplayInfo`，而它在**进程退到后台、
+只靠悬浮窗活着**的时候不刷新，停在「最后一次在前台时」的方向。
+
+于是 `maybeReapplyForScreenChange()` 的两个判据（尺寸、旋转角）**永远等于
+「没变」**，重排一次都不会跑，桌宠一直停在旧坐标系里。
+
+> 注意 `onDisplayChanged` **照常送达**（四条回调的时间点和转屏严格对齐）——
+> **回调是活的，读数却是死的**。所以「加个回调」这类修法在这里没用，
+> 必须换读数的来源。
+
+**顺带解释上一轮那个「91 秒后才自愈」**：那是一次偶然——某个事件让进程的
+`DisplayInfo` 刷新了一次，500ms 轮询才终于撞上。不是设计如此，是运气。
+
+**怎么找到活的那条路**
+
+同一个类里的 `safeInsetsPx()` 走的是：
+
+```kotlin
+activity.getSystemService(WindowManager::class.java)
+    .currentWindowMetrics.windowInsets
+```
+
+它的读数**跟着方向正确变化**（日志里 `safe=T100` ↔ `T108` 交替，正好对应
+竖屏/横屏）。同一次 `onDisplayChanged` 里，**一个活一个死，差别只在来源**。
+
+**修法**
+
+1. `screenSizePx()` 首选换成 `WindowManager.getCurrentWindowMetrics().bounds`；
+   - ⚠️ 必须是 `current`，**不是 `maximum`** —— 后者读
+     `windowConfiguration.getMaxBounds()`，与 Resources 同源，后台同样冻结。
+     这条路三修已经证伪过一次，`verify-pet-apk.sh` 里有 `absent` 断言兜着。
+     `current` 正是 `safeInsetsPx()` 用的那个调用，被真机证明是活的。
+2. `displayRotation()` **不再直读 `Display.getRotation()`**，改成从
+   `screenSizePx()` 推导（宽 > 高即横屏）。冻结的旋转角和活的尺寸会互相打架，
+   推导能保证两个判据永远一致。代价：分辨不出 180°（手机基本不允许，
+   且 180° 只影响贴哪条边）。
+3. `screenDebugInfo()` **同时打印多个来源**（四修时的形态）：
+
+```
+cur=2408x1080（首选来源）, dispRot=1（后台可能冻结）, panel=1080x2408（不随旋转）, safe=…
+```
+
+⚠️ **别把这条日志简化成只打一个来源。** 以后再出「转屏没反应」，看这一行就能
+定位是哪条路死了：`cur=` 不跟着变 → 换来源；`cur=` 变了而 `dispRot=` 没变 →
+就是本条修的 bug。`safe=` 可以当独立佐证：横屏时挖孔在左（L 大 / T 小），
+竖屏时在顶（T 大 / L 小），它和 `cur=` 必须同向。
+
+> ⚠️ 这条「`cur=` 当首选来源」的判断**后来被推翻**了 —— 见 §4.7.25：
+> `cur=` 在**后台**同样冻结。四修只解决了「前台」这一半。
+
+**方法论（可复用）**
+
+- **凡「系统回调收到了但状态没变」的 bug，先怀疑「读数的来源」，而不是回调。**
+  本例里回调完全正常，错的是读数。
+- **同一个类里找一个「表现正常」的同类读数当参照物**，比对两者的来源差别 ——
+  比从头推理系统实现快得多。这里就是拿 `safeInsetsPx()` 当参照物找到答案的。
+- **日志里同时打印多个来源**，让日志自己回答「谁死了」。
+- 无线调试（Tailscale + `adb pair/connect`）在没有 USB 的场景下完全够用；
+  见 `grab-pet-logs.sh`。
+
+#### 4.7.24.1 `adb` 强转屏：其实可用（本条 2026-10-03 更正过）
+
+~~想用 `adb shell settings put system user_rotation 1` 复现转屏？在这台机上
+**没用**：值写进去了（读回是 `1`），但 `mRotation` 纹丝不动。~~
+
+**更正**：能用，之前判定「无效」是误判。正确姿势是**先关自动旋转**：
+
+```bash
+adb shell settings put system accelerometer_rotation 0   # ★ 关键，别漏
+adb shell settings put system user_rotation 1            # 0/1/2/3 = 0°/90°/180°/270°
+adb shell dumpsys window displays | grep mCurrentRotation   # 验证：ROTATION_90
+```
+
+**`user_rotation` 在 `accelerometer_rotation=1` 时是被系统忽略的** ——
+所以「写进去了但 `mRotation` 不动」并不是 ROM 不支持，而是自动旋转还开着。
+实测（2026-10-03 12:56）先关自动旋转后 `mCurrentRotation` 立刻变成 `ROTATION_90`。
+
+> ⚠️ 用完**记得还原** `settings put system accelerometer_rotation 1`，
+> 别把用户的自动旋转留在关闭状态。
+
+另外 `adb exec-out screencap -p` 走 Tailscale 中继时二进制流会被截断
+（`image file is truncated`），要改成「设备上落盘 → `adb pull`」，
+并且 Git Bash 下必须 `export MSYS_NO_PATHCONV=1`，否则 `/sdcard/...` 会被改写成
+Windows 路径。
+
+#### 4.7.25 ★★ 真根因（五修）：App 在后台时，进程内**一切**屏幕读数都冻结
+
+**这一条推翻了 §4.7.24 的结论。** 四修把尺寸来源换成
+`WindowManager.getCurrentWindowMetrics().bounds` 后，用户复验的反馈是
+**「问题完全依旧」**，并给了一句决定性的定位：
+
+> 「不是在软件内旋转就有用，在软件外旋转就没用。」
+
+这句话把 bug 的范围钉死在 **App 处于后台** 这个条件下 ——
+四修之所以在开发机上「看起来好了」，是因为一直在前台测。
+
+##### 毫秒对齐拿到的真相
+
+把「物理转屏时刻」（截图 / 用户口述）与插件日志按毫秒对齐，读数是：
+
+| 读数                                                  | 前台 | 后台（App 不在最前） |
+| ----------------------------------------------------- | ---- | -------------------- |
+| `Resources.displayMetrics` / `getSystem()`            | 新鲜 | **冻结**             |
+| `DisplayManager.getDisplay().rotation` / `.mode`      | 新鲜 | **冻结**             |
+| `WindowManager.currentWindowMetrics.bounds`           | 新鲜 | **冻结**             |
+| `currentWindowMetrics.windowInsets`（`safeInsetsPx`） | 新鲜 | **时活时死**         |
+| `DisplayManagerGlobal.getDisplayInfo()`（binder）     | 新鲜 | **新鲜** ✅          |
+
+典型现场：手机已横过来，截图是 2408×1080，而插件日志里
+`cur=1080x2408` 稳如泰山 —— 它以为自己在竖屏。
+
+##### 为什么会这样
+
+这些读数**全部是客户端缓存**：
+
+- `DisplayInfo` 是 `DisplayManagerGlobal` 手里的一份**副本**；
+- `WindowMetrics` 来自客户端的 `DisplayArea` 树；
+- `Resources.Configuration` 来自 `ResourcesManager`。
+
+它们的刷新机制是**系统在配置变更时「推送」给进程** —— 而进程退到后台后
+**收不到那次推送**。但 `DisplayManager.DisplayListener.onDisplayChanged`
+**照常送达**（时间点和转屏严格对齐）。
+
+**回调是活的，数据是死的。** 于是判定永远等于「没变」，重排一次都不跑。
+
+##### 修法
+
+加一条**绕过所有客户端缓存**的来源，排在最前：
+
+```kotlin
+private fun freshDisplayInfoPx(): Triple<Int, Int, Int>? = try {
+    val cls = Class.forName("android.hardware.display.DisplayManagerGlobal")
+    val inst = cls.getMethod("getInstance").invoke(null)
+    val info = cls.getMethod("getDisplayInfo", Int::class.javaPrimitiveType)
+        .invoke(inst, Display.DEFAULT_DISPLAY)
+    ...
+} catch (t: Throwable) { ...; null }
+```
+
+`DisplayManagerGlobal.getDisplayInfo()` 走的是
+`IDisplayManager.getDisplayInfo()` **binder 调用**，每次现问服务端，
+不经过任何客户端缓存。
+
+⚠️ **它必须只是「首选」，不能是「唯一」**：`DisplayManagerGlobal` 是隐藏 API，
+只能反射，会被非 SDK 接口限制拦掉（返回 `null`）。所以
+`screenSizePx()` 做成**分级**：
+
+```
+来源 0  freshDisplayInfoPx()            ← binder，后台唯一新鲜
+来源 1  currentWindowMetrics.bounds     ← 前台新鲜，后台冻结
+来源 2  Display.getMode() 短边/长边分配  ← 前台新鲜，后台冻结
+来源 3  resources.displayMetrics        ← 最终兜底
+```
+
+反射失败**只记一次**日志（`freshSourceBrokenLogged` 去抖）——
+`screenSizePx()` 每 500ms 被 `keepAliveTick` 读一次，每次都记就是刷屏白烧电。
+
+`screenDebugInfo()` 随之改成多来源对照，五修后长这样：
+
+```
+fresh=2408x1080@rot1（binder，唯一后台新鲜）, cur=1080x2408（WindowMetrics，后台冻结）,
+dispRot=0（DisplayInfo 副本，后台冻结）, panel=1080x2408（不随旋转）, safe=L…/T…/R…/B…
+```
+
+> **`fresh=` 才是判据来源。** 以后若再出「转屏没反应」，先看 `fresh=`：
+>
+> - `fresh=` 不跟着变 → 反射这条路也被拦了（问题在来源）
+> - `fresh=` 变了但没重排 → 问题在判据（`lastScreenW` / `lastRotation`）
+
+##### 方法论（比 4.7.24 更进一步）
+
+- **「前台能复现」不等于「后台能复现」**。凡是「系统状态变化」类的 bug，
+  必须在 **App 退到后台** 的条件下验一遍 —— 后台是缓存失效的放大器。
+- **一个读数正常，不代表同类的另一个读数也正常**：`windowInsets` 活着而
+  `bounds` 死了，两者同属 `WindowMetrics`。**逐个来源单独打日志**，
+  不要合并。
+- **判据要建立在「每次现问」的来源上**（binder / 系统调用），
+  而不是「被推送刷新」的缓存上。
+- 定位这类问题时，「找一个表现正常的同类读数当参照物」依然有效 ——
+  这次参照物是 `safe=`（它时活时死，正好暴露了 `cur=` 的死）。
+
+##### 验证
+
+`verify-pet-apk.sh` 新增断言：`DisplayManagerGlobal` / `getDisplayInfo` /
+`logicalWidth` / `logicalHeight` / `反射 DisplayManagerGlobal` /
+`（binder，唯一后台新鲜）` / `（WindowMetrics，后台冻结）` /
+`（DisplayInfo 副本，后台冻结）`，并断言四修那版 `（首选来源）` **已消失**
+（防止 `screenDebugInfo` 退回「只打一条来源」的旧写法）。
+
+当前：**118 ✅ / 0 ❌**（`stale-state-fix`）。
+
+> ⚠️ 仍需**真机复验**：装 `stale-state-fix` 后，让桌宠浮着、把 LingChat
+> 退到后台，**在软件外**转屏，看 `fresh=` 是否跟着方向变、桌宠是否重排。
+
+**结果（2026-10-03 12:41 真机）**：修好了。日志里 `fresh=` 精确跟着方向翻转，
+`★ 屏幕变化` 与重排都在回调后 ~130ms 内跑完。五修生效。
+
+#### 4.7.26 ★★ 横屏右边溢出屏幕 76px：窗口的坐标原点被挖孔顶偏了
+
+五修修好转屏后，用户立刻报出下一个症状：
+
+> 「我这边横屏时右边会超出屏幕一点。」
+
+##### 症状的边界条件
+
+| 场景                           | 表现                            |
+| ------------------------------ | ------------------------------- |
+| 竖屏                           | 完全正常                        |
+| 横屏（ROTATION_90 / 270 都算） | 贴右沿时右边跑到屏幕外，约 76px |
+| 横屏贴左沿                     | 正常（只是比预期多一点点边距）  |
+
+「只有横屏」「只在右边」——这两个条件合起来，指向的必然是**横向的坐标系**问题。
+
+##### 真机证据
+
+`adb shell dumpsys window windows` 里把两个窗口摆在一起看，一眼就穿了：
+
+```
+# 主界面 MainActivity —— manifest 里声明了 layoutInDisplayCutoutMode=always
+mAttrs={(0,0)(fillxfill) ... layoutInDisplayCutoutMode=always ty=BASE_APPLICATION ...}
+Frames: parent=[0,0][2408,1080]  display=[0,0][2408,1080]  frame=[0,0][2408,1080]
+                ↑ 父容器起点 0
+
+# 桌宠悬浮窗 —— **没有**声明挖孔模式
+mAttrs={(2231,346)(153x153) gr=TOP START CENTER ty=APPLICATION_OVERLAY
+        fl=NOT_FOCUSABLE NOT_TOUCH_MODAL LAYOUT_NO_LIMITS HARDWARE_ACCELERATED}
+                                    ↑ 注意这里没有 layoutInDisplayCutoutMode
+Frames: parent=[100,0][2408,1080]  frame=[2331,346][2484,499]
+                ↑ 父容器起点 100                    ↑ 右边缘 2484 > 屏幕宽 2408
+```
+
+##### 机制
+
+`WindowManager.LayoutParams.x/y` 是**相对父容器**的坐标，不是屏幕坐标。
+
+`TYPE_APPLICATION_OVERLAY` 窗口若**不声明挖孔模式**，默认行为是
+`LAYOUT_IN_DISPLAY_CUTOUT_MODE_DEFAULT` —— 系统会把它的父容器**按挖孔内缩**。
+横屏时挖孔在侧边（本机 `mDisplayCutout.insets=Rect(100,0-0,0)`，深 100px），
+父容器就从 `x=100` 开始。
+
+而我们的代码是按「相对屏幕原点」算的：
+
+```
+期望：x = screenW(2408) - safe.right(0) - width(153) - margin(24) = 2231
+实际：绝对左 = 2231 + 100 = 2331
+      绝对右 = 2331 + 153 = 2484   ← 超出屏幕 76px
+```
+
+竖屏时挖孔在**顶部**，父容器的 `x` 起点仍是 0，所以只有横屏发作 ——
+两个边界条件全部对上。
+
+> ⚠️ 注意 `LAYOUT_NO_LIMITS` **不会**阻止这个偏移，反而让窗口可以真的画到
+> 父容器之外（否则系统会把它夹回来，症状会变成「贴不到右沿」而不是「溢出」）。
+
+##### 排除干扰项：一次全窗口对照
+
+上面「MainActivity vs 桌宠」的对比有个漏洞 —— 两者**窗口类型不同**
+（`type=1` vs `type=2038`）。万一是「overlay 类型本身就会内缩」呢？
+
+于是把横屏下**所有窗口**的「挖孔模式 × parent 起点」拉成一张表：
+
+| 窗口                             | 类型             | 挖孔模式     | parent 起点    |
+| -------------------------------- | ---------------- | ------------ | -------------- |
+| **桌宠悬浮窗**                   | 2038 overlay     | **未声明**   | **[100,0]** ❌ |
+| InputMethod（输入法）            | 输入法           | **未声明**   | **[100,0]** ❌ |
+| GlobalDrawerContainerView        | **2038 overlay** | `shortEdges` | [0,0] ✅       |
+| ShellDropTarget                  | **2038 overlay** | `always`     | [0,0] ✅       |
+| 其余全部（app / 系统窗 / 壁纸…） | 各种             | 各种         | [0,0]          |
+
+**同为 `type=2038` 的 overlay，声明了挖孔模式的两个都是 `[0,0]`** ——
+窗口类型这个干扰项被排除，只剩「挖孔模式」一个变量。
+`InputMethod` 同样未声明、同样被顶到 `[100,0]`，是第二个独立佐证。
+
+> **方法论**：当对照实验里有两个变量（类型 / 挖孔模式）同时不同时，
+> 别急着下结论 —— **把全部样本拉成一张表**，让变量自己分离。
+> 这比再设计一次受控实验快得多，而且样本是现成的。
+
+##### 修法
+
+给悬浮窗补上挖孔模式声明，让父容器 = 整块屏幕：
+
+```kotlin
+if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {          // API 30+
+    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+} else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {   // API 28–29
+    layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+}
+```
+
+（`ALWAYS` 是 API 30+，本工程 minSdk=24，所以 28–29 退回 `SHORT_EDGES` ——
+手机上挖孔就在短边：竖屏顶部、横屏左右，够用。）
+
+这一改同时**顺带满足了 §4.7.20 的设计意图**：桌宠现在可以贴到挖孔所在的那条
+短边上（贴左沿时钻到摄像头下一点点），而不是被系统凭空顶开 100px。
+
+##### 加了一条永久守卫
+
+这个偏移**在应用内部读不到** —— `currentWindowMetrics.bounds` 给的是整块屏幕
+（2408×1080），不含父容器偏移。唯一能拿到的方式是反推：
+
+```kotlin
+view.post {
+    val loc = IntArray(2)
+    view.getLocationOnScreen(loc)
+    val dx = loc[0] - params.x     // 非 0 就是父容器偏移
+    ...
+}
+```
+
+所以新增 `warnIfWindowOriginOffset()`，在 `addView` 之后和每次旋转重排之后各验一次，
+**非零就告警**。它**只报告、不修正** —— 修正是挖孔声明的职责；如果它又开始报警，
+说明那个声明被删了或被 ROM 忽略了，**别用补偿掩盖**。
+
+##### 方法论（可复用）
+
+- **`params.x/y` 是相对父容器的**。「按屏幕尺寸算的坐标」和「窗口实际落点」
+  之间可以差一个父容器偏移，而**这个偏移在应用内没有任何直接 API 可读**。
+- **`dumpsys window windows` 的 `Frames: parent=[...] frame=[...]` 是唯一真值。**
+  把可疑窗口和一个「表现正常」的窗口（这里是 MainActivity）并排看，
+  父容器起点不一样就是它。**这比读 AOSP 快一个数量级。**
+- **「只在横屏发作」优先怀疑横向坐标系**，而不是位置计算逻辑 ——
+  竖屏/横屏的差别往往不在算法，而在某个环境量（这里是挖孔方位）。
+- 又一次印证 §4.7.25 的方法论：**找一个表现正常的同类对象当参照物**
+  （上次是同类读数，这次是同类窗口）。
+
+##### 验证
+
+`verify-pet-apk.sh` 新增：`layoutInDisplayCutoutMode` /
+`Landroid/view/WindowManager$LayoutParams;` / `窗口坐标原点偏移` /
+`getLocationOnScreen` 四条 present 断言。
+
+> ⚠️ **这里踩过一个坑，值得记下来：不能断言常量名。**
+>
+> 一开始写的是断言 `LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS` /
+> `_SHORT_EDGES` present，结果两条都报 ❌。原因是它们是
+> `public static final int`，编译器在**编译期就把它们内联成字面量**了
+> （实测三个常量名在 DEX 里出现次数均为 0），名字根本不会进包。
+>
+> 顺带发现一个更隐蔽的**假阳性**：`layoutInDisplayCutoutMode` 这个词当时
+> 在 DEX 里出现 2 次 —— 一次是真字段引用，另一次是**守卫日志的文案**
+> 里写了「检查 `layoutInDisplayCutoutMode` 是否被删」。也就是说，
+> 就算有人把挖孔声明整个删掉，只要日志文案还在，那条断言**照样通过**。
+> 所以把日志文案改成了「检查窗口的挖孔模式声明是否被删」，让这个词在包里
+> 只剩真字段引用一处 —— 断言这才真正有约束力。
+>
+> **教训：断言字符串时，先确认这个字符串在包里是不是唯一语义来源。**
+> 日志文案和被测代码用同一个词，等于给自己发了张空头支票。
+
+#### 4.7.27 ★ 「设置页反复弹出收起 → 卡死」= **ANR**，根因是 `webviews_lock()` 互锁
+
+**真机症状**（用户原话）：
+
+> 我发现设置页反复弹出收起容易卡死崩溃
+
+**先纠正一个误判**：这不是崩溃（crash），是 **ANR**。
+`dumpsys activity exit-info com.noiq.lingchat` 给出的记录是连续三次
+`reason=6 (ANR)`：`14:58:34` / `14:59:25` / `15:00:03`。subreason 全
+`0 (UNKNOWN)`，配套的 dropbox 条目里写着：
+
+```
+Input dispatching timed out (... Sys2038:com.noiq.lingchat/com.noiq.lingchat.MainActivity,
+Waited 5001ms for MotionEvent)
+```
+
+⚠️ **`type=2038` = `TYPE_APPLICATION_OVERLAY`** —— 卡住的是**桌宠悬浮窗**，
+也就是「点桌宠没反应」，不是设置 Activity 本身。
+
+##### 4.7.27.1 决定性证据：两个线程同时卡在 Rust 的 futex 上
+
+从 `dumpsys dropbox --print data_app_anr` 里剥出来的线程栈：
+
+**主线程**：
+
+```
+"main" state=S
+  #00 libc syscall+32                              ← futex 等待
+  #01.. base.apk (offset 2c8000) ×7                ← Rust（base.apk = libling_chat_lib.so）
+  at com.noiq.lingchat.Rust.onPageLoaded(Native method)
+  at com.noiq.lingchat.generated.RustWebViewClient.onPageFinished(SourceFile:17)
+  at ... Looper.loop
+```
+
+**JavaBridge 线程**：
+
+```
+"JavaBridge" state=S
+  #00 libc syscall+32                              ← 同样在 futex
+  #01 0x08184ae8 … #0N base.apk
+  at com.noiq.lingchat.generated.Ipc.postMessage(SourceFile:13)   ← JS 发起的 Tauri invoke
+```
+
+两条**不同的**线程 —— 一个卡在「页面加载完成回调」，一个卡在「JS 调用 Tauri
+命令」—— 都在等 Rust 的同一把锁。
+
+##### 4.7.27.2 根因：两条路都要 `webviews_lock()`，而建窗又必须等主线程
+
+顺着源码（wry 0.55.1 + tauri 2.11.1）走：
+
+1. 页面加载完成 → `wry/src/android/binding.rs:469 onPageLoaded()`，**持
+   `ON_LOAD_HANDLER`** 调 Tauri 注册的 handler；
+2. `tauri/src/manager/webview.rs:293-305` 那个 handler 第一件事是
+   `app_manager_.get_webview(&label)` → **`webviews_lock()`**
+   （`tauri/src/manager/mod.rs:671`），紧接着还要 `plugins.lock()`；
+3. 另一边，JS 里 `new WebviewWindow(...)` 走 `wry Ipc.kt postMessage` →
+   `binding.rs:383 ipc()` → Tauri IPC 派发 → **同样要拿 `webviews_lock()`**，
+   而且会**一直持有到窗口创建完成**；
+4. `plugin:window|create` 是在 **JavaBridge 线程**发起的，`tauri-runtime-wry` 的
+   `create_window` 必须**回到主线程事件循环**才能真的建窗 → **阻塞等主线程**；
+5. 主线程此刻正卡在 `webviews_lock()`（被第 1、2 步的 `onPageLoaded` 持有）→
+   **互锁**，5 秒后 `MotionEvent` 超时 → ANR。
+
+一句话：**「JS 建窗」和「页面加载完成」两条路都要 `webviews_lock()`，而建窗又必须
+等主线程 —— 主线程被锁挡住，于是互锁。**
+
+##### 4.7.27.3 ⚠️ 这是**老 bug**，不是这次改动引入的
+
+拿当天 **10:45**（**13:44 出包之前**）那次 ANR 的主线程栈和 14:58 那次逐帧对比，
+帧序列**完全一致**：
+
+```
+#01 0x0817af68   #02 0x064b89b8   #03 0x065500d8   #04 0x06535a3c
+#05 0x0654e570   #06 0x08009a14   #07 0x0801ac1c
+```
+
+01:11 那次也是同一形态。所以死锁**一直在**，只是「设置页独立任务栈」这个改动让它
+**更容易被点到**（多点几次「设置」= 多几次 JS 建窗 = 多几次撞锁）。
+
+> ⚠️ **教训：改完一个功能后出现的 ANR，先别急着怪自己那次改动。**
+> `dumpsys dropbox` 里有**历史**记录，逐帧比对就能判断是「新引入」还是「本来就在、
+> 只是触发概率变了」。这一次的答案明确是后者。
+
+##### 4.7.27.4 修法：A（最小改动）—— 前端防重入闸门 + 删掉失同步来源
+
+> **为什么不是 B（把设置页做成主 WebView 的覆盖层）**：用户一句话否掉了 ——
+> 「那主 webview 里还有桌宠呢」。桌宠浮起来时主 WebView 被搬进了
+> `WindowManager`，根本不在 Activity 视图树里，覆盖层方案不成立（也见 4.7.12.8）。
+
+**A 的两处改动**：
+
+**① `src/components/views/PetMode.vue` —— `handleOpenSettings` 加防重入闸门**
+
+```ts
+let settingsOpening = false;
+let settingsOpenTimer: ReturnType<typeof setTimeout> | null = null;
+const SETTINGS_OPEN_TIMEOUT_MS = 8000;
+
+const releaseSettingsOpenGate = () => {
+  if (settingsOpenTimer !== null) {
+    clearTimeout(settingsOpenTimer);
+    settingsOpenTimer = null;
+  }
+  settingsOpening = false;
+};
+
+const handleOpenSettings = async () => {
+  if (settingsOpening) return; // ★ 上一次建窗还没落地，直接忽略
+  try {
+    const bridge = (window as unknown as { LingChatApp?: { focusSettings?: () => boolean } })
+      .LingChatApp;
+    const focusSettings = bridge?.focusSettings;
+    // ★ Android：**先问原生**（实例还在不在，它才是唯一权威）
+    if (isAndroid() && typeof focusSettings === "function") {
+      if (focusSettings.call(bridge)) return;
+    } else {
+      const existing = await WebviewWindow.getByLabel("settings");
+      if (existing) {
+        await existing.setFocus();
+        return;
+      }
+    }
+    settingsOpening = true; // ★ 走到这里 = 必须新建，立刻上闸
+    settingsOpenTimer = setTimeout(releaseSettingsOpenGate, SETTINGS_OPEN_TIMEOUT_MS);
+    const webview = new WebviewWindow("settings", {
+      /* … */
+    });
+    webview.once("tauri://created", () => {
+      releaseSettingsOpenGate();
+    });
+    webview.once("tauri://error", (e) => {
+      releaseSettingsOpenGate();
+    });
+  } catch (error) {
+    releaseSettingsOpenGate(); // `new WebviewWindow` 标签重名会**同步抛**
+  }
+};
+```
+
+关键语义变化：**删掉了「桥返回 false 就掉下去建窗」那条路**。旧代码在
+「`getByLabel` 拿到窗口 → 桥返回 false」时会继续走到建窗，那正是死锁入口。现在：
+**原生说在就 return，说不在就直接建窗**，两条路互斥。
+
+**② `SettingsActivity.kt` —— 删掉 `onResume` 的 `finish()` 守卫**（见 4.7.12.6），
+连带删 `pendingShow` / `wentToBackground` / `onStop` / `onResume`。它是
+「Tauri 登记表 ↔ Android 实例」失同步的唯一来源，删掉之后「实例在、tao 又建窗」
+这个组合不会再出现。
+
+##### 4.7.27.5 怎么读 ANR（本次踩过的坑，可复用）
+
+| 做法                                         | 结果                                                                                                                                     |
+| -------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| `logcat -d -b main` 全量导出                 | ❌ 主缓冲区被**无影客户端**刷爆，16 MiB 只装得下约 1 分钟；不带 `-t` 的 `-d` 跑 8 分钟还拿不到目标时段                                   |
+| 直接读 `/data/system/procexitstore/anr_*.gz` | ❌ `Permission denied`                                                                                                                   |
+| `dumpsys activity exit-info <pkg>`           | ✅ **第一入口** —— 直接给 `reason=` / 时间戳，判断「是不是 ANR」最快                                                                     |
+| `dumpsys dropbox --print data_app_anr`       | ✅ shell 可读，含完整线程栈（本次 154,425 行 / 63 个进程段）                                                                             |
+| 设备侧 `-t` 限行 + `grep` 落盘，再拷回来     | ✅ 别在设备侧一遍遍 grep（用户原话：「这提取的日志怎么还花那么久？你可以拷贝过来再弄啊」）                                               |
+| 文件传输                                     | ✅ **走 `G:` 盘**（Dokan 挂载的手机存储，4–5 MB/s，19 MB / 3.8 s）；❌ 不要 `adb pull`（用户原话：「哎呀，和你说多少次了？文件走存储」） |
+
+> ⚠️ `libling_chat_lib.so` 是 **strip 过**的（只有 `.dynsym`，没有 `.symtab`），
+> 栈帧地址**没法符号化**；而且它在 APK 里是 `compress=0`，
+> `header_offset=0x2C62D8` ≠ 崩溃里显示的 `0x2c8000`（`libc++_shared.so` 被内联到
+> 别的串里导致偏移漂移）。所以本次的锁链路是**顺着源码推出来的**，不是从符号读出
+> 来的 —— 证据是「两条线程同时卡 futex」+「10:45 帧序列逐帧一致」，而不是某一行
+> 函数名。
+
+#### 4.7.28 ★ 主活动按返回键会「退回桌宠页」—— Chromium 自带的返回回调没被压住
+
+**真机症状**（用户原话）：
+
+> 当软件在前台主活动，按返回键会导致桌宠里面被返回。这很边缘了。
+
+**根因**：`MainActivity` 从来没有注册过自己的 `OnBackPressedCallback`。
+
+`WryActivity.setWebView()` 里本来有一个：
+
+```kotlin
+open val handleBackNavigation: Boolean = true
+...
+if (handleBackNavigation) {
+    val callback = object : OnBackPressedCallback(true) {
+        override fun handleOnBackPressed() {
+            if (mWebView.canGoBack()) mWebView.goBack()
+            else { isEnabled = false; onBackPressed(); isEnabled = true }
+        }
+    }
+    onBackPressedDispatcher.addCallback(this, callback)
+}
+```
+
+但 `TauriActivity` 把它关掉了：
+
+```kotlin
+abstract class TauriActivity : WryActivity() {
+  override val handleBackNavigation: Boolean = false
+}
+```
+
+**关掉的只是「我们那一份」，Chromium 自带的那份还在。** WebView 构造时会自己注册一个
+「能回退就 `goBack()`」的回调（这条在 4.7.12.5 里已经为设置页验证过），而
+`OnBackPressedDispatcher` 按注册顺序**倒序**派发 —— 我们一份回调都没有，它自然就被派发了。
+
+于是返回键变成了**主 WebView 的历史回退**。主 WebView 的历史里通常留着 `/pet`：
+从桌宠回到聊天页之后按返回键，`goBack()` 直接**退回了桌宠页** —— 这就是用户看到的现象。
+
+> 为什么「很边缘」：只有当 `canGoBack()` 为真时才发作；没有历史时 Chromium 那份会
+> `isEnabled = false` 回落到 `onBackPressed()`，也就是正常的 `finish()`。
+
+**修法**：给 `MainActivity` 也注册一份（`installBackCallback`），行为 = `moveTaskToBack(true)`。
+
+- 注册**两次**（`onCreate` 兜底 + `onWebViewCreate` 稳定生效），理由与设置页 4.7.12.5 完全一样；
+- 用 `moveTaskToBack` 而不是 `finish()`：与设置页同一套「只用退回、不要关闭，以节省性能」的既定方向。
+
+⚠️ **代价**：「聊天页 → 主菜单」这类**页内后退**不再由返回键承担（改由页面上的按钮承担）。
+这是刻意取舍 ——「根页面按返回键应该退出 App」比「浏览器式后退」更符合预期。将来若要两者
+兼得，需要前端上报「当前是不是根路由」，原生据此分流。
+
+#### 4.7.29 切设置的加强：建窗期间停掉会抢锁的轮询
+
+**真机症状**（用户原话）：
+
+> 主活动在前台，切设置会卡一下，这里可能会崩。
+
+「崩」的机制就是 4.7.27 那场 ANR（`webviews_lock()` 互锁）。4.7.27 的防重入闸门解决了
+「连点导致多次建窗」，但**单次建窗**仍然会持锁，而桌宠态下有三个定时器在周期性发起 IPC：
+
+| 定时器              | 周期  | 动作                                 |
+| ------------------- | ----- | ------------------------------------ |
+| `metricsTimer`      | 500ms | `getFloatingPetStatus()`             |
+| `selfHealTimer`     | 500ms | 内容高度变了才 `resizeFloatingPet()` |
+| `heightReportTimer` | 200ms | 去抖后一次 `resizeFloatingPet()`     |
+
+它们会和建窗抢同一把锁，把「本来就慢的建窗」进一步拖成卡顿甚至 ANR。
+
+**修法**：新增 `pauseIpcTimers()` / `resumeIpcTimers()` —— 闸门一上就停，
+`releaseSettingsOpenGate()` 里恢复（成功 / 失败 / 超时 / 同步抛异常四条路都走它）。
+
+**另一处**：Android 建窗不再传 `transparent: true`。
+
+桌面端设置窗是圆角透明窗，需要它；Android 上 `SettingsActivity` 用的是**不透明主题**
+（4.7.3），传 `transparent: true` 只会让 wry 把 WebView 背景也置成全透明 —— 没有视觉收益，
+却把 WebView 推进软件合成路径，拖慢建窗。
+
+```ts
+transparent: !isAndroid(),
+```
+
+#### 4.7.30 ★ 屏幕视奸：Android 端补上「截一帧」（无障碍服务）
+
+**背景**：项目的「视觉感受与主动窥屏」（README「👀」）在桌面端是完整的，Android 端
+**整条不触发**：
+
+- `screen_analyzer.rs::capture_screen_as_jpeg()` 是 `#[cfg(not(target_os = "windows"))] { None }`
+- `strategy_dispatcher.rs::get_screen_prompt()` 拿到 `None` 就 `?` 早退
+
+其余全现成：`IntentType::Screen`（TTL 120s）、`enable_visual_perception`、`screen_weight`、
+30s 轮询、原生多模态当轮直发 / 旁白转述回退。**缺的只有「截一帧」这一步。**
+
+**方案取舍**（用户拍板）：无障碍服务 `takeScreenshot`，而不是 `MediaProjection`。
+
+| 维度         | 无障碍 `takeScreenshot` | `MediaProjection`                   |
+| ------------ | ----------------------- | ----------------------------------- |
+| 授权方式     | 系统设置里开一次        | 每次会话弹「开始投屏」              |
+| App 冷启动后 | 仍有效                  | **必须重新授权**                    |
+| Android 14+  | 无额外要求              | 必须先起 `mediaProjection` 前台服务 |
+| 附加能力     | 顺带拿到前台包名        | 只有画面                            |
+| API 下限     | **30（Android 11）**    | 21                                  |
+| Google Play  | 审核极严                | 无政策风险                          |
+
+对一个「后台默默窥屏」的功能，「每次冷启动都被弹一次投屏授权」不可接受，故选前者。
+`MediaProjection` 留作将来的第二通道。
+
+**实现（五处）**：
+
+1. **`LingChatAccessibilityService.kt`**（插件模块，新建）
+   - `takeScreenshot` → `HardwareBuffer` → **`copy(ARGB_8888)`** → 缩到最长边 1024 → JPEG(85)
+   - ⚠️ **必须 copy**：`wrapHardwareBuffer` 拿到的是 GPU 侧位图，buffer close 之后直接压
+     会得到一张**全黑图**
+   - `onAccessibilityEvent` 只记前台包名（`TYPE_WINDOW_STATE_CHANGED`），作为窥屏的语境
+   - 阻塞等待上限 5s；API < 30 直接返回 `null`
+2. **`res/xml/lingchat_screen_accessibility.xml`**（新建）—— `canTakeScreenshot="true"` +
+   **`canRetrieveWindowContent="false"`**（只截画面、不读控件树，是刻意的隐私边界）
+3. **插件 manifest** —— `BIND_ACCESSIBILITY_SERVICE` 权限 + intent-filter + meta-data
+4. **插件命令 `captureScreen`** —— 返回 **JPEG 文件路径**（不是字节：一帧 100~300 KB，
+   base64 塞 JSON 再涨 33%，而这条链路每 2 分钟就走一次）
+5. **Rust 侧**：`ScreenCapture` 模型 + `mobile`/`desktop` 转发 + `capture_screen_bytes()` 高层封装
+
+**关键的依赖方向问题**：`ling-chat-main` 是底层 crate，**不能**依赖
+`tauri-plugin-floating-pet`（Tauri 插件）。所以用**全局回调注入**：
+
+```rust
+// screen_analyzer.rs
+static ANDROID_SCREEN_CAPTURE: OnceLock<ScreenCaptureFn> = OnceLock::new();
+pub fn set_android_screen_capture(f: ScreenCaptureFn) { let _ = ANDROID_SCREEN_CAPTURE.set(f); }
+
+// src-tauri/src/app/setup/mod.rs（app 层注册）
+#[cfg(target_os = "android")]
+{
+    let capture_handle = app.handle().clone();
+    ai_service::screen_analyzer::set_android_screen_capture(Box::new(move || {
+        tauri_plugin_floating_pet::capture_screen_bytes(&capture_handle)
+    }));
+}
+```
+
+好处：`capture_screen_as_jpeg()` 的**签名不用变**，`ScreenAnalyzer` 也不用持有 app；
+桌面端不注册（Windows 自己走 GDI，读不到这个槽位也不需要它）。
+
+**⚠️ 用户必须手动开启**：设置 → 无障碍 → 已安装的服务 → 「LingChat 屏幕感知」。
+App 无法自行开启，也没有授权弹窗。未开启时回调返回 `None`，屏幕策略照旧不触发 ——
+与改造前行为一致，**不引入新的错误路径**。
 
 ## 五、手机端的交互设计
 
@@ -2655,9 +3526,11 @@ gh run download <run-id> --repo <你的fork> -n lingchat-dev-android
 | **单击经常没反应、窗口被带偏**                                      | `TAP_SLOP_DP` 偏小，正常点按被判成拖动                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | 悬浮窗里输入框弹不出键盘                                            | 窗口 `FLAG_NOT_FOCUSABLE` 没在展开态摘掉                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | 按住 Home 后悬浮窗消失                                              | 前台服务被 ROM 拦截，需加「后台弹出界面」白名单                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
-| **点「设置」没反应**                                                | `WebviewWindow` 少了 `activityName` → tao 的 `create_activity` 找不到类 → 只走 `tauri://error`，而前端**没监听**该事件，所以静默失败、日志里什么都没有（见 4.7.1 / 4.7.2）。三处要一起改：`SettingsActivity.kt` / `AndroidManifest.xml` 注册 / 前端传 `activityName`。⚠️ `launchMode` 必须是 `standard`（`singleTask` 复用实例时不会触发创建回调，tao 白等 5 秒）                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| **点「设置」没反应**                                                | `WebviewWindow` 少了 `activityName` → tao 的 `create_activity` 找不到类 → 只走 `tauri://error`，而前端**没监听**该事件，所以静默失败、日志里什么都没有（见 4.7.1 / 4.7.2）。三处要一起改：`SettingsActivity.kt` / `AndroidManifest.xml` 注册 / 前端传 `activityName`。⚠️ `launchMode` 现在是 `singleInstance`（为了让设置窗独占任务栈，见 **4.7.12.2**）—— 代价是**实例已存在时绝不能再走 tao 建窗**：复用走 `onNewIntent`、不触发创建回调，tao 会白等 5 秒。由前端 `getByLabel("settings")` 守卫                                                                                                                                                                                                                                                                                                              |
+| **按桌宠的返回键，设置页不收起**                                    | 设置窗与 MainActivity **同任务栈**，而 `FloatingPetPlugin.hide()` 的 `bringActivityToFront()` 走 `moveTaskToFront(聊天任务)` —— 拉的是**整个任务**，栈顶仍是设置窗。`finish()` 能修但会销毁实例（用户不要），`moveTaskToBack` 会把聊天页一起退到后台。**唯一解是给设置窗独立任务栈**（见 **4.7.12.2**），桌宠侧一行都不用改                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **设置页在「最近任务」里多出一张卡片**                              | 独立任务栈的副作用。修法：`SettingsActivity` 加 `android:excludeFromRecents="true"`（见 4.7.12.2）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
 | **打开设置再返回，桌宠就没了**                                      | `PluginManager.onDestroy(activity)` **没有** `isInitialized` 守卫，会把**每个** Tauri Activity 的销毁都转发给插件 —— 关设置窗 = 误触 `FloatingPetPlugin.onDestroy` = 拆掉还开着的悬浮窗（见 4.7.5）。修法：`if (activity !== this.activity) return`。判据必须是**实例相等**（插件是单例，绑定的就是 MainActivity）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
-| **关设置窗后一块黑屏**                                              | 前端走了 `getCurrentWindow().close()`。`tao` 的 Android 后端**没有** `Window::close()` / `destroy()`，`on_close_requested` 只摘掉 Rust 侧 wrapper，**没人 `finish()` 那个 Activity**（见 4.7.4）。修法：`onWebViewCreate` 里 `addJavascriptInterface` 一个 `close()`，前端移动端优先调它                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **关设置窗后一块黑屏**                                              | 前端走了 `getCurrentWindow().close()`。`tao` 的 Android 后端**没有** `Window::close()` / `destroy()`，`on_close_requested` 只摘掉 Rust 侧 wrapper，**没人 `finish()` 那个 Activity**（见 4.7.4）。修法：`onWebViewCreate` 里 `addJavascriptInterface` 一个 `close()`，前端移动端优先调它（它现在做的是「退回」而不是 `finish()`，见 4.7.12）                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | **设置页糊在壁纸上 / 文字看不清**                                   | 设置窗继承了 `Theme.ling_chat`（`windowShowWallpaper` + `windowIsTranslucent` + 透明背景），而 wry 在 `transparent: true` 时还会把 WebView 背景也置成全透明（`wry/src/android/main_pipe.rs`）—— 三层全透（见 4.7.3）。修法：新增 `Theme.ling_chat.settings`，`windowBackground` 换 `?android:colorBackground`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **设置页被状态栏 / 手势条压住**                                     | 设置窗是**独立 Activity**，安全区变量由 `MainActivity` 注入、对它不生效。`targetSdk = 36` 时 Android 15+ 对所有 Activity 强制 edge-to-edge（见 4.7.6）。修法：抽出 `SafeAreaInsets.kt` 两个 Activity 共用，设置页根元素加 `.pt-safe/.pr-safe/.pb-safe/.pl-safe`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | **设置页内容挤成一条**                                              | 200px 竖侧栏在 360dp 屏上只剩 112px 给内容（见 4.7.7）。修法：`SettingsSidebar` 按 `md:` 断点切成顶部横向滚动条 —— 按**可用宽度**判断，不按设备类型                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |

@@ -144,6 +144,31 @@ pub struct PetStatus {
     pub height: f64,
 }
 
+/// 「屏幕视奸」（主动窥屏）的取景结果。
+///
+/// 需要 `Deserialize`：字段由 Kotlin 插件的 `captureScreen` 返回，
+/// Rust 只做转发（见 `mobile.rs::capture_screen`）。
+///
+/// ⚠️ 与其它命令不同，**失败不抛错**：`ok = false` 表示「功能未启用」
+/// （用户还没在系统设置里开启无障碍服务）这种**正常状态**，调用方应当据此
+/// 降级，而不是当成异常。只有「写文件失败」这类真异常才会 reject。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenCapture {
+    /// 是否真的截到了图。
+    pub ok: bool,
+    /// 成功时 JPEG 的绝对路径（位于 App 的 `cacheDir`，每次覆盖）。
+    #[serde(default)]
+    pub path: String,
+    /// 最近观察到的前台包名，用作窥屏的语境；拿不到时为空串。
+    #[serde(default)]
+    pub foreground_package: String,
+    /// 失败原因，便于调用方区分「没开服务」和「截屏本身失败」：
+    /// `accessibility_service_disabled` / `capture_failed` / 空串（成功）。
+    #[serde(default)]
+    pub reason: String,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
     #[error("当前平台不支持系统级悬浮窗")]
