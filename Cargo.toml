@@ -53,6 +53,9 @@ tracing-subscriber = { version = "0.3", features = [
 # esaxx-rs 的 patch 路径相对本文件，故补 src-tauri/ 前缀。
 [patch.crates-io]
 esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }
+# sherpa-onnx-sys：仅改 build.rs，用于支持 SHERPA_ONNX_GPU=cuda12|cuda13 下载官方
+# CUDA 版预编译包（上游只会下 CPU 包）。见 src-tauri/patches/sherpa-onnx-sys/build.rs。
+sherpa-onnx-sys = { path = "src-tauri/patches/sherpa-onnx-sys" }
 jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
 
 # 依赖不生成调试符号。proc-macro 每次指纹变化都要重编，PDB 体积大且无需单步调试。
