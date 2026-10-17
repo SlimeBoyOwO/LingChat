@@ -1494,7 +1494,7 @@ export default {
     refText: "Reference text",
     refTextPlaceholder: "Transcription of the reference audio...",
     test: "Test",
-    testPlaceholder: "Enter text to synthesize...",
+    testPlaceholder: "Enter text to synthesize (kana/hangul switches the language)...",
     synthesizing: "Synthesizing...",
     listen: "Listen",
     noModelHint: "Select an installed model first",
