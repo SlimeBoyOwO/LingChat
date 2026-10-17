@@ -119,9 +119,10 @@ fn accepts_float_wav() {
     assert!(samples[3] >= 32_760, "1.0 → {}", samples[3]);
 }
 
-/// 立体声与帧数保持不变：`load_reference_audio` 会自己下混单声道。
+/// 立体声下混成单声道，帧数不变：`load_reference_audio` 反正会自己下混，
+/// 这里提前做掉能让落盘的参考音频小一半（平板上数据分区吃紧）。
 #[test]
-fn keeps_channels_and_frames() {
+fn downmixes_stereo_to_mono() {
     let (dir, src) = temp_pair();
     let input = [1_000i16, -1_000, 2_000, -2_000, 3_000, -3_000];
     write_wav(
@@ -139,13 +140,36 @@ fn keeps_channels_and_frames() {
     transcode_to_wav_16bit(&src, &dest).expect("立体声 WAV 应能转码");
 
     let (spec, samples) = read_wav(&dest);
-    assert_eq!(spec.channels, 2);
+    assert_eq!(spec.channels, 1);
     assert_eq!(spec.sample_rate, 48_000);
-    assert_eq!(samples.len(), input.len());
-    for (before, after) in input.iter().zip(samples.iter()) {
-        // i16 → f32 → i16 的往返会有 ±1 的取整误差。
-        assert!((i32::from(*before) - i32::from(*after)).abs() <= 1);
-    }
+    // 6 个交错样本 = 3 帧，每帧两个声道取平均。
+    assert_eq!(samples.len(), 3);
+    assert_eq!(samples, vec![0, 0, 0]);
+}
+
+/// 左右声道不同的立体声：下混取算术平均（与 `load_reference_audio` 的做法一致）。
+#[test]
+fn downmix_averages_channels() {
+    let (dir, src) = temp_pair();
+    // 第 1 帧：(1000 + 3000)/2 = 2000；第 2 帧：(-1000 + -4000)/2 = -2500
+    let input = [1_000i16, 3_000, -1_000, -4_000];
+    write_wav(
+        &src,
+        WavSpec {
+            channels: 2,
+            sample_rate: 16_000,
+            bits_per_sample: 16,
+            sample_format: SampleFormat::Int,
+        },
+        &input,
+    );
+
+    let dest = dir.path().join("out.wav");
+    transcode_to_wav_16bit(&src, &dest).expect("立体声 WAV 应能转码");
+
+    let (spec, samples) = read_wav(&dest);
+    assert_eq!(spec.channels, 1);
+    assert_eq!(samples, vec![2_000, -2_500]);
 }
 
 /// 不是音频：报「格式不支持」，且不留下半成品文件。
