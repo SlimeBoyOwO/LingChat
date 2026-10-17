@@ -7,7 +7,7 @@
 //     （ort `copy-dylibs` 的产物），没有任何打包配置带上它 —— deb/rpm 装完一启动
 //     就是 `error while loading shared libraries: libwebgpu_dawn.so`。
 //   - CUDA 变体（SHERPA_ONNX_GPU=cuda12|cuda13，见
-//     src-tauri/patches/sherpa-onnx-sys/build.rs）走 shared 链接，官方 CUDA 包
+//     crates/sherpa-onnx-sys/build.rs）走 shared 链接，官方 CUDA 包
 //     只提供动态库，同理必须跟着安装包走。
 //
 // 落点：/usr/lib 是加载器的默认搜索目录。实测 cargo 产出的可执行文件里没有
@@ -63,7 +63,7 @@ const skipLibs = new Set(["cargs.dll"]);
 /**
  * 本次构建用的 GPU 变体。
  *
- * 取值与 src-tauri/patches/sherpa-onnx-sys/build.rs 的 `GpuVariant::from_env` 完全一致
+ * 取值与 crates/sherpa-onnx-sys/build.rs 的 `GpuVariant::from_env` 完全一致
  * （包括别名：`cuda`/`12`/`cuda-12` 等同 `cuda12`）。两边必须同步 —— 否则会出现
  * 「依赖按 CUDA 编、打包按 CPU 处理」这种半截状态。非法取值直接报错。
  */

@@ -1,7 +1,8 @@
 # 本目录是 crates.io 上 sherpa-onnx-sys 1.13.5 的 vendored 副本，只改了 build.rs：
 # 支持用 `SHERPA_ONNX_GPU=cuda12|cuda13` 下载官方 CUDA 版预编译包（详见 build.rs 顶部注释
 # 与 README.md）。上游结构、features、版本号保持原样，升级 sherpa-onnx 时整目录替换即可。
-# 该副本通过 workspace 根 Cargo.toml 的 `[patch.crates-io]` 生效。
+# 该副本通过 workspace 根 Cargo.toml 的 `[patch.crates-io]` 生效；它**不是** workspace
+# 成员（members 里不列），所以 `cargo build` 不会单独再编/再下一份预编译包。
 [package]
 name = "sherpa-onnx-sys"
 version = "1.13.5"
