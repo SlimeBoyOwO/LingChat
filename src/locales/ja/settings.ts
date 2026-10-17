@@ -1486,7 +1486,7 @@ export default {
     refText: "参照テキスト",
     refTextPlaceholder: "参照音声に対応するテキスト……",
     test: "試聴",
-    testPlaceholder: "試聴するテキストを入力……",
+    testPlaceholder: "試聴するテキストを入力（仮名・ハングルは自動で言語判定）……",
     synthesizing: "合成中…",
     listen: "試聴",
     noModelHint: "インストール済みのモデルを選択してください",
