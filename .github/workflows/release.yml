@@ -141,6 +141,9 @@ jobs:
       # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` symlink 到 target/release。
       # linuxdeploy 打包 AppImage 时必须在库路径解析到它，否则报 `Could not find dependency: libwebgpu_dawn.so`。
       # 这里先 cargo build，把 dawn.so 复制到系统库路径，再 tauri build（增量）让 linuxdeploy 找到它。
+      # 注意：这一步只为满足 linuxdeploy 的依赖解析；安装包真正带上 Dawn 靠仓库里的
+      # build.beforeBundleCommand（scripts/stage-desktop-runtime-libs.mjs）+
+      # tauri.conf.json 的 bundle.linux.*.files（把 .runtime-libs/ 映射到 /usr/lib）。
       - name: 构建 Tauri 应用（linux-amd64：放置 libwebgpu_dawn.so）
         if: matrix.platform == 'linux-amd64'
         continue-on-error: true
