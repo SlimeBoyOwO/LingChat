@@ -33,6 +33,8 @@ pub struct Model {
     pub attribute: LineAttribute,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub identity_id: Option<String>,
     pub save_id: i32,
     #[sea_orm(column_type = "Text", nullable)]
     pub tool_call: Option<String>,

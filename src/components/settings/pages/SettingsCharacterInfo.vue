@@ -51,7 +51,7 @@
 
         <!-- Content -->
         <div class="flex flex-1 flex-row overflow-hidden">
-          <!-- Sidebar (vertical scrollable for narrow viewports) -->
+          <!-- Sidebar -->
           <div
             class="tab-sidebar-scroll flex w-44 shrink-0 flex-col gap-2 overflow-y-auto border-r border-white/10 bg-black/10 p-3"
           >
@@ -99,22 +99,24 @@
                 :role-id="props.roleId"
                 :clothes="draftClothes"
               />
-              <!-- Data-Driven Form (tabs with schemas) -->
+              <!-- Data-Driven Form -->
               <div v-if="currentTabConfig" class="space-y-4">
                 <div
                   v-for="(field, index) in currentTabFields"
                   :key="index"
                   class="flex flex-col gap-2"
                 >
-                  <label :for="field.key" class="text-[13px] font-medium text-white/60"
-                    >{{ field.label }} ({{ field.key }})</label
-                  >
+                  <label :for="field.key" class="text-[13px] font-medium text-white/60">{{
+                    field.label
+                  }}</label>
                   <input
                     v-if="field.type === 'text' || field.type === 'number'"
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     :type="field.type"
                     :step="field.step"
+                    :min="field.min"
+                    :max="field.max"
                     :placeholder="field.placeholder"
                     class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
                   />
@@ -146,8 +148,7 @@
                       {{ opt.label }}
                     </option>
                   </select>
-                  <!-- 开关：轨道本身充当第二个 <label>（与上方的字段名 label 是兄弟，
-                       不能嵌套），滑块用绝对定位的兄弟节点 + peer-checked 联动 -->
+                  <!-- 开关：轨道是第二个 label，滑块用 peer-checked 联动 -->
                   <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
                     <input
                       :id="field.key"
@@ -167,6 +168,57 @@
                     {{ field.hint }}
                   </p>
                 </div>
+              </div>
+
+              <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
+              <div
+                v-if="activeTab === 'basic' && props.roleId"
+                id="relation-block-role"
+                class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div class="min-w-0">
+                    <h3 class="text-sm font-bold text-white/80">
+                      {{ $t("settings.characterInfo.relations.title") }}
+                    </h3>
+                    <p class="mt-1 text-[11px] leading-relaxed text-white/40">
+                      {{ $t("settings.characterInfo.relations.hint") }}
+                    </p>
+                  </div>
+                  <button
+                    class="relation-btn shrink-0"
+                    :disabled="relationsSaving || relationsLoading"
+                    @click="saveRelations"
+                  >
+                    {{
+                      relationsSaving
+                        ? $t("settings.shared.loading")
+                        : $t("settings.characterInfo.relations.save")
+                    }}
+                  </button>
+                </div>
+                <div v-if="relationsLoading" class="text-xs text-white/40">
+                  {{ $t("settings.shared.loading") }}
+                </div>
+
+                <template v-else>
+                  <div
+                    v-for="(row, idx) in relationRows"
+                    :key="idx"
+                    class="flex items-center gap-2"
+                  >
+                    <SelectMenu
+                      v-model="row.target"
+                      class="w-44 shrink-0"
+                      :options="relationOptionsFor(row)"
+                    />
+                    <ExpandableInput v-model="row.text" class="relation-input flex-1" />
+                    <button class="relation-btn" @click="removeRelationRow(idx)">×</button>
+                  </div>
+                  <button class="relation-btn" @click="addRelationRow">
+                    {{ $t("settings.identity.addRelation") }}
+                  </button>
+                </template>
               </div>
 
               <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
@@ -204,7 +256,6 @@
                     }}
                   </button>
                 </div>
-
                 <div v-if="gsvEmoEnabled" class="space-y-3">
                   <div
                     v-for="cat in GSV_EMO_CATEGORIES"
@@ -251,6 +302,7 @@
                 :initial-costume="avatarCostume"
               />
 
+
               <Live2DSettings
                 v-if="activeTab === 'live2d' && props.roleId"
                 v-model="localSettings.live2d"
@@ -270,7 +322,7 @@
                 @edit-avatars="openCostumeAvatars"
               />
 
-              <!-- Touch Tab：区域绘制放在独立的全屏层里，这里只做入口与概览 -->
+              <!-- Touch Tab：这里只做入口与概览 -->
               <div v-if="activeTab === 'touch'" class="space-y-4">
                 <p class="text-[13px] leading-relaxed text-white/50">
                   {{ $t("settings.characterInfo.touch.hint") }}
@@ -291,7 +343,7 @@
         <div
           class="flex justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
         >
-          <!-- 危险操作区（左侧）：删除角色 -->
+          <!-- 危险操作区：删除角色 -->
           <div class="flex items-center">
             <button
               :disabled="deleteState.disabled || loading || saving || resourceBusy > 0"
@@ -332,7 +384,7 @@
             </button>
           </div>
 
-          <!-- 普通操作（右侧）：取消/保存 -->
+          <!-- 普通操作：取消/保存 -->
           <div class="flex gap-3">
             <button
               class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
@@ -358,7 +410,7 @@
           </div>
         </div>
 
-        <!-- 触摸区域编辑器：留在弹窗的 DOM 子树内，才能被 Live2D 抚摸的元素守卫一起挡住 -->
+        <!-- 触摸区域编辑器 -->
         <TouchRegionsEditor
           :user-name="gameStore.userName"
           v-if="touchEditorVisible"
@@ -376,15 +428,27 @@
 import { computed, onUnmounted, provide, ref, toRaw, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
+  characterGetAll,
   deleteCharacter as deleteCharacterApi,
   beginCharacterEdit,
   discardCharacterEdit,
   commitCharacterEdit,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import {
+  aiKey,
+  getRoleRelations,
+  listPlayerIdentities,
+  meKey,
+  saveRoleRelations,
+  type PlayerIdentitySummary,
+} from "../../../api/services/player-identity";
+import type { Character as ApiCharacter } from "../../../types";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
+import SelectMenu from "../../ui/SelectMenu.vue";
+import ExpandableInput from "../../ui/ExpandableInput.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
@@ -406,7 +470,7 @@ const props = defineProps<{
   title?: string;
   /** 来源："game" 或提供该角色的插件 id（插件角色不可直接删除）。 */
   source?: string | null;
-  /** 该角色实际存在的服装（标题 + 立绘 URL），由设置列表页透传，触摸区域编辑器按它分服装 */
+  /** 该角色实际存在的服装（标题 + 立绘 URL），由设置列表页透传 */
   clothes?: Array<{ title: string; avatar: string }>;
 }>();
 
@@ -493,7 +557,7 @@ const deleteState = computed(() => {
   return { disabled: false, reason: "" };
 });
 
-// 单次 confirm，三件全删（DB + 存档 + 记忆 + 物理文件），避免二次 confirm 三态歧义
+// 单次 confirm，一并删除 DB / 存档 / 记忆 / 物理文件
 const handleDelete = async () => {
   if (!props.roleId || deleteState.value.disabled) return;
 
@@ -601,16 +665,19 @@ interface FieldSchema {
   type: FieldType;
   rows?: number;
   step?: string;
+  min?: number;
+  max?: number;
   placeholder?: string;
-  options?: FieldOption[];
-  // Dynamic options computed from refs/state. Overrides options when set.
-  dynamicOptions?: () => { label: string; value: string }[];
-  // One-line explainer rendered under the control (switch fields especially need it)
+  /** 字段下方的小字说明，渲染在控件下方 */
   hint?: string;
+  /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
+  nullable?: boolean;
+  options?: FieldOption[];
+  // Dynamic options computed from refs/state; overrides options when set.
+  dynamicOptions?: () => { label: string; value: string }[];
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
   // When set, the field reads/writes into localSettings.value[parent][key].
-  // The parent object is auto-initialised to {} on first write if missing.
   parent?: string;
 }
 
@@ -621,8 +688,7 @@ const resolveFieldOptions = (field: FieldSchema) => {
   return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
 };
 
-// 主对话/桌宠形象共用的两个选项。value 是落盘的协议值（settings.yml 的
-// avatar_mode / avatar_mode_p），按 docs/i18n.md 只翻译标签、不翻译取值。
+// 主对话/桌宠形象共用的选项；按 docs/i18n.md 只翻译标签、不翻译取值
 const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.live2d"), value: "live2d" },
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
@@ -632,12 +698,6 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
   basic: [
     { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
     { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
-    { key: "user_name", label: t("settings.characterInfo.fields.userName"), type: "text" },
-    {
-      key: "user_subtitle",
-      label: t("settings.characterInfo.fields.userSubtitle"),
-      type: "text",
-    },
     { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
     { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
   ],
@@ -666,8 +726,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
       key: "avatar_mode",
       label: t("settings.characterInfo.fields.avatarMode"),
       type: "select",
-      // 没有 Live2D 模型时只有「静态立绘」一种可能，整项隐藏（schemas 是 computed，
-      // 在本弹窗的 Live2D tab 导入模型后回到本 tab 会自动出现）
+      // 没有 Live2D 模型时整项隐藏（schemas 是 computed，导入模型后自动出现）
       visibleIf: (s) => Boolean(s.live2d),
       options: avatarModeOptions.value,
     },
@@ -805,9 +864,7 @@ const schemas = computed<Record<string, FieldSchema[]>>(() => ({
     },
 
     {
-      // 中文方言:仅语音克隆TTS + 中文时可选
-      // （v3.5-flash 官方支持的 16 种方言:普通话 + 广东/东北/甘肃/贵州/河南/湖北/江西/
-      //   闽南/宁夏/山西/陕西/山东/上海/四川/天津/云南）
+      // 中文方言：仅语音克隆 TTS + 中文时可选
       key: "voice_dialect",
       label: t("settings.characterInfo.fields.voiceDialect"),
       type: "select",
@@ -1033,7 +1090,7 @@ const currentTabConfig = computed(() => schemas.value[activeTab.value]);
 // voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
   const fields = currentTabConfig.value || [];
-  // 过滤掉当前不可见的字段（visibleIf 为 false），避免留下空 div 占位
+  // 过滤掉当前不可见的字段
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
@@ -1104,7 +1161,13 @@ const fieldModel = (field: FieldSchema) => {
       return target[field.key];
     },
     set: (val: any) => {
-      const coerced = field.type === "number" ? Number(val) : val;
+      const isBlank = val === "" || val === null || val === undefined || Number.isNaN(Number(val));
+      const coerced =
+        field.type === "number"
+          ? field.nullable && isBlank
+            ? undefined
+            : Number(val)
+          : val;
       let target: any;
       if (field.parent) {
         if (
@@ -1136,6 +1199,149 @@ const clothesList = computed({
   },
 });
 
+const addClothesItem = () => {
+  if (!Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes = [];
+  }
+  localSettings.value.clothes.push({ name: "", prompt: "" });
+};
+
+const removeClothesItem = (idx: number) => {
+  if (Array.isArray(localSettings.value.clothes)) {
+    localSettings.value.clothes.splice(idx, 1);
+  }
+};
+
+// 关系（AI 角色视角）：读写独立的 relations.yml，与底部保存按钮互不影响
+interface RelationTarget {
+  value: string;
+  label: string;
+  group: "ai" | "me";
+}
+
+const relationTargets = ref<RelationTarget[]>([]);
+/** 编辑中的关系行（目标 + 文本）；保存时折成 {关系键: 文本} 映射 */
+const relationRows = ref<{ target: string; text: string }[]>([]);
+const relationsLoading = ref(false);
+const relationsSaving = ref(false);
+
+/** 目标已不存在时保留原值并标注 */
+const isMissingTarget = (target: string) =>
+  !!target && !relationTargets.value.some((t) => t.value === target);
+
+/** 下拉选项：其他行已选过的目标置灰不可再选（本行当前值除外） */
+const relationOptionsFor = (row: { target: string }) => {
+  const used = new Set(relationRows.value.map((r) => r.target).filter(Boolean));
+  const options: { label: string; value: string; group?: string; disabled: boolean }[] =
+    relationTargets.value.map((item) => ({
+      label: item.label,
+      value: item.value,
+      group:
+        item.group === "ai"
+          ? t("settings.identity.targetAi")
+          : t("settings.identity.targetMe"),
+      disabled: item.value !== row.target && used.has(item.value),
+    }));
+  // 目标已被删除时保留原值，避免静默丢数据
+  if (isMissingTarget(row.target)) {
+    options.unshift({
+      label: t("settings.characterInfo.relations.missing", { key: row.target }),
+      value: row.target,
+      disabled: false,
+    });
+  }
+  return options;
+};
+
+/** 下拉要覆盖全部角色，不只当前分页。 */
+const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
+  const pageSize = 100;
+  const first = await characterGetAll(1, pageSize);
+  const items = [...first.items];
+  const totalPages = Math.min(first.total_pages || 1, 50);
+  for (let page = 2; page <= totalPages; page += 1) {
+    const next = await characterGetAll(page, pageSize);
+    if (!next.items.length) break;
+    items.push(...next.items);
+  }
+  return items;
+};
+
+const loadRelations = async (roleId: number) => {
+  relationsLoading.value = true;
+  try {
+    const [chars, identities] = await Promise.all([
+      fetchAllRelationCharacters().catch(() => [] as ApiCharacter[]),
+      listPlayerIdentities().catch(() => [] as PlayerIdentitySummary[]),
+    ]);
+
+    // 排除本角色自己
+    const selfFolder = localSettings.value?.character_folder as string | undefined;
+    relationTargets.value = [
+      ...chars
+        .filter((c) => !!c.resource_folder && c.resource_folder !== selfFolder)
+        .map((c) => ({
+          value: aiKey(c.resource_folder as string),
+          label: c.name,
+          group: "ai" as const,
+        })),
+      ...identities.map((i) => ({
+        value: meKey(i.id),
+        label: i.name,
+        group: "me" as const,
+      })),
+    ];
+
+    const saved = await getRoleRelations(roleId);
+    relationRows.value = Object.entries(saved || {})
+      .filter(([target, text]) => !!target && !!text)
+      .map(([target, text]) => ({ target, text }));
+  } catch (e: any) {
+    console.error("读取角色关系失败:", e);
+    uiStore.showError({
+      title: t("settings.characterInfo.relations.msg.loadFailTitle"),
+      message: typeof e === "string" ? e : e?.message || "",
+    });
+    relationRows.value = [];
+  } finally {
+    relationsLoading.value = false;
+  }
+};
+
+const addRelationRow = () => {
+  // 目标默认留空（不预选角色）；保存时空目标的行走丢弃逻辑
+  relationRows.value.push({ target: "", text: "" });
+};
+
+const removeRelationRow = (idx: number) => {
+  relationRows.value.splice(idx, 1);
+};
+
+const saveRelations = async () => {
+  const roleId = props.roleId;
+  if (!roleId) return;
+  relationsSaving.value = true;
+  try {
+    // 空目标 / 空文本直接丢弃（后端也会再过滤一次）
+    const map: Record<string, string> = {};
+    for (const row of relationRows.value) {
+      if (row.target && row.text.trim()) map[row.target] = row.text.trim();
+    }
+    await saveRoleRelations(roleId, map);
+    uiStore.showSuccess({
+      title: t("settings.characterInfo.relations.msg.savedTitle"),
+      message: t("settings.characterInfo.relations.msg.savedMsg"),
+    });
+  } catch (e: any) {
+    uiStore.showError({
+      title: t("settings.characterInfo.relations.msg.saveFailTitle"),
+      message: typeof e === "string" ? e : e?.message || "",
+    });
+  } finally {
+    relationsSaving.value = false;
+  }
+};
+
 // --- Watchers & Methods ---
 
 watch(
@@ -1165,9 +1371,9 @@ watch(
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = "ja";
         }
-        // 形象缺省值兜底：老配置里这两个键不存在，不回填的话 <select v-model> 没有
-        // 任何 option 匹配、会显示为空白。回填成 live2d 与实际渲染行为一致
-        // （`prefersLive2d` 也是「非 image 即 live2d」）。
+        // 关系单独放在 relations.yml（不在 localSettings 里），需要另取一次
+        void loadRelations(props.roleId);
+        // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
         if (!localSettings.value.avatar_mode) {
           localSettings.value.avatar_mode = "live2d";
         }
@@ -1186,9 +1392,7 @@ watch(
   },
 );
 
-// Refresh installed local voices whenever the voice tab is shown while the
-// dialog is visible. The dropdown only matters when tts_type=localsbv2api,
-// but loading early keeps things simple and the list is cheap to fetch.
+// Refresh local voices when the voice tab is shown while the dialog is visible.
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
@@ -1251,17 +1455,16 @@ function applySettingsToRuntime() {
     // 形象一并热更，保存后舞台立刻切换（Live2DStage 的 watch 依赖含这两个字段）
     runtimeRole.avatarMode = localSettings.value.avatar_mode ?? null;
     runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
-    // /chat 与 /pet 是互斥路由，弹窗和桌宠不会同时在屏幕上，全靠这次内存热更
-    // 才不必后端 re-init；不进 Live2DStage 的 watch 依赖，因为它只换一个 CSS 类
+    // /chat 与 /pet 互斥，靠这次内存热更避免后端 re-init
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart
     runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
   }
   const role = gameStore.gameRoles[props.roleId];
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
-/** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
+/** 落盘 + 运行时热更；返回是否成功 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
   saving.value = true;
@@ -1305,6 +1508,57 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+/* 关系区块的小控件（原生元素 + 纯 CSS） */
+.relation-input {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.375rem 0.625rem;
+  font-size: 0.8125rem;
+  color: #fff;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+.relation-input:focus {
+  border-color: rgba(121, 217, 255, 0.5);
+}
+/* 原生 select 下拉弹层跟随深色主题，避免白底黑字 */
+.relation-input,
+.form-control {
+  color-scheme: dark;
+}
+/* 显式设置选项背景，兜底 color-scheme 未生效的情况 */
+.relation-input option,
+.form-control option {
+  background-color: #1e1e2e;
+  color: #e2e8f0;
+}
+.relation-input option:checked,
+.form-control option:checked {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+.relation-btn {
+  cursor: pointer;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.3rem 0.7rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+  transition:
+    background 0.2s ease,
+    border-color 0.2s ease;
+}
+.relation-btn:hover:not(:disabled) {
+  background: rgba(121, 217, 255, 0.18);
+  border-color: rgba(121, 217, 255, 0.45);
+}
+.relation-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 /* 表单控件 :focus 选中状态 */
 /* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
 .tab-sidebar-scroll {

@@ -1,6 +1,4 @@
-//! Static utility functions for prompt 装饰.
-//!
-//! 用于 prompt 装饰的静态工具函数，使其符合本项目的特定需求。
+//! 用于 prompt 装饰的静态工具函数。
 
 use crate::ai_service::game_system::game_status::GameStatus;
 
@@ -28,6 +26,16 @@ pub struct PromptOptions {
     pub output_sec_lang: bool,
     /// 不再限制模型输出的情绪（放开情绪列表）。对应旧版 `NO_EMOTION_LIMIT_PROMPT`。
     pub no_emotion_limit: bool,
+}
+
+impl PromptOptions {
+    /// 从应用配置读取提示词生成选项。
+    pub fn from_config(config: &crate::config::AppConfig) -> Self {
+        Self {
+            output_sec_lang: config.llm_output_sec_lang,
+            no_emotion_limit: config.no_emotion_limit_prompt,
+        }
+    }
 }
 
 const DIALOG_FORMAT_PROMPT_CN: &str = indoc! {r#"
@@ -179,7 +187,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
     "#, u = user_name, c = character_name}
 }
 
-/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致。
+/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致（不注入身份与关系）。
 pub fn sys_prompt_builder(
     user_name: &str,
     character_name: &str,
@@ -188,11 +196,70 @@ pub fn sys_prompt_builder(
     ai_prompt_example_old: Option<&str>,
     options: PromptOptions,
 ) -> String {
+    sys_prompt_builder_with_player(
+        user_name,
+        character_name,
+        "",
+        ai_prompt,
+        ai_prompt_example,
+        ai_prompt_example_old,
+        options,
+    )
+}
+
+/// 从老角色卡 `system_prompt` 里抽出「以下是我的设定」段落，返回 `(剥离后的 prompt, 抽出的段落文本)`。
+pub fn extract_player_setting(ai_prompt: &str) -> (String, Option<String>) {
+    let lines: Vec<&str> = ai_prompt.lines().collect();
+
+    let start = lines
+        .iter()
+        .position(|line| line.starts_with("以下是我的设定"));
+    let Some(start) = start else {
+        return (ai_prompt.to_string(), None);
+    };
+
+    // 段落到「下一个以下是…标题行」之前结束。
+    let end = lines
+        .iter()
+        .skip(start + 1)
+        .position(|line| line.starts_with("以下是"))
+        .map(|pos| start + 1 + pos)
+        .unwrap_or(lines.len());
+
+    let segment = lines[start..end].join("\n");
+    let mut stripped: Vec<&str> = Vec::with_capacity(lines.len());
+    stripped.extend_from_slice(&lines[..start]);
+    stripped.extend_from_slice(&lines[end..]);
+    let stripped = stripped.join("\n");
+
+    (stripped, Some(segment))
+}
+
+/// 构建系统提示词，并把「正在与你对话的这个人」（身份 + 关系）一并注入。
+pub fn sys_prompt_builder_with_player(
+    user_name: &str,
+    character_name: &str,
+    player_block: &str,
+    ai_prompt: &str,
+    ai_prompt_example: Option<&str>,
+    ai_prompt_example_old: Option<&str>,
+    options: PromptOptions,
+) -> String {
+    // 老卡兜底：把 system_prompt 内嵌的「我的设定」段落抽出，改走身份块注入。
+    let (ai_prompt, _) = extract_player_setting(ai_prompt);
+
     let emotion_head = DIALOG_FORMAT_PROMPT_2_EMOTION_LIMIT_HEAD;
 
     let example_cn = ai_prompt_example.filter(|s| !s.is_empty());
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
+
+    // 早返回分支用：身份/关系块并入人设正文。
+    let ai_prompt_with_player = if player_block.is_empty() {
+        ai_prompt.to_string()
+    } else {
+        format!("{ai_prompt}{player_block}")
+    };
 
     if !options.output_sec_lang {
         // 中文模式
@@ -203,21 +270,23 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("日语翻译") {
             tracing::warn!("你使用的人物为旧版，不能使用实时翻译功能");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，不进行拼接prompt");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_CN);
         out.push_str(DEFAULT_EXAMPLE_CN);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：紧邻对话历史，近因权重最高
+        out.push_str(player_block);
         out
     } else {
         // 中日双语模式
@@ -228,23 +297,25 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，可能实时翻译功能不起作用");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_JP);
         out.push_str(DEFAULT_EXAMPLE_JP);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：紧邻对话历史，近因权重最高
+        out.push_str(player_block);
         out
     }
 }
 
-/// 便捷包装：直接从 `CharacterSettings` 构建。
-/// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
+/// 便捷包装：直接从 `CharacterSettings` 构建（不注入身份）。
+// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
 #[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
     settings: &CharacterSettings,
@@ -263,12 +334,32 @@ pub fn sys_prompt_builder_by_settings(
     )
 }
 
+/// 便捷包装：从 `CharacterSettings` 构建，并注入「我」的身份与关系片段。
+pub fn sys_prompt_builder_by_settings_with_player(
+    settings: &CharacterSettings,
+    user_name: &str,
+    player_block: &str,
+    options: PromptOptions,
+) -> String {
+    let default_prompt =
+        "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
+    let ai_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
+    sys_prompt_builder_with_player(
+        user_name,
+        &settings.ai_name,
+        player_block,
+        &ai_prompt,
+        settings.system_prompt_example.as_deref(),
+        settings.system_prompt_example_old.as_deref(),
+        options,
+    )
+}
+
 // ============================================================
 // User message builder
 // ============================================================
 
 /// 系统消息提示词转换器，假如有系统消息或者剧情提示，通过下面这个函数进行提示词转换。
-/// 提示角色
 pub enum PromptRole {
     /// 系统提示，如时间，错误报告等
     System,
@@ -278,14 +369,11 @@ pub enum PromptRole {
     Plot,
 }
 
-/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记。
-/// 判定「某行是不是旁白/系统/剧情提示」应以此为准（单一真相源），
-/// 而非 `display_name`——剧本作者可给旁白事件自定义展示名，会绕过 display_name 判据。
+/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记，供判定旁白/系统/剧情提示使用。
 pub const NARRATION_TAG: &str = "{旁白:";
 
 impl PromptRole {
     /// 根据角色类型组装最终提示
-    /// - `prompt`: 提示词内容
     pub fn build_prompt(&self, prompt: &str) -> String {
         let inner = match self {
             PromptRole::System => format!("（系统提示：{prompt}）"),
@@ -312,9 +400,7 @@ impl PromptRole {
 // 动态回复台词数量
 // ============================================================
 
-/// 回复台词数量档位在存档全局变量里的键。
-/// 这是跟随存档的运行时状态（读旧档回到旧档的档位），不是应用配置，
-/// 不要登记进 config，也不要试图用 get_setting_by_key 读取。
+/// 回复台词数量档位在存档全局变量里的键（跟随存档的运行时状态，不是应用配置）。
 pub const REPLY_LENGTH_VAR_KEY: &str = "reply_length.mode";
 
 /// 回复台词数量档位。变量缺失时即「正常」，与系统提示词里写死的 3~5 句一致。
@@ -357,7 +443,7 @@ impl ReplyLengthMode {
         }
     }
 
-    /// 档位变更时插入的系统提示台词（覆盖此前的数量要求，见提示词里的「以最新为准」）。
+    /// 档位变更时插入的系统提示台词。
     pub fn announce_text(self) -> &'static str {
         match self {
             Self::Short => {

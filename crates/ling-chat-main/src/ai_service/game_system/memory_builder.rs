@@ -10,6 +10,8 @@ pub struct MemoryBuilder {
     /// 窗口内没有任何 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
     /// 关闭时只裁切、不注入（首条会是 assistant，OpenAI 兼容端点接受，Gemini 会 400）。
     inject_continue_user: bool,
+    player_alias: Option<String>,
+    player_identity_id: Option<String>,
 }
 
 enum BufferKind {
@@ -22,7 +24,19 @@ impl MemoryBuilder {
         Self {
             target_role_id,
             inject_continue_user: false,
+            player_alias: None,
+            player_identity_id: None,
         }
+    }
+
+    pub fn with_player_alias(mut self, alias: Option<String>) -> Self {
+        self.player_alias = alias;
+        self
+    }
+
+    pub fn with_player_identity(mut self, identity_id: Option<String>) -> Self {
+        self.player_identity_id = identity_id;
+        self
     }
 
     /// 设置「窗口内无 user 时是否注入 user「继续」」。仅用于发给 LLM 的对话上下文；
@@ -139,23 +153,24 @@ impl MemoryBuilder {
                     }
 
                     if !active_user_lines.is_empty() {
-                        // [修改点 2]：仅当消息里存在需要区分的说话人时才给玩家台词加 "主角名称: "
-                        // 前缀——有其他角色台词(has_context)，或同段里混入旁白/系统行。
-                        // 单人纯对话下 role=user 已能确定说话人，加前缀是冗余。
-                        let has_narration = active_user_lines.iter().any(|l| {
-                            matches!(l.base.display_name.as_deref(), Some("旁白") | Some("系统"))
-                        });
-                        let need_name = has_context || has_narration;
+                        // 玩家行一律带名（"永远带名"）：换身份后历史里并存多个身份的台词，
+                        // 只靠 role=user 无法区分是谁说的；旁白/系统行保持裸内容。
                         let user_text: Vec<String> = active_user_lines
                             .iter()
                             .map(|l| {
-                                let name = l.base.display_name.as_deref().unwrap_or("未知");
+                                let name = match l.sender_role_id() {
+                                    Some(0)
+                                        if self.player_alias.as_deref().is_some_and(|s| !s.is_empty())
+                                            && l.base.identity_id.is_some()
+                                            && l.base.identity_id == self.player_identity_id =>
+                                    {
+                                        self.player_alias.as_deref().unwrap_or_default()
+                                    },
+                                    _ => l.base.display_name.as_deref().unwrap_or("未知"),
+                                };
                                 match name {
                                     "旁白" | "系统" => l.base.content.clone(),
-                                    _ if need_name => {
-                                        format!("{}: {}", name, l.base.content)
-                                    },
-                                    _ => l.base.content.clone(),
+                                    _ => format!("{}: {}", name, l.base.content),
                                 }
                             })
                             .collect();

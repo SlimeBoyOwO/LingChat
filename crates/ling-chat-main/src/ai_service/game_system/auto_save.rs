@@ -225,6 +225,18 @@ impl AutoSaveManager {
         // 4c. Set active save
         service.game_status.lock().await.active_save_id = Some(save_id);
 
+        // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
+        {
+            let identity_id = service.game_status.lock().await.player.identity_id.clone();
+            if let Some(ref id) = identity_id {
+                if !id.trim().is_empty() {
+                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
+                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
+                    }
+                }
+            }
+        }
+
         // 4d. Write GameStatus snapshot
         let snapshot = service.game_status.lock().await.to_snapshot();
         let snapshot_json =

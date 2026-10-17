@@ -105,7 +105,6 @@ impl GameStatus {
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<&'a mut GameRole> {
-        // 存档全局变量里的好感度覆盖角色加载时的默认值
         let var = self
             .global_variables
             .get(&crate::ai_service::affection::var_key(role_id))
@@ -121,8 +120,29 @@ impl GameStatus {
         Ok(role)
     }
 
+    /// 已绑档时把内存台词表同步落库一次；失败只告警。
+    pub async fn persist_lines_if_bound(&self, db: &DatabaseConnection) {
+        let Some(save_id) = self.active_save_id else {
+            return;
+        };
+        if let Err(e) =
+            crate::db::managers::save_repo::SaveRepo::sync_lines(db, save_id, &self.line_list, false)
+                .await
+        {
+            tracing::warn!("同步存档失败: {e}");
+        }
+    }
+
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
-    pub async fn add_line(&mut self, db: &DatabaseConnection, line: LineBase) -> Result<()> {
+    pub async fn add_line(&mut self, db: &DatabaseConnection, mut line: LineBase) -> Result<()> {
+        // 玩家台词行自动归属当前身份；旁白/系统行不归属（换身份后旧行保留原名）。
+        if matches!(line.attribute.inner(), LineAttribute::User)
+            && line.sender_role_id == Some(0)
+            && line.identity_id.is_none()
+            && !matches!(line.display_name.as_deref(), Some("旁白") | Some("系统"))
+        {
+            line.identity_id = self.player.identity_id.clone();
+        }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         let game_line = GameLine::from_base(line, perceived);
         self.line_list.push(game_line);
@@ -151,7 +171,7 @@ impl GameStatus {
 
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
         self.role_manager
-            .sync_memories(db, &self.line_list, None, false)
+            .sync_memories(db, &self.line_list, None, false, &self.player)
             .await
     }
 
@@ -162,7 +182,7 @@ impl GameStatus {
         db: &DatabaseConnection,
     ) -> Result<()> {
         self.role_manager
-            .sync_memories(db, &self.line_list, None, true)
+            .sync_memories(db, &self.line_list, None, true, &self.player)
             .await
     }
 
@@ -493,7 +513,6 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
-        // 好感度跟随存档：快照里的全局变量覆盖已加载角色的内存值
         self.role_manager
             .overlay_affections_from_vars(&self.global_variables);
     }

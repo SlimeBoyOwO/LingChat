@@ -58,6 +58,149 @@
         </button>
       </div>
     </MenuItem>
+
+    <!-- 我的身份：换身份 = 开一段新对话（本局已开始则不能原地换） -->
+    <MenuItem :title="$t('settings.identity.title')">
+      <template #header>
+        <User :size="20" />
+      </template>
+
+      <div class="space-y-3">
+        <p class="text-xs leading-relaxed text-white/50">{{ $t("settings.identity.hint") }}</p>
+
+        <!-- 锁定原因 -->
+        <p v-if="identityScriptBlocked" class="text-xs leading-relaxed text-red-300/80">
+          {{ $t("settings.identity.scriptBlocked") }}
+        </p>
+
+        <div v-if="identityLoading" class="text-sm text-white/50">
+          {{ $t("settings.shared.loading") }}
+        </div>
+
+        <p v-else-if="identities.length === 0" class="text-sm text-white/50">
+          {{ $t("settings.identity.empty") }}
+        </p>
+
+        <div v-else class="flex flex-col gap-2">
+          <div
+            v-for="item in identities"
+            :key="item.id"
+            class="flex items-start justify-between gap-3 rounded-xl border border-white/10 bg-black/20 px-3 py-2"
+          >
+            <div class="min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2">
+                <span class="truncate text-sm font-medium text-white">{{ item.name }}</span>
+                <span v-if="item.subtitle" class="truncate text-xs text-white/50">{{
+                  item.subtitle
+                }}</span>
+                <span
+                  v-if="item.is_current"
+                  class="shrink-0 rounded-full bg-[#79d9ff] px-2 py-0.5 text-[10px] text-white"
+                  >{{ $t("settings.identity.current") }}</span
+                >
+              </div>
+              <p v-if="item.prompt" class="mt-0.5 line-clamp-2 text-xs text-white/40">
+                {{ item.prompt }}
+              </p>
+              <p v-if="item.relation_count > 0" class="mt-0.5 text-[11px] text-white/35">
+                {{ $t("settings.identity.relationCount", { n: item.relation_count }) }}
+              </p>
+            </div>
+
+            <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+              <button
+                v-if="!item.is_current"
+                class="identity-btn"
+                :disabled="identityScriptBlocked"
+                :title="identityScriptBlocked ? $t('settings.identity.scriptBlocked') : ''"
+                @click="switchIdentity(item)"
+              >
+                {{ $t("settings.identity.switch") }}
+              </button>
+              <button
+                v-if="!item.is_current"
+                class="identity-btn"
+                :disabled="identityScriptBlocked"
+                :title="identityScriptBlocked ? $t('settings.identity.scriptBlocked') : ''"
+                @click="startNewGame(item)"
+              >
+                {{ $t("settings.identity.newGame") }}
+              </button>
+              <button class="identity-btn" @click="editIdentity(item.id)">
+                {{ $t("settings.identity.edit") }}
+              </button>
+              <button class="identity-btn" @click="removeIdentity(item)">
+                {{ $t("settings.identity.delete") }}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <button class="identity-btn-primary" @click="startCreateIdentity">
+          {{ $t("settings.identity.create") }}
+        </button>
+
+        <!-- 内联编辑表单 -->
+        <div
+          v-if="identityForm"
+          class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-3"
+        >
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.fieldName")
+            }}</label>
+            <input v-model="identityForm.name" class="identity-input" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.fieldSubtitle")
+            }}</label>
+            <input v-model="identityForm.subtitle" class="identity-input" />
+          </div>
+          <div class="flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.fieldPrompt")
+            }}</label>
+            <textarea v-model="identityForm.prompt" rows="4" class="identity-input"></textarea>
+            <p class="text-[11px] leading-relaxed text-white/40">
+              {{ $t("settings.identity.promptPublicHint") }}
+            </p>
+          </div>
+
+          <!-- 关系：我和各个 AI 角色 / 我的其他身份 -->
+          <div id="relation-block-identity" class="flex flex-col gap-2">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.fieldRelations")
+            }}</label>
+            <p class="text-[11px] leading-relaxed text-white/40">
+              {{ $t("settings.identity.relationsHint") }}
+            </p>
+            <div v-for="(row, idx) in relationRows" :key="idx" class="flex items-center gap-2">
+              <SelectMenu
+                v-model="row.target"
+                class="w-40 shrink-0"
+                :options="relationOptionsFor(row)"
+              />
+              <ExpandableInput v-model="row.text" class="identity-input flex-1" />
+              <button class="identity-btn" @click="removeRelationRow(idx)">×</button>
+            </div>
+            <button class="identity-btn" @click="addRelationRow">
+              {{ $t("settings.identity.addRelation") }}
+            </button>
+          </div>
+
+          <div class="flex justify-end gap-2 pt-1">
+            <button class="identity-btn" :disabled="savingIdentity" @click="identityForm = null">
+              {{ $t("settings.identity.cancel") }}
+            </button>
+            <button class="identity-btn-primary" :disabled="savingIdentity" @click="submitIdentity">
+              {{ savingIdentity ? $t("settings.shared.loading") : $t("settings.identity.save") }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </MenuItem>
+
     <RoleArchiveProgress />
     <NewCharacterModal
       :visible="newCharacterVisible"
@@ -73,7 +216,7 @@
       @saved="handleSettingsSaved"
     />
 
-    <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用（open_folder 无 Android 分支），整卡隐藏 -->
+    <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用，整卡隐藏 -->
     <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
       <template #header>
         <FolderOpen :size="20" />
@@ -96,7 +239,7 @@
           }}</label>
           <select
             v-model="conflictPolicy"
-            class="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
+            class="native-select-dark rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
           >
             <option value="rename">{{ $t("settings.character.import.policyRename") }}</option>
             <option value="skip">{{ $t("settings.character.import.policySkip") }}</option>
@@ -130,17 +273,37 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref, watch } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw } from "lucide-vue-next";
+import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw, User } from "lucide-vue-next";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import CharacterCard from "../../ui/Menu/CharacterCard.vue";
 import { Button } from "../../base";
 import { MenuItem, MenuPage } from "../../ui";
+import SelectMenu from "../../ui/SelectMenu.vue";
+import ExpandableInput from "../../ui/ExpandableInput.vue";
 import { characterGetAll, type CreatedCharacter } from "../../../api/services/character";
+import {
+  useRelationEditor,
+  type RelationTargetOption,
+} from "../../../composables/useRelationEditor";
+import {
+  deletePlayerIdentity,
+  emptyPlayerIdentity,
+  getPlayerIdentity,
+  listPlayerIdentities,
+  savePlayerIdentity,
+  setCurrentPlayerIdentity,
+  startNewGameWithIdentity,
+  aiKey,
+  meKey,
+  type PlayerIdentity,
+  type PlayerIdentitySummary,
+} from "../../../api/services/player-identity";
+import { applyWebInitData } from "../../../stores/modules/game/actions";
 import NewCharacterModal from "../character/NewCharacterModal.vue";
 import SettingsCharacterInfo from "./SettingsCharacterInfo.vue";
 import {
@@ -308,8 +471,183 @@ const handleSettingsSaved = () => {
   refreshCharacters();
 };
 
+const identities = ref<PlayerIdentitySummary[]>([]);
+const identityLoading = ref(false);
+const savingIdentity = ref(false);
+const identityForm = ref<PlayerIdentity | null>(null);
+
+/** 关系目标：在场角色（AI 侧）+ 我的其他身份（我侧） */
+const relationTargets = computed<RelationTargetOption[]>(() => [
+  ...characters.value
+    .filter((c) => !!c.resourceFolder)
+    .map((c) => ({
+      value: aiKey(c.resourceFolder as string),
+      label: c.name,
+      group: t("settings.identity.targetAi"),
+    })),
+  ...identities.value
+    .filter((i) => i.id !== identityForm.value?.id)
+    .map((i) => ({
+      value: meKey(i.id),
+      label: i.name,
+      group: t("settings.identity.targetMe"),
+    })),
+]);
+
+const {
+  rows: relationRows,
+  syncRows: syncRelationRows,
+  addRow,
+  removeRow: removeRelationRow,
+  fold: foldRelationRows,
+  optionsFor: relationOptionsFor,
+} = useRelationEditor(relationTargets);
+
+const addRelationRow = () => {
+  addRow(relationTargets.value[0]?.value ?? "");
+};
+
+/** 剧本进行中不允许换身份；权威判断在后端 guard，这里只是提前禁用按钮。 */
+const identityScriptBlocked = computed(() => !!gameStore.runningScript);
+
+const loadIdentities = async (): Promise<void> => {
+  identityLoading.value = true;
+  try {
+    identities.value = await listPlayerIdentities();
+  } catch (e) {
+    console.error("获取身份列表失败:", e);
+    identities.value = [];
+  } finally {
+    identityLoading.value = false;
+  }
+};
+
+const startCreateIdentity = () => {
+  const form = emptyPlayerIdentity();
+  identityForm.value = form;
+  syncRelationRows(form.relations);
+};
+
+const editIdentity = async (id: string) => {
+  try {
+    const identity = await getPlayerIdentity(id);
+    if (!identity) return;
+    identityForm.value = identity;
+    syncRelationRows(identity.relations);
+  } catch (e) {
+    console.error("读取身份失败:", e);
+  }
+};
+
+const submitIdentity = async () => {
+  const form = identityForm.value;
+  if (!form) return;
+  if (!form.name.trim()) {
+    uiStore.showError({
+      title: t("settings.identity.msg.saveFailTitle"),
+      message: t("settings.identity.msg.nameRequired"),
+    });
+    return;
+  }
+
+  const relations = foldRelationRows();
+
+  savingIdentity.value = true;
+  try {
+    await savePlayerIdentity({ ...form, relations });
+    identityForm.value = null;
+    await loadIdentities();
+    uiStore.showSuccess({
+      title: t("settings.identity.msg.savedTitle"),
+      message: t("settings.identity.msg.savedMsg"),
+    });
+  } catch (e: any) {
+    uiStore.showError({
+      title: t("settings.identity.msg.saveFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.identity.msg.saveFailTitle"),
+    });
+  } finally {
+    savingIdentity.value = false;
+  }
+};
+
+/** 换身份后半程的公共收尾：应用初始化数据、刷新身份列表、成功提示、在主菜单时回聊天页 */
+const finishIdentityChange = async (
+  gameInfo: Awaited<ReturnType<typeof setCurrentPlayerIdentity>>,
+  title: string,
+  message: string,
+  exitStory = false,
+) => {
+  applyWebInitData(gameStore.$state, gameInfo);
+  if (exitStory) gameStore.exitStoryMode();
+  await loadIdentities();
+  uiStore.showSuccess({ title, message });
+  if (router.currentRoute.value.path === "/") {
+    uiStore.showSettings = false;
+    router.push("/chat");
+  }
+};
+
+const startNewGame = async (item: PlayerIdentitySummary) => {
+  const confirmed = await dialogStore.confirm(
+    t("settings.identity.newGameConfirm", { name: item.name }),
+  );
+  if (!confirmed) return;
+  try {
+    const gameInfo = await startNewGameWithIdentity(item.id);
+    await finishIdentityChange(
+      gameInfo,
+      t("settings.identity.newGameDoneTitle"),
+      t("settings.identity.newGameDoneMsg", { name: item.name }),
+      true,
+    );
+  } catch (e: any) {
+    uiStore.showError({
+      title: t("settings.identity.newGameFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.identity.newGameFailTitle"),
+    });
+  }
+};
+
+const switchIdentity = async (item: PlayerIdentitySummary) => {
+  const confirmed = await dialogStore.confirm(
+    t("settings.identity.switchConfirm", { name: item.name }),
+  );
+  if (!confirmed) return;
+  try {
+    const gameInfo = await setCurrentPlayerIdentity(item.id);
+    await finishIdentityChange(
+      gameInfo,
+      t("settings.identity.switchDoneTitle"),
+      t("settings.identity.switchDoneMsg", { name: item.name }),
+    );
+  } catch (e: any) {
+    uiStore.showError({
+      title: t("settings.identity.switchFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.identity.switchFailTitle"),
+    });
+  }
+};
+
+const removeIdentity = async (item: PlayerIdentitySummary) => {
+  const confirmed = await dialogStore.confirm(
+    t("settings.identity.msg.deleteConfirm", { name: item.name }),
+  );
+  if (!confirmed) return;
+  try {
+    await deletePlayerIdentity(item.id);
+    await loadIdentities();
+  } catch (e: any) {
+    uiStore.showError({
+      title: t("settings.identity.msg.deleteFailTitle"),
+      message: typeof e === "string" ? e : e.message || t("settings.identity.msg.deleteFailTitle"),
+    });
+  }
+};
+
 onMounted(() => {
   loadCharacters();
+  loadIdentities();
 });
 
 watch(
@@ -319,4 +657,71 @@ watch(
     loadCharacters();
   },
 );
+
 </script>
+
+<style scoped>
+.identity-input {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(0, 0, 0, 0.2);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  color: #fff;
+  outline: none;
+}
+
+.identity-input,
+.native-select-dark {
+  color-scheme: dark;
+}
+.identity-input option,
+.native-select-dark option {
+  background-color: #1e1e2e;
+  color: #e2e8f0;
+}
+.identity-input option:checked,
+.native-select-dark option:checked {
+  background-color: #3b82f6;
+  color: #ffffff;
+}
+
+.identity-btn {
+  cursor: pointer;
+  border: none;
+  border-radius: 0.5rem;
+  background: #e9ecef;
+  padding: 0.25rem 0.6rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: #495057;
+  transition: all 0.2s;
+}
+
+.identity-btn:hover:not(:disabled) {
+  background: var(--accent-color, #79d9ff);
+  color: #fff;
+}
+
+.identity-btn-primary {
+  cursor: pointer;
+  border: none;
+  border-radius: 0.5rem;
+  background: var(--accent-color, #79d9ff);
+  padding: 0.4rem 0.9rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #fff;
+  transition: all 0.2s;
+}
+
+.identity-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.identity-btn:disabled,
+.identity-btn-primary:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+</style>
