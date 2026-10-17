@@ -398,7 +398,8 @@ const AAC_LC_SILENCE_FRAME: [u8; 11] = [
 /// ADTS 读取器藏在 symphonia 的 `aac` feature 里（`symphonia-codec-aac::AdtsReader`），
 /// 光看 `symphonia-format-*` 的名单看不出来 —— 曾经因此误判 `.aac` 不支持、把它挡在
 /// 导入对话框外。另外内容其实是 mp4/m4a、只是扩展名叫 `.aac` 的文件也能用（探测以
-/// 内容为准）。解不了的是 HE-AAC（SBR/PS），symphonia 的 AAC 解码器只认 AAC-LC。
+/// 内容为准）。HE-AAC（SBR/PS）同样能转码：解码器只认 AAC-LC，会丢掉 SBR 层、只留
+/// 11 kHz 以下的 LC 核心（实机验证音量与时长正常），因此不算「格式不支持」。
 #[test]
 fn accepts_raw_aac_adts() {
     let dir = tempfile::tempdir().expect("创建临时目录");
