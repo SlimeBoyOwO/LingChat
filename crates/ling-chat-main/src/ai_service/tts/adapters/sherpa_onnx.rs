@@ -1,4 +1,5 @@
-use std::collections::HashMap;
+use std::borrow::Cow;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
 use anyhow::{Result, anyhow};
@@ -508,6 +509,17 @@ impl SherpaOnnxAdapter {
         let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
         let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
 
+        // data-dir 与 lexicon 都是 sherpa-onnx 的致命依赖：任一为空，原生侧就
+        // `SHERPA_ONNX_EXIT(-1)`（=`_Exit(-1)`，进程以 255 静默退出，Rust 侧捕不到），
+        // 所以先在这里拦成普通错误。
+        let data_dir = zipvoice_data_dir(model_dir).ok_or_else(|| {
+            anyhow!(
+                "ZipVoice 模型缺少 espeak-ng-data（需含 phontab/phondata/phonindex），模型包不完整: {}",
+                model_dir.display()
+            )
+        })?;
+        let lexicon = zipvoice_lexicon(model_dir)?;
+
         let zipvoice_config = OfflineTtsZipvoiceModelConfig {
             tokens: find_file_optional(model_dir, &["tokens.txt"])
                 .map(|p| p.to_string_lossy().to_string()),
@@ -517,12 +529,19 @@ impl SherpaOnnxAdapter {
             // ZipVoice 的 data-dir 必须是直接包含 phontab/phondata/phonindex 的目录
             //（与 Matcha/espeak 的 espeak-ng-data 父目录层级不同）。部分模型把
             // 这些语音库文件放到 espeak-ng-data/ 下，因此需按 phontab 实际所在目录解析。
-            data_dir: zipvoice_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
-            lexicon: find_file_optional(model_dir, &["lexicon.txt"])
-                .map(|p| p.to_string_lossy().to_string()),
-            feat_scale: 10.0,
-            t_shift: 0.005,
-            target_rms: 0.25,
+            data_dir: Some(data_dir.to_string_lossy().to_string()),
+            lexicon: Some(lexicon.to_string_lossy().to_string()),
+            // 默认值必须显式写：sherpa-onnx 的 Rust 绑定这里 `Default` 全是 0.0，
+            // 而原生侧要求 feat_scale/target_rms/guidance_scale > 0（0 会被
+            // `Generate` 直接判为非法参数）。数值取上游原生默认值，见
+            // sherpa-onnx/csrc/offline-tts-zipvoice-model-config.h：
+            // `feat_scale = 0.1, t_shift = 0.5, target_rms = 0.1, guidance_scale = 1.0`。
+            // 这三个值直接决定提示梅尔缩放、解码时间步与响度归一化，偏离一个数量级
+            // 就会合成出极轻的低频噪声（实测 feat_scale=10、t_shift=0.005 时音频
+            // 均响度只有 -36 dB，频谱集中在极低频）。
+            feat_scale: 0.1,
+            t_shift: 0.5,
+            target_rms: 0.1,
             guidance_scale: 1.0,
         };
 
@@ -835,6 +854,84 @@ fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
     None
 }
 
+/// 内置的 ZipVoice 中英音素表（`字/词 → 声母0 韵母…`），随二进制一起发布。
+///
+/// 为什么必须内置：sherpa-onnx 的 `MatchaTtsLexicon` 在 lexicon 为空时直接
+/// `SHERPA_ONNX_EXIT(-1)`（= `_Exit(-1)`，进程以 255 静默退出，Rust 侧捕不到），
+/// 而 ZipVoice 的 `InitFrontend()` 必然走这个类。上游官方包里的 `lexicon.txt` 并不是
+/// 模型自带文件，而是 CI 打包时用 `scripts/zipvoice/zh-en/generate_lexicon.py`
+/// （pypinyin + 中英音素转换）现场生成的；我们用的 ModelScope 镜像包
+/// （`gomodels/sherpa`）里只有 `pinyin.raw`、没有该文件，而 `pinyin.raw` 的整音节写法
+/// （`好 hao3`）与模型 `tokens.txt` 的「声母+0 / 韵母」方案（`h0 ao3`）不兼容，
+/// 不能直接拿来当 lexicon。
+///
+/// 本文件即上述脚本的输出（68037 条），音素已逐条校验都在模型 `tokens.txt` 里。
+const ZIPVOICE_LEXICON_ZH_EN: &str = include_str!("zipvoice-lexicon-zh-en.txt");
+
+/// 定位 ZipVoice 的 lexicon：优先模型目录自带的，缺失时写入内置的中英音素表。
+///
+/// 写回模型目录而不是临时目录，是为了让模型目录自洽（其它工具、以及下次启动
+/// 都直接命中），而且只需要写一次。
+fn zipvoice_lexicon(model_dir: &Path) -> Result<PathBuf> {
+    if let Some(path) = find_file_optional(model_dir, &["lexicon.txt"]) {
+        // 0 字节的 lexicon 等于没有：sherpa 只在「路径为空」时报错退出，空文件则
+        // 让每个字都变成 OOV（念不出声），所以这里也按缺失处理。
+        if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 0 {
+            return Ok(path);
+        }
+        tracing::warn!(
+            "ZipVoice 模型自带的 {} 为空，改用内置中英音素表",
+            path.display()
+        );
+    }
+
+    let text = bundled_zipvoice_lexicon();
+    if !zipvoice_lexicon_matches_tokens(model_dir, &text) {
+        return Err(anyhow!(
+            "ZipVoice 模型缺少 lexicon.txt，且内置中英音素表与 {} 里的 tokens.txt 不匹配（不是同一个中英模型）",
+            model_dir.display()
+        ));
+    }
+
+    let path = model_dir.join("lexicon.txt");
+    std::fs::write(&path, text.as_bytes())
+        .map_err(|e| anyhow!("写入 ZipVoice lexicon.txt 失败（{}）: {e}", path.display()))?;
+    tracing::info!(
+        "ZipVoice 模型缺少 lexicon.txt（上游由 CI 生成），已写入内置中英音素表: {}",
+        path.display()
+    );
+    Ok(path)
+}
+
+/// 内置音素表文本，行尾统一成 LF。
+///
+/// `include_str!` 是逐字节嵌入：Windows 上若把换行检出成 CRLF，行尾的 `\r` 会被
+/// 当成音素的一部分而全部查不到（`.gitattributes` 已固定 LF，这里再兜一层）。
+fn bundled_zipvoice_lexicon() -> Cow<'static, str> {
+    if ZIPVOICE_LEXICON_ZH_EN.contains('\r') {
+        Cow::Owned(ZIPVOICE_LEXICON_ZH_EN.replace("\r\n", "\n"))
+    } else {
+        Cow::Borrowed(ZIPVOICE_LEXICON_ZH_EN)
+    }
+}
+
+/// 内置音素表的音素是否都被模型 `tokens.txt` 收录。
+///
+/// 防止把中英音素表塞给别的 ZipVoice 模型（例如纯英文模型）——那种情况下宁可报错，
+/// 也不要念出一堆 OOV。
+fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
+    let Ok(tokens) = std::fs::read_to_string(model_dir.join("tokens.txt")) else {
+        return false;
+    };
+    let tokens: HashSet<&str> = tokens
+        .lines()
+        .filter_map(|line| line.split_whitespace().next())
+        .collect();
+    lexicon
+        .lines()
+        .all(|line| line.split_whitespace().skip(1).all(|p| tokens.contains(p)))
+}
+
 fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
     let num_samples = samples.len();
     let data_size = num_samples * 2;
@@ -990,6 +1087,90 @@ mod tests {
         (sample_rate, data_bytes / (bits as usize / 8))
     }
 
+    /// 造一个「假 ZipVoice 模型目录」：只会写 tokens.txt。
+    ///
+    /// `tokens_from_bundled = true` 时用内置音素表的音素生成 tokens.txt（模拟中英
+    /// 模型，音素全部命中）；否则只放无关音素（模拟别的 ZipVoice 模型）。
+    fn fake_zipvoice_dir(tag: &str, tokens_from_bundled: bool) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("lingchat-zipvoice-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时模型目录失败");
+
+        let tokens = if tokens_from_bundled {
+            let bundled = bundled_zipvoice_lexicon();
+            let mut phonemes: Vec<&str> = bundled
+                .lines()
+                .flat_map(|line| line.split_whitespace().skip(1))
+                .collect();
+            phonemes.sort_unstable();
+            phonemes.dedup();
+            phonemes.iter().map(|p| format!("{p} 0\n")).collect()
+        } else {
+            "x0 0\ny0 1\n".to_string()
+        };
+        std::fs::write(dir.join("tokens.txt"), tokens).expect("写 tokens.txt 失败");
+        dir
+    }
+
+    /// 模型目录缺 lexicon.txt 时，应写入内置中英音素表并返回该路径。
+    #[test]
+    fn zipvoice_missing_lexicon_falls_back_to_bundled() {
+        let dir = fake_zipvoice_dir("bundled", true);
+
+        let path = zipvoice_lexicon(&dir).expect("应回退到内置音素表");
+        assert_eq!(path, dir.join("lexicon.txt"));
+
+        let written = std::fs::read_to_string(&path).expect("读取写入的 lexicon 失败");
+        assert_eq!(written, bundled_zipvoice_lexicon().as_ref());
+        assert!(
+            written.lines().count() > 60_000,
+            "内置音素表疑似被截断: {} 行",
+            written.lines().count()
+        );
+
+        // 已存在（非空）的 lexicon 直接复用，不再覆盖
+        std::fs::write(&path, "好 h0 ao3\n").expect("写测试 lexicon 失败");
+        assert_eq!(zipvoice_lexicon(&dir).expect("应复用已有 lexicon"), path);
+        assert_eq!(
+            std::fs::read_to_string(&path).expect("读取 lexicon 失败"),
+            "好 h0 ao3\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 0 字节的 lexicon.txt 视为缺失（否则每个字都会变成 OOV）。
+    #[test]
+    fn zipvoice_empty_lexicon_is_replaced() {
+        let dir = fake_zipvoice_dir("empty", true);
+        std::fs::write(dir.join("lexicon.txt"), "").expect("写空 lexicon 失败");
+
+        let path = zipvoice_lexicon(&dir).expect("空 lexicon 应被内置音素表替换");
+        let written = std::fs::read_to_string(&path).expect("读取 lexicon 失败");
+        assert!(written.lines().count() > 60_000, "应写入完整内置音素表");
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 音素与 tokens.txt 不匹配时不允许写入（宁可报错也不要念出一堆 OOV）。
+    #[test]
+    fn zipvoice_lexicon_rejected_when_tokens_mismatch() {
+        let dir = fake_zipvoice_dir("mismatch", false);
+
+        let err = zipvoice_lexicon(&dir).expect_err("音素不匹配时应报错");
+        assert!(
+            err.to_string().contains("tokens.txt"),
+            "错误信息应说明 tokens.txt 不匹配: {err}"
+        );
+        assert!(
+            !dir.join("lexicon.txt").exists(),
+            "不匹配时不应写入 lexicon"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// ZipVoice 零样本语音克隆：加载参考音频 → 设置 → 合成 → 验证非静音。
     ///
     /// 依赖真实模型和参考音频，默认忽略；通过设置 `SHERPA_TEST_MODEL_DIR`（模型目录）
@@ -1006,6 +1187,11 @@ mod tests {
         let ref_path = std::env::var("SHERPA_TEST_REF_AUDIO")
             .unwrap_or_else(|_| "/tmp/baizi_ref.wav".to_string());
         assert!(Path::new(&ref_path).exists(), "参考音频不存在: {ref_path}");
+
+        // 参考文本必须与参考音频内容一致（ZipVoice 会用它对提示音频做对齐），
+        // 换参考音频时用 SHERPA_TEST_REF_TEXT 一起换。
+        let ref_text = std::env::var("SHERPA_TEST_REF_TEXT")
+            .unwrap_or_else(|_| "你好，我是白子。".to_string());
 
         // 加载参考音频
         let (samples, sample_rate) =
@@ -1030,7 +1216,7 @@ mod tests {
 
         // 设置参考音频
         let mut adapter = adapter;
-        adapter.set_reference_audio(samples, sample_rate, "你好，我是白子。".to_string());
+        adapter.set_reference_audio(samples, sample_rate, ref_text);
         adapter.set_speed(1.0);
 
         // 合成
