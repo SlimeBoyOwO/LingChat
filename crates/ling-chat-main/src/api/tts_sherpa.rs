@@ -675,10 +675,16 @@ pub async fn test_sherpa_onnx_voice(
         .sherpa_onnx_model_type
         .clone()
         .unwrap_or_else(|| "vits".to_string());
-    let language = settings
-        .sherpa_onnx_lang
-        .clone()
-        .filter(|s| !s.trim().is_empty())
+    // 试听文本里的假名/谚文优先于页面上选的语言：默认语言是中文，直接粘日文会让
+    // kokoro 把假名逐字当英文/中文念（实测 14 字要 9.9 秒且听不出是日文）。
+    let language = crate::ai_service::tts::text_language::detect(&text)
+        .map(str::to_string)
+        .or_else(|| {
+            settings
+                .sherpa_onnx_lang
+                .clone()
+                .filter(|s| !s.trim().is_empty())
+        })
         .unwrap_or_else(|| "zh".to_string());
     let voice = settings
         .sherpa_onnx_voice
