@@ -3,7 +3,8 @@
 //! 目前唯一的用途是把用户导入的「零样本克隆参考音频」统一转成 WAV：
 //! sherpa-onnx 只吃 WAV，而 [`crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio`]
 //! 还要求 16/32 位 PCM（它是手工解析 RIFF 头的）。要求用户自己先转格式体验太差，
-//! 这里用 symphonia 解码、hound 重编码，一次吸收掉容器 / 编码 / 位深 / float 的差异。
+//! 这里用 symphonia 解码、hound 重编码，一次吸收掉容器 / 编码 / 位深 / float /
+//! 多声道（输出单声道，下游本来就会下混）的差异。
 //!
 //! Opus 是唯一例外：symphonia 0.5 没有 Opus 解码器，而 `.ogg` / `.opus` 里塞
 //! Opus 极常见（Telegram / WhatsApp 的语音消息就是）。容器解析（OpusHead 里的
@@ -31,7 +32,12 @@ pub const MAX_REFERENCE_AUDIO_SECONDS: u64 = 120;
 /// Opus 解码采样率。
 ///
 /// Opus 的编码层固定按 48 kHz 工作（OpusHead 里的原始采样率只是元数据），libopus
-/// 也按这个值输出 PCM；`load_reference_audio` 接受任意采样率并交给 sherpa 重采样。
+/// 也按这个值输出 PCM。参考音频保持 48 kHz 而不是降到 16 kHz：
+/// sherpa-onnx 会用 `reference_sample_rate` 把它重采样到模型采样率
+/// （zipvoice 是 24 kHz，见 `offline-tts-zipvoice-impl.h` 的
+/// `ComputeMelSpectrogram`），而它的 mel 滤波器上限是模型采样率的 1/2（12 kHz）——
+/// 若这里按 16 kHz 解码，重采样时低通截止会掉到 ~8 kHz，8–12 kHz 那一段直接没了，
+/// 克隆音色会发闷。省下来的磁盘在该路径上另有办法（见下方单声道下混）。
 const OPUS_DECODE_RATE: u32 = 48_000;
 
 /// Opus 单个包的帧数上限：120 ms @48 kHz（RFC 6716 允许的最大帧长）。
@@ -57,10 +63,12 @@ pub enum TranscodeError {
     Other(String),
 }
 
-/// 把音频转成 16-bit PCM WAV。
+/// 把音频转成 16-bit PCM 单声道 WAV。
 ///
-/// 边解边写（不把整段 PCM 攒在内存里），声道数与采样率保持源文件原样：
-/// `load_reference_audio` 接受任意采样率，并由它自己下混成单声道。
+/// 边解边写（不把整段 PCM 攒在内存里），采样率保持源文件原样：
+/// `load_reference_audio` 接受任意采样率，并由它自己交给 sherpa 重采样。
+/// 声道固定单声道——参考音频的下游（`load_reference_audio`）无论如何都会把它
+/// 平均成单声道，立体声原样落盘只会白占一倍磁盘（平板上数据分区本就吃紧）。
 ///
 /// 失败时删除写了一半的 `dest`，不在数据目录里留半成品。
 pub fn transcode_to_wav_16bit(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
@@ -241,10 +249,12 @@ fn transcode_opus(
 /// 边解码边写 WAV 的落盘器。
 ///
 /// symphonia 与 libopus 两条解码路径都把 PCM 交给它，统一处理首次定规格、
-/// 中途换规格（级联流）、时长上限与写样本，避免两套重复的写入逻辑。
+/// 中途换规格（级联流）、时长上限、多声道下混与写样本，避免两套重复的写入逻辑。
 struct WavSink {
     writer: Option<hound::WavWriter<BufWriter<File>>>,
     written_frames: u64,
+    /// 首批样本的源声道数（输出固定单声道，所以单独记一份用于检测规格变化）。
+    source_channels: Option<u16>,
 }
 
 impl WavSink {
@@ -252,10 +262,14 @@ impl WavSink {
         Self {
             writer: None,
             written_frames: 0,
+            source_channels: None,
         }
     }
 
-    /// 写一批交错 i16 样本；首次调用时按 `channels` / `rate` 创建输出文件。
+    /// 写一批交错 i16 样本；首次调用时按 `rate` 创建输出文件（单声道）。
+    ///
+    /// 源是立体声等多声道时在这里就下混：`load_reference_audio` 反正会平均成
+    /// 单声道，原样落盘只是白占磁盘。
     fn write(
         &mut self,
         dest: &Path,
@@ -266,19 +280,21 @@ impl WavSink {
         if samples.is_empty() {
             return Ok(());
         }
+        let source_channels = channels.max(1);
 
         if let Some(existing) = self.writer.as_ref() {
             // 中途换规格（级联流）会让已写入的头部与实际数据错位，直接拒绝。
-            let written = existing.spec();
-            if written.channels != channels || written.sample_rate != rate {
+            if self.source_channels != Some(source_channels) || existing.spec().sample_rate != rate
+            {
                 return Err(TranscodeError::Other("音频规格中途变化，无法转换".into()));
             }
         } else {
+            self.source_channels = Some(source_channels);
             self.writer = Some(
                 hound::WavWriter::create(
                     dest,
                     hound::WavSpec {
-                        channels,
+                        channels: 1,
                         sample_rate: rate,
                         bits_per_sample: 16,
                         sample_format: hound::SampleFormat::Int,
@@ -288,7 +304,7 @@ impl WavSink {
             );
         }
 
-        let frames = (samples.len() / usize::from(channels.max(1))) as u64;
+        let frames = (samples.len() / usize::from(source_channels)) as u64;
         let total_frames = self.written_frames + frames;
         if total_frames / u64::from(rate) > MAX_REFERENCE_AUDIO_SECONDS {
             return Err(TranscodeError::TooLong {
@@ -299,9 +315,21 @@ impl WavSink {
         self.written_frames = total_frames;
 
         let writer = self.writer.as_mut().expect("writer 已在上面就绪");
-        for &sample in samples {
+        if source_channels == 1 {
+            for &sample in samples {
+                writer
+                    .write_sample(sample)
+                    .map_err(|e| TranscodeError::Other(format!("写入 WAV 失败: {e}")))?;
+            }
+            return Ok(());
+        }
+
+        let divisor = f32::from(source_channels);
+        for frame in samples.chunks_exact(usize::from(source_channels)) {
+            let sum: i32 = frame.iter().map(|&sample| i32::from(sample)).sum();
+            let mixed = (sum as f32 / divisor).round() as i16;
             writer
-                .write_sample(sample)
+                .write_sample(mixed)
                 .map_err(|e| TranscodeError::Other(format!("写入 WAV 失败: {e}")))?;
         }
         Ok(())
