@@ -38,8 +38,8 @@ impl MemoryRepo {
         stmt.all(db).await.map_err(|e| anyhow!(e))
     }
 
-    pub async fn get_latest_memory(
-        db: &DatabaseConnection,
+    pub async fn get_latest_memory<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         role_id: i32,
     ) -> Result<Option<memory_bank::Model>, anyhow::Error> {
@@ -52,8 +52,8 @@ impl MemoryRepo {
             .map_err(|e| anyhow!(e))
     }
 
-    pub async fn upsert_memory(
-        db: &DatabaseConnection,
+    pub async fn upsert_memory<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         role_id: i32,
         info: &str,

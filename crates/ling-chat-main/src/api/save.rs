@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
+use crate::ai_service::game_system::save_service::{PlayerAnchor, SaveService, SaveTarget};
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
@@ -50,58 +51,6 @@ async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), Str
     std::fs::copy(source_path, &dest_path)
         .map_err(|e| format!("复制截图文件失败: {} → {:?}: {}", source_path, dest_path, e))?;
     Ok(())
-}
-
-/// 解析待写入 running_script 的剧本进度。
-///
-/// 前端阅读锚点四要素齐全（章节 + 事件下标 + 台词条数 + 变量 JSON）且变量可解析时
-/// 以锚点为准：引擎会一口气跑到下一个阻塞事件，用引擎当前下标会存到玩家尚未读到的
-/// 预生成内容之后。锚点缺失则回退引擎当前值。返回
-/// `(script_folder, chapter, event_index, vars_json)`，`script_folder` 取 `path_key()`
-/// 并统一分隔符，读档时按同一规则回匹配。
-fn resolve_script_progress(
-    script_status: &crate::ai_service::types::ScriptStatus,
-    player_chapter: Option<&str>,
-    player_event_index: Option<i32>,
-    player_line_count: Option<i32>,
-    player_vars_json: Option<&str>,
-) -> (String, String, i32, String) {
-    let anchor = match (
-        player_chapter,
-        player_event_index,
-        player_line_count,
-        player_vars_json,
-    ) {
-        (Some(chapter), Some(event_index), Some(line_count), Some(vars_json)) => {
-            serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(vars_json)
-                .ok()
-                .map(|vars| (chapter.to_string(), event_index, line_count, vars))
-        },
-        _ => None,
-    };
-
-    let (chapter, event_index, vars) = match anchor {
-        Some((chapter, event_index, line_count, mut vars)) => {
-            // 记录存档时玩家已读到的台词条数（内部键）：读档侧据此截断台词，
-            // 锚点之后的内容由续跑引擎重新生成；加载时会剔除该键，不污染剧本变量。
-            // 该键必须与锚点同源——锚点失效走引擎回退时若仍记录它，
-            // 读档会把台词截到阅读位置却从阻塞点续跑，中间内容既被截掉又不重播。
-            vars.insert("__line_count".to_string(), serde_json::json!(line_count));
-            (chapter, event_index, vars)
-        },
-        None => (
-            script_status.current_chapter_key.clone(),
-            script_status.current_event_process,
-            script_status.vars.clone(),
-        ),
-    };
-
-    (
-        script_status.path_key().replace('\\', "/"),
-        chapter,
-        event_index,
-        serde_json::to_string(&vars).unwrap_or_default(),
-    )
 }
 
 // ========== Tauri 命令 ==========
@@ -184,86 +133,21 @@ pub async fn create_save(
     player_vars_json: Option<String>,
 ) -> Result<CreateSaveResponse, String> {
     let state = app.state::<AppState>();
-    let db = &state.db;
-
-    let mut service = state.ai_service.lock().await;
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 1. 创建 save 行
-    let save_model = SaveRepo::create_save(db, &title)
-        .await
-        .map_err(|e| format!("创建存档失败: {}", e))?;
-    let save_id = save_model.id;
+    let anchor = PlayerAnchor {
+        chapter: player_chapter, event_index: player_event_index,
+        line_count: player_line_count, vars_json: player_vars_json,
+    };
+    let outcome = SaveService::save(&state.ai_service, SaveTarget::Create(title), None, anchor)
+        .await.map_err(|e| format!("创建存档失败: {e:#}"))?
+        .ok_or_else(|| "存档未提交".to_string())?;
+    let save_id = outcome.save_id;
 
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
         let _ = save_screenshot_file(save_id, path).await;
     }
 
-    // 2. 同步台词
-    if !lines.is_empty() {
-        SaveRepo::sync_lines(db, save_id, &lines, false)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-    }
-
-    // 3. 设置主角
-    if let Some(main_id) = service.game_status.lock().await.main_role_id {
-        SaveRepo::update_save_main_role(db, save_id, Some(main_id))
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
-    }
-
-    // 4. 写入 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 标记当前活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 6. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 7. 持久化剧本状态（若有）
-    let script_status_snapshot = service.game_status.lock().await.script_status.clone();
-    match script_status_snapshot {
-        Some(script_status) => {
-            let (script_folder, chapter, event_index, vars_json) = resolve_script_progress(
-                &script_status,
-                player_chapter.as_deref(),
-                player_event_index,
-                player_line_count,
-                player_vars_json.as_deref(),
-            );
-            let _ = SaveRepo::upsert_running_script(
-                db,
-                save_id,
-                &script_folder,
-                &vars_json,
-                &chapter,
-                event_index,
-            )
-            .await
-            .map_err(|e| eprintln!("[SAVE_WARN] create_save: 保存剧本状态失败: {}", e));
-        },
-        None => {
-            // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
-            if let Err(e) = SaveRepo::clear_running_script(db, save_id).await {
-                eprintln!("[SAVE_WARN] create_save: 清理旧剧本状态失败: {}", e);
-            }
-        },
-    }
-
-    // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
-    let baseline_hash = auto_save::hash_of_real_lines(&lines);
-    drop(service);
+    let baseline_hash = outcome.baseline_hash;
     state
         .auto_save_manager
         .lock()
@@ -282,6 +166,9 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let db = &state.db;
 
     crate::api::script::abort_running_script(&app).await;
+
+    let saves = state.ai_service.lock().await.save_service.clone();
+    let save_guard = saves.gate.lock().await;
 
     let mut service = state.ai_service.lock().await;
 
@@ -403,6 +290,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let result = build_web_init_data(&service, &app).await?;
     // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
+    drop(save_guard);
     // 续跑引擎必须在释放 ai_service 锁之后启动（spawn 内部会再锁 ai_service）
     if let Some(script) = resume_script {
         crate::api::script::spawn_script_execution(app.clone(), script).await;
@@ -426,78 +314,20 @@ pub async fn update_save(
     player_vars_json: Option<String>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let db = &state.db;
-
-    let mut service = state.ai_service.lock().await;
-
-    // 1. 校验存档存在
-    SaveRepo::get_save_by_id(db, save_id)
-        .await
-        .map_err(|e| format!("查询存档失败: {}", e))?
-        .ok_or_else(|| format!("存档 {} 不存在", save_id))?;
+    let anchor = PlayerAnchor {
+        chapter: player_chapter, event_index: player_event_index,
+        line_count: player_line_count, vars_json: player_vars_json,
+    };
+    let outcome = SaveService::save(&state.ai_service, SaveTarget::Update(save_id), None, anchor)
+        .await.map_err(|e| format!("保存失败: {e:#}"))?
+        .ok_or_else(|| "存档未提交".to_string())?;
 
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
         let _ = save_screenshot_file(save_id, path).await;
     }
 
-    let lines = service.game_status.lock().await.line_list.clone();
-
-    // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines, false)
-        .await
-        .map_err(|e| format!("同步台词失败: {}", e))?;
-
-    // 3. 标记活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
-
-    // 4. 更新 GameStatus 快照
-    let snapshot = service.game_status.lock().await.to_snapshot();
-    let snapshot_json =
-        serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-    SaveRepo::update_save_status(db, save_id, &snapshot_json)
-        .await
-        .map_err(|e| format!("保存状态失败: {}", e))?;
-
-    // 5. 持久化 MemoryBank
-    service
-        .persist_memory_banks(save_id)
-        .await
-        .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-    // 6. 持久化剧本状态
-    let script_status_snapshot = service.game_status.lock().await.script_status.clone();
-    match script_status_snapshot {
-        Some(script_status) => {
-            let (script_folder, chapter, event_index, vars_json) = resolve_script_progress(
-                &script_status,
-                player_chapter.as_deref(),
-                player_event_index,
-                player_line_count,
-                player_vars_json.as_deref(),
-            );
-            let _ = SaveRepo::upsert_running_script(
-                db,
-                save_id,
-                &script_folder,
-                &vars_json,
-                &chapter,
-                event_index,
-            )
-            .await
-            .map_err(|e| eprintln!("[SAVE_WARN] update_save: 保存剧本状态失败: {}", e));
-        },
-        None => {
-            // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
-            if let Err(e) = SaveRepo::clear_running_script(db, save_id).await {
-                eprintln!("[SAVE_WARN] update_save: 清理旧剧本状态失败: {}", e);
-            }
-        },
-    }
-
-    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
-    let baseline_hash = auto_save::hash_of_real_lines(&lines);
-    drop(service);
+    let baseline_hash = outcome.baseline_hash;
     state
         .auto_save_manager
         .lock()
@@ -511,6 +341,8 @@ pub async fn update_save(
 pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
     let state = app.state::<AppState>();
     let db = &state.db;
+    let saves = state.ai_service.lock().await.save_service.clone();
+    let _save_guard = saves.gate.lock().await;
 
     let service = state.ai_service.lock().await;
 

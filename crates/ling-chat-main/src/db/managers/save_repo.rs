@@ -33,8 +33,8 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn get_save_by_id(
-        db: &DatabaseConnection,
+    pub async fn get_save_by_id<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
     ) -> Result<Option<save::Model>> {
         save::Entity::find_by_id(save_id)
@@ -44,8 +44,8 @@ impl SaveRepo {
     }
 
     /// Find the most recent save whose title starts with the given prefix.
-    pub async fn find_save_by_title_prefix(
-        db: &DatabaseConnection,
+    pub async fn find_save_by_title_prefix<C: ConnectionTrait>(
+        db: &C,
         prefix: &str,
     ) -> Result<Option<save::Model>> {
         save::Entity::find()
@@ -56,7 +56,7 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn create_save(db: &DatabaseConnection, title: &str) -> Result<save::Model> {
+    pub async fn create_save<C: ConnectionTrait>(db: &C, title: &str) -> Result<save::Model> {
         let now = Utc::now().naive_utc();
         let active = save::ActiveModel {
             title: Set(title.to_string()),
@@ -68,8 +68,8 @@ impl SaveRepo {
         active.insert(db).await.map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn update_save_title(
-        db: &DatabaseConnection,
+    pub async fn update_save_title<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         title: &str,
     ) -> Result<()> {
@@ -85,8 +85,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_status(
-        db: &DatabaseConnection,
+    pub async fn update_save_status<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         status_json: &str,
     ) -> Result<()> {
@@ -102,8 +102,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_main_role(
-        db: &DatabaseConnection,
+    pub async fn update_save_main_role<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         role_id: Option<i32>,
     ) -> Result<()> {
@@ -137,8 +137,8 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn update_save_running_script(
-        db: &DatabaseConnection,
+    pub async fn update_save_running_script<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         running_script_id: Option<i32>,
     ) -> Result<()> {
@@ -193,7 +193,7 @@ impl SaveRepo {
 impl SaveRepo {
     /// Reconstruct ordered line list by walking `parent_line_id` chain
     /// from `save.last_message_id` backwards, then reversing.
-    pub async fn get_line_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<line::Model>> {
+    pub async fn get_line_list<C: ConnectionTrait>(db: &C, save_id: i32) -> Result<Vec<line::Model>> {
         let all_lines = line::Entity::find()
             .filter(line::Column::SaveId.eq(save_id))
             .all(db)
@@ -289,7 +289,19 @@ impl SaveRepo {
         input_lines: &[GameLine],
         allow_rebuild: bool,
     ) -> Result<()> {
-        let db_lines = Self::get_line_list(db, save_id).await?;
+        let txn = db.begin().await?;
+        Self::sync_lines_in_transaction(&txn, save_id, input_lines, allow_rebuild).await?;
+        txn.commit().await?;
+        Ok(())
+    }
+
+    pub async fn sync_lines_in_transaction(
+        txn: &DatabaseTransaction,
+        save_id: i32,
+        input_lines: &[GameLine],
+        allow_rebuild: bool,
+    ) -> Result<()> {
+        let db_lines = Self::get_line_list(txn, save_id).await?;
 
         // Walk both lists to find divergence point
         let max_check = db_lines.len().min(input_lines.len());
@@ -371,10 +383,6 @@ impl SaveRepo {
             );
         }
 
-        // Keep line rows, perceptions, and the save tail pointer consistent if
-        // the process is interrupted or any individual write fails.
-        let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
-
         // 3. Delete stale DB lines and their perceptions
         let stale_lines = &db_lines[diverge..];
         if !stale_lines.is_empty() {
@@ -382,13 +390,13 @@ impl SaveRepo {
 
             line_perception::Entity::delete_many()
                 .filter(line_perception::Column::LineId.is_in(stale_ids.clone()))
-                .exec(&txn)
+                .exec(txn)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
 
             line::Entity::delete_many()
                 .filter(line::Column::Id.is_in(stale_ids))
-                .exec(&txn)
+                .exec(txn)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
         }
@@ -400,7 +408,7 @@ impl SaveRepo {
         if !matched_ids.is_empty() {
             let rows = line_perception::Entity::find()
                 .filter(line_perception::Column::LineId.is_in(matched_ids))
-                .all(&txn)
+                .all(txn)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
             for row in rows {
@@ -445,7 +453,7 @@ impl SaveRepo {
                 active.thinking = Set(input_line.base.thinking.clone());
                 active.display_name = Set(input_line.base.display_name.clone());
                 active.tool_call = Set(input_line.base.tool_call.clone());
-                active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
+                active.update(txn).await.map_err(|e| anyhow!("{e}"))?;
             }
 
             // 2) perception 表：按集合语义比较（顺序无关、去重）后整体替换
@@ -460,7 +468,7 @@ impl SaveRepo {
             if existing != desired {
                 line_perception::Entity::delete_many()
                     .filter(line_perception::Column::LineId.eq(db_line.id))
-                    .exec(&txn)
+                    .exec(txn)
                     .await
                     .map_err(|e| anyhow!("{e}"))?;
                 for role_id in &input_line.perceived_role_ids {
@@ -468,7 +476,7 @@ impl SaveRepo {
                         line_id: Set(db_line.id),
                         role_id: Set(*role_id),
                     }
-                    .insert(&txn)
+                    .insert(txn)
                     .await
                     .map_err(|e| anyhow!("{e}"))?;
                 }
@@ -503,7 +511,7 @@ impl SaveRepo {
                     ..Default::default()
                 };
 
-                let inserted = new_line.insert(&txn).await.map_err(|e| anyhow!("{e}"))?;
+                let inserted = new_line.insert(txn).await.map_err(|e| anyhow!("{e}"))?;
                 let new_id = inserted.id;
 
                 // Insert line_perception rows
@@ -512,7 +520,7 @@ impl SaveRepo {
                         line_id: Set(new_id),
                         role_id: Set(role_id),
                     };
-                    perception.insert(&txn).await.map_err(|e| anyhow!("{e}"))?;
+                    perception.insert(txn).await.map_err(|e| anyhow!("{e}"))?;
                 }
 
                 parent_id = Some(new_id);
@@ -530,16 +538,14 @@ impl SaveRepo {
             None
         };
         let save_model = save::Entity::find_by_id(save_id)
-            .one(&txn)
+            .one(txn)
             .await
             .map_err(|e| anyhow!("{e}"))?
             .context("Save not found")?;
         let mut active: save::ActiveModel = save_model.into();
         active.last_message_id = Set(last_id);
         active.update_date = Set(Utc::now().naive_utc());
-        active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
-
-        txn.commit().await.map_err(|e| anyhow!("{e}"))?;
+        active.update(txn).await.map_err(|e| anyhow!("{e}"))?;
 
         Ok(())
     }
@@ -611,8 +617,8 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))
     }
 
-    pub async fn upsert_running_script(
-        db: &DatabaseConnection,
+    pub async fn upsert_running_script<C: ConnectionTrait>(
+        db: &C,
         save_id: i32,
         script_folder: &str,
         variable_info: &str,
@@ -658,7 +664,7 @@ impl SaveRepo {
         Ok(inserted.id)
     }
 
-    pub async fn delete_running_script(db: &DatabaseConnection, script_id: i32) -> Result<()> {
+    pub async fn delete_running_script<C: ConnectionTrait>(db: &C, script_id: i32) -> Result<()> {
         running_script::Entity::delete_by_id(script_id)
             .exec(db)
             .await
@@ -668,7 +674,7 @@ impl SaveRepo {
 
     /// 清除存档关联的剧本进度行。存档时若当前无剧本在跑，必须清掉该存档
     /// 早年关联的旧行，否则读档会把一个早已结束的剧本误续跑起来。
-    pub async fn clear_running_script(db: &DatabaseConnection, save_id: i32) -> Result<()> {
+    pub async fn clear_running_script<C: ConnectionTrait>(db: &C, save_id: i32) -> Result<()> {
         let save_model = Self::get_save_by_id(db, save_id)
             .await?
             .context("Save not found")?;

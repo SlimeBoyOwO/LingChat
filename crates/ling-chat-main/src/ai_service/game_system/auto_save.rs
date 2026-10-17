@@ -12,7 +12,7 @@ use crate::ai_service::service::SharedAIService;
 use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::db::managers::save_repo::SaveRepo;
+use super::save_service::{PlayerAnchor, SaveService, SaveTarget};
 
 const AUTO_SAVE_PREFIX: &str = "自动存档";
 const EXIT_SAVE_TIMEOUT_SECS: u64 = 5;
@@ -71,24 +71,19 @@ struct AutoSaveEventPayload {
 
 pub struct AutoSaveManager {
     app: AppHandle,
-    db: DatabaseConnection,
     ai_service: SharedAIService,
     /// Hash of line_list at the moment of the last successful auto-save.
     last_saved_hash: Option<u64>,
-    /// Resolved auto-save slot ID (lazily found or created on first save).
-    auto_save_id: Option<i32>,
     /// 进入新一局的冷却截止时刻，见 [`ENTER_GRACE_SECS`]。
     grace_until: Option<Instant>,
 }
 
 impl AutoSaveManager {
-    pub fn new(app: AppHandle, db: DatabaseConnection, ai_service: SharedAIService) -> Self {
+    pub fn new(app: AppHandle, _db: DatabaseConnection, ai_service: SharedAIService) -> Self {
         Self {
             app,
-            db,
             ai_service,
             last_saved_hash: None,
-            auto_save_id: None,
             grace_until: None,
         }
     }
@@ -179,98 +174,16 @@ impl AutoSaveManager {
             }
         }
 
-        // 1. Compute current hash (returns None if there is no real dialogue)
-        let current_hash = self.compute_line_hash().await;
-
-        let current_hash = match current_hash {
-            Some(h) => h,
-            None => {
-                // 无真实对话（主菜单/仅人设/仅旁白）— 绝不覆盖旧档
-                return Ok(());
-            },
-        };
-
-        // 2. Skip if unchanged since last save
-        if self.last_saved_hash == Some(current_hash) {
-            return Ok(());
-        }
-
-        // 3. 解析自动存档位。已存在的档位此刻只取 id 不写库：标题/主角/时间戳要等
-        //    台词写成功之后再刷（见 4b），否则写失败会把旧档刷新成"刚刚存过"的样子。
-        let save_id = self.resolve_slot().await?;
-
-        // 4. Perform the actual save
-        let mut service = self.ai_service.lock().await;
-        let (lines, main_id) = {
-            let gs = service.game_status.lock().await;
-            (gs.line_list.clone(), gs.main_role_id)
-        };
-
-        // 4a. Sync lines (smart diff)。自动存档位只跟踪当前这一局，允许在无共同锚点
-        //     （切过角色、开过新档）时整体接管重建，而不是永久拒绝写入。
-        SaveRepo::sync_lines(&self.db, save_id, &lines, true)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-
-        // 4b. 台词落库成功后再刷新档位元数据，与内容同进同退
         let now = Local::now();
         let title = format!("{} {}", AUTO_SAVE_PREFIX, now.format("%Y-%m-%d %H:%M:%S"));
-        SaveRepo::update_save_title(&self.db, save_id, &title)
-            .await
-            .map_err(|e| format!("更新自动存档标题失败: {}", e))?;
-        SaveRepo::update_save_main_role(&self.db, save_id, main_id)
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
-
-        // 4c. Set active save
-        service.game_status.lock().await.active_save_id = Some(save_id);
-
-        // 4d. Write GameStatus snapshot
-        let snapshot = service.game_status.lock().await.to_snapshot();
-        let snapshot_json =
-            serde_json::to_string(&snapshot).map_err(|e| format!("序列化状态失败: {}", e))?;
-        SaveRepo::update_save_status(&self.db, save_id, &snapshot_json)
-            .await
-            .map_err(|e| format!("保存状态失败: {}", e))?;
-
-        // 4e. Persist memory banks
-        service
-            .persist_memory_banks(save_id)
-            .await
-            .map_err(|e| format!("保存记忆库失败: {}", e))?;
-
-        // 4f. Persist script state (if running)
-        let script_status_snapshot = service.game_status.lock().await.script_status.clone();
-        match script_status_snapshot {
-            Some(script_status) => {
-                let vars_json = serde_json::to_string(&script_status.vars).unwrap_or_default();
-                // 与手动存档统一：写 path_key() 并归一化分隔符，读档时按同一规则回匹配
-                let script_folder = script_status.path_key().replace('\\', "/");
-                let _ = SaveRepo::upsert_running_script(
-                    &self.db,
-                    save_id,
-                    &script_folder,
-                    &vars_json,
-                    &script_status.current_chapter_key,
-                    script_status.current_event_process,
-                )
-                .await
-                .map_err(|e| {
-                    tracing::warn!("[AutoSave] 保存剧本状态失败: {}", e);
-                });
-            },
-            None => {
-                // 当前无剧本在跑：清掉该存档早年关联的旧进度行，避免读档误续跑已结束的剧本
-                if let Err(e) = SaveRepo::clear_running_script(&self.db, save_id).await {
-                    tracing::warn!("[AutoSave] 清理旧剧本状态失败: {}", e);
-                }
-            },
-        }
-
-        drop(service);
-
-        // 5. Update tracking state
-        self.last_saved_hash = Some(current_hash);
+        let target = SaveTarget::Auto { prefix: AUTO_SAVE_PREFIX.into(), title: title.clone() };
+        let Some(outcome) = SaveService::save(
+            &self.ai_service, target, self.last_saved_hash, PlayerAnchor::default(),
+        ).await.map_err(|e| format!("自动存档失败: {e:#}"))? else {
+            return Ok(());
+        };
+        let save_id = outcome.save_id;
+        self.last_saved_hash = outcome.baseline_hash;
 
         // 6. Emit event to frontend
         let timestamp = now.format("%H:%M:%S").to_string();
@@ -309,45 +222,4 @@ impl AutoSaveManager {
         self.grace_until = Some(Instant::now() + Duration::from_secs(ENTER_GRACE_SECS));
     }
 
-    /// Compute a hash of the current real-dialogue contents (see [`hash_of_real_lines`]).
-    async fn compute_line_hash(&self) -> Option<u64> {
-        let service = self.ai_service.lock().await;
-        let lines = &service.game_status.lock().await.line_list;
-        hash_of_real_lines(lines)
-    }
-
-    /// 解析自动存档位：已有档位直接返回其 id，不动它的任何元数据（标题、主角、
-    /// 时间戳统一由写台词成功后的 `perform_save` 4b 刷新）；没有档位则新建一位，
-    /// 并写好标题与主角，保证刚建的空档也能被正常读回。
-    async fn resolve_slot(&mut self) -> Result<i32, String> {
-        // 按标题前缀找已有自动存档位
-        if let Ok(Some(existing)) =
-            SaveRepo::find_save_by_title_prefix(&self.db, AUTO_SAVE_PREFIX).await
-        {
-            self.auto_save_id = Some(existing.id);
-            return Ok(existing.id);
-        }
-
-        // 新建档位：标题带当前时间，主角取当前主角色
-        let main_id = {
-            let service = self.ai_service.lock().await;
-            let gs = service.game_status.lock().await;
-            gs.main_role_id
-        };
-        let title = format!(
-            "{} {}",
-            AUTO_SAVE_PREFIX,
-            Local::now().format("%Y-%m-%d %H:%M:%S")
-        );
-        let model = SaveRepo::create_save(&self.db, &title)
-            .await
-            .map_err(|e| format!("创建自动存档失败: {}", e))?;
-
-        SaveRepo::update_save_main_role(&self.db, model.id, main_id)
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
-
-        self.auto_save_id = Some(model.id);
-        Ok(model.id)
-    }
 }
