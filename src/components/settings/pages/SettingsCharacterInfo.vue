@@ -716,18 +716,30 @@ const applySherpaModelDefaults = (modelId: string) => {
  * 迁移走已有的导入命令：Rust 侧经 SAF（ContentResolver）拿到真实文件名，并统一
  * 转码成 16-bit PCM WAV。
  *
+ * 参考音频在字段 schema 里被标了 `isVoiceModel`，所以新位置是
+ * `voice_models.sherpa_onnx_ref_audio_path`；`migrateLegacyVoiceModelFields()` 又会
+ * 先于本函数把顶层的遗留键搬进去。两处都要读，结果统一写回 `voice_models` —— 只有
+ * 那里会被 Rust 侧的 `build_voice_maker` 喂给 `VoiceMaker`。
+ *
  * 迁移后字段值与库里存的不一致，所以底部「保存」会亮起——值要落库才真正生效。
  */
 const migrateLegacyRefAudioPath = async () => {
   const roleId = editRoleId.value;
-  const legacy = String(localSettings.value.sherpa_onnx_ref_audio_path ?? "").trim();
+  const voiceModels = ensureVoiceModels();
+  const currentRefAudio = () =>
+    String(
+      localSettings.value.sherpa_onnx_ref_audio_path ??
+        voiceModels.sherpa_onnx_ref_audio_path ??
+        "",
+    ).trim();
+  const legacy = currentRefAudio();
   if (!legacy.startsWith("content://")) return;
   const imported = await TtsLocal.migrateSherpaRefAudio(legacy);
   if (!imported) return;
   // 异步期间用户可能切了角色、或者自己改掉了这一项，只在仍是原值时写回。
   if (editRoleId.value !== roleId) return;
-  if (String(localSettings.value.sherpa_onnx_ref_audio_path ?? "").trim() !== legacy) return;
-  localSettings.value.sherpa_onnx_ref_audio_path = imported.path;
+  if (currentRefAudio() !== legacy) return;
+  voiceModels.sherpa_onnx_ref_audio_path = imported.path;
 };
 
 // --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
