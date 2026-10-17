@@ -4,7 +4,7 @@
 //   pnpm tauri:build:gpu                     # = node scripts/... --variant=cuda12 --build
 //   node scripts/package-desktop-sherpa-gpu-libs.mjs --variant cuda13   # 只做准备、打印命令
 //
-// 背景：`SHERPA_ONNX_GPU=cuda12|cuda13` 时（见 src-tauri/patches/sherpa-onnx-sys/build.rs）
+// 背景：`SHERPA_ONNX_GPU=cuda12|cuda13` 时（见 crates/sherpa-onnx-sys/build.rs）
 // sherpa-onnx 走 **shared** 链接，官方 CUDA 包只提供动态库：
 //   - 可执行文件 `DT_NEEDED: libsherpa-onnx-c-api.so` / `onnxruntime.dll`；
 //   - CUDA 执行提供方（`libonnxruntime_providers_cuda.so` / `.dll`）由 ONNX Runtime

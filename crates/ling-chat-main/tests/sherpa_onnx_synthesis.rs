@@ -65,7 +65,7 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
     let model_type = std::env::var("SHERPA_MODEL_TYPE").unwrap_or_else(|_| "matcha".into());
     let language = std::env::var("SHERPA_LANG").unwrap_or_else(|_| "zh".into());
     // 设 SHERPA_USE_GPU=1 可实跑一次 GPU 后端（需带 GPU 的预编译包，见
-    // src-tauri/patches/sherpa-onnx-sys/build.rs）；后端不可用时会回退 CPU。
+    // crates/sherpa-onnx-sys/build.rs）；后端不可用时会回退 CPU。
     let use_gpu = std::env::var("SHERPA_USE_GPU").is_ok_and(|v| v != "0" && !v.is_empty());
     // 排查 provider 选择/回退原因时加 `RUST_LOG=info`（GPU 相关的告警都在 tracing 里）。
     let _ = tracing_subscriber::fmt()

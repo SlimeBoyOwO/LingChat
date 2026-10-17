@@ -166,7 +166,7 @@ impl SherpaOnnxAdapter {
     }
 
     /// 链接进来的 sherpa-onnx 预编译包是不是官方 CUDA 包（见
-    /// `src-tauri/patches/sherpa-onnx-sys/build.rs`）。
+    /// `crates/sherpa-onnx-sys/build.rs`）。
     #[cfg(any(
         target_os = "windows",
         all(target_os = "linux", target_arch = "x86_64")
