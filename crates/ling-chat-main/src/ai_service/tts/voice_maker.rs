@@ -603,9 +603,19 @@ impl VoiceMaker {
                                             resolved.display()
                                         );
                                     },
-                                    Err(e) => tracing::warn!(
-                                        "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}"
-                                    ),
+                                    Err(e) => {
+                                        // Android 上早期版本的设置里可能存着 `content://` URI
+                                        // （新导入的都会先落到应用数据目录）。这里没有 AppHandle，
+                                        // 用不了 SAF 桥，只能提示用户重新导入一次。
+                                        let hint = if ref_path.starts_with("content://") {
+                                            "（该路径是 Android 的 content:// URI，请在角色设置的语音页重新导入参考音频）"
+                                        } else {
+                                            ""
+                                        };
+                                        tracing::warn!(
+                                            "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}{hint}"
+                                        );
+                                    },
                                 }
                             },
                             (Some(_), None) | (None, Some(_)) => tracing::warn!(
