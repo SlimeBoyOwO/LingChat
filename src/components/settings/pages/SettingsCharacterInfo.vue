@@ -205,6 +205,67 @@
                   </button>
                 </div>
 
+                <!-- 合成采样参数：留空=默认（后端缺省 1.0），调低更稳定、更贴近参考音色 -->
+                <div
+                  class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-3"
+                >
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.temperature") }}
+                    </label>
+                    <input
+                      v-model="gsvTemperature"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.topP") }}
+                    </label>
+                    <input
+                      v-model="gsvTopP"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="1"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.speed") }}
+                    </label>
+                    <input
+                      v-model="gsvSpeedFactor"
+                      type="number"
+                      step="0.05"
+                      min="0.5"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <p class="col-span-full text-xs text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.samplingDesc") }}
+                  </p>
+                </div>
+
+                <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
+                <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <summary class="cursor-pointer text-sm font-bold text-white/70">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
+                  </summary>
+                  <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
+                  </p>
+                </details>
+
                 <div v-if="gsvEmoEnabled" class="space-y-3">
                   <div
                     v-for="cat in GSV_EMO_CATEGORIES"
@@ -1085,6 +1146,30 @@ const gsvEmoField = (cat: string, key: "gsv_emo_texts" | "gsv_emo_voice_files") 
       voiceModels[key] = map;
     },
   });
+
+// 合成采样参数：空串删除键（留空=后端默认），非空转数字。
+// 预创建 computed 供模板稳定绑定，避免每次渲染重建。
+const gsvSamplingField = (key: "gsv_temperature" | "gsv_top_p" | "gsv_speed_factor") =>
+  computed({
+    get: () => {
+      const v = ensureVoiceModels()[key];
+      return v === undefined || v === null ? "" : String(v);
+    },
+    set: (val: string | number) => {
+      const trimmed = String(val).trim();
+      const voiceModels = ensureVoiceModels();
+      if (trimmed === "") {
+        delete voiceModels[key];
+        return;
+      }
+      const n = Number(trimmed);
+      if (Number.isFinite(n)) voiceModels[key] = n;
+    },
+  });
+
+const gsvTemperature = gsvSamplingField("gsv_temperature");
+const gsvTopP = gsvSamplingField("gsv_top_p");
+const gsvSpeedFactor = gsvSamplingField("gsv_speed_factor");
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
