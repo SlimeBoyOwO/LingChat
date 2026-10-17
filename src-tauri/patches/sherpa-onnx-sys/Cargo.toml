@@ -1,0 +1,38 @@
+# 本目录是 crates.io 上 sherpa-onnx-sys 1.13.5 的 vendored 副本，只改了 build.rs：
+# 支持用 `SHERPA_ONNX_GPU=cuda12|cuda13` 下载官方 CUDA 版预编译包（详见 build.rs 顶部注释
+# 与 README.md）。上游结构、features、版本号保持原样，升级 sherpa-onnx 时整目录替换即可。
+# 该副本通过 workspace 根 Cargo.toml 的 `[patch.crates-io]` 生效。
+[package]
+name = "sherpa-onnx-sys"
+version = "1.13.5"
+edition = "2021"
+description = "Raw FFI bindings to the sherpa-onnx C API"
+license = "Apache-2.0"
+repository = "https://github.com/k2-fsa/sherpa-onnx"
+readme = "README.md"
+links = "sherpa-onnx"
+
+keywords = ["ffi", "speech", "sherpa-onnx", "bindings"]
+categories = ["external-ffi-bindings"]
+
+include = [
+    "src/**",
+    "build.rs",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE*",
+]
+
+[features]
+default = ["static"]
+static = []
+shared = []
+
+[build-dependencies]
+bzip2 = "0.4"
+tar = "0.4"
+ureq = { version = "2.12", features = ["proxy-from-env"] }
+
+[package.metadata.docs.rs]
+default-features = false
+features = []
