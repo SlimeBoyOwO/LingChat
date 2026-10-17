@@ -511,6 +511,7 @@ import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services
 import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
+import * as TtsLocal from "@/api/services/tts/tts-local";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { audioDialogFilters } from "@/utils/dialogFilters";
@@ -798,6 +799,28 @@ const applySherpaModelDefaults = (modelId: string) => {
   if (model.voice) voiceModels.sherpa_onnx_voice = model.voice;
 };
 
+/**
+ * 历史遗留的 `content://` 参考音频迁移成应用数据目录里的本地 WAV。
+ *
+ * 早期版本把 dialog 给的路径原样写进设置，Android 上那是 `content://` URI，
+ * Rust 的 `std::fs` 读不了 —— 试听会报错，聊天时零样本克隆则静默退化成普通合成。
+ * 迁移走已有的导入命令：Rust 侧经 SAF（ContentResolver）拿到真实文件名，并统一
+ * 转码成 16-bit PCM WAV。
+ *
+ * 迁移后字段值与库里存的不一致，所以底部「保存」会亮起——值要落库才真正生效。
+ */
+const migrateLegacyRefAudioPath = async () => {
+  const roleId = editRoleId.value;
+  const legacy = String(localSettings.value.sherpa_onnx_ref_audio_path ?? "").trim();
+  if (!legacy.startsWith("content://")) return;
+  const imported = await TtsLocal.migrateSherpaRefAudio(legacy);
+  if (!imported) return;
+  // 异步期间用户可能切了角色、或者自己改掉了这一项，只在仍是原值时写回。
+  if (editRoleId.value !== roleId) return;
+  if (String(localSettings.value.sherpa_onnx_ref_audio_path ?? "").trim() !== legacy) return;
+  localSettings.value.sherpa_onnx_ref_audio_path = imported.path;
+};
+
 // --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
 
 const fieldModel = (field: FieldSchema) => {
@@ -1073,6 +1096,7 @@ watch(
       resourceRevision.value = 0;
       localSettings.value = JSON.parse(JSON.stringify(draft.settings));
       migrateLegacyVoiceModelFields();
+      void migrateLegacyRefAudioPath();
       if (!localSettings.value.voice_lang) {
         localSettings.value.voice_lang = "ja";
       }
