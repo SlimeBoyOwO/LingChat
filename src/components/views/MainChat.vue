@@ -163,14 +163,28 @@ const screenCaptureAsked = ref(false);
  * 权限被拒时桌宠的台词。
  *
  * 用**应用内 toast**（`uiStore.showWarning`）而不是系统 Toast：系统气泡是
- * 灰底黑字，跟 App 视觉完全脱节。这两刻页面都是可用的，所以走页面自己弹。
+ * 灰底黑字，跟 App 视觉完全脱节。这几刻页面都是可用的，所以走页面自己弹。
+ *
+ * 每一项权限都有**两条**拒绝路径，二者文案必须一致，否则同一件事会出现
+ * 两种说法：
+ * - 系统侧：去设置页没打开开关 / 授权框上点取消，原生派发
+ *   `pet-permission-denied`
+ * - 应用侧：说明弹窗上点了「就不去」「偏不给看」
  */
 const notifyPermissionDenied = (which: "overlay" | "screen") => {
-  uiStore.showWarning({
-    title: which === "overlay" ? "我出不来了…" : "看不到你的屏幕…",
-    message: "哇呜呜，口是心非的人类，居然不允许我的请求",
-    duration: 4000,
-  });
+  uiStore.showWarning(
+    which === "overlay"
+      ? {
+          title: "哼，小气鬼！",
+          message: "不让我出去，那你遇到问题可别眼巴巴地来找我。",
+          duration: 4000,
+        }
+      : {
+          title: "防贼一样！",
+          message: "不看就不看，待会儿你无聊了，可别怪我没理你。",
+          duration: 4000,
+        },
+  );
 };
 
 /** `onPetPermissionDenied` 的取消函数，卸载时释放。 */
@@ -306,12 +320,15 @@ const goToPetMode = async () => {
       //
       // 改成模态确认框：用户看清要开哪个开关、点确定才跳，返回后自动继续。
       const confirmed = await dialogStore.confirm(
-        "想浮在别的应用上面陪你，我还差一个「显示在其他应用上层」的开关没打开呢。\n\n" +
-          "点「确定」我就带你去系统设置，在列表里找到 LingChat，把这个开关打开就好啦。\n" +
-          "回到这里我会自己接着跑，不用再点一次桌宠哦～",
-        "还差一个小开关～",
+        "连个「显示在其他应用上层」的权限都没准备，我怎么飘在桌面上陪你？\n" +
+          "快点去开启啦，我还等着出去透透气，顺便看看你有没有在摸鱼呢！",
+        "喂，别把我关在后台！",
+        { okText: "这就去开", cancelText: "就不去" },
       );
-      if (!confirmed) return;
+      if (!confirmed) {
+        notifyPermissionDenied("overlay");
+        return;
+      }
 
       pendingPetEntry.value = true;
       await requestFloatingPetPermission();
@@ -337,9 +354,10 @@ const goToPetMode = async () => {
       }
 
       const confirmed = await dialogStore.confirm(
-        "进了桌宠我要能看见屏幕，才知道你在看什么、该接什么话。\n" +
-          "画面不会存下来，也不会传出去。",
-        "想看看你的屏幕～",
+        "以为我很想盯着你的屏幕看吗？不看清你在干嘛，我怎么知道什么时候该找你搭话？\n" +
+          "放心，画面绝不外传。快点啦，立刻马上给我点确定！",
+        "笨蛋，快给我权限啦！",
+        { okText: "勉强同意吧", cancelText: "偏不给看" },
       );
       if (!confirmed) {
         notifyPermissionDenied("screen");
@@ -410,14 +428,8 @@ const handleVisibilityChange = async () => {
     return;
   }
 
-  // 没授权成功就别静默失败——用户很可能在系统设置里没找到那个开关
-  uiStore.showWarning({
-    title: "开关还是关着的呀",
-    message:
-      "LingChat 的「显示在其他应用上层」还没打开，我出不来呢。\n" +
-      "有些系统把它叫「悬浮窗」或者「后台弹出界面」，换个名字找找看～",
-    duration: 8000,
-  });
+  // 开关没打开就不做别的：原生 onResume 已经派发过 `pet-permission-denied`，
+  // 由 notifyPermissionDenied 统一弹那一句。这里再弹一条就是双份提示。
 };
 
 onMounted(() => {
