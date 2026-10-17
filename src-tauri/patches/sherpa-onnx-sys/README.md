@@ -40,8 +40,14 @@
 目录的绝对 rpath）**到不了最终二进制** —— Cargo 只把依赖包 build script 的
 `cargo:rustc-link-arg` 用在「该包自己的」target 上，而本包只有 lib，没有 bin/测试。
 实测 `cargo build` 产出的可执行文件里没有 RPATH/RUNPATH，Linux 的动态加载器又不会搜
-可执行文件所在目录，所以安装包必须把动态库放进**默认库搜索目录**（本仓库用 `/usr/lib`，
-见 `scripts/package-desktop-sherpa-gpu-libs.mjs`），不能指望「库放可执行文件旁边」。
+可执行文件所在目录，所以安装包必须把动态库放进**默认库搜索目录**（本仓库用 `/usr/lib`）。
+
+这些库由 `scripts/stage-desktop-runtime-libs.mjs` 统一暂存到 `src-tauri/.runtime-libs/`，
+再由 `src-tauri/tauri.conf.json` 的 `bundle.linux.*.files` 映射进安装包（该脚本挂在
+`build.beforeBundleCommand` 上，CPU 构建也会跑 —— Linux x86_64 的 ort `webgpu` 后端
+同样需要随包带上 `libwebgpu_dawn.so`）；CUDA 变体的入口是
+`scripts/package-desktop-sherpa-gpu-libs.mjs`（Windows 上额外生成 `--config` 覆盖，
+把 DLL 逐文件映射到资源根目录）。
 
 改动通过仓库根 `Cargo.toml` 的 `[patch.crates-io]` 生效；升级 sherpa-onnx 时整目录替换，
 再把这四处改回去即可。
