@@ -1,18 +1,30 @@
 package com.noiq.lingchat
 
+import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Color
 import android.graphics.drawable.ColorDrawable
 import android.os.Bundle
+import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.enableEdgeToEdge
+import com.noiq.floatingpet.PetVoice
+import com.noiq.floatingpet.ScreenCaptureManager
 import java.lang.ref.WeakReference
 
 private const val TAG = "LingChatMain"
+
+/**
+ * 屏幕截取自检的 intent extra 名。
+ *
+ * 用法见 [runScreenSelfTest]。
+ */
+private const val EXTRA_SCREEN_SELFTEST = "lingchat_screen_selftest"
 
 class MainActivity : TauriActivity() {
   /** [onWebViewCreate] 里拿到的 WebView，供转屏后强制重排用。 */
@@ -24,6 +36,9 @@ class MainActivity : TauriActivity() {
   /** 上一次已知的 WebView 尺寸。只有真的变了才派发 resize，见 [watchSizeChanges]。 */
   private var lastWebViewW = 0
   private var lastWebViewH = 0
+
+  /** 自检在等授权框回来：`onActivityResult` 里接着跑取帧。 */
+  private var pendingScreenSelfTest = false
 
   override fun onCreate(savedInstanceState: Bundle?) {
     enableEdgeToEdge()
@@ -44,12 +59,212 @@ class MainActivity : TauriActivity() {
     window.decorView.post {
       SafeAreaInsets.findWebView(window.decorView as ViewGroup)?.let(::prepareWebView)
     }
+
+    // 屏幕截取自检入口：见 maybeRunScreenSelfTest。
+    maybeRunScreenSelfTest(intent)
+  }
+
+  /**
+   * `launchMode` 是默认的 `standard`，所以「再次启动」有两种可能：复用了现有实例
+   * （走到这里）或者真的新建了一个（走 `onCreate`）。两条路都接上，自检才稳。
+   */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+    maybeRunScreenSelfTest(intent)
   }
 
   override fun onDestroy() {
     // 只清掉指向自己的那份引用；重建后的新实例会在自己的 onCreate 里重新登记
     if (instanceRef?.get() === this) instanceRef = null
     super.onDestroy()
+  }
+
+  /**
+   * 屏幕截取（MediaProjection）的授权结果回调。
+   *
+   * ## 为什么落在本类
+   *
+   * `MediaProjection` 的授权框只能由**某个 Activity** 用
+   * `startActivityForResult` 拉起（Service / Application 都不行），结果也只会
+   * 回到发起它的那个 Activity。插件侧的 `FloatingPetPlugin.requestScreenCapture`
+   * 是在 `activity`（就是本类实例）上发的 intent，所以回调必然落在这里。
+   *
+   * ## 为什么可以安全覆写
+   *
+   * `WryActivity`（`generated/` 下，自动生成）和 `TauriActivity` 都**没有**
+   * 覆写本方法 —— 已 grep 确认。`AppCompatActivity` 的实现只做「分发给
+   * Fragment」，本项目没有用 Fragment，所以不会抢到任何东西。
+   *
+   * ## 授权结果不回给前端
+   *
+   * 弹框是异步的，`requestScreenCapture` 命令在拉起弹框那一刻就已经 resolve
+   * 了（`reason=prompted`）。用户点「允许/拒绝」的结果只更新单例状态，
+   * 前端要靠下一次 `captureScreen` 的返回值反推（`ok=true` vs
+   * `reason=permission_required`）。
+   */
+  override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+    if (requestCode == ScreenCaptureManager.REQUEST_CODE) {
+      val granted = ScreenCaptureManager.onPermissionResult(this, resultCode, data)
+      Log.i(TAG, "屏幕截取授权回调：granted=$granted resultCode=$resultCode")
+
+      if (!granted) {
+        // 用户在授权框上点了「取消 / 返回」。必须给个反馈 ——
+        // 否则弹框一关，用户完全不知道这件事其实没成。
+        notifyPermissionDenied("screen")
+        pendingScreenSelfTest = false
+        return
+      }
+
+      if (pendingScreenSelfTest) {
+        pendingScreenSelfTest = false
+        runScreenSelfTestCapture()
+      }
+      return
+    }
+    super.onActivityResult(requestCode, resultCode, data)
+  }
+
+  /**
+   * 把「权限被拒」告诉页面，由页面弹**应用内 toast**。
+   *
+   * ## 为什么不用系统 Toast（2026-10-17 用户要求改掉）
+   *
+   * 系统 Toast 是灰底黑字的系统气泡，跟 App 的视觉完全脱节，也不受主题控制。
+   * 而这两次拒绝其实都发生在**页面可用**的时刻：
+   *
+   * - 悬浮窗权限：从系统设置回来，Activity 已 resume、WebView 已恢复；
+   * - 屏幕截取：授权框关掉，Activity 回到前台。
+   *
+   * 所以推一个 `CustomEvent` 给页面，让它用自己的 `uiStore.showWarning`
+   * 弹 toast —— 样式、语气、主题都与 App 一致。
+   *
+   * 页面没接住（比如 WebView 恰好在重载）就静默丢掉：这只是提示，
+   * 丢了不影响任何功能。
+   *
+   * @param which `overlay`（悬浮窗权限）/ `screen`（屏幕截取）
+   */
+  private fun notifyPermissionDenied(which: String) {
+    val webView = mainWebView
+    if (webView == null) {
+      Log.w(TAG, "页面还没就绪，丢弃权限拒绝提示（which=$which）")
+      return
+    }
+    val js =
+      "window.dispatchEvent(new CustomEvent('pet-permission-denied'," +
+        "{detail:{which:'$which'}}))"
+    try {
+      webView.evaluateJavascript(js, null)
+      Log.i(TAG, "已通知页面：权限被拒（which=$which）")
+    } catch (t: Throwable) {
+      Log.w(TAG, "派发权限拒绝提示失败（可忽略）", t)
+    }
+  }
+
+  /**
+   * 悬浮窗权限的「拒绝」检测。
+   *
+   * `ACTION_MANAGE_OVERLAY_PERMISSION` 打开的是系统设置页，**不会回传结果**
+   * （它不是 `startActivityForResult` 语义）。所以只能这样判：插件在发起跳转时
+   * 置位 [PetVoice.awaitingOverlayPermission]，回到前台时再看权限到底有没有拿到。
+   *
+   * 没拿到 → 让页面弹一句撒娇台词（应用内 toast，不是系统 Toast）。
+   * 拿到了就静默放过（正常流程，不需要提示）。
+   */
+  override fun onResume() {
+    super.onResume()
+    if (PetVoice.awaitingOverlayPermission) {
+      PetVoice.awaitingOverlayPermission = false
+      if (!Settings.canDrawOverlays(this)) {
+        Log.i(TAG, "用户没有授予悬浮窗权限，通知页面提示一句")
+        notifyPermissionDenied("overlay")
+      }
+    }
+  }
+
+  // ─── 屏幕截取自检（运维/调试入口）────────────────────────────
+
+  /**
+   * 用 adb 触发一次「授权 + 取帧」全链路自检，结果只写 logcat。
+   *
+   * ```bash
+   * adb shell am start -n com.noiq.lingchat/.MainActivity \
+   *     -a android.intent.action.MAIN -c android.intent.category.LAUNCHER \
+   *     --ez lingchat_screen_selftest true
+   * adb logcat -s LingChatMain ScreenCapture
+   * ```
+   *
+   * ## 为什么需要它
+   *
+   * `MediaProjection` 的授权是**进程级**的：每次冷启动都要重新点一次「允许」。
+   * 而正式链路（主动策略）是后台定时触发的 —— 想验证一次，得先开主动对话、
+   * 再把屏幕权重调大于 0、然后等策略随机选中 SCREEN，可能要等好几分钟。
+   * 这个入口把「授权 + 取帧」压成一条命令，几秒内就能看到结果。
+   *
+   * ## 为什么不落盘
+   *
+   * 自检只把**字节数 / 耗时 / JPEG 头**写进日志。
+   * 不写文件是刻意的：`MainActivity` 是 `exported="true"`（launcher 需要），
+   * 任何 App 都能发这个 intent。只要不落盘，最坏情况也只是「弹一次授权框」，
+   * 而授权框本身就要用户点「允许」—— 没有静默取景的可能。
+   *
+   * （正常链路 `captureScreen` 会把 JPEG 写进 `cacheDir` 给 Rust 读，
+   * 那条路径只有已授权的进程内调用能走，与这里无关。）
+   */
+  private fun maybeRunScreenSelfTest(intent: Intent?) {
+    if (intent?.getBooleanExtra(EXTRA_SCREEN_SELFTEST, false) != true) return
+    // 消费掉，避免 Activity 重建（转屏等）时重复触发
+    intent.removeExtra(EXTRA_SCREEN_SELFTEST)
+
+    Log.i(TAG, "屏幕截取自检：开始（isReady=${ScreenCaptureManager.isReady()}）")
+
+    if (ScreenCaptureManager.isReady()) {
+      runScreenSelfTestCapture()
+      return
+    }
+
+    val request = ScreenCaptureManager.requestIntent(this)
+    if (request == null) {
+      Log.w(TAG, "屏幕截取自检：系统不支持 MediaProjection")
+      return
+    }
+    pendingScreenSelfTest = true
+    startActivityForResult(request, ScreenCaptureManager.REQUEST_CODE)
+  }
+
+  /** 在后台线程取一帧，把可判断的信息写进日志（阻塞上限 3s，不能占主线程）。 */
+  private fun runScreenSelfTestCapture() {
+    Thread {
+      // token 是在前台服务的 onStartCommand 里换的（系统要求），
+      // 所以 onActivityResult 返回时可能还没就绪，先等一小会儿。
+      val readyDeadline = SystemClock.uptimeMillis() + 3_000
+      while (!ScreenCaptureManager.isReady() && SystemClock.uptimeMillis() < readyDeadline) {
+        Thread.sleep(50)
+      }
+      if (!ScreenCaptureManager.isReady()) {
+        Log.w(TAG, "屏幕截取自检：等 3s 仍未就绪，放弃")
+        return@Thread
+      }
+
+      val started = SystemClock.uptimeMillis()
+      val bytes = ScreenCaptureManager.captureJpeg(applicationContext)
+      val cost = SystemClock.uptimeMillis() - started
+
+      if (bytes == null) {
+        Log.w(TAG, "屏幕截取自检：取帧失败（${cost}ms）")
+        return@Thread
+      }
+
+      // JPEG 一定以 FF D8 FF 开头；不是的话说明拿到的不是一张 JPEG。
+      val magic = bytes.take(3).joinToString("") { "%02X".format(it.toInt() and 0xFF) }
+      // 全黑图压到 JPEG q85 通常只有几 KB；一张真实界面在 1024 长边下是 80~300 KB。
+      // 所以字节数本身就是「是不是真截到画面」的强信号。
+      val verdict = if (bytes.size > 30_000) "看起来正常" else "偏小，可能画面全黑"
+      Log.i(
+        TAG,
+        "屏幕截取自检：成功 ${bytes.size} 字节，耗时 ${cost}ms，JPEG 头=$magic，$verdict",
+      )
+    }.start()
   }
 
   /**

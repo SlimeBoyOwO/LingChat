@@ -149,9 +149,18 @@ pub struct PetStatus {
 /// 需要 `Deserialize`：字段由 Kotlin 插件的 `captureScreen` 返回，
 /// Rust 只做转发（见 `mobile.rs::capture_screen`）。
 ///
-/// ⚠️ 与其它命令不同，**失败不抛错**：`ok = false` 表示「功能未启用」
-/// （用户还没在系统设置里开启无障碍服务）这种**正常状态**，调用方应当据此
-/// 降级，而不是当成异常。只有「写文件失败」这类真异常才会 reject。
+/// ⚠️ 与其它命令不同，**失败不抛错**：`ok = false` 表示「功能未启用」这种
+/// **正常状态**（Android 上是用户还没同意 MediaProjection 的授权框），调用方
+/// 应当据此降级，而不是当成异常。只有「写文件失败」这类真异常才会 reject。
+///
+/// ## 2026-10-17：取景通道从无障碍切到 MediaProjection
+///
+/// 原实现走 `AccessibilityService.takeScreenshot`（API 30+），需要把用户赶去
+/// 系统设置里开无障碍服务 —— 为截一张图开一个无障碍服务属于大材小用，而且
+/// 部分 ROM / 虚拟化环境会直接挡掉。现在改成 `MediaProjection`：授权框由应用
+/// 自己弹（「允许 LingChat 开始截取您的屏幕内容吗？」），不用碰系统设置。
+///
+/// 代价：**每次进程重启都要重新授权**（无障碍是一次永久）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenCapture {
@@ -161,12 +170,59 @@ pub struct ScreenCapture {
     #[serde(default)]
     pub path: String,
     /// 最近观察到的前台包名，用作窥屏的语境；拿不到时为空串。
+    ///
+    /// ⚠️ Android 上**恒为空串**：`MediaProjection` 只给画面、不给包名。
+    /// 调用方不要依赖它做判断，它只用于日志/提示。
     #[serde(default)]
     pub foreground_package: String,
-    /// 失败原因，便于调用方区分「没开服务」和「截屏本身失败」：
-    /// `accessibility_service_disabled` / `capture_failed` / 空串（成功）。
+    /// 失败原因，便于调用方区分「没授权」和「截屏本身失败」：
+    ///
+    /// - `permission_required` —— 还没拿到 MediaProjection 授权。先调
+    ///   `request_screen_capture` 弹授权框，用户同意后再截
+    /// - `capture_failed` —— 已授权但等帧超时 / 转换失败（如投屏被系统中断）
+    /// - 空串 —— 成功
+    ///
+    /// （`accessibility_service_disabled` 是 2026-10-17 之前的旧值，已不再产生，
+    /// 消费方可以安全删掉对应分支。）
     #[serde(default)]
     pub reason: String,
+}
+
+/// 拉起屏幕截取授权框的结果。
+///
+/// 由 `request_screen_capture` 命令返回。**只表示「弹框有没有拉起来」**，
+/// 不表示用户点了什么 —— 用户在弹框上的选择是异步的，落在
+/// `MainActivity.onActivityResult` 里，前端拿不到。
+///
+/// 想知道到底能不能截，看下一次 `capture_screen` 的返回值：
+/// `ok = true` 说明已授权，`reason = permission_required` 说明没拿到。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenCapturePermission {
+    /// 命令本身是否成功（不代表用户同意）。
+    pub ok: bool,
+    /// - `already_granted` —— 进程内已授权，没有弹框（可以立刻截图）
+    /// - `prompted` —— 已拉起授权框，等用户操作
+    /// - `unsupported` —— 系统不支持（只有极老 ROM）
+    #[serde(default)]
+    pub reason: String,
+}
+
+/// 「屏幕截取授权是否已经拿到」的查询结果。
+///
+/// ## 为什么要单独一条命令，而不是复用 `captureScreen`
+///
+/// `captureScreen` 会**真的截一帧**（临时建 VirtualDisplay、等帧、压缩 JPEG），
+/// 代价是几百毫秒到几秒。而进桌宠前的门禁只需要知道「能不能截」，
+/// 不该为了问一句就把屏幕拍下来。所以单独给一条只读 `isReady()` 的查询。
+///
+/// `MediaProjection` 的授权是**进程级**的：进程重启后必然回到 `false`，
+/// 需要重新弹一次系统授权框。前端据此决定要不要先弹说明。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ScreenCaptureReady {
+    /// 已经拿到授权、可以随时截图。
+    pub ready: bool,
 }
 
 #[derive(Debug, thiserror::Error)]

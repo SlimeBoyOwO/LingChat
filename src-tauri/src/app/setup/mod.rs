@@ -81,14 +81,30 @@ pub fn setup(
     // 方向是反的：`ling-chat-main` 是底层 crate，不能依赖
     // `tauri-plugin-floating-pet`（那是个 Tauri 插件）。所以由这里（app 层）把
     // 「怎么截一帧」注册进去 —— 闭包里转发到插件的 `capture_screen` 命令，那条
-    // 命令再落到无障碍服务的 `takeScreenshot`。详见
-    // `screen_analyzer::set_android_screen_capture` 的说明。
+    // 命令再落到 `ScreenCaptureManager` 的 MediaProjection 实现。
+    // 详见 `screen_analyzer::set_android_screen_capture` 的说明。
     //
     // 桌面端**不注册**：Windows 那条路自己走 GDI（`capture_screen_as_jpeg` 的
     // windows 分支），既读不到这个槽位也不需要它。
     //
-    // ⚠️ 注册成功 ≠ 能截到图。用户还没在系统设置里开启无障碍服务时，回调返回
-    // `None`，屏幕策略照旧不触发 —— 与改造前行为一致，不引入新的错误路径。
+    // ## 2026-10-17：取景通道从无障碍换成 MediaProjection
+    //
+    // 无障碍 `takeScreenshot` 要把用户赶去系统设置里开服务，为截一张图开一个
+    // 无障碍服务属于大材小用，而且部分 ROM / 虚拟化环境会直接挡掉。改成
+    // MediaProjection 后，授权框由应用自己弹。
+    //
+    // ⚠️ 授权框**不在这里**弹，也不在插件里自动弹。
+    //
+    // 2026-10-17 起，授权时机统一收口到**进桌宠前的门禁**（前端
+    // `MainChat.goToPetMode`）：悬浮窗权限 + 屏幕截取授权两项齐备才允许进入。
+    // 主动策略是后台定时触发的，在那种时刻弹系统对话框既没上下文也吓人；
+    // 而「我要进桌宠」是用户主动发起的，那才是讲清楚「为什么要看你屏幕」的
+    // 合适时机。
+    //
+    // 所以本闭包只做一件事：取图。拿不到就返回 `None`，屏幕策略本轮作罢。
+    // 用户没授权时每次都拿不到，属于预期行为，不额外提示（拒绝那一下由
+    // `MainActivity.onActivityResult` 派发 `pet-permission-denied` 事件，
+    // 页面收到后弹**应用内 toast**）。
     #[cfg(target_os = "android")]
     {
         let capture_handle = app.handle().clone();

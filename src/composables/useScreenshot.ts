@@ -71,6 +71,42 @@ export function useScreenshot() {
     }
   }
 
+  /**
+   * 直接抓一帧当前屏幕，**不框选、不走拍照/相册**。
+   *
+   * ## 谁用这条
+   *
+   * Android 桌宠模式。桌面端与聊天页仍然走 {@link start}：
+   *
+   * - 桌面元素杂，框选有意义 → 保留 `screenshot-overlay` 那条链路
+   * - 手机一屏就那么点内容，框选纯属多一步 → 整屏送进去反而更准
+   * - 桌宠态下我们的 WebView 被搬在 `TYPE_APPLICATION_OVERLAY` 悬浮窗里，
+   *   也开不出全屏覆盖窗口来框选
+   *
+   * ## 与 {@link start} 的关键差别
+   *
+   * `start` 只是「发起」，真正的图由 `screenshot:captured` 事件异步送回来；
+   * 本函数**直接拿到 base64**，不依赖任何事件 —— 所以也不会有
+   * `isCapturing` 卡死的风险（`finally` 一定复位）。
+   */
+  async function capture(options?: StartScreenshotOptions) {
+    if (isCapturing.value) return;
+    isCapturing.value = true;
+    try {
+      const base64 = await invoke<string>("take_screenshot_base64");
+      if (!base64) throw new Error("截到的是空图");
+      screenshotBase64.value = base64;
+      hasScreenshot.value = true;
+    } catch (error) {
+      console.error("直接截图失败:", error);
+      options?.onError?.(error);
+    } finally {
+      // 必须无条件复位：这里没有「等事件回来」的异步尾巴，
+      // 失败时更要复位，否则按钮会永久失效（`start` 踩过这个坑）。
+      isCapturing.value = false;
+    }
+  }
+
   function clear() {
     if (hasScreenshot.value) {
       hasScreenshot.value = false;
@@ -85,6 +121,7 @@ export function useScreenshot() {
     init,
     destroy,
     start,
+    capture,
     clear,
   };
 }
