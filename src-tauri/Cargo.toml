@@ -62,3 +62,4 @@ rustls = { workspace = true }
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 tauri-plugin-global-shortcut = "2"
+tauri-plugin-autostart = "2"

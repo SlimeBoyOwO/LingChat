@@ -20,6 +20,11 @@ pub fn build() -> tauri::Builder<tauri::Wry> {
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .plugin(
+            tauri_plugin_autostart::Builder::new()
+                .args(["--autostart"])
+                .build(),
+        )
         .plugin({
             use ling_chat_main::ai_service::asr::global_hotkey::{self, PttGlobalEvent};
             use tauri::Emitter;
