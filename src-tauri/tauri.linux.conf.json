@@ -1,17 +1,25 @@
 {
   "build": {
-    "beforeBundleCommand": "node scripts/prepare-linux-libs.mjs"
+    "beforeBundleCommand": "node scripts/prepare-linux-libs.mjs && node scripts/stage-desktop-runtime-libs.mjs"
   },
   "bundle": {
     "linux": {
       "deb": {
         "files": {
-          "/usr/lib/LingChat/lib": "linux-libs"
+          "/usr/lib/LingChat/lib": "linux-libs",
+          "/usr/lib": ".runtime-libs/"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib/LingChat/lib": "linux-libs",
+          "/usr/lib": ".runtime-libs/"
         }
       },
       "appimage": {
         "files": {
-          "/usr/lib/LingChat/lib": "linux-libs"
+          "/usr/lib/LingChat/lib": "linux-libs",
+          "/usr/lib": ".runtime-libs/"
         }
       }
     }
