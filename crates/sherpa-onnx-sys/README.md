@@ -6,7 +6,13 @@
 
 ## 本仓库的改动（vendored）
 
-本目录是 crates.io 上 `sherpa-onnx-sys` 1.13.5 的副本，只改了 `build.rs`：
+本目录是 crates.io 上 `sherpa-onnx-sys` 1.13.5 的副本，改动集中在 `build.rs`，另有一个
+`src/lib.rs` 里的常量：
+
+- `src/lib.rs` 新增 `pub const GPU_VARIANT: &str`（值由 `build.rs` 通过
+  `cargo:rustc-env=SHERPA_ONNX_GPU_VARIANT` 注入），调用方
+  `crates/ling-chat-main/.../sherpa_onnx.rs` 用它判断链接进来的 sherpa 是 CPU 还是
+  CUDA 包，从而决定要不要真的把 GPU provider 交给 ONNX Runtime。`build.rs` 的改动：
 
 1. **按需下载 GPU 版预编译包**。设 `SHERPA_ONNX_GPU=cuda12|cuda13`（缺省
    `cpu`，即上游行为）后，linux-x64 / win-x64 会改下官方 CUDA 包
@@ -50,7 +56,8 @@
 把 DLL 逐文件映射到资源根目录）。
 
 改动通过仓库根 `Cargo.toml` 的 `[patch.crates-io]` 生效；升级 sherpa-onnx 时整目录替换，
-再把这四处改回去即可。
+再把这几处改回去即可：`build.rs`（选包 + 链接）、`src/lib.rs` 的 `GPU_VARIANT`、
+`Cargo.toml` 与 `README.md` 里的说明性注释，以及按本仓库 `rustfmt.toml` 重排的排版。
 
 ### Supported functions
 
