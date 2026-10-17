@@ -776,12 +776,22 @@ impl MessageGenerator {
         // 同一段原文已经在带 tool_call 的助手行里，留着就是同一句话说两遍。
         let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
 
-        // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
+        // 历史写入和前端发布共用顺序边界，工具栅栏在两者完成后回 ack。
         let app = self.deps.app.clone();
+        let mut commit_deps = SentenceDeps::from(&self.deps);
+        commit_deps.sentence_lines = Some(sentence_lines.clone());
         let publisher = tokio::spawn(async move {
-            publish_ordered(publish_rx, |resp| {
-                app.emit(event_names::AI_REPLY, resp)
-                    .map_err(anyhow::Error::from)
+            publish_ordered(publish_rx, |index, resp| {
+                let deps = commit_deps.clone();
+                let app = app.clone();
+                async move {
+                    if !add_assistant_line(&deps, &resp, Some(index)).await? {
+                        return Ok(false);
+                    }
+                    app.emit(event_names::AI_REPLY, &resp)?;
+                    crate::plugin_contract::notify_reply(&resp);
+                    Ok(true)
+                }
             })
             .await
         });
@@ -796,11 +806,9 @@ impl MessageGenerator {
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
             let thinking_buf = thinking_buf.clone();
-            let sentence_lines = sentence_lines.clone();
             consumer_tasks.push(tokio::spawn(async move {
                 // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
-                let mut sdeps = SentenceDeps::from(&deps);
-                sdeps.sentence_lines = Some(sentence_lines.clone());
+                let sdeps = SentenceDeps::from(&deps);
                 loop {
                     let item = {
                         let mut rx = sentence_rx.lock().await;
@@ -827,10 +835,9 @@ impl MessageGenerator {
                             (sentence, index, is_final)
                         },
                     };
-                    let resp = match consume_sentence(
+                    let resp = match prepare_sentence(
                         &sdeps,
                         sentence,
-                        Some(index),
                         &user_message,
                         is_final,
                         user_message_seq,
@@ -845,12 +852,18 @@ impl MessageGenerator {
                             None
                         },
                     };
-                    let _ = publish_tx
+                    // 每个 worker 最多保留一个未提交结果，避免慢句使排序缓冲无限增长。
+                    let (completed, committed) = oneshot::channel();
+                    if publish_tx
                         .send(PublishItem::Reply {
                             index,
                             response: resp,
+                            completed,
                         })
-                        .await;
+                        .await.is_err() || committed.await.is_err()
+                    {
+                        break;
+                    }
                     if is_final {
                         break;
                     }
@@ -867,7 +880,20 @@ impl MessageGenerator {
             thinking_buf,
             tool_calls_seen,
         );
-        let output = producer.run().await.context("StreamProducer 失败")?;
+        let output = match producer.run().await.context("StreamProducer 失败") {
+            Ok(output) => output,
+            Err(error) => {
+                publisher.abort();
+                for task in &consumer_tasks {
+                    task.abort();
+                }
+                for task in consumer_tasks {
+                    let _ = task.await;
+                }
+                let _ = publisher.await;
+                return Err(error);
+            },
+        };
         let acc = output.accumulated;
 
         for t in consumer_tasks {
@@ -983,10 +1009,12 @@ impl MessageGenerator {
 /// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
 /// `ai:reply` 已 emit"严格先于"工具事件 emit"。
 #[allow(clippy::large_enum_variant)]
+#[derive(Debug)]
 pub(super) enum PublishItem {
     Reply {
         index: usize,
         response: Option<ReplyResponse>,
+        completed: oneshot::Sender<()>,
     },
     BeforeTools {
         index: usize,
@@ -1008,14 +1036,15 @@ impl PublishItem {
 /// - `true`：某条 `is_final` 的回复已 emit；
 /// - `false`：`emit` 失败而中断，或通道关闭时都没等到终句。
 ///
-/// `emit` 失败会立即返回，`pending` 里尚未回传的 ack 随函数一起被丢弃，
-/// 工具侧因此 fail-closed（不会在回复发布失败后继续执行工具）。
-///
-/// 生产与顺序契约测试共用本函数（`ordering_tests`）。
-pub(super) async fn publish_ordered(
+/// 提交、发布失败或会话过期时立即停止；未完成的 worker 和工具栅栏被唤醒退出。
+pub(super) async fn publish_ordered<F, Fut>(
     mut rx: mpsc::Receiver<PublishItem>,
-    mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
-) -> bool {
+    mut commit_and_emit: F,
+) -> bool
+where
+    F: FnMut(usize, ReplyResponse) -> Fut,
+    Fut: std::future::Future<Output = Result<bool>>,
+{
     let mut next_index = 0usize;
     let mut reply_before_fence = false;
     let mut pending: HashMap<usize, PublishItem> = HashMap::new();
@@ -1025,24 +1054,28 @@ pub(super) async fn publish_ordered(
             next_index += 1;
             match item {
                 PublishItem::Reply {
+                    index,
                     response: Some(resp),
-                    ..
+                    completed,
                 } => {
                     let is_final = resp.is_final;
-                    if let Err(e) = emit(&resp) {
-                        tracing::warn!("emit ai:reply 失败: {e}");
-                        return false;
+                    match commit_and_emit(index, resp).await {
+                        Ok(true) => {},
+                        Ok(false) => return false,
+                        Err(e) => {
+                            tracing::warn!("提交或发布 ai:reply 失败: {e}");
+                            return false;
+                        },
                     }
-                    // 插件信号：同一条回复也转发给订阅了 ai_reply 的插件
-                    //（补字段与派发在启动时登记的回调里，见 plugin_contract::set_reply_hook）。
-                    // 测试环境未登记回调，这里自然跳过。
-                    crate::plugin_contract::notify_reply(&resp);
+                    let _ = completed.send(());
                     reply_before_fence = true;
                     if is_final {
                         return true;
                     }
                 },
-                PublishItem::Reply { response: None, .. } => {},
+                PublishItem::Reply { response: None, completed, .. } => {
+                    let _ = completed.send(());
+                },
                 PublishItem::BeforeTools { ack, .. } => {
                     let _ = ack.send(reply_before_fence);
                     reply_before_fence = false;
@@ -1113,6 +1146,27 @@ pub(crate) async fn consume_sentence(
     thinking_buf: &Mutex<String>,
     overrides: &ReplyOverrides,
 ) -> Result<Option<ReplyResponse>> {
+    let response = prepare_sentence(
+        deps, sentence, user_message, is_final, user_message_seq, thinking_buf, overrides,
+    ).await?;
+    if let Some(response) = response {
+        if add_assistant_line(deps, &response, sentence_index).await? {
+            return Ok(Some(response));
+        }
+    }
+    Ok(None)
+}
+
+// 并发阶段只准备响应；固定台词通过 consume_sentence 顺序准备并提交。
+async fn prepare_sentence(
+    deps: &SentenceDeps,
+    sentence: String,
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
+    overrides: &ReplyOverrides,
+) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
     }
@@ -1142,19 +1196,6 @@ pub(crate) async fn consume_sentence(
         let thinking = thinking_buf.lock().await;
         if !thinking.is_empty() {
             response.thinking = Some(thinking.clone());
-        }
-    }
-
-    // 4. 写入 GameStatus
-    add_assistant_line(deps, &response, sentence_index).await?;
-
-    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
-    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
-    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
-    {
-        let gs = deps.game_status.lock().await;
-        if gs.preview_generation != deps.generation {
-            return Ok(None);
         }
     }
 
@@ -1348,18 +1389,7 @@ async fn add_assistant_line(
     deps: &SentenceDeps,
     response: &ReplyResponse,
     sentence_index: Option<usize>,
-) -> Result<()> {
-    {
-        let gs = deps.game_status.lock().await;
-        if gs.preview_generation != deps.generation {
-            tracing::warn!(
-                "[Generator] 丢弃过期试玩回复（代号 {} != 当前 {}），试玩已结束",
-                deps.generation,
-                gs.preview_generation
-            );
-            return Ok(());
-        }
-    }
+) -> Result<bool> {
     let line = LineBase {
         content: response.message.clone(),
         sender_role_id: response.role_id,
@@ -1375,11 +1405,118 @@ async fn add_assistant_line(
         ..Default::default()
     };
     let mut gs = deps.game_status.lock().await;
+    if gs.preview_generation != deps.generation {
+        return Ok(false);
+    }
     gs.add_line(&deps.db, line).await?;
     // 台账：这一句落成了哪一行。工具闭环回填时按它抹掉「前导台词」先落的行。
     // 记录与写入同在一把锁里，另一个 consumer 插不进来，行下标不会错位。
     if let (Some(ledger), Some(index)) = (&deps.sentence_lines, sentence_index) {
         ledger.lock().await.push((index, gs.line_list.len() - 1));
     }
-    Ok(())
+    Ok(true)
+}
+
+#[cfg(test)]
+mod ordering_tests {
+    use super::*;
+
+    fn reply(index: usize, is_final: bool) -> (PublishItem, oneshot::Receiver<()>) {
+        let (completed, receiver) = oneshot::channel();
+        let mut response = ReplyResponse::new_reply();
+        response.message = index.to_string();
+        response.is_final = is_final;
+        (PublishItem::Reply { index, response: Some(response), completed }, receiver)
+    }
+
+    #[tokio::test]
+    async fn out_of_order_completion_commits_before_emitting_in_source_order() {
+        let (tx, rx) = mpsc::channel(4);
+        let (second, second_done) = reply(1, true);
+        let (first, first_done) = reply(0, false);
+        tx.send(second).await.unwrap();
+        tx.send(first).await.unwrap();
+        drop(tx);
+        let log = Arc::new(Mutex::new(Vec::new()));
+        let captured = log.clone();
+        assert!(publish_ordered(rx, move |index, response| {
+            let log = captured.clone();
+            async move {
+                assert_eq!(response.message, index.to_string());
+                log.lock().await.push(("history", index));
+                tokio::task::yield_now().await;
+                log.lock().await.push(("emit", index));
+                Ok(true)
+            }
+        }).await);
+        first_done.await.unwrap();
+        second_done.await.unwrap();
+        assert_eq!(*log.lock().await, vec![("history", 0), ("emit", 0), ("history", 1), ("emit", 1)]);
+    }
+
+    #[tokio::test]
+    async fn fence_waits_for_commit_and_emit() {
+        let (tx, rx) = mpsc::channel(4);
+        let (ack, mut fence) = oneshot::channel();
+        tx.send(PublishItem::BeforeTools { index: 1, ack }).await.unwrap();
+        let (first, done) = reply(0, false);
+        tx.send(first).await.unwrap();
+        drop(tx);
+        let (entered, waiting) = oneshot::channel();
+        let (release, released) = oneshot::channel();
+        let mut entered = Some(entered);
+        let mut released = Some(released);
+        let publisher = tokio::spawn(publish_ordered(rx, move |_, _| {
+            let entered = entered.take().unwrap();
+            let released = released.take().unwrap();
+            async move {
+                entered.send(()).unwrap();
+                released.await.unwrap();
+                Ok(true)
+            }
+        }));
+        waiting.await.unwrap();
+        assert!(matches!(fence.try_recv(), Err(oneshot::error::TryRecvError::Empty)));
+        release.send(()).unwrap();
+        assert!(fence.await.unwrap());
+        done.await.unwrap();
+        assert!(!publisher.await.unwrap());
+    }
+
+    #[tokio::test]
+    async fn failed_or_stale_commit_stops_later_history_and_tools() {
+        for stale in [false, true] {
+            let (tx, rx) = mpsc::channel(4);
+            let (first, first_done) = reply(0, false);
+            let (last, last_done) = reply(2, true);
+            let (ack, fence) = oneshot::channel();
+            tx.send(last).await.unwrap();
+            tx.send(PublishItem::BeforeTools { index: 1, ack }).await.unwrap();
+            tx.send(first).await.unwrap();
+            drop(tx);
+            assert!(!publish_ordered(rx, move |index, _| async move {
+                assert_eq!(index, 0);
+                if stale { Ok(false) } else { Err(anyhow::anyhow!("injected commit failure")) }
+            }).await);
+            assert!(first_done.await.is_err());
+            assert!(last_done.await.is_err());
+            assert!(fence.await.is_err());
+        }
+    }
+
+    #[tokio::test]
+    async fn skipped_sentence_releases_worker_and_does_not_block_final() {
+        let (tx, rx) = mpsc::channel(2);
+        let (completed, skipped) = oneshot::channel();
+        tx.send(PublishItem::Reply { index: 0, response: None, completed }).await.unwrap();
+        let (last, done) = reply(1, true);
+        tx.send(last).await.unwrap();
+        drop(tx);
+        assert!(publish_ordered(rx, |index, _| async move {
+            assert_eq!(index, 1);
+            Ok(true)
+        }).await);
+        skipped.await.unwrap();
+        done.await.unwrap();
+    }
 }
