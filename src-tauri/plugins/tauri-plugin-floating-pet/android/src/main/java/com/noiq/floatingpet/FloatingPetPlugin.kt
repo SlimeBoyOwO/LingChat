@@ -1302,7 +1302,9 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
     @Command
     fun checkPermission(invoke: Invoke) {
-        // resolve(Boolean) 无对应重载，Boolean 走 resolveObject 序列化
+        // resolve(Boolean) 无对应重载，Boolean 走 resolveObject（Jackson 序列化简单类型没问题）。
+        // 反过来：JSObject 必须走 resolve —— resolveObject 用 Jackson 序列化
+        // org.json.JSONObject 会得到 `{}`，Rust 侧报 missing field。
         invoke.resolveObject(hasOverlayPermission())
     }
 
@@ -1360,7 +1362,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         val params = layoutParams
         val view = petView
         val visible = petDetached && view != null
-        invoke.resolveObject(
+        invoke.resolve(
             JSObject().apply {
                 put("supported", true)
                 put("granted", hasOverlayPermission())
@@ -1416,7 +1418,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         if (!ScreenCaptureManager.isReady()) {
             // 这不是「错误」，是「还没授权」。返回结构化结果让调用方区分，
             // 不要 reject（reject 会被当成链路故障）。
-            invoke.resolveObject(
+            invoke.resolve(
                 JSObject().apply {
                     put("ok", false)
                     put("path", "")
@@ -1429,7 +1431,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
         val bytes = ScreenCaptureManager.captureJpeg(activity)
         if (bytes == null) {
-            invoke.resolveObject(
+            invoke.resolve(
                 JSObject().apply {
                     put("ok", false)
                     put("path", "")
@@ -1443,7 +1445,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         try {
             val file = File(activity.cacheDir, SCREEN_CAPTURE_FILE_NAME)
             file.writeBytes(bytes)
-            invoke.resolveObject(
+            invoke.resolve(
                 JSObject().apply {
                     put("ok", true)
                     put("path", file.absolutePath)
@@ -1488,7 +1490,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     fun isScreenCaptureReady(invoke: Invoke) {
         if (ScreenCaptureManager.isReady()) {
             Log.i(TAG, "查询屏幕截取授权：ready=true（立即）")
-            invoke.resolveObject(JSObject().apply { put("ready", true) })
+            invoke.resolve(JSObject().apply { put("ready", true) })
             return
         }
 
@@ -1507,7 +1509,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 "查询屏幕截取授权：ready=$ready" +
                     if (ready) "（等了 ${SCREEN_READY_WAIT_MS}ms 内就绪）" else "（等待超时，判定未授权）"
             )
-            invoke.resolveObject(JSObject().apply { put("ready", ready) })
+            invoke.resolve(JSObject().apply { put("ready", ready) })
         }.start()
     }
 
@@ -1533,7 +1535,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun requestScreenCapture(invoke: Invoke) {
         if (ScreenCaptureManager.isReady()) {
-            invoke.resolveObject(
+            invoke.resolve(
                 JSObject().apply {
                     put("ok", true)
                     put("reason", "already_granted")
@@ -1544,7 +1546,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
         val intent = ScreenCaptureManager.requestIntent(activity)
         if (intent == null) {
-            invoke.resolveObject(
+            invoke.resolve(
                 JSObject().apply {
                     put("ok", false)
                     put("reason", "unsupported")
@@ -1557,7 +1559,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
         activity.runOnUiThread {
             try {
                 activity.startActivityForResult(intent, ScreenCaptureManager.REQUEST_CODE)
-                invoke.resolveObject(
+                invoke.resolve(
                     JSObject().apply {
                         put("ok", true)
                         put("reason", "prompted")
