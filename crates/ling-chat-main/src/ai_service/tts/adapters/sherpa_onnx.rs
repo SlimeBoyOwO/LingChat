@@ -858,6 +858,15 @@ fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
 }
 
 pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
+    // Android 的 content:// URI（早期版本直接存进设置的路径）读不了，早点说清楚
+    // 该怎么办，别让用户看到下面那句「仅支持 WAV」而摸不着头脑。
+    if path.to_string_lossy().starts_with("content://") {
+        return Err(anyhow!(
+            "参考音频是 Android 的 content:// URI，请先在语音设置里重新导入一次（会复制到应用数据目录）: {}",
+            path.display()
+        ));
+    }
+
     // 仅支持 WAV 格式（sherpa-onnx 零样本克隆要求 WAV 输入）
     let ext = path
         .extension()

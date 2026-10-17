@@ -268,6 +268,34 @@ export function importSherpaRefAudio(path: string): Promise<SherpaRefAudioImport
   return invoke<SherpaRefAudioImport>("import_sherpa_ref_audio", { path });
 }
 
+/** 本次会话里已迁移过的 `content://` 参考音频（同一个 URI 只导入一次，别重复落盘）。 */
+const migratedRefAudio = new Map<string, SherpaRefAudioImport>();
+
+/**
+ * 迁移历史遗留的 `content://` 参考音频路径（Android）。
+ *
+ * 早期版本把 dialog 给的路径原样写进角色设置，Android 上那是 `content://` URI：
+ * Rust 的 `std::fs` 读不了，试听直接报错、聊天时的零样本克隆会静默退化。
+ * 这里借已有的导入命令把它落到应用数据目录——Rust 侧经 SAF（ContentResolver）
+ * 拿到真实文件名，并统一转码成 16-bit PCM WAV。
+ *
+ * 不是 `content://`、或迁移失败（URI 授权已失效等）时返回 `null`，调用方保留原值。
+ */
+export async function migrateSherpaRefAudio(path: string): Promise<SherpaRefAudioImport | null> {
+  if (!path.startsWith("content://")) return null;
+  const cached = migratedRefAudio.get(path);
+  if (cached) return cached;
+  try {
+    const imported = await importSherpaRefAudio(path);
+    migratedRefAudio.set(path, imported);
+    console.log("[tts-local] 已迁移 content:// 参考音频:", path, "->", imported.path);
+    return imported;
+  } catch (error) {
+    console.error("[tts-local] 迁移 content:// 参考音频失败:", error);
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
 // 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）
