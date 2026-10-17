@@ -10,6 +10,7 @@
 
 pub mod adapters;
 pub mod provider;
+pub mod text_language;
 pub mod voice_maker;
 
 // In-process SBV2 / Style-Bert-VITS2 local TTS engine (Task 1-10).
