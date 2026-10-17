@@ -4,13 +4,18 @@
 //   pnpm tauri:build:gpu                     # = node scripts/... --variant=cuda12 --build
 //   node scripts/package-desktop-sherpa-gpu-libs.mjs --variant cuda13   # 只做准备、打印命令
 //
-// 背景：`SHERPA_ONNX_GPU=cuda12|cuda13` 时（见 crates/sherpa-onnx-sys/build.rs）
-// sherpa-onnx 走 **shared** 链接，官方 CUDA 包只提供动态库：
-//   - 可执行文件 `DT_NEEDED: libsherpa-onnx-c-api.so` / `onnxruntime.dll`；
-//   - CUDA 执行提供方（`libonnxruntime_providers_cuda.so` / `.dll`）由 ONNX Runtime
-//     在运行期从 libonnxruntime 所在目录加载。
-// build.rs 只把这些库拷到 `target/<profile>/` 供开发机使用，`tauri build` 打的安装包
-// 不会自动带上它们 —— 装完启动就会因为找不到 libonnxruntime.so 直接失败。
+// 背景：GPU 变体由本脚本串起三件事：
+//   1. 用 scripts/fetch-sherpa-onnx-libs.mjs 按「本次编译的 sherpa-onnx 版本」下好官方
+//      CUDA 包，并把 SHERPA_ONNX_LIB_DIR 交给 cargo（上游 build.rs 见到它就跳过自己下载
+//      CPU 包）。库只会被拷到 `target/<profile>/` 供开发机使用，`tauri build` 打的安装包
+//      不会自动带上它们 —— 装完启动就会因为找不到 libonnxruntime.so 直接失败。
+//   2. 用 `--features sherpa-shared` 让 sherpa-onnx 走 **shared** 链接：官方 CUDA 包只
+//      提供动态库，而上游 build.rs 拒绝 static/shared 同时开（所以链接方式只能由 Cargo
+//      feature 决定，不能像以前那样在 build.rs 里按环境变量改）。于是：
+//        - 可执行文件 `DT_NEEDED: libsherpa-onnx-c-api.so` / `onnxruntime.dll`；
+//        - CUDA 执行提供方（`libonnxruntime_providers_cuda.so` / `.dll`）由 ONNX Runtime
+//          在运行期从 libonnxruntime 所在目录加载。
+//   3. 打包前把运行库暂存起来（见下一段）。
 //
 // 运行库的暂存与落点由 scripts/stage-desktop-runtime-libs.mjs 统一负责（它同时挂在
 // tauri.conf.json 的 build.beforeBundleCommand 上，CPU 构建也跑）：
@@ -38,6 +43,7 @@ import {
   stageRuntimeLibs,
   tauriDir,
 } from "./stage-desktop-runtime-libs.mjs";
+import { ensureSherpaLibs } from "./fetch-sherpa-onnx-libs.mjs";
 
 const configPath = join(tauriDir, "tauri.sherpa-gpu.conf.json");
 const windowsConfigPath = join(tauriDir, "tauri.windows.conf.json");
@@ -73,7 +79,8 @@ if (!GPU_VARIANTS.includes(variant)) {
   console.error(
     [
       `[sherpa-gpu] 需要 CUDA 变体，当前是 ${variant}。请用 SHERPA_ONNX_GPU=cuda12|cuda13`,
-      "  （该变量同时决定 sherpa-onnx-sys/build.rs 下载哪个预编译包）。",
+      "  （该变量同时决定 crates/ling-chat-main/build.rs 发射的 GPU_VARIANT 常量，",
+      "   以及 scripts/fetch-sherpa-onnx-libs.mjs 下哪个官方包）。",
       "  官方 CUDA 包只有 linux-x64 / win-x64，macOS 无 GPU 包。",
     ].join("\n"),
   );
@@ -85,10 +92,14 @@ if (process.platform === "darwin") {
   process.exit(1);
 }
 
-// 尽早失败：别等 cargo 编完才发现 CUDA 包还没下载/解压。
+// 尽早失败：别等 cargo 编完才发现 CUDA 包还没下载/解压；顺带把 SHERPA_ONNX_LIB_DIR
+// 交给 cargo（上游 build.rs 见到它就跳过自己那份 CPU 包的下载），并保证与
+// stage-desktop-runtime-libs.mjs 看到的来源一致。
 try {
+  const { libDir } = await ensureSherpaLibs({ variant });
+  process.env.SHERPA_ONNX_LIB_DIR = libDir;
   const source = resolveSherpaSource(variant);
-  console.log(`[sherpa-gpu] variant=${variant}，CUDA 运行库来源: ${source}`);
+  console.log(`[sherpa-gpu] variant=${variant}，CUDA 运行库: ${source}`);
 } catch (error) {
   console.error(`[sherpa-gpu] ${error.message ?? error}`);
   process.exit(1);
@@ -157,12 +168,14 @@ console.log(
 );
 
 if (shouldBuild) {
-  const tauriArgs = ["exec", "tauri", "build"];
+  const tauriArgs = ["exec", "tauri", "build", "--features", "sherpa-shared"];
   if (overrideConfig) {
     // 用绝对路径，避开 CLI「相对当前目录还是相对 src-tauri」的歧义。
     tauriArgs.push("--config", overrideConfig);
   }
-  console.log(`[sherpa-gpu] 开始 tauri build（SHERPA_ONNX_GPU=${variant}）…`);
+  console.log(
+    `[sherpa-gpu] 开始 tauri build（SHERPA_ONNX_GPU=${variant}，--features sherpa-shared）…`,
+  );
   const result = spawnSync("pnpm", tauriArgs, {
     cwd: projectRoot,
     stdio: "inherit",
@@ -175,8 +188,8 @@ if (shouldBuild) {
 console.log(
   [
     "[sherpa-gpu] 打包命令：",
-    `  SHERPA_ONNX_GPU=${variant} pnpm tauri build` +
-      (overrideConfig ? ` --config ${overrideConfig}` : ""),
+    `  SHERPA_ONNX_GPU=${variant} SHERPA_ONNX_LIB_DIR=<上面的目录> pnpm tauri build \\`,
+    "    --features sherpa-shared" + (overrideConfig ? ` --config ${overrideConfig}` : ""),
     "  （Windows 可用 `pnpm tauri:build:gpu`，无需手写环境变量）",
   ].join("\n"),
 );

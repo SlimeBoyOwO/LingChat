@@ -6,9 +6,9 @@
 //     DT_NEEDED 里有 `libwebgpu_dawn.so`，而这个库只躺在 target/<profile>/ 里
 //     （ort `copy-dylibs` 的产物），没有任何打包配置带上它 —— deb/rpm 装完一启动
 //     就是 `error while loading shared libraries: libwebgpu_dawn.so`。
-//   - CUDA 变体（SHERPA_ONNX_GPU=cuda12|cuda13，见
-//     crates/sherpa-onnx-sys/build.rs）走 shared 链接，官方 CUDA 包
-//     只提供动态库，同理必须跟着安装包走。
+//   - CUDA 变体（SHERPA_ONNX_GPU=cuda12|cuda13）走 shared 链接（官方 CUDA 包
+//     只提供动态库），同理必须跟着安装包走。库由 scripts/fetch-sherpa-onnx-libs.mjs
+//     下载到 target/sherpa-onnx-prebuilt/ 并通过 SHERPA_ONNX_LIB_DIR 交给 cargo。
 //
 // 落点：/usr/lib 是加载器的默认搜索目录。实测 cargo 产出的可执行文件里没有
 // RPATH/RUNPATH（依赖 crate 的 build script 用 `cargo:rustc-link-arg` 加的
@@ -44,12 +44,13 @@ export const tauriDir = join(projectRoot, "src-tauri");
 export const stageDir = join(tauriDir, ".runtime-libs");
 
 const targetRoot = process.env.CARGO_TARGET_DIR || join(projectRoot, "target");
-const prebuiltRoot = join(targetRoot, "sherpa-onnx-prebuilt");
+/** 官方预编译包的解压缓存（上游 build.rs 也用这个目录，两边共用）。 */
+export const prebuiltRoot = join(targetRoot, "sherpa-onnx-prebuilt");
 
 /** ort 的 WebGPU 后端（wgpu/Dawn），Linux x86_64 可执行文件直接依赖它。 */
 const DAWN_LIB = "libwebgpu_dawn.so";
 
-/** GPU 变体取值，与 sherpa-onnx-sys/build.rs 的 GpuVariant 保持一致。 */
+/** GPU 变体取值（scripts/fetch-sherpa-onnx-libs.mjs / 打包脚本共用同一套）。 */
 export const GPU_VARIANTS = ["cuda12", "cuda13"];
 
 /** 属于「我们自己打包的库」，缺了就是安装包坏了（用来判定必需库是否齐）。 */
@@ -63,9 +64,10 @@ const skipLibs = new Set(["cargs.dll"]);
 /**
  * 本次构建用的 GPU 变体。
  *
- * 取值与 crates/sherpa-onnx-sys/build.rs 的 `GpuVariant::from_env` 完全一致
- * （包括别名：`cuda`/`12`/`cuda-12` 等同 `cuda12`）。两边必须同步 —— 否则会出现
- * 「依赖按 CUDA 编、打包按 CPU 处理」这种半截状态。非法取值直接报错。
+ * 取值就是 `SHERPA_ONNX_GPU`（别名 `cuda`/`12`/`cuda-12` 等同 `cuda12`）。同一个
+ * 变量还会被 `crates/ling-chat-main/build.rs`（编译期常量 `GPU_VARIANT`）和
+ * `scripts/fetch-sherpa-onnx-libs.mjs`（决定下哪个预编译包）读取，三处别名表必须
+ * 一致 —— 否则会出现「依赖按 CUDA 编、打包按 CPU 处理」这种半截状态。非法取值报错。
  */
 export function resolveVariant(raw = process.env.SHERPA_ONNX_GPU) {
   const variant = (raw || "").trim().toLowerCase();
@@ -247,7 +249,20 @@ function findCacheDirs(requiredLibs) {
 }
 
 /**
- * CUDA 变体运行库的来源目录（与 sherpa-onnx-sys/build.rs 的解析顺序一致）。
+ * CUDA 变体运行库的必需文件：链接期写进 DT_NEEDED 的库 + 运行期由 ONNX Runtime
+ * 加载的执行提供方（provider）。校验「一个目录是不是一份可用的 CUDA 包」用。
+ */
+export function requiredSherpaLibs() {
+  return isWindows
+    ? ["sherpa-onnx-c-api.dll", "onnxruntime.dll", "onnxruntime_providers_cuda.dll"]
+    : ["libsherpa-onnx-c-api.so", "libonnxruntime.so", "libonnxruntime_providers_cuda.so"];
+}
+
+/**
+ * CUDA 变体运行库的来源目录。
+ *
+ * 解析顺序与 scripts/fetch-sherpa-onnx-libs.mjs 一致：先 `SHERPA_ONNX_LIB_DIR`
+ * （fetch 脚本导出的就是这个），再 `target/sherpa-onnx-prebuilt/` 缓存。
  *
  * 抛错而不是返回 null：调用方（GPU 打包入口）希望尽早失败。
  */
@@ -255,10 +270,7 @@ export function resolveSherpaSource(variant) {
   if (!GPU_VARIANTS.includes(variant)) {
     throw new Error(`resolveSherpaSource 只接受 ${GPU_VARIANTS.join(" / ")}，收到 ${variant}`);
   }
-  // 链接期写进 DT_NEEDED 的库 + 运行期由 ONNX Runtime 加载的执行提供方。
-  const required = isWindows
-    ? ["sherpa-onnx-c-api.dll", "onnxruntime.dll", "onnxruntime_providers_cuda.dll"]
-    : ["libsherpa-onnx-c-api.so", "libonnxruntime.so", "libonnxruntime_providers_cuda.so"];
+  const required = requiredSherpaLibs();
 
   const fromEnv = process.env.SHERPA_ONNX_LIB_DIR;
   if (fromEnv) {
@@ -274,9 +286,9 @@ export function resolveSherpaSource(variant) {
       `找不到 CUDA 版 Sherpa-ONNX 运行库（缺 ${required.join(", ")}）。`,
       `  已查找: SHERPA_ONNX_LIB_DIR=${process.env.SHERPA_ONNX_LIB_DIR || "(未设置)"}`,
       `          ${prebuiltRoot}`,
-      `  先跑一次带 SHERPA_ONNX_GPU=${variant} 的构建（例如`,
-      `    SHERPA_ONNX_GPU=${variant} cargo build --release）让它把官方 CUDA 包解压到`,
-      "  target/sherpa-onnx-prebuilt/，或把 SHERPA_ONNX_LIB_DIR 指向已解压包的 lib/ 目录。",
+      "  先跑一次下载（版本按 Cargo.lock 里 pin 的 sherpa-onnx-sys 自动取）：",
+      `    node scripts/fetch-sherpa-onnx-libs.mjs --variant=${variant}`,
+      "  或把 SHERPA_ONNX_LIB_DIR 指向已解压包的 lib/ 目录。",
     ].join("\n"),
   );
 }

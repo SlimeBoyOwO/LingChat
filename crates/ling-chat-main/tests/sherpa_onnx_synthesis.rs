@@ -13,6 +13,15 @@
 //!   cargo test -p ling-chat-main --test sherpa_onnx_synthesis -- --ignored --nocapture
 //! ```
 //!
+//! 桌面 GPU 变体（官方 CUDA 包；机器上要有 NVIDIA 驱动 + CUDA/cuDNN 运行时，
+//! 缺运行时 adapters/sherpa_onnx.rs 会探测到并回退 CPU）：
+//! ```text
+//! eval "$(node scripts/fetch-sherpa-onnx-libs.mjs --variant=cuda12 --print-env)"
+//! SHERPA_MODEL_DIR=~/models/matcha-icefall-zh-baker SHERPA_MODEL_TYPE=matcha SHERPA_USE_GPU=1 \
+//!   cargo test -p ling-chat-main --features sherpa-shared --test sherpa_onnx_synthesis \
+//!   -- --ignored --nocapture
+//! ```
+//!
 //! Android 实机运行（不必重装 APK：交叉编译本测试再 push 到设备即可，模型的路径
 //! 直接指到应用外部数据目录；`libc++_shared.so` 与 sherpa 的 .so 也要一起推）：
 //! ```text
@@ -65,7 +74,7 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
     let model_type = std::env::var("SHERPA_MODEL_TYPE").unwrap_or_else(|_| "matcha".into());
     let language = std::env::var("SHERPA_LANG").unwrap_or_else(|_| "zh".into());
     // 设 SHERPA_USE_GPU=1 可实跑一次 GPU 后端（需带 GPU 的预编译包，见
-    // crates/sherpa-onnx-sys/build.rs）；后端不可用时会回退 CPU。
+    // scripts/fetch-sherpa-onnx-libs.mjs）；后端不可用时会回退 CPU。
     let use_gpu = std::env::var("SHERPA_USE_GPU").is_ok_and(|v| v != "0" && !v.is_empty());
     // 排查 provider 选择/回退原因时加 `RUST_LOG=info`（GPU 相关的告警都在 tracing 里）。
     let _ = tracing_subscriber::fmt()
