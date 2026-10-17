@@ -64,6 +64,14 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
     let model_dir = std::env::var("SHERPA_MODEL_DIR").expect("请设置 SHERPA_MODEL_DIR");
     let model_type = std::env::var("SHERPA_MODEL_TYPE").unwrap_or_else(|_| "matcha".into());
     let language = std::env::var("SHERPA_LANG").unwrap_or_else(|_| "zh".into());
+    // 设 SHERPA_USE_GPU=1 可实跑一次 GPU 后端（需带 GPU 的预编译包，见
+    // src-tauri/patches/sherpa-onnx-sys/build.rs）；后端不可用时会回退 CPU。
+    let use_gpu = std::env::var("SHERPA_USE_GPU").is_ok_and(|v| v != "0" && !v.is_empty());
+    // 排查 provider 选择/回退原因时加 `RUST_LOG=info`（GPU 相关的告警都在 tracing 里）。
+    let _ = tracing_subscriber::fmt()
+        .with_env_filter(tracing_subscriber::EnvFilter::from_default_env())
+        .with_test_writer()
+        .try_init();
     assert!(
         std::path::Path::new(&model_dir).is_dir(),
         "模型目录不存在: {model_dir}"
@@ -75,16 +83,20 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         model_type.clone(),
         language.clone(),
         "female".into(),
-        false,
+        use_gpu,
     )
     .expect("初始化 Sherpa-ONNX 适配器失败");
 
     let mut measured = Vec::new();
+    let mut total_elapsed = std::time::Duration::ZERO;
     for (label, text) in [("短句", SHORT_TEXT), ("长句", LONG_TEXT)] {
+        let started = std::time::Instant::now();
         let wav = adapter
             .generate_voice(text, "")
             .await
             .unwrap_or_else(|e| panic!("{label}合成失败（{model_type}）: {e}"));
+        let elapsed = started.elapsed();
+        total_elapsed += elapsed;
         let (sample_rate, samples) = parse_wav(&wav);
         let seconds = samples.len() as f64 / sample_rate as f64;
         let peak = samples.iter().map(|s| s.unsigned_abs()).max().unwrap_or(0);
@@ -93,8 +105,10 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
             .sqrt();
 
         println!(
-            "{label}: {} 字 @ {model_type}/{language} → {seconds:.3}s sr={sample_rate} 峰值={peak} RMS={rms:.1}",
-            text.chars().count()
+            "{label}: {} 字 @ {model_type}/{language} → 音频 {seconds:.3}s sr={sample_rate} 峰值={peak} RMS={rms:.1} \
+             用时={elapsed:.3?}（{:.1}x 实时）",
+            text.chars().count(),
+            seconds / elapsed.as_secs_f64()
         );
 
         // 静音/噪声：kokoro 缺 lexicon、int8 模型在部分 arm64 设备上都会命中这里。
@@ -115,6 +129,12 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
     assert!(
         long_seconds >= short_seconds * char_ratio * 0.6,
         "长句时长未随文本增长：短句 {short_seconds:.3}s / 长句 {long_seconds:.3}s（字数比 {char_ratio:.2}）"
+    );
+
+    // 对比 CPU / GPU 后端性能时看这一行（音频时长本身当然和 provider 无关）。
+    println!(
+        "合计推理用时 {total_elapsed:.3?}，音频合计 {:.3}s",
+        short_seconds + long_seconds
     );
 
     if let Ok(out) = std::env::var("SHERPA_OUT_WAV") {
