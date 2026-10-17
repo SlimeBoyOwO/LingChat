@@ -4350,6 +4350,7 @@ dependencies = [
  "image",
  "indoc",
  "infer 0.19.0",
+ "libloading 0.8.9",
  "ling-chat-notes",
  "mdns-sd",
  "ndarray",
@@ -7900,8 +7901,6 @@ dependencies = [
 [[package]]
 name = "sherpa-onnx-sys"
 version = "1.13.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1541926ecf70b3d806467a2f100d3d879eef7fd34f8b307028bb074871d7493"
 dependencies = [
  "bzip2 0.4.4",
  "tar",

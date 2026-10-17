@@ -125,6 +125,12 @@ sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
 wgpu = "26"
 
+[target.'cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))'.dependencies]
+# 请求 CUDA provider 之前先确认 CUDA 运行时库都能加载（见 adapters/sherpa_onnx.rs
+# 的 cuda_ep_ready：ORT 1.27 加载 provider 失败会抛 C++ 异常并 abort 进程，
+# 而 provider 库自己又不能用 dlopen 试探，会段错误）。
+libloading = "0.8"
+
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "webgpu",
