@@ -24,6 +24,11 @@ crate-type = ["cdylib", "rlib"]
 # 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
 # （不走 devUrl）。桌面端不受影响。
 custom-protocol = ["tauri/custom-protocol"]
+# 桌面 GPU 变体（官方 CUDA 包只有动态库 → 必须 shared 链接）。转发给业务 crate，
+# 因为 `tauri build --features` 只作用于被构建的包（也就是本 crate）。
+# 配合 scripts/fetch-sherpa-onnx-libs.mjs 导出的 SHERPA_ONNX_LIB_DIR 使用；
+# 打包入口是 `pnpm tauri:build:gpu`。
+sherpa-shared = ["ling-chat-main/sherpa-shared"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
