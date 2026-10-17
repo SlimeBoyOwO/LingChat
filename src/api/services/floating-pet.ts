@@ -374,6 +374,73 @@ export async function requestFloatingPetPermission(): Promise<void> {
 }
 
 /**
+ * 屏幕截取授权是否已经拿到 —— **只读查询，不会截屏**。
+ *
+ * 进桌宠前的门禁用它。为什么不用 `captureScreen` 探测：那条命令会真的拍一帧
+ * （建 VirtualDisplay、等帧、压 JPEG，几百毫秒到几秒），只为问一句不值得。
+ *
+ * `MediaProjection` 的授权是**进程级**的：冷启动后必然回到 `false`，
+ * 需要重新弹一次系统授权框。
+ */
+export async function isScreenCaptureReady(): Promise<boolean> {
+  try {
+    const result = await invoke<{ ready: boolean }>(`${PLUGIN}|is_screen_capture_ready`);
+    return !!result?.ready;
+  } catch (e) {
+    // 老版本插件没有这条命令 / 桌面端异常：当作「没就绪」，让上层去拉授权
+    console.warn("[floating-pet] 查询屏幕截取授权失败:", e);
+    return false;
+  }
+}
+
+/**
+ * 拉起系统的「允许开始截取屏幕内容」授权框。
+ *
+ * 只说明**弹框有没有拉起来**，不说明用户点了什么 —— 结果只落在原生侧，
+ * 之后要靠 {@link isScreenCaptureReady} 或实际截图来判断。
+ */
+export async function requestScreenCapture(): Promise<
+  "already_granted" | "prompted" | "unsupported" | "error"
+> {
+  try {
+    const result = await invoke<{ ok: boolean; reason: string }>(
+      `${PLUGIN}|request_screen_capture`,
+    );
+    const reason = result?.reason;
+    if (reason === "already_granted" || reason === "prompted" || reason === "unsupported") {
+      return reason;
+    }
+    return "error";
+  } catch (e) {
+    console.warn("[floating-pet] 拉起屏幕截取授权失败:", e);
+    return "error";
+  }
+}
+
+/**
+ * 监听「权限被拒」事件。
+ *
+ * 原生（`MainActivity.notifyPermissionDenied`）用 `evaluateJavascript` 派发
+ * 一个 DOM `CustomEvent`，不走 Tauri IPC —— 与 `pet-attached` / `pet-metrics`
+ * 同一套做法，省一次 IPC 往返。
+ *
+ * 覆盖两种「用户没给」的情形：
+ * - `overlay`：去了系统设置页但没打开「显示在其他应用上层」（系统页不回传结果，
+ *   只能回到前台时重查权限）
+ * - `screen`：在系统授权框上点了取消 / 返回
+ *
+ * @returns 取消监听的函数。
+ */
+export function onPetPermissionDenied(handler: (which: "overlay" | "screen") => void): () => void {
+  const listener = (e: Event) => {
+    const which = (e as CustomEvent<{ which?: string }>).detail?.which;
+    handler(which === "overlay" ? "overlay" : "screen");
+  };
+  window.addEventListener("pet-permission-denied", listener);
+  return () => window.removeEventListener("pet-permission-denied", listener);
+}
+
+/**
  * 进入悬浮桌宠的完整流程：探测能力 → 检查授权 → 必要时引导授权 → 搬运 WebView。
  *
  * **调用前必须已经把页面切到 `/pet` 路由**（`router.replace("/pet")`），

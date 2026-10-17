@@ -196,8 +196,38 @@ pub fn status<R: Runtime>(app: &AppHandle<R>, _state: &FloatingPetState) -> Resu
 ///
 /// ## 失败语义
 ///
-/// `ok = false` 是**正常结果**（用户还没开无障碍服务 / API < 30 / 截屏失败），
+/// `ok = false` 是**正常结果**（还没拿到 MediaProjection 授权 / 等帧超时），
 /// 不抛错；调用方据此降级。只有写文件失败才会 reject。
 pub fn capture_screen<R: Runtime>(app: &AppHandle<R>) -> Result<ScreenCapture> {
     call(app, "captureScreen", ())
+}
+
+/// 拉起系统的屏幕截取授权框（MediaProjection）。
+///
+/// ## 为什么必须单独一条命令
+///
+/// `MediaProjection` 不能随时 new，只能从一次**用户授权的结果**里换出来，而
+/// 那次授权必须由某个 Activity 用 `startActivityForResult` 发起 ——
+/// Service / Application 都不行。所以「弹框」和「截图」必须分成两步：
+///
+/// ```text
+/// request_screen_capture  → 弹框（本函数）
+/// 用户在框上点「立即开始」  → MainActivity.onActivityResult
+///                          → ScreenCaptureManager 持有 token
+/// capture_screen          → 这时才可能 ok = true
+/// ```
+///
+/// ## 返回值的边界
+///
+/// 只说明**弹框有没有拉起来**，不说明用户点了什么。想知道结果，调一次
+/// `capture_screen` 看 `ok` / `reason`。
+pub fn request_screen_capture<R: Runtime>(app: &AppHandle<R>) -> Result<ScreenCapturePermission> {
+    call(app, "requestScreenCapture", ())
+}
+
+/// 屏幕截取授权是否已经拿到（只读查询，**不会截屏**）。
+///
+/// 进桌宠前的门禁用它：没有授权就先弹说明 + 拉系统授权框，别让用户白进一次。
+pub fn is_screen_capture_ready<R: Runtime>(app: &AppHandle<R>) -> Result<ScreenCaptureReady> {
+    call(app, "isScreenCaptureReady", ())
 }

@@ -81,6 +81,43 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
     }
 }
 
+/// 直接把**当前屏幕**抓成一帧，返回 JPEG 的 base64。
+///
+/// ## 与 [start_screenshot] 的区别
+///
+/// [start_screenshot] 是**桌面端**的完整链路：抓全屏 → 建覆盖窗口 → 用户框选 →
+/// 裁剪。手机上那条路走不通（也不能走）：
+///
+/// - 手机没有 `screenshot-overlay` 那种全屏 WebView 窗口可开（我们的 WebView
+///   此刻可能正被搬在 `TYPE_APPLICATION_OVERLAY` 悬浮窗里）；
+/// - 更重要的一点是**手机不需要框选**：桌面元素杂，所以要框；
+///   手机一屏就那么点内容，整屏送进去反而更准，还少一步操作。
+///
+/// 所以桌宠模式下按相机键直接走这条：抓一帧、整张送回。
+/// 聊天页仍然走 [start_screenshot] 的选图（拍照 / 相册）。
+///
+/// ## 阻塞
+///
+/// 底层 `capture_screen_as_jpeg()` 是**阻塞**的（Android 走 MediaProjection，
+/// 等帧上限 3s）。所以放 `spawn_blocking` 里跑，别堵住异步运行时。
+#[tauri::command]
+pub async fn take_screenshot_base64(_app: AppHandle) -> Result<String, String> {
+    let captured = tauri::async_runtime::spawn_blocking(
+        crate::ai_service::screen_analyzer::capture_screen_as_jpeg,
+    )
+    .await
+    .map_err(|e| format!("截屏任务失败: {e}"))?;
+
+    let Some(jpeg) = captured else {
+        return Err("屏幕捕获失败（可能还没授权截屏）".to_string());
+    };
+
+    Ok(base64::Engine::encode(
+        &base64::prelude::BASE64_STANDARD,
+        &jpeg,
+    ))
+}
+
 /// 覆盖窗口调用：获取之前存储的全屏截图 base64。
 #[tauri::command]
 pub async fn get_overlay_data(app: AppHandle) -> Result<String, String> {

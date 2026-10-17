@@ -76,7 +76,10 @@ import { isMobile, isWindows } from "@/utils/platform";
 import {
   getFloatingPetStatus,
   hideFloatingPet,
+  isScreenCaptureReady,
+  onPetPermissionDenied,
   requestFloatingPetPermission,
+  requestScreenCapture,
   showFloatingPet,
 } from "@/api/services/floating-pet";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
@@ -138,6 +141,34 @@ const floatingPetActive = ref(false);
  * 再点一次「桌宠」按钮，而多数人不会知道要这么做。
  */
 const pendingPetEntry = ref(false);
+
+/**
+ * 本次「进桌宠」尝试里，屏幕截取授权已经问过一次了。
+ *
+ * 用来避免死循环：用户在系统授权框上点了取消 → 回到前台 →
+ * `handleVisibilityChange` 自动重试 `goToPetMode` → 又发现没授权 → 又弹说明……
+ * 置位之后第二次只给一句 toast 收尾，不再重复弹框。
+ *
+ * 进桌宠成功、或用户主动重新点按钮时清零（见 `goToPetMode` 开头）。
+ */
+const screenCaptureAsked = ref(false);
+
+/**
+ * 权限被拒时桌宠的台词。
+ *
+ * 用**应用内 toast**（`uiStore.showWarning`）而不是系统 Toast：系统气泡是
+ * 灰底黑字，跟 App 视觉完全脱节。这两刻页面都是可用的，所以走页面自己弹。
+ */
+const notifyPermissionDenied = (which: "overlay" | "screen") => {
+  uiStore.showWarning({
+    title: which === "overlay" ? "我出不来了…" : "看不到你的屏幕…",
+    message: "哇呜呜，口是心非的人类，居然不允许我的请求",
+    duration: 4000,
+  });
+};
+
+/** `onPetPermissionDenied` 的取消函数，卸载时释放。 */
+let unlistenPermissionDenied: (() => void) | null = null;
 
 /**
  * 同步悬浮窗状态。从系统设置页返回时刷新（按钮高亮与否）。
@@ -281,11 +312,70 @@ const goToPetMode = async () => {
       return;
     }
 
+    // ★ 屏幕截取权限：与悬浮窗权限**同级**，两项齐备才允许进桌宠。
+    //
+    // 为什么把它设成硬门禁而不是「进不去也能用」：
+    // 桌宠在手机上的截图键是「直接抓一屏」，没有授权就必然失败 ——
+    // 用户看到的是「功能坏了」，而不是「我没给权限」。与其让他进去再撞墙，
+    // 不如在门口就说清楚。
+    if (!(await isScreenCaptureReady())) {
+      // 已经问过一次、回来仍然没有：不再重复弹框，静默收尾。
+      // 否则「取消 → 自动重试 → 又弹框」会变成死循环。
+      //
+      // 这里**不弹 toast**：用户在系统授权框上点取消时，原生
+      // `MainActivity.onActivityResult` 已经派发过 `pet-permission-denied`，
+      // 那边弹过一句了。这里再弹就是双份。
+      if (screenCaptureAsked.value) {
+        screenCaptureAsked.value = false;
+        return;
+      }
+
+      const confirmed = await dialogStore.confirm(
+        "进了桌宠我要能看见屏幕，才知道你在看什么、该接什么话。\n" +
+          "画面不会存下来，也不会传出去。",
+        "想看看你的屏幕～",
+      );
+      if (!confirmed) {
+        notifyPermissionDenied("screen");
+        return;
+      }
+
+      const reason = await requestScreenCapture();
+      if (reason === "unsupported") {
+        screenCaptureAsked.value = false;
+        uiStore.showWarning({
+          title: "这台设备帮不上忙呢",
+          message: "系统的限制下我看不到屏幕，桌宠就先不出来啦～",
+        });
+        return;
+      }
+      if (reason === "error") {
+        screenCaptureAsked.value = false;
+        uiStore.showWarning({
+          title: "刚刚没问清楚呢…",
+          message: "系统这会儿没回我话，过一会儿再点一次试试？",
+        });
+        return;
+      }
+      if (reason === "prompted") {
+        // 授权框是异步的，结果只落在原生侧。这里不能干等 ——
+        // 用户回来后由 handleVisibilityChange 自动接着进桌宠。
+        screenCaptureAsked.value = true;
+        pendingPetEntry.value = true;
+        return;
+      }
+      // already_granted：授权其实已经有了，继续往下走
+      screenCaptureAsked.value = false;
+    }
+
     // ① 先切页 —— 此时还在屏幕内，用户看到 /pet 渲染完成
     await router.replace("/pet");
     // ② 再搬移 —— 原生把 WebView 摘进悬浮窗，Activity 换成占位页
     await showFloatingPet({ scale: settingsStore.pet?.scale ?? 1 });
     floatingPetActive.value = true;
+    // 进门成功，把「问过一次」的记号清掉：下次重新进（例如进程重启后
+    // MediaProjection 授权丢失）还要能再问一遍。
+    screenCaptureAsked.value = false;
   } catch (e) {
     console.error("[MainChat] 启动悬浮桌宠失败:", e);
     // 搬移失败时把页面退回来，避免用户停在 /pet 却不在悬浮窗里
@@ -333,10 +423,15 @@ onMounted(() => {
   // /chat，那一刻正是本组件挂载的时候。
   window.setTimeout(() => void healStuckFloatingState(), STUCK_HEAL_DELAY_MS);
   document.addEventListener("visibilitychange", handleVisibilityChange);
+  // 原生在「用户拒了悬浮窗权限 / 截屏授权」时派发这个 DOM 事件，
+  // 由页面弹应用内 toast（不用系统 Toast，见 notifyPermissionDenied）。
+  unlistenPermissionDenied = onPetPermissionDenied(notifyPermissionDenied);
 });
 
 onUnmounted(() => {
   document.removeEventListener("visibilitychange", handleVisibilityChange);
+  unlistenPermissionDenied?.();
+  unlistenPermissionDenied = null;
 });
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);

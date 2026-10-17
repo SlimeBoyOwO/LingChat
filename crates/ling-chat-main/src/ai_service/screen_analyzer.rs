@@ -446,8 +446,9 @@ pub type ScreenCaptureFn = Box<dyn Fn() -> Option<Vec<u8>> + Send + Sync>;
 ///
 /// `OnceLock` 语义：**重复注册是空操作**（只留第一次的），不会 panic。
 ///
-/// ⚠️ 注册成功 ≠ 能截到图。用户还没在系统设置里开启无障碍服务时，回调会返回
-/// `None` —— 那是正常状态，调用方（`get_screen_prompt`）会照旧早退，
+/// ⚠️ 注册成功 ≠ 能截到图。Android 上第一次取景前用户还没同意
+/// MediaProjection 的授权框时，回调会返回 `None`（app 层会顺手补弹一次授权框）
+/// —— 那是正常状态，调用方（`get_screen_prompt`）会照旧早退，
 /// 屏幕策略不触发，与改造前行为一致。
 #[cfg(target_os = "android")]
 pub fn set_android_screen_capture(f: ScreenCaptureFn) {
@@ -467,8 +468,8 @@ fn capture_screen_android() -> Option<Vec<u8>> {
 ///
 /// - **Windows**：GDI（`BitBlt` + `GetDIBits`）截全屏，等比缩到 1024×768 再压 JPEG。
 /// - **Android**：转发给 [set_android_screen_capture] 注册进来的通道 ——
-///   无障碍服务的 `takeScreenshot`（见 `LingChatAccessibilityService`）。
-///   未注册、未开启无障碍、或 API < 30 时返回 `None`。
+///   `MediaProjection`（见插件的 `ScreenCaptureManager`）。
+///   未注册、未授权（用户还没同意系统的截屏授权框）、或等帧超时时返回 `None`。
 /// - **其他平台**：返回 `None`。
 pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
@@ -543,7 +544,7 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
         }
     }
 
-    // ★ Android：转发给注册进来的截屏通道（无障碍服务 `takeScreenshot`）。
+    // ★ Android：转发给注册进来的截屏通道（`ScreenCaptureManager` 的 MediaProjection）。
     //
     // 这里**不能**直接调插件 —— `ling-chat-main` 是底层 crate，依赖方向不允许
     // 它反向依赖 `tauri-plugin-floating-pet`。所以由 app 层在启动时把通道注册

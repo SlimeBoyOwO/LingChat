@@ -237,11 +237,50 @@ fn status<R: Runtime>(app: AppHandle<R>, state: tauri::State<'_, FloatingPetStat
 /// 它通过 `set_android_screen_capture()` 注册的全局回调拿到本命令的结果，
 /// 因此 `ling-chat-main` **不需要**反向依赖本插件。
 ///
-/// ⚠️ 与其它命令不同，**未启用时也 resolve**（`ok = false`）——
-/// 「用户还没在系统设置里开无障碍服务」是正常状态，不是错误。
+/// ⚠️ 与其它命令不同，**未授权时也 resolve**（`ok = false`）——
+/// 「用户还没同意 MediaProjection 的授权框」是正常状态，不是错误。
+/// 这时先调一次 `request_screen_capture` 把框拉起来。
 #[tauri::command]
 fn capture_screen<R: Runtime>(app: AppHandle<R>) -> Result<ScreenCapture> {
     imp::capture_screen(&app)
+}
+
+/// 拉起系统的屏幕截取授权框：「允许 LingChat 开始截取您的屏幕内容吗？」
+///
+/// Android 独有（桌面端 GDI 截屏不需要授权，会得到 `NotSupported`）。
+///
+/// ## 这是「两步走」的第一步
+///
+/// `MediaProjection` 只能从一次用户授权的结果里换出来，而那次授权必须由某个
+/// Activity 用 `startActivityForResult` 发起。所以弹框和截图没法合成一步：
+///
+/// ```text
+/// request_screen_capture → 弹框
+/// 用户点「立即开始」      → MainActivity.onActivityResult → 单例持有 token
+/// capture_screen         → 此时才可能 ok = true
+/// ```
+///
+/// ## 返回值的边界
+///
+/// 只说明**弹框有没有拉起来**（`prompted` / `already_granted` / `unsupported`），
+/// 不说明用户点了什么 —— 弹框是异步的，选择结果只落到原生侧。
+/// 前端要判断「到底能不能截」，得再调一次 `capture_screen` 看 `ok` / `reason`。
+#[tauri::command]
+fn request_screen_capture<R: Runtime>(app: AppHandle<R>) -> Result<ScreenCapturePermission> {
+    imp::request_screen_capture(&app)
+}
+
+/// 屏幕截取授权是否已经拿到 —— **只读查询，不会截屏**。
+///
+/// 前端进桌宠前用它做门禁：没授权就先弹说明 + 拉系统授权框，
+/// 而不是等用户进了桌宠、按了相机键才发现截不了。
+///
+/// 为什么不用 `capture_screen` 来探测：那条命令会**真的拍一帧**
+/// （临时建 VirtualDisplay、等帧、压 JPEG，几百毫秒到几秒）。
+/// 只为问一句「能不能截」不值得拍下来。
+#[tauri::command]
+fn is_screen_capture_ready<R: Runtime>(app: AppHandle<R>) -> Result<ScreenCaptureReady> {
+    imp::is_screen_capture_ready(&app)
 }
 
 /// 截一帧屏幕，返回 JPEG 字节。
@@ -249,12 +288,12 @@ fn capture_screen<R: Runtime>(app: AppHandle<R>) -> Result<ScreenCapture> {
 /// 这是给 `ling-chat-main` 的截屏注入点用的**高层封装** —— 它把
 /// 「调原生命令 → 拿到路径 → 读文件」三步收在一起，调用方只需一行。
 ///
-/// 失败统一返回 `None`（未开无障碍服务 / API < 30 / 截屏失败 / 读文件失败），
+/// 失败统一返回 `None`（未授权 / 等帧超时 / 截屏失败 / 读文件失败），
 /// 不向调用方区分原因 —— 对它来说都是「这一轮没图，跳过」。具体原因在
 /// `log` 里留痕。
 ///
-/// ⚠️ 本函数会**读一次磁盘**，且内部那次原生调用是阻塞的（上限 5s，
-/// 见 `LingChatAccessibilityService`）。别在主线程上用它。
+/// ⚠️ 本函数会**读一次磁盘**，且内部那次原生调用是阻塞的（上限 3s 等帧，
+/// 见 `ScreenCaptureManager.captureJpeg`）。别在主线程上用它。
 pub fn capture_screen_bytes<R: Runtime>(app: &AppHandle<R>) -> Option<Vec<u8>> {
     let capture = match imp::capture_screen(app) {
         Ok(capture) => capture,
@@ -265,7 +304,7 @@ pub fn capture_screen_bytes<R: Runtime>(app: &AppHandle<R>) -> Option<Vec<u8>> {
     };
 
     if !capture.ok || capture.path.is_empty() {
-        // 「用户没开无障碍服务」会走到这里，是正常状态，不打 warn 免得刷屏
+        // 「用户还没同意授权框」会走到这里，是正常状态，不打 warn 免得刷屏
         log::debug!("[floating-pet] 屏幕取景未成功: reason={}", capture.reason);
         return None;
     }
@@ -274,6 +313,24 @@ pub fn capture_screen_bytes<R: Runtime>(app: &AppHandle<R>) -> Option<Vec<u8>> {
         Ok(bytes) => Some(bytes),
         Err(e) => {
             log::warn!("[floating-pet] 读取截图文件失败 ({}): {e}", capture.path);
+            None
+        },
+    }
+}
+
+/// 拉起屏幕截取授权框，返回原生给的 `reason`（拿不到时 `None`）。
+///
+/// 给 app 层（`src-tauri/src/app/setup`）用的**高层封装** —— 因为
+/// `request_screen_capture` 是个 `#[tauri::command]`（私有），而 app 层需要
+/// 在「取景失败且还没授权」时主动补一次授权。
+///
+/// ⚠️ 内部是**同步阻塞**的原生调用（`run_mobile_plugin` 等 Kotlin resolve），
+/// 别在主线程上用它。好在它不弹模态、只是把系统对话框拉起来就立刻返回。
+pub fn request_screen_capture_permission<R: Runtime>(app: &AppHandle<R>) -> Option<String> {
+    match imp::request_screen_capture(app) {
+        Ok(result) => Some(result.reason),
+        Err(e) => {
+            log::debug!("[floating-pet] 拉起屏幕截取授权不可用: {e}");
             None
         },
     }
@@ -296,6 +353,8 @@ pub fn init<R: Runtime>() -> TauriPlugin<R> {
             is_visible,
             status,
             capture_screen,
+            request_screen_capture,
+            is_screen_capture_ready,
         ])
         .setup(|app, api| {
             app.manage(FloatingPetState::default());

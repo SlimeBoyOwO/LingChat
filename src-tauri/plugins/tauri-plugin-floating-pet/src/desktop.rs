@@ -101,3 +101,19 @@ pub fn status<R: Runtime>(_app: &AppHandle<R>, _state: &FloatingPetState) -> Res
 pub fn capture_screen<R: Runtime>(_app: &AppHandle<R>) -> Result<ScreenCapture> {
     Err(Error::NotSupported)
 }
+
+/// 屏幕截取授权 —— 桌面端没有这个概念（GDI 截屏不需要任何授权）。
+///
+/// 与 `capture_screen` 同理，只为让 `lib.rs` 两端都能编译。
+pub fn request_screen_capture<R: Runtime>(_app: &AppHandle<R>) -> Result<ScreenCapturePermission> {
+    Err(Error::NotSupported)
+}
+
+/// 桌面端没有「截取授权」这个概念（GDI 截屏不需要授权），一律返回 `ready = true`。
+///
+/// 为什么不是 `Err(NotSupported)`：前端用它做**门禁**（进桌宠前必须两项齐备）。
+/// 桌面端本来就具备截图能力，返回错误会让门禁把桌面端也拦下来 —— 那是纯粹的
+/// 功能回退。这里返回「就绪」才是准确的语义。
+pub fn is_screen_capture_ready<R: Runtime>(_app: &AppHandle<R>) -> Result<ScreenCaptureReady> {
+    Ok(ScreenCaptureReady { ready: true })
+}

@@ -66,7 +66,7 @@
               ? { color: 'var(--accent-color)', borderColor: 'var(--accent-color)' }
               : {}
           "
-          @click.stop="startScreenshot()"
+          @click.stop="onScreenshotClick"
           @contextmenu.prevent="clearScreenshot"
         >
           <Camera :size="16" />
@@ -406,19 +406,39 @@ const {
   init: initScreenshot,
   destroy: destroyScreenshot,
   start: startScreenshot,
+  capture: captureScreenshot,
   clear: clearScreenshot,
 } = useScreenshot();
 
-const titleText = computed(() => {
+/**
+ * 相机键的行为**分平台**：
+ *
+ * - **手机**：直接抓一屏（`capture`）。不框选 —— 手机一屏内容本来就少，
+ *   框选纯属多一步；而且桌宠态下 WebView 被搬在悬浮窗里，也开不出全屏覆盖层。
+ * - **桌面端**：仍然走 `start` 的框选流程（桌面元素杂，框选有意义）。
+ *
+ * 两边最终都落到同一份 `screenshotBase64`，后续发送链路完全一致。
+ */
+const onScreenshotClick = () => {
   if (isAndroid()) {
-    return hasScreenshot.value
-      ? t("views.pet.stage.retakePhoto")
-      : t("views.pet.stage.photoOrImage");
+    void captureScreenshot({
+      onError: () => {
+        uiStore.showWarning({
+          title: "这一屏没抓住…",
+          message: "可能没给到我「截取屏幕」的授权，重新进一次桌宠试试？",
+        });
+      },
+    });
+    return;
   }
-  return hasScreenshot.value
-    ? t("views.pet.stage.retakeScreenshot")
-    : t("views.pet.stage.screenshotAsk");
-});
+  void startScreenshot();
+};
+
+// 手机与桌面端现在都是「截图」，文案统一。
+// （手机早先走的是拍照/相册，所以这里曾有 isAndroid() 分支，已随功能一起收敛。）
+const titleText = computed(() =>
+  hasScreenshot.value ? t("views.pet.stage.retakeScreenshot") : t("views.pet.stage.screenshotAsk"),
+);
 
 onMounted(() => initScreenshot());
 onUnmounted(() => destroyScreenshot());

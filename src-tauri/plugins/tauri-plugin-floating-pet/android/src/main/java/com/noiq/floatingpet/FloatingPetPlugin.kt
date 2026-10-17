@@ -15,6 +15,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
@@ -200,6 +201,78 @@ private const val IME_SHOW_DELAY_MS = 250L
  */
 private const val IME_SHOW_RETRY_DELAY_MS = 300L
 private const val IME_SHOW_MAX_ATTEMPTS = 5
+
+/**
+ * ★ 输入法「自愈探针」：点完一下之后，直接问页面「你点的这块是不是输入框」。
+ *
+ * ## 为什么不能只信页面发来的 `setImeFocus`
+ *
+ * 前端 `ChatInput.vue` 里有个 `imeFocusHeld` 闩锁：置 true 之后只有 `blur`
+ * 才复位。而原生在悬浮窗**失去窗口焦点**时会自己把 `FLAG_NOT_FOCUSABLE`
+ * 加回去（见 [watchWindowFocus]），却没有任何办法告诉页面「我已经让出了」。
+ * 于是页面以为还持有焦点，之后**再点输入框一声不吭什么都不做** ——
+ * 一次意外失焦就能把它永久锁死，用户看到的就是「键盘弹不出来」。
+ *
+ * 与其让原生去猜页面状态，不如**直接问 DOM**。这条路径完全绕开页面的闩锁，
+ * 页面那边坏成什么样都不影响。
+ *
+ * 判据用 `elementFromPoint`（问「这个位置底下是什么」），**不是**
+ * `document.activeElement` —— 后者在窗口可获焦之前恒为 false，
+ * 拿它当触发条件就是自证死循环。详见 [editableAtPointJs]。
+ */
+private const val IME_FOCUS_SETTLE_MS = 120L
+
+/**
+ * 悬浮窗「失去窗口焦点」后，等多久才真的让出输入焦点。
+ *
+ * 不能让失焦当场就让出：**输入法弹出的那一刻，悬浮窗会短暂失一次窗口焦点**
+ * （IME 自己的窗口接管输入）。当场让出 = 刚弹出来就把它关掉，表现为
+ * 「键盘闪一下没了」甚至「完全弹不出来」。所以延迟确认，期间只要焦点
+ * 回来了、或者输入法正在接受输入，就什么都不做。
+ */
+private const val FOCUS_RELEASE_DEBOUNCE_MS = 600L
+
+/**
+ * 查询截屏授权时，最多等多久才肯回答「没有」。
+ *
+ * 授权 token 是在前台服务的 `onStartCommand` 里换的（系统要求），
+ * `onActivityResult` 返回那一刻它可能还没换好。立刻回答 `false` 会让
+ * 「明明授权了却进不去桌宠」重现。详见 [FloatingPetPlugin.isScreenCaptureReady]。
+ *
+ * 1.5s 的取法：正常换 token 在几十毫秒内完成，1.5s 已经非常宽松；
+ * 再长就会让「用户点了取消」这种正常路径也卡着不返回，体验变钝。
+ */
+private const val SCREEN_READY_WAIT_MS = 1500L
+
+/**
+ * 探针脚本：问「这个坐标上是不是可编辑元素」。
+ *
+ * ## 为什么问 `elementFromPoint` 而不是 `document.activeElement`
+ *
+ * 窗口带着 `FLAG_NOT_FOCUSABLE` 时，页面里的 `textarea` **压根聚焦不上**
+ * （这正是前端注释里那个死锁）。所以「有没有元素聚焦」这个判据在窗口可获焦
+ * 之前恒为 false —— 拿它当触发条件就是自证死循环。
+ *
+ * 而 `elementFromPoint` 问的是「这个位置**底下是什么元素**」，跟窗口有没有
+ * 焦点完全无关，永远可答。这是唯一不自指的判据。
+ *
+ * 坐标用 **CSS 像素**：View 的 px 除以 `displayMetrics.density`。
+ * 实测展开态窗口 648px 宽 ≈ 216 CSS px，与布局里 `--pet-fit` 的推导一致。
+ */
+private fun editableAtPointJs(cssX: Float, cssY: Float, focus: Boolean): String {
+    val hit = "var e=document.elementFromPoint($cssX,$cssY);if(!e)return '0';" +
+        "var t=e.tagName;" +
+        "var p=(t==='TEXTAREA'||t==='INPUT'||e.isContentEditable)?e:" +
+        "(e.closest?e.closest('textarea,input,[contenteditable]'):null);"
+    return if (focus) {
+        // 第二趟：窗口已经可获焦了，替页面把那个元素真正 focus 上。
+        // 不这样做的话 showSoftInput 依然会被丢 —— WebView 要有聚焦的
+        // 可编辑元素才算「文本编辑器」，才会有输入连接可依附。
+        "(function(){try{$hit if(p&&p.focus)p.focus();}catch(x){}})()"
+    } else {
+        "(function(){try{$hit return p?'1':'0';}catch(x){return '0';}})()"
+    }
+}
 
 /**
  * 桌宠搬进悬浮窗后，把 App 自己退到后台的延迟（毫秒）。
@@ -1251,10 +1324,14 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                 Uri.parse("package:${activity.packageName}")
             )
+            // 系统设置页不会回传结果，只能「回来后看有没有真的拿到权限」。
+            // 置位后由 MainActivity.onResume 消费：还没拿到就弹一句撒娇台词。
+            PetVoice.awaitingOverlayPermission = true
             activity.startActivity(intent)
             // 这里只表示「已发起跳转」，不代表用户已授权
             invoke.resolve()
         } catch (e: Exception) {
+            PetVoice.awaitingOverlayPermission = false
             Log.e(TAG, "无法打开悬浮窗授权页", e)
             invoke.reject("无法打开授权页: ${e.message}")
         }
@@ -1307,7 +1384,7 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      *
      * 这是桌面端 `capture_screen_as_jpeg()`（GDI `BitBlt`）在 Android 上的对位
      * 实现 —— 那条链路在 Android 上原本是 `None`，导致整个 `SCREEN` 主动策略
-     * 永不触发。截图本身由 `LingChatAccessibilityService` 完成，这里只负责
+     * 永不触发。取景由 `ScreenCaptureManager`（MediaProjection）完成，这里只负责
      * 编排「取字节 → 落盘 → 回路径」。
      *
      * ## 为什么返回路径而不是字节
@@ -1325,38 +1402,38 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
      * | --- | --- |
      * | `ok` | 是否截到了图 |
      * | `path` | 成功时的 JPEG 绝对路径 |
-     * | `foregroundPackage` | 最近观察到的前台包名（可能为空串），用作语境 |
-     * | `reason` | 失败原因，便于前端/日志区分（服务未开 / API 过低 / 截图失败） |
+     * | `foregroundPackage` | **恒为空串**：MediaProjection 只给画面，不给包名 |
+     * | `reason` | `permission_required` / `capture_failed` / `""` |
      *
      * ⚠️ 本命令**不在主线程**上跑（Tauri 插件命令走自己的线程池），因此可以安全
-     * 使用 `LingChatAccessibilityService.captureJpeg()` 那个阻塞实现（上限 5s）。
-     * 反过来，`takeScreenshot` 的回调也**不能**在主线程上等 —— 这里已经绕开了。
+     * 调用 `ScreenCaptureManager.captureJpeg()` 那个阻塞实现（上限 3s 等帧）。
      */
     @Command
     fun captureScreen(invoke: Invoke) {
-        val pkg = LingChatAccessibilityService.foregroundPackage ?: ""
-
-        if (!LingChatAccessibilityService.isReady()) {
-            // 最常见的失败：用户还没在系统设置里开无障碍。返回结构化结果而不是
-            // reject —— 这不是「错误」，是「功能未启用」，调用方要能区分。
+        // 2026-10-17：唯一通道改成 MediaProjection。原先的无障碍
+        // `takeScreenshot` 已移除 —— 为了截一张图去开一个无障碍服务属于大材小用，
+        // 而且部分 ROM / 虚拟化环境会直接挡掉。
+        if (!ScreenCaptureManager.isReady()) {
+            // 这不是「错误」，是「还没授权」。返回结构化结果让调用方区分，
+            // 不要 reject（reject 会被当成链路故障）。
             invoke.resolveObject(
                 JSObject().apply {
                     put("ok", false)
                     put("path", "")
-                    put("foregroundPackage", pkg)
-                    put("reason", "accessibility_service_disabled")
+                    put("foregroundPackage", "")
+                    put("reason", "permission_required")
                 }
             )
             return
         }
 
-        val bytes = LingChatAccessibilityService.captureJpeg()
+        val bytes = ScreenCaptureManager.captureJpeg(activity)
         if (bytes == null) {
             invoke.resolveObject(
                 JSObject().apply {
                     put("ok", false)
                     put("path", "")
-                    put("foregroundPackage", pkg)
+                    put("foregroundPackage", "")
                     put("reason", "capture_failed")
                 }
             )
@@ -1370,13 +1447,126 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 JSObject().apply {
                     put("ok", true)
                     put("path", file.absolutePath)
-                    put("foregroundPackage", pkg)
+                    put("foregroundPackage", "")
                     put("reason", "")
                 }
             )
         } catch (e: Exception) {
             Log.w(TAG, "写入截图文件失败", e)
             invoke.reject("写入截图文件失败: ${e.message}")
+        }
+    }
+
+    /**
+     * 查询「屏幕截取授权拿到了没有」。**只读**，不会截屏、不会弹框。
+     *
+     * ## 为什么要单独一条命令，而不是让前端去试截一次
+     *
+     * `captureScreen` 会**真的截一帧**（建 VirtualDisplay、等首帧、压 JPEG），
+     * 用它的成败来反推授权状态，代价高且有副作用（截屏瞬间的帧会被丢掉）。
+     * 而进桌宠门禁只需要一个是非答案，所以这里直接读
+     * [ScreenCaptureManager.isReady]。
+     *
+     * ## 为什么要等一会儿再回答（不是立刻返回）
+     *
+     * 授权是**异步落地**的，而且顺序被系统钉死：
+     * `onActivityResult` → `startForegroundService` →
+     * `onStartCommand` 里 `startForeground(TYPE_MEDIA_PROJECTION)` → 才
+     * `getMediaProjection()` 换 token。
+     *
+     * 所以用户点完「立即开始」回到页面的那一瞬间，token 很可能**还没换好** ——
+     * 立刻回答 `false` 会让「明明授权了却进不去桌宠」重现，而且前端为了防死循环
+     * 会静默收尾，表现就是「点了没反应」。
+     *
+     * 折中：轮询等最多 [SCREEN_READY_WAIT_MS]。等到了就立刻返回；等不到就是
+     * 真的没授权（用户点了取消），返回 `false` 让前端收尾。
+     *
+     * ⚠️ 轮询放在**后台线程**：主线程在这段时间里要处理授权回来的 UI 回调，
+     * 占住主线程反而会让 token 永远换不上来。
+     */
+    @Command
+    fun isScreenCaptureReady(invoke: Invoke) {
+        if (ScreenCaptureManager.isReady()) {
+            Log.i(TAG, "查询屏幕截取授权：ready=true（立即）")
+            invoke.resolveObject(JSObject().apply { put("ready", true) })
+            return
+        }
+
+        Thread {
+            val deadline = SystemClock.uptimeMillis() + SCREEN_READY_WAIT_MS
+            while (!ScreenCaptureManager.isReady() && SystemClock.uptimeMillis() < deadline) {
+                try {
+                    Thread.sleep(50)
+                } catch (e: InterruptedException) {
+                    break
+                }
+            }
+            val ready = ScreenCaptureManager.isReady()
+            Log.i(
+                TAG,
+                "查询屏幕截取授权：ready=$ready" +
+                    if (ready) "（等了 ${SCREEN_READY_WAIT_MS}ms 内就绪）" else "（等待超时，判定未授权）"
+            )
+            invoke.resolveObject(JSObject().apply { put("ready", ready) })
+        }.start()
+    }
+
+    /**
+     * 拉起系统的截屏授权框：「允许 LingChat 开始截取您的屏幕内容吗？」
+     *
+     * ## 为什么要单独一条命令
+     *
+     * `MediaProjection` 只能从一次**用户授权的结果**里换出来，而那次授权必须由
+     * Activity 用 `startActivityForResult` 发起（Service / Application 都不行）。
+     * 所以前端在打开「屏幕感知」时先调本命令弹框，用户点「立即开始」之后，
+     * `captureScreen` 才可能成功。
+     *
+     * ## 返回 `{ ok, reason }`
+     *
+     * - `already_granted` —— 进程内已经授权过，不用再弹
+     * - `prompted` —— 已拉起授权框。⚠️ **这一次的最终结果前端拿不到**：
+     *   用户在弹框上点「允许/拒绝」后，结果由 `MainActivity.onActivityResult`
+     *   直接落到 `ScreenCaptureManager`。判断是否成功要看下一次
+     *   [isScreenCaptureReady] 或 `captureScreen` 的返回
+     * - `unsupported` —— 系统不支持（理论上只有极老 ROM）
+     */
+    @Command
+    fun requestScreenCapture(invoke: Invoke) {
+        if (ScreenCaptureManager.isReady()) {
+            invoke.resolveObject(
+                JSObject().apply {
+                    put("ok", true)
+                    put("reason", "already_granted")
+                }
+            )
+            return
+        }
+
+        val intent = ScreenCaptureManager.requestIntent(activity)
+        if (intent == null) {
+            invoke.resolveObject(
+                JSObject().apply {
+                    put("ok", false)
+                    put("reason", "unsupported")
+                }
+            )
+            return
+        }
+
+        // startActivityForResult 只能在主线程发起。
+        activity.runOnUiThread {
+            try {
+                activity.startActivityForResult(intent, ScreenCaptureManager.REQUEST_CODE)
+                invoke.resolveObject(
+                    JSObject().apply {
+                        put("ok", true)
+                        put("reason", "prompted")
+                    }
+                )
+            } catch (t: Throwable) {
+                Log.w(TAG, "拉起屏幕截取授权失败", t)
+                invoke.reject("拉起屏幕截取授权失败: ${t.message}")
+            }
         }
     }
 
@@ -1695,6 +1885,18 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
 
                 Log.i(TAG, "桌宠已展开 ${width}x${height} @ (${params.x},${params.y})")
                 invoke.resolve()
+
+                // 屏幕截取授权**不再**在这里自动弹。
+                //
+                // 现在的设计是「门禁」：前端在 `goToPetMode` 里先查
+                // 悬浮窗权限 + 屏幕截取权限，缺哪个就弹说明、拉授权框，
+                // **两项齐备才允许进桌宠**（见 `isScreenCaptureReady` 命令）。
+                //
+                // 放在这里自动弹有两个问题：
+                // 1. 会和前端的门禁抢 —— 用户在门禁里已经明确看过说明并点了
+                //    「立即开始」，这里再弹一次纯属骚扰；
+                // 2. 用户拒绝后仍然进了桌宠，于是相机键按下去只能失败，
+                //    体验上是「功能坏了」而不是「我没给权限」。
             } catch (e: Exception) {
                 Log.e(TAG, "搬入悬浮窗失败", e)
                 // 失败时必须把 WebView 还给 Activity，否则主界面永久黑屏
@@ -2190,6 +2392,18 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                         true
                     } else {
                         // 单击：交回给页面（点头像 → 展开/收起）
+                        //
+                        // ★ 顺便起一次输入法探针。为什么不是交给页面的
+                        //   `touchstart` 就够了：页面那个 `imeFocusHeld` 闩锁
+                        //   会被原生「悄悄让出焦点」弄脏且永不复位，见
+                        //   [probeImeAfterTap] 的说明。探针是幂等的，
+                        //   页面正常时它只是多问一句 DOM。
+                        Log.i(
+                            TAG,
+                            "悬浮窗单击 (${event.rawX.toInt()},${event.rawY.toInt()})" +
+                                " 窗口=${params.width}x${params.height}@(${params.x},${params.y})",
+                        )
+                        (v as? WebView)?.let { probeImeAfterTap(it, event.x, event.y) }
                         false
                     }
                 }
@@ -2555,23 +2769,21 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     @Command
     fun setImeFocus(invoke: Invoke) {
         val args = invoke.parseArgs(ImeFocusArgs::class.java)
+        // ★ 入口就记一行：这条日志缺不缺失，是判断「前端到底有没有把命令发过来」
+        //   的唯一依据。之前只有成功路径才有日志，于是「页面根本没发」和
+        //   「发了但被 NOT_VISIBLE 拒了」在日志里长得一模一样，无法区分。
+        Log.i(TAG, "setImeFocus 收到：focused=${args.focused}")
         activity.runOnUiThread {
             val params = layoutParams
             val view = petView
             if (params == null || view == null) {
+                Log.w(TAG, "setImeFocus 被拒：悬浮窗不在（params=${params != null} view=${view != null}）")
                 invoke.reject("NOT_VISIBLE")
                 return@runOnUiThread
             }
             try {
                 if (args.focused) {
-                    params.flags =
-                        params.flags and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
-                    // 与 setExpanded 保持一致：只 ADJUST_RESIZE，绝不要
-                    // SOFT_INPUT_STATE_VISIBLE（见那里的长注释）
-                    params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
-                    windowManager?.updateViewLayout(view, params)
-                    view.requestFocus()
-                    view.postDelayed({ showIme(view) }, IME_SHOW_DELAY_MS)
+                    ensureImeFocus(view)
                     Log.i(TAG, "输入框获得焦点：悬浮窗改为可获焦，准备弹出输入法")
                 } else {
                     hideIme(view)
@@ -2585,6 +2797,96 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
                 Log.e(TAG, "切换输入法焦点失败", e)
                 invoke.reject("切换输入法焦点失败: ${e.message}")
             }
+        }
+    }
+
+    /**
+     * 把悬浮窗切成可获焦并弹出输入法（幂等）。
+     *
+     * 两个调用点：
+     * - 页面发来的 `setImeFocus(true)`（正常路径）
+     * - [probeImeAfterTap] 的探针（页面闩锁卡死时的自愈路径）
+     *
+     * 幂等很重要：探针和页面可能**同时**触发，重复摘 flag / 重复
+     * `updateViewLayout` 只会多一次布局，不会出错；但已经可获焦时就不必
+     * 再 `updateViewLayout` 了（那会让窗口闪一下），直接弹。
+     */
+    private fun ensureImeFocus(view: View, focusJs: String? = null) {
+        val params = layoutParams ?: return
+        val notFocusable = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        val needFlagChange = (params.flags and notFocusable) != 0
+        val needModeChange =
+            params.softInputMode != WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+
+        if (needFlagChange) {
+            params.flags = params.flags and notFocusable.inv()
+        }
+        // 与 setExpanded 保持一致：只 ADJUST_RESIZE，绝不要
+        // SOFT_INPUT_STATE_VISIBLE（见那里的长注释）
+        if (needModeChange) {
+            params.softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
+        }
+
+        // 真正的「聚焦页面元素 + 弹输入法」。顺序不能反：必须先让窗口可获焦
+        // （updateViewLayout 生效），页面里的 textarea 才 focus 得上。
+        val fire = {
+            if (focusJs != null) {
+                (view as? WebView)?.evaluateJavascript(focusJs, null)
+                // 页面聚焦是异步的（要等一次 JS 执行 + Chromium 建输入连接），
+                // 紧接着再弹，别和 focus 抢同一帧。
+                view.postDelayed({ showIme(view) }, IME_FOCUS_SETTLE_MS)
+            } else {
+                showIme(view)
+            }
+        }
+
+        if (needFlagChange || needModeChange) {
+            try {
+                windowManager?.updateViewLayout(view, params)
+            } catch (t: Throwable) {
+                Log.w(TAG, "切换可获焦失败（可忽略）", t)
+            }
+            view.requestFocus()
+            // 窗口刚变可获焦，此刻还没完成焦点切换，同步 showSoftInput 会被丢掉
+            view.postDelayed({ fire() }, IME_SHOW_DELAY_MS)
+        } else {
+            view.requestFocus()
+            fire()
+        }
+    }
+
+    /**
+     * ★ 输入法自愈探针：点完一下之后，问「这个位置底下是不是可编辑元素」。
+     *
+     * ## 为什么需要它（这是「弹不出键盘还是存在」的关键）
+     *
+     * 页面侧 `ChatInput.vue` 有个 `imeFocusHeld` 闩锁：置 true 之后只有 `blur`
+     * 才复位。而原生在悬浮窗**失去窗口焦点**时会自己把 `FLAG_NOT_FOCUSABLE`
+     * 加回去（见 [watchWindowFocus]），却没有任何办法告诉页面「我已经让出了」。
+     * 于是页面以为还持有焦点，之后**再点输入框一声不吭什么都不做** ——
+     * 一次意外失焦就能把它永久锁死，而用户看到的就是「键盘弹不出来」。
+     *
+     * 与其让原生去猜页面状态，不如直接问 DOM「你点的这块是不是输入框」。
+     * 这条路径完全绕开页面的闩锁，页面那边坏成什么样都不影响。
+     *
+     * @param pxX 触摸点在 View 坐标系里的 x（px）
+     * @param pxY 触摸点在 View 坐标系里的 y（px）
+     */
+    private fun probeImeAfterTap(webView: WebView, pxX: Float, pxY: Float) {
+        if (layoutParams == null) return
+        val density = activity.resources.displayMetrics.density.takeIf { it > 0f } ?: 1f
+        val cssX = pxX / density
+        val cssY = pxY / density
+        try {
+            webView.evaluateJavascript(editableAtPointJs(cssX, cssY, focus = false)) { result ->
+                val hit = result?.contains("1") == true
+                Log.i(TAG, "输入法探针：(${cssX.toInt()},${cssY.toInt()})CSS 处是可编辑元素=$hit")
+                if (hit) {
+                    ensureImeFocus(webView, editableAtPointJs(cssX, cssY, focus = true))
+                }
+            }
+        } catch (t: Throwable) {
+            Log.w(TAG, "输入法探针失败（可忽略）", t)
         }
     }
 
@@ -2612,7 +2914,8 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             Log.i(
                 TAG,
                 "弹出输入法（第 $attempt/$IME_SHOW_MAX_ATTEMPTS 次）：" +
-                    "页面就绪=$ready 窗口有焦点=${view.hasWindowFocus()}",
+                    "页面就绪=$ready 窗口有焦点=${view.hasWindowFocus()} " +
+                    "输入法活跃=${imm.isActive(view)} 接受输入=${imm.isAcceptingText}",
             )
             if (ready) {
                 // 顺手再要一次视图焦点：窗口刚变可获焦时 requestFocus 可能太早
@@ -2659,13 +2962,33 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
             val params = layoutParams ?: return@addOnWindowFocusChangeListener
             val notFocusable = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
             if (params.flags and notFocusable != 0) return@addOnWindowFocusChangeListener
-            params.flags = params.flags or notFocusable
-            try {
-                windowManager?.updateViewLayout(webView, params)
-            } catch (t: Throwable) {
-                Log.w(TAG, "失去窗口焦点后让出输入焦点失败（可忽略）", t)
-            }
-            Log.i(TAG, "悬浮窗失去窗口焦点，已让出输入焦点")
+            Log.i(TAG, "悬浮窗窗口失焦，等待 ${FOCUS_RELEASE_DEBOUNCE_MS}ms 确认")
+            // ★ 延迟确认，不能当场让出：输入法弹出的瞬间会短暂失一次窗口焦点，
+            //   当场让出等于刚弹出来就关掉。见 FOCUS_RELEASE_DEBOUNCE_MS 的说明。
+            webView.postDelayed(
+                {
+                    if (webView.hasWindowFocus()) {
+                        Log.i(TAG, "窗口焦点已回来，保持可获焦")
+                        return@postDelayed
+                    }
+                    val p = layoutParams ?: return@postDelayed
+                    if (p.flags and notFocusable != 0) return@postDelayed
+                    val imm = activity.getSystemService(Context.INPUT_METHOD_SERVICE)
+                        as? InputMethodManager
+                    if (imm?.isAcceptingText == true) {
+                        Log.i(TAG, "窗口失焦但输入法正在接受输入，暂不让出焦点")
+                        return@postDelayed
+                    }
+                    p.flags = p.flags or notFocusable
+                    try {
+                        windowManager?.updateViewLayout(webView, p)
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "失去窗口焦点后让出输入焦点失败（可忽略）", t)
+                    }
+                    Log.i(TAG, "悬浮窗失去窗口焦点，已让出输入焦点")
+                },
+                FOCUS_RELEASE_DEBOUNCE_MS,
+            )
         }
     }
 
