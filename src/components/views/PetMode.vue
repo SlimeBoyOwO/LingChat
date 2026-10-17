@@ -64,11 +64,17 @@
             事件出）。悬浮窗这里按同一套契约喂它：内容全部来自 store，
             点击回传给本页的推进状态机，`drained` 回报本句已吐完。
             多传一个 `inline` 让它用**文档流**排版（气泡窗里它是绝对定位，
-            在那种「整窗就是一个气泡」的盒子里才对）。 -->
+            在那种「整窗就是一个气泡」的盒子里才对）。
+
+            `visible` 必须与上面那条带子的 `v-show` **同源**（`petExpanded &&
+            bubbleVisible`），不能只给 `bubbleVisible`：收起态带子是 `display:none`，
+            此刻若把台词交给 `DialogueBox`，它会按宽度 0 measure 出高度 0，
+            台词整段被裁掉 —— 而 `visible`/`line` 之后都没变，不会重排，
+            于是「进桌宠的第一句永远不显示，等下一句才恢复」。 -->
         <DialogueBox
           ref="gameDialogRef"
           inline
-          :visible="bubbleVisible"
+          :visible="petExpanded && bubbleVisible"
           :line="uiStore.showCharacterLine"
           :line-id="currentLineId"
           :emotion="uiStore.showCharacterEmotion"

@@ -48,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { BubbleAlign, BubbleSide } from "./bubbleMirror";
 import { useTypeWriter } from "@/composables/ui/useTypeWriter";
 import { createCharRevealWriter } from "@/utils/typewriter/charReveal";
@@ -161,9 +161,13 @@ const shownLine = ref<string | null>(null);
 
 let renderToken = 0;
 
+/** 上一次量高度用的宽度，宽度变了要重算（见下方 ResizeObserver） */
+let measuredWidth = 0;
+
 const applyTextHeight = (line: string) => {
   const el = textRef.value;
   if (!el) return;
+  measuredWidth = el.clientWidth;
   if (!line.trim()) {
     el.style.height = "0px";
     return;
@@ -218,6 +222,31 @@ const render = async (line: string, instant: boolean) => {
   // 自然打完或被 finishTyping 补全（TypeWriter.finish 会收口 start 的 promise）；过期渲染已被 token 挡掉
   if (!isTyping.value) emit("drained", id);
 };
+
+/**
+ * 宽度变化后按新宽度重算文本高度。
+ *
+ * `applyTextHeight` 量出来的是**当时宽度**下的固定像素高度。Android 悬浮窗
+ * 收起 → 展开会改窗口宽度（1/6 → 2/5 屏宽），旧高度要么裁掉后半句、要么留白。
+ * 只在宽度真的变了时重算，避免「设高度 → 触发观察 → 再设高度」的回环。
+ */
+const widthObserver =
+  typeof ResizeObserver === "undefined"
+    ? null
+    : new ResizeObserver(() => {
+        const el = textRef.value;
+        if (!el) return;
+        const width = el.clientWidth;
+        if (!width || width === measuredWidth) return;
+        const line = shownLine.value;
+        if (line) applyTextHeight(line);
+      });
+
+onMounted(() => {
+  if (textRef.value) widthObserver?.observe(textRef.value);
+});
+
+onUnmounted(() => widthObserver?.disconnect());
 
 watch(
   () => [props.visible, props.line, props.instant] as const,
