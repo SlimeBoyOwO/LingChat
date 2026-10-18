@@ -283,3 +283,43 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         println!("已写出试听文件: {out}");
     }
 }
+
+/// 用 `SHERPA_TEXT` 指定的文本合成一次（配合 `SHERPA_OUT_WAV` 导出），用来排查单个句子
+/// 的读音/分词问题，不必改测试里的固定文本。
+#[tokio::test]
+#[ignore = "需要真实模型目录（SHERPA_MODEL_DIR）+ SHERPA_TEXT"]
+async fn synth_env_text() {
+    let model_dir = std::env::var("SHERPA_MODEL_DIR").expect("请设置 SHERPA_MODEL_DIR");
+    let model_type = std::env::var("SHERPA_MODEL_TYPE").expect("请设置 SHERPA_MODEL_TYPE");
+    let lang = std::env::var("SHERPA_LANG").unwrap_or_else(|_| "zh".to_string());
+    let text = std::env::var("SHERPA_TEXT").expect("请设置 SHERPA_TEXT");
+
+    let mut adapter = SherpaOnnxAdapter::new(
+        TtsConfig::default(),
+        model_dir.clone(),
+        model_type.clone(),
+        lang.clone(),
+        String::new(),
+        std::env::var("SHERPA_USE_GPU").is_ok(),
+    )
+    .expect("初始化适配器失败");
+
+    if let Ok(ref_wav) = std::env::var("SHERPA_REF_WAV") {
+        let ref_text = std::env::var("SHERPA_REF_TEXT").unwrap_or_default();
+        let (samples, sample_rate) = load_reference_audio(std::path::Path::new(&ref_wav))
+            .unwrap_or_else(|e| panic!("加载参考音频失败（{ref_wav}）: {e}"));
+        adapter.set_reference_audio(samples, sample_rate, ref_text);
+    }
+
+    let wav = adapter.generate_voice(&text, "").await.expect("合成失败");
+    let (sr, samples) = parse_wav(&wav);
+    println!(
+        "自定义文本 @ {model_type}/{lang}「{text}」→ {:.3}s sr={sr}",
+        samples.len() as f64 / f64::from(sr)
+    );
+
+    if let Ok(out) = std::env::var("SHERPA_OUT_WAV") {
+        std::fs::write(&out, &wav).expect("写出 WAV 失败");
+        println!("已写出试听文件: {out}");
+    }
+}
