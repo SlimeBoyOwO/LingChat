@@ -14,7 +14,34 @@ jobs:
       CARGO_PROFILE_RELEASE_STRIP: "true"
 
     steps:
+      # 测试版也要出「能用的包」：resources 来自两层——
+      #   1) Git LFS：checkout 默认只给 LFS 指针（不是内容），不拉的话 data.7z 会只剩 1.8 MB 空壳
+      #   2) pnpm run init：data/third_party 的 emotion/embedding 模型不在 git 里，必须现场下载
       - uses: actions/checkout@v4
+        with:
+          lfs: false
+
+      - name: 恢复 LFS 对象缓存
+        # 只缓存对象、不代替拉取；命中缓存时 git lfs pull 不再走网络
+        uses: actions/cache@v4
+        with:
+          path: .git/lfs/objects
+          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
+          restore-keys: |
+            ${{ runner.os }}-lfs-
+
+      - name: 拉取 LFS 数据
+        run: |
+          set -euo pipefail
+          git lfs pull --include="data/**,public/**,src/assets/**,src-tauri/icons/**"
+          # 指针文件 = 真实内容没下来，直接失败，别让它混进包里
+          pointers=$(grep -rlI 'git-lfs.github.com/spec' data public src/assets 2>/dev/null | head -5 || true)
+          if [ -n "$pointers" ]; then
+            echo "::error::以下文件仍是 Git LFS 指针（真实内容没拉下来）："
+            echo "$pointers"
+            exit 1
+          fi
+          echo "✓ LFS 数据已就位：$(du -sh data public src/assets 2>/dev/null | tr '\n' ' ')"
 
       - uses: pnpm/setup@v1
         with:
@@ -87,6 +114,12 @@ jobs:
           python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
           pnpm tauri icon ./src-tauri/icons/icon.png
 
+      - name: 下载运行时模型
+        # data/third_party 的 emotion/embedding 模型不进 git（.gitignore 的 data/**），
+        # 必须靠 pnpm run init 现场下载，否则打进包的 AI 功能是缺模型的。
+        # 与 build-android.yml（发行版）保持一致。
+        run: pnpm run init
+
       - name: 准备 Android 项目
         run: |
           pnpm android:prepare
@@ -134,6 +167,21 @@ jobs:
 
       - name: 构建 Android APK
         run: pnpm android:build
+
+      - name: 校验打进包的 data.7z 不是空壳
+        # CI 最容易踩的坑：资源没拉全时它照样能构建成功，只是包里没有数据和模型。
+        # 正常约 84 MB；只有 ~2 MB 就说明 data/ 的真实内容没打进包。
+        run: |
+          set -euo pipefail
+          DATA7Z="src-tauri/gen/android/app/src/main/assets/data/data.7z"
+          test -f "$DATA7Z" || { echo "::error::找不到 $DATA7Z"; exit 1; }
+          SZ=$(stat -c%s "$DATA7Z")
+          echo "data.7z 大小: $((SZ/1048576)) MB"
+          if [ "$SZ" -lt 20000000 ]; then
+            echo "::error::$DATA7Z 只有 $((SZ/1048576)) MB，游戏数据是空壳：检查 LFS 拉取（git lfs pull）与 pnpm run init 是否真的跑了"
+            exit 1
+          fi
+          echo "✓ 游戏数据已进包"
 
       - name: 校验打进包里的 sherpa 是 NNAPI 版
         # `pnpm android:build` 默认会自编 NNAPI 版 sherpa（约十几分钟）；但如果前置条件
