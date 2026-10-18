@@ -9,6 +9,7 @@
 //! 写音频文件到磁盘的目录由 `set_temp_dir` 决定，默认 `<data>/voice/`。
 
 pub mod adapters;
+pub(crate) mod chinese_digits;
 pub mod provider;
 pub mod text_language;
 pub mod voice_maker;
