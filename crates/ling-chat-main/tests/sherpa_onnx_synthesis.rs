@@ -40,7 +40,9 @@
 //!   SHERPA_MODEL_TYPE=matcha ./probe --ignored --nocapture --test-threads=1"
 //! ```
 
-use ling_chat_main::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
+use ling_chat_main::ai_service::tts::adapters::sherpa_onnx::{
+    SherpaOnnxAdapter, load_reference_audio,
+};
 use ling_chat_main::ai_service::tts::provider::TtsAdapter;
 use ling_chat_main::config::tts::TtsConfig;
 
@@ -69,6 +71,28 @@ fn parse_wav(wav: &[u8]) -> (u32, Vec<i16>) {
     (sample_rate, samples)
 }
 
+/// 静音判定阈值：与 sherpa 的 `ScaleSilence` 一致（0.01 满量程 ≈ -40 dBFS）。
+const SILENCE_I16: i16 = 327;
+
+/// 列出所有静音区间 → (起始秒, 时长秒)。
+fn silence_runs(samples: &[i16], sample_rate: u32) -> Vec<(f64, f64)> {
+    let sr = f64::from(sample_rate.max(1));
+    let mut runs = Vec::new();
+    let mut i = 0;
+    while i < samples.len() {
+        if samples[i].abs() > SILENCE_I16 {
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < samples.len() && samples[i].abs() <= SILENCE_I16 {
+            i += 1;
+        }
+        runs.push((start as f64 / sr, (i - start) as f64 / sr));
+    }
+    runs
+}
+
 #[tokio::test]
 #[ignore = "需要真实模型目录（SHERPA_MODEL_DIR）"]
 async fn synthesis_is_audible_and_scales_with_text_length() {
@@ -89,7 +113,7 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         "模型目录不存在: {model_dir}"
     );
 
-    let adapter = SherpaOnnxAdapter::new(
+    let mut adapter = SherpaOnnxAdapter::new(
         TtsConfig::default(),
         model_dir.clone(),
         model_type.clone(),
@@ -98,6 +122,19 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         use_gpu,
     )
     .expect("初始化 Sherpa-ONNX 适配器失败");
+
+    // 可选：挂参考音频（ZipVoice/Pocket 必需；其它模型忽略）。带这个开关就能在没有
+    // 图形界面的机器上复现「换参考音频音色是否跟着变」「停顿是否合理」这类问题。
+    if let Ok(ref_wav) = std::env::var("SHERPA_REF_WAV") {
+        let ref_text = std::env::var("SHERPA_REF_TEXT").unwrap_or_default();
+        let (samples, sample_rate) = load_reference_audio(std::path::Path::new(&ref_wav))
+            .unwrap_or_else(|e| panic!("加载参考音频失败（{ref_wav}）: {e}"));
+        adapter.set_reference_audio(samples, sample_rate, ref_text.clone());
+        println!(
+            "已挂载参考音频: {ref_wav}（{sample_rate} Hz，参考文本 {} 字）",
+            ref_text.chars().count()
+        );
+    }
 
     let mut measured = Vec::new();
     let mut total_elapsed = std::time::Duration::ZERO;
@@ -126,11 +163,13 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         // 静音/噪声：kokoro 缺 lexicon、int8 模型在部分 arm64 设备上都会命中这里。
         assert!(peak > 1000, "{label}输出疑似静音（峰值 {peak}）");
         assert!(rms > 100.0, "{label}输出能量过低（RMS {rms:.1}）");
-        measured.push((text.chars().count(), seconds));
+        measured.push((text.chars().count(), seconds, sample_rate, samples));
     }
 
-    let (short_chars, short_seconds) = measured[0];
-    let (long_chars, long_seconds) = measured[1];
+    let (short_chars, short_seconds, _, _) = &measured[0];
+    let (long_chars, long_seconds, long_sr, long_samples) = &measured[1];
+    let (short_chars, short_seconds, long_chars, long_seconds) =
+        (*short_chars, *short_seconds, *long_chars, *long_seconds);
     let char_ratio = long_chars as f64 / short_chars as f64;
     println!(
         "时长比 {:.2}（字数比 {char_ratio:.2}）：短句 {short_seconds:.3}s → 长句 {long_seconds:.3}s",
@@ -142,6 +181,46 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         long_seconds >= short_seconds * char_ratio * 0.6,
         "长句时长未随文本增长：短句 {short_seconds:.3}s / 长句 {long_seconds:.3}s（字数比 {char_ratio:.2}）"
     );
+
+    // 停顿回归（见 adapter 里的 SILENCE_SCALE）：一旦退回绑定默认的 0.2，超过 0.2 秒的
+    // 静音会被压到两成，句号/问号后的停顿就和逗号后的一样短——用户侧表现就是
+    // 「断句不清、读得赶」。长句里有「？」和「。」各一处，必须找得到明显的句读停顿。
+    let runs: Vec<(f64, f64)> = silence_runs(long_samples, *long_sr)
+        .into_iter()
+        .filter(|(_, d)| *d >= 0.15)
+        .collect();
+    let longest_internal = runs
+        .iter()
+        .filter(|(start, _)| *start > 0.001)
+        .map(|(_, d)| *d)
+        .fold(0.0_f64, f64::max);
+    println!(
+        "长句停顿（≥150ms）{} 处，最长句内停顿 {:.0}ms：{:?}",
+        runs.len(),
+        longest_internal * 1000.0,
+        runs.iter()
+            .map(|(t, d)| format!("{:.2}s/{:.0}ms", t, d * 1000.0))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        longest_internal >= 0.25,
+        "句读停顿被压得过短（最长 {:.0}ms）：检查 SILENCE_SCALE 是不是又被退回默认的 0.2",
+        longest_internal * 1000.0
+    );
+
+    // 首尾静音要裁到上限内：多段台词顺序播放时，段首那段空白就是「等它开口」。
+    let lead = runs
+        .iter()
+        .find(|(start, _)| *start <= 0.001)
+        .map(|(_, d)| *d)
+        .unwrap_or(0.0);
+    let trail = runs
+        .iter()
+        .filter(|(start, d)| start + d >= long_seconds - 0.001)
+        .map(|(_, d)| *d)
+        .fold(0.0_f64, f64::max);
+    assert!(lead <= 0.15, "段首静音未裁干净：{:.0}ms", lead * 1000.0);
+    assert!(trail <= 0.2, "段尾静音未裁干净：{:.0}ms", trail * 1000.0);
 
     // 对比 CPU / GPU 后端性能时看这一行（音频时长本身当然和 provider 无关）。
     println!(
