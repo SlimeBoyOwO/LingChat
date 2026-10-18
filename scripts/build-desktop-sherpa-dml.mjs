@@ -31,6 +31,9 @@
 //   node scripts/build-desktop-sherpa-dml.mjs --print-lib-dir   # 只把库目录打到 stdout
 //   node scripts/build-desktop-sherpa-dml.mjs --force           # 忽略缓存重新下/编
 //
+// 可调环境变量：SHERPA_BUILD_JOBS（编译线程数，默认 = 机器核数；也认
+// CMAKE_BUILD_PARALLEL_LEVEL）、SHERPA_ONNX_DOWNLOAD_MIRROR（GitHub 下载镜像）。
+//
 // 非 Windows 平台直接跳过（退出码 0、stdout 无输出），所以可以安全地挂在跨平台入口。
 // 需要：Visual Studio（MSVC + Windows 10 SDK，dml_provider_factory.h 要 d3d12.h）、
 // cmake、网络。首次构建约十几分钟（sherpa 全量编译），之后走缓存。
@@ -39,7 +42,6 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import {
   copyFileSync,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readdirSync,
@@ -49,10 +51,18 @@ import {
 } from "node:fs";
 import { cpus } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { pipeline } from "node:stream/promises";
 import { fileURLToPath } from "node:url";
 
 import { stageDir, stageRuntimeLibs } from "./stage-desktop-runtime-libs.mjs";
+import {
+  download,
+  ensureSource,
+  parallelArgs,
+  patchFingerprint,
+  resolveBuildJobs,
+  resolveSherpaVersion,
+  run,
+} from "./lib/sherpa-source.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const projectRoot = resolve(__dirname, "..");
@@ -64,18 +74,14 @@ const patchesDir = join(projectRoot, "patches", "sherpa-onnx");
 // Windows 的 --config 覆盖：把本次编出来的 DLL 逐文件映射到资源根目录（= 安装目录）。
 const overrideConfigPath = join(tauriDir, "tauri.sherpa-dml.conf.json");
 
-const SOURCE_ARCHIVE = "https://github.com/k2-fsa/sherpa-onnx/archive/refs/tags";
 /// 与 sherpa 的 cmake/onnxruntime-win-x64-directml.cmake 保持一致：DirectML 包的
 /// 版本和 sha256 写在它的 URL_HASH 里。预下到 build 目录可以让 cmake 直接用本地包
 /// （URL_HASH 仍然会校验），绕开 nuget.org 在部分网络下的超时。
+/// 源码下载 / 补丁 / 缓存状态见 scripts/lib/sherpa-source.mjs（与 Android NNAPI 版共用）。
 const DIRECTML_VERSION = "1.15.0";
 const DIRECTML_URL = `https://www.nuget.org/api/v2/package/Microsoft.AI.DirectML/${DIRECTML_VERSION}`;
 const DIRECTML_LOCAL_NAME = `Microsoft.AI.DirectML.${DIRECTML_VERSION}.nupkg`;
 const DIRECTML_SHA256 = "10d175f8e97447712b3680e3ac020bbb8eafdf651332b48f09ffee2eec801c23";
-
-/// GitHub 直连在国内常超时，下载按「直连 → 镜像」退避；`SHERPA_ONNX_DOWNLOAD_MIRROR`
-/// 可指定单个前缀或 `none` 关闭。nuget.org 不走镜像（它自己会重定向到 azure 镜像）。
-const DEFAULT_MIRRORS = ["https://ghfast.top", "https://gh-proxy.com", "https://ghproxy.net"];
 
 const args = process.argv.slice(2);
 const printLibDirOnly = args.includes("--print-lib-dir");
@@ -96,144 +102,6 @@ function fail(msg) {
 if (process.platform !== "win32") {
   log(`非 Windows 平台（${process.platform}），跳过：DirectML 只有 Windows 有`);
   process.exit(0);
-}
-
-function resolveDownloadUrls(url) {
-  if (!url.includes("github.com")) return [url];
-  const override = (process.env.SHERPA_ONNX_DOWNLOAD_MIRROR ?? "").trim();
-  let mirrors;
-  if (override === "none") mirrors = [];
-  else if (override) mirrors = [override.replace(/\/+$/, "")];
-  else mirrors = DEFAULT_MIRRORS;
-  return [url, ...mirrors.map((m) => `${m}/${url}`)];
-}
-
-async function download(url, dest) {
-  const urls = resolveDownloadUrls(url);
-  let lastError;
-  for (const candidate of urls) {
-    try {
-      const res = await fetch(candidate);
-      if (!res.ok) throw new Error(`HTTP ${res.status} ${res.statusText}`);
-      await pipeline(res.body, createWriteStream(dest));
-      return;
-    } catch (error) {
-      lastError = error;
-      rmSync(dest, { force: true });
-      log(`下载失败（${candidate}）: ${error.message}；换下一个源`);
-    }
-  }
-  throw new Error(`下载 ${url} 失败：${lastError?.message ?? lastError}`);
-}
-
-function run(cmd, cmdArgs, opts = {}) {
-  const result = spawnSync(cmd, cmdArgs, { stdio: "inherit", ...opts });
-  if (result.error) throw new Error(`执行 ${cmd} 失败：${result.error.message}`);
-  if (result.status !== 0) throw new Error(`${cmd} 退出码 ${result.status}`);
-}
-
-/// 本次要编的版本 = Cargo.lock 里 sherpa-onnx-sys 的锁定版本（也就是真会被编的版本）。
-/// 拿不到就直接报错：宁可明确失败，也不要编出一份与运行时不同的库。
-function resolveSherpaVersion() {
-  const lock = join(projectRoot, "Cargo.lock");
-  if (!existsSync(lock)) throw new Error(`找不到 ${lock}，无法确定 sherpa-onnx 版本`);
-  const lines = readFileSync(lock, "utf-8").split("\n");
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() !== 'name = "sherpa-onnx-sys"') continue;
-    for (let j = i + 1; j < Math.min(i + 6, lines.length); j++) {
-      const match = /^version = "(.+)"$/.exec(lines[j].trim());
-      if (match) return match[1];
-    }
-  }
-  throw new Error("Cargo.lock 里没有 sherpa-onnx-sys，先跑一次 cargo fetch");
-}
-
-/// 补丁集合的指纹：文件名 + 内容。变了就重新解压重打，避免「旧源码树 + 新补丁」这种
-/// 半新半旧的状态。
-function patchFingerprint() {
-  if (!existsSync(patchesDir)) return "none";
-  const files = readdirSync(patchesDir)
-    .filter((f) => f.endsWith(".patch"))
-    .sort();
-  const hash = createHash("sha256");
-  for (const f of files) {
-    hash.update(f);
-    hash.update(readFileSync(join(patchesDir, f)));
-  }
-  return `${files.length}:${hash.digest("hex").slice(0, 16)}`;
-}
-
-function cacheStatePath() {
-  return join(cacheRoot, "state.json");
-}
-
-function readCacheState() {
-  try {
-    return JSON.parse(readFileSync(cacheStatePath(), "utf-8"));
-  } catch {
-    return null;
-  }
-}
-
-function writeCacheState(state) {
-  mkdirSync(cacheRoot, { recursive: true });
-  writeFileSync(cacheStatePath(), `${JSON.stringify(state, null, 2)}\n`);
-}
-
-/// 把源码下下来、解压、打补丁。返回源码目录。
-async function ensureSource({ version, patchHash }) {
-  const srcDir = join(cacheRoot, `sherpa-onnx-v${version}-src`);
-  const srcArchive = join(cacheRoot, `sherpa-onnx-v${version}-src.tar.gz`);
-  const ready = existsSync(join(srcDir, "CMakeLists.txt"));
-
-  if (ready && !force) {
-    log(`复用已解压源码 ${srcDir}（补丁指纹 ${patchHash}）`);
-    return srcDir;
-  }
-
-  if (force || !existsSync(srcArchive)) {
-    log(`⬇️  源码 ${SOURCE_ARCHIVE}/v${version}.tar.gz`);
-    await download(`${SOURCE_ARCHIVE}/v${version}.tar.gz`, srcArchive);
-  }
-
-  rmSync(srcDir, { recursive: true, force: true });
-  mkdirSync(srcDir, { recursive: true });
-  log(`解压源码 → ${srcDir}`);
-  run("tar", ["-xzf", srcArchive, "-C", srcDir, "--strip-components=1"]);
-
-  // 便宜的对账：tarball 里的版本必须与要编的版本一致（不做 sha256，因为源码包由
-  // GitHub 动态打包；版本号对得上就足以发现「下错了 tag / 镜像返回了别的东西」）。
-  const cmakeLists = readFileSync(join(srcDir, "CMakeLists.txt"), "utf-8");
-  const declared = /set\(SHERPA_ONNX_VERSION\s+"([^"]+)"\)/.exec(cmakeLists)?.[1];
-  if (declared !== version) {
-    throw new Error(`源码版本不匹配：Cargo.lock=${version}，CMakeLists=${declared}`);
-  }
-
-  applyPatches(srcDir);
-  return srcDir;
-}
-
-/// 按文件名顺序把 patches/sherpa-onnx/*.patch 打到新鲜源码上。
-///
-/// 这就是「构建时下载源码并修改」里「修改」的那一半：仓库只保存 diff，改的是临时源码树。
-/// 优先用 git apply（Git for Windows 一定有），没有 git 时退回 GNU patch。
-function applyPatches(srcDir) {
-  if (!existsSync(patchesDir)) return;
-  const patches = readdirSync(patchesDir)
-    .filter((f) => f.endsWith(".patch"))
-    .sort();
-  if (patches.length === 0) {
-    log("patches/sherpa-onnx/ 为空：DirectML 只需要 cmake 开关，不需要改源码");
-    return;
-  }
-  for (const patch of patches) {
-    const file = join(patchesDir, patch);
-    log(`打补丁 ${patch}`);
-    const viaGit = spawnSync("git", ["apply", "-p1", file], { cwd: srcDir, stdio: "inherit" });
-    if (viaGit.status === 0) continue;
-    const viaPatch = spawnSync("patch", ["-p1", "-i", file], { cwd: srcDir, stdio: "inherit" });
-    if (viaPatch.status !== 0) throw new Error(`补丁 ${patch} 打不上（git apply / patch 都失败）`);
-  }
 }
 
 /// 自编需要的头文件与 import lib 由 ensure-onnxruntime.mjs 从 WinML 包里抽出，
@@ -337,8 +205,11 @@ async function buildSherpa({ version, srcDir }) {
     log(`复用已有构建目录 ${buildDir}`);
   }
 
-  log(`cmake 编译（-j ${Math.max(1, cpus().length)}，首次约十几分钟）…`);
-  run("cmake", ["--build", buildDir, "--config", "Release", "--parallel"], {
+  const jobs = resolveBuildJobs();
+  log(
+    `cmake 编译（-j ${jobs ?? cpus().length}${jobs ? "，来自 SHERPA_BUILD_JOBS" : ""}，首次约十几分钟）…`,
+  );
+  run("cmake", ["--build", buildDir, "--config", "Release", ...parallelArgs(jobs)], {
     env: cmakeEnv,
   });
 
@@ -416,15 +287,18 @@ function stageAndWriteConfig(outDir) {
 }
 
 async function main() {
-  const version = resolveSherpaVersion();
-  const patchHash = patchFingerprint();
-  const state = readCacheState();
-  if (force || state?.version !== version || state?.patchHash !== patchHash) {
-    writeCacheState({ version, patchHash });
-  }
+  const version = resolveSherpaVersion(projectRoot);
+  const patchHash = patchFingerprint(patchesDir);
 
   ensureOrtBuildDeps();
-  const srcDir = await ensureSource({ version, patchHash });
+  const srcDir = await ensureSource({
+    cacheRoot,
+    patchesDir,
+    version,
+    patchHash,
+    force,
+    log,
+  });
   const outDir = await buildSherpa({ version, srcDir });
 
   if (printLibDirOnly) {
