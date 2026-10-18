@@ -88,6 +88,12 @@ const printLibDirOnly = args.includes("--print-lib-dir");
 const force = args.includes("--force");
 const shouldBuild = args.includes("--build");
 
+/// `--print-lib-dir` 模式下 stdout 只承载「库目录」这一条信息，子进程默认 `inherit`
+/// 会把 cmake 的编译/安装输出一并写进 stdout，污染上层的 `$(...)` 解析（Android 那份
+/// 脚本就在 CI 首次冷构建时踩过这个坑）。打印模式下一律把子进程的 stdout/stderr 并到
+/// 本进程的 stderr（fd 2）。
+const childStdio = printLibDirOnly ? ["ignore", 2, 2] : "inherit";
+
 /// 诊断一律走 stderr：`--print-lib-dir` 模式下 stdout 只留机器可读的目录。
 function log(msg) {
   console.error(`[sherpa-dml] ${msg}`);
@@ -117,7 +123,10 @@ function ensureOrtBuildDeps() {
     return;
   }
   log("winml-ort/ 不全，先跑 scripts/ensure-onnxruntime.mjs");
-  run(process.execPath, [join(__dirname, "ensure-onnxruntime.mjs")], { cwd: projectRoot });
+  run(process.execPath, [join(__dirname, "ensure-onnxruntime.mjs")], {
+    cwd: projectRoot,
+    stdio: childStdio,
+  });
   const missing = markers.filter((m) => !existsSync(m));
   if (missing.length > 0) {
     throw new Error(`ensure-onnxruntime 跑完仍缺少：${missing.join(", ")}`);
@@ -200,7 +209,7 @@ async function buildSherpa({ version, srcDir }) {
   ];
   if (force || !existsSync(join(buildDir, "CMakeCache.txt"))) {
     log("cmake 配置…");
-    run("cmake", configureArgs, { env: cmakeEnv });
+    run("cmake", configureArgs, { env: cmakeEnv, stdio: childStdio });
   } else {
     log(`复用已有构建目录 ${buildDir}`);
   }
@@ -211,6 +220,7 @@ async function buildSherpa({ version, srcDir }) {
   );
   run("cmake", ["--build", buildDir, "--config", "Release", ...parallelArgs(jobs)], {
     env: cmakeEnv,
+    stdio: childStdio,
   });
 
   collectDlls(buildDir, outDir);
