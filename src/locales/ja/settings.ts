@@ -486,6 +486,15 @@ export default {
       voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
       text: "参照テキスト",
       textPlaceholder: "参照音声に対応するテキスト",
+      samplingDesc:
+        "空欄ならデフォルト値。temperature と top_p を下げると、より安定して参照音声に近づきます。",
+      temperature: "温度 temperature",
+      topP: "サンプリング top_p",
+      speed: "話速 speed_factor",
+      samplingPlaceholder: "デフォルト",
+      refGuideTitle: "参照音声の作り方",
+      refGuide:
+        "1 クリップ 3〜10 秒、単一の話者・自然な話速で、リバーブや背景音なし。\n6 つのクリップは同じ話者・同じ収録回から用意するのが理想。違うと感情の切り替えで声質が跳びます。\n参照テキストは音声と一字一句一致させてください（「あ」「うん」などの間投詞も含む）。不一致は歪みの最大原因です。",
     },
     touch: {
       hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
