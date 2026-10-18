@@ -182,6 +182,17 @@
         </p>
       </MenuItem>
 
+      <MenuItem :title="$t('settings.text.textEffects.title')" size="small">
+        <Toggle
+          :checked="settingsStore.text.textEffects"
+          :key="String(textEffectsSaving)"
+          :disabled="textEffectsSaving"
+          @change="toggleTextEffects"
+        >
+          {{ $t("settings.text.textEffects.desc") }}
+        </Toggle>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
@@ -922,6 +933,14 @@ function loadLastTtsCleanup() {
 }
 
 const loadConfig = async () => {
+  void settingsStore.loadTextEffects().catch((error) => {
+    console.warn("读取文字演出设置失败:", error);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.text.textEffects.title"),
+      message: t("settings.text.textEffects.loadFailed"),
+    });
+  });
   const configKeys = ["features.use_persistent_memory"];
   for (const key of configKeys) {
     envSettings.value[key] = await getEnvConfigByKey(key);
@@ -929,6 +948,24 @@ const loadConfig = async () => {
   // 回复台词数量档位是运行时状态，单独走命令读取
   void loadReplyLengthMode();
 };
+
+const textEffectsSaving = ref(false);
+async function toggleTextEffects(enabled: boolean) {
+  if (textEffectsSaving.value) return;
+  textEffectsSaving.value = true;
+  try {
+    await settingsStore.setTextEffects(enabled);
+  } catch (error) {
+    console.warn("保存文字演出设置失败:", error);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.text.textEffects.title"),
+      message: t("settings.text.textEffects.saveFailed"),
+    });
+  } finally {
+    textEffectsSaving.value = false;
+  }
+}
 
 // 使用 settings store 的文字速度
 const textSpeed = computed({

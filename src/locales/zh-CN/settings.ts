@@ -1112,6 +1112,12 @@ export default {
       unavailable: "进入对话后才可以调整",
       failed: "切换回复台词数量失败",
     },
+    textEffects: {
+      title: "台词文字演出",
+      desc: "允许角色为台词添加加重、抖动、模糊和飘动效果",
+      loadFailed: "读取文字演出设置失败，请重新打开设置页重试",
+      saveFailed: "保存失败，文字演出设置未更改，请重试",
+    },
     sedentary: {
       title: "久坐喝水提醒",
       desc: "开启后每40分钟发送提醒一下久坐哦，只是健康小助手捏",

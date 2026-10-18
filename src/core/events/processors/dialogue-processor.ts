@@ -35,6 +35,12 @@ export default class DialogueProcessor implements IEventProcessor {
     // 日文界面且存在日语译文时显示日语译文；繁体（香港）界面下对话转繁体显示
     const displayLine = hkify(isJaLocale() && event.ttsText ? event.ttsText : event.message || "");
     gameStore.currentLine = displayLine;
+    // 译文没有对应台词区间；繁体转换改变长度时同样回退到纯文本。
+    uiStore.showCharacterTextEffects =
+      (!isJaLocale() || !event.ttsText || event.ttsText === event.message) &&
+      displayLine.length === event.message.length
+        ? (event.textEffects ?? [])
+        : [];
     uiStore.showCharacterMotionText = event.motionText || "";
 
     gameStore.appendGameMessage({

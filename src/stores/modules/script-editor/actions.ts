@@ -127,6 +127,7 @@ function capturePreviewSceneState() {
     showCharacterSubtitle: uiStore.showCharacterSubtitle,
     // 台词/情绪/动作文本：dialogue-processor 试玩期间逐句改写，纯展示字段，还回原值
     showCharacterLine: uiStore.showCharacterLine,
+    showCharacterTextEffects: [...uiStore.showCharacterTextEffects],
     showCharacterEmotion: uiStore.showCharacterEmotion,
     showCharacterMotionText: uiStore.showCharacterMotionText,
     // currentSoundEffect 不存：它是「值变化即播放」的一次性触发型字段，还原成
@@ -174,6 +175,7 @@ function restorePreviewSceneState(s: PreviewSceneSnapshot) {
   uiStore.showCharacterTitle = s.showCharacterTitle;
   uiStore.showCharacterSubtitle = s.showCharacterSubtitle;
   uiStore.showCharacterLine = s.showCharacterLine;
+  uiStore.showCharacterTextEffects = s.showCharacterTextEffects;
   uiStore.showCharacterEmotion = s.showCharacterEmotion;
   uiStore.showCharacterMotionText = s.showCharacterMotionText;
   // 音效是触发型字段，直接清成 'None'：GameBackground 的 watch 见 'None' 不会播放，

@@ -179,6 +179,12 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::TEXT_EFFECTS.to_string(),
+                        value: read_setting(app, keys::TEXT_EFFECTS, &app_defaults.text_effects.to_string()),
+                        description: "台词文字演出（加重、抖动、模糊、飘动）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::WEATHER_CITY.to_string(),
                         value: read_setting(app, keys::WEATHER_CITY, &app_defaults.weather_city),
                         description: "天气查询的手动城市（填写后 AI 即可感知该城市的实时天气并联动换装/场景/特效）".to_string(),

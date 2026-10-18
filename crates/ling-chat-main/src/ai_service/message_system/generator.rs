@@ -302,6 +302,10 @@ impl MessageGenerator {
             book.inject(&mut context, user_input);
         }
         drop(gs);
+        let text_effects = AppConfig::load(&self.deps.app)
+            .map(|config| config.text_effects)
+            .unwrap_or(false);
+        super::text_effects::inject_text_effects(&mut context, text_effects);
         Ok(context)
     }
 
@@ -1164,6 +1168,7 @@ async fn build_reply_response(
     };
     response.original_tag = first.original_tag.clone();
     response.message = first.following_text.clone();
+    response.text_effects = first.text_effects.clone();
     response.tts_text = if first.japanese_text.is_empty() {
         None
     } else {

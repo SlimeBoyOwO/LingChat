@@ -26,7 +26,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onUnmounted } from "vue";
+import { listen } from "@tauri-apps/api/event";
 import { useRoute } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { useSettingsStore } from "./stores/modules/settings";
@@ -56,6 +57,17 @@ const route = useRoute();
 const isMainWindow = getCurrentWindow().label === "main";
 
 const settingsStore = useSettingsStore();
+const textEffectsListener = listen<boolean>("text-effects:changed", ({ payload }) => {
+  settingsStore.update("text.textEffects", payload);
+});
+void textEffectsListener
+  .then(() => settingsStore.loadTextEffects())
+  .catch((error) => {
+    console.warn("读取文字演出设置失败:", error);
+  });
+onUnmounted(() => {
+  void textEffectsListener.then((unlisten) => unlisten()).catch(() => {});
+});
 // 选到内置实现，或新版引擎初始化失败时，回退到内置的 Canvas2D 特效
 const legacyCursorFxActive = computed(
   () => settingsStore.cursorEffectEngine === "legacy" || !cursorFxBaAvailable.value,

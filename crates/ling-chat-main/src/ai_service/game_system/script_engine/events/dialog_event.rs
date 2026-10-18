@@ -88,6 +88,7 @@ impl DialogueEvent {
             emotion: emotion.to_string(),
             original_tag: String::new(),
             message: text.to_string(),
+            text_effects: Vec::new(),
             tts_text: None,
             motion_text: None,
             audio_file: None,

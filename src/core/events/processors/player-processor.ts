@@ -29,6 +29,7 @@ export default class PlayerProcessor implements IEventProcessor {
     uiStore.showCharacterTitle = displayName;
     uiStore.showCharacterSubtitle = displaySubtitle;
     uiStore.showCharacterLine = event.text;
+    uiStore.showCharacterTextEffects = [];
     uiStore.showCharacterEmotion = event.emotion ? event.emotion : "";
   }
 }
