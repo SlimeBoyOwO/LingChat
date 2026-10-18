@@ -26,6 +26,25 @@ use crate::config::tts::TtsConfig;
 #[cfg(any(target_os = "windows", target_os = "android"))]
 const SHERPA_PROVIDER: &str = env!("SHERPA_ONNX_PROVIDER");
 
+/// 停顿缩放。sherpa 把「长度超过 0.2 秒的静音」按这个比例缩放（<1 缩短、>1 拉长）。
+///
+/// Rust 绑定的 `Default` 是 0.2——上游 CLI 用来压掉空档的默认值，落在句读上就是
+/// 「所有停顿只剩两成」：本机实测 72 字中文长句，句号/问号后的停顿从 0.70~1.03 秒被
+/// 压到 0.13~0.24 秒，和逗号后的停顿（0.15 秒）几乎分不出来，听感就是「断句不清、
+/// 读得赶」。反过来完全不缩放（1.0）又太拖：zipvoice 的自然句读停顿能到 1 秒。
+/// 取 0.6——句号后约 0.42~0.45 秒、逗号后约 0.17~0.24 秒，停顿的**长短层次**保留，
+/// 整段又不会听起来慢。
+///
+/// 句读位置本身由模型的 token 序列决定：sherpa 的前端即使按标点切句，各 impl 也会把
+/// token 展平回一条序列再推理，所以这里只需要管好这个缩放系数。
+const SILENCE_SCALE: f32 = 0.6;
+
+/// 首尾静音最多各保留多久（秒）。中间的停顿是句读，要留着；前后的空白在多段台词的
+/// 场景里只会变成「每句都要等一会儿才开口」——zipvoice 逐次推理的段首静音实测能到
+/// 0.4 秒，各模型之间也不一致。
+const LEAD_SILENCE_KEEP: f32 = 0.1;
+const TRAIL_SILENCE_KEEP: f32 = 0.15;
+
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
     sid: i32,
@@ -203,6 +222,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -252,6 +272,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -310,6 +331,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -365,6 +387,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -392,6 +415,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -446,6 +470,7 @@ impl SherpaOnnxAdapter {
                 ..Default::default()
             },
             max_num_sentences: 2,
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -492,6 +517,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
+            silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
 
@@ -511,6 +537,8 @@ impl TtsAdapter for SherpaOnnxAdapter {
         let gen_config = GenerationConfig {
             sid: self.sid,
             speed: self.speed,
+            // 见 SILENCE_SCALE：压掉两成的默认值会让句读停顿和逗号停顿分不出来。
+            silence_scale: SILENCE_SCALE,
             reference_audio: self.reference_audio.clone(),
             reference_sample_rate: self.reference_sample_rate.unwrap_or(0),
             reference_text: self.reference_text.clone(),
@@ -521,12 +549,14 @@ impl TtsAdapter for SherpaOnnxAdapter {
             .generate_with_config(text, &gen_config, None::<fn(&[f32], f32) -> bool>)
             .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败"))?;
 
-        let samples = audio.samples().to_vec();
         let sample_rate = audio.sample_rate();
 
-        if samples.is_empty() {
+        if audio.samples().is_empty() {
             return Err(anyhow!("Sherpa-ONNX 生成的音频为空"));
         }
+
+        // 首尾的空白裁到固定上限，中间的句读停顿交给 SILENCE_SCALE 决定。
+        let samples = trim_edge_silence(audio.samples().to_vec(), sample_rate);
 
         Ok(f32_to_wav(&samples, sample_rate))
     }
@@ -743,6 +773,36 @@ fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
     lexicon
         .lines()
         .all(|line| line.split_whitespace().skip(1).all(|p| tokens.contains(p)))
+}
+
+/// 裁掉首尾多余的静音：最多各留 [`LEAD_SILENCE_KEEP`] / [`TRAIL_SILENCE_KEEP`] 秒，
+/// 中间的停顿（句读）一律不动。静音判定阈值与 sherpa 的 `ScaleSilence` 一致
+/// （0.01，约 -40 dBFS）。整段都是静音时原样返回，交给调用方按空音频处理。
+fn trim_edge_silence(samples: Vec<f32>, sample_rate: i32) -> Vec<f32> {
+    const SILENCE_AMP: f32 = 0.01;
+
+    if sample_rate <= 0 {
+        return samples;
+    }
+
+    let mut start = 0;
+    while start < samples.len() && samples[start].abs() <= SILENCE_AMP {
+        start += 1;
+    }
+    let mut end = samples.len();
+    while end > start && samples[end - 1].abs() <= SILENCE_AMP {
+        end -= 1;
+    }
+    if start >= end {
+        return samples;
+    }
+
+    let lead = (sample_rate as f32 * LEAD_SILENCE_KEEP) as usize;
+    let trail = (sample_rate as f32 * TRAIL_SILENCE_KEEP) as usize;
+    let start = start.saturating_sub(lead);
+    let end = (end + trail).min(samples.len());
+
+    samples[start..end].to_vec()
 }
 
 fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
