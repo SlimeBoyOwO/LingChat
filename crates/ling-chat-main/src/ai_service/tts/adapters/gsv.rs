@@ -56,6 +56,24 @@ fn resolve_speak_category(
     }
 }
 
+/// 主参考命中分类配置、非中立且配置了中立分类时，把中立音频作为辅助参考
+/// （aux_ref_audio_paths）一起交给服务端做音色融合，让相邻句共享音色底子、
+/// 降低情绪切换的突变感。主参考回落到默认 gsv_voice_* 时不加，避免默认
+/// 音色与另一个参考混在一起。
+fn resolve_aux_refs<'a>(
+    category: &str,
+    primary_configured: bool,
+    emo_prompts: &'a HashMap<String, (String, String, String)>,
+) -> Vec<&'a str> {
+    if !primary_configured || category == "中立" {
+        return Vec::new();
+    }
+    emo_prompts
+        .get("中立")
+        .map(|(path, _, _)| vec![path.as_str()])
+        .unwrap_or_default()
+}
+
 /// 合成文本预处理。
 /// 1) 结尾不是标点时按语言显式补句末标点，避免服务端自动补句号的不确定性；
 /// 2) 文本同时含中日韩字符与 ASCII 字母时返回 auto，把分词交给服务端
@@ -452,11 +470,9 @@ impl TtsAdapter for GsvAdapter {
                 self.prompt_text.as_str(),
                 self.prompt_lang.as_str(),
             ));
-        // 每句只用当前分类的单段参考。服务端的 aux_ref_audio_paths 是多说话人
-        // 音色融合入口，会把第二段录音的参考特征一起混进音色条件；两段参考的
-        // 房间声/麦克风不同时，混合结果听起来就是叠音和混响，因此不再使用。
+        let aux_refs = resolve_aux_refs(&category, primary.is_some(), &self.emo_prompts);
         let (text, text_lang) = preprocess_text(text, &self.text_lang);
-        let body = json!({
+        let mut body = json!({
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
@@ -470,7 +486,24 @@ impl TtsAdapter for GsvAdapter {
             "parallel_infer": self.parallel_infer,
             "text": text,
         });
-        let bytes = send_tts_request(&self.api_url, &body).await?;
+        // 辅助参考（中立段）与主参考一起送服务端做音色融合，降低情绪切换的突变感。
+        if !aux_refs.is_empty() {
+            body["aux_ref_audio_paths"] = json!(aux_refs);
+        }
+        let bytes = match send_tts_request(&self.api_url, &body).await {
+            Ok(bytes) => bytes,
+            Err(error) if body.get("aux_ref_audio_paths").is_some() => {
+                // 辅助参考路径失效不应让原本能合成的句子整句失败：去掉后重试一次
+                tracing::warn!(
+                    "GPT-SoVITS request with auxiliary reference failed, retrying without it: {error}"
+                );
+                body.as_object_mut()
+                    .expect("tts body is an object")
+                    .remove("aux_ref_audio_paths");
+                send_tts_request(&self.api_url, &body).await?
+            },
+            Err(error) => return Err(error),
+        };
         Ok(smooth_wav(&bytes))
     }
 
@@ -614,6 +647,24 @@ mod tests {
             resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(20)))),
             ("开心".to_string(), false)
         );
+    }
+
+    #[test]
+    fn aux_refs_uses_neutral_only() {
+        let mut map = HashMap::new();
+        map.insert(
+            "中立".into(),
+            ("neutral.wav".into(), "平静。".into(), "zh".into()),
+        );
+        map.insert(
+            "开心".into(),
+            ("happy.wav".into(), "好耶。".into(), "zh".into()),
+        );
+        assert_eq!(resolve_aux_refs("开心", true, &map), vec!["neutral.wav"]);
+        assert!(resolve_aux_refs("中立", true, &map).is_empty());
+        assert!(resolve_aux_refs("开心", true, &HashMap::new()).is_empty());
+        // 主分类回落到默认 gsv_voice_* 时不挂辅助参考
+        assert!(resolve_aux_refs("开心", false, &map).is_empty());
     }
 
     #[test]
