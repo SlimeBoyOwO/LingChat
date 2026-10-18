@@ -1,7 +1,7 @@
 [package]
 name = "ling-chat-notes"
-version = "0.5.2"
-description = "LingChat 手动笔记存储库：按角色独立存储的笔记文件读写"
+version.workspace = true
+description = "LingChat 手动笔记存储库与语义检索基础：按角色存储的笔记文件读写 + ONNX 句向量引擎"
 authors = ["LingChat Team"]
 edition = "2024"
 
@@ -9,9 +9,51 @@ edition = "2024"
 name = "ling_chat_notes"
 
 [dependencies]
-serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["preserve_order"] }
-uuid = { version = "1", features = ["v4"] }
-chrono = { version = "0.4", features = ["serde"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
 tempfile = "3"
 thiserror = "2"
+
+# 向量检索：复用系统 SQLite（与主 crate 的 sqlx 共享 libsqlite3-sys 0.30），
+# sqlite-vec 扩展由 cc 静态编译进二进制。
+rusqlite = "0.32"
+sqlite-vec = "0.1.9"
+
+# 文本嵌入分词与推理（Tool RAG / 笔记检索共用）。
+tokenizers = "0.22"
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "std",
+    "ndarray",
+] }
+
+# ort 的推理后端配置与主 crate 保持一致，否则两个 crate 各自启用不同 EP，
+# Windows 上还可能因缺少 load-dynamic 而链接到不可用的静态运行时。
+[target.'cfg(target_os = "windows")'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "directml",
+    "load-dynamic",
+] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "webgpu",
+    "download-binaries",
+    "tls-native",
+] }
+
+[target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "download-binaries",
+    "tls-native",
+] }
+
+[target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
+ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+    "coreml",
+    "download-binaries",
+    "tls-native",
+] }

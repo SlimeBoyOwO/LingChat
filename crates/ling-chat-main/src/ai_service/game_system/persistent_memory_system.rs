@@ -1080,7 +1080,10 @@ fn meaningful_section<'a>(content: &'a str, placeholder: &str) -> Option<&'a str
 }
 
 fn format_archive_line(line: &GameLine, role_id: i32, ai_name: &str) -> String {
-    let content = line.content().trim();
+    // 先截到回合结束边界：旧存档里模型越界写下的 `user` 段与思考文本不该进摘要，
+    // 否则会被压缩进长期记忆，再随记忆注入回上下文。 TODO： 这个地方我可能需要核查一下
+    let content =
+        crate::ai_service::message_system::processor::truncate_at_turn_end(line.content()).trim();
     match line.attribute() {
         LineAttribute::User if line.sender_role_id() == Some(0) => {
             let player_name = line.base.display_name.as_deref().unwrap_or("玩家").trim();

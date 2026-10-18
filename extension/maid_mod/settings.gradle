@@ -1,0 +1,8 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = "https://maven.neoforged.net/releases" }
+    }
+}
+
+rootProject.name = 'lingchat-maid-bridge'

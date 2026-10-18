@@ -1,8 +1,9 @@
 //! RustPython 嵌入执行器：加载插件脚本、注入 ctx、调用 `run(ctx)`。
 //!
 //! 每个工具调用创建一个全新的 `Interpreter`（`Interpreter` 非 `Send`，
-//! 无法跨线程共享），脚本在 `spawn_blocking` 线程内执行，外层由调用方
-//! 用 `tokio::time::timeout` 兜底，超时直接丢弃整个解释器。
+//! 无法跨线程共享），脚本在自建的 `plugin-script` 线程内执行（见
+//! [`run_on_script_thread`]），外层由调用方用 `tokio::time::timeout` 兜底，
+//! 超时直接丢弃整个解释器。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -288,6 +289,33 @@ pub(crate) fn collect_env(manifest: &PluginManifest) -> HashMap<String, String> 
         .collect()
 }
 
+/// 插件脚本线程的栈大小。钦灵：这是个技术坑，靠 AI 解决的，我就把注释全留着好了
+///
+/// RustPython 的模块导入是递归执行的：脚本 → 兄弟模块 → 标准库模块 → 它自己的依赖。
+/// tokio 阻塞线程只有 2MB 栈，插件多引一层就会整进程爆栈（STATUS_STACK_OVERFLOW）。
+/// 这里给足余量：栈是虚拟地址预留，只有真用到才提交。
+const SCRIPT_STACK_SIZE: usize = 16 * 1024 * 1024;
+
+/// 在独立线程上执行一段阻塞的脚本工作，返回它的结果。
+///
+/// 代替 `tokio::task::spawn_blocking`：那边固定 2MB 栈，给不了 [`SCRIPT_STACK_SIZE`]。
+/// 线程名固定为 `plugin-script`，真出问题时（包括栈溢出）能从日志一眼认出是谁。
+pub(crate) async fn run_on_script_thread<T, F>(work: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("plugin-script".into())
+        .stack_size(SCRIPT_STACK_SIZE)
+        .spawn(move || {
+            let _ = tx.send(work());
+        })
+        .map_err(|e| format!("创建插件脚本线程失败: {e}"))?;
+    rx.await.map_err(|_| "插件脚本线程异常退出".to_string())
+}
+
 /// 公共执行骨架：建解释器 → 跑脚本顶层 → 拦截危险模块 → 调用入口函数。
 ///
 /// `collect_result` 为 false 时不序列化返回值（信号 handler 的返回值按约定丢弃，
@@ -308,6 +336,8 @@ fn run_entry(
         let _read_guard = host_api::set_read_allow(&run_env.read);
         // send_user_message 只对声明了该能力的插件放行
         let _send_guard = host_api::set_send_allow(run_env.send_user_message);
+        // 顺带抓屏同理：屏幕内容属于玩家隐私，单独声明
+        let _capture_guard = host_api::set_capture_allow(run_env.capture_screen);
         // trigger_proactive 同上
         let _proactive_guard = host_api::set_proactive_allow(run_env.trigger_proactive);
         // ws_send / ws_open / ws_close 按当前插件定位连接
@@ -346,7 +376,7 @@ fn run_entry(
 
 /// 执行工具脚本，调用 `run(ctx)` 并返回结果。
 ///
-/// 必须在 `spawn_blocking` 内调用（`Interpreter::enter` 需要线程局部状态）。
+/// 必须在 [`run_on_script_thread`] 里调用（`Interpreter::enter` 需要线程局部状态）。
 pub(crate) fn run_plugin_script(
     script_path: &Path,
     tool_name: &str,
@@ -380,7 +410,7 @@ pub(crate) fn run_plugin_startup(
 /// 执行插件的信号 handler，调用 `handler(ctx)`。
 ///
 /// 返回值按约定丢弃——信号没有下游消费者，结果只用于让宿主感知执行失败。
-/// 同样必须在 `spawn_blocking` 内调用。
+/// 同样必须在 [`run_on_script_thread`] 里调用。
 pub(crate) fn run_plugin_handler(
     script_path: &Path,
     handler: &str,

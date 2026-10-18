@@ -25,7 +25,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from "vue";
 import { listen } from "@tauri-apps/api/event";
-import { Signpost } from "lucide-vue-next";
+import { Signpost } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";

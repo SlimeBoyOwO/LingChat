@@ -110,7 +110,7 @@
             <div class="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
               <button
                 v-if="!item.is_current"
-                class="identity-btn"
+                class="btn-sm"
                 :disabled="identityScriptBlocked"
                 :title="identityScriptBlocked ? $t('settings.identity.scriptBlocked') : ''"
                 @click="switchIdentity(item)"
@@ -119,24 +119,24 @@
               </button>
               <button
                 v-if="!item.is_current"
-                class="identity-btn"
+                class="btn-sm"
                 :disabled="identityScriptBlocked"
                 :title="identityScriptBlocked ? $t('settings.identity.scriptBlocked') : ''"
                 @click="startNewGame(item)"
               >
                 {{ $t("settings.identity.newGame") }}
               </button>
-              <button class="identity-btn" @click="editIdentity(item.id)">
+              <button class="btn-sm" @click="editIdentity(item.id)">
                 {{ $t("settings.identity.edit") }}
               </button>
-              <button class="identity-btn" @click="removeIdentity(item)">
+              <button class="btn-sm" @click="removeIdentity(item)">
                 {{ $t("settings.identity.delete") }}
               </button>
             </div>
           </div>
         </div>
 
-        <button class="identity-btn-primary" @click="startCreateIdentity">
+        <button class="btn-sm-primary" @click="startCreateIdentity">
           {{ $t("settings.identity.create") }}
         </button>
 
@@ -149,19 +149,19 @@
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.identity.fieldName")
             }}</label>
-            <input v-model="identityForm.name" class="identity-input" />
+            <input v-model="identityForm.name" class="glass-input" />
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.identity.fieldSubtitle")
             }}</label>
-            <input v-model="identityForm.subtitle" class="identity-input" />
+            <input v-model="identityForm.subtitle" class="glass-input" />
           </div>
           <div class="flex flex-col gap-1.5">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.identity.fieldPrompt")
             }}</label>
-            <textarea v-model="identityForm.prompt" rows="4" class="identity-input"></textarea>
+            <textarea v-model="identityForm.prompt" rows="4" class="glass-input"></textarea>
             <p class="text-[11px] leading-relaxed text-white/40">
               {{ $t("settings.identity.promptPublicHint") }}
             </p>
@@ -181,19 +181,19 @@
                 class="w-40 shrink-0"
                 :options="relationOptionsFor(row)"
               />
-              <ExpandableInput v-model="row.text" class="identity-input flex-1" />
-              <button class="identity-btn" @click="removeRelationRow(idx)">×</button>
+              <ExpandableInput v-model="row.text" class="glass-input flex-1" />
+              <button class="btn-sm" @click="removeRelationRow(idx)">×</button>
             </div>
-            <button class="identity-btn" @click="addRelationRow">
+            <button class="btn-sm" @click="addRelationRow">
               {{ $t("settings.identity.addRelation") }}
             </button>
           </div>
 
           <div class="flex justify-end gap-2 pt-1">
-            <button class="identity-btn" :disabled="savingIdentity" @click="identityForm = null">
+            <button class="btn-sm" :disabled="savingIdentity" @click="identityForm = null">
               {{ $t("settings.identity.cancel") }}
             </button>
-            <button class="identity-btn-primary" :disabled="savingIdentity" @click="submitIdentity">
+            <button class="btn-sm-primary" :disabled="savingIdentity" @click="submitIdentity">
               {{ savingIdentity ? $t("settings.shared.loading") : $t("settings.identity.save") }}
             </button>
           </div>
@@ -306,7 +306,7 @@
           }}</label>
           <select
             v-model="conflictPolicy"
-            class="native-select-dark rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
+            class="select-dark rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
           >
             <option value="rename">{{ $t("settings.character.import.policyRename") }}</option>
             <option value="skip">{{ $t("settings.character.import.policySkip") }}</option>
@@ -343,7 +343,7 @@
 import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw, User } from "lucide-vue-next";
+import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw, User } from "@lucide/vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 
@@ -789,69 +789,3 @@ watch(
   { immediate: true },
 );
 </script>
-
-<style scoped>
-.identity-input {
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.2);
-  padding: 0.5rem 0.75rem;
-  font-size: 0.875rem;
-  color: #fff;
-  outline: none;
-}
-
-.identity-input,
-.native-select-dark {
-  color-scheme: dark;
-}
-.identity-input option,
-.native-select-dark option {
-  background-color: #1e1e2e;
-  color: #e2e8f0;
-}
-.identity-input option:checked,
-.native-select-dark option:checked {
-  background-color: #3b82f6;
-  color: #ffffff;
-}
-
-.identity-btn {
-  cursor: pointer;
-  border: none;
-  border-radius: 0.5rem;
-  background: #e9ecef;
-  padding: 0.25rem 0.6rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  color: #495057;
-  transition: all 0.2s;
-}
-
-.identity-btn:hover:not(:disabled) {
-  background: var(--accent-color, #79d9ff);
-  color: #fff;
-}
-
-.identity-btn-primary {
-  cursor: pointer;
-  border: none;
-  border-radius: 0.5rem;
-  background: var(--accent-color, #79d9ff);
-  padding: 0.4rem 0.9rem;
-  font-size: 0.8rem;
-  font-weight: 500;
-  color: #fff;
-  transition: all 0.2s;
-}
-
-.identity-btn-primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.identity-btn:disabled,
-.identity-btn-primary:disabled {
-  cursor: not-allowed;
-  opacity: 0.5;
-}
-</style>

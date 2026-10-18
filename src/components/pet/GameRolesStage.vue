@@ -109,6 +109,7 @@
         :max-fps="live2dFps"
         @active-change="setLive2dActiveRoles"
         @failed-change="setLive2dFailedRoles"
+        @model-missing="onModelMissing"
       />
 
       <!-- 角色头像 -->
@@ -136,12 +137,13 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import { useScreenshot } from "@/composables/useScreenshot";
 import { useMicControl } from "@/composables/useMicControl";
 import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
+import { useLive2dFallback } from "@/composables/role/useLive2dFallback";
 import { prefersLive2d } from "@/types/live2d";
 import { isAndroid } from "@/utils/platform";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import PetSpectrumRing from "./PetSpectrumRing.vue";
 import Live2DStage from "../game/live2d/Live2DStage.vue";
-import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from "lucide-vue-next";
+import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from "@lucide/vue";
 
 const { t } = useI18n();
 const gameStore = useGameStore();
@@ -176,6 +178,9 @@ const setLive2dActiveRoles = (roleIds: number[]) => {
 const setLive2dFailedRoles = (roleIds: number[]) => {
   live2dFailedRoleIds.value = new Set(roleIds);
 };
+
+// 模型文件不在了：切回静态立绘并落盘，下一次进桌宠不再重试
+const onModelMissing = useLive2dFallback();
 
 const singleRole = computed(() => {
   return gameStore.presentRolesList.length > 0 ? gameStore.presentRolesList[0] : null;

@@ -82,7 +82,7 @@ import { ref, watch } from "vue";
 import Button from "@/components/base/widget/Button.vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import ScheduleContent from "./ScheduleContent.vue";
-import { PawPrint } from "lucide-vue-next";
+import { PawPrint } from "@lucide/vue";
 
 const uiStore = useUIStore();
 

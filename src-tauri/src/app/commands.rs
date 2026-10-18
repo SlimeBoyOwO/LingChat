@@ -62,6 +62,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::character::voice::preview_character_voice,
         api::character::select_clothes,
         api::character::update_role_settings,
+        api::character::set_role_avatar_static,
         api::character::delete_character,
         api::character::open_characters_folder,
         api::live2d::import_live2d,

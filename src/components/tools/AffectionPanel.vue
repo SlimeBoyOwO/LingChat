@@ -288,7 +288,7 @@
 
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { ChevronDown, CloudRain } from "lucide-vue-next";
+import { ChevronDown, CloudRain } from "@lucide/vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
 import Button from "../base/widget/Button.vue";

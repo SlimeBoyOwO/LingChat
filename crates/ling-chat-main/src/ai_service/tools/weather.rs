@@ -157,7 +157,7 @@ pub async fn run_refresh_loop(app: tauri::AppHandle) {
 fn describe_weather_code(code: i64) -> &'static str {
     match code {
         0 => "晴",
-        1 | 2 | 3 => "多云",
+        1..=3 => "多云",
         45 | 48 => "雾",
         51..=57 => "毛毛雨",
         61..=67 => "雨",

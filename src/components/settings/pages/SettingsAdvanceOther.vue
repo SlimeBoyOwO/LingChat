@@ -186,7 +186,7 @@ import { Button, Toggle } from "@/components/base";
 import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/config";
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
-import { RefreshCw } from "lucide-vue-next";
+import { RefreshCw } from "@lucide/vue";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();

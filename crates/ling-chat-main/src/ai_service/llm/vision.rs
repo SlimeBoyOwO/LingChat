@@ -117,7 +117,7 @@ pub async fn analyze_image(
             t.endpoint = Endpoint::from_owned(base);
             Ok(t)
         })
-        .build();
+        .build()?;
 
     let opts = ChatOptions::default().with_max_tokens(max_tokens);
 

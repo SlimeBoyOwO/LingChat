@@ -214,7 +214,7 @@ import { eventQueue } from "../../../core/events/event-queue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";
-import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "lucide-vue-next";
+import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "@lucide/vue";
 
 interface SaveListResponse {
   saves: SaveInfo[];

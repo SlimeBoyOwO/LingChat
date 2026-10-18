@@ -279,6 +279,11 @@ pub struct PluginManifest {
     /// 缺省 false：未声明的插件调用一律被拒。
     #[serde(default)]
     pub send_user_message: bool,
+    /// 是否允许 `send_user_message` 顺带抓一张屏幕（要找哪个窗口由插件指定，
+    /// 见该函数的 `screen` 参数）。
+    /// 缺省 false：未声明的插件调用一律被拒——屏幕上是玩家的隐私，要和送消息分开声明。
+    #[serde(default)]
+    pub capture_screen: bool,
     /// 是否允许 `trigger_proactive` 请求宿主主动开一次口。
     /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮 LLM 生成
     #[serde(default)]
@@ -307,6 +312,8 @@ pub struct PluginRunEnv {
     pub read: Vec<String>,
     /// manifest `send_user_message` 声明：是否允许把外部消息送进对话。
     pub send_user_message: bool,
+    /// manifest `capture_screen` 声明：是否允许送消息时顺带抓一张屏幕。
+    pub capture_screen: bool,
     /// manifest `trigger_proactive` 声明：是否允许请求宿主主动开口。
     pub trigger_proactive: bool,
 }

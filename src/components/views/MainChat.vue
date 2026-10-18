@@ -123,12 +123,10 @@ const goToPetMode = () => {
 
 const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 const menuPanelRef = ref<HTMLElement | null>(null);
-let settingsSnapshotSession: number | null = null;
 
 const openSettings = async () => {
   gameStore.captureScreenshot();
   if (isWindows()) {
-    const el = menuPanelRef.value;
     (async () => {
       try {
         uiStore.toggleSettings(true);

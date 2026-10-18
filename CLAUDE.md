@@ -35,7 +35,7 @@ LingChat 是一个 AI Galgame 引擎，一个桌面 AI 聊天伴侣 / 桌宠应�
 
 ### 后端布局（Cargo workspace）
 
-Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共三个 crate：-`crates/ling-chat-main/`（lib 名 `ling_chat_main`）：业务主 crate。含 api、ai_service、db、config、utils、cast、lan_sync、resource_sync、manifest、migration、achievements、adventures、data_dir、state、plugin_contract。-`crates/ling-chat-plugins/`（lib 名 `ling_chat_plugins`）：插件系统 crate。含 PluginManager、RustPython 后端、ws、signal、host_api、commands。**依赖方向单向**：plugins → main。-`src-tauri/`：Tauri 外壳（bin + lib）。只保留 `lib.rs` / `main.rs` 与 `app/` 组合根（状态注入、命令注册、setup 编排、日志、平台适配）。-`src-tauri/src/app/commands.rs` 是**唯一**的 `generate_handler!` 注册表，同时注册 main 与 plugins 两边的命令。
+Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个 crate：-`crates/ling-chat-main/`（lib 名 `ling_chat_main`）：业务主 crate。含 api、ai_service、db、config、utils、cast、lan_sync、resource_sync、manifest、migration、achievements、adventures、data_dir、state、plugin_contract。-`crates/ling-chat-plugins/`（lib 名 `ling_chat_plugins`）：插件系统 crate。含 PluginManager、RustPython 后端、ws、signal、host_api、commands。-`crates/ling-chat-notes/`（lib 名 `ling_chat_notes`）：笔记与语义检索基础 crate。按角色独立存储手动笔记（`NotesStore`），并提供 ONNX 句向量引擎（`embedding::EmbeddingEngine`，Tool RAG 与笔记/记忆检索共用），处于依赖链最底层。**依赖方向单向**：plugins → main → notes，外壳 → main + plugins。-`src-tauri/`：Tauri 外壳（bin + lib）。只保留 `lib.rs` / `main.rs` 与 `app/` 组合根（状态注入、命令注册、setup 编排、日志、平台适配）。-`src-tauri/src/app/commands.rs` 是**唯一**的 `generate_handler!` 注册表，同时注册 main 与 plugins 两边的命令。
 
 - main 内 `plugin_contract` 是宿主与插件之间的窄接口：`PluginResourceSource`（宿主只读插件资源）+ `ReplyHook`（全局回复回调，`generator` 经它把 `ai:reply` 转发给插件）。它切断了 `AppState` ↔ `PluginManager` 的循环依赖。
 - `AppState` 等状态容器定义在 `ling_chat_main::state`，外壳 `lib.rs` 以 `pub use` 重导出，`crate::AppState` 路径不变。
@@ -74,7 +74,7 @@ Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共三个 crate：-
 
 ## 参考文档
 
-各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
+各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、笔记检索（`notes-retrieval.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
 
 ## 关键约定
 

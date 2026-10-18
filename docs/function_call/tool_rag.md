@@ -30,9 +30,9 @@
 ### 检索方案
 
 ONNX 语义向量检索，模型 `bge-small-zh-v1.5`（512 维，uint8 量化约 23MB，单文件）。
-代码在 `crates/ling-chat-main/src/ai_service/embedding/`，API 只有
-`EmbeddingEngine::embed` 与 `cosine_similarity`，**将来记忆检索可直接复用挂在
-`AppState` 上的同一个实例**（`state.embedding`）。
+代码在 `crates/ling-chat-notes/src/embedding/`（main 的 `ai_service::embedding` 是
+re-export，调用路径不变），API 只有 `EmbeddingEngine::embed` 与 `cosine_similarity`，
+**将来记忆检索可直接复用挂在 `AppState` 上的同一个实例**（`state.embedding`）。
 
 选它而不是词法检索，是因为语义检索对「换个环境」→ `scene_switch` 这类非同词命中更稳；
 选它而不是更大的多语言模型，是因为工具只有 30~40 个、描述全中文，且模型文件会进每个
@@ -40,7 +40,7 @@ ONNX 语义向量检索，模型 `bge-small-zh-v1.5`（512 维，uint8 量化约
 
 模型与分词文件不进 git（`.gitignore` 的 `data/**` 排除整个 `data` 目录），靠
 `scripts/download_embedding_model.mjs` 获取；`pnpm run init` 已包含这一步。
-换模型只需要改 `embedding/engine.rs` 的 `MODEL_DIR_NAME` 与下载脚本的 `BASE_URL` / `FILES`。
+换模型只需要改 `crates/ling-chat-notes/src/embedding/engine.rs` 的 `MODEL_DIR_NAME` 与下载脚本的 `BASE_URL` / `FILES`。
 
 ### 常驻工具
 
@@ -112,4 +112,51 @@ cargo test -p ling-chat-main --lib
 # 真实模型下的嵌入冒烟：维度、归一化与语义区分度。
 # 需先拉模型；单独运行（同一进程里 ort::init_from 只应初始化一次）
 cargo test -p ling-chat-main --lib embedding_smoke -- --ignored --nocapture
+
+# 静默推荐的阈值校准：打印每句样例的 top-3 分数并断言阈值切得开。
+# 同样需要模型，单独运行
+cargo test -p ling-chat-main --lib threshold_smoke -- --ignored --nocapture
 ```
+
+## 工具推荐（每轮发言前点几件）
+
+RAG 收窄工具集之后，另一个问题浮出来：**模型想不起来去 `tool_search`**。它不会主动检索
+自己不知道存在的东西，`tool_search` 的动态描述只是把清单摆在那里，能不能想到用全看运气。
+
+于是加了一步可选的预处理：每轮用户发言时先算出「这一轮可能用得上」的工具，写进一条
+**临时 system 提示**，并把它们并进本轮的 `effective_allowed`。设置里三选一
+（`tool_settings.tool_recommend_mode`，默认 `off`）：
+
+| 模式    | 谁来挑                                                                    | 额外成本               |
+| ------- | ------------------------------------------------------------------------- | ---------------------- |
+| `off`   | 不推荐                                                                    | 无                     |
+| `agent` | 上帝 Agent 读最近 `recent_window` 条台词，用 `recommend_tools` 决策工具挑 | 每轮一次小模型调用     |
+| `rag`   | 拿玩家这句话静默检索一次工具（与 `tool_search` 共用嵌入模型和激活缓存）   | 本地向量计算，不调模型 |
+
+两条路径的共同约定：
+
+- 提示是**临时**的：只搭本轮请求，不写台词表、不进长期记忆，下一轮重新算
+- 挑中的名字先过一遍权限集再并进本轮工具集——**推荐不构成授权**
+- 没有推荐（或都不过阈值）时什么都不加
+- 推荐失败只记 warn，不能拖累这一轮回复；Tool RAG 关闭时全量下发，推荐在工具集上是空操作，
+  提示仍然有效
+
+### `rag` 模式的阈值
+
+静默检索每句话都会跑，所以必须有一道分数闸门，否则「晚上好呀」也会被推荐几个不相干的工具。
+阈值 `AUTO_RECOMMEND_MIN_SCORE = 0.5`，最多推荐 `AUTO_RECOMMEND_TOP_K = 3` 件。实测依据在
+校准用例 `threshold_smoke`（需真模型，用 `--ignored` 单独跑，详见下方验证命令）：
+
+- 明确的工具意图 top-1 落在 0.51~0.65（「换个场景吧」0.65、「今天天气怎么样」0.52）
+- 寒暄与闲聊 top-1 都在 0.40~0.46
+- 省略句是已知弱项：「看看我建的爱心」排序是对的（`maid_see_screen` 排第一）但 0.44 过不了
+  阈值，「你还记得我上次说过什么吗」被场景工具压过。这两类最终靠模型自己想到 `tool_search`
+
+顺带一条语料结论：**语料文本只用中文描述**，不再拼英文工具名。实测英文名字对中文短句只是
+噪声（`schedule_add_todo` 这类 token 会把相关分数整体压下去），去掉之后相关意图的 top-1
+普遍提高 0.03~0.05。改工具描述会改变分数，`threshold_smoke` 会因此失败——重跑一遍、重新
+校准阈值即可。
+
+命中项照常进入该角色的激活缓存，与 `tool_search` 共用 LRU（容量 10），推荐过的工具在后续
+几轮一直可见，直到被淘汰。`tool_search` 自己的检索不设阈值（模型主动要的东西总得给），
+传的是负无穷。

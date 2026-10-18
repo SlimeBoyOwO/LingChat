@@ -38,8 +38,16 @@ def connected():
 
 
 def send(frame):
-    """推一条不期待回信的帧。"""
-    ws_send(CONN_ID, frame)
+    """推一条不期待回信的帧，返回宿主的结果（发不出去时 `ok` 为假，别默默丢掉）。"""
+    return ws_send(CONN_ID, frame)
+
+
+def bind(maid_id):
+    """告诉模组盯哪只女仆：玩家说话与「她自发注意到」都得先有这一步。
+
+    模组那边是幂等的：重复发只当又改了一次绑定目标，所以可以放心在别的时机重申。
+    """
+    return send({"type": "set_monitored_maid", "data": {"maid_id": maid_id}})
 
 
 def ask(frame, timeout_ms):

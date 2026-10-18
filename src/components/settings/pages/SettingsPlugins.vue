@@ -285,7 +285,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, reactive } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ChevronDown, PackageOpen } from "lucide-vue-next";
+import { ChevronDown, PackageOpen } from "@lucide/vue";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button } from "../../base";
 import Icon from "@/components/base/widget/Icon.vue";

@@ -119,8 +119,6 @@ pub struct AppConfig {
     #[serde(default = "default_true")]
     pub ai_auto_clothes: bool,
     #[serde(default = "default_true")]
-    pub ai_auto_scene: bool,
-    #[serde(default = "default_true")]
     pub ai_auto_effect: bool,
 
     // ---- 功能开关（记忆系统） ----
@@ -177,7 +175,6 @@ impl Default for AppConfig {
             weather_first_talk: false,
             weather_auto_sync: false,
             ai_auto_clothes: true,
-            ai_auto_scene: true,
             ai_auto_effect: true,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
@@ -289,7 +286,6 @@ impl AppConfig {
             ),
             weather_auto_sync: get_bool(&store, keys::WEATHER_AUTO_SYNC, default.weather_auto_sync),
             ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
-            ai_auto_scene: get_bool(&store, keys::AI_AUTO_SCENE, default.ai_auto_scene),
             ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
             use_persistent_memory: get_bool(
                 &store,

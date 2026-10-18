@@ -10,13 +10,17 @@
 //!   读成 base64 交给插件；只允许 `data/` 内的相对路径，且必须落在该插件
 //!   manifest `read` 声明的前缀之下（未声明一律拒绝）。
 //! - **送消息**：`send_user_message`，把外部消息当成玩家说的话送进对话；
-//!   需 manifest 顶层声明 `send_user_message = true`。
+//!   需 manifest 顶层声明 `send_user_message = true`。带上 `screen` 参数时还会先抓一张
+//!   画面随消息给模型看（要找哪个窗口由插件指定），需另声明 `capture_screen = true`。
 //! - **请求开口**：`trigger_proactive`，请求宿主主动开一次口（主动对话系统的一次
 //!   投放）；需 manifest 顶层声明 `trigger_proactive = true`。
 //!
 //! 这是**插件专属**面——LLM 拿不到，与 `ctx["call_tool"]` 那条共用通道相对。
 //! 新增宿主能力时，`#[pyfunction]` 直接加在下面的 `plugin_host` 模块里，
 //! 实现放在本文件上方，不要另开文件——插件作者看到的是一个模块。
+
+// 交叉 target 下 clippy 会对已用 const 初始化的 thread_local 误报（issue #13422）。
+#![allow(clippy::missing_const_for_thread_local)]
 
 use std::cell::RefCell;
 use std::collections::HashMap;
@@ -39,7 +43,7 @@ use ling_chat_main::utils::prompt::PromptRole;
 /// 全局共享的 reqwest Client（连接池复用，进程内单例）。
 static HTTP_CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
 
-/// 插件脚本在 spawn_blocking 线程执行，线程上无 tokio runtime 上下文；
+/// 插件脚本在独立线程执行，线程上无 tokio runtime 上下文；
 /// 需要异步能力（reqwest / 宿主 async 命令）时，用这个独立多线程 runtime 驱动。
 static RUNTIME: OnceLock<tokio::runtime::Runtime> = OnceLock::new();
 
@@ -141,7 +145,7 @@ fn apply_map_args(
 
 /// 发送请求，把响应转成 Python dict 返回。
 ///
-/// 插件脚本在 `spawn_blocking` 线程内执行，线程上无 tokio runtime，
+/// 插件脚本在独立线程内执行，线程上无 tokio runtime，
 /// 用独立 runtime 的 `block_on` 阻塞等待，不会卡住 tokio runtime 主线程。
 fn send_and_to_py(req: reqwest::RequestBuilder, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
     let json = runtime()
@@ -307,7 +311,17 @@ async fn edit_context_impl(
 }
 
 /// 追加一条提示台词（旁白 / 系统提示 / 剧情提示）。
-async fn add_prompt_line_impl(app: AppHandle, role: String, text: String) -> serde_json::Value {
+///
+/// `ttl_seconds > 0` 表示这条只是「此刻发生的事」：先留在队列里，等真的轮到角色开口
+/// 时再判一次有效期，过期的直接丢弃`key` + `severity` 让同类事件在队列里只保留最严重的一条。
+async fn add_prompt_line_impl(
+    app: AppHandle,
+    role: String,
+    text: String,
+    ttl_seconds: Option<f64>,
+    key: Option<String>,
+    severity: i64,
+) -> serde_json::Value {
     let role = match role.trim().to_ascii_lowercase().as_str() {
         "narrator" => PromptRole::Narrator,
         "system" => PromptRole::System,
@@ -326,8 +340,30 @@ async fn add_prompt_line_impl(app: AppHandle, role: String, text: String) -> ser
 
     let state = app.state::<AppState>();
     let db = state.db.clone();
+    let gen_lock = state.generation_lock.clone();
     let gs = game_status_handle(&app).await;
     let mut gs = gs.lock().await;
+
+    // 有有效期的条目一律先排队：什么时候轮到角色开口不由插件决定，等那一刻再判
+    // 「还值不值得说」。排队条数回给插件，它据此判「攒够几件了」。
+    if let Some(ttl) = ttl_seconds.filter(|seconds| *seconds > 0.0) {
+        let pending = gs.queue_prompt_line(
+            role,
+            text,
+            Some(std::time::Duration::from_secs_f64(ttl)),
+            key,
+            severity,
+        );
+        return serde_json::json!({ "ok": true, "queued": true, "pending": pending });
+    }
+
+    // 生成进行中先排队：直接写会往流式任务算好的行号后面插队，事件一多就会和
+    // 正在生成的这一轮搅在一起。下一轮开头（拿到生成锁之后）再按顺序补写。
+    let idle = gen_lock.try_lock();
+    if idle.is_err() {
+        gs.queue_prompt_line(role, text, None, None, 0);
+        return serde_json::json!({ "ok": true, "queued": true });
+    }
     match gs.add_prompt_line(&db, role, text).await {
         Ok(index) => serde_json::json!({ "ok": true, "index": index }),
         Err(e) => serde_json::json!({ "ok": false, "error": e.to_string() }),
@@ -643,6 +679,62 @@ fn current_send_allow() -> bool {
     SEND_ALLOW.with(|cell| *cell.borrow())
 }
 
+thread_local! {
+    /// 当前线程正在执行的插件是否声明了 `capture_screen` 能力。与 `SEND_ALLOW` 同款：
+    /// 抓屏是玩家隐私，必须由 manifest 单独声明，未声明一律拒绝。
+    static CAPTURE_ALLOW: RefCell<bool> = const { RefCell::new(false) };
+}
+
+/// 设置当前线程的 `capture_screen` 声明；Drop 时还原（见 `CAPTURE_ALLOW`）。
+pub(crate) struct CaptureAllowGuard {
+    prev: bool,
+}
+
+impl Drop for CaptureAllowGuard {
+    fn drop(&mut self) {
+        CAPTURE_ALLOW.with(|cell| *cell.borrow_mut() = self.prev);
+    }
+}
+
+/// 设置当前线程的 `capture_screen` 声明，返回还原用 guard。
+pub(crate) fn set_capture_allow(allow: bool) -> CaptureAllowGuard {
+    CAPTURE_ALLOW.with(|cell| CaptureAllowGuard {
+        prev: cell.replace(allow),
+    })
+}
+
+fn current_capture_allow() -> bool {
+    CAPTURE_ALLOW.with(|cell| *cell.borrow())
+}
+
+/// 抓一张屏幕画面，返回 JPEG 的 data URL。
+///
+/// 抓哪个窗口由插件给的关键词决定，找不到（或抓回来的不像一张画）就退回整个桌面。
+/// 具体实现与压缩档位在 `screen_analyzer::capture_window_as_jpeg`，那边已经处理了
+/// 「最小化后只剩标题栏一条」「独显全屏只给回黑图」这类坏帧。
+///
+/// 当前模型没开原生识图时直接失败：抓了也送不进对话，不如把原因给插件，让它如实回话。
+fn capture_screen_impl(app: &AppHandle, window: &str) -> serde_json::Value {
+    use base64::Engine as _;
+
+    if !ling_chat_main::ai_service::llm::provider_config::native_vision_enabled(app) {
+        return serde_json::json!({
+            "ok": false,
+            "error": "当前对话模型没有开启原生识图，看不到图片",
+        });
+    }
+    match ling_chat_main::ai_service::screen_analyzer::capture_window_as_jpeg(window) {
+        Some(bytes) => serde_json::json!({
+            "ok": true,
+            "image": format!(
+                "data:image/jpeg;base64,{}",
+                base64::engine::general_purpose::STANDARD.encode(&bytes)
+            ),
+        }),
+        None => serde_json::json!({ "ok": false, "error": "抓不到画面（窗口与桌面都没取到）" }),
+    }
+}
+
 /// 把一条用户消息送进对话（等同玩家在输入框里发了一句）。
 ///
 /// 复用玩家那条入口 `send_chat_message`，行为完全一致：写进对话、走当前配置
@@ -751,6 +843,47 @@ mod plugin_host {
         Ok(super::value_to_pyobject(vm, &result))
     }
 
+    /// 抓一张屏幕画面，返回 JPEG 的 data URL——工具把它转给模型看，模型就「看得到」了。
+    ///
+    /// 用法：`capture_screen()` / `capture_screen(window="Minecraft")`
+    ///
+    /// `window` 是要找的窗口标题（或进程名）关键词，命中就用它；找不到、抓失败、
+    /// 抓回来的不像一张画面（最小化后只剩标题栏一条、独显全屏只给回黑图）都退回抓
+    /// 整个桌面。图会先缩到长边 1024 再编 JPEG，约一千 token。
+    ///
+    /// 返回：成功 `{ "ok": true, "image": "data:image/jpeg;base64,..." }`；
+    /// 失败 `{ "ok": false, "error": "..." }`（不抛异常）。
+    ///
+    /// **需要 manifest 顶层声明 `capture_screen = true`**（屏幕上是玩家的隐私），
+    /// 且当前对话模型开着原生识图——看不到图的模型抓了也送不进对话。
+    #[pyfunction]
+    fn capture_screen(kwargs: KwArgs<PyObjectRef>, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        if !super::current_capture_allow() {
+            return Ok(super::err_json(
+                vm,
+                "本插件未声明 capture_screen 能力（需在 manifest.toml 顶层写 capture_screen = true）",
+            ));
+        }
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let kwargs = super::kwargs_map(kwargs);
+        let window = kwargs
+            .get("window")
+            .and_then(|v| super::py_to_value(vm, v).as_str().map(str::to_string))
+            .unwrap_or_default();
+        let result = super::capture_screen_impl(&app, &window);
+        tracing::info!(
+            "[Plugin] capture_screen 窗口关键词={window:?} 结果={}",
+            if result["ok"].as_bool().unwrap_or(false) {
+                "ok"
+            } else {
+                "失败"
+            }
+        );
+        Ok(super::value_to_pyobject(vm, &result))
+    }
+
     /// 完整切换当前角色：清空对话上下文、重置角色内存、刷新前端。
     ///
     /// 用法：`switch_character(role_id)`
@@ -845,12 +978,43 @@ mod plugin_host {
     ///
     /// 返回 `{ "ok": true, "index": N }`（N 是该行的位置，1 起、与 `read_context`
     /// 的下标口径一致）或 `{ "ok": false, "error": "..." }`（角色名不认识 / 内容为空）。
+    ///
+    /// 正在生成回复时不会直接写：这一行会先排队（`{ "ok": true, "queued": true }`），
+    /// 等本轮收尾、下一轮开头按顺序补进台词表——中途插队会和流式写入抢行号。
+    /// 连着的旁白在队列里会先用换行接成一行（上限 600 字），写入时仍是一条。
+    ///
+    /// 游戏事件传 `ttl_seconds=`（这条信息值多少秒）就一直留在队列里，等角色真要开口
+    /// 时再判一次，过期的直接丢掉；`key=` + `severity=` 让同类事件只留最严重的一条。
+    /// 带有效期的调用返回 `{ "ok": true, "queued": true, "pending": N }`。
     #[pyfunction]
-    fn add_prompt_line(role: String, text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+    fn add_prompt_line(
+        role: String,
+        text: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        let kwargs = super::kwargs_map(kwargs);
+        let ttl_seconds = kwargs
+            .get("ttl_seconds")
+            .and_then(|v| super::py_to_value(vm, v).as_f64());
+        let key = kwargs
+            .get("key")
+            .and_then(|v| super::py_to_value(vm, v).as_str().map(str::to_string));
+        let severity = kwargs
+            .get("severity")
+            .and_then(|v| super::py_to_value(vm, v).as_i64())
+            .unwrap_or(0);
         let Some(app) = crate::app_handle() else {
             return Ok(super::no_host(vm));
         };
-        let result = super::runtime().block_on(super::add_prompt_line_impl(app, role, text));
+        let result = super::runtime().block_on(super::add_prompt_line_impl(
+            app,
+            role,
+            text,
+            ttl_seconds,
+            key,
+            severity,
+        ));
         Ok(super::value_to_pyobject(vm, &result))
     }
 
@@ -859,7 +1023,10 @@ mod plugin_host {
     /// 用法：`trigger_proactive("")` —— 把要说的先记成旁白，再空提示请求开口；
     /// 传提示语则会被包成 `{旁白: （系统提示：…）}` 写进台词表（截图转述这类要用）。
     ///
-    /// 返回：`{ "ok": true, "triggered": true }`
+    /// 请求只会**排队**：等这一轮台词播完、前端空闲下来才投放；同时最多攒一条，
+    /// 短时间连发多次会合并成一次（战斗里每挨一下来一次也不会叠出好几轮）。
+    ///
+    /// 返回：`{ "ok": true, "triggered": true }`（已受理/已合并）
     #[pyfunction]
     fn trigger_proactive(text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
         if !super::current_proactive_allow() {

@@ -35,7 +35,6 @@ impl IdentityStore {
         fs::create_dir_all(&self.root).with_context(|| format!("创建身份目录失败: {:?}", self.root))
     }
 
-
     pub fn list(&self) -> Vec<PlayerIdentity> {
         self.scan()
             .into_iter()
@@ -125,7 +124,6 @@ impl IdentityStore {
         }
     }
 
-
     pub fn save(&self, identity: &PlayerIdentity) -> Result<PlayerIdentity> {
         self.ensure_root()?;
 
@@ -178,7 +176,6 @@ impl IdentityStore {
 
         Ok(true)
     }
-
 
     fn scan(&self) -> Vec<(PathBuf, PlayerIdentity)> {
         let Ok(entries) = fs::read_dir(&self.root) else {

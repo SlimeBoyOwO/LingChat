@@ -92,6 +92,7 @@ pub async fn stream_with_tool_loop(
     source: GeneratorSource,
     role_name: Option<String>,
     app: &AppHandle,
+    recommended: &[String],
 ) -> Result<ToolLoopResult> {
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let (settings, tool_rag) = {
@@ -134,6 +135,7 @@ pub async fn stream_with_tool_loop(
     let registry = registry.clone();
     let app = app.clone();
     let tool_rag = tool_rag.clone();
+    let recommended = recommended.to_vec();
 
     let stream = async_stream::try_stream! {
         let executor = ToolExecutor::new(&registry);
@@ -169,11 +171,15 @@ pub async fn stream_with_tool_loop(
             // tool_search 把命中的工具写进缓存，第 N+1 轮重算时它们才作为定义下发，
             // 「先检索再调用」因此成立。
             let base_allowed = registry.allowed_tools(source, active_role_name.as_deref());
-            let allowed = effective_allowed(
+            let allowed = activate_recommended(
+                effective_allowed(
+                    &base_allowed,
+                    &tool_rag,
+                    active_role_name.as_deref(),
+                    rag_on,
+                ),
                 &base_allowed,
-                &tool_rag,
-                active_role_name.as_deref(),
-                rag_on,
+                &recommended,
             );
             let definitions = if final_synthesis {
                 Vec::new()
@@ -314,6 +320,9 @@ pub async fn stream_with_tool_loop(
                 image_data_url: None,
             };
             let mut round_messages = vec![assistant_message];
+            // 工具附带的图片：只进本轮请求，顺着工具结果后面另起一条用户消息（tool
+            // 角色带不了图）。不进 sink，也就不进长期记忆。
+            let mut pending_images: Vec<LlmMessage> = Vec::new();
             let context = ToolContext::new(allowed)
                 .with_base_allowed(base_allowed)
                 .with_role_name(active_role_name.clone())
@@ -363,8 +372,12 @@ pub async fn stream_with_tool_loop(
                 if call.function.name == "character_switch" && succeeded {
                     character_switched = true;
                 }
-                let tool_result = LlmMessage::tool_result(call.id, result);
+                let (content, image) = split_tool_image(&result);
+                let tool_result = LlmMessage::tool_result(call.id, content);
                 round_messages.push(tool_result);
+                if let Some((hint, data_url)) = image {
+                    pending_images.push(LlmMessage::user_with_image(hint, data_url));
+                }
             }
 
             if character_switched {
@@ -376,6 +389,7 @@ pub async fn stream_with_tool_loop(
                     active_user_message.as_ref(),
                     &round_messages,
                 );
+                messages.extend(pending_images);
                 active_role_name = refreshed_name;
                 // rebase 用新角色的记忆整体替换了 messages，上面两条临时 system 提示
                 // 会一并丢失。新角色的激活缓存是空的，不补回提示模型就不知道
@@ -387,6 +401,7 @@ pub async fn stream_with_tool_loop(
                 }
             } else {
                 messages.extend(round_messages.clone());
+                messages.extend(pending_images);
                 messages.push(LlmMessage::system(CONTINUATION_PROMPT));
             }
 
@@ -403,6 +418,65 @@ pub async fn stream_with_tool_loop(
         tool_messages,
         tool_calls_seen,
     })
+}
+
+/// 单张工具附带图片的上限（data URL 字符数，约 6MB 原图）。超了只记日志、不带图。
+const MAX_TOOL_IMAGE_CHARS: usize = 8 * 1024 * 1024;
+/// 工具给了图却没给说明时的兜底提示。
+const TOOL_IMAGE_HINT: &str = "（这次工具调用附了一张图片，请一起看。）";
+
+/// 把工具结果里的图片摘出来。
+///
+/// 约定：`{"image": {"data_url": "data:image/…", "hint": "说明"}}`。返回
+/// `(落进长期记忆的文本, 要附给模型的那一条)`。图必须从文本里摘掉——base64 写进记忆
+/// 既白占上下文，下一轮还会被重新发一遍；它只属于本轮请求。
+fn split_tool_image(result: &str) -> (String, Option<(String, String)>) {
+    let Ok(mut value) = serde_json::from_str::<serde_json::Value>(result) else {
+        return (result.to_string(), None);
+    };
+    let Some(object) = value.as_object_mut() else {
+        return (result.to_string(), None);
+    };
+    let Some(serde_json::Value::Object(image)) = object.remove("image") else {
+        return (result.to_string(), None);
+    };
+    let Some(data_url) = image
+        .get("data_url")
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+    else {
+        return (value.to_string(), None);
+    };
+    if data_url.len() > MAX_TOOL_IMAGE_CHARS {
+        tracing::warn!(chars = data_url.len(), "工具附带的图片过大，已丢弃");
+        return (value.to_string(), None);
+    }
+    let hint = image
+        .get("hint")
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|text| !text.is_empty())
+        .unwrap_or(TOOL_IMAGE_HINT)
+        .to_string();
+    (value.to_string(), Some((hint, data_url)))
+}
+
+/// 把上帝 Agent 推荐的工具并进本轮工具集。
+///
+/// Tool RAG 下推荐的理由才成立：它们随本请求作为定义下发，模型不用先 `tool_search`
+/// 就能直接调用；权限集之外的名字一律丢掉（推荐不构成授权）。RAG 关闭时全量下发，
+/// 这一步是空操作。
+fn activate_recommended(
+    mut allowed: HashSet<String>,
+    base_allowed: &HashSet<String>,
+    recommended: &[String],
+) -> HashSet<String> {
+    for name in recommended {
+        if base_allowed.contains(name) {
+            allowed.insert(name.clone());
+        }
+    }
+    allowed
 }
 
 /// 当前请求继续使用完整工具结果完成推理；只对写入角色长期记忆的副本做有界裁剪。
@@ -585,4 +659,49 @@ fn presentation_stream(stream: ChunkStream) -> PresentationStream {
             Err(e) => Some(Err(e)),
         }
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::split_tool_image;
+
+    #[test]
+    fn image_field_is_split_out_of_tool_result() {
+        let result = r#"{"ok":true,"message":"看了一眼","image":{"data_url":"data:image/jpeg;base64,AA","hint":"看图"}}"#;
+        let (text, image) = split_tool_image(result);
+        // 图不能留在文本里：base64 写进长期记忆既占上下文，下一轮还会被重发。
+        assert!(!text.contains("data:image"));
+        assert!(!text.contains("\"image\""));
+        assert_eq!(
+            image,
+            Some(("看图".to_string(), "data:image/jpeg;base64,AA".to_string()))
+        );
+    }
+
+    #[test]
+    fn plain_tool_result_is_untouched() {
+        let result = r#"{"ok":true,"message":"好"}"#;
+        assert_eq!(split_tool_image(result), (result.to_string(), None));
+    }
+
+    #[test]
+    fn missing_hint_falls_back_to_generic_text() {
+        let result = r#"{"ok":true,"image":{"data_url":"data:image/png;base64,BB"}}"#;
+        let (_, image) = split_tool_image(result);
+        assert_eq!(
+            image,
+            Some((
+                super::TOOL_IMAGE_HINT.to_string(),
+                "data:image/png;base64,BB".to_string()
+            ))
+        );
+    }
+
+    #[test]
+    fn image_without_data_url_is_dropped() {
+        let result = r#"{"ok":true,"image":{"hint":"没有图"}}"#;
+        let (text, image) = split_tool_image(result);
+        assert_eq!(image, None);
+        assert!(!text.contains("\"image\""));
+    }
 }

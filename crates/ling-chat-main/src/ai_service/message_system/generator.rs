@@ -12,7 +12,7 @@ use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
@@ -21,6 +21,7 @@ use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::{
     affection::{self as god_affection, NpcAffectionView},
     speaker::{self as god_speaker, SpeakerView},
+    tool_hint::{self as god_tool_hint, ToolHintView},
 };
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
@@ -30,13 +31,17 @@ use crate::ai_service::message_system::processor::{
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage, ToolDefinition};
 use crate::api::data_dir;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{PromptRole, RoundReply, correction_texts, scan_reply_shape};
+use crate::utils::prompt::{
+    PromptRole, REPETITION_MIN_ROUNDS, RoundReply, correction_texts, repetition_text,
+    scan_reply_shape,
+};
 
 /// MessageGenerator 的业务调用来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -119,6 +124,15 @@ impl MessageGenerator {
             self.god_agent_pre_select().await?;
         }
 
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
+        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        let tool_hint = if user_message.is_some() {
+            self.tool_hint(user_message.as_deref().unwrap_or_default())
+                .await
+        } else {
+            None
+        };
+
         // 3. 生成循环（God Agent 激活时可能多轮）
         let mut accumulated = String::new();
         let mut consecutive_npc_rounds: usize = 0;
@@ -145,7 +159,7 @@ impl MessageGenerator {
                 gs.line_list.len()
             };
             let round_acc = self
-                .execute_pipeline(context, original_msg, round_msg_seq)
+                .execute_pipeline(context, original_msg, round_msg_seq, tool_hint.as_ref())
                 .await?;
             accumulated.push_str(&round_acc);
             let landed_lines = {
@@ -203,7 +217,7 @@ impl MessageGenerator {
             return Ok(String::new());
         }
         context.push(LlmMessage::user(notification));
-        self.execute_pipeline(context, "", None).await
+        self.execute_pipeline(context, "", None, None).await
     }
 
     // ============================================================
@@ -335,13 +349,14 @@ impl MessageGenerator {
         context: Vec<LlmMessage>,
         user_message: &str,
         user_msg_seq: Option<u32>,
+        tool_hint: Option<&god_tool_hint::ToolHint>,
     ) -> Result<String> {
         if !self.deps.suppress_thinking {
             events::emit_thinking(&self.deps.app, true);
         }
 
         match self
-            .run_pipeline(context, user_message.to_string(), user_msg_seq)
+            .run_pipeline(context, user_message.to_string(), user_msg_seq, tool_hint)
             .await
         {
             Ok(acc) => {
@@ -407,6 +422,121 @@ impl MessageGenerator {
             decision.reason
         );
         Ok(())
+    }
+
+    /// 预处理：本轮推荐几件工具。
+    ///
+    /// 三种模式见 `ToolRecommendMode`。两种推荐都只产出「临时提示 + 本轮并进工具集的
+    /// 名字」——命中的工具在工具闭环里并入本轮定义（不然模型看得见名字也调不了），
+    /// 不写台词表、不进记忆，下一轮重新算。
+    async fn tool_hint(&self, user_text: &str) -> Option<god_tool_hint::ToolHint> {
+        if self.deps.is_preview {
+            return None;
+        }
+        let mode = self
+            .deps
+            .app
+            .state::<crate::AppState>()
+            .tool_settings
+            .get()
+            .tool_recommend_mode;
+        match mode {
+            ToolRecommendMode::Off => None,
+            ToolRecommendMode::Agent => self.agent_tool_hint().await,
+            ToolRecommendMode::Rag => self.rag_tool_hint(user_text).await,
+        }
+    }
+
+    /// 推荐用的公共前置：当前角色的显示名与它可调用的全部工具定义。
+    ///
+    /// 剧本模式的工具列表是冻结快照，推荐没有意义；元工具（`tool_search`）也不在
+    /// 候选里——推荐检索入口等于让模型再绕一圈。
+    async fn tool_hint_context(&self) -> Option<(Option<String>, Vec<ToolDefinition>)> {
+        let role_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            if gs.script_status.is_some() {
+                return None;
+            }
+            let role_id = gs.current_role_id?;
+            gs.get_role(&self.deps.db, role_id)
+                .await
+                .ok()
+                .and_then(|role| role.display_name.clone())
+        };
+        let base_allowed = self
+            .deps
+            .tool_registry
+            .allowed_tools(self.deps.source, role_name.as_deref());
+        let mut definitions = self
+            .deps
+            .tool_registry
+            .definitions_for_allowed(&base_allowed);
+        definitions.retain(|def| {
+            def.function.name != crate::ai_service::tools::tool_rag::TOOL_SEARCH_NAME
+        });
+        Some((role_name, definitions))
+    }
+
+    /// 上帝 Agent 推荐：读最近的对话再挑（多一次小模型调用）。
+    async fn agent_tool_hint(&self) -> Option<god_tool_hint::ToolHint> {
+        let god = self.deps.god_agent.as_ref()?;
+        let (_, definitions) = self.tool_hint_context().await?;
+
+        // 视图在锁内取完就放锁：按需 LLM 调用不能攥着 game_status。
+        let view = {
+            let gs = self.deps.game_status.lock().await;
+            ToolHintView::capture(&gs, god.config_snapshot().recent_window)
+        };
+        // 只把「这个角色真能调用」的工具交给上帝 Agent 挑，否则会推一批调不动的名字。
+        let tools: Vec<(String, String)> = definitions
+            .into_iter()
+            .map(|def| (def.function.name, def.function.description))
+            .collect();
+        let view = view.with_tools(tools);
+
+        match god_tool_hint::recommend(god, &view, &self.deps.app).await {
+            Ok(hint) => {
+                if let Some(hint) = &hint {
+                    tracing::info!("[GodAgent] 本轮推荐工具: {:?}", hint.names);
+                }
+                hint
+            },
+            // 推荐是锦上添花，失败不能拖累这一轮回复。
+            Err(error) => {
+                tracing::warn!("[GodAgent] 工具推荐失败: {error:#}");
+                None
+            },
+        }
+    }
+
+    /// 静默检索推荐：拿玩家这句话检索一次工具，分数过阈值的才推荐。
+    ///
+    /// 不额外调用模型，只多一次本地向量计算；命中项照常进激活缓存，后续轮次一直可见
+    /// 直到被 LRU 淘汰。
+    async fn rag_tool_hint(&self, user_text: &str) -> Option<god_tool_hint::ToolHint> {
+        // 只取第一句：多行输入（比如桥接插件在正文后追加的场景旁白）不代表玩家的意图。
+        let query = user_text
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty())?;
+        let (role_name, candidates) = self.tool_hint_context().await?;
+        if candidates.is_empty() {
+            return None;
+        }
+        let rag = self.deps.app.state::<crate::AppState>().tool_rag.clone();
+        match god_tool_hint::recommend_by_rag(&rag, role_name.as_deref(), query, &candidates).await
+        {
+            Ok(hint) => {
+                if let Some(hint) = &hint {
+                    tracing::info!("[ToolRAG] 本轮推荐工具: {:?}", hint.names);
+                }
+                hint
+            },
+            Err(error) => {
+                tracing::warn!("[ToolRAG] 自动推荐失败: {error:#}");
+                None
+            },
+        }
     }
 
     /// 后处理：消息生成完毕后，上帝 Agent 决定下一个说话者。
@@ -537,7 +667,7 @@ impl MessageGenerator {
         // 每类问题只取首个命中的轮次（多人模式下一次回复含多个角色的输出，
         // 逐轮插入会把提示堆一片）；什么都没产出的轮次（模型只调了工具）不参与判据。
         let mode = gs.reply_length_mode();
-        let texts = round_replies
+        let mut texts = round_replies
             .iter()
             .filter(|round| round.landed_lines > 0 || !round.shapes.is_empty())
             .find_map(|round| {
@@ -545,6 +675,22 @@ impl MessageGenerator {
                 (!texts.is_empty()).then_some(texts)
             })
             .unwrap_or_default();
+
+        // 台词条数连续多轮一模一样：条数可能仍在允许区间内，但每轮同长很机械。
+        // 已经越界时交给上面的数量纠偏，不再叠一条「要有变化」；本轮没落下台词时
+        // 不检查，否则会拿上一轮的结论重复插同一条提示。
+        let produced_lines = round_replies.iter().any(|round| round.landed_lines > 0);
+        if produced_lines {
+            if let Some((count, streak)) = same_length_streak(&gs.line_list) {
+                let in_range = match mode.accepted_range() {
+                    Some((min, max)) => (min..=max).contains(&count),
+                    None => true,
+                };
+                if streak >= REPETITION_MIN_ROUNDS && in_range {
+                    texts.push(repetition_text(streak, count));
+                }
+            }
+        }
 
         // 同一条提示紧邻重复就不再插：跨过本轮刚产出的台词回头看一行，
         // 命中即说明上一轮已经提醒过同样的问题（隔轮重复是有意的：模型不听就该再提醒）
@@ -574,6 +720,7 @@ impl MessageGenerator {
         context: Vec<LlmMessage>,
         user_message: String,
         user_message_seq: Option<u32>,
+        tool_hint: Option<&god_tool_hint::ToolHint>,
     ) -> Result<String> {
         let role_name = {
             let mut gs = self.deps.game_status.lock().await;
@@ -606,6 +753,14 @@ impl MessageGenerator {
         } else {
             context
         };
+        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
+        let context = if let Some(hint) = tool_hint {
+            let mut ctx = context;
+            ctx.insert(0, LlmMessage::system(hint.text.clone()));
+            ctx
+        } else {
+            context
+        };
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
             &self.deps.tool_registry,
@@ -613,6 +768,7 @@ impl MessageGenerator {
             self.deps.source,
             role_name,
             &self.deps.app,
+            tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
@@ -837,6 +993,45 @@ impl MessageGenerator {
 }
 
 // ============================================================
+// 回复条数趋势
+// ============================================================
+
+/// 最近台词条数一致的趋势，返回（最后一轮的台词条数，与它相同的连续轮数）。
+fn same_length_streak(lines: &[GameLine]) -> Option<(usize, usize)> {
+    let mut rounds: Vec<(i32, usize)> = Vec::new();
+    let mut current: Option<(i32, usize)> = None;
+    for line in lines {
+        // assistant 行才是台词；工具调用回填的前缀行 sender 为空，与玩家发言、旁白、
+        // 提示、工具行一样结束一轮
+        let role_id = match line.attribute() {
+            LineAttribute::Assistant => line.sender_role_id(),
+            _ => None,
+        };
+        let Some(role_id) = role_id else {
+            rounds.extend(current.take());
+            continue;
+        };
+        if current.is_some_and(|(sender, _)| sender == role_id) {
+            if let Some((_, count)) = current.as_mut() {
+                *count += 1;
+            }
+        } else {
+            rounds.extend(current.take());
+            current = Some((role_id, 1));
+        }
+    }
+    rounds.extend(current);
+
+    let (sender, count) = *rounds.last()?;
+    let streak = rounds
+        .iter()
+        .rev()
+        .take_while(|(round_sender, round_count)| *round_sender == sender && *round_count == count)
+        .count();
+    Some((count, streak))
+}
+
+// ============================================================
 // 有序发布
 // ============================================================
 
@@ -920,6 +1115,9 @@ pub(super) async fn publish_ordered(
 // consumer 句子处理
 // ============================================================
 
+/// 句子序号 → 台词表行下标。
+pub type SentenceLineLedger = Arc<Mutex<Vec<(usize, usize)>>>;
+
 /// `consume_sentence` 的最小依赖集。仅含句子处理真正用到的字段，
 /// 不要求 LLM / 工具，剧本 `dialogue` 事件可在未配置模型时直接构建。
 #[derive(Clone)]
@@ -936,7 +1134,7 @@ pub struct SentenceDeps {
     /// 工具闭环下前导台词只做呈现，生成结束后要按台账把它先落的那些行抹掉
     /// （同一段原文已经在带 `tool_call` 的助手行里）。非生成路径（剧本固定台词）
     /// 传 `None`：那边没有句子序号，也不存在要抹的行。
-    pub sentence_lines: Option<Arc<Mutex<Vec<(usize, usize)>>>>,
+    pub sentence_lines: Option<SentenceLineLedger>,
 }
 
 impl From<&GeneratorDeps> for SentenceDeps {
@@ -966,6 +1164,7 @@ pub struct ReplyOverrides {
 ///
 /// 供 MessageGenerator 的 consumer 池与剧本 `dialogue` 事件复用。
 /// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
+#[allow(clippy::too_many_arguments)]
 pub(crate) async fn consume_sentence(
     deps: &SentenceDeps,
     sentence: String,

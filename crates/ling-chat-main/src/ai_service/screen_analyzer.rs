@@ -502,6 +502,88 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
     }
 }
 
+/// 抓一张「给模型看的画面」：先找标题命中关键词的窗口，找不到就退回整个桌面。
+///
+/// 插件宿主那条「让角色看一眼玩家的游戏画面」用它。整个桌面（[`capture_screen_as_jpeg`]）
+/// 会把 LingChat 自己的窗口、桌面图标一起带上，而这张图是给模型看的，越干净越好，所以
+/// 先按窗口抓。窗口抓取走 `capture_own_window`：它不校验窗口归属，游戏窗口也抓得到。
+///
+/// 三条退路都回整屏（玩家那会儿多半正开着游戏，整屏就是游戏画面）：没找到窗口、
+/// 抓取失败、抓回来是一张纯色图（独显全屏的游戏，PrintWindow 常常只给回黑图）。
+/// 关键词留空直接抓整屏。
+pub fn capture_window_as_jpeg(keyword: &str) -> Option<Vec<u8>> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(bytes) = capture_named_window(keyword) {
+            return Some(bytes);
+        }
+    }
+    #[cfg(not(target_os = "windows"))]
+    let _ = keyword;
+    capture_screen_as_jpeg()
+}
+
+/// 抓给模型看的那一帧的压缩档位：整屏截图本来就缩到 1024×768，这里对齐同一个量级
+/// （约一千 token），够看清搭了什么形状，又不至于把上下文撑起来。
+#[cfg(target_os = "windows")]
+const SHOT_MAX_EDGE: u32 = 1024;
+#[cfg(target_os = "windows")]
+const SHOT_JPEG_QUALITY: u8 = 80;
+
+/// 抓回来的窗口小于这个边长就当作没抓着。窗口最小化（含「最小化后又被枚举到」的
+/// 时间差）时，PrintWindow 只能给回标题栏那一小条，甚至几像素——那种图给模型看
+/// 只会让它胡说，不如当作抓失败退到整屏。
+#[cfg(target_os = "windows")]
+const SHOT_MIN_EDGE: u32 = 200;
+
+/// 按标题或进程名找窗口并抓图；找不到、抓失败、抓回来的图不像一张画面都给 None
+/// （调用方退回整屏）。
+#[cfg(target_os = "windows")]
+fn capture_named_window(keyword: &str) -> Option<Vec<u8>> {
+    let key = keyword.trim().to_lowercase();
+    if key.is_empty() {
+        return None;
+    }
+    let target = tauri_plugin_screenshots::windows::enumerate_all_windows()
+        .ok()?
+        .into_iter()
+        .find(|w| {
+            w.title.to_lowercase().contains(&key) || w.app_name.to_lowercase().contains(&key)
+        })?;
+    let img = tauri_plugin_screenshots::windows::capture_own_window(target.id).ok()?;
+    let (w, h) = (img.width(), img.height());
+    if w < SHOT_MIN_EDGE || h < SHOT_MIN_EDGE || is_flat(&img) {
+        return None;
+    }
+    crate::utils::image::encode_jpeg_scaled(
+        image::DynamicImage::ImageRgba8(img),
+        SHOT_MAX_EDGE,
+        SHOT_JPEG_QUALITY,
+    )
+    .ok()
+}
+
+/// 整张图是不是一个颜色（稀疏采样，不逐像素）。判掉 PrintWindow 给回的黑图：
+/// 真画面里总有几处明暗不同，一整张同色只可能是抓失败。
+#[cfg(target_os = "windows")]
+fn is_flat(img: &image::RgbaImage) -> bool {
+    let (w, h) = img.dimensions();
+    let first = img.get_pixel(0, 0).0;
+    let (step_x, step_y) = ((w / 16).max(1), (h / 16).max(1));
+    let mut y = 0;
+    while y < h {
+        let mut x = 0;
+        while x < w {
+            if img.get_pixel(x, y).0 != first {
+                return false;
+            }
+            x += step_x;
+        }
+        y += step_y;
+    }
+    true
+}
+
 /// 捕获全分辨率桌面截图，不缩放。
 /// 用于截图覆盖层的精确像素映射（覆盖层需要 1:1 像素坐标）。
 #[cfg(desktop)]

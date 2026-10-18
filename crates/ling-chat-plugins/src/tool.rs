@@ -16,7 +16,7 @@ use super::types::ToolSpec;
 /// 把一个插件工具包装成可注册的 Tool。
 ///
 /// 执行时经 AppHandle 定位 PluginManager，取该插件当前的 config / env，
-/// 在 `spawn_blocking` 线程内跑插件脚本。
+/// 在插件脚本线程（大栈）内跑插件脚本。
 pub struct PluginTool {
     /// 工具名（含插件 id 前缀）。
     pub name: String,
@@ -59,9 +59,9 @@ impl Tool for PluginTool {
         let name = self.name.clone();
 
         // 取 config/env、解析脚本路径、跑 Python 都是阻塞操作（PluginManager 内部
-        // 用 blocking_lock，RustPython 需要线程局部状态），整体放 spawn_blocking；
+        // 用 blocking_lock，RustPython 需要线程局部状态），整体放插件脚本线程；
         // 外层 timeout_hint 兜底。app 随闭包传入，供脚本内 call_tool 使用。
-        let result = tokio::task::spawn_blocking(move || {
+        let result = python_backend::run_on_script_thread(move || {
             let manager = app.state::<std::sync::Arc<PluginManager>>().inner().clone();
             let run_env = manager.plugin_run_env(&plugin_id);
             let script_path = manager
@@ -71,7 +71,7 @@ impl Tool for PluginTool {
             python_backend::run_plugin_script(&script_path, &name, &arguments, run_env, app)
         })
         .await
-        .map_err(|join_err| ToolError::Execution(format!("插件线程异常: {join_err}")))?;
+        .map_err(ToolError::Execution)?;
 
         match result {
             Ok(value) => Ok(value),

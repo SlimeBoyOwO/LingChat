@@ -35,7 +35,7 @@
 import { ref, computed, watch } from "vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { Columns2 } from "lucide-vue-next";
+import { Columns2 } from "@lucide/vue";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();

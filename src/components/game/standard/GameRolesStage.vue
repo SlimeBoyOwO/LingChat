@@ -11,6 +11,7 @@
       :cast-scale="castScale"
       :cast-offset-y="castOffsetY"
       :touch-enabled="gameStore.command === 'touch'"
+      @model-missing="onModelMissing"
     >
       <!-- 2. 每个角色保留原有静态视觉、气泡和触摸层 -->
       <RoleAvatar
@@ -38,11 +39,15 @@
 import { computed, ref } from "vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
+import { useLive2dFallback } from "@/composables/role/useLive2dFallback";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import Live2DStage from "../live2d/Live2DStage.vue";
 
 const gameStore = useGameStore();
 const emit = defineEmits(["audio-ended", "audio-started"]);
+
+// 模型文件不在了：切回静态立绘并落盘，下一次进舞台不再重试
+const onModelMissing = useLive2dFallback();
 
 /** 投屏全局缩放与偏移（仅投屏窗口传入；主窗口缺省无影响）。
     水平偏移由投屏窗口 .cast-role-layer 的 CSS translateX 整层平移，不在此处理。 */

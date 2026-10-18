@@ -130,7 +130,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
-import { PictureInPicture } from "lucide-vue-next";
+import { PictureInPicture } from "@lucide/vue";
 import { MenuItem } from "@/components/ui";
 import SceneEditModal from "@/components/settings/scene/SceneEditModal.vue";
 import { isAndroid } from "@/utils/platform";

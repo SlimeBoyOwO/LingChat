@@ -789,6 +789,28 @@ pub async fn update_role_settings(
     }))
 }
 
+/// 把角色的形象切换成静态立绘并落盘。
+#[tauri::command]
+pub async fn set_role_avatar_static(app: AppHandle, role_id: i32) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    let role = RoleRepo::get_role_by_id(&state.db, role_id)
+        .await
+        .map_err(|e| format!("查询角色失败: {e}"))?
+        .ok_or_else(|| format!("角色 {role_id} 不存在"))?;
+    let folder = role
+        .resource_folder
+        .as_deref()
+        .ok_or_else(|| "角色资源目录不存在".to_string())?;
+
+    let mut settings = read_character_settings(folder);
+    settings.avatar_mode = Some("image".into());
+    settings.avatar_mode_p = Some("image".into());
+
+    let value = serde_json::to_value(&settings).map_err(|e| format!("配置序列化失败: {e}"))?;
+    update_role_settings(app, role_id, value).await?;
+    Ok(())
+}
+
 #[tauri::command]
 pub fn open_characters_folder() -> Result<(), String> {
     let char_dir = characters_dir();

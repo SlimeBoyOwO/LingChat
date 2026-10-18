@@ -192,20 +192,6 @@ watch(
   },
 );
 
-const shouldAnimate = computed(() => {
-  // 当显示 ScriptListPanel 时禁用动画
-  console.log(
-    "store的detail是",
-    store.detail,
-    "是否为空",
-    store.detail === undefined || store.detail === null,
-  );
-  if (store.tab === "flow" && store.detail) {
-    return false;
-  }
-  return true;
-});
-
 // ---- 快捷键表 ----
 const shortcutHelp = ref(false);
 

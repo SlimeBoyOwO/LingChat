@@ -64,7 +64,7 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { isSpectrumSupported, setSpectrumEnabled, spectrumActive } from "@/utils/audioSpectrum";
 import { SpectrumRenderer, type SpectrumSpec } from "@/utils/spectrumRender";
-import { AudioLines } from "lucide-vue-next";
+import { AudioLines } from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 

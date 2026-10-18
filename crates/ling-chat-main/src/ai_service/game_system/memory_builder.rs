@@ -1,5 +1,6 @@
 use std::collections::HashSet;
 
+use crate::ai_service::message_system::processor::truncate_at_turn_end;
 use crate::ai_service::types::{GameLine, LineBase, LlmMessage, ToolCall};
 use crate::db::entities::line::LineAttribute;
 
@@ -60,7 +61,7 @@ impl MemoryBuilder {
             s.push_str(emo);
             s.push('】');
         }
-        s.push_str(&line.content);
+        s.push_str(truncate_at_turn_end(&line.content).trim_end());
         s.push('\n');
         if let Some(act) = line.action_content.as_deref().filter(|v| !v.is_empty()) {
             s.push('(');
@@ -118,7 +119,9 @@ impl MemoryBuilder {
                         .map(|l| this.format_content_with_extras(&l.base))
                         .collect();
                     if !full.trim().is_empty() {
-                        memory.push(LlmMessage::assistant(full));
+                        // 回合末尾留两个空行（台词之间只有一个空行），给模型一个能照抄的
+                        // 「本轮到此为止」形状；流式侧也按这个边界截断越界内容。
+                        memory.push(LlmMessage::assistant(format!("{full}\n")));
                     }
                 },
                 Some(BufferKind::OtherBlock) => {

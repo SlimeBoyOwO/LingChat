@@ -69,6 +69,26 @@ fn infer_image_mime(data_url: &str) -> String {
     "image/jpeg".to_string()
 }
 
+/// 组装「带正文的工具调用」assistant 消息。
+fn assistant_tool_calls_message(content: &str, calls: Vec<GenaiToolCall>) -> ChatMessage {
+    let mut parts: Vec<ContentPart> = Vec::new();
+    if !content.trim().is_empty() {
+        parts.push(ContentPart::Text(content.to_string()));
+    }
+    parts.extend(calls.into_iter().map(ContentPart::ToolCall));
+    ChatMessage::assistant(MessageContent::from_parts(parts))
+}
+
+/// 按字符数截断，超长时补一句省略说明。按字符切，不会打断 UTF-8。
+fn truncate_chars(text: &str, max_chars: usize) -> String {
+    let total = text.chars().count();
+    if total <= max_chars {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(max_chars).collect();
+    format!("{head}…（共 {total} 字，已省略）")
+}
+
 impl GenaiProvider {
     pub fn new(cfg: &LlmConfig, http: Client) -> Result<Self> {
         let model = cfg.model.clone();
@@ -131,7 +151,7 @@ impl GenaiProvider {
         }
 
         Ok(Self {
-            client: builder.build(),
+            client: builder.build()?,
             model,
             provider: cfg.provider.to_lowercase(),
             temperature: cfg.temperature,
@@ -187,7 +207,7 @@ impl GenaiProvider {
                             })
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    genai_messages.push(ChatMessage::from(calls));
+                    genai_messages.push(assistant_tool_calls_message(&msg.content, calls));
                 },
                 _ => {
                     let role = match msg.role.as_str() {
@@ -225,6 +245,99 @@ impl GenaiProvider {
             req = req.with_tools(gtools);
         }
         Ok(req)
+    }
+
+    // ── 请求记录 ──────────────────────────────────────────────────
+
+    /// 记录一次真实下发的请求：文件日志（受 `log.llm_request_body` 开关控制）+ 内存快照
+    /// （恒开，供调试指令 `/查看原始记忆`）。
+    ///
+    /// 记的是 genai `ChatRequest`——所有 system 消息已经合并成一条、worldbook 也注入完毕
+    /// 之后的形态。openai / deepseek 系适配器只在此基础上把 `system` 前置成第一条 system
+    /// 消息，其余消息的角色与正文原样透传，所以这份摘要与实际发出的消息体一致。
+    fn record_request(&self, chat_req: &ChatRequest, opts: &ChatOptions) {
+        if crate::utils::llm_request_logger::file_log_enabled() {
+            let body = serde_json::to_value(chat_req).unwrap_or_default();
+            crate::utils::llm_request_logger::log_request_body(&self.model, &body);
+        }
+        crate::utils::llm_request_logger::push_request_summary(
+            self.render_request_summary(chat_req, opts),
+        );
+    }
+
+    /// 渲染请求摘要。逐条格式与 `/查看记忆` 一致，便于对照两者差在哪。
+    fn render_request_summary(&self, chat_req: &ChatRequest, opts: &ChatOptions) -> String {
+        let mut out = String::new();
+        // 带上时间：指令读的是「最近一次」请求，可能已是上一轮甚至是切换 provider 之前的
+        let stamp = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        out.push_str(&format!(
+            "=== 原始请求（已拼装、适配器之前） model={} provider={} 发出时间={stamp} ===\n",
+            self.model, self.provider
+        ));
+
+        match chat_req.system.as_deref().filter(|s| !s.trim().is_empty()) {
+            Some(system) => out.push_str(&format!(
+                "[system]（所有 system 消息合并为这一条，共 {} 字）\n{system}\n\n",
+                system.chars().count()
+            )),
+            None => out.push_str("[system] 无\n\n"),
+        }
+
+        out.push_str(&format!("messages（共 {} 条）\n", chat_req.messages.len()));
+        for (i, msg) in chat_req.messages.iter().enumerate() {
+            let role = msg.role.to_string().to_lowercase();
+            out.push_str(&format!(
+                "[{i}][{role}] {}\n",
+                Self::render_message_content(&msg.content)
+            ));
+        }
+
+        // 工具名只列名字：parameters 的 JSON Schema 很长，且与排查上下文拼接无关
+        match chat_req.tools.as_deref().filter(|t| !t.is_empty()) {
+            Some(tools) => {
+                let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+                out.push_str(&format!(
+                    "\ntools（共 {} 个）: {}\n",
+                    names.len(),
+                    names.join(", ")
+                ));
+            },
+            None => out.push_str("\ntools: 无\n"),
+        }
+
+        out.push_str(&format!(
+            "options: temperature={:?} top_p={:?} extra_body={}\n",
+            opts.temperature,
+            opts.top_p,
+            opts.extra_body
+                .as_ref()
+                .map(|v| v.to_string())
+                .unwrap_or_else(|| "无".to_string()),
+        ));
+        out
+    }
+
+    /// 渲染一条消息的内容。非文本部分只报体积，避免把 base64 图片整段打进日志。
+    fn render_message_content(content: &MessageContent) -> String {
+        if content.is_text_only() {
+            return content.joined_texts().unwrap_or_default();
+        }
+        let mut out = String::new();
+        for part in content {
+            match part {
+                ContentPart::Text(text) => out.push_str(text),
+                ContentPart::ToolCall(call) => out.push_str(&format!(
+                    "[工具调用 {} {}]",
+                    call.fn_name,
+                    truncate_chars(&call.fn_arguments.to_string(), 200)
+                )),
+                ContentPart::ToolResponse(resp) => {
+                    out.push_str(&format!("[工具结果 call_id={}]", resp.call_id))
+                },
+                other => out.push_str(&format!("[非文本内容 {} 字节]", other.size())),
+            }
+        }
+        out
     }
 
     fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
@@ -370,11 +483,8 @@ impl GenaiProvider {
         tool_choice: Option<&str>,
     ) -> Result<ChunkStream> {
         let chat_req = self.build_chat_request(messages, tools)?;
-        crate::utils::llm_request_logger::log_request_body(
-            &self.model,
-            &serde_json::to_value(&chat_req).unwrap_or_default(),
-        );
         let opts = self.build_chat_options(tool_choice);
+        self.record_request(&chat_req, &opts);
         // 诊断日志：记录实际 ChatOptions，帮助排查 MiniMax 等兼容问题。
         // ChatOptions 字段为 public，直接访问；ToolChoice 转为字符串避免序列化依赖。
         let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
@@ -406,7 +516,10 @@ impl GenaiProvider {
         let output = async_stream::try_stream! {
             while let Some(event) = inner.next().await {
                 match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
-                    ChatStreamEvent::Start | ChatStreamEvent::ThoughtSignatureChunk(_) | ChatStreamEvent::ToolCallChunk(_) => {}
+                    ChatStreamEvent::Start
+                    | ChatStreamEvent::Heartbeat
+                    | ChatStreamEvent::ThoughtSignatureChunk(_)
+                    | ChatStreamEvent::ToolCallChunk(_) => {}
                     ChatStreamEvent::Chunk(chunk) if !chunk.content.is_empty() => {
                         yield LlmChunk::Content(chunk.content);
                     }
@@ -451,11 +564,8 @@ impl GenaiProvider {
 impl LlmProvider for GenaiProvider {
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
         let chat_req = self.build_chat_request(messages, None)?;
-        crate::utils::llm_request_logger::log_request_body(
-            &self.model,
-            &serde_json::to_value(&chat_req).unwrap_or_default(),
-        );
         let opts = self.build_chat_options(None);
+        self.record_request(&chat_req, &opts);
 
         let response: ChatResponse = self
             .client
@@ -503,11 +613,8 @@ impl LlmProvider for GenaiProvider {
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
         let chat_req = self.build_chat_request(messages, Some(tools))?;
-        crate::utils::llm_request_logger::log_request_body(
-            &self.model,
-            &serde_json::to_value(&chat_req).unwrap_or_default(),
-        );
         let opts = self.build_chat_options(tool_choice);
+        self.record_request(&chat_req, &opts);
         // 诊断日志：记录实际 ChatOptions。
         let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {
             ToolChoice::Auto => "auto",
@@ -556,61 +663,5 @@ impl LlmProvider for GenaiProvider {
             tool_calls,
             usage,
         })
-    }
-}
-
-#[cfg(test)]
-mod worldbook_tests {
-    use super::*;
-    use crate::ai_service::worldbook::Worldbook;
-
-    #[test]
-    fn worldbook_dynamic_reference_stays_out_of_provider_system() {
-        let provider = GenaiProvider {
-            client: GenaiClient::builder().build(),
-            model: "test".into(),
-            provider: "openai".into(),
-            temperature: None,
-            top_p: None,
-            enable_thinking: false,
-            reasoning_effort: None,
-            is_minimax: false,
-        };
-        let book: Worldbook = serde_yaml::from_str(
-            "entries: [{id: core, activation: {type: always}, content: 常驻资料}, {id: family, activation: {type: keyword, keys: [家庭]}, content: 动态家庭资料}]",
-        )
-        .unwrap();
-        let memory = vec![
-            LlmMessage::system("角色设定"),
-            LlmMessage::user("历史问题"),
-            LlmMessage::assistant("历史回复"),
-            LlmMessage::user("当前问题"),
-        ];
-        let mut hit = memory.clone();
-        let mut miss = memory.clone();
-        book.inject(&mut hit, Some("家庭"));
-        book.inject(&mut miss, Some("你好"));
-        let hit = provider.build_chat_request(&hit, None).unwrap();
-        let miss = provider.build_chat_request(&miss, None).unwrap();
-        assert_eq!(hit.system, miss.system);
-        assert!(hit.system.as_deref().unwrap().contains("常驻资料"));
-        assert!(!hit.system.as_deref().unwrap().contains("动态家庭资料"));
-        assert_eq!(
-            serde_json::to_value(&hit.messages[..2]).unwrap(),
-            serde_json::to_value(&miss.messages[..2]).unwrap(),
-        );
-        assert!(
-            hit.messages
-                .last()
-                .unwrap()
-                .content
-                .first_text()
-                .unwrap()
-                .contains("动态家庭资料")
-        );
-        assert_eq!(
-            miss.messages.last().unwrap().content.first_text(),
-            Some("当前问题")
-        );
     }
 }

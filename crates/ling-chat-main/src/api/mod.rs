@@ -159,6 +159,10 @@ pub async fn proactive_set_can_deliver(
     let state = app.state::<AppState>();
     if let Some(ref ps) = state.proactive_system {
         ps.lock().await.set_can_deliver(can_deliver);
+        if can_deliver {
+            // 台词播完、前端刚空闲下来：把排队的插件主动对话投出去
+            crate::ai_service::proactive_system::ProactiveSystem::notify_can_deliver(ps.clone());
+        }
     }
     Ok(())
 }

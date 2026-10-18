@@ -268,6 +268,7 @@ impl StrategyDispatcher {
             .unwrap_or_else(|| "你".to_string());
 
         // 天气由首聊台词与 query_weather 工具按需提供。
-        format!("{{ {} 想继续说话了}}", ai_name)
+        // 措辞避开「继续」：模型看到这两个字容易顺势把自己上一轮的话往下续写。
+        format!("{{ {} 想找点话题聊聊}}", ai_name)
     }
 }

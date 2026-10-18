@@ -222,7 +222,7 @@ import {
   Volume2,
   AudioLines,
   LoaderCircle,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { useGameStore } from "../../../../stores/modules/game";
 import type { GameMessage } from "../../../../stores/modules/game/state";
 import { convertInitLines } from "../../../../stores/modules/game/actions";
@@ -437,22 +437,20 @@ async function handleBacktrack(messageSeq: number) {
     });
 
     const messages = convertInitLines(
-      lines.map(
-        (l: any): GameLineInit => ({
-          content: l.content,
-          attribute: l.attribute,
-          sender_role_id: l.sender_role_id,
-          display_name: l.display_name,
-          original_emotion: l.original_emotion,
-          predicted_emotion: l.predicted_emotion,
-          action_content: l.action_content,
-          audio_file: l.audio_file,
-          perceived_role_ids: l.perceived_role_ids,
-          user_message_seq: l.user_message_seq,
-          thinking: l.thinking ?? null,
-          tts_content: l.tts_content ?? null,
-        }),
-      ),
+      lines.map((l: any): GameLineInit => ({
+        content: l.content,
+        attribute: l.attribute,
+        sender_role_id: l.sender_role_id,
+        display_name: l.display_name,
+        original_emotion: l.original_emotion,
+        predicted_emotion: l.predicted_emotion,
+        action_content: l.action_content,
+        audio_file: l.audio_file,
+        perceived_role_ids: l.perceived_role_ids,
+        user_message_seq: l.user_message_seq,
+        thinking: l.thinking ?? null,
+        tts_content: l.tts_content ?? null,
+      })),
     );
 
     gameStore.setGameMessages(messages);

@@ -6,13 +6,11 @@
       @click="handleClose"
     >
       <div
-        class="flex h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] text-white shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)]"
+        class="glass-effect flex h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl text-white"
         @click.stop
       >
         <!-- Header -->
-        <div
-          class="flex items-center justify-between border-b border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.1)_0%,rgba(255,255,255,0.05)_100%)] p-6"
-        >
+        <div class="flex items-center justify-between border-b border-white/10 bg-white/5 p-6">
           <div class="flex items-center gap-4">
             <div
               class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 shadow-inner"
@@ -118,7 +116,7 @@
                     :min="field.min"
                     :max="field.max"
                     :placeholder="field.placeholder"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    class="glass-input"
                   />
                   <DialogueExamplesEditor
                     v-else-if="field.type === 'examples'"
@@ -131,13 +129,13 @@
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     :rows="field.rows || 4"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 font-mono text-sm leading-relaxed text-white transition-all duration-200 outline-none"
+                    class="glass-input font-mono"
                   ></textarea>
                   <select
                     v-else-if="field.type === 'select'"
                     :id="field.key"
                     v-model="fieldModel(field).value"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    class="glass-input"
                   >
                     <option
                       v-for="opt in resolveFieldOptions(field)"
@@ -215,52 +213,12 @@
               </div>
 
               <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
-              <div
+              <CharacterRelationsEditor
                 v-if="activeTab === 'basic' && props.roleId"
-                id="relation-block-role"
-                class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div class="min-w-0">
-                    <h3 class="text-sm font-bold text-white/80">
-                      {{ $t("settings.characterInfo.relations.title") }}
-                    </h3>
-                    <p class="mt-1 text-[11px] leading-relaxed text-white/40">
-                      {{ $t("settings.characterInfo.relations.hint") }}
-                    </p>
-                  </div>
-                </div>
-
-                <div v-if="relationsLoading" class="text-xs text-white/40">
-                  {{ $t("settings.shared.loading") }}
-                </div>
-
-                <template v-else>
-                  <div
-                    v-for="(row, idx) in relationRows"
-                    :key="idx"
-                    class="flex items-center gap-2"
-                  >
-                    <SelectMenu
-                      v-model="row.target"
-                      class="w-44 shrink-0"
-                      :options="relationOptionsFor(row)"
-                    />
-                    <ExpandableInput v-model="row.text" class="relation-input flex-1" />
-                    <button class="relation-btn" @click="removeRelationRow(idx)">×</button>
-                  </div>
-                  <button class="relation-btn" @click="addRelationRow">
-                    {{ $t("settings.identity.addRelation") }}
-                  </button>
-                  <!-- 空关系栏标红：不填会被对话就绪门拦下 -->
-                  <p
-                    v-if="relationRows.length === 0"
-                    class="text-xs leading-relaxed text-red-300/70"
-                  >
-                    {{ $t("game.relationGuard.emptyWarn") }}
-                  </p>
-                </template>
-              </div>
+                ref="relationsEditor"
+                :role-id="props.roleId"
+                :character-folder="String(localSettings.character_folder || '')"
+              />
 
               <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
                    分类仍回退到上面的 gsv_voice_filename / gsv_voice_text -->
@@ -311,7 +269,7 @@
                         v-model="gsvEmoField(cat, 'gsv_emo_voice_files').value"
                         type="text"
                         :placeholder="$t('settings.characterInfo.gsvEmo.voiceFilePlaceholder')"
-                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                        class="glass-input"
                       />
                     </div>
                     <div class="flex flex-col gap-2">
@@ -322,7 +280,7 @@
                         v-model="gsvEmoField(cat, 'gsv_emo_texts').value"
                         type="text"
                         :placeholder="$t('settings.characterInfo.gsvEmo.textPlaceholder')"
-                        class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                        class="glass-input"
                       />
                     </div>
                   </div>
@@ -342,7 +300,6 @@
                 :resource-clothes="draftClothes"
                 :initial-costume="avatarCostume"
               />
-
 
               <Live2DSettings
                 v-if="activeTab === 'live2d' && props.roleId"
@@ -381,9 +338,7 @@
         </div>
 
         <!-- Footer -->
-        <div
-          class="flex justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
-        >
+        <div class="flex justify-between gap-3 border-t border-white/10 bg-white/5 p-4">
           <!-- 危险操作区：删除角色 -->
           <div class="flex items-center">
             <button
@@ -469,27 +424,16 @@
 import { computed, onUnmounted, provide, ref, toRaw, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import {
-  characterGetAll,
   deleteCharacter as deleteCharacterApi,
   beginCharacterEdit,
   discardCharacterEdit,
   commitCharacterEdit,
+  getLive2dFilePath,
   listCharacterCostumes,
 } from "../../../api/services/character";
-import {
-  aiKey,
-  getRoleRelations,
-  listPlayerIdentities,
-  meKey,
-  saveRoleRelations,
-  type PlayerIdentitySummary,
-} from "../../../api/services/player-identity";
-import type { Character as ApiCharacter } from "../../../types";
-import {
-  useRelationEditor,
-  type RelationTargetOption,
-} from "../../../composables/useRelationEditor";
+import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services/player-identity";
 import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
+import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
@@ -502,13 +446,14 @@ import CostumeManager from "../character/CostumeManager.vue";
 import PetLayoutEditor from "../character/PetLayoutEditor.vue";
 import VoicePreview from "../character/VoicePreview.vue";
 import DialogueExamplesEditor from "../character/DialogueExamplesEditor.vue";
+import CharacterRelationsEditor from "./character-info/CharacterRelationsEditor.vue";
+import { useVoiceResources } from "./character-info/useVoiceResources";
+import { buildSchemas, type FieldOption, type FieldSchema } from "./character-info/fields";
 import TouchRegionsEditor from "../character/TouchRegionsEditor.vue";
 import { isSystemProtectedRole } from "@/constants/character";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import * as TtsLocal from "../../../api/services/tts/tts-local";
-import * as TtsCosyvoice from "../../../api/services/tts/tts-cosyvoice";
 
 const props = defineProps<{
   visible: boolean;
@@ -585,8 +530,19 @@ async function discardDraft() {
     editRoleId.value = undefined;
   }
 }
-const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
-const cloudVoices = ref<TtsCosyvoice.CosyVoiceView[]>([]);
+// 语音相关状态与操作收敛在 composable 里，这里只做接线
+const {
+  installedVoices,
+  cloudVoices,
+  refreshLocalVoices,
+  refreshCloudVoices,
+  ensureVoiceModels,
+  migrateLegacyVoiceModelFields,
+  GSV_EMO_CATEGORIES,
+  gsvEmoEnabled,
+  toggleGsvEmo,
+  gsvEmoField,
+} = useVoiceResources(localSettings);
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
@@ -647,24 +603,8 @@ const handleDelete = async () => {
   }
 };
 
-async function refreshLocalVoices(): Promise<void> {
-  try {
-    const snapshot = await TtsLocal.listInstalled();
-    installedVoices.value = snapshot.voices;
-  } catch (error) {
-    console.warn("refreshLocalVoices failed", error);
-    installedVoices.value = [];
-  }
-}
-
-async function refreshCloudVoices(): Promise<void> {
-  try {
-    cloudVoices.value = await TtsCosyvoice.listVoices();
-  } catch (error) {
-    console.warn("refreshCloudVoices failed", error);
-    cloudVoices.value = [];
-  }
-}
+/** 关系编辑器：设置保存前要先让它把关系落盘 */
+const relationsEditor = ref<InstanceType<typeof CharacterRelationsEditor> | null>(null);
 
 const tabs = computed(() => [
   { id: "basic", label: t("settings.characterInfo.tabs.basic") },
@@ -677,55 +617,6 @@ const tabs = computed(() => [
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
 ]);
-
-const voiceModelKeys = [
-  "sva_speaker_id",
-  "sbv2_name",
-  "sbv2_speaker_id",
-  "bv2_speaker_id",
-  "sbv2api_name",
-  "sbv2api_speaker_id",
-  "gsv_voice_text",
-  "gsv_voice_filename",
-  "gsv_gpt_model_name",
-  "gsv_sovits_model_name",
-  "aivis_model_uuid",
-  "opentts_voice",
-  "fish_s2_voice",
-  "cosyvoice_voice_id",
-] as const;
-
-// --- Schema Definition ---
-
-type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch";
-
-interface FieldOption {
-  label: string;
-  value: string;
-  visibleIf?: (settings: any) => boolean;
-}
-
-interface FieldSchema {
-  key: string;
-  label: string;
-  type: FieldType;
-  rows?: number;
-  step?: string;
-  min?: number;
-  max?: number;
-  placeholder?: string;
-  /** 字段下方的小字说明，渲染在控件下方 */
-  hint?: string;
-  /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
-  nullable?: boolean;
-  options?: FieldOption[];
-  // Dynamic options computed from refs/state; overrides options when set.
-  dynamicOptions?: () => { label: string; value: string }[];
-  visibleIf?: (settings: any) => boolean;
-  isVoiceModel?: boolean;
-  // When set, the field reads/writes into localSettings.value[parent][key].
-  parent?: string;
-}
 
 const resolveFieldOptions = (field: FieldSchema) => {
   const options: FieldOption[] = field.dynamicOptions
@@ -740,394 +631,14 @@ const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
 
-const schemas = computed<Record<string, FieldSchema[]>>(() => ({
-  basic: [
-    { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
-    { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
-    { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
-    { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
-  ],
-  prompts: [
-    {
-      key: "system_prompt",
-      label: t("settings.characterInfo.fields.systemPrompt"),
-      type: "textarea",
-      rows: 10,
-    },
-    {
-      key: "system_prompt_example",
-      label: t("settings.characterInfo.fields.systemPromptExample"),
-      type: "examples",
-      rows: 6,
-    },
-    {
-      key: "system_prompt_example_old",
-      label: t("settings.characterInfo.fields.systemPromptExampleOld"),
-      type: "examples",
-      rows: 4,
-    },
-  ],
-  visuals: [
-    {
-      key: "avatar_mode",
-      label: t("settings.characterInfo.fields.avatarMode"),
-      type: "select",
-      // 没有 Live2D 模型时整项隐藏（schemas 是 computed，导入模型后自动出现）
-      visibleIf: (s) => Boolean(s.live2d),
-      options: avatarModeOptions.value,
-    },
-    {
-      key: "scale",
-      label: t("settings.characterInfo.fields.scale"),
-      type: "number",
-      step: "0.01",
-    },
-    {
-      key: "offset_x",
-      label: t("settings.characterInfo.fields.offsetX"),
-      type: "number",
-      step: "0.1",
-    },
-    {
-      key: "offset_y",
-      label: t("settings.characterInfo.fields.offsetY"),
-      type: "number",
-      step: "0.1",
-    },
-    { key: "bubble_top", label: t("settings.characterInfo.fields.bubbleTop"), type: "number" },
-    { key: "bubble_left", label: t("settings.characterInfo.fields.bubbleLeft"), type: "number" },
-    {
-      key: "thinking_message",
-      label: t("settings.characterInfo.fields.thinkingMessage"),
-      type: "text",
-    },
-  ],
-  pet: [
-    {
-      key: "avatar_mode_p",
-      label: t("settings.characterInfo.fields.avatarModeP"),
-      type: "select",
-      visibleIf: (s) => Boolean(s.live2d),
-      options: avatarModeOptions.value,
-    },
-    {
-      key: "pet_frameless",
-      label: t("settings.characterInfo.fields.petFrameless"),
-      type: "switch",
-      hint: t("settings.characterInfo.fields.petFramelessHint"),
-    },
-    {
-      key: "scale_p",
-      label: t("settings.characterInfo.fields.scaleP"),
-      type: "number",
-      step: "0.01",
-    },
-    {
-      key: "offset_x_p",
-      label: t("settings.characterInfo.fields.offsetXP"),
-      type: "number",
-      step: "0.1",
-    },
-    {
-      key: "offset_y_p",
-      label: t("settings.characterInfo.fields.offsetYP"),
-      type: "number",
-      step: "0.1",
-    },
-  ],
-  voice: [
-    {
-      key: "tts_type",
-      label: t("settings.characterInfo.fields.ttsType"),
-      type: "select",
-      options: [
-        { label: "sva", value: "sva-vits" },
-        { label: "sbv2", value: "sbv2" },
-        { label: "bv2", value: "sva-bv2" },
-        { label: "sbv2api", value: "sbv2api" },
-        { label: "gsv", value: "gsv" },
-        { label: "aivis", value: "aivis" },
-        { label: "opentts", value: "opentts" },
-        { label: t("settings.characterInfo.fields.fishS2"), value: "fishs2" },
-        { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
-        { label: "indextts2", value: "indextts2" },
-        { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
-      ],
-    },
-
-    {
-      key: "voice_lang",
-      label: t("settings.characterInfo.fields.voiceLang"),
-      type: "select",
-      options: [
-        // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
-        { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.en"),
-          value: "en",
-          visibleIf: (s) =>
-            ["gsv", "opentts", "sbv2", "sbv2api", "indextts2", "fishs2", "cosyvoice"].includes(
-              s.tts_type,
-            ),
-        },
-        { label: t("settings.characterInfo.voiceLangOptions.ja"), value: "ja" },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.de"),
-          value: "de",
-          visibleIf: (s) => s.tts_type === "cosyvoice",
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.fr"),
-          value: "fr",
-          visibleIf: (s) => s.tts_type === "cosyvoice",
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.ru"),
-          value: "ru",
-          visibleIf: (s) => s.tts_type === "cosyvoice",
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.ko"),
-          value: "ko",
-          visibleIf: (s) => ["gsv", "opentts", "cosyvoice"].includes(s.tts_type),
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.pt"),
-          value: "pt",
-          visibleIf: (s) => s.tts_type === "cosyvoice",
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.es"),
-          value: "es",
-          visibleIf: (s) => s.tts_type === "indextts2",
-        },
-        {
-          label: t("settings.characterInfo.voiceLangOptions.ar"),
-          value: "ar",
-          visibleIf: (s) => s.tts_type === "indextts2",
-        },
-      ],
-    },
-
-    {
-      // 中文方言：仅语音克隆 TTS + 中文时可选
-      key: "voice_dialect",
-      label: t("settings.characterInfo.fields.voiceDialect"),
-      type: "select",
-      options: [
-        { label: t("settings.characterInfo.dialectOptions.mandarin"), value: "" },
-        { label: t("settings.characterInfo.dialectOptions.cantonese"), value: "广东话" },
-        { label: t("settings.characterInfo.dialectOptions.dongbei"), value: "东北话" },
-        { label: t("settings.characterInfo.dialectOptions.gansu"), value: "甘肃话" },
-        { label: t("settings.characterInfo.dialectOptions.guizhou"), value: "贵州话" },
-        { label: t("settings.characterInfo.dialectOptions.henan"), value: "河南话" },
-        { label: t("settings.characterInfo.dialectOptions.hubei"), value: "湖北话" },
-        { label: t("settings.characterInfo.dialectOptions.jiangxi"), value: "江西话" },
-        { label: t("settings.characterInfo.dialectOptions.fujian"), value: "闽南话" },
-        { label: t("settings.characterInfo.dialectOptions.ningxia"), value: "宁夏话" },
-        { label: t("settings.characterInfo.dialectOptions.shanxi"), value: "山西话" },
-        { label: t("settings.characterInfo.dialectOptions.shaanxi"), value: "陕西话" },
-        { label: t("settings.characterInfo.dialectOptions.shandong"), value: "山东话" },
-        { label: t("settings.characterInfo.dialectOptions.shanghai"), value: "上海话" },
-        { label: t("settings.characterInfo.dialectOptions.sichuan"), value: "四川话" },
-        { label: t("settings.characterInfo.dialectOptions.tianjin"), value: "天津话" },
-        { label: t("settings.characterInfo.dialectOptions.yunnan"), value: "云南话" },
-      ],
-      visibleIf: (s) => s.tts_type === "cosyvoice" && s.voice_lang === "zh",
-    },
-
-    {
-      key: "sva_speaker_id",
-      label: "sva_speaker_id",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sva-vits",
-    },
-
-    {
-      key: "sbv2_name",
-      label: "sbv2_name",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sbv2",
-    },
-    {
-      key: "sbv2_speaker_id",
-      label: "sbv2_speaker_id",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sbv2",
-    },
-
-    {
-      key: "bv2_speaker_id",
-      label: "bv2_speaker_id",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sva-bv2",
-    },
-
-    {
-      key: "sbv2api_name",
-      label: "sbv2api_name",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sbv2api",
-    },
-    {
-      key: "sbv2api_speaker_id",
-      label: "sbv2api_speaker_id",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "sbv2api",
-    },
-
-    {
-      key: "gsv_voice_text",
-      label: "gsv_voice_text",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "gsv",
-    },
-    {
-      key: "gsv_voice_filename",
-      label: "gsv_voice_filename",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "gsv",
-    },
-    {
-      key: "gsv_gpt_model_name",
-      label: "gsv_gpt_model_name",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "gsv",
-    },
-    {
-      key: "gsv_sovits_model_name",
-      label: "gsv_sovits_model_name",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "gsv",
-    },
-
-    {
-      key: "opentts_voice",
-      label: t("settings.characterInfo.fields.openttsVoice"),
-      type: "text",
-      isVoiceModel: true,
-      placeholder: t("settings.characterInfo.placeholders.openttsVoice"),
-      visibleIf: (s) => s.tts_type === "opentts",
-    },
-
-    {
-      key: "aivis_model_uuid",
-      label: "aivis_model_uuid",
-      type: "text",
-      isVoiceModel: true,
-      visibleIf: (s) => s.tts_type === "aivis",
-    },
-
-    {
-      key: "fish_s2_voice",
-      label: t("settings.characterInfo.fields.fishS2Voice"),
-      type: "text",
-      isVoiceModel: true,
-      placeholder: t("settings.characterInfo.placeholders.fishS2Voice"),
-      visibleIf: (s) => s.tts_type === "fishs2",
-    },
-
-    // --- 云端语音克隆 (cosyvoice) ---
-    {
-      key: "cosyvoice_voice_id",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.cosyVoiceVoice"),
-      type: "select",
-      dynamicOptions: () =>
-        cloudVoices.value.length === 0
-          ? [{ label: t("settings.characterInfo.fields.noCloudVoice"), value: "" }]
-          : cloudVoices.value.map((voice) => ({
-              label: voice.name ? `${voice.name} (${voice.voice_id})` : voice.voice_id,
-              value: voice.voice_id,
-            })),
-      visibleIf: (s) => s.tts_type === "cosyvoice",
-    },
-
-    // --- Local SBV2 (localsbv2api) ---
-    {
-      key: "sbv2_local_voice_id",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.localVoiceId"),
-      type: "select",
-      dynamicOptions: () =>
-        installedVoices.value.length === 0
-          ? [{ label: t("settings.characterInfo.fields.noLocalModel"), value: "" }]
-          : installedVoices.value.map((voice) => ({
-              label: voice.display_name
-                ? `${voice.display_name} (${voice.voice_id})`
-                : voice.voice_id,
-              value: voice.voice_id,
-            })),
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_speaker_id",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.speakerId"),
-      type: "number",
-      step: "1",
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_style_id",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.styleId"),
-      type: "number",
-      step: "1",
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_length_scale",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.lengthScale"),
-      type: "number",
-      step: "0.05",
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_sdp_ratio",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.sdpRatio"),
-      type: "number",
-      step: "0.05",
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_cloud_fallback_model",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.cloudFallbackModel"),
-      type: "text",
-      placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "sbv2_local_cloud_fallback_speaker_id",
-      parent: "voice_models",
-      label: t("settings.characterInfo.fields.cloudFallbackSpeakerId"),
-      type: "text",
-      placeholder: t("settings.characterInfo.fields.cloudFallbackPlaceholder"),
-      visibleIf: (s) => s.tts_type === "localsbv2api",
-    },
-    {
-      key: "opentts_voice",
-      label: t("settings.characterInfo.fields.openttsVoiceLabel"),
-      type: "text",
-      isVoiceModel: true,
-      placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
-      visibleIf: (s) => s.tts_type === "opentts",
-    },
-  ],
-}));
+const schemas = computed(() =>
+  buildSchemas({
+    t,
+    avatarModeOptions: avatarModeOptions.value,
+    cloudVoices: cloudVoices.value,
+    installedVoices: installedVoices.value,
+  }),
+);
 
 // --- Computed Properties ---
 
@@ -1140,54 +651,7 @@ const currentTabFields = computed(() => {
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-const ensureVoiceModels = () => {
-  if (
-    !localSettings.value.voice_models ||
-    typeof localSettings.value.voice_models !== "object" ||
-    Array.isArray(localSettings.value.voice_models)
-  ) {
-    localSettings.value.voice_models = {};
-  }
-  return localSettings.value.voice_models as Record<string, unknown>;
-};
-
-const migrateLegacyVoiceModelFields = () => {
-  const voiceModels = ensureVoiceModels();
-  for (const key of voiceModelKeys) {
-    const legacyValue = localSettings.value[key];
-    if ((voiceModels[key] === undefined || voiceModels[key] === null) && legacyValue != null) {
-      voiceModels[key] = legacyValue;
-    }
-    delete localSettings.value[key];
-  }
-};
-
 // --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
-
-const GSV_EMO_CATEGORIES = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"] as const;
-
-const gsvEmoEnabled = computed({
-  get: () => Boolean(localSettings.value.voice_models?.gsv_emo_enabled),
-  set: (val: boolean) => {
-    ensureVoiceModels().gsv_emo_enabled = val;
-  },
-});
-
-const toggleGsvEmo = () => {
-  gsvEmoEnabled.value = !gsvEmoEnabled.value;
-};
-
-/** 分类参考值的读写入口，与 voice_models 下的平级字段同样只落草稿。 */
-const gsvEmoField = (cat: string, key: "gsv_emo_texts" | "gsv_emo_voice_files") =>
-  computed({
-    get: () => (ensureVoiceModels()[key] as Record<string, string> | undefined)?.[cat] ?? "",
-    set: (val: string) => {
-      const voiceModels = ensureVoiceModels();
-      const map = (voiceModels[key] as Record<string, string> | undefined) ?? {};
-      map[cat] = val;
-      voiceModels[key] = map;
-    },
-  });
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
@@ -1209,11 +673,7 @@ const fieldModel = (field: FieldSchema) => {
     set: (val: any) => {
       const isBlank = val === "" || val === null || val === undefined || Number.isNaN(Number(val));
       const coerced =
-        field.type === "number"
-          ? field.nullable && isBlank
-            ? undefined
-            : Number(val)
-          : val;
+        field.type === "number" ? (field.nullable && isBlank ? undefined : Number(val)) : val;
       let target: any;
       if (field.parent) {
         if (
@@ -1315,97 +775,6 @@ const loadPlayerIdentities = async () => {
   }
 };
 
-// 关系（AI 角色视角）：读写独立的 relations.yml，与底部保存按钮互不影响
-const relationTargets = ref<RelationTargetOption[]>([]);
-const {
-  rows: relationRows,
-  syncRows,
-  addRow,
-  removeRow: removeRelationRow,
-  fold: buildRelationsMap,
-  optionsFor: relationOptionsFor,
-} = useRelationEditor(relationTargets, (key) =>
-  t("settings.characterInfo.relations.missing", { key }),
-);
-const relationsLoading = ref(false);
-const relationsSaving = ref(false);
-/** 关系是否已成功加载；未成功时提交会跳过，避免把关系覆盖成空 */
-const relationsLoaded = ref(false);
-
-const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
-  const pageSize = 100;
-  const first = await characterGetAll(1, pageSize);
-  const items = [...first.items];
-  const totalPages = Math.min(first.total_pages || 1, 50);
-  for (let page = 2; page <= totalPages; page += 1) {
-    const next = await characterGetAll(page, pageSize);
-    if (!next.items.length) break;
-    items.push(...next.items);
-  }
-  return items;
-};
-
-const loadRelations = async (roleId: number) => {
-  relationsLoading.value = true;
-  try {
-    const [chars, identities] = await Promise.all([
-      fetchAllRelationCharacters().catch(() => [] as ApiCharacter[]),
-      listPlayerIdentities().catch(() => [] as PlayerIdentitySummary[]),
-    ]);
-
-    const selfFolder = localSettings.value?.character_folder as string | undefined;
-    relationTargets.value = [
-      ...chars
-        .filter((c) => !!c.resource_folder && c.resource_folder !== selfFolder)
-        .map((c) => ({
-          value: aiKey(c.resource_folder as string),
-          label: c.name,
-          group: t("settings.identity.targetAi"),
-        })),
-      ...identities.map((i) => ({
-        value: meKey(i.id),
-        label: i.name,
-        group: t("settings.identity.targetMe"),
-      })),
-    ];
-
-    const saved = await getRoleRelations(roleId);
-    syncRows(saved);
-    relationsLoaded.value = true;
-  } catch (e: any) {
-    console.error("读取角色关系失败:", e);
-    uiStore.showError({
-      title: t("settings.characterInfo.relations.msg.loadFailTitle"),
-      message: typeof e === "string" ? e : e?.message || "",
-    });
-    relationRows.value = [];
-    relationsLoaded.value = false;
-  } finally {
-    relationsLoading.value = false;
-  }
-};
-
-const addRelationRow = () => {
-  addRow();
-};
-
-const submitRelations = async (silent = false): Promise<void> => {
-  const roleId = props.roleId;
-  if (!roleId) return;
-  relationsSaving.value = true;
-  try {
-    await saveRoleRelations(roleId, buildRelationsMap());
-    if (!silent) {
-      uiStore.showSuccess({
-        title: t("settings.characterInfo.relations.msg.savedTitle"),
-        message: t("settings.characterInfo.relations.msg.savedMsg"),
-      });
-    }
-  } finally {
-    relationsSaving.value = false;
-  }
-};
-
 // --- Watchers & Methods ---
 
 watch(
@@ -1413,7 +782,6 @@ watch(
   async ([newVal]) => {
     const sequence = ++loadSequence;
     if (!newVal) {
-      relationsLoaded.value = false;
       await discardDraft();
       return;
     }
@@ -1436,11 +804,8 @@ watch(
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = "ja";
         }
-        // 关系单独放在 relations.yml（不在 localSettings 里），需要另取一次
-        relationsLoaded.value = false;
         aliasIdentityId.value = gameStore.playerIdentityId ?? "";
         void loadPlayerIdentities();
-        void loadRelations(props.roleId);
         // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
         if (!localSettings.value.avatar_mode) {
           localSettings.value.avatar_mode = "live2d";
@@ -1532,7 +897,21 @@ function applySettingsToRuntime() {
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
-/** 落盘 + 运行时热更；返回是否成功 */
+/** 保存前校验：实际会被加载的那个 variant 的模型文件是否还在。走 getLive2dFilePath 是为了让草稿里的模型按 editId 解析。 */
+async function isLive2dModelAvailable(): Promise<boolean> {
+  const live2d = localSettings.value.live2d;
+  if (!live2d) return false;
+  const variant = resolveLive2dVariant(live2d, localSettings.value.clothes_name ?? "");
+  if (!variant?.model) return false;
+  try {
+    await getLive2dFilePath(props.roleId!, variant.model, editId.value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
   const confirmed = await confirmSaveEffect(
@@ -1543,8 +922,12 @@ async function persistSettings(): Promise<boolean> {
   saving.value = true;
   try {
     // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
-    if (relationsLoaded.value) {
-      await submitRelations(true);
+    await relationsEditor.value?.submit(true);
+    // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
+    // WebGL 上下文、失败之后才退回静态
+    if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {
+      localSettings.value.avatar_mode = "image";
+      localSettings.value.avatar_mode_p = "image";
     }
     await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
     editId.value = undefined;
@@ -1585,58 +968,6 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
-/* 关系区块的小控件（原生元素 + 纯 CSS） */
-.relation-input {
-  border-radius: 0.75rem;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  background: rgba(0, 0, 0, 0.25);
-  padding: 0.375rem 0.625rem;
-  font-size: 0.8125rem;
-  color: #fff;
-  outline: none;
-  transition: border-color 0.2s ease;
-}
-.relation-input:focus {
-  border-color: rgba(121, 217, 255, 0.5);
-}
-/* 原生 select 下拉弹层跟随深色主题，避免白底黑字 */
-.relation-input,
-.form-control {
-  color-scheme: dark;
-}
-/* 显式设置选项背景，兜底 color-scheme 未生效的情况 */
-.relation-input option,
-.form-control option {
-  background-color: #1e1e2e;
-  color: #e2e8f0;
-}
-.relation-input option:checked,
-.form-control option:checked {
-  background-color: #3b82f6;
-  color: #ffffff;
-}
-.relation-btn {
-  cursor: pointer;
-  border-radius: 0.5rem;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(255, 255, 255, 0.06);
-  padding: 0.3rem 0.7rem;
-  font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.85);
-  transition:
-    background 0.2s ease,
-    border-color 0.2s ease;
-}
-.relation-btn:hover:not(:disabled) {
-  background: rgba(121, 217, 255, 0.18);
-  border-color: rgba(121, 217, 255, 0.45);
-}
-.relation-btn:disabled {
-  cursor: not-allowed;
-  opacity: 0.45;
-}
-
-/* 表单控件 :focus 选中状态 */
 /* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
 .tab-sidebar-scroll {
   scrollbar-width: thin;
@@ -1654,11 +985,5 @@ onUnmounted(() => {
 }
 .tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.32);
-}
-
-.form-control:focus {
-  border-color: #79d9ff;
-  background: rgba(0, 0, 0, 0.3);
-  box-shadow: 0 0 0 3px rgba(121, 217, 255, 0.2);
 }
 </style>

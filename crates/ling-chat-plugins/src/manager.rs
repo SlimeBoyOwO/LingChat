@@ -52,7 +52,7 @@ pub struct PluginManager {
     /// plugin_id → (conn_id → 连接句柄)。与 `cancels` 同步维护：插件启用即建、停用即断。
     ///
     /// 用 `std::sync::Mutex`：读写都是「查表 + 发 mpsc」的同步操作，且发送端可能在
-    /// `spawn_blocking` 的脚本线程里被调用（那里不能 await）。
+    /// 插件脚本线程里被调用（那里不能 await）。
     ws: std::sync::Mutex<HashMap<String, HashMap<String, WsHandle>>>,
 }
 
@@ -242,7 +242,7 @@ impl PluginManager {
 
     /// 获取插件目录。
     ///
-    /// 在 `spawn_blocking` 线程内调用，`blocking_lock` 等待锁安全。
+    /// 在插件脚本线程内调用，`blocking_lock` 等待锁安全。
     pub fn plugin_dir(&self, id: &str) -> Option<PathBuf> {
         let records = self.records.blocking_lock();
         records.get(id).map(|r| r.dir.clone())
@@ -250,7 +250,7 @@ impl PluginManager {
 
     /// 获取插件运行所需的 config、白名单环境变量与可读路径声明。
     ///
-    /// 在 `spawn_blocking` 线程内调用，`blocking_lock` 等待锁安全。
+    /// 在插件脚本线程内调用，`blocking_lock` 等待锁安全。
     pub fn plugin_run_env(&self, id: &str) -> PluginRunEnv {
         let records = self.records.blocking_lock();
         let Some(record) = records.get(id) else {
@@ -262,6 +262,7 @@ impl PluginManager {
             env: python_backend::collect_env(&record.manifest),
             read: record.manifest.read.clone(),
             send_user_message: record.manifest.send_user_message,
+            capture_screen: record.manifest.capture_screen,
             trigger_proactive: record.manifest.trigger_proactive,
         }
     }
@@ -747,7 +748,7 @@ impl PluginManager {
                 // 免得慢 handler 靠超时把并发槽位「释放」出去。
                 let joined = tokio::time::timeout(
                     timeout,
-                    tokio::task::spawn_blocking(move || {
+                    python_backend::run_on_script_thread(move || {
                         let _permit = permit;
                         let manager = app.state::<Arc<PluginManager>>().inner().clone();
                         let run_env = manager.plugin_run_env(&plugin_id);
@@ -1226,7 +1227,7 @@ impl PluginManager {
 
         let joined = tokio::time::timeout(
             timeout,
-            tokio::task::spawn_blocking(move || {
+            python_backend::run_on_script_thread(move || {
                 // 起解释器前最后一道闸：刚被停用的插件不再白跑一次。
                 // 注意已经进到脚本里的执行无法中断，只能等它返回后丢弃结果。
                 if token.is_cancelled() {
@@ -1241,7 +1242,7 @@ impl PluginManager {
 
         match joined {
             Ok(Ok(result)) => result,
-            Ok(Err(e)) => Err(format!("插件线程异常: {e}")),
+            Ok(Err(e)) => Err(e),
             Err(_) => Err(format!("执行超时（{}ms）", timeout.as_millis())),
         }
     }
@@ -1470,7 +1471,7 @@ fn dependency_error(missing: &[String], inactive: &[String]) -> String {
     }
 }
 
-/// 把工具名授权给 default 角色组。
+/// 把工具名授权给 default 角色组与主动对话场景组。
 ///
 /// 插件工具注册后必须走这一步才可能被下发：权限矩阵里主聊天取的就是 default
 /// 角色组的工具集，光进 registry 与 available_tools 展示列表都是看不见的。
@@ -1481,16 +1482,20 @@ fn grant_tools_to_default_group(registry: &ToolRegistry, names: &[String]) {
     registry.update_permissions(|p| {
         for name in names {
             p.set_tool_allowed_for_default_group(name, true);
+            p.set_tool_allowed_for_proactive_scene(name, true);
         }
     });
 }
 
-/// 收回 default 角色组对这批工具名的授权。
+/// 收回 default 角色组与主动对话场景组对这批工具名的授权。
 fn revoke_tools_from_default_group(registry: &ToolRegistry, names: &[String]) {
     if names.is_empty() {
         return;
     }
     registry.update_permissions(|p| {
+        for name in names {
+            p.set_tool_allowed_for_proactive_scene(name, false);
+        }
         // 组不存在时不动权限：那个入口会顺手建一个 enabled = true 的空组，而空
         // 工具集在 all_tools 场景下等于放行全部工具，一旦被塞进角色就是提权。
         if !p.role_groups.contains_key(DEFAULT_ROLE_GROUP) {

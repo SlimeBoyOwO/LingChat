@@ -86,17 +86,14 @@ pub struct WebSearchSettings {
     /// 搜索服务提供商：
     /// "kimi"（Kimi Code 同款 /v1/search；API Key 为空时可复用当前官方 Kimi Code 对话凭据）
     /// "bocha"（BoCha 博查 https://api.bochaai.com/v1/web-search）
-    /// "deepseek"（DeepSeek Responses API，服务端内置 web_search）
+    /// "deepseek"（DeepSeek 网页搜索 https://api.deepseek.com/v1/tools/search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
     /// "codex"（ChatGPT Codex alpha/search，复用 Codex OAuth，无需 API Key）
     /// "custom"（用户配置的 Kimi /search 兼容端点）
     pub provider: String,
-    /// DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效）。
-    #[serde(default = "default_deepseek_model")]
-    pub model: String,
     /// API Key（Bearer 认证）。
     pub api_key: String,
-    /// 搜索端点（deepseek 固定走官方端点，不读此字段；仅 custom 模式需要）。
+    /// 搜索端点（bocha/deepseek/kimi 固定走官方端点，不读此字段；仅 custom 模式需要）。
     pub base_url: String,
     /// 是否通过本地 HTTP 代理（如 v2rayN）访问搜索端点。
     pub proxy_enabled: bool,
@@ -109,17 +106,11 @@ pub struct WebSearchSettings {
     pub hide_search_results: bool,
 }
 
-/// DeepSeek Responses API 的默认模型（旧配置缺省该字段时使用）。
-fn default_deepseek_model() -> String {
-    "deepseek-flash".to_string()
-}
-
 impl Default for WebSearchSettings {
     fn default() -> Self {
         Self {
             enabled: false,
             provider: "kimi".to_string(),
-            model: "deepseek-flash".to_string(),
             api_key: String::new(),
             base_url: "https://api.kimi.com/coding/v1/search".to_string(),
             proxy_enabled: false,
@@ -179,6 +170,19 @@ impl MediaFileSettings {
     }
 }
 
+/// 主聊天每轮发言前的工具推荐方式。
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ToolRecommendMode {
+    /// 不推荐，模型自己决定要不要检索或调用工具。
+    #[default]
+    Off,
+    /// 上帝 Agent 看一遍最近的对话再挑（每轮多一次小模型调用）。
+    Agent,
+    /// 拿玩家这句话静默检索一次工具，过阈值的才推荐（不额外调用模型）。
+    Rag,
+}
+
 /// 主聊天工具的统一审批策略。只读工具始终可以直接运行。
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -207,6 +211,9 @@ pub struct ToolSettings {
     /// 工具按需检索（Tool RAG）：只下发常驻工具 + 检索激活的工具，
     /// 而不是把全部已授权工具定义随每次请求下发。关闭即回到全量下发。
     pub tool_rag: bool,
+    /// 每轮用户发言前怎么推荐工具：不推荐 / 上帝 Agent 挑 / 静默检索。
+    /// 两种推荐都只是临时提示，不写台词表也不进记忆。
+    pub tool_recommend_mode: ToolRecommendMode,
     /// 以下四项仅用于读取旧版配置。保存后会迁移成 `access_mode`。
     #[serde(default, skip_serializing)]
     pub command_auto_approve: bool,
@@ -230,6 +237,7 @@ impl Default for ToolSettings {
             access_mode: ToolAccessMode::default(),
             max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
             tool_rag: true,
+            tool_recommend_mode: ToolRecommendMode::default(),
             command_auto_approve: false,
             command_delete_auto_approve: false,
             file_delete_auto_approve: false,

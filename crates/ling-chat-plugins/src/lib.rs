@@ -35,7 +35,7 @@ pub use types::PluginInfo;
 
 /// 宿主 `AppHandle` 的全局副本。
 ///
-/// 插件脚本在 `spawn_blocking` 线程里执行，那条路径上没有调用方的 `AppHandle`，
+/// 插件脚本在独立的插件脚本线程里执行，那条路径上没有调用方的 `AppHandle`，
 /// 而少数宿主能力（如 `plugin_host.switch_character`）必须经它访问 `AppState`。
 /// 启动时登记一次；未登记时相关能力返回错误，而不是 panic。
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();

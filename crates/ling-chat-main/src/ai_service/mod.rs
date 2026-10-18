@@ -1,7 +1,8 @@
 pub mod affection;
 pub mod asr;
 pub mod config;
-pub mod embedding;
+// 嵌入引擎实现已下沉到 notes crate，这里保持 `ai_service::embedding` 路径稳定。
+pub use ling_chat_notes::embedding;
 pub mod emotion;
 pub mod game_system;
 pub mod god_agent;

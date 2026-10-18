@@ -497,6 +497,9 @@ pub const ACTION_CHECK_MIN_LINES: usize = 3;
 /// 情绪标签允许的最大字数，超出即纠偏（系统提示词里要求 2~5 字）。
 pub const EMOTION_TAG_MAX_CHARS: usize = 6;
 
+/// 台词条数连续多少轮一模一样才提醒。少于这么多轮时，连续同长还可能只是巧合。
+pub const REPETITION_MIN_ROUNDS: usize = 5;
+
 /// 扫描模型一轮的原始输出，逐句提取形态摘要。
 ///
 /// 判据必须落在原始输出上，而不是已落地的台词行：落地行的翻译会被实时翻译
@@ -601,9 +604,14 @@ pub fn correction_texts(
     texts
 }
 
+/// 台词条数连续多轮一模一样时的提醒文案。
+pub fn repetition_text(streak: usize, count: usize) -> String {
+    format!(
+        "你已经连续 {streak} 轮回复都是 {count} 句台词了，节奏太固定。请根据对话内容灵活调整台词数量，不要每轮都用同样的句数。"
+    )
+}
+
 /// 台词缺少必需要素时的格式纠偏文案；要素齐全返回 None。
-///
-/// 逐项统计缺失条数（一句台词可能同时缺两样），合成一条提示。
 fn format_error_text(round: &[LineShape], expect_translation: bool) -> Option<String> {
     let count = |missing: fn(&LineShape) -> bool| round.iter().filter(|line| missing(line)).count();
 

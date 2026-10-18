@@ -48,6 +48,7 @@ import {
 } from "./live2d-touch";
 import {
   configureRuntimeIdle,
+  Live2dModelMissingError,
   mergeVariantAssets,
   rewriteModelReferences,
   type Live2dModelSource,
@@ -81,6 +82,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   activeChange: [roleIds: number[]];
   failedChange: [roleIds: number[]];
+  /** 模型文件本身不在了（区别于引擎故障）：宿主据此把角色切回静态立绘 */
+  modelMissing: [roleId: number];
   previewGeometry: [value: { roleId: number; x: number; y: number }];
 }>();
 
@@ -205,10 +208,17 @@ async function loadModelSource(
   modelFile: string,
   assets: Promise<Live2dVariantAssets | null>,
 ) {
-  const modelPath = await getLive2dFilePath(roleId, modelFile);
+  let modelPath: string;
+  try {
+    modelPath = await getLive2dFilePath(roleId, modelFile);
+  } catch (error) {
+    throw new Live2dModelMissingError(`Live2D 模型不存在: ${String(error)}`);
+  }
   const modelUrl = convertFileSrc(modelPath);
   const response = await fetch(modelUrl);
-  if (!response.ok) throw new Error(`Failed to load Live2D settings: HTTP ${response.status}`);
+  if (!response.ok) {
+    throw new Live2dModelMissingError(`Live2D 模型读取失败: HTTP ${response.status}`);
+  }
   const source = (await response.json()) as Live2dModelSource;
   // 注入必须夹在解析与改写之间：rewriteModelReferences 会把 FileReferences 里的相对路径
   // 就地转成文件 URL，比它晚注入的路径永远不会被转换，引擎会拿到裸相对路径去取资源
@@ -604,8 +614,6 @@ async function loadRole(
   variant: Live2dVariant,
   requestId: number,
 ) {
-  await ensureApplication();
-  if (!application || !runtime || disposed) return;
   let pendingModel: any = null;
   const previous = models.get(role.roleId);
   let previousDetached = false;
@@ -617,6 +625,10 @@ async function loadRole(
       return null;
     });
     const source = await loadModelSource(role.roleId, variant.model, assets);
+    // 模型源确认可读之后才建渲染上下文：模型缺失时上面已经抛错，
+    // 不必为一具不存在的模型创建 WebGL 上下文与 Pixi 舞台
+    await ensureApplication();
+    if (!application || !runtime || disposed) return;
     // 必须在注入之后：扫描出来的待机组（小写 idle）只有注入完才解析得到，
     // 解析不到会抛错，被下面的 catch 兜成静态立绘
     const runtimeIdle = configureRuntimeIdle(source, variant.idle);
@@ -711,6 +723,11 @@ async function loadRole(
         failedRoleIds.delete(role.roleId);
       } else {
         failedRoleIds.add(role.roleId);
+        // 模型文件不在了：通知宿主切回静态立绘并落盘，否则每次进舞台都要
+        // 白建一套渲染上下文再失败（引擎故障不在此列，那是临时性的）
+        if (error instanceof Live2dModelMissingError) {
+          emit("modelMissing", role.roleId);
+        }
       }
       emitFailedRoles();
     }
@@ -756,7 +773,8 @@ async function syncRoles() {
     destroyApplication();
     return;
   }
-  await ensureApplication();
+  // 渲染上下文不在这里建：交给 loadRole 在模型源确认可读之后再创建，
+  // 模型缺失时就能完全不碰 WebGL
   for (const [index, role] of liveRoles.entries()) {
     const settings = role.live2d;
     if (!settings) continue;

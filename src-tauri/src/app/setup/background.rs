@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use ling_chat_main::AppState;
-use ling_chat_main::{ai_service, api, cast, config};
+use ling_chat_main::{ai_service, cast, config};
 use ling_chat_plugins as plugins;
 use tauri::Manager;
 
@@ -94,7 +94,7 @@ pub(super) fn run(
     // 桌宠点击穿透轮询与 pet:cursor 鼠标广播——具体实现在 api::pet，
     // 入口文件不堆业务逻辑。
     #[cfg(desktop)]
-    api::pet::spawn_hit_test_poll(window.clone());
+    ling_chat_main::api::pet::spawn_hit_test_poll(window.clone());
 
     Ok(())
 }

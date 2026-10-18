@@ -166,6 +166,25 @@ export default {
     toolRagTitle: "ツールのオンデマンド検索",
     toolRagHint:
       "各リクエストにはよく使うツールだけを送り、必要になったときモデルが一文でツールを検索してから呼び出します。すべてのツール説明が占めていたコンテキストを節約できます。オフにすると毎回すべての許可済みツールを送信します。",
+    toolRecommendTitle: "ツールの提案",
+    toolRecommendHint:
+      "モデルはツールの存在を忘れがちです。毎ターンの発言前にどう知らせるかを選べます。提案は一時的なヒントで台詞表には書き込まれず、提案されたツールはそのターンのリクエストに含まれます。",
+    toolRecommendModes: {
+      off: {
+        label: "しない",
+        description: "提案を行わず、モデル自身にツール検索・呼び出しを判断させます。",
+      },
+      agent: {
+        label: "Agent 提案",
+        description:
+          "小さな判断エージェントが直近の会話を読んでツールを選びます。1ターンにつき小さなモデル呼び出しが1回増えます。",
+      },
+      rag: {
+        label: "検索提案",
+        description:
+          "あなたの発言で静かにツールを検索し、スコアがしきい値を超えたものだけを提案します。追加のモデル呼び出しはなく、ローカル計算のみです。",
+      },
+    },
     accessModes: {
       manual: {
         label: "毎回確認",
@@ -258,15 +277,14 @@ export default {
       "「LLM プロバイダ」でログイン済みの Codex サブスクリプションで検索します。API Key の入力は不要です",
     kimiHint:
       "現在のチャットプロバイダーが公式 Kimi Code の場合、API Key は空欄のまま安全に認証情報を再利用できます。それ以外は別のキーを入力してください",
-    providerDeepSeek: "DeepSeek Responses",
+    providerDeepSeek: "DeepSeek ウェブ検索",
     customHint:
       "カスタム端点は Kimi /search プロトコル互換が必要（POST JSON のフィールド名は text_query）",
     apiKeyPlaceholder: "カスタム端点の API Key を入力",
     kimiApiKeyPlaceholder: "現在の Kimi Code 認証情報を再利用する場合は空欄にできます",
     dsApiKeyPlaceholder: "DeepSeek API Key を入力",
-    dsModel: "DeepSeek モデル",
     dsHint:
-      "DeepSeek Responses API のサーバーサイド web_search で検索します。別途 DeepSeek API Key が必要です。回答は DeepSeek が生成します",
+      "DeepSeek の /v1/tools/search エンドポイントで検索します。別途 DeepSeek API Key が必要です",
     baseUrl: "検索サービス URL",
     proxyEnable: "プロキシ経由で検索サービスにアクセス（v2rayN など）",
     maxResults: "検索結果の件数",

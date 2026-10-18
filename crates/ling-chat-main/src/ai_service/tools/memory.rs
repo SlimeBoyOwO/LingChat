@@ -1,3 +1,9 @@
+use std::collections::HashMap;
+use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
 use tauri::Manager;
@@ -9,7 +15,9 @@ use crate::api::character::read_character_settings;
 use crate::api::data_dir;
 use crate::db::managers::role_repo::RoleRepo;
 
+use ling_chat_notes::Note;
 use ling_chat_notes::NotesStore;
+use ling_chat_notes::retrieval::{DEFAULT_TOP_K, MAX_TOP_K, NotesVectorIndex};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -148,23 +156,66 @@ impl Tool for GetCurrentMemory {
 /// memory_get_notes：获取手动记忆笔记。
 ///
 /// 默认读取**当前角色**的笔记；可传 `role` 指定读取**其他角色**的笔记（只读）。
-pub struct GetNotes;
+/// 传 `query` 时按语义检索返回 Top-K，不传时保持全量返回。
+pub struct GetNotes {
+    index: Arc<NotesVectorIndex>,
+    warned_disabled: AtomicBool,
+}
+
+impl GetNotes {
+    pub fn new(data_dir: impl AsRef<Path>) -> Self {
+        Self {
+            index: Arc::new(NotesVectorIndex::new(data_dir)),
+            warned_disabled: AtomicBool::new(false),
+        }
+    }
+
+    fn full_result(notes: Vec<Note>) -> Value {
+        json!({ "ok": true, "notes": notes })
+    }
+}
+
+/// 非法或缺失的 top_k 一律回落到默认值，整数则限制在合法区间。
+fn parse_top_k(value: Option<&Value>) -> usize {
+    value
+        .and_then(Value::as_i64)
+        .map(|value| value.clamp(1, MAX_TOP_K as i64) as usize)
+        .unwrap_or(DEFAULT_TOP_K)
+}
+
+/// 按检索给出的 ID 顺序挑选笔记，返回（结果，总数）。
+fn select_notes(notes: Vec<Note>, note_ids: &[String]) -> (Vec<Note>, usize) {
+    let total = notes.len();
+    let by_id: HashMap<&str, &Note> = notes.iter().map(|note| (note.id.as_str(), note)).collect();
+    let selected = note_ids
+        .iter()
+        .filter_map(|id| by_id.get(id.as_str()).map(|note| (*note).clone()))
+        .collect();
+    (selected, total)
+}
 
 #[async_trait::async_trait]
 impl Tool for GetNotes {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "memory_get_notes",
-            "获取手动记忆笔记（含 id、内容、标签）。默认读取当前角色的笔记；可传 role 指定读取其他角色的笔记（只读，不能写入）",
+            "获取手动记忆笔记（含 id、内容、标签）。不传 query 时返回该角色的全部笔记；传 query 时按语义检索最相关的 top_k 条。默认读取当前角色的笔记；可传 role 指定读取其他角色的笔记（只读，不能写入）",
             json!({
                 "type": "object",
                 "properties": {
-                    "role": {"type": "string", "description": "要读取其笔记的角色名；不传时读取当前角色"}
+                    "role": {"type": "string", "description": "要读取其笔记的角色名；不传时读取当前角色"},
+                    "query": {"type": "string", "description": "检索关键词或简短问句；不传则返回全部笔记。建议用陈述性关键词（如「食物过敏」「睡前约定」）"},
+                    "top_k": {"type": "integer", "minimum": 1, "maximum": MAX_TOP_K, "description": format!("返回条数，默认 {DEFAULT_TOP_K}")}
                 },
                 "required": [],
                 "additionalProperties": false
             }),
         )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        // 首次检索要为整份笔记建索引；缓存命中后只有一次查询嵌入。
+        Some(Duration::from_secs(15))
     }
 
     async fn execute(
@@ -178,20 +229,68 @@ impl Tool for GetNotes {
         let db = state.db.clone();
         let store = notes_store();
 
-        let notes = if let Some(role_name) = obj.get("role").and_then(Value::as_str) {
-            let dn = resolve_display_name(&db, role_name).await?;
-            store
-                .load(&dn)
-                .map_err(|e| ToolError::Execution(e.to_string()))?
+        let role = if let Some(role_name) = obj.get("role").and_then(Value::as_str) {
+            resolve_display_name(&db, role_name).await?
         } else {
             let gs = game_status_handle(&app).await;
             let mut gs = gs.lock().await;
-            let dn = current_display_name(&mut gs, &db).await?;
-            store
-                .load(&dn)
-                .map_err(|e| ToolError::Execution(e.to_string()))?
+            current_display_name(&mut gs, &db).await?
         };
-        Ok(json!({ "ok": true, "notes": notes }))
+        let notes = store
+            .load(&role)
+            .map_err(|e| ToolError::Execution(e.to_string()))?;
+
+        let Some(query) = obj
+            .get("query")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|query| !query.is_empty())
+            .map(str::to_string)
+        else {
+            return Ok(Self::full_result(notes));
+        };
+        if notes.is_empty() {
+            return Ok(Self::full_result(notes));
+        }
+
+        let engine = state.embedding.clone();
+        if !engine.is_enabled() {
+            if !self.warned_disabled.swap(true, Ordering::Relaxed) {
+                tracing::warn!("文本嵌入引擎未启用，memory_get_notes 回退为全量返回");
+            }
+            return Ok(Self::full_result(notes));
+        }
+
+        let top_k = parse_top_k(obj.get("top_k"));
+        let index = self.index.clone();
+        let notes_for_search = notes.clone();
+        let query_for_search = query.clone();
+        let search = tokio::task::spawn_blocking(move || {
+            index.search(&engine, &role, &notes_for_search, &query_for_search, top_k)
+        })
+        .await;
+
+        let note_ids = match search {
+            Ok(Ok(ids)) => ids,
+            Ok(Err(e)) => {
+                tracing::warn!("笔记语义检索失败，回退为全量返回: {e}");
+                return Ok(Self::full_result(notes));
+            },
+            Err(e) => {
+                tracing::warn!("笔记语义检索任务失败，回退为全量返回: {e}");
+                return Ok(Self::full_result(notes));
+            },
+        };
+
+        let (selected, total) = select_notes(notes, &note_ids);
+        let returned = selected.len();
+        Ok(json!({
+            "ok": true,
+            "notes": selected,
+            "total": total,
+            "returned": returned,
+            "retrieved": true,
+        }))
     }
 }
 
@@ -343,5 +442,35 @@ impl Tool for DeleteNote {
             .delete(&role_name, &id)
             .map_err(|e| ToolError::Execution(e.to_string()))?;
         Ok(json!({"ok": true, "id": id}))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn note(id: &str) -> Note {
+        Note {
+            id: id.to_string(),
+            content: format!("内容 {id}"),
+            tags: Vec::new(),
+            created_at: "2026-01-01T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn argument_parsing_and_result_order() {
+        assert_eq!(parse_top_k(None), DEFAULT_TOP_K);
+        assert_eq!(parse_top_k(Some(&json!("8"))), DEFAULT_TOP_K);
+        assert_eq!(parse_top_k(Some(&json!(0))), 1);
+        assert_eq!(parse_top_k(Some(&json!(30))), MAX_TOP_K);
+        assert_eq!(parse_top_k(Some(&json!(5))), 5);
+
+        let notes = vec![note("a"), note("b"), note("c")];
+        let ids = vec!["c".to_string(), "a".to_string(), "不存在".to_string()];
+        let (selected, total) = select_notes(notes, &ids);
+        assert_eq!(total, 3);
+        let selected_ids: Vec<&str> = selected.iter().map(|note| note.id.as_str()).collect();
+        assert_eq!(selected_ids, vec!["c", "a"]);
     }
 }

@@ -107,7 +107,7 @@
 <script setup lang="ts">
 import { ref, onMounted, reactive, computed } from "vue";
 import { useI18n } from "vue-i18n";
-import { Save } from "lucide-vue-next";
+import { Save } from "@lucide/vue";
 import { getEnvConfigByKey, saveEnvConfigSettings } from "../../../../api/services/config";
 import { reloadProactiveSystem } from "../../../../api/services/schedule";
 import type { ConfigItem } from "../../../../api/services/config";

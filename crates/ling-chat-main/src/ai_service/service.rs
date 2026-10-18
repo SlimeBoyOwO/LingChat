@@ -9,17 +9,12 @@ use tokio::sync::Mutex;
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
-use crate::ai_service::game_system::player_identity::{
-    AliasEntry, IdentityStore, RelationEndpoint, build_player_block, effective_user_alias,
-    resolve_relation, runtime_relations,
-};
+use crate::ai_service::game_system::player_identity::bootstrap::resolve_player_bootstrap;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::local::LocalTtsRuntime;
-use crate::ai_service::types::{
-    CharacterSettings, GameLine, LineAttributeExt, LineBase,
-};
+use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_with_player};
@@ -115,84 +110,19 @@ impl AIService {
             .settings
             .clone();
 
-        let identity_store = IdentityStore::new(&self.data_dir);
-        let identity = identity_store.current_or_synthesize(
-            &settings.user_name,
-            settings.user_subtitle.as_deref().unwrap_or_default(),
-        );
-
-        // 老卡兜底：身份卡 prompt 为空时，用角色卡 system_prompt 里抽出的「我的设定」段落补上。
-        let (_, extracted_setting) = crate::utils::prompt::extract_player_setting(
-            settings.system_prompt.clone().unwrap_or_default().as_str(),
-        );
-        let effective_prompt = if identity.prompt.trim().is_empty() {
-            extracted_setting.unwrap_or_default()
-        } else {
-            identity.prompt.clone()
-        };
-
-        let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
-        let target = RelationEndpoint::Me(identity.id.clone());
-        let speaker_relations =
-            runtime_relations::load_effective(&self.data_dir, &settings.character_folder, &gs);
-        let relation = resolve_relation(
-            &speaker,
-            &target,
-            &speaker_relations,
-            &runtime_relations::identity_relations_effective(
-                &self.data_dir,
-                &gs,
-                &identity.id,
-            ),
-            Some(effective_prompt.as_str()),
-        );
-        let init_alias = effective_user_alias(
-            &settings,
-            if identity.id.trim().is_empty() {
-                None
-            } else {
-                Some(identity.id.as_str())
-            },
-            &identity.name,
-        );
-        let roster = vec![AliasEntry {
-            name: settings.ai_name.clone(),
-            alias: init_alias.clone(),
-            is_self: true,
-        }];
-        let player_view = identity
-            .relations
-            .get(&RelationEndpoint::Ai(settings.character_folder.clone()).key())
-            .map(|text| text.trim().to_string())
-            .filter(|text| !text.is_empty());
-        let player_block = build_player_block(
-            identity.display_name(),
-            &init_alias,
-            &effective_prompt,
-            relation.as_ref(),
-            player_view.as_deref(),
-            &roster,
-        );
+        let boot = resolve_player_bootstrap(&self.data_dir, &gs, &settings);
 
         let ai_prompt = sys_prompt_builder_with_player(
-            &init_alias,
+            &boot.alias,
             &settings.ai_name.clone(),
-            &player_block,
+            &boot.player_block,
             &settings.system_prompt.clone().unwrap_or(default_prompt),
             settings.system_prompt_example.clone().as_deref(),
             settings.system_prompt_example_old.clone().as_deref(),
             prompt_options,
         );
 
-        gs.player.user_name = identity.display_name().to_string();
-        gs.player.user_subtitle = identity.subtitle.clone();
-        gs.player.user_prompt = effective_prompt.clone();
-        gs.player.identity_id = if identity.id.trim().is_empty() {
-            None
-        } else {
-            Some(identity.id.clone())
-        };
-        gs.player.relations = identity.relations.clone();
+        boot.apply_to(&mut gs);
 
         // 此处是初始角色被注册的地方
         let _ = gs.get_role(&self.db, cid).await?;

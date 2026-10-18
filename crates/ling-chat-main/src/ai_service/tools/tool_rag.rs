@@ -26,6 +26,16 @@ pub const SEARCH_TOP_K: usize = 5;
 /// 单个角色同时激活的工具上限，超出按激活时间淘汰最久未激活的。
 pub const ACTIVATION_CAPACITY: usize = 10;
 
+/// 静默推荐（玩家每说一句话就自动检索一次）最多推荐几件。
+pub const AUTO_RECOMMEND_TOP_K: usize = 3;
+
+/// 静默推荐的分数下限。没有下限的话每句寒暄都会「推荐」几个不相干的工具。
+///
+/// 实测口径见 `god_agent::capabilities::tool_hint` 的 `threshold_smoke`：
+/// 明确的工具意图 top-1 落在 0.51~0.65（「换个场景吧」0.65、「今天天气怎么样」0.52），
+/// 寒暄与闲聊 top-1 都在 0.40~0.46；0.5 是两边之间唯一稳定的切口。
+pub const AUTO_RECOMMEND_MIN_SCORE: f32 = 0.5;
+
 /// 角色名缺失时的激活缓存键（正常流程下角色名总存在，这只是兜底）。
 const DEFAULT_ROLE_KEY: &str = "";
 
@@ -34,11 +44,14 @@ pub fn is_resident(name: &str) -> bool {
     name == TOOL_SEARCH_NAME || name == WEB_SEARCH_NAME
 }
 
+/// 工具名 → (语料指纹, 归一化向量)。
+type EmbeddingEntry = (u64, Arc<[f32]>);
+
 pub struct ToolRag {
     engine: Arc<EmbeddingEngine>,
     /// 工具名 -> (语料指纹, 归一化向量)。指纹变化或工具消失时自动失效，
     /// 因此插件热重载/卸载不需要任何主动通知。
-    embeddings: RwLock<HashMap<String, (u64, Arc<[f32]>)>>,
+    embeddings: RwLock<HashMap<String, EmbeddingEntry>>,
     /// 角色名 -> 激活工具。下标 0 为最近激活，用于 LRU 淘汰。
     activated: Mutex<HashMap<String, Vec<String>>>,
 }
@@ -98,12 +111,16 @@ impl ToolRag {
     ///
     /// 常驻工具（[`TOOL_SEARCH_NAME`]、[`WEB_SEARCH_NAME`]）不进语料：它们本来就
     /// 一直下发，占用候选位只会挤掉真正需要被发现的工具。
+    ///
+    /// `min_score` 以下的命中直接不要，也不进激活缓存：`tool_search` 传负无穷（检索
+    /// 是模型主动要求的，总得给点东西），静默推荐传 [`AUTO_RECOMMEND_MIN_SCORE`]。
     pub async fn search_and_activate(
         &self,
         role: Option<&str>,
         query: &str,
         candidates: &[ToolDefinition],
         top_k: usize,
+        min_score: f32,
     ) -> Result<Vec<(String, f32)>> {
         if !self.is_enabled() {
             return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
@@ -172,9 +189,8 @@ impl ToolRag {
                 Some((name.clone(), cosine_similarity(&query_vec, vector)))
             })
             .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(top_k);
         drop(guard);
+        select_hits(&mut scored, top_k, min_score);
 
         // 5) 命中的工具进入该角色的激活缓存，下一轮即可作为工具定义下发。
         let hit_names: Vec<String> = scored.iter().map(|(name, _)| name.clone()).collect();
@@ -182,6 +198,15 @@ impl ToolRag {
 
         Ok(scored)
     }
+}
+
+/// 从打分结果里挑出要激活的：按分数降序，低于阈值的一律不要，再取前 `top_k`。
+///
+/// 单独拆出来是为了能不起模型、直接单测阈值过滤与截断的边界。
+fn select_hits(scored: &mut Vec<(String, f32)>, top_k: usize, min_score: f32) {
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, score)| *score >= min_score);
+    scored.truncate(top_k);
 }
 
 /// 构建检索语料：`(工具名, 语料文本, 文本指纹)`。
@@ -199,9 +224,12 @@ fn build_corpus(candidates: &[ToolDefinition]) -> Vec<(String, String, u64)> {
         .collect()
 }
 
-/// 语料文本：英文工具名 + 中文描述一起编码，兼顾两种表述。
+/// 语料文本：只用中文描述。
+///
+/// 曾经把英文工具名也拼进去，实测反而拖低中文查询的命中（名字是 `schedule_add_todo`
+/// 这类纯英文 token，对中文短句只是噪声，见 `tool_hint` 的 `threshold_smoke`）。
 fn corpus_text(def: &ToolDefinition) -> String {
-    format!("{}\n{}", def.function.name, def.function.description.trim())
+    def.function.description.trim().to_string()
 }
 
 fn fingerprint_of(text: &str) -> u64 {
@@ -341,15 +369,15 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ACTIVATION_CAPACITY, TOOL_SEARCH_NAME, ToolRag, WEB_SEARCH_NAME, effective_allowed,
-        is_resident,
+        ACTIVATION_CAPACITY, AUTO_RECOMMEND_MIN_SCORE, AUTO_RECOMMEND_TOP_K, TOOL_SEARCH_NAME,
+        ToolRag, WEB_SEARCH_NAME, effective_allowed, is_resident, select_hits,
     };
     use crate::ai_service::embedding::EmbeddingEngine;
     use crate::ai_service::types::ToolDefinition;
 
     /// 禁用态引擎：LRU 与权限求交的逻辑不依赖真实模型。
     fn disabled_rag() -> ToolRag {
-        let engine = EmbeddingEngine::load(&PathBuf::from("__不存在的模型目录__"));
+        let engine = EmbeddingEngine::load(&PathBuf::from("__不存在的模型目录__"), false);
         assert!(!engine.is_enabled(), "该路径不应被识别为可用模型");
         ToolRag::new(engine)
     }
@@ -367,6 +395,43 @@ mod tests {
         assert!(is_resident(TOOL_SEARCH_NAME));
         assert!(is_resident(WEB_SEARCH_NAME));
         assert!(!is_resident("scene_switch"));
+    }
+
+    #[test]
+    fn select_hits_sorts_and_caps() {
+        let mut scored = names_with_scores(&[("a", 0.5), ("b", 0.9), ("c", 0.7)]);
+        select_hits(&mut scored, AUTO_RECOMMEND_TOP_K, f32::NEG_INFINITY);
+        assert_eq!(
+            scored,
+            vec![
+                ("b".to_string(), 0.9),
+                ("c".to_string(), 0.7),
+                ("a".to_string(), 0.5)
+            ]
+        );
+    }
+
+    #[test]
+    fn select_hits_drops_scores_below_threshold() {
+        let below = AUTO_RECOMMEND_MIN_SCORE - 0.01;
+        let above = AUTO_RECOMMEND_MIN_SCORE + 0.01;
+        let mut scored = names_with_scores(&[("a", below), ("b", above), ("c", 0.2)]);
+        select_hits(&mut scored, AUTO_RECOMMEND_TOP_K, AUTO_RECOMMEND_MIN_SCORE);
+        assert_eq!(scored, vec![("b".to_string(), above)], "阈值以下不该进推荐");
+    }
+
+    #[test]
+    fn select_hits_keeps_exact_threshold_score() {
+        let mut scored = names_with_scores(&[("a", AUTO_RECOMMEND_MIN_SCORE)]);
+        select_hits(&mut scored, AUTO_RECOMMEND_TOP_K, AUTO_RECOMMEND_MIN_SCORE);
+        assert_eq!(scored.len(), 1, "正好等于阈值应当保留");
+    }
+
+    fn names_with_scores(pairs: &[(&str, f32)]) -> Vec<(String, f32)> {
+        pairs
+            .iter()
+            .map(|(name, score)| ((*name).to_string(), *score))
+            .collect()
     }
 
     #[test]
@@ -473,7 +538,7 @@ mod tests {
         let corpus = super::build_corpus(&candidates);
         let names: Vec<&str> = corpus.iter().map(|(name, _, _)| name.as_str()).collect();
         assert_eq!(names, vec!["scene_switch"]);
-        assert_eq!(corpus[0].1, "scene_switch\n切换场景");
+        assert_eq!(corpus[0].1, "切换场景");
     }
 
     #[test]

@@ -187,6 +187,7 @@ pub(super) fn build_service_graph(
         &data_dir
             .join("third_party")
             .join(ai_service::embedding::MODEL_DIR_NAME),
+        ling_chat_main::utils::onnx::onnx_available(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
 

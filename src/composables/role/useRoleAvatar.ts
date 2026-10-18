@@ -145,6 +145,7 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
     stopAvatarUpdates?.();
     stopCostumeUpdates?.();
     resolveAvatarId++;
+    latestEmotionId++;
   });
 
   async function resolveAvatar() {
@@ -189,7 +190,7 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
 
   /**
    * 情绪气泡：先置 false → nextTick 置 true，重触发 CSS 过渡。
-   * 连续两次相同情绪时也要重播（两次的图片 URL 相同，光换样式不会重播）。
+   * 演出版号要求重播时，即使两次图片 URL 相同，也要重新触发过渡。
    */
   const showEmotionBubble = (image: string, className: string) => {
     currentBubbleImageUrl.value = image;
@@ -214,23 +215,35 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
     armBubbleHide();
   };
 
-  // 头像文件随角色、情绪、衣服任一变化重新解析
+  // 角色与衣服变化直接解析；情绪变化由下方演出流程统一解析。
   watch(
-    () => [
-      role.value.roleId,
-      role.value.emotion,
-      role.value.clothesName,
-      role.value.character_folder,
-    ],
+    () => [role.value.roleId, role.value.clothesName, role.value.character_folder],
     () => resolveAvatar(),
     { immediate: true },
   );
 
   // 监听表情，配合展示层的加载状态播放特效
   watch(
-    () => role.value.emotion,
-    async (newEmotion) => {
+    () => [role.value.emotion, role.value.emotionRevision] as const,
+    async ([newEmotion]) => {
       const currentId = ++latestEmotionId;
+      resolveAvatarId++;
+      const config = EMOTION_CONFIG[newEmotion];
+
+      if (
+        config?.animation &&
+        config.animation !== "none" &&
+        activeAnimationClass.value === config.animation
+      ) {
+        // 连续使用同一种 CSS 动作时，先保留旧立绘并完成动作重置，再解析下一姿势，
+        // 确保新立绘首次显示时已经带上本次动作。
+        activeAnimationClass.value = "normal";
+        await nextTick();
+        await new Promise<void>((resolve) => {
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+        });
+        if (currentId !== latestEmotionId) return;
+      }
 
       // 依次等待：头像路径解析 → DOM 更新传给子组件 → 子组件图片加载完成
       await resolveAvatar();
@@ -240,7 +253,6 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
       // 陈旧性检查必须在注入的 await 之后：期间表情又变了就丢弃这次结果
       if (currentId !== latestEmotionId) return;
 
-      const config = EMOTION_CONFIG[newEmotion];
       if (!config) return;
 
       if (config.animation && config.animation !== "none") {

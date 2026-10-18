@@ -251,8 +251,8 @@ import { useGameStore } from "@/stores/modules/game";
 import { applyWebInitData } from "@/stores/modules/game/actions";
 import { eventQueue } from "@/core/events/event-queue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
-import { Settings, Star } from "lucide-vue-next";
-import { Cat, Check } from "lucide-vue-next";
+import { Settings, Star } from "@lucide/vue";
+import { Cat, Check } from "@lucide/vue";
 import type { Clothes } from "@/types";
 
 interface CharacterProps {

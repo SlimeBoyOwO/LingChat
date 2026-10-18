@@ -36,7 +36,6 @@ impl RelationEndpoint {
             Self::Me(id) => format!("me:{id}"),
         }
     }
-
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -116,11 +115,16 @@ pub fn build_player_block(
     let alias = alias.trim();
     let prompt = prompt.trim();
 
-    if identity_name.is_empty() && prompt.is_empty() && relation.is_none() && player_view.is_none() {
+    if identity_name.is_empty() && prompt.is_empty() && relation.is_none() && player_view.is_none()
+    {
         return String::new();
     }
 
-    let call_name = if alias.is_empty() { identity_name } else { alias };
+    let call_name = if alias.is_empty() {
+        identity_name
+    } else {
+        alias
+    };
     let has_diff = roster.iter().any(|e| e.alias != identity_name) || alias != identity_name;
 
     let mut out = String::from("\n\n【本局必须遵守：正在与你对话的「我」】\n");
@@ -174,10 +178,7 @@ pub fn build_player_block(
         }
     }
 
-    let has_attitude = matches!(
-        relation.map(|r| r.source),
-        Some(RelationSource::Speaker)
-    );
+    let has_attitude = matches!(relation.map(|r| r.source), Some(RelationSource::Speaker));
     if !call_name.is_empty() || has_attitude {
         out.push_str("\n");
         if has_diff {

@@ -29,6 +29,7 @@ use super::registry::ToolRegistry;
 
 pub const SELECT_NEXT_SPEAKER: &str = "select_next_speaker";
 pub const UPDATE_AFFECTION: &str = "update_affection";
+pub const RECOMMEND_TOOLS: &str = "recommend_tools";
 
 /// 构建上帝 Agent 的专用注册表。
 pub fn god_agent_registry() -> ToolRegistry {
@@ -39,6 +40,9 @@ pub fn god_agent_registry() -> ToolRegistry {
     registry
         .register(Arc::new(UpdateAffection))
         .expect("注册 update_affection 失败");
+    registry
+        .register(Arc::new(RecommendTools))
+        .expect("注册 recommend_tools 失败");
     registry
 }
 
@@ -320,6 +324,87 @@ impl Tool for UpdateAffection {
             "reason": reason,
         }))
     }
+}
+
+// ============================================================
+// recommend_tools
+// ============================================================
+
+/// 本轮可用工具的推荐结果：只把挑中的名字回显给调用方，不改任何状态。
+///
+/// 与另外两个决策工具不同，它不碰 `AppState`——推荐是「一句话提示」，
+/// 真正让工具可调用的是调用方把这几个名字并进本轮工具集。
+pub struct RecommendTools;
+
+#[async_trait]
+impl Tool for RecommendTools {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            RECOMMEND_TOOLS,
+            "从给定的工具清单里挑出与这次对话相关的那几件，供对话模型参考。\
+             只挑能直接帮上忙的；都不相关就把 names 留空。不要挑工具清单以外的名字。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "names": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "推荐的工具名，必须来自清单，最多 5 个；都不相关就传空数组。"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "为什么推荐它们（一句中文）。"
+                    }
+                },
+                "required": ["names", "reason"]
+            }),
+        )
+    }
+
+    fn lenient_arguments(&self) -> bool {
+        true
+    }
+
+    async fn execute(
+        &self,
+        _context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        Ok(json!({
+            "ok": true,
+            "names": parse_names(arguments.get("names")),
+            "reason": arguments
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or("（无理由）"),
+        }))
+    }
+}
+
+/// 容错解析工具名列表：数组取字符串元素，单个字符串按顿号/逗号拆开。
+fn parse_names(raw: Option<&Value>) -> Vec<String> {
+    let mut names = Vec::new();
+    match raw {
+        Some(Value::Array(items)) => {
+            names.extend(
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|name| name.trim().to_string()),
+            );
+        },
+        Some(Value::String(text)) => {
+            names.extend(
+                text.split(['、', ',', '，', ' ', '\n'])
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string),
+            );
+        },
+        _ => {},
+    }
+    names.retain(|name| !name.is_empty());
+    names
 }
 
 // ============================================================

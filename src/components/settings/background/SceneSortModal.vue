@@ -113,7 +113,7 @@
 <script setup lang="ts">
 import { ref, watch } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { Image, Star } from "lucide-vue-next";
+import { Image, Star } from "@lucide/vue";
 import type { SceneInfo } from "@/api/services/scene";
 
 const props = defineProps<{

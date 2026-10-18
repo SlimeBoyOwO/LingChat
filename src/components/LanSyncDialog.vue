@@ -301,7 +301,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Icon } from "./base";
-import { Wifi, Check, X } from "lucide-vue-next";
+import { Wifi, Check, X } from "@lucide/vue";
 import type {
   PeerInfo,
   SyncPlan,

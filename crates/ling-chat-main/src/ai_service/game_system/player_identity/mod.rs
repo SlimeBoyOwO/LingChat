@@ -1,5 +1,6 @@
 //! 「我的身份」：可切换的玩家身份卡（名字 / 副标题 / 提示词 / 关系）。
 
+pub mod bootstrap;
 pub mod guard;
 pub mod persona;
 pub mod resolve;
