@@ -6,6 +6,7 @@ pub mod clock;
 pub mod executor;
 pub mod god_agent;
 pub mod memory;
+pub mod memory_search;
 pub mod permissions;
 pub mod read_media_file;
 pub mod registry;
@@ -115,6 +116,7 @@ pub fn built_in_registry(
     registry.register(Arc::new(UpdateTodo))?;
     registry.register(Arc::new(DeleteTodo))?;
     registry.register(Arc::new(GetCurrentMemory))?;
+    registry.register(Arc::new(memory_search::MemorySearch))?;
     registry.register(Arc::new(GetNotes::new(&data_dir)))?;
     registry.register(Arc::new(AddNote))?;
     registry.register(Arc::new(UpdateNote))?;

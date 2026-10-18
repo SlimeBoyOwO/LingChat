@@ -109,6 +109,8 @@ impl ScriptEvent for AIDialogueEvent {
             transient_image: None,
         };
 
+        let generation_lock = state.generation_lock.clone();
+        let _generation = generation_lock.lock().await;
         let generator = MessageGenerator::new(deps);
         generator.process_message(None).await?;
 

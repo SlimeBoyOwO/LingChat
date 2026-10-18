@@ -2,6 +2,10 @@
 
 > 记忆构建数据流见 [diagrams/memory.html](diagrams/memory.html)。
 
+P5 新增 `memory_search`：在当前角色、存档和感知范围内，按关键词／标签／向量搜索历史与笔记；自动回忆与该工具共用服务和缓存。参数为 `query`，可选 `max_hits`（1–5）及 `kinds`（`raw`／`diary`／`note`）。权限由“笔记与记忆”工具组及既有场景／角色矩阵控制，Tool RAG 负责发现。
+
+检索资料是当轮临时数据：持久化时保留工具调用配对，但将 `memory_search` 结果正文替换为临时标记。下面所述其他工具结果持久化语义保持原样。未绑定存档时跳过搜索，日记自动生成留在 P6。设置、降级和验收见 [P5 说明](../memory-rag-p5.md)。
+
 ## 1. 一句话
 
 **工具调用不是临时数据，而是正式写入系统台词表（`line` 表）的一类台词；每次生成前，`MemoryBuilder` 把台词表按目标角色重建成 OpenAI 格式的 `LlmMessage` 列表（含工具轮次），存入该角色的 `role.memory`。** 存储靠台词表，提取靠 `MemoryBuilder`，构建产物就是给 LLM 的上下文。

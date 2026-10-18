@@ -127,6 +127,16 @@ export interface RoleMemorySnapshot {
   context: LlmMessage[];
 }
 
+export interface MemoryRecallSnapshot {
+  status: string;
+  save_id: number | null;
+  role_id: number;
+  response: unknown;
+}
+
+export const getMemoryRecallSnapshot = (): Promise<MemoryRecallSnapshot | null> =>
+  invoke("get_memory_recall_snapshot");
+
 export const getMemoryDebugOverview = async (): Promise<MemoryDebugOverview> => {
   try {
     return (await invoke("get_memory_debug_overview")) as MemoryDebugOverview;

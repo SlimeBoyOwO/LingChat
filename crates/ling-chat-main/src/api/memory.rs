@@ -16,6 +16,40 @@ use crate::AppState;
 use crate::ai_service::game_system::persistent_memory_system::MemorySystemSnapshot;
 use crate::ai_service::types::LlmMessage;
 
+#[tauri::command]
+pub async fn get_memory_recall_snapshot(
+    app: tauri::AppHandle,
+) -> Result<Option<crate::ai_service::game_system::memory_recall::RecallDebugSnapshot>, String> {
+    let state = app.state::<AppState>();
+    let snapshot = state.memory_recall.debug_snapshot();
+    let status = {
+        let service = state.ai_service.lock().await;
+        service.game_status.clone()
+    };
+    let snapshot = {
+        let status = status.lock().await;
+        snapshot.filter(|snapshot| snapshot.stamp.matches(&status))
+    };
+    if let Some(snapshot) = &snapshot {
+        if let Some(response) = &snapshot.response {
+            let scope = crate::ai_service::game_system::memory_scope::MemoryScopeSnapshot::load(
+                &state.db,
+                &ling_chat_notes::NotesStore::new(crate::api::data_dir()),
+                response.scope_key.save_id,
+                response.scope_key.role_id,
+                &snapshot.stamp.display_name,
+            )
+            .await
+            .map_err(|error| error.to_string())?;
+            if scope.key() != &response.scope_key {
+                return Ok(None);
+            }
+        }
+    }
+    let current = status.lock().await;
+    Ok(snapshot.filter(|snapshot| snapshot.stamp.matches(&current)))
+}
+
 /// 角色选择器的一项。刻意只带廉价字段，不含计数与快照
 /// （那些要锁 bank 并扫描台词历史，属于详情接口）。
 #[derive(Serialize)]

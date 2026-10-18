@@ -37,6 +37,9 @@ fn default_enable_emotion_classifier() -> bool {
 fn default_memory_update_interval() -> u32 {
     250
 }
+fn default_memory_rag_timeout_ms() -> u32 {
+    2000
+}
 fn default_memory_recent_window() -> u32 {
     30
 }
@@ -124,6 +127,10 @@ pub struct AppConfig {
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
     pub use_persistent_memory: bool,
+    #[serde(default = "default_true")]
+    pub memory_rag_enabled: bool,
+    #[serde(default = "default_memory_rag_timeout_ms")]
+    pub memory_rag_timeout_ms: u32,
     #[serde(default = "default_memory_update_interval")]
     pub memory_update_interval: u32,
     #[serde(default = "default_memory_recent_window")]
@@ -177,6 +184,8 @@ impl Default for AppConfig {
             ai_auto_clothes: true,
             ai_auto_effect: true,
             use_persistent_memory: true,
+            memory_rag_enabled: true,
+            memory_rag_timeout_ms: default_memory_rag_timeout_ms(),
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
             memory_inject_continue_user: true,
@@ -291,6 +300,18 @@ impl AppConfig {
                 &store,
                 keys::USE_PERSISTENT_MEMORY,
                 default.use_persistent_memory,
+            ),
+            memory_rag_enabled: get_bool(
+                &store,
+                keys::MEMORY_RAG_ENABLED,
+                default.memory_rag_enabled,
+            ),
+            memory_rag_timeout_ms: get_u32_in_range(
+                &store,
+                keys::MEMORY_RAG_TIMEOUT_MS,
+                default.memory_rag_timeout_ms,
+                100,
+                10000,
             ),
             memory_update_interval: get_u32_in_range(
                 &store,

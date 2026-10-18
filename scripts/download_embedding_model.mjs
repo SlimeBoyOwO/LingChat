@@ -7,15 +7,11 @@
 // 靠本脚本获取，与情绪模型同一策略。
 import { promises as fs } from "fs";
 import path from "path";
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 import readline from "readline";
+import { pathToFileURL } from "url";
 
-const TARGET_DIR = path.join(
-  process.cwd(),
-  "data",
-  "third_party",
-  "embedding_model_bge_small_zh",
-);
+const TARGET_DIR = path.join(process.cwd(), "data", "third_party", "embedding_model_bge_small_zh");
 
 // 远程路径 -> 本地文件名。统一落成扁平的 model.onnx，便于 Rust 侧按目录解析。
 //
@@ -29,8 +25,7 @@ const FILES = [
 ];
 
 // 换源只改这一处。ModelScope 国内直连稳定，与情绪模型同源。
-const BASE_URL =
-  "https://www.modelscope.cn/models/Xenova/bge-small-zh-v1.5/resolve/master";
+const BASE_URL = "https://www.modelscope.cn/models/Xenova/bge-small-zh-v1.5/resolve/master";
 
 // 是否启用交互式确认（可通过环境变量控制）
 const INTERACTIVE = process.env.INTERACTIVE !== "false";
@@ -49,9 +44,9 @@ async function calculateSha256(filePath) {
 }
 
 /** 下载单个文件并返回内容 */
-async function downloadFileContent(remote) {
+async function downloadFileContent(remote, fetchImpl) {
   const url = `${BASE_URL}/${remote}`;
-  const response = await fetch(url);
+  const response = await fetchImpl(url);
   if (!response.ok) {
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   }
@@ -66,7 +61,7 @@ function askUserConfirmation(localName) {
       output: process.stdout,
     });
     rl.question(
-      `\n⚠️  ${localName} 内容与远程版本不一致。\n   是否删除本地文件并重新下载？(y/N) `,
+      `\n⚠️  ${localName} 内容与远程版本不一致。\n   是否重新下载并替换模型资源？(y/N) `,
       (answer) => {
         rl.close();
         resolve(answer.toLowerCase() === "y" || answer.toLowerCase() === "yes");
@@ -76,32 +71,40 @@ function askUserConfirmation(localName) {
 }
 
 /** 主函数 */
-async function main() {
+export async function downloadEmbeddingModel({
+  targetDir = TARGET_DIR,
+  fetchImpl = fetch,
+  interactive = INTERACTIVE && process.stdin.isTTY,
+  confirm = askUserConfirmation,
+} = {}) {
   console.log(`📂 工作目录: ${process.cwd()}`);
-  console.log(`📁 目标目录: ${TARGET_DIR}`);
+  console.log(`📁 目标目录: ${targetDir}`);
 
-  await fs.mkdir(TARGET_DIR, { recursive: true });
-
-  const modelPath = path.join(TARGET_DIR, "model.onnx");
-  const modelExists = await calculateSha256(modelPath);
-
-  if (modelExists) {
-    console.log(`✅ 目录中已存在 model.onnx`);
-
-    console.log(`🔍 正在下载远程 config.json 进行版本对比...`);
-    let remoteConfigContent;
+  await fs.mkdir(targetDir, { recursive: true });
+  const missing = [];
+  for (const entry of FILES) {
     try {
-      remoteConfigContent = await downloadFileContent("config.json");
+      validateContent(entry.local, await fs.readFile(path.join(targetDir, entry.local)));
+    } catch (error) {
+      if (error.code && error.code !== "ENOENT") throw error;
+      missing.push(entry);
+    }
+  }
+  let requested = missing;
+  let remoteConfigContent;
+  if (missing.length === 0) {
+    console.log(`🔍 正在下载远程 config.json 进行版本对比...`);
+    try {
+      remoteConfigContent = await downloadFileContent("config.json", fetchImpl);
+      validateContent("config.json", remoteConfigContent);
     } catch (err) {
       console.error(`❌ 无法下载远程 config.json:`, err.message);
       console.log(`💡 跳过版本检查，保留现有文件。`);
       return;
     }
 
-    const localSha = await calculateSha256(path.join(TARGET_DIR, "config.json"));
-    const remoteSha = createHash("sha256")
-      .update(remoteConfigContent)
-      .digest("hex");
+    const localSha = await calculateSha256(path.join(targetDir, "config.json"));
+    const remoteSha = createHash("sha256").update(remoteConfigContent).digest("hex");
 
     if (localSha === remoteSha) {
       console.log(`✅ 本地 config.json 与远程版本一致，无需更新。`);
@@ -112,61 +115,76 @@ async function main() {
     console.log(`   本地 SHA: ${localSha}`);
     console.log(`   远程 SHA: ${remoteSha}`);
 
-    if (INTERACTIVE && process.stdin.isTTY) {
-      const shouldReDownload = await askUserConfirmation("config.json");
+    if (interactive) {
+      const shouldReDownload = await confirm("config.json");
       if (!shouldReDownload) {
         console.log(`⏭️  已跳过重新下载，保留现有所有文件。`);
         return;
       }
-      console.log(`🗑️  正在删除现有文件...`);
-      for (const entry of await fs.readdir(TARGET_DIR)) {
-        const entryPath = path.join(TARGET_DIR, entry);
-        if ((await fs.stat(entryPath)).isFile()) {
-          await fs.unlink(entryPath);
-          console.log(`  已删除: ${entry}`);
-        }
-      }
-      console.log(`✅ 清理完成，开始重新下载所有文件...`);
+      requested = FILES;
     } else {
       console.log(`⏭️  非交互模式，跳过重新下载。`);
-      console.log(
-        `💡 如需强制重新下载，请设置环境变量 INTERACTIVE=true 或手动删除文件后重试。`,
-      );
+      console.log(`💡 如需强制重新下载，请设置环境变量 INTERACTIVE=true 或手动删除文件后重试。`);
       return;
     }
   } else {
-    console.log(`📁 未找到 model.onnx，开始下载...`);
+    console.log(`📁 补齐 ${missing.length} 个缺失或无效文件。`);
   }
 
-  console.log(`📥 开始并行下载 ${FILES.length} 个文件...`);
+  console.log(`📥 开始并行下载 ${requested.length} 个文件...`);
 
   const results = await Promise.allSettled(
-    FILES.map(async ({ remote, local }) => {
-      const content = await downloadFileContent(remote);
-      await fs.writeFile(path.join(TARGET_DIR, local), content);
-      console.log(`✅ 已下载: ${local} (${remote})`);
-      return local;
+    requested.map(async ({ remote, local }) => {
+      const content =
+        local === "config.json" && remoteConfigContent
+          ? remoteConfigContent
+          : await downloadFileContent(remote, fetchImpl);
+      validateContent(local, content);
+      const temporary = path.join(targetDir, `.${local}.${randomUUID()}.tmp`);
+      try {
+        await fs.writeFile(temporary, content, { flag: "wx" });
+      } catch (error) {
+        await fs.rm(temporary, { force: true });
+        throw error;
+      }
+      return { local, temporary };
     }),
   );
 
   const failed = results.filter((r) => r.status === "rejected");
-  for (const f of failed) {
-    console.error(`❌ 下载失败:`, f.reason?.message ?? f.reason);
+  const staged = results
+    .filter((result) => result.status === "fulfilled")
+    .map((result) => result.value);
+  try {
+    if (failed.length) {
+      throw new AggregateError(
+        failed.map((result) => result.reason),
+        "模型资源下载未完成，未替换原文件",
+      );
+    }
+    for (const entry of staged) {
+      await fs.rename(entry.temporary, path.join(targetDir, entry.local));
+      console.log(`✅ 已保存: ${entry.local}`);
+    }
+  } finally {
+    await Promise.all(staged.map((entry) => fs.rm(entry.temporary, { force: true })));
   }
+  console.log(`🎉 所有必要文件已就绪，保存至: ${targetDir}`);
+}
 
-  if (failed.length === 0) {
-    console.log(
-      `🎉 所有 ${results.length} 个文件下载完成，保存至: ${TARGET_DIR}`,
-    );
-  } else {
-    console.log(
-      `⚠️ 下载完成: ${results.length - failed.length} 个成功，${failed.length} 个失败`,
-    );
-    process.exit(1);
+function validateContent(local, content) {
+  if (content.length === 0) throw new Error(`${local} 为空`);
+  if (local.endsWith(".json")) {
+    const value = JSON.parse(content.toString("utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error(`${local} 必须是 JSON 对象`);
+    }
   }
 }
 
-main().catch((err) => {
-  console.error("❌ 脚本执行出错:", err);
-  process.exit(1);
-});
+if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.argv[1])).href) {
+  downloadEmbeddingModel().catch((error) => {
+    console.error("❌ 脚本执行出错:", error);
+    process.exitCode = 1;
+  });
+}

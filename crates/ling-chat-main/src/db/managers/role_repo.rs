@@ -180,6 +180,7 @@ impl RoleRepo {
     /// 风险分析：删除角色是低频用户主动操作；即使 PRAGMA 重启用失败，进程重启后 SQLite 会
     /// 重新应用外键约束（PRAGMA 是 connection-level 的），不留持久影响。
     pub async fn delete_main_role(db: &DatabaseConnection, role_id: i32) -> Result<bool> {
+        super::memory_index_repo::MemoryIndexRepo::delete_for_role(db, role_id).await?;
         // 1. 关闭 FK 约束
         disable_fk(db).await?;
         // guard 保证即使中间 panic / 早返回，外键也会在最后被重新启用

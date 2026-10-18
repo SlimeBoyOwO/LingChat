@@ -342,6 +342,7 @@ export default {
       schedule_update_todo: "更新待辦",
       schedule_delete_todo: "刪除待辦",
       memory_get_current: "讀取記憶",
+      memory_search: "檢索歷史記憶",
       memory_get_notes: "讀取筆記",
       memory_add_note: "寫筆記",
       memory_update_note: "更新筆記",

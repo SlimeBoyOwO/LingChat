@@ -435,6 +435,74 @@ mod tests {
     }
 
     #[test]
+    fn memory_search_is_discoverable_and_activation_cannot_bypass_permission() {
+        use crate::ai_service::message_system::generator::GeneratorSource;
+        use crate::ai_service::tools::{
+            executor::Tool, memory_search::MemorySearch, permissions::ToolPermissionConfig,
+            registry::ToolRegistry,
+        };
+        let directory = tempfile::tempdir().unwrap();
+        let registry = ToolRegistry::new();
+        registry
+            .register(std::sync::Arc::new(MemorySearch))
+            .unwrap();
+        let mut permissions =
+            ToolPermissionConfig::load_or_create(directory.path(), ["memory_search".into()])
+                .unwrap();
+        permissions
+            .initialize_characters(directory.path(), ["甲".into()])
+            .unwrap();
+        registry.set_permissions(permissions.clone());
+        assert!(
+            !registry
+                .allowed_tools(GeneratorSource::UserChat, Some("甲"))
+                .contains("memory_search")
+        );
+        permissions.set_tool_allowed_for_default_group("memory_search", true);
+        registry.set_permissions(permissions.clone());
+        let allowed = registry.allowed_tools(GeneratorSource::UserChat, Some("甲"));
+        let corpus = super::build_corpus(&registry.definitions_for_allowed(&allowed));
+        assert!(
+            corpus
+                .iter()
+                .any(|(name, text, _)| name == "memory_search" && text.contains("回忆"))
+        );
+        assert_eq!(
+            registry
+                .get("memory_search")
+                .unwrap()
+                .definition()
+                .function
+                .name,
+            MemorySearch.definition().function.name
+        );
+        let rag = disabled_rag();
+        assert!(!effective_allowed(&allowed, &rag, Some("甲"), true).contains("memory_search"));
+        rag.touch(Some("甲"), &["memory_search".into()]);
+        assert!(effective_allowed(&allowed, &rag, Some("甲"), true).contains("memory_search"));
+        permissions.set_tool_allowed_for_default_group("memory_search", false);
+        registry.set_permissions(permissions);
+        let revoked = registry.allowed_tools(GeneratorSource::UserChat, Some("甲"));
+        assert!(!effective_allowed(&revoked, &rag, Some("甲"), true).contains("memory_search"));
+        assert!(!effective_allowed(&allowed, &rag, Some("乙"), true).contains("memory_search"));
+        let mut permissions = registry.permissions();
+        permissions
+            .role_groups
+            .get_mut("default")
+            .unwrap()
+            .all_tools = true;
+        let scene = permissions.scene_groups.get_mut("scene_admin").unwrap();
+        scene.all_tools = false;
+        scene.tools.clear();
+        registry.set_permissions(permissions);
+        assert!(
+            registry
+                .allowed_tools(GeneratorSource::UserChat, Some("甲"))
+                .is_empty()
+        );
+    }
+
+    #[test]
     fn activation_keeps_most_recent_first() {
         let rag = disabled_rag();
         rag.touch(Some("雪之下"), &names(&["a", "b"]));

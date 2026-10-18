@@ -1,0 +1,68 @@
+[
+  {
+    "id": "p3h01",
+    "split": "holdout_v2",
+    "category": "preference",
+    "save_id": 101,
+    "role_id": 2,
+    "query": "买奶茶的时候，我喜欢什么甜度？",
+    "recent_context": "",
+    "expected_any": ["raw_tea"],
+    "excluded": ["raw_secret"]
+  },
+  {
+    "id": "p3h02",
+    "split": "holdout_v2",
+    "category": "relationship",
+    "save_id": 101,
+    "role_id": 2,
+    "query": "是谁教我弹钢琴，每星期哪天练习？",
+    "recent_context": "",
+    "expected_any": ["raw_teacher"],
+    "excluded": ["raw_secret"]
+  },
+  {
+    "id": "p3h03",
+    "split": "holdout_v2",
+    "category": "weather",
+    "save_id": 101,
+    "role_id": 2,
+    "query": "去看银杏的那天遇到了什么天气？",
+    "recent_context": "",
+    "expected_any": ["raw_park"],
+    "excluded": ["raw_secret"]
+  },
+  {
+    "id": "p3h04",
+    "split": "holdout_v2",
+    "category": "save_scope",
+    "save_id": 102,
+    "role_id": 2,
+    "query": "晓禾送我的风筝是什么颜色？",
+    "recent_context": "",
+    "expected_any": ["raw_other_save"],
+    "excluded": ["raw_gift", "raw_branch", "raw_retracted"]
+  },
+  {
+    "id": "p3h05",
+    "split": "holdout_v2",
+    "category": "legacy_note",
+    "save_id": 103,
+    "role_id": 2,
+    "query": "团团是什么动物？",
+    "recent_context": "",
+    "expected_any": ["note_legacy"],
+    "excluded": ["note_private"]
+  },
+  {
+    "id": "p3h06",
+    "split": "holdout_v2",
+    "category": "irrelevant",
+    "save_id": 101,
+    "role_id": 2,
+    "query": "月球表面引力加速度是多少？",
+    "recent_context": "",
+    "expected_any": [],
+    "excluded": []
+  }
+]

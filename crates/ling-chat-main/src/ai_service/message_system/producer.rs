@@ -17,6 +17,7 @@ use futures_util::StreamExt;
 use tauri::AppHandle;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::ai_service::game_system::memory_recall::RecallStamp;
 use crate::ai_service::llm::LlmChunk;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generated_text};
@@ -27,6 +28,7 @@ use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generat
 /// 可等待的同步点——工具事件是裸 `app.emit`，而 `ai:reply` 要经过 consumer 的
 /// 翻译/TTS 才由 publisher 发出，两者原本没有任何顺序关系。
 pub enum PresentationChunk {
+    Context(RecallStamp),
     Chunk(LlmChunk),
     /// 工具即将执行：携带一个 ack，publisher 按序处理完更早的项后回传
     /// "栅栏之前是否已发布过正式回复"。
@@ -38,12 +40,13 @@ pub type PresentationStream =
 
 /// 投递到 sentence channel 的工作项。
 pub enum SentenceItem {
-    /// 一个完整情绪段：(句子文本, 有序索引, 是否为最后一项)
-    Reply(String, usize, bool),
+    /// 一个完整情绪段：(句子文本, 有序索引, 是否为最后一项, 来源快照)
+    Reply(String, usize, bool, Option<RecallStamp>),
     /// 呈现栅栏：**自身占用一个索引**，publisher 按序推进到它时才回 ack。
     BeforeTools {
         index: usize,
         ack: oneshot::Sender<bool>,
+        stamp: Option<RecallStamp>,
     },
 }
 
@@ -69,6 +72,17 @@ pub struct StreamProducer {
 }
 
 impl StreamProducer {
+    #[cfg(test)]
+    pub(super) fn for_test(llm_stream: PresentationStream, tx: mpsc::Sender<SentenceItem>) -> Self {
+        Self {
+            llm_stream,
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(true)),
+        }
+    }
+
     pub fn new(
         llm_stream: PresentationStream,
         tx: mpsc::Sender<SentenceItem>,
@@ -110,9 +124,21 @@ impl StreamProducer {
         // 继续替玩家发言（`\n\n\nuser\n…`），那些内容一旦落进台词表就会被记忆反复复读。
         let mut turn_ended = false;
         let mut logged_discard = false;
+        let mut stamp = None;
 
         while let Some(item) = self.llm_stream.next().await {
             match item? {
+                PresentationChunk::Context(current) => {
+                    if stamp.as_ref() != Some(&current) {
+                        anyhow::ensure!(
+                            buffer.trim().is_empty() && pending_sentence.is_none(),
+                            "切换上下文前仍有未投递正文"
+                        );
+                        buffer.clear();
+                        seen_sentences.clear();
+                        stamp = Some(current);
+                    }
+                },
                 PresentationChunk::Chunk(LlmChunk::Content(text)) => {
                     if turn_ended {
                         // 边界之后仍有内容：丢弃，并报一次警（便于定位写偏的回合）
@@ -169,6 +195,7 @@ impl StreamProducer {
                             &mut seen_sentences,
                             &mut pending_sentence,
                             &self.tool_calls_seen,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -217,6 +244,7 @@ impl StreamProducer {
                             &mut sentence_index,
                             &mut round_indices,
                             false,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -232,6 +260,7 @@ impl StreamProducer {
                             &mut sentence_index,
                             &mut round_indices,
                             false,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -244,7 +273,11 @@ impl StreamProducer {
                     let index = sentence_index;
                     sentence_index += 1;
                     self.tx
-                        .send(SentenceItem::BeforeTools { index, ack })
+                        .send(SentenceItem::BeforeTools {
+                            index,
+                            ack,
+                            stamp: stamp.clone(),
+                        })
                         .await
                         .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
                 },
@@ -274,6 +307,7 @@ impl StreamProducer {
                         &mut sentence_index,
                         &mut round_indices,
                         true,
+                        &stamp,
                     )
                     .await?;
                     sent_final = true;
@@ -293,6 +327,7 @@ impl StreamProducer {
                         &mut sentence_index,
                         &mut round_indices,
                         false,
+                        &stamp,
                     )
                     .await?;
                 }
@@ -302,6 +337,7 @@ impl StreamProducer {
                     &mut sentence_index,
                     &mut round_indices,
                     true,
+                    &stamp,
                 )
                 .await?;
                 sent_final = true;
@@ -312,6 +348,7 @@ impl StreamProducer {
                     &mut sentence_index,
                     &mut round_indices,
                     true,
+                    &stamp,
                 )
                 .await?;
                 sent_final = true;
@@ -323,6 +360,7 @@ impl StreamProducer {
                 &mut sentence_index,
                 &mut round_indices,
                 true,
+                &stamp,
             )
             .await?;
             sent_final = true;
@@ -343,6 +381,7 @@ impl StreamProducer {
         seen: &mut std::collections::HashSet<String>,
         pending: &mut Option<String>,
         tool_calls_seen: &AtomicBool,
+        stamp: &Option<RecallStamp>,
     ) -> Result<()> {
         let s = std::mem::take(sentence);
         // 复读去重：与本轮已接收句子逐字重复（忽略空白差异）时丢弃。
@@ -354,12 +393,13 @@ impl StreamProducer {
 
         if tool_calls_seen.load(Ordering::Acquire) {
             if let Some(previous) = pending.replace(s) {
-                Self::send_sentence(tx, previous, sentence_index, round_indices, false).await?;
+                Self::send_sentence(tx, previous, sentence_index, round_indices, false, stamp)
+                    .await?;
             }
             return Ok(());
         }
 
-        Self::send_sentence(tx, s, sentence_index, round_indices, false).await
+        Self::send_sentence(tx, s, sentence_index, round_indices, false, stamp).await
     }
 
     async fn send_sentence(
@@ -368,11 +408,12 @@ impl StreamProducer {
         sentence_index: &mut usize,
         round_indices: &mut Vec<usize>,
         is_final: bool,
+        stamp: &Option<RecallStamp>,
     ) -> Result<()> {
         let idx = *sentence_index;
         *sentence_index += 1;
         round_indices.push(idx);
-        tx.send(SentenceItem::Reply(sentence, idx, is_final))
+        tx.send(SentenceItem::Reply(sentence, idx, is_final, stamp.clone()))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
         Ok(())
@@ -397,5 +438,192 @@ impl StreamProducer {
             return false;
         }
         !seen.insert(normalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    type Reply = (String, usize, bool);
+
+    async fn run_stream(
+        chunks: Vec<PresentationChunk>,
+        tools_seen: bool,
+    ) -> (ProducerOutput, Vec<SentenceItem>) {
+        let (tx, mut rx) = mpsc::channel(32);
+        let producer = StreamProducer {
+            llm_stream: Box::pin(futures_util::stream::iter(chunks.into_iter().map(Ok))),
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(tools_seen)),
+        };
+        let task = tokio::spawn(producer.run());
+        let mut items = Vec::new();
+        while let Some(item) = rx.recv().await {
+            items.push(item);
+        }
+        (task.await.unwrap().unwrap(), items)
+    }
+
+    fn content(text: &str) -> PresentationChunk {
+        PresentationChunk::Chunk(LlmChunk::Content(text.to_owned()))
+    }
+
+    async fn replies(chunks: &[&str], tools_seen: bool) -> (ProducerOutput, Vec<Reply>) {
+        let (output, items) =
+            run_stream(chunks.iter().map(|s| content(s)).collect(), tools_seen).await;
+        let replies = items
+            .into_iter()
+            .map(|item| match item {
+                SentenceItem::Reply(text, index, is_final, _) => (text, index, is_final),
+                SentenceItem::BeforeTools { .. } => panic!("unexpected tool barrier"),
+            })
+            .collect();
+        (output, replies)
+    }
+
+    #[tokio::test]
+    async fn multiple_sentences_in_one_chunk_are_all_emitted() {
+        let text = "【开心】第一句。【认真】第二句。【期待】第三句。【平静】第四句。";
+        let (output, actual) = replies(&[text], false).await;
+        assert_eq!(output.accumulated, text);
+        assert!(output.sent_final);
+        assert_eq!(
+            actual,
+            vec![
+                ("【开心】第一句。".into(), 0, false),
+                ("【认真】第二句。".into(), 1, false),
+                ("【期待】第三句。".into(), 2, false),
+                ("【平静】第四句。".into(), 3, true),
+            ]
+        );
+    }
+
+    #[tokio::test]
+    async fn sentence_output_is_independent_of_chunk_boundaries() {
+        let text = "【开心】你好🙂<こんにちは>（挥手）【2】第二句。【平静】再见。";
+        let (_, expected) = replies(&[text], false).await;
+        assert_eq!(expected.len(), 3);
+        // 每一个合法 UTF-8 切点都覆盖一次，包括标签内部和正文/译文/动作内部。
+        for boundary in text.char_indices().map(|(i, _)| i).chain([text.len()]) {
+            let (output, actual) =
+                replies(&[&text[..boundary], "", &text[boundary..]], false).await;
+            assert_eq!(actual, expected, "split at byte {boundary}");
+            assert!(output.sent_final);
+        }
+        let characters: Vec<String> = text.chars().map(|c| c.to_string()).collect();
+        let chunks: Vec<&str> = characters.iter().map(String::as_str).collect();
+        assert_eq!(replies(&chunks, false).await.1, expected);
+    }
+
+    #[tokio::test]
+    async fn a_single_sentence_waits_for_eof_and_is_final() {
+        let (output, actual) = replies(&["【", "开心", "】", "你好", "世界。"], false).await;
+        assert!(output.sent_final);
+        assert_eq!(actual, vec![("【开心】你好世界。".into(), 0, true)]);
+        let (empty, actual) = replies(&[""], false).await;
+        assert!(!empty.sent_final);
+        assert!(actual.is_empty());
+    }
+
+    #[tokio::test]
+    async fn complete_sentences_are_emitted_before_the_stream_ends() {
+        let (tx, mut rx) = mpsc::channel(4);
+        let (release, wait) = oneshot::channel::<()>();
+        let stream = futures_util::stream::iter(vec![Ok(content("【开心】第一句。【平静】"))])
+            .chain(futures_util::stream::once(async move {
+                wait.await.unwrap();
+                Ok(content("第二句。"))
+            }));
+        let producer = StreamProducer {
+            llm_stream: Box::pin(stream),
+            tx,
+            app: None,
+            thinking_buf: Arc::new(Mutex::new(String::new())),
+            tool_calls_seen: Arc::new(AtomicBool::new(false)),
+        };
+        let task = tokio::spawn(producer.run());
+        let first = tokio::time::timeout(Duration::from_secs(2), rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(first, SentenceItem::Reply(text, 0, false, _) if text == "【开心】第一句。")
+        );
+        release.send(()).unwrap();
+        assert!(
+            matches!(rx.recv().await, Some(SentenceItem::Reply(text, 1, true, _)) if text == "【平静】第二句。")
+        );
+        assert!(task.await.unwrap().unwrap().sent_final);
+    }
+
+    #[tokio::test]
+    async fn tool_barrier_flushes_all_preamble_sentences_in_order() {
+        let (ack, _wait) = oneshot::channel();
+        let (output, items) = run_stream(
+            vec![
+                content("【开心】先说明。【认真】再检查。"),
+                PresentationChunk::BeforeTools(ack),
+                content("【平静】完成。"),
+            ],
+            true,
+        )
+        .await;
+        let mut items = items.into_iter();
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 0, false, _)) if text == "【开心】先说明。")
+        );
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 1, false, _)) if text == "【认真】再检查。")
+        );
+        assert!(matches!(
+            items.next(),
+            Some(SentenceItem::BeforeTools { index: 2, .. })
+        ));
+        assert!(
+            matches!(items.next(), Some(SentenceItem::Reply(text, 3, true, _)) if text == "【平静】完成。")
+        );
+        assert!(items.next().is_none());
+        assert!(output.sent_final);
+        // 栅栏前发出的每一句（含一轮里先分出去的那几段）都只做呈现；工具后那句不算
+        assert_eq!(output.preamble_indices, vec![0, 1]);
+    }
+
+    #[tokio::test]
+    async fn duplicate_tool_tail_promotes_the_last_distinct_sentence() {
+        let first = "【认真】这是一句足够长的说明。";
+        let second = "【开心】这是另一句足够长的回答。";
+        let text = format!("{first}{second}{first}");
+        let (output, actual) = replies(&[&text], true).await;
+        assert!(output.sent_final);
+        assert_eq!(
+            actual,
+            vec![(first.into(), 0, false), (second.into(), 1, true)]
+        );
+    }
+
+    #[tokio::test]
+    async fn no_text_after_tool_barrier_preserves_caller_finalization() {
+        let (ack, _wait) = oneshot::channel();
+        let (output, items) = run_stream(
+            vec![
+                content("【认真】开始检查。"),
+                PresentationChunk::BeforeTools(ack),
+            ],
+            true,
+        )
+        .await;
+        assert!(!output.sent_final);
+        assert_eq!(items.len(), 2);
+        assert!(
+            matches!(&items[0], SentenceItem::Reply(text, 0, false, _) if text == "【认真】开始检查。")
+        );
+        assert!(matches!(
+            &items[1],
+            SentenceItem::BeforeTools { index: 1, .. }
+        ));
+        assert_eq!(output.preamble_indices, vec![0]);
     }
 }

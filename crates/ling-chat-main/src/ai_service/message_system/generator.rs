@@ -16,6 +16,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::memory_recall::{
+    RecallSession, RecallStamp, inject_references,
+};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::{
@@ -42,6 +45,10 @@ use crate::utils::prompt::{
     PromptRole, REPETITION_MIN_ROUNDS, RoundReply, correction_texts, repetition_text,
     scan_reply_shape,
 };
+
+#[cfg(test)]
+#[path = "generator_memory_tests.rs"]
+mod memory_recall_tests;
 
 /// MessageGenerator 的业务调用来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -143,7 +150,10 @@ impl MessageGenerator {
 
         loop {
             // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
-            let context = self.get_current_context(user_message.as_deref()).await?;
+            let Some((context, recall)) = self.get_current_context(user_message.as_deref()).await?
+            else {
+                break;
+            };
             if context.is_empty() {
                 break;
             }
@@ -159,7 +169,13 @@ impl MessageGenerator {
                 gs.line_list.len()
             };
             let round_acc = self
-                .execute_pipeline(context, original_msg, round_msg_seq, tool_hint.as_ref())
+                .execute_pipeline(
+                    context,
+                    original_msg,
+                    round_msg_seq,
+                    tool_hint.as_ref(),
+                    recall,
+                )
                 .await?;
             accumulated.push_str(&round_acc);
             let landed_lines = {
@@ -212,12 +228,16 @@ impl MessageGenerator {
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
     #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
-        let mut context = self.get_current_context(None).await?;
+        let Some((mut context, recall)) = self.get_current_context(None).await? else {
+            return Ok(String::new());
+        };
         if context.is_empty() {
             return Ok(String::new());
         }
-        context.push(LlmMessage::user(notification));
-        self.execute_pipeline(context, "", None, None).await
+        let message = LlmMessage::user(notification);
+        recall.append_context(message.clone());
+        context.push(message);
+        self.execute_pipeline(context, "", None, None, recall).await
     }
 
     // ============================================================
@@ -300,11 +320,14 @@ impl MessageGenerator {
     }
 
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self, user_input: Option<&str>) -> Result<Vec<LlmMessage>> {
+    async fn get_current_context(
+        &self,
+        user_input: Option<&str>,
+    ) -> Result<Option<(Vec<LlmMessage>, Arc<RecallSession>)>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok(Vec::new());
+            return Ok(None);
         };
         // 今日首聊天气先入列，再取 memory，保证本轮上下文就能看到这条提醒
         self.inject_weather_first_talk(&mut gs).await;
@@ -315,8 +338,44 @@ impl MessageGenerator {
         if let Some(book) = &role.worldbook {
             book.inject(&mut context, user_input);
         }
+        let display_name = role.display_name.clone().unwrap_or_default();
+        let stamp = RecallStamp::capture(&gs, display_name)?;
+        anyhow::ensure!(stamp.generation == self.deps.generation, "生成任务已过期");
         drop(gs);
-        Ok(context)
+        let recall = RecallSession::new(stamp, &context);
+        if let Some(query) =
+            user_input.filter(|query| !query.trim().is_empty() && query.chars().count() <= 4096)
+        {
+            let state = self.deps.app.state::<crate::AppState>();
+            let config = AppConfig::load(&self.deps.app).unwrap_or_default();
+            let snapshot = state
+                .memory_recall
+                .retrieve(
+                    &self.deps.db,
+                    &ling_chat_notes::NotesStore::new(data_dir()),
+                    &recall,
+                    query,
+                    ling_chat_notes::memory_retrieval::SearchSettings::default(),
+                    config.memory_rag_enabled && !self.deps.is_preview,
+                    std::time::Duration::from_millis(u64::from(
+                        config.memory_rag_timeout_ms.clamp(100, 10000),
+                    )),
+                )
+                .await;
+            anyhow::ensure!(
+                recall.matches(&*self.deps.game_status.lock().await),
+                "检索期间当前会话已变化"
+            );
+            match snapshot {
+                Ok(snapshot) => {
+                    if let Some(response) = snapshot.response {
+                        inject_references(&mut context, &recall.references(&response)?);
+                    }
+                },
+                Err(error) => tracing::warn!("自动记忆检索失败，继续普通聊天: {error}"),
+            }
+        }
+        Ok(Some((context, recall)))
     }
 
     /// 今日首次对话时，往 game_status 添加一条「系统」天气台词。
@@ -350,13 +409,20 @@ impl MessageGenerator {
         user_message: &str,
         user_msg_seq: Option<u32>,
         tool_hint: Option<&god_tool_hint::ToolHint>,
+        recall: Arc<RecallSession>,
     ) -> Result<String> {
         if !self.deps.suppress_thinking {
             events::emit_thinking(&self.deps.app, true);
         }
 
         match self
-            .run_pipeline(context, user_message.to_string(), user_msg_seq, tool_hint)
+            .run_pipeline(
+                context,
+                user_message.to_string(),
+                user_msg_seq,
+                tool_hint,
+                recall,
+            )
             .await
         {
             Ok(acc) => {
@@ -721,9 +787,11 @@ impl MessageGenerator {
         user_message: String,
         user_message_seq: Option<u32>,
         tool_hint: Option<&god_tool_hint::ToolHint>,
+        recall: Arc<RecallSession>,
     ) -> Result<String> {
         let role_name = {
             let mut gs = self.deps.game_status.lock().await;
+            anyhow::ensure!(recall.matches(&gs), "当前会话已变化，取消旧请求");
             let Some(role_id) = gs.current_role_id else {
                 return Err(anyhow::anyhow!("工具调用时没有当前角色"));
             };
@@ -748,7 +816,9 @@ impl MessageGenerator {
                     user_name
                 )
             };
-            ctx.push(LlmMessage::user_with_image(marker, image));
+            let message = LlmMessage::user_with_image(marker, image);
+            recall.append_context(message.clone());
+            ctx.push(message);
             ctx
         } else {
             context
@@ -756,7 +826,9 @@ impl MessageGenerator {
         // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
         let context = if let Some(hint) = tool_hint {
             let mut ctx = context;
-            ctx.insert(0, LlmMessage::system(hint.text.clone()));
+            let message = LlmMessage::system(hint.text.clone());
+            recall.prepend_context(message.clone());
+            ctx.insert(0, message);
             ctx
         } else {
             context
@@ -769,6 +841,7 @@ impl MessageGenerator {
             role_name,
             &self.deps.app,
             tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
+            recall.clone(),
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
@@ -797,11 +870,23 @@ impl MessageGenerator {
 
         // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
         let app = self.deps.app.clone();
+        let publish_status = self.deps.game_status.clone();
+        let publish_recall = recall.clone();
+        let publish_db = self.deps.db.clone();
         let publisher = tokio::spawn(async move {
-            publish_ordered(publish_rx, |resp| {
-                app.emit(event_names::AI_REPLY, resp)
-                    .map_err(anyhow::Error::from)
-            })
+            publish_ordered(
+                publish_rx,
+                |resp| {
+                    app.emit(event_names::AI_REPLY, resp)
+                        .map_err(anyhow::Error::from)
+                },
+                Some(PublishGuard {
+                    status: publish_status,
+                    recall: publish_recall,
+                    db: publish_db,
+                    store: ling_chat_notes::NotesStore::new(data_dir()),
+                }),
+            )
             .await
         });
 
@@ -816,9 +901,11 @@ impl MessageGenerator {
             let user_message = user_message.clone();
             let thinking_buf = thinking_buf.clone();
             let sentence_lines = sentence_lines.clone();
+            let recall = recall.clone();
             consumer_tasks.push(tokio::spawn(async move {
                 // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
                 let mut sdeps = SentenceDeps::from(&deps);
+                sdeps.recall = Some(recall);
                 sdeps.sentence_lines = Some(sentence_lines.clone());
                 loop {
                     let item = {
@@ -828,13 +915,13 @@ impl MessageGenerator {
                     let Some(item) = item else {
                         break;
                     };
-                    let (sentence, index, is_final) = match item {
+                    let (sentence, index, is_final, stamp) = match item {
                         // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
                         // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
                         // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
-                        SentenceItem::BeforeTools { index, ack } => {
+                        SentenceItem::BeforeTools { index, ack, stamp } => {
                             if publish_tx
-                                .send(PublishItem::BeforeTools { index, ack })
+                                .send(PublishItem::BeforeTools { index, ack, stamp })
                                 .await
                                 .is_err()
                             {
@@ -842,10 +929,11 @@ impl MessageGenerator {
                             }
                             continue;
                         },
-                        SentenceItem::Reply(sentence, index, is_final) => {
-                            (sentence, index, is_final)
+                        SentenceItem::Reply(sentence, index, is_final, stamp) => {
+                            (sentence, index, is_final, stamp)
                         },
                     };
+                    sdeps.recall_stamp = stamp;
                     let resp = match consume_sentence(
                         &sdeps,
                         sentence,
@@ -868,6 +956,7 @@ impl MessageGenerator {
                         .send(PublishItem::Reply {
                             index,
                             response: resp,
+                            stamp: sdeps.recall_stamp.clone(),
                         })
                         .await;
                     if is_final {
@@ -901,7 +990,7 @@ impl MessageGenerator {
         if !tool_msgs.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
-            if gs.preview_generation == self.deps.generation {
+            if gs.preview_generation == self.deps.generation && recall.matches(&gs) {
                 gs.role_manager.invalidate_memory_history();
                 let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
@@ -1045,19 +1134,34 @@ pub(super) enum PublishItem {
     Reply {
         index: usize,
         response: Option<ReplyResponse>,
+        stamp: Option<RecallStamp>,
     },
     BeforeTools {
         index: usize,
         ack: oneshot::Sender<bool>,
+        stamp: Option<RecallStamp>,
     },
 }
 
 impl PublishItem {
+    fn stamp(&self) -> Option<&RecallStamp> {
+        match self {
+            Self::Reply { stamp, .. } | Self::BeforeTools { stamp, .. } => stamp.as_ref(),
+        }
+    }
+
     fn index(&self) -> usize {
         match self {
             Self::Reply { index, .. } | Self::BeforeTools { index, .. } => *index,
         }
     }
+}
+
+pub(super) struct PublishGuard {
+    status: Arc<Mutex<GameStatus>>,
+    recall: Arc<RecallSession>,
+    db: DatabaseConnection,
+    store: ling_chat_notes::NotesStore,
 }
 
 /// 按索引顺序发布；栅栏在其索引被推进到时回传"此前是否已发布过回复"。
@@ -1073,6 +1177,7 @@ impl PublishItem {
 pub(super) async fn publish_ordered(
     mut rx: mpsc::Receiver<PublishItem>,
     mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
+    guard: Option<PublishGuard>,
 ) -> bool {
     let mut next_index = 0usize;
     let mut reply_before_fence = false;
@@ -1081,11 +1186,36 @@ pub(super) async fn publish_ordered(
         pending.insert(item.index(), item);
         while let Some(item) = pending.remove(&next_index) {
             next_index += 1;
+            let status = if let Some(guard) = &guard {
+                if let Err(error) = guard.recall.validate(&guard.db, &guard.store).await {
+                    tracing::warn!("发送前记忆来源复核失败: {error}");
+                    return false;
+                }
+                let status = guard.status.lock().await;
+                if !guard.recall.matches(&status) {
+                    return false;
+                }
+                if item
+                    .stamp()
+                    .is_none_or(|stamp| !guard.recall.is_current(stamp))
+                {
+                    continue;
+                }
+                Some(status)
+            } else {
+                None
+            };
             match item {
                 PublishItem::Reply {
                     response: Some(resp),
+                    stamp,
                     ..
                 } => {
+                    if let (Some(status), Some(stamp)) = (&status, stamp) {
+                        if !stamp.matches(status) {
+                            return false;
+                        }
+                    }
                     let is_final = resp.is_final;
                     if let Err(e) = emit(&resp) {
                         tracing::warn!("emit ai:reply 失败: {e}");
@@ -1106,6 +1236,7 @@ pub(super) async fn publish_ordered(
                     reply_before_fence = false;
                 },
             }
+            drop(status);
         }
     }
     false
@@ -1135,6 +1266,8 @@ pub struct SentenceDeps {
     /// （同一段原文已经在带 `tool_call` 的助手行里）。非生成路径（剧本固定台词）
     /// 传 `None`：那边没有句子序号，也不存在要抹的行。
     pub sentence_lines: Option<SentenceLineLedger>,
+    pub recall: Option<Arc<RecallSession>>,
+    pub recall_stamp: Option<RecallStamp>,
 }
 
 impl From<&GeneratorDeps> for SentenceDeps {
@@ -1147,6 +1280,8 @@ impl From<&GeneratorDeps> for SentenceDeps {
             generation: d.generation,
             is_preview: d.is_preview,
             sentence_lines: None,
+            recall: None,
+            recall_stamp: None,
         }
     }
 }
@@ -1177,6 +1312,16 @@ pub(crate) async fn consume_sentence(
 ) -> Result<Option<ReplyResponse>> {
     if sentence.is_empty() {
         return Ok(None);
+    }
+    if let Some(stamp) = &deps.recall_stamp {
+        if !stamp.matches(&*deps.game_status.lock().await)
+            || deps
+                .recall
+                .as_ref()
+                .is_some_and(|recall| !recall.is_current(stamp))
+        {
+            return Ok(None);
+        }
     }
 
     // 1. 解析情绪分段
@@ -1215,7 +1360,19 @@ pub(crate) async fn consume_sentence(
     // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
     {
         let gs = deps.game_status.lock().await;
-        if gs.preview_generation != deps.generation {
+        if gs.preview_generation != deps.generation
+            || deps
+                .recall
+                .as_ref()
+                .is_some_and(|recall| !recall.matches(&gs))
+            || deps.recall_stamp.as_ref().is_some_and(|stamp| {
+                !stamp.matches(&gs)
+                    || deps
+                        .recall
+                        .as_ref()
+                        .is_some_and(|recall| !recall.is_current(stamp))
+            })
+        {
             return Ok(None);
         }
     }
@@ -1411,6 +1568,11 @@ async fn add_assistant_line(
     response: &ReplyResponse,
     sentence_index: Option<usize>,
 ) -> Result<()> {
+    if let Some(recall) = &deps.recall {
+        recall
+            .validate(&deps.db, &ling_chat_notes::NotesStore::new(data_dir()))
+            .await?;
+    }
     {
         let gs = deps.game_status.lock().await;
         if gs.preview_generation != deps.generation {
@@ -1437,6 +1599,21 @@ async fn add_assistant_line(
         ..Default::default()
     };
     let mut gs = deps.game_status.lock().await;
+    if gs.preview_generation != deps.generation
+        || deps
+            .recall
+            .as_ref()
+            .is_some_and(|recall| !recall.matches(&gs))
+        || deps.recall_stamp.as_ref().is_some_and(|stamp| {
+            !stamp.matches(&gs)
+                || deps
+                    .recall
+                    .as_ref()
+                    .is_some_and(|recall| !recall.is_current(stamp))
+        })
+    {
+        return Ok(());
+    }
     gs.add_line(&deps.db, line).await?;
     // 台账：这一句落成了哪一行。工具闭环回填时按它抹掉「前导台词」先落的行。
     // 记录与写入同在一把锁里，另一个 consumer 插不进来，行下标不会错位。

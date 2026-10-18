@@ -207,6 +207,7 @@ impl AIService {
             let mut gs = self.game_status.lock().await;
             gs.role_manager.invalidate_memory_history();
             gs.line_list = lines;
+            gs.preview_generation = gs.preview_generation.wrapping_add(1);
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
             }
