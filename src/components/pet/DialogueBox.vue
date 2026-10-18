@@ -179,7 +179,8 @@ const applyTextHeight = (line: string) => {
   const measured = clone.offsetHeight;
   clone.remove();
   charReveal.reset();
-  el.style.height = `${Math.min(measured, props.maxHeight)}px`;
+  // 量出 0（挂载时机 / 宽度为 0 时可能发生）就用 auto 兜底，否则文本会被压成一条线
+  el.style.height = measured > 0 ? `${Math.min(measured, props.maxHeight)}px` : "auto";
 };
 
 const clearDisplay = () => {
@@ -217,6 +218,12 @@ const render = async (line: string, instant: boolean) => {
 
   await startTyping(line, props.speed);
   if (token !== renderToken) return;
+  // 兜底：打字机如果一个字都没写进去（首句最容易撞上），直接把整段落上去，
+  // 否则这一句会彻底消失——点一下才跳到下一句。
+  const el = textRef.value;
+  if (el && line.trim() && !(el.textContent ?? "").trim()) {
+    charReveal.renderInstant(el, line);
+  }
   displayEmpty.value = false;
   shownLine.value = line;
   // 自然打完或被 finishTyping 补全（TypeWriter.finish 会收口 start 的 promise）；过期渲染已被 token 挡掉
@@ -246,7 +253,9 @@ onMounted(() => {
   if (textRef.value) widthObserver?.observe(textRef.value);
 });
 
-onUnmounted(() => widthObserver?.disconnect());
+onUnmounted(() => {
+  widthObserver?.disconnect();
+});
 
 watch(
   () => [props.visible, props.line, props.instant] as const,
