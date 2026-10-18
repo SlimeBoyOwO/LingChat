@@ -374,10 +374,14 @@ export async function requestFloatingPetPermission(): Promise<void> {
 }
 
 /**
- * 屏幕截取授权是否已经拿到 —— **只读查询，不会截屏**。
+ * 屏幕截取授权是否已经拿到 —— **只读查询，不会截屏**，而且**立刻回答**。
  *
  * 进桌宠前的门禁用它。为什么不用 `captureScreen` 探测：那条命令会真的拍一帧
  * （建 VirtualDisplay、等帧、压 JPEG，几百毫秒到几秒），只为问一句不值得。
+ *
+ * 它**不等**授权落地：「没就绪」是门禁预检这一轮的正常状态，在这里等只会让
+ * 用户点完桌宠后干等一秒多才看到说明弹窗。需要等的场景用
+ * {@link waitForScreenCapture}。
  *
  * `MediaProjection` 的授权是**进程级**的：冷启动后必然回到 `false`，
  * 需要重新弹一次系统授权框。
@@ -390,6 +394,26 @@ export async function isScreenCaptureReady(): Promise<boolean> {
     // 老版本插件没有这条命令 / 桌面端异常：当作「没就绪」，让上层去拉授权
     console.warn("[floating-pet] 查询屏幕截取授权失败:", e);
     return false;
+  }
+}
+
+/**
+ * 轮询等截屏授权落地，最多 `timeoutMs`。
+ *
+ * 只在**「刚从系统授权框回来、自动续跑进桌宠」**这条路上用：授权是异步落地的
+ * （`onActivityResult` → 起前台服务 → `startForeground` → 才换 token），
+ * 页面恢复前台时 token 往往还没好。
+ *
+ * 为什么不把这个等待放回原生：那条命令同时是门禁预检，预检里「没就绪」是正常
+ * 状态，等它就是白等。而 HTTP 式的轮询由前端做，每次 IPC 都是即时返回的，
+ * 中间还能出帧，不会把页面按住。
+ */
+export async function waitForScreenCapture(timeoutMs = 1200): Promise<boolean> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    if (await isScreenCaptureReady()) return true;
+    if (Date.now() >= deadline) return false;
+    await new Promise((resolve) => setTimeout(resolve, 60));
   }
 }
 
