@@ -1476,6 +1476,10 @@ export default {
     language: "Language",
     voice: "Voice",
     useGpu: "GPU inference",
+    useGpuLinuxHint:
+      "sherpa-onnx is CPU-only on Linux: the GPU path needs the official CUDA package (+235 MB installer), which was dropped for size.",
+    useGpuWindowsHint:
+      "Requires a DirectML build (pnpm tauri:build:win) to actually use the GPU; otherwise it runs on CPU.",
     parameters: "Parameters",
     speed: "Speed",
     zeroShot: "Zero-shot Voice Cloning",

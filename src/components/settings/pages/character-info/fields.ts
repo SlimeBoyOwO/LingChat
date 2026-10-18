@@ -19,6 +19,8 @@ export interface FieldSchema {
   placeholder?: string;
   /** 字段下方的小字说明，渲染在控件下方 */
   hint?: string;
+  /** 置灰不可改（如 Linux 桌面上 sherpa-onnx 只能用 CPU）。 */
+  disabled?: boolean;
   /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
   nullable?: boolean;
   options?: FieldOption[];
@@ -43,6 +45,9 @@ export interface SchemaContext {
   applySherpaModelDefaults?: (modelId: string) => void;
   /** Sherpa 音色下拉（固定四档 + 当前值，由页面构造）。 */
   sherpaVoiceOptions?: FieldOption[];
+  /** 平台没有 GPU 后端时把 sherpa 的「GPU 推理」开关置灰并给提示。 */
+  gpuUnsupported?: boolean;
+  gpuSwitchHint?: string;
 }
 
 /** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
@@ -55,6 +60,8 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
     installedSherpaModels,
     applySherpaModelDefaults,
     sherpaVoiceOptions = [],
+    gpuUnsupported = false,
+    gpuSwitchHint = "",
   } = ctx;
   return {
     basic: [
@@ -502,6 +509,8 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         label: t("settings.characterInfo.fields.sherpaOnnxUseGpu"),
         type: "switch",
         isVoiceModel: true,
+        disabled: gpuUnsupported,
+        hint: gpuSwitchHint || undefined,
         visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
       {

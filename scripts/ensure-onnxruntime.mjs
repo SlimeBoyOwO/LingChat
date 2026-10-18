@@ -4,9 +4,16 @@
 // 然后复制到仓库根 target/{debug,release}（exe 同目录，供 ort::init_from 加载）。
 // DirectML.dll 是 DML EP 的运行时依赖，缺了它选 GPU 会静默回落 CPU。
 //
+// 同一个包里还顺手抽出**自编 sherpa-onnx 的 DirectML 变体所需**的头文件与 import lib，
+// 落到 src-tauri/binaries/winml-ort/{include,lib}（供 scripts/build-desktop-sherpa-dml.mjs 用）：
+//   包内 include/winml/ 是 ORT 1.27.1 的头文件，且**含 dml_provider_factory.h**
+//   （官方 ORT NuGet 的 include 里没有这个头），lib/native/x64/onnxruntime.lib 是同一份
+//   dll 的 import lib。抽出来之后自编不必再单独下一份 ORT 包，头文件与运行时也不会错配。
+//
 // 由 `pnpm run init` 调用（不再挂 beforeDevCommand/beforeBuildCommand，避免每次构建都检查）。
 // 用法: node scripts/ensure-onnxruntime.mjs
 // 输出: src-tauri/binaries/{onnxruntime,DirectML}.dll + target/{debug,release}/{同名}
+//       src-tauri/binaries/winml-ort/{include,lib}（自编 sherpa DML 变体用）
 //
 // ⚠️ 别改回 ONNX Runtime 的 GitHub Releases：官方自 1.24.4 起不再发布 DirectML 版
 // （GitHub / NuGet / PyPI 均已停更）。ort 的 `directml` feature 只是编译期声明，EP 实体
@@ -16,6 +23,7 @@
 
 import {
   copyFileSync,
+  cpSync,
   createWriteStream,
   existsSync,
   mkdirSync,
@@ -41,6 +49,17 @@ const NUPKG_URL = `https://api.nuget.org/v3-flatcontainer/microsoft.windows.ai.m
 // 包内固定路径。不能按文件名递归查找：包内另有 win-arm64 / win-arm64ec 两份同名 dll。
 const WANTED = ["onnxruntime.dll", "DirectML.dll"];
 const INNER_DIR = ["runtimes", "win-x64", "native"];
+
+// 自编 sherpa-onnx DirectML 变体要用的头文件目录与 x64 import lib（见文件头注释）。
+const ORT_BUILD_DIR = join(binariesDir, "winml-ort");
+const ORT_HEADER_SRC = ["include", "winml"];
+const ORT_IMPLIB_SRC = ["lib", "native", "x64", "onnxruntime.lib"];
+/// 抽出来的东西够不够用，按这几个文件判断。
+const ORT_BUILD_MARKERS = [
+  join(ORT_BUILD_DIR, "include", "onnxruntime_cxx_api.h"),
+  join(ORT_BUILD_DIR, "include", "dml_provider_factory.h"),
+  join(ORT_BUILD_DIR, "lib", "onnxruntime.lib"),
+];
 
 // 复制目标：仓库根 target 下的构建输出（exe 同目录，供 ort::init_from 加载）。
 // 后端为 Cargo workspace，产物统一落在仓库根 target/，不是 src-tauri/target/。
@@ -80,7 +99,10 @@ function extract(archive, destDir) {
 
 /// 确保 binaries/ 下两个 dll 都在（任一缺失才下载，幂等）。
 async function fetchDlls() {
-  const missing = WANTED.filter((n) => !existsSync(outPath(n)));
+  const missing = [
+    ...WANTED.filter((n) => !existsSync(outPath(n))),
+    ...ORT_BUILD_MARKERS.filter((p) => !existsSync(p)),
+  ];
   if (missing.length === 0) {
     const sizes = WANTED.map(
       (n) => `${n} (${(statSync(outPath(n)).size / 1024 / 1024).toFixed(1)} MB)`,
@@ -115,19 +137,42 @@ async function fetchDlls() {
       const size = statSync(outPath(name)).size;
       console.log(`[onnx] ✅ ${name} 就绪 (${(size / 1024 / 1024).toFixed(1)} MB)`);
     }
+    copyOrtBuildFiles(extractDir);
 
     // 下载脚本正常退出 ≠ 文件真的落盘（CI 上踩过：它自己打印了「就绪」，下一步却找不到）
-    const gone = WANTED.filter((n) => !existsSync(outPath(n)));
+    const gone = [
+      ...WANTED.filter((n) => !existsSync(outPath(n))),
+      ...ORT_BUILD_MARKERS.filter((p) => !existsSync(p)),
+    ];
     if (gone.length > 0) {
-      throw new Error(
-        `${gone.join(", ")} 不在 ${binariesDir}；当前内容: ${listDir(binariesDir)}`,
-      );
+      throw new Error(`${gone.join(", ")} 不在 ${binariesDir}；当前内容: ${listDir(binariesDir)}`);
     }
   } finally {
     // 成功失败都清理临时文件，避免半成品留在 binaries/ 里
     rmSync(extractDir, { recursive: true, force: true });
     rmSync(tmpZip, { force: true });
   }
+}
+
+/// 抽出自编 sherpa-onnx DirectML 变体要用的头文件与 import lib。
+/// 先删后拷：CI 上 target/ 可能从缓存恢复出悬空的重解析点（同 copyTo 的注释）。
+function copyOrtBuildFiles(extractDir) {
+  const headerSrc = join(extractDir, ...ORT_HEADER_SRC);
+  if (!existsSync(headerSrc)) {
+    throw new Error(`包内未找到 ${ORT_HEADER_SRC.join("/")}（解压目录: ${extractDir}）`);
+  }
+  const implibSrc = join(extractDir, ...ORT_IMPLIB_SRC);
+  if (!existsSync(implibSrc)) {
+    throw new Error(`包内未找到 ${ORT_IMPLIB_SRC.join("/")}（解压目录: ${extractDir}）`);
+  }
+
+  for (const sub of ["include", "lib"]) {
+    rmSync(join(ORT_BUILD_DIR, sub), { recursive: true, force: true });
+    mkdirSync(join(ORT_BUILD_DIR, sub), { recursive: true });
+  }
+  cpSync(headerSrc, join(ORT_BUILD_DIR, "include"), { recursive: true });
+  copyFileSync(implibSrc, join(ORT_BUILD_DIR, "lib", "onnxruntime.lib"));
+  console.log(`[onnx] ✅ 自编用头文件/import lib 就绪: ${ORT_BUILD_DIR}`);
 }
 
 /// 拷贝单个 dll。

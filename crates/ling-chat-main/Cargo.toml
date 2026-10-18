@@ -118,19 +118,14 @@ windows = { version = "0.62.2", features = [
     "Win32_System_Threading",
 ] }
 # sherpa-onnx 的链接方式（static / shared）由 Cargo feature 决定，见文件末尾的
-# [features]：默认（都不开）上游 build.rs 就是 static，桌面 GPU 变体走 sherpa-shared。
+# [features]：默认（都不开）上游 build.rs 就是 static，Windows 的 DirectML 变体走
+# sherpa-shared。
 sherpa-onnx = { version = "=1.13.5", default-features = false }
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
 wgpu = "26"
-
-[target.'cfg(any(target_os = "windows", all(target_os = "linux", target_arch = "x86_64")))'.dependencies]
-# 请求 CUDA provider 之前先确认 CUDA 运行时库都能加载（见 adapters/sherpa_onnx.rs
-# 的 cuda_ep_ready：ORT 1.27 加载 provider 失败会抛 C++ 异常并 abort 进程，
-# 而 provider 库自己又不能用 dlopen 试探，会段错误）。
-libloading = "0.8"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
@@ -168,16 +163,16 @@ sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shar
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [features]
-# 桌面端官方 CUDA 预编译包**只有动态库**，而 sherpa-onnx-sys 的 build.rs 里
-# static / shared 同时开是硬报错（`Features \`static\` and \`shared\` cannot be
-# enabled at the same time`），所以「用哪种链接」必须由 Cargo feature 决定 ——
-# 不能像以前那样在 build.rs 里按环境变量把 static 顶掉。
+# 桌面端的链接方式由 Cargo feature 决定：sherpa-onnx-sys 的 build.rs 里 static /
+# shared 同时开是硬报错（`Features \`static\` and \`shared\` cannot be enabled at
+# the same time`），所以不能像以前那样在 build.rs 里按环境变量把 static 顶掉。
 #
 #   - 默认（都不开）：上游 build.rs 落回 Static。Windows/Linux/macOS 的 CPU 构建
 #     都是这样（避免运行时缺 DLL/.so）。
-#   - GPU 变体：`--features sherpa-shared`，配合 scripts/fetch-sherpa-onnx-libs.mjs
-#     导出的 SHERPA_ONNX_LIB_DIR（官方 CUDA 包）或 --from=cmake 的自编产物。
-#     `pnpm tauri:build:gpu` 会把这两步串起来。
+#   - Windows DirectML 变体：`--features sherpa-shared`，配合
+#     scripts/build-desktop-sherpa-dml.mjs 导出的 SHERPA_ONNX_LIB_DIR（自编的
+#     DirectML 版动态库；运行期复用应用随包的 onnxruntime.dll）。
+#     `pnpm tauri:build:win` 会把这两步串起来。
 sherpa-shared = ["sherpa-onnx/shared", "sherpa-onnx-sys/shared"]
 
 [dev-dependencies]
