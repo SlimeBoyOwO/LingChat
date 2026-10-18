@@ -1629,6 +1629,10 @@ export default {
     language: "語言",
     voice: "音色",
     useGpu: "GPU 推理",
+    useGpuLinuxHint:
+      "Linux 上 sherpa-onnx 只能用 CPU：GPU 只能走官方 CUDA 包（安裝包 +235 MB），已按體積取捨移除。",
+    useGpuWindowsHint:
+      "需要 DirectML 版構建（pnpm tauri:build:win）才會真正走 GPU，否則自動按 CPU 運行。",
     parameters: "參數",
     speed: "語速",
     zeroShot: "零樣本聲音克隆",

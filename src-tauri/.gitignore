@@ -7,7 +7,7 @@
 /gen/schemas
 
 # 桌面端打包的运行库暂存目录（scripts/stage-desktop-runtime-libs.mjs 生成，
-# 由 tauri.conf.json 的 bundle.linux.*.files 映射进安装包），以及 CUDA 版
-# Windows 打包时生成的 Tauri 配置覆盖文件。
+# 由 tauri.conf.json 的 bundle.linux.*.files 映射进安装包），以及 Windows
+# DirectML 变体打包时生成的 Tauri 配置覆盖文件。
 /.runtime-libs/
-/tauri.sherpa-gpu.conf.json
+/tauri.sherpa-dml.conf.json

@@ -148,12 +148,17 @@
                     </option>
                   </select>
                   <!-- 开关：轨道是第二个 label，滑块用 peer-checked 联动 -->
-                  <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
+                  <div
+                    v-else-if="field.type === 'switch'"
+                    class="relative flex w-fit items-center"
+                    :class="field.disabled ? 'cursor-not-allowed opacity-40' : ''"
+                  >
                     <input
                       :id="field.key"
                       v-model="fieldModel(field).value"
                       type="checkbox"
                       class="peer sr-only"
+                      :disabled="field.disabled"
                     />
                     <label
                       :for="field.key"
@@ -450,6 +455,7 @@ import * as TtsLocal from "@/api/services/tts/tts-local";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { audioDialogFilters } from "@/utils/dialogFilters";
+import { isAndroid, isIOS, isMacOS, isWindows } from "@/utils/platform";
 import { decodePathFileName } from "@/utils/path";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { Icon } from "../../base";
@@ -674,6 +680,16 @@ const sherpaVoiceOptions = computed<FieldOption[]>(() => {
   return options;
 });
 
+/// Linux 桌面上 sherpa-onnx 只剩 CPU（GPU 只能走官方 CUDA 包，安装包 +235 MB，
+/// 已按体积取舍移除），把开关置灰并说明；Windows 上则提醒需要 DirectML 版构建
+/// （`pnpm tauri:build:win`）。详见 docs/inference-devices.md §9。
+const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
+const gpuSwitchHint = computed(() => {
+  if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
+  if (isWindows()) return t("settings.sherpa.useGpuWindowsHint");
+  return "";
+});
+
 const schemas = computed(() =>
   buildSchemas({
     t,
@@ -683,6 +699,8 @@ const schemas = computed(() =>
     installedSherpaModels: installedSherpaModels.value,
     applySherpaModelDefaults,
     sherpaVoiceOptions: sherpaVoiceOptions.value,
+    gpuUnsupported: gpuUnsupported.value,
+    gpuSwitchHint: gpuSwitchHint.value,
   }),
 );
 

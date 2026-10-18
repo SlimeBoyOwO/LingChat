@@ -15,17 +15,15 @@ use sherpa_onnx::{
 use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
 
-/// 本次编译链接进来的 sherpa-onnx 预编译包变体：`cpu` / `cuda12` / `cuda13`。
+/// 本次编译链接进来的 sherpa-onnx 把哪个执行提供方编进去了：`dml`（Windows DirectML
+/// 版，见 scripts/build-desktop-sherpa-dml.mjs）或 `cpu`。
 ///
-/// 由本 crate 的 build.rs 按 `SHERPA_ONNX_GPU`（以及 `SHERPA_ONNX_LIB_DIR` 实际
-/// 指向的库目录）决定 —— 见 `crates/ling-chat-main/build.rs` 的
-/// `emit_sherpa_gpu_variant`。判定依据是「真的链了哪套库」：CPU 包里 sherpa 自己会把
-/// GPU provider 降级到 CPU，而 CUDA 包里 provider 会被真的交给 ONNX Runtime。
-#[cfg(any(
-    target_os = "windows",
-    all(target_os = "linux", target_arch = "x86_64")
-))]
-const GPU_VARIANT: &str = env!("SHERPA_ONNX_GPU_VARIANT");
+/// 由本 crate 的 build.rs 读 `SHERPA_ONNX_LIB_DIR/sherpa-build.json` 发射（见
+/// `emit_sherpa_provider`）——以**实际链接的那套库**为准：上游 build.rs 自己下的官方
+/// 预编译包没编 DirectML，此时请求 GPU 只会被静默降级到 CPU，所以那种情况就不该把
+/// provider 交给 sherpa。
+#[cfg(target_os = "windows")]
+const SHERPA_PROVIDER: &str = env!("SHERPA_ONNX_PROVIDER");
 
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
@@ -120,11 +118,15 @@ impl SherpaOnnxAdapter {
     /// 根据是否开启 GPU 加速与目标平台，选择 ONNX Runtime 执行提供方。
     ///
     /// 返回 `None` 表示使用 CPU。各平台：
-    /// - Android: `nnapi`（走设备 GPU/NPU）
-    /// - Windows / Linux x86_64: 链接官方 CUDA 包时用 `cuda`，否则请求 GPU 也会被
-    ///   sherpa-onnx 自己降级（CPU 包没编 `SHERPA_ONNX_ENABLE_GPU`）
-    /// - macOS: `coreml`
-    /// - 其它: CPU
+    /// - Android: `nnapi`（设备后端；官方包的 API 级别会让它降级，见
+    ///   docs/inference-devices.md）
+    /// - Apple（macOS / iOS）: `coreml`
+    /// - Windows: 只有本次链接的 sherpa 是**编了 DirectML 的那份**（用
+    ///   `pnpm tauri:build:win` 打的包，见 scripts/build-desktop-sherpa-dml.mjs）才给
+    ///   `dml`。官方预编译包没编 DirectML，传了只会打一行 fallback 日志然后静默回落
+    ///   CPU —— 那等于把开关变成假的，所以宁可不交。
+    /// - 其它（Linux x86_64 等）: CPU。Linux 上 sherpa 只有 CUDA 一条 GPU 路，
+    ///   代价是官方 CUDA 包（+388 MB），已按体积取舍移除。
     fn provider_for(use_gpu: bool) -> Option<&'static str> {
         if !use_gpu {
             return None;
@@ -133,223 +135,23 @@ impl SherpaOnnxAdapter {
         {
             return Some("nnapi");
         }
-        #[cfg(any(
-            target_os = "windows",
-            all(target_os = "linux", target_arch = "x86_64")
-        ))]
+        #[cfg(target_os = "windows")]
         {
-            return Self::desktop_gpu_provider();
+            if SHERPA_PROVIDER == "dml" {
+                return Some("dml");
+            }
+            tracing::warn!(
+                "Sherpa-ONNX 这份构建没编 DirectML（SHERPA_ONNX_PROVIDER={SHERPA_PROVIDER}），\
+                 本次按 CPU 推理；要 GPU 请用 `pnpm tauri:build:win` 打包"
+            );
+            return None;
         }
-        #[cfg(target_os = "macos")]
+        #[cfg(any(target_os = "macos", target_os = "ios"))]
         {
             return Some("coreml");
         }
         #[allow(unreachable_code)]
         None
-    }
-
-    /// 桌面端（Windows / Linux x86_64）的 GPU provider。
-    ///
-    /// 本仓库的 sherpa-onnx 预编译包默认是 CPU 版，此时请求 GPU 会被 sherpa 自己降级到
-    /// CPU（日志里会打 `Please compile with -DSHERPA_ONNX_ENABLE_GPU=ON`）；只有用
-    /// `SHERPA_ONNX_GPU=cuda12|cuda13` 编出来的 CUDA 版才会真的把 provider 交给 ONNX
-    /// Runtime。而 CUDA 版有个坑：provider 动态库加载失败时 ORT 抛的是 C++ 异常，
-    /// 穿不过 FFI，**直接 abort 整个进程**（实测缺 CUDA 运行时就是如此），所以交给
-    /// sherpa 之前先由 `cuda_ep_ready` 判断 CUDA EP 是否真的可用。
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn desktop_gpu_provider() -> Option<&'static str> {
-        // Windows 的 CPU 包走 DirectML 这条既有路径（同样会被 sherpa 降级）；
-        // 一旦换成 CUDA 包，则两个平台都用 cuda。
-        if !Self::cuda_package_linked() {
-            return Some(if cfg!(target_os = "windows") {
-                "dml"
-            } else {
-                "cuda"
-            });
-        }
-
-        if Self::cuda_ep_ready() {
-            Some("cuda")
-        } else {
-            None
-        }
-    }
-
-    /// 链接进来的 sherpa-onnx 预编译包是不是官方 CUDA 包（见
-    /// `crates/ling-chat-main/build.rs` 的 `emit_sherpa_gpu_variant`）。
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn cuda_package_linked() -> bool {
-        matches!(GPU_VARIANT, "cuda12" | "cuda13")
-    }
-
-    /// CUDA 执行提供方（CUDA EP）能不能用。
-    ///
-    /// 不能用时**绝不能**把 provider 交给 sherpa-onnx：ORT 1.27 加载 provider 动态库
-    /// 失败会抛 C++ 异常，异常穿不过 FFI，进程直接 abort（实测：缺 `libcublasLt.so.12`
-    /// 时就是这样）。而又不能真的 dlopen provider 库来试探 —— provider 的静态初始化会调用
-    /// `Provider_GetHost()`，该 host 指针由 ORT 在加载 provider **之前**设置，自己先加载
-    /// 会段错误（实测）。所以退一步做两件静态检查：
-    ///
-    /// 1. provider 库文件在不在（ORT 按 `libonnxruntime` 所在目录找它）；
-    /// 2. CUDA 运行时的动态库能不能加载（provider 的 `DT_NEEDED`，缺一个必然加载失败）。
-    ///
-    /// 覆盖不到的情况：库都齐全、但 CUDA 初始化失败（例如显卡算力不被支持）。那只能靠 ORT
-    /// 自己的日志排查，代价是「宁可退回 CPU，也不让开关变成崩溃按钮」。
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn cuda_ep_ready() -> bool {
-        let dirs = Self::cuda_provider_search_dirs();
-        let provider = Self::cuda_provider_file_name();
-        let Some(found_in) = dirs.iter().find(|dir| dir.join(provider).is_file()) else {
-            tracing::warn!(
-                "Sherpa-ONNX 没找到 CUDA 执行提供方动态库 {provider}（查找目录: {}），改用 CPU 推理",
-                dirs.iter()
-                    .map(|dir| dir.display().to_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            );
-            return false;
-        };
-
-        for soname in Self::cuda_runtime_sonames() {
-            if let Err(err) = unsafe { libloading::Library::new(soname) } {
-                tracing::warn!(
-                    "Sherpa-ONNX CUDA 运行时缺少 {soname}（{err}），改用 CPU 推理；provider 库在 {}",
-                    found_in.display()
-                );
-                return false;
-            }
-        }
-
-        tracing::info!("Sherpa-ONNX CUDA 执行提供方就绪（{}）", found_in.display());
-        true
-    }
-
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn cuda_provider_file_name() -> &'static str {
-        if cfg!(target_os = "windows") {
-            "onnxruntime_providers_cuda.dll"
-        } else {
-            "libonnxruntime_providers_cuda.so"
-        }
-    }
-
-    /// provider 库可能所在的目录：可执行文件目录（开发时的 `target/<profile>`、安装后的
-    /// 安装目录），以及 Linux 下 `libonnxruntime` 实际被加载的目录（测试二进制在
-    /// `target/<profile>/deps/`，只看可执行文件目录会漏）。
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn cuda_provider_search_dirs() -> Vec<PathBuf> {
-        let mut dirs = Vec::new();
-
-        if let Some(dir) = std::env::current_exe()
-            .ok()
-            .and_then(|exe| exe.parent().map(Path::to_path_buf))
-        {
-            dirs.push(dir);
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(dir) = Self::libonnxruntime_dir_from_maps() {
-            if !dirs.contains(&dir) {
-                dirs.push(dir);
-            }
-        }
-
-        dirs
-    }
-
-    /// 从 `/proc/self/maps` 里读 `libonnxruntime.so` 的加载路径并取所在目录。
-    #[cfg(target_os = "linux")]
-    fn libonnxruntime_dir_from_maps() -> Option<PathBuf> {
-        let maps = std::fs::read_to_string("/proc/self/maps").ok()?;
-        for line in maps.lines() {
-            // 形如：7f12…-7f13… r-xp 00000000 08:02 1234567 /path/to/libonnxruntime.so
-            let Some(path) = line.split_whitespace().nth(5) else {
-                continue;
-            };
-            if !path.ends_with("libonnxruntime.so") {
-                continue;
-            }
-            return Path::new(path).parent().map(Path::to_path_buf);
-        }
-        None
-    }
-
-    /// CUDA 运行时动态库名（provider 的 `DT_NEEDED`）。
-    ///
-    /// cuda12 这份由实测 `readelf -d libonnxruntime_providers_cuda.so` 得到；cuda13 按同样
-    /// 的 soname 规则（主版本号换 CUDA 13）列出，**未实测**。漏判只会让 GPU 退回 CPU
-    /// （有日志），不会崩。
-    #[cfg(any(
-        target_os = "windows",
-        all(target_os = "linux", target_arch = "x86_64")
-    ))]
-    fn cuda_runtime_sonames() -> &'static [&'static str] {
-        let cuda13 = GPU_VARIANT == "cuda13";
-
-        if cfg!(target_os = "windows") {
-            return if cuda13 {
-                &[
-                    "nvcuda.dll",
-                    "cudart64_13.dll",
-                    "cublas64_13.dll",
-                    "cublasLt64_13.dll",
-                    "cudnn64_9.dll",
-                    "cufft64_12.dll",
-                    "curand64_10.dll",
-                    "nvrtc64_130_0.dll",
-                ]
-            } else {
-                &[
-                    "nvcuda.dll",
-                    "cudart64_12.dll",
-                    "cublas64_12.dll",
-                    "cublasLt64_12.dll",
-                    "cudnn64_9.dll",
-                    "cufft64_11.dll",
-                    "curand64_10.dll",
-                    "nvrtc64_120_0.dll",
-                ]
-            };
-        }
-
-        if cuda13 {
-            &[
-                "libcuda.so.1",
-                "libcudart.so.13",
-                "libcublas.so.13",
-                "libcublasLt.so.13",
-                "libcudnn.so.9",
-                "libcufft.so.12",
-                "libcurand.so.10",
-                "libnvrtc.so.13",
-            ]
-        } else {
-            &[
-                "libcuda.so.1",
-                "libcudart.so.12",
-                "libcublas.so.12",
-                "libcublasLt.so.12",
-                "libcudnn.so.9",
-                "libcufft.so.11",
-                "libcurand.so.10",
-                "libnvrtc.so.12",
-            ]
-        }
     }
 
     pub fn set_reference_audio(&mut self, samples: Vec<f32>, sample_rate: i32, text: String) {
