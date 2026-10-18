@@ -1645,6 +1645,8 @@ export default {
       "Linux 上 sherpa-onnx 只能用 CPU：GPU 只能走官方 CUDA 包（安裝包 +235 MB），已按體積取捨移除。",
     useGpuWindowsHint:
       "需要 DirectML 版構建（pnpm tauri:build:win）才會真正走 GPU，否則自動按 CPU 運行。",
+    useGpuAndroidHint:
+      "走 NNAPI 設備後端（需要 Android 8.1+）。pnpm android:build 打出的包已帶 NNAPI；用官方預編譯包構建的包會按 CPU 運行。",
     parameters: "參數",
     speed: "語速",
     zeroShot: "零樣本聲音克隆",

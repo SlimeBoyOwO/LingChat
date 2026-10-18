@@ -315,11 +315,13 @@ const config = ref({
 
 /// Linux 桌面上 sherpa-onnx 只剩 CPU（GPU 只能走官方 CUDA 包，安装包 +235 MB，已按
 /// 体积取舍移除），置灰开关并说明；Windows 上提醒需要 DirectML 版构建
-/// （`pnpm tauri:build:win`）。详见 docs/inference-devices.md §9。
+/// （`pnpm tauri:build:win`）、Android 上提醒走 NNAPI（`pnpm android:build` 已自编）。
+/// 详见 docs/inference-devices.md §9。
 const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
 const gpuSwitchHint = computed(() => {
   if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
   if (isWindows()) return t("settings.sherpa.useGpuWindowsHint");
+  if (isAndroid()) return t("settings.sherpa.useGpuAndroidHint");
   return "";
 });
 

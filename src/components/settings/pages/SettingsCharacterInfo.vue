@@ -778,6 +778,7 @@ const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && 
 const gpuSwitchHint = computed(() => {
   if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
   if (isWindows()) return t("settings.sherpa.useGpuWindowsHint");
+  if (isAndroid()) return t("settings.sherpa.useGpuAndroidHint");
   return "";
 });
 

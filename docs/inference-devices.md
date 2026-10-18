@@ -262,7 +262,7 @@ WebGPU EP 的 `deviceId` 选项是否被 ORT 采纳需真机双显卡复核—�
 | 依赖        | `crates/ling-chat-main/Cargo.toml`（Windows target `windows` DXGI / Linux target `ash`）       |
 | Dawn / 运行库分发 | `src-tauri/build.rs`、`scripts/prepare-linux-libs.mjs`、`scripts/stage-desktop-runtime-libs.mjs`、`src-tauri/tauri.linux.conf.json` |
 
-## 9. 桌面端 sherpa-onnx 的推理后端
+## 9. sherpa-onnx 的推理后端（各平台）
 
 sherpa-onnx（ZipVoice / Matcha / Kokoro 这些 TTS）与上面 sbv2 那条线是两套东西：它的
 执行提供方是**编译期编进库里的**（`csrc/session.cc` 里按 `SHERPA_ONNX_ENABLE_*` 走），
@@ -270,16 +270,17 @@ sherpa-onnx（ZipVoice / Matcha / Kokoro 这些 TTS）与上面 sbv2 那条线�
 
 | 平台         | 后端         | 说明                                                                                                            |
 | ------------ | ------------ | --------------------------------------------------------------------------------------------------------------- |
-| Android      | `nnapi`      | 官方 `-android` 包按 API 21 编，NNAPI 需要 27+，实测会被降级回 CPU（见 docs/android/migration.md）              |
+| Android      | `nnapi`      | 需要构建时自编（见 9.2）：官方 `-android` 包按 API 21 编，NNAPI 需要 27+，会静默回落 CPU                        |
 | iOS / macOS  | `coreml`     | Apple 上 CoreML 编译期默认开启                                                                                  |
 | Windows      | `dml` 或 CPU | 只有用 `pnpm tauri:build:win` 自编的 DirectML 版才是 `dml`，见 9.1                                              |
-| Linux x86_64 | CPU          | sherpa 在 Linux 上只有 CUDA 一条 GPU 路，代价是 +235 MiB 安装包 / +384 MiB 安装后体积，按体积取舍已移除，见 9.3 |
+| Linux x86_64 | CPU          | sherpa 在 Linux 上只有 CUDA 一条 GPU 路，代价是 +235 MiB 安装包 / +384 MiB 安装后体积，按体积取舍已移除，见 9.4 |
 
-编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `cpu`）由 `crates/ling-chat-main/build.rs`
-发射：它读 `SHERPA_ONNX_LIB_DIR` 里的 `sherpa-build.json`（自编脚本写的标记），以
-**实际链接的那套库**为准。官方预编译包没编 DirectML，那种情况下就算用户打开了「使用
-GPU」也不会把 `dml` 交给 sherpa —— 否则只会打一行 fallback 日志再回落 CPU，等于把开关
-变成假的。
+编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `nnapi` / `cpu`）由
+`crates/ling-chat-main/build.rs` 发射：它读 `SHERPA_ONNX_LIB_DIR` 里的
+`sherpa-build.json`（自编脚本写的标记），以**实际链接的那套库**为准。官方预编译包没编
+DirectML / NNAPI，那种情况下就算用户打开了「使用 GPU」也不会把 provider 交给 sherpa ——
+否则只会打一行 fallback 日志再回落 CPU，等于把开关变成假的（Windows/Android 的
+`provider_for` 会打 `tracing::warn!` 说明）。
 
 ### 9.1 Windows DirectML：构建时下源码 + 自编（`pnpm tauri:build:win`）
 
@@ -313,9 +314,65 @@ scripts/build-desktop-sherpa-dml.mjs --build`：先把库准备好、把 `SHERPA
 （sherpa 全量编译），之后走缓存。
 
 需要：Visual Studio（MSVC + Windows 10 SDK，`dml_provider_factory.h` 要 `d3d12.h`）、
-cmake、网络。**本机（Linux）无法验证这条路径**：编不了也测不了，只能在 Windows 上跑。
+cmake、网络。并行度用 `SHERPA_BUILD_JOBS=<n>` 控制（`--parallel` 会转成 msbuild `/m`）。
+**本机（Linux）无法验证这条路径**：编不了也测不了，只能在 Windows 上跑。
 
-### 9.2 打包
+### 9.2 Android NNAPI：构建时下源码 + 自编（`pnpm android:build` 默认走这条）
+
+Android 的 provider 同样是**编译期**编死的（`sherpa-onnx/csrc/session.cc`）：
+
+```cpp
+#if __ANDROID_API__ >= 27
+  OrtSessionOptionsAppendExecutionProvider_Nnapi(sess_opts, nnapi_flags);  // 真 NNAPI
+#elif defined(__ANDROID_API__)
+  SHERPA_ONNX_LOGE("Android NNAPI requires API level >= 27 ... Fallback to cpu!");
+#endif
+```
+
+官方 `sherpa-onnx-<ver>-android.tar.bz2` 是上游 `build-android-arm64-v8a.sh` 用
+`-DANDROID_PLATFORM=android-21`（脚本默认值）编的，NNAPI 那一段**根本不在二进制里**，
+所以运行期传 `nnapi` 只会打印上面那行 fallback 日志然后走 CPU。上游脚本自己也留了注释：
+「Please use `-DANDROID_PLATFORM=android-27` if you want to use Android NNAPI」。
+
+`scripts/build-android-sherpa-nnapi.mjs` 做的就是这件事，同样**全在构建时**（源码准备与
+补丁逻辑和 9.1 共用 `scripts/lib/sherpa-source.mjs`）：
+
+1. 按 `Cargo.lock` 里 `sherpa-onnx-sys` 的锁定版本下源码、解压、打
+   `patches/sherpa-onnx/*.patch`（NNAPI 只要 cmake 开关，所以该目录现在是空的）；
+2. 下官方 ONNX Runtime 的 Android 包（`csukuangfj/onnxruntime-libs` 的
+   `onnxruntime-android-<ver>.zip`，内含 `jni/<abi>/libonnxruntime.so` 与 `headers/`，
+   与上游 `build-android-*.sh` 用的同一份），走 cmake 的「预装 ORT」分支，不自己编 ORT；
+3. cmake 自编：`-DANDROID_ABI=<abi> -DANDROID_PLATFORM=android-27
+-DBUILD_SHARED_LIBS=ON -DSHERPA_ONNX_ENABLE_C_API=ON -DSHERPA_ONNX_ENABLE_TTS=ON`
+   （其余开关与官方包对齐，JNI 关掉 —— 应用走 C API，不需要 `libsherpa-onnx-jni.so`），
+   产物汇总成一个 lib 目录并写 `sherpa-build.json`（`provider: "nnapi"`）；
+4. 编译完**自检**：产物里不该再有「需要 API 27」的回落字符串，且要有「Use nnapi」，
+   否则直接失败 —— 免得打出一个「开关是假的」包。
+
+与 Windows 那条不同的是：Android 可以交叉编译，所以 Linux/macOS 主机上就能编（不必用
+设备编）。缓存目录 `target/sherpa-onnx-android-nnapi/`，首次约十几分钟，之后直接复用。
+
+接线方式：`scripts/package-android-sherpa-libs.mjs`（`pnpm android:build` /
+`android:devbuild` / `android:dev` 都经过它）**默认**先调这个自编脚本拿库目录，成功则
+用它的 `.so`（同时写 `SHERPA_ONNX_LIB_DIR` 给 cargo 链接），失败或前置条件缺失（没装
+NDK、没有 cmake）则回落到官方预编译包（CPU）。要显式走 CPU 包：`SHERPA_ANDROID_CPU=1 pnpm android:build`。
+
+注意事项：
+
+- 编译并行度用 `SHERPA_BUILD_JOBS=<n>` 控制（不设则用 `CMAKE_BUILD_PARALLEL_LEVEL`，
+  两者都没有就交给 cmake 默认 = 机器核数）。内存吃紧时调小：每个 clang 进程峰值可到
+  1~2 GB。Windows DML 那条同样认这个变量。
+- 其它可调：`SHERPA_ANDROID_ABI`（默认 `arm64-v8a`）、`SHERPA_ANDROID_API_LEVEL`
+  （默认 `27`）、`SHERPA_ONNXRUNTIME_VERSION`（默认 `1.27.1`）、
+  `SHERPA_ONNX_DOWNLOAD_MIRROR`（`none` 关镜像或指定单个镜像前缀）。
+- NNAPI 需要 **Android 8.1（API 27）** 以上的设备。低于 27 时 ORT 会拒绝创建 NNAPI EP，
+  sherpa 打一行日志回落 CPU（不崩），所以应用 `minSdk` 仍是 24、不需要抬高。
+- 编译期门槛（`ANDROID_PLATFORM=android-27`）只影响「编不编那段代码」，实际用哪个后端
+  还是看设备与算子支持（NNAPI EP 会把不支持的算子回退给 CPU）。
+- 旧版 `docs/android/migration.md` 里「NNAPI 实际不会生效」那条记录的是**官方包**的行为，
+  自编之后不再成立（保留为历史）。
+
+### 9.3 打包
 
 - Windows：sherpa 是动态库，DLL 必须跟安装包走。`scripts/build-desktop-sherpa-dml.mjs`
   调 `scripts/stage-desktop-runtime-libs.mjs`（同一份逻辑也挂在
@@ -323,6 +380,10 @@ cmake、网络。**本机（Linux）无法验证这条路径**：编不了也测
   并生成 `--config` 覆盖（`src-tauri/tauri.sherpa-dml.conf.json`）逐文件映射到资源根目录
   （Windows 只在 exe 同目录找 DLL）。`onnxruntime.dll` / `DirectML.dll` 仍由
   `tauri.windows.conf.json` 从 `src-tauri/binaries/` 映射。
+- Android：`.so` 由 `scripts/package-android-sherpa-libs.mjs` 拷进
+  `src-tauri/gen/android/app/src/main/jniLibs/<abi>/`（Gradle 打 APK 时收进去，该目录已
+  `.gitignore`）。同一份 `libonnxruntime.so` 也供应用的情绪模型/嵌入模型（`ort` crate）
+  使用 —— Android 上 `.cargo/config.toml` 允许未定义符号，运行期由它解析。
 - Linux：`scripts/stage-desktop-runtime-libs.mjs` 按可执行文件的 `DT_NEEDED` 把库暂存到
   `src-tauri/.runtime-libs/`，再由 `tauri.conf.json` 的 `bundle.linux.*.files` 映射到
   `/usr/lib`。**不能放在可执行文件旁边**：`cargo:rustc-link-arg` 加的 `$ORIGIN` rpath
@@ -330,7 +391,7 @@ cmake、网络。**本机（Linux）无法验证这条路径**：编不了也测
   只需要暂存 ort WebGPU 用到的 `libwebgpu_dawn.so`（sherpa 是静态 CPU 库）。
 - macOS / iOS：核心库静态链接，无需暂存。
 
-### 9.3 历史：已移除的 Linux CUDA 变体
+### 9.4 历史：已移除的 Linux CUDA 变体
 
 2026-10 之前桌面端还支持链接**官方 CUDA 包**（`pnpm tauri:build:gpu`、
 `scripts/fetch-sherpa-onnx-libs.mjs`、`SHERPA_ONNX_GPU=cuda12|cuda13`、编译期常量

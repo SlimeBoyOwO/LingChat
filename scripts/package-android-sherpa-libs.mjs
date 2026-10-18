@@ -10,7 +10,11 @@
 //
 // 库来源与 sherpa-onnx-sys 的 resolve_lib_dir 语义保持一致，按优先级：
 //   1. 环境变量 SHERPA_ONNX_LIB_DIR（用户手工指定的预编译库目录）
-//   2. cargo 下载缓存 target/sherpa-onnx-prebuilt/**（build.rs 的回落来源）
+//   2. 构建时自编的 **NNAPI 版**（scripts/build-android-sherpa-nnapi.mjs）——
+//      Android 的「GPU 推理」开关只有在编了 NNAPI 的库里才有意义：官方
+//      `-android` 包按 API 21 编，NNAPI 那段代码根本不在（见那个脚本的注释）。
+//      这是**默认**行为；`SHERPA_ANDROID_CPU=1` 或 `--cpu` 可跳过它。
+//   3. cargo 下载缓存 target/sherpa-onnx-prebuilt/**（官方预编译包，CPU）
 // 找不到必需库时非 0 退出，避免打出发车即崩溃的 APK。
 //
 // 另外，sherpa-onnx-sys 的 build.rs **链接期**也要这个目录：不设
@@ -22,7 +26,8 @@
 // 这样 `pnpm android:devbuild` 无需手工 export。人类可读日志在
 // `--print-lib-dir` 模式下改走 stderr。
 
-import { existsSync, mkdirSync, copyFileSync, readdirSync, statSync } from "fs";
+import { existsSync, mkdirSync, copyFileSync, readdirSync, rmSync, statSync } from "fs";
+import { spawnSync } from "child_process";
 import { join, dirname, sep } from "path";
 import { fileURLToPath } from "url";
 
@@ -107,11 +112,53 @@ function pickSource() {
       `[sherpa-libs] SHERPA_ONNX_LIB_DIR 存在但缺少必需库，忽略并回落到缓存: ${fromEnv}`,
     );
   }
+
+  // 默认走自编的 NNAPI 版（Android 上真正能用设备后端的那份）。
+  const fromNnapiBuild = ensureNnapiBuild();
+  if (fromNnapiBuild) {
+    const sos = listSo(fromNnapiBuild);
+    if (requiredSo.every((r) => sos.includes(r))) return fromNnapiBuild;
+    console.warn(`[sherpa-libs] NNAPI 自编产物缺库，忽略: ${fromNnapiBuild}`);
+  }
+
   // 先看缓存根的常见布局，再递归兜底
   const direct = join(prebuiltRoot, "jniLibs", abi);
   if (requiredSo.every((r) => listSo(direct).includes(r))) return direct;
   const candidates = findCacheDirsWith(requiredSo, prebuiltRoot);
   return candidates[0] || null;
+}
+
+/// 触发一次「构建时自编 NNAPI 版 sherpa」并拿到它的库目录。
+///
+/// - `SHERPA_ANDROID_CPU=1`（或 `--cpu`）跳过，直接用官方预编译包（快，CPU）。
+/// - 前置条件缺失（没装 NDK / 没 cmake）时自编脚本会安静退出（0 + 空 stdout），
+///   这里返回 null → 回落官方包，构建照样能成功。
+/// - 真的编译失败（非 0 退出）**不**静默回落：把错误暴露出来，免得打出假的 GPU 包。
+function ensureNnapiBuild() {
+  if (process.env.SHERPA_ANDROID_CPU === "1" || process.argv.includes("--cpu")) {
+    log("[sherpa-libs] SHERPA_ANDROID_CPU=1：跳过 NNAPI 自编，用官方预编译包（CPU）");
+    return null;
+  }
+  const builder = join(__dirname, "build-android-sherpa-nnapi.mjs");
+  if (!existsSync(builder)) return null;
+  const result = spawnSync(process.execPath, [builder, "--print-lib-dir"], {
+    cwd: projectRoot,
+    stdio: ["ignore", "pipe", "inherit"],
+  });
+  if (result.error) {
+    console.error(`[sherpa-libs] 调动 ${builder} 失败: ${result.error.message}`);
+    process.exit(1);
+  }
+  if (result.status !== 0) {
+    console.error(`[sherpa-libs] NNAPI 自编失败（退出码 ${result.status}）`);
+    process.exit(result.status ?? 1);
+  }
+  const dir = result.stdout.toString().trim();
+  if (!dir) {
+    log("[sherpa-libs] 自编 NNAPI 版被跳过（前置条件不足），回落到官方预编译包（CPU）");
+    return null;
+  }
+  return dir;
 }
 
 const source = pickSource();
@@ -121,8 +168,11 @@ if (!source) {
       `[sherpa-libs] 找不到 Sherpa-ONNX Android 预编译库，无法打包。`,
       `  缺少: ${requiredSo.join(", ")}`,
       `  已查找: SHERPA_ONNX_LIB_DIR=${process.env.SHERPA_ONNX_LIB_DIR || "(未设置)"}`,
+      `          自编 NNAPI 版（scripts/build-android-sherpa-nnapi.mjs）`,
       `          ${prebuiltRoot}`,
       `  解决办法:`,
+      `    先跑 node scripts/build-android-sherpa-nnapi.mjs --print-lib-dir 看看自编`,
+      `    卡在哪一步（没装 NDK / 没有 cmake 会安静跳过并回落到官方包），或者`,
       `    导出 SHERPA_ONNX_LIB_DIR 指向含上述 .so 的目录，例如`,
       `      export SHERPA_ONNX_LIB_DIR=~/sherpa-onnx-android/${abi}/lib`,
       `    （官方 Android 包解压后形如 sherpa-onnx-*/jniLibs/${abi}/，`,
@@ -154,6 +204,19 @@ for (const so of sos) {
   copied++;
 }
 
+/// 清掉来源里已经没有的 sherpa/ORT 库：换了来源（官方 CPU 包 ↔ 自编 NNAPI 版）之后
+// 旧文件会一直留在 jniLibs 里。只动 `libsherpa-onnx-*` / `libonnxruntime*` 这几个前缀，
+// jniLibs 里还有 cargo 产出的 libling_chat_lib.so 与 NDK 的 libc++_shared.so（都是符号
+// 链接），绝不能碰。
+let removed = 0;
+const sourceSet = new Set(sos);
+for (const so of listSo(jniLibsDir)) {
+  if (sourceSet.has(so)) continue;
+  if (!/^(libsherpa-onnx-|libonnxruntime)/.test(so)) continue;
+  rmSync(join(jniLibsDir, so), { force: true });
+  removed++;
+}
+
 // 二次校验：目标目录里必须有运行时依赖，否则构建出的 APK 一启动就崩
 const destSos = listSo(jniLibsDir);
 const missing = requiredSo.filter((r) => !destSos.includes(r));
@@ -163,7 +226,7 @@ if (missing.length) {
 }
 
 log(
-  `[sherpa-libs] ABI=${abi} 来源=${source} 新增=${copied} 现有=${destSos.length} -> ${jniLibsDir}`,
+  `[sherpa-libs] ABI=${abi} 来源=${source} 新增=${copied} 清理=${removed} 现有=${destSos.length} -> ${jniLibsDir}`,
 );
 
 // `--print-lib-dir` 模式下，stdout 只输出这一行库目录（含末尾换行，

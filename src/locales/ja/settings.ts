@@ -1465,6 +1465,8 @@ export default {
       "Linux では sherpa-onnx は CPU のみです。GPU には公式 CUDA パッケージ（インストーラ +235 MB）が必要なため、サイズの都合で削除しました。",
     useGpuWindowsHint:
       "DirectML ビルド（pnpm tauri:build:win）でのみ GPU を使用します。それ以外は CPU で動作します。",
+    useGpuAndroidHint:
+      "NNAPI デバイスバックエンドを使用します（Android 8.1 以上が必要）。pnpm android:build で作成したパッケージには NNAPI が含まれます。公式のビルド済みパッケージを使った場合は CPU で動作します。",
     parameters: "パラメータ",
     speed: "話速",
     zeroShot: "ゼロショット音声クローン",

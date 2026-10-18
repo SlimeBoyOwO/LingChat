@@ -1480,6 +1480,8 @@ export default {
       "sherpa-onnx is CPU-only on Linux: the GPU path needs the official CUDA package (+235 MB installer), which was dropped for size.",
     useGpuWindowsHint:
       "Requires a DirectML build (pnpm tauri:build:win) to actually use the GPU; otherwise it runs on CPU.",
+    useGpuAndroidHint:
+      "Uses the NNAPI device backend (Android 8.1+). Builds made by pnpm android:build already include NNAPI; builds using the official prebuilt package run on CPU.",
     parameters: "Parameters",
     speed: "Speed",
     zeroShot: "Zero-shot Voice Cloning",
