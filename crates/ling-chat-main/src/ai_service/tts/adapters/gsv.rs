@@ -40,24 +40,32 @@ pub fn gsv_emo_category(emo: &str) -> &'static str {
 }
 
 /// 短句沿用上一片段的分类（迟滞），减少参考音频在短促台词间频繁跳动；
-/// 距上次合成超过窗口则按当前情绪分类。
-fn resolve_speak_category(text: &str, current: &str, last: Option<(&str, Duration)>) -> String {
+/// 距上一次真正的分类判定超过窗口则按当前情绪分类。
+/// 返回 (分类, 是否沿用了上一片段的分类)——后者用于决定是否刷新迟滞锚点。
+fn resolve_speak_category(
+    text: &str,
+    current: &str,
+    last: Option<(&str, Duration)>,
+) -> (String, bool) {
     if text.chars().count() > SHORT_SENTENCE_MAX_CHARS {
-        return current.to_string();
+        return (current.to_string(), false);
     }
     match last {
-        Some((cat, elapsed)) if elapsed < SHORT_CARRY_WINDOW => cat.to_string(),
-        _ => current.to_string(),
+        Some((cat, elapsed)) if elapsed < SHORT_CARRY_WINDOW => (cat.to_string(), true),
+        _ => (current.to_string(), false),
     }
 }
 
-/// 主参考非中立且配置了中立分类时，把中立音频作为辅助参考（inp_refs）
-/// 一起交给服务端做音色融合，让相邻句共享音色底子、降低情绪切换的突变感。
+/// 主参考命中分类配置、非中立且配置了中立分类时，把中立音频作为辅助参考
+/// （aux_ref_audio_paths）一起交给服务端做音色融合，让相邻句共享音色底子、
+/// 降低情绪切换的突变感。主参考回落到默认 gsv_voice_* 时不加，避免默认
+/// 音色与另一个参考混在一起。
 fn resolve_aux_refs<'a>(
     category: &str,
+    primary_configured: bool,
     emo_prompts: &'a HashMap<String, (String, String, String)>,
 ) -> Vec<&'a str> {
-    if category == "中立" {
+    if !primary_configured || category == "中立" {
         return Vec::new();
     }
     emo_prompts
@@ -203,7 +211,10 @@ fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
                 if size < 16 || body + 16 > bytes.len() {
                     return None;
                 }
-                is_16bit = u16::from_le_bytes([bytes[body + 14], bytes[body + 15]]) == 16;
+                // 只认 PCM（格式码 1）且 16-bit
+                let code = u16::from_le_bytes([bytes[body], bytes[body + 1]]);
+                let bits = u16::from_le_bytes([bytes[body + 14], bytes[body + 15]]);
+                is_16bit = code == 1 && bits == 16;
             },
             b"data" => {
                 // 样本只算 data 块内的字节，块后的附加 chunk 不参与
@@ -274,9 +285,9 @@ impl GsvAdapter {
             model_initialized: Arc::new(OnceCell::new()),
             request_lock: Arc::new(Mutex::new(())),
             emo_prompts,
-            temperature: temperature.unwrap_or(1.0),
-            top_p: top_p.unwrap_or(1.0),
-            speed_factor: speed_factor.unwrap_or(1.0),
+            temperature: temperature.unwrap_or(1.0).clamp(0.1, 2.0),
+            top_p: top_p.unwrap_or(1.0).clamp(0.1, 1.0),
+            speed_factor: speed_factor.unwrap_or(1.0).clamp(0.5, 2.0),
             last_category: Arc::new(SyncMutex::new((None, Instant::now()))),
         }
     }
@@ -330,6 +341,38 @@ impl GsvAdapter {
     }
 }
 
+/// 发送一次 /tts 请求；网络错误重试一次。服务端非 2xx 直接返回错误。
+async fn send_tts_request(api_url: &str, body: &JsonValue) -> Result<Vec<u8>> {
+    let mut retry_error = None;
+    let resp = loop {
+        match http_client()
+            .post(format!("{api_url}/tts"))
+            .json(body)
+            .send()
+            .await
+        {
+            Ok(resp) => break resp,
+            Err(error) if retry_error.is_none() => {
+                tracing::warn!("GPT-SoVITS request failed, retrying once: {error}");
+                retry_error = Some(error);
+                sleep(Duration::from_millis(500)).await;
+            },
+            Err(error) => {
+                return Err(anyhow!(
+                    "GPT-SoVITS request failed after retry: {error}; first error: {}",
+                    retry_error.expect("retry error must exist")
+                ));
+            },
+        }
+    };
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(anyhow!("GSV 请求失败: HTTP {status}: {text}"));
+    }
+    Ok(resp.bytes().await?.to_vec())
+}
+
 #[async_trait]
 impl TtsAdapter for GsvAdapter {
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>> {
@@ -347,22 +390,25 @@ impl TtsAdapter for GsvAdapter {
                 .0
                 .as_ref()
                 .map(|cat| (cat.as_str(), now.duration_since(last.1)));
-            let picked = resolve_speak_category(text, gsv_emo_category(emo), prev);
-            *last = (Some(picked.clone()), now);
+            let (picked, carried) = resolve_speak_category(text, gsv_emo_category(emo), prev);
+            // 只有真正做了新的分类判定才刷新锚点；短句沿用旧分类时保留旧时间，
+            // 否则连续短句会不断续命，迟滞永不过期。
+            if !carried {
+                *last = (Some(picked.clone()), now);
+            }
             picked
         };
-        let (ref_audio_path, prompt_text, prompt_lang) = self
-            .emo_prompts
-            .get(&category)
+        let primary = self.emo_prompts.get(&category);
+        let (ref_audio_path, prompt_text, prompt_lang) = primary
             .map(|(p, t, l)| (p.as_str(), t.as_str(), l.as_str()))
             .unwrap_or((
                 self.ref_audio_path.as_str(),
                 self.prompt_text.as_str(),
                 self.prompt_lang.as_str(),
             ));
-        let inp_refs = resolve_aux_refs(&category, &self.emo_prompts);
+        let aux_refs = resolve_aux_refs(&category, primary.is_some(), &self.emo_prompts);
         let (text, text_lang) = preprocess_text(text, &self.text_lang);
-        let body = json!({
+        let mut body = json!({
             "ref_audio_path": ref_audio_path,
             "prompt_text": prompt_text,
             "prompt_lang": prompt_lang,
@@ -374,37 +420,25 @@ impl TtsAdapter for GsvAdapter {
             "top_p": self.top_p,
             "temperature": self.temperature,
             "parallel_infer": self.parallel_infer,
-            "inp_refs": inp_refs,
             "text": text,
         });
-        let mut retry_error = None;
-        let resp = loop {
-            match http_client()
-                .post(format!("{}/tts", self.api_url))
-                .json(&body)
-                .send()
-                .await
-            {
-                Ok(resp) => break resp,
-                Err(error) if retry_error.is_none() => {
-                    tracing::warn!("GPT-SoVITS request failed, retrying once: {error}");
-                    retry_error = Some(error);
-                    sleep(Duration::from_millis(500)).await;
-                },
-                Err(error) => {
-                    return Err(anyhow!(
-                        "GPT-SoVITS request failed after retry: {error}; first error: {}",
-                        retry_error.expect("retry error must exist")
-                    ));
-                },
-            }
-        };
-        if !resp.status().is_success() {
-            let status = resp.status();
-            let text = resp.text().await.unwrap_or_default();
-            return Err(anyhow!("GSV 请求失败: HTTP {status}: {text}"));
+        if !aux_refs.is_empty() {
+            body["aux_ref_audio_paths"] = json!(aux_refs);
         }
-        let bytes = resp.bytes().await?.to_vec();
+        let bytes = match send_tts_request(&self.api_url, &body).await {
+            Ok(bytes) => bytes,
+            Err(error) if body.get("aux_ref_audio_paths").is_some() => {
+                // 辅助参考路径失效不应让原本能合成的句子整句失败：去掉后重试一次
+                tracing::warn!(
+                    "GPT-SoVITS request with auxiliary reference failed, retrying without it: {error}"
+                );
+                body.as_object_mut()
+                    .expect("tts body is an object")
+                    .remove("aux_ref_audio_paths");
+                send_tts_request(&self.api_url, &body).await?
+            },
+            Err(error) => return Err(error),
+        };
         Ok(normalize_wav_peak(&bytes))
     }
 
@@ -479,27 +513,74 @@ mod tests {
     }
 
     #[test]
+    fn sampling_params_are_clamped() {
+        // 手输越界值在后端夹取：温度 0.1–2、top_p 0.1–1、语速 0.5–2
+        let adapter = GsvAdapter::new(
+            "http://127.0.0.1:9880".into(),
+            "ref.wav".into(),
+            "你好。".into(),
+            "zh".into(),
+            "zh".into(),
+            None,
+            None,
+            HashMap::new(),
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+        );
+        let params = adapter.get_params();
+        let close =
+            |key: &str, want: f64| (params[key].as_f64().expect("应为数字") - want).abs() < 1e-5;
+        assert!(close("temperature", 0.1));
+        assert!(close("top_p", 0.1));
+        assert!(close("speed_factor", 0.5));
+
+        let adapter = GsvAdapter::new(
+            "http://127.0.0.1:9880".into(),
+            "ref.wav".into(),
+            "你好。".into(),
+            "zh".into(),
+            "zh".into(),
+            None,
+            None,
+            HashMap::new(),
+            Some(3.5),
+            Some(3.5),
+            Some(10.0),
+        );
+        let params = adapter.get_params();
+        let close =
+            |key: &str, want: f64| (params[key].as_f64().expect("应为数字") - want).abs() < 1e-5;
+        assert!(close("temperature", 2.0));
+        assert!(close("top_p", 1.0));
+        assert!(close("speed_factor", 2.0));
+    }
+
+    #[test]
     fn short_sentence_carries_last_category() {
-        // 长句按当前分类
+        // 长句按当前分类，且标记为新的分类判定
         assert_eq!(
             resolve_speak_category(
                 "今天天气真不错呢",
                 "开心",
                 Some(("生气", Duration::from_secs(1)))
             ),
-            "开心"
+            ("开心".to_string(), false)
         );
         // 短句无历史按当前分类
-        assert_eq!(resolve_speak_category("嗯", "开心", None), "开心");
+        assert_eq!(
+            resolve_speak_category("嗯", "开心", None),
+            ("开心".to_string(), false)
+        );
         // 短句沿用窗口内的历史分类
         assert_eq!(
             resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(2)))),
-            "生气"
+            ("生气".to_string(), true)
         );
         // 短句超出窗口后不再沿用
         assert_eq!(
             resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(20)))),
-            "开心"
+            ("开心".to_string(), false)
         );
     }
 
@@ -514,9 +595,11 @@ mod tests {
             "开心".into(),
             ("happy.wav".into(), "好耶。".into(), "zh".into()),
         );
-        assert_eq!(resolve_aux_refs("开心", &map), vec!["neutral.wav"]);
-        assert!(resolve_aux_refs("中立", &map).is_empty());
-        assert!(resolve_aux_refs("开心", &HashMap::new()).is_empty());
+        assert_eq!(resolve_aux_refs("开心", true, &map), vec!["neutral.wav"]);
+        assert!(resolve_aux_refs("中立", true, &map).is_empty());
+        assert!(resolve_aux_refs("开心", true, &HashMap::new()).is_empty());
+        // 主分类回落到默认 gsv_voice_* 时不挂辅助参考
+        assert!(resolve_aux_refs("开心", false, &map).is_empty());
     }
 
     #[test]
