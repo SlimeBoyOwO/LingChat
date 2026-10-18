@@ -102,6 +102,15 @@ const args = process.argv.slice(2);
 const printLibDirOnly = args.includes("--print-lib-dir");
 const force = args.includes("--force");
 
+/// `--print-lib-dir` 模式下 stdout **只**承载「库目录」这一条信息：package.json 的
+/// `SHERPA_ONNX_LIB_DIR=$(...)` 和 package-android-sherpa-libs.mjs 的 spawnSync 都靠它解析。
+/// 子进程默认 `inherit` 会接着往本进程的 stdout 写，而 cmake 的 `[  3%] Built target …`
+/// 与 `-- Installing: …` 全在 stdout —— 上层拿到的「目录」就变成一大段编译日志。CI 上
+/// 首次冷构建就是这么炸的（上层判定「自编被跳过」→ 回落官方 CPU 包；本地有官方包缓存时
+/// 更隐蔽：不报错，直接打出「GPU 开关是假的」APK）。打印模式下一律把子进程的
+/// stdout/stderr 都并到本进程的 stderr（fd 2），stdout 只留最后那行目录。
+const childStdio = printLibDirOnly ? ["ignore", 2, 2] : "inherit";
+
 /// 产物目录（同时也是 SHERPA_ONNX_LIB_DIR 指向的目录）。
 function libsDir(version) {
   return join(cacheRoot, `libs-v${version}-${abi}-api${apiLevel}`);
@@ -137,7 +146,7 @@ function extractZip(zip, dir) {
   ];
   let lastError;
   for (const [cmd, cmdArgs] of candidates) {
-    const result = spawnSync(cmd, cmdArgs, { stdio: "inherit" });
+    const result = spawnSync(cmd, cmdArgs, { stdio: childStdio });
     if (result.error) {
       lastError = result.error;
       continue;
@@ -257,7 +266,7 @@ async function buildSherpa({ version, srcDir, ortDir }) {
   ];
   if (force || !existsSync(join(buildDir, "CMakeCache.txt"))) {
     log("cmake 配置…");
-    run("cmake", configureArgs, { env: cmakeEnv });
+    run("cmake", configureArgs, { env: cmakeEnv, stdio: childStdio });
   } else {
     log(`复用已有构建目录 ${buildDir}（--force 可重新配置）`);
   }
@@ -265,9 +274,12 @@ async function buildSherpa({ version, srcDir, ortDir }) {
   log(
     `cmake 编译（-j ${jobs ?? cpus().length}${jobs ? "，来自 SHERPA_BUILD_JOBS" : ""}，首次约十几分钟）…`,
   );
-  run("cmake", ["--build", buildDir, ...parallelArgs(jobs)], { env: cmakeEnv });
+  run("cmake", ["--build", buildDir, ...parallelArgs(jobs)], { env: cmakeEnv, stdio: childStdio });
   log("安装（strip）…");
-  run("cmake", ["--build", buildDir, "--target", "install/strip"], { env: cmakeEnv });
+  run("cmake", ["--build", buildDir, "--target", "install/strip"], {
+    env: cmakeEnv,
+    stdio: childStdio,
+  });
 
   return collectLibs({ installDir, outDir: libsDir(version), version, ortDir });
 }
