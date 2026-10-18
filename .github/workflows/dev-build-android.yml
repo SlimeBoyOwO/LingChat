@@ -102,30 +102,74 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 配置 Android 签名
+        # secrets 通过 env 传给 shell：直接内联进命令行时，空值会把下一个选项吞成参数值
+        env:
+          KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.p12
-          cat > src-tauri/gen/android/keystore.properties << EOF
-          storeFile=$HOME/upload-keystore.p12
-          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
-          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          EOF
+          set -euo pipefail
+          KS="$RUNNER_TEMP/upload-keystore.p12"
+          if [ -n "${KEY_BASE64:-}" ] && [ -n "${KEY_ALIAS:-}" ] && [ -n "${KEY_PASSWORD:-}" ]; then
+            echo "🔑 使用仓库 secrets 里的签名密钥"
+            printf '%s' "$KEY_BASE64" | base64 -d > "$KS"
+          else
+            echo "::warning::未配置 ANDROID_KEY_BASE64 / ANDROID_KEY_ALIAS / ANDROID_KEYSTORE_PASSWORD，本次测试包改用临时调试密钥签名（无法覆盖安装正式版）"
+            KEY_ALIAS="lingchat-dev-debug"
+            KEY_PASSWORD="$(head -c 24 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+            keytool -genkeypair -keystore "$KS" -storetype PKCS12 \
+              -alias "$KEY_ALIAS" -keyalg RSA -keysize 2048 -validity 3650 \
+              -storepass "$KEY_PASSWORD" -keypass "$KEY_PASSWORD" \
+              -dname "CN=LingChat Dev, OU=CI, O=LingChat, L=Unknown, ST=Unknown, C=CN"
+          fi
+          [ -s "$KS" ] || { echo "::error::$KS 是空文件，ANDROID_KEY_BASE64 可能不是有效的 base64"; exit 1; }
+          {
+            echo "KEYSTORE_PATH=$KS"
+            echo "KEY_ALIAS=$KEY_ALIAS"
+            echo "KEY_PASSWORD=$KEY_PASSWORD"
+          } >> "$GITHUB_ENV"
+          # 兼容按 Tauri 约定读取该文件的 Gradle 配置（本仓库目前没有引用）
+          printf 'storeFile=%s\nkeyAlias=%s\npassword=%s\n' "$KS" "$KEY_ALIAS" "$KEY_PASSWORD" \
+            > src-tauri/gen/android/keystore.properties
 
       - name: 构建 Android APK
         run: pnpm android:build
 
-      - name: 手动签名 APK
+      - name: 校验打进包里的 sherpa 是 NNAPI 版
+        # `pnpm android:build` 默认会自编 NNAPI 版 sherpa（约十几分钟）；但如果前置条件
+        # （NDK/cmake）缺失，脚本会安静回落到官方 CPU 包。测试版同样需要这份看门狗，
+        # 否则会误把「CPU 版 sherpa 的包」当成 GPU 验证通过：自编版含 "Use nnapi"，
+        # 官方 CPU 包只含 "Android NNAPI requires API level >= 27" 那段回落提示。
         run: |
-          VERSION="${{ github.event.inputs.tag_name }}"
-          APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
-          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
-          $APKSIGNER sign \
-            --ks $HOME/upload-keystore.p12 \
-            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
-            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
-            --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
-            "$APK_PATH"
+          LIB="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libsherpa-onnx-c-api.so"
+          test -f "$LIB" || { echo "::error::找不到 $LIB"; exit 1; }
+          if ! strings "$LIB" | grep -q "Use nnapi"; then
+            echo "::error::$LIB 里没有 NNAPI 初始化代码，打进包的是 CPU 版 sherpa"
+            exit 1
+          fi
+          if strings "$LIB" | grep -q "Android NNAPI requires API level >= 27"; then
+            echo "::error::$LIB 是官方预编译包（按 android-21 编的），NNAPI 那段被编掉了"
+            exit 1
+          fi
+          echo "✓ NNAPI 版 sherpa 已进包"
+
+      - name: 手动签名 APK
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
+        run: |
+          set -euo pipefail
+          APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/app-universal-release-unsigned.apk"
+          [ -f "$APK_PATH" ] || { echo "::error::找不到 APK：$APK_PATH"; exit 1; }
+          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1)"
+          [ -n "$APKSIGNER" ] || { echo "::error::在 $ANDROID_HOME 下找不到 apksigner"; exit 1; }
+          "$APKSIGNER" sign \
+            --ks "$KEYSTORE_PATH" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEY_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            "$APK_PATH"
+          "$APKSIGNER" verify --print-certs "$APK_PATH"
+          ls -lh "$APK_PATH"
 
       - name: 上传 artifact (APK)
         uses: actions/upload-artifact@v4
