@@ -263,7 +263,9 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
                 }
             }
         },
-        None => println!("数字读法回归：{model_dir} 里没有规则 FST，跳过"),
+        None => println!(
+            "数字读法回归：{model_dir} 里没有规则 FST，跳过（这类模型由 chinese_digits 在 Rust 侧改写）"
+        ),
     }
 
     // 对比 CPU / GPU 后端性能时看这一行（音频时长本身当然和 provider 无关）。

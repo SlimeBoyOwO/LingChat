@@ -57,6 +57,8 @@ pub struct SherpaOnnxAdapter {
     reference_audio: Option<Vec<f32>>,
     reference_sample_rate: Option<i32>,
     reference_text: Option<String>,
+    /// 中文模型 + 模型目录里没有规则 FST 时，需要在合成前把阿拉伯数字改写成汉字。
+    digit_normalization: bool,
 }
 
 impl SherpaOnnxAdapter {
@@ -115,8 +117,11 @@ impl SherpaOnnxAdapter {
         };
 
         let sr = tts.sample_rate();
+        // 中文模型若模型目录里没带规则 FST（zipvoice/supertonic 的实现不读 rule_fsts，
+        // 别的中文模型也可能没随包带），数字得由我们在送进 sherpa 之前改写。
+        let digit_normalization = needs_digit_normalization(model_dir);
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}",
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}",
             provider.unwrap_or("cpu")
         );
 
@@ -132,6 +137,7 @@ impl SherpaOnnxAdapter {
             reference_audio: None,
             reference_sample_rate: None,
             reference_text: None,
+            digit_normalization,
         })
     }
 
@@ -545,6 +551,18 @@ impl TtsAdapter for SherpaOnnxAdapter {
             ..Default::default()
         };
 
+        // 中文文本且模型里没带规则 FST 时，先把阿拉伯数字改写成汉字（见 chinese_digits）：
+        // 那些模型下数字读法都不对——CharacterLexicon 会直接丢词，zipvoice 这类会念错
+        // （反读实测「第 3 章」听成「对章」）。纯英文台词不改写，数字该按英文念。
+        let normalized;
+        let text: &str =
+            if self.digit_normalization && crate::ai_service::tts::chinese_digits::has_han(text) {
+                normalized = crate::ai_service::tts::chinese_digits::normalize(text);
+                &normalized
+            } else {
+                text
+            };
+
         let audio = tts
             .generate_with_config(text, &gen_config, None::<fn(&[f32], f32) -> bool>)
             .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败"))?;
@@ -629,13 +647,20 @@ const RULE_FST_ORDER: &[&str] = &[
     "rule.fst",
 ];
 
+/// 收集模型目录里可用的文本规则 FST 路径（顺序同 [`RULE_FST_ORDER`]）。
+fn rule_fst_paths(model_dir: &Path) -> Vec<PathBuf> {
+    RULE_FST_ORDER
+        .iter()
+        .filter_map(|name| find_file_optional(model_dir, &[name]))
+        .collect()
+}
+
 /// 若模型目录内附带文本规则 FST（matcha-zh 的 `number/date/phone.fst`、kokoro 的
 /// `*-zh.fst` 等），自动挂载到 `OfflineTtsConfig`，使数字、日期、电话号码在读之前
 /// 先被改写成可读文本。
 fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTtsConfig {
-    let fsts: Vec<String> = RULE_FST_ORDER
-        .iter()
-        .filter_map(|name| find_file_optional(model_dir, &[name]))
+    let fsts: Vec<String> = rule_fst_paths(model_dir)
+        .into_iter()
         .map(|path| path.to_string_lossy().to_string())
         .collect();
     if !fsts.is_empty() {
@@ -646,6 +671,18 @@ fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTts
         config.rule_fars = Some(far.to_string_lossy().to_string());
     }
     config
+}
+
+/// 这个模型要不要在 Rust 侧自己改写阿拉伯数字（见 [`chinese_digits`]）。
+///
+/// 模型目录里带了规则 FST 的（matcha-zh、kokoro）交给 sherpa 自己改写——它的读法更
+/// 全（还含日期、电话号码规则），不必重复处理；没带的（zipvoice / supertonic 的实现
+/// 根本不读 `rule_fsts`，别的中文模型也可能没随包带 FST）就得我们补，否则数字要么被
+/// 前端丢词，要么念错。
+///
+/// 真正动不动手还要看当次文本（纯英文台词不塞汉字数字，见 [`chinese_digits::has_han`]）。
+fn needs_digit_normalization(model_dir: &Path) -> bool {
+    rule_fst_paths(model_dir).is_empty()
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -974,6 +1011,35 @@ mod tests {
 
     fn test_model_dir() -> String {
         std::env::var("SHERPA_TEST_MODEL_DIR").unwrap_or_default()
+    }
+
+    /// 规则 FST 的收集顺序，以及「模型目录里有没有 FST」这个判断。
+    #[test]
+    fn collects_rule_fsts_in_order() {
+        let dir = std::env::temp_dir().join(format!("lingchat-digit-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时目录失败");
+
+        // 没带 FST 的模型要由我们在 Rust 侧改写数字：zipvoice / supertonic 的实现
+        // 不读 rule_fsts，数字会被丢词或念错。
+        assert!(needs_digit_normalization(&dir));
+        assert!(rule_fst_paths(&dir).is_empty());
+
+        // 顺序照上游示例：phone → date → number。
+        std::fs::write(dir.join("number.fst"), b"stub").expect("写占位 FST 失败");
+        std::fs::write(dir.join("phone.fst"), b"stub").expect("写占位 FST 失败");
+        std::fs::write(dir.join("date.fst"), b"stub").expect("写占位 FST 失败");
+        let names: Vec<String> = rule_fst_paths(&dir)
+            .iter()
+            .map(|p| p.file_name().unwrap().to_string_lossy().to_string())
+            .collect();
+        assert_eq!(names, ["phone.fst", "date.fst", "number.fst"]);
+        assert!(
+            !needs_digit_normalization(&dir),
+            "带 FST 的交给 sherpa 自己改写"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 解析 WAV 字节并返回 (采样率, 单声道样本数)。
