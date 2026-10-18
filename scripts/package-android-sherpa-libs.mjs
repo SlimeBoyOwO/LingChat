@@ -17,6 +17,10 @@
 //   3. cargo 下载缓存 target/sherpa-onnx-prebuilt/**（官方预编译包，CPU）
 // 找不到必需库时非 0 退出，避免打出发车即崩溃的 APK。
 //
+// 「回落到官方包」只发生在自编脚本**安静跳过**（前置条件不足、stdout 为空）时；
+// 自编一旦真的产出了目录，产物缺库 / stdout 被污染都直接非 0 退出 —— 回落会打出
+// 一个「GPU 开关是假的」APK（CI 首次冷构建踩过这个坑）。
+//
 // 另外，sherpa-onnx-sys 的 build.rs **链接期**也要这个目录：不设
 // SHERPA_ONNX_LIB_DIR 时它会走自己那套有 bug 的下载/解压逻辑（上游 Android
 // 归档没有顶层目录，解到 target/sherpa-onnx-prebuilt/jniLibs/<abi>，而
@@ -118,7 +122,17 @@ function pickSource() {
   if (fromNnapiBuild) {
     const sos = listSo(fromNnapiBuild);
     if (requiredSo.every((r) => sos.includes(r))) return fromNnapiBuild;
-    console.warn(`[sherpa-libs] NNAPI 自编产物缺库，忽略: ${fromNnapiBuild}`);
+    // 自编脚本自己就会校验产物（缺 c-api / 没编进 NNAPI 都会直接失败），所以走到这里
+    // 说明是自编环节出了意外。**不能**回落官方 CPU 包：那会打出「GPU 开关是假的」APK。
+    console.error(
+      [
+        `[sherpa-libs] 自编 NNAPI 产物目录里缺必需库: ${fromNnapiBuild}`,
+        `  缺少: ${requiredSo.filter((r) => !sos.includes(r)).join(", ")}`,
+        `  现有: ${sos.join(", ") || "(空)"}`,
+        `  这是自编环节的问题，不回落官方包（回落会打出「GPU 开关是假的」APK）。`,
+      ].join("\n"),
+    );
+    process.exit(1);
   }
 
   // 先看缓存根的常见布局，再递归兜底
@@ -157,6 +171,28 @@ function ensureNnapiBuild() {
   if (!dir) {
     log("[sherpa-libs] 自编 NNAPI 版被跳过（前置条件不足），回落到官方预编译包（CPU）");
     return null;
+  }
+  // stdout 协议：自编脚本只输出一行库目录。被 cmake 的编译日志污染时（子进程 stdout
+  // 混了进来，CI 首次冷构建就是这么炸的）必须**报错**，不能当成「自编被跳过」回落
+  // CPU 包 —— 回落会静默打出「GPU 开关是假的」APK。
+  const lines = dir
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  if (lines.length > 1) {
+    console.error(
+      [
+        `[sherpa-libs] 自编脚本的 stdout 被污染：期望一行库目录，实际 ${lines.length} 行。`,
+        `  首行: ${lines[0]}`,
+        `  末行: ${lines[lines.length - 1]}`,
+        `  常见原因是子进程（cmake 的编译/安装输出）混进了 stdout。`,
+      ].join("\n"),
+    );
+    process.exit(1);
+  }
+  if (!existsSync(dir)) {
+    console.error(`[sherpa-libs] 自编脚本返回的库目录不存在: ${dir}`);
+    process.exit(1);
   }
   return dir;
 }
