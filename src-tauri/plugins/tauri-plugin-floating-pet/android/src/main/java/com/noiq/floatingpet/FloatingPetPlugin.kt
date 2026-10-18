@@ -15,7 +15,6 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
-import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.view.Display
@@ -231,18 +230,6 @@ private const val IME_FOCUS_SETTLE_MS = 120L
  * 回来了、或者输入法正在接受输入，就什么都不做。
  */
 private const val FOCUS_RELEASE_DEBOUNCE_MS = 600L
-
-/**
- * 查询截屏授权时，最多等多久才肯回答「没有」。
- *
- * 授权 token 是在前台服务的 `onStartCommand` 里换的（系统要求），
- * `onActivityResult` 返回那一刻它可能还没换好。立刻回答 `false` 会让
- * 「明明授权了却进不去桌宠」重现。详见 [FloatingPetPlugin.isScreenCaptureReady]。
- *
- * 1.5s 的取法：正常换 token 在几十毫秒内完成，1.5s 已经非常宽松；
- * 再长就会让「用户点了取消」这种正常路径也卡着不返回，体验变钝。
- */
-private const val SCREEN_READY_WAIT_MS = 1500L
 
 /**
  * 探针脚本：问「这个坐标上是不是可编辑元素」。
@@ -1462,55 +1449,30 @@ class FloatingPetPlugin(private val activity: Activity) : Plugin(activity) {
     /**
      * 查询「屏幕截取授权拿到了没有」。**只读**，不会截屏、不会弹框。
      *
-     * ## 为什么要单独一条命令，而不是让前端去试截一次
+     * ## 为什么是「立刻回答」，而不是在这里等
+     *
+     * 授权确实是**异步落地**的：`onActivityResult` → 起前台服务 →
+     * `startForeground(TYPE_MEDIA_PROJECTION)` → 才 `getMediaProjection`。
+     * 刚点完「立即开始」时 token 往往还没换好，这里曾经为此轮询最多 1.5 秒。
+     * 但它的调用方是**门禁预检**——「没就绪」正是这一轮的正常状态，根本没有
+     * 东西可等，于是每次点桌宠都要先干等 1.4 秒才弹权限说明（真机实测：
+     * 点击到弹窗 ≈1.4s，且期间一帧不掉）。
+     *
+     * 等待因此挪到真正需要它的地方：前端只在「刚从系统授权框回来、自动续跑」
+     * 那条路上轮询（见 floating-pet.ts 的 `waitForScreenCapture`）。
+     * 本命令保持即时返回，主线程和页面都不被占住。
+     *
+     * ## 为什么不让前端试截一帧反推
      *
      * `captureScreen` 会**真的截一帧**（建 VirtualDisplay、等首帧、压 JPEG），
-     * 用它的成败来反推授权状态，代价高且有副作用（截屏瞬间的帧会被丢掉）。
-     * 而进桌宠门禁只需要一个是非答案，所以这里直接读
-     * [ScreenCaptureManager.isReady]。
-     *
-     * ## 为什么要等一会儿再回答（不是立刻返回）
-     *
-     * 授权是**异步落地**的，而且顺序被系统钉死：
-     * `onActivityResult` → `startForegroundService` →
-     * `onStartCommand` 里 `startForeground(TYPE_MEDIA_PROJECTION)` → 才
-     * `getMediaProjection()` 换 token。
-     *
-     * 所以用户点完「立即开始」回到页面的那一瞬间，token 很可能**还没换好** ——
-     * 立刻回答 `false` 会让「明明授权了却进不去桌宠」重现，而且前端为了防死循环
-     * 会静默收尾，表现就是「点了没反应」。
-     *
-     * 折中：轮询等最多 [SCREEN_READY_WAIT_MS]。等到了就立刻返回；等不到就是
-     * 真的没授权（用户点了取消），返回 `false` 让前端收尾。
-     *
-     * ⚠️ 轮询放在**后台线程**：主线程在这段时间里要处理授权回来的 UI 回调，
-     * 占住主线程反而会让 token 永远换不上来。
+     * 代价高且有副作用。门禁只需要一个是非答案，直接读
+     * [ScreenCaptureManager.isReady] 就够。
      */
     @Command
     fun isScreenCaptureReady(invoke: Invoke) {
-        if (ScreenCaptureManager.isReady()) {
-            Log.i(TAG, "查询屏幕截取授权：ready=true（立即）")
-            invoke.resolve(JSObject().apply { put("ready", true) })
-            return
-        }
-
-        Thread {
-            val deadline = SystemClock.uptimeMillis() + SCREEN_READY_WAIT_MS
-            while (!ScreenCaptureManager.isReady() && SystemClock.uptimeMillis() < deadline) {
-                try {
-                    Thread.sleep(50)
-                } catch (e: InterruptedException) {
-                    break
-                }
-            }
-            val ready = ScreenCaptureManager.isReady()
-            Log.i(
-                TAG,
-                "查询屏幕截取授权：ready=$ready" +
-                    if (ready) "（等了 ${SCREEN_READY_WAIT_MS}ms 内就绪）" else "（等待超时，判定未授权）"
-            )
-            invoke.resolve(JSObject().apply { put("ready", ready) })
-        }.start()
+        val ready = ScreenCaptureManager.isReady()
+        Log.i(TAG, "查询屏幕截取授权：ready=$ready")
+        invoke.resolve(JSObject().apply { put("ready", ready) })
     }
 
     /**

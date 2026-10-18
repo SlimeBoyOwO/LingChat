@@ -34,7 +34,7 @@
       <Button
         type="nav"
         icon="character"
-        @click="goToPetMode"
+        @click="goToPetMode()"
         :active="floatingPetActive"
         v-show="uiStore.showSettings !== true"
       >
@@ -81,6 +81,7 @@ import {
   requestFloatingPetPermission,
   requestScreenCapture,
   showFloatingPet,
+  waitForScreenCapture,
 } from "@/api/services/floating-pet";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
@@ -260,7 +261,12 @@ const leavePetMode = async () => {
   }
 };
 
-const goToPetMode = async () => {
+/**
+ * @param opts.waitScreenReady 是否等待截屏授权落地。只由
+ *   `handleVisibilityChange`（刚从系统授权框回来、自动续跑）传 true ——
+ *   门禁预检不能等，「没就绪」本来就是这一轮的正常状态。
+ */
+const goToPetMode = async (opts?: { waitScreenReady?: boolean }) => {
   if (!isMobile()) {
     // `/pet` 与 `/chat` 是**同一个界面的两种形态**，不是「上一页 / 下一页」。
     // 用 replace 而不是 push：Android 的返回键由 WryActivity 交给 WebView
@@ -341,7 +347,13 @@ const goToPetMode = async () => {
     // 桌宠在手机上的截图键是「直接抓一屏」，没有授权就必然失败 ——
     // 用户看到的是「功能坏了」，而不是「我没给权限」。与其让他进去再撞墙，
     // 不如在门口就说清楚。
-    if (!(await isScreenCaptureReady())) {
+    //
+    // 这里**只在续跑路径上等**授权落地：门禁预检时「没就绪」是正常状态，
+    // 等它就是白等 1.2 秒（真机实测点击到弹窗 ≈1.4s）。
+    const screenReady = opts?.waitScreenReady
+      ? await waitForScreenCapture()
+      : await isScreenCaptureReady();
+    if (!screenReady) {
       // 已经问过一次、回来仍然没有：不再重复弹框，静默收尾。
       // 否则「取消 → 自动重试 → 又弹框」会变成死循环。
       //
@@ -424,7 +436,8 @@ const handleVisibilityChange = async () => {
 
   const status = await getFloatingPetStatus();
   if (status.granted) {
-    await goToPetMode();
+    // 续跑：此刻 token 多半还没换好，要等它落地，否则会被判成「没授权」。
+    await goToPetMode({ waitScreenReady: true });
     return;
   }
 
