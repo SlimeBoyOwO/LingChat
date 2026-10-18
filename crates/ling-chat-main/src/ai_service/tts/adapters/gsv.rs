@@ -130,59 +130,117 @@ fn contains_ascii_letter(text: &str) -> bool {
     text.chars().any(|c| c.is_ascii_alphabetic())
 }
 
-/// 目标峰值：-3 dBFS，乘性对齐后段落间响度一致。
-const WAV_TARGET_PEAK: f32 = 23173.0 / 32767.0;
-/// 低于该峰值视为静音，原样返回（避免把底噪放大成噪声）。
-const WAV_SILENCE_PEAK: f32 = 0.004;
-/// 放大上限：+6 dB。
+/// 目标 RMS：约 -18 dBFS。按人耳感知对齐响度，比峰值对齐稳——峰值会被个别爆破音带偏。
+const WAV_TARGET_RMS: f32 = 0.125;
+/// 峰值上限：-1 dBFS。RMS 增益不得把样本顶到削波。
+const WAV_PEAK_CEILING: f32 = 0.891;
+/// 低于该 RMS 视为静音，不做增益（避免把底噪放大成噪声）。
+const WAV_SILENCE_RMS: f32 = 0.004;
+/// 放大上限：+6 dB。衰减不设下限，否则响度过大的片段的对齐不了。
 const WAV_MAX_GAIN: f32 = 2.0;
+/// 首尾静音裁剪门限：-50 dBFS。
+const WAV_TRIM_THRESHOLD: f32 = 0.003;
+/// 裁剪后保留的留白：句首 15 ms、句尾 60 ms，统一各句的起收节奏。
+const WAV_LEAD_PAD_MS: f32 = 15.0;
+const WAV_TAIL_PAD_MS: f32 = 60.0;
+/// 首尾淡入淡出：5 ms，消掉裁剪点直接起振的咔哒声。
+const WAV_EDGE_FADE_MS: f32 = 5.0;
 
-/// WAV 峰值对齐：不同参考音频带出的响度差会让连续播放忽大忽小，
-/// 这里把每段合成音频统一拉到同一峰值。只做乘性增益，不压缩段内动态；
-/// 仅处理 16-bit PCM，其他格式原样返回。
-fn normalize_wav_peak(bytes: &[u8]) -> Vec<u8> {
-    let Some((data_start, sample_count)) = parse_wav_16bit(bytes) else {
+/// 合成音频后处理，三件事都为了消掉逐句播放时的跳变感：
+/// 1) 裁掉首尾静音再补固定留白——不同参考音频的拖尾长短不一，直接播会让句子节奏忽快忽慢；
+/// 2) 按 RMS 对齐响度并限制峰值——情绪切换时不会忽大忽小，也不削波；
+/// 3) 首尾 5 ms 淡入淡出——裁掉静音后直接起振会有咔哒声。
+/// 只处理单声道 16-bit PCM，其他格式原样返回。
+fn smooth_wav(bytes: &[u8]) -> Vec<u8> {
+    let Some(wav) = parse_wav_16bit(bytes) else {
         return bytes.to_vec();
     };
-    if sample_count == 0 {
+    if wav.samples == 0 {
         return bytes.to_vec();
     }
-    let mut peak = 0i16;
-    for i in 0..sample_count {
-        let offset = data_start + i * 2;
-        let s = i16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
-        let abs = s.saturating_abs();
-        if abs > peak {
-            peak = abs;
+
+    let mut samples: Vec<f32> = Vec::with_capacity(wav.samples);
+    for i in 0..wav.samples {
+        let offset = wav.data_start + i * 2;
+        samples.push(i16::from_le_bytes([bytes[offset], bytes[offset + 1]]) as f32);
+    }
+
+    // 1) 静音裁剪：找到首个与末个有效样本，前后补固定留白
+    let threshold = WAV_TRIM_THRESHOLD * i16::MAX as f32;
+    let (Some(first), Some(last)) = (
+        samples.iter().position(|s| s.abs() > threshold),
+        samples.iter().rposition(|s| s.abs() > threshold),
+    ) else {
+        return bytes.to_vec(); // 整段静音，交给上层按无语音处理
+    };
+    let sr = wav.sample_rate as f32;
+    let lead = (WAV_LEAD_PAD_MS / 1000.0 * sr) as usize;
+    let tail = (WAV_TAIL_PAD_MS / 1000.0 * sr) as usize;
+    let from = first.saturating_sub(lead);
+    let to = (last + 1 + tail).min(samples.len());
+    let mut body = samples[from..to].to_vec();
+
+    // 2) 响度对齐：统计只取语音段，避免留白把 RMS 稀释掉
+    let speech = &samples[first..=last];
+    let rms = (speech.iter().map(|s| s * s).sum::<f32>() / speech.len() as f32).sqrt();
+    if rms / i16::MAX as f32 >= WAV_SILENCE_RMS {
+        let peak = speech.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        let want = WAV_TARGET_RMS * i16::MAX as f32;
+        let mut gain = (want / rms).clamp(0.1, WAV_MAX_GAIN);
+        let ceiling = WAV_PEAK_CEILING * i16::MAX as f32;
+        if peak * gain > ceiling {
+            gain = ceiling / peak.max(1.0);
+        }
+        for s in body.iter_mut() {
+            *s = (*s * gain).round().clamp(i16::MIN as f32, i16::MAX as f32);
         }
     }
-    let peak_ratio = peak as f32 / i16::MAX as f32;
-    if peak_ratio < WAV_SILENCE_PEAK {
-        return bytes.to_vec();
+
+    // 3) 首尾淡入淡出，长度不足两侧各 1 个样本时跳过
+    let fade = ((WAV_EDGE_FADE_MS / 1000.0 * sr) as usize).min(body.len() / 2);
+    let end = body.len().saturating_sub(1);
+    for i in 0..fade {
+        let k = i as f32 / fade as f32;
+        body[i] *= k;
+        body[end - i] *= k;
     }
-    let gain = (WAV_TARGET_PEAK / peak_ratio).min(WAV_MAX_GAIN);
-    if (gain - 1.0).abs() < 0.02 {
-        return bytes.to_vec();
-    }
-    let mut out = bytes.to_vec();
-    for i in 0..sample_count {
-        let offset = data_start + i * 2;
-        let s = i16::from_le_bytes([bytes[offset], bytes[offset + 1]]);
-        let scaled = (s as f32 * gain)
-            .round()
-            .clamp(i16::MIN as f32, i16::MAX as f32) as i16;
-        out[offset..offset + 2].copy_from_slice(&scaled.to_le_bytes());
+
+    // 4) 长度变了，按单声道 16-bit PCM 重建 44 字节头，否则播放器会按旧长度读取
+    let data_len = (body.len() * 2) as u32;
+    let mut out = Vec::with_capacity(44 + data_len as usize);
+    out.extend_from_slice(b"RIFF");
+    out.extend_from_slice(&(36 + data_len).to_le_bytes());
+    out.extend_from_slice(b"WAVEfmt ");
+    out.extend_from_slice(&16u32.to_le_bytes());
+    out.extend_from_slice(&1u16.to_le_bytes()); // PCM
+    out.extend_from_slice(&1u16.to_le_bytes()); // 单声道
+    out.extend_from_slice(&wav.sample_rate.to_le_bytes());
+    out.extend_from_slice(&(wav.sample_rate * 2).to_le_bytes()); // 字节率
+    out.extend_from_slice(&2u16.to_le_bytes()); // 块对齐
+    out.extend_from_slice(&16u16.to_le_bytes()); // 位深
+    out.extend_from_slice(b"data");
+    out.extend_from_slice(&data_len.to_le_bytes());
+    for s in &body {
+        out.extend_from_slice(&(*s as i16).to_le_bytes());
     }
     out
 }
 
-/// 解析 16-bit PCM WAV，返回 (data 起始偏移, 样本数)。不支持或结构异常返回 None。
-fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
+/// 单声道 16-bit PCM WAV 的解析结果。
+struct WavPcm16 {
+    data_start: usize,
+    samples: usize,
+    sample_rate: u32,
+}
+
+/// 解析单声道 16-bit PCM WAV。不支持（含多声道、浮点）或结构异常返回 None。
+fn parse_wav_16bit(bytes: &[u8]) -> Option<WavPcm16> {
     if bytes.len() < 44 || &bytes[0..4] != b"RIFF" || &bytes[8..12] != b"WAVE" {
         return None;
     }
     let mut pos = 12usize;
-    let mut is_16bit = false;
+    let mut fmt_ok = false;
+    let mut sample_rate = 0u32;
     let mut data = None; // (起始偏移, 块大小)
     while pos + 8 <= bytes.len() {
         let id = &bytes[pos..pos + 4];
@@ -193,10 +251,12 @@ fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
                 if size < 16 || body + 16 > bytes.len() {
                     return None;
                 }
-                // 只认 PCM（格式码 1）且 16-bit
+                // 只认单声道 PCM（格式码 1）16-bit；多声道交点样本不做后处理
                 let code = u16::from_le_bytes([bytes[body], bytes[body + 1]]);
+                let channels = u16::from_le_bytes([bytes[body + 2], bytes[body + 3]]);
                 let bits = u16::from_le_bytes([bytes[body + 14], bytes[body + 15]]);
-                is_16bit = code == 1 && bits == 16;
+                fmt_ok = code == 1 && channels == 1 && bits == 16;
+                sample_rate = u32::from_le_bytes(bytes[body + 4..body + 8].try_into().ok()?);
             },
             b"data" => {
                 // 样本只算 data 块内的字节，块后的附加 chunk 不参与
@@ -208,10 +268,14 @@ fn parse_wav_16bit(bytes: &[u8]) -> Option<(usize, usize)> {
         pos = body + size + (size & 1);
     }
     let (start, size) = data?;
-    if !is_16bit {
+    if !fmt_ok || sample_rate == 0 {
         return None;
     }
-    Some((start, size / 2))
+    Some(WavPcm16 {
+        data_start: start,
+        samples: size / 2,
+        sample_rate,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -407,7 +471,7 @@ impl TtsAdapter for GsvAdapter {
             "text": text,
         });
         let bytes = send_tts_request(&self.api_url, &body).await?;
-        Ok(normalize_wav_peak(&bytes))
+        Ok(smooth_wav(&bytes))
     }
 
     fn get_params(&self) -> HashMap<String, JsonValue> {
@@ -672,42 +736,68 @@ mod tests {
     }
 
     fn read_samples(wav: &[u8]) -> Vec<i16> {
-        let (start, count) = parse_wav_16bit(wav).expect("测试 WAV 应可解析");
-        (0..count)
-            .map(|i| i16::from_le_bytes([wav[start + i * 2], wav[start + i * 2 + 1]]))
+        let parsed = parse_wav_16bit(wav).expect("测试 WAV 应可解析");
+        (0..parsed.samples)
+            .map(|i| {
+                let off = parsed.data_start + i * 2;
+                i16::from_le_bytes([wav[off], wav[off + 1]])
+            })
             .collect()
     }
 
     #[test]
-    fn wav_peak_normalize_pulls_down() {
-        let wav = make_wav(&[20000, -20000, 30000, -30000]);
-        let out = normalize_wav_peak(&wav);
-        let samples = read_samples(&out);
-        let peak = samples.iter().map(|v| v.abs()).max().unwrap();
-        // 峰值对齐到 23173（-3 dBFS）附近
-        assert!((peak as i32 - 23173).abs() <= 2);
-        // 相对比例保持
-        let want = (20000f32 / 30000f32 * peak as f32).round() as i16;
-        assert!((samples[0] - want).abs() <= 1);
+    fn smooth_wav_trims_edge_silence() {
+        let mut samples = vec![0i16; 1000];
+        samples.extend(vec![8000i16; 50]);
+        samples.extend(vec![0i16; 8000]);
+        let out = smooth_wav(&make_wav(&samples));
+        let got = read_samples(&out);
+        // 尾部大段静音被裁到固定留白，长度明显变短但语音段不丢
+        assert!(got.len() < samples.len());
+        assert!(got.len() > 50 + 600);
+        // 淡入后首个样本为 0，不会直接起振
+        assert_eq!(got[0], 0);
     }
 
     #[test]
-    fn wav_peak_normalize_caps_gain_and_skips_silence() {
-        // 放大有上限：3000 峰值只放大到 6000（+6 dB）
-        let small = make_wav(&[3000, -3000]);
-        assert_eq!(read_samples(&normalize_wav_peak(&small)), vec![6000, -6000]);
-        // 极小声视为静音，原样返回
-        let quiet = make_wav(&[50, -50]);
-        assert_eq!(normalize_wav_peak(&quiet), quiet);
+    fn smooth_wav_matches_rms() {
+        // 响度差 17 dB 的两句，处理后应拉到同一水平（都在 +6 dB 增益与峰值上限之内）
+        let quiet = smooth_wav(&make_wav(&vec![2600i16; 4000]));
+        let loud = smooth_wav(&make_wav(&vec![18000i16; 4000]));
+        let rms = |wav: &[u8]| {
+            let all = read_samples(wav);
+            // 避开首尾淡入淡出的样本
+            let mid = &all[400..all.len() - 400];
+            (mid.iter().map(|v| (*v as f32).powi(2)).sum::<f32>() / mid.len() as f32).sqrt()
+        };
+        let (a, b) = (rms(&quiet), rms(&loud));
+        assert!((a - b).abs() < 80.0, "RMS 应对齐: {a} vs {b}");
     }
 
     #[test]
-    fn wav_peak_normalize_passthrough_non_wav() {
+    fn smooth_wav_limits_peak_when_rms_is_low() {
+        // 个别尖峰把峰值顶高时，增益受峰值上限约束，不允许削波
+        let mut samples = vec![200i16; 4000];
+        samples[2000] = 32000;
+        let out = smooth_wav(&make_wav(&samples));
+        let peak = read_samples(&out).iter().map(|v| (*v).abs()).max().unwrap();
+        assert!(peak as f32 <= WAV_PEAK_CEILING * i16::MAX as f32 + 2.0);
+    }
+
+    #[test]
+    fn smooth_wav_passthrough_unsupported() {
         let junk = b"not a wav file".to_vec();
-        assert_eq!(normalize_wav_peak(&junk), junk);
-        // 非 16-bit 的 WAV（32-bit float）原样返回
-        let mut wav = make_wav(&[100, -100]);
+        assert_eq!(smooth_wav(&junk), junk);
+        // 非 16-bit（32-bit float）原样返回
+        let mut wav = make_wav(&[5000, -5000]);
         wav[34..36].copy_from_slice(&32u16.to_le_bytes());
-        assert_eq!(normalize_wav_peak(&wav), wav);
+        assert_eq!(smooth_wav(&wav), wav);
+        // 多声道原样返回
+        let mut stereo = make_wav(&[5000, -5000]);
+        stereo[22..24].copy_from_slice(&2u16.to_le_bytes());
+        assert_eq!(smooth_wav(&stereo), stereo);
+        // 整段静音原样返回
+        let silent = make_wav(&[0i16; 1000]);
+        assert_eq!(smooth_wav(&silent), silent);
     }
 }
