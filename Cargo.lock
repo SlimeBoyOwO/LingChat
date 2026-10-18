@@ -5703,7 +5703,7 @@ dependencies = [
  "ort-sys",
  "smallvec",
  "tracing",
- "ureq 3.3.0",
+ "ureq 3.4.2",
 ]
 
 [[package]]
@@ -5715,7 +5715,7 @@ dependencies = [
  "glob",
  "hmac-sha256",
  "lzma-rust2 0.15.8",
- "ureq 3.3.0",
+ "ureq 3.4.2",
 ]
 
 [[package]]
@@ -7329,7 +7329,7 @@ dependencies = [
  "tar",
  "thiserror 2.0.21",
  "tokenizers",
- "ureq 3.3.0",
+ "ureq 3.4.2",
  "zstd",
 ]
 
@@ -7900,6 +7900,8 @@ dependencies = [
 [[package]]
 name = "sherpa-onnx-sys"
 version = "1.13.5"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c1541926ecf70b3d806467a2f100d3d879eef7fd34f8b307028bb074871d7493"
 dependencies = [
  "bzip2 0.4.4",
  "tar",
@@ -9872,6 +9874,22 @@ name = "unty"
 version = "0.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
+
+[[package]]
+name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "flate2",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
+]
 
 [[package]]
 name = "ureq"
