@@ -54,7 +54,7 @@ tracing-subscriber = { version = "0.3", features = [
 #
 # 这里曾经还 patch 过一份 sherpa-onnx-sys（改 build.rs 让它能下官方 GPU 预编译包），
 # 现在删掉了：上游 build.rs 原生支持 SHERPA_ONNX_LIB_DIR，准备运行库的活挪到 Cargo 之外
-# 的脚本里（Android 用官方包、Windows 用自编的 DirectML 变体，见
+# 的脚本里（Windows 用自编的 DirectML 变体、Android 用自编的 NNAPI 变体，见
 # docs/inference-devices.md §9），不必再维护一份副本。
 [patch.crates-io]
 esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }

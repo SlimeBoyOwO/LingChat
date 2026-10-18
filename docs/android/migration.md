@@ -272,10 +272,13 @@ pnpm tauri android dev --target aarch64
   下载走 `hf-mirror.com`），桌面端保留体积更小的 int8；适配器对 Android 上的 int8
   kokoro 直接报错并提示换模型，已安装的 int8 版本在设置页会被标注「当前平台不可用」。
 
-- **NNAPI 实际不会生效**：预编译的 `sherpa-onnx-v1.13.5-android.tar.bz2` 基于 API level 21
-  构建，即使把 provider 设为 `nnapi`，C 库也会打印
-  `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`。
-  日志里的「使用推理后端: nnapi」只是我们请求的值，不是实际后端（实测输出与 cpu 一致）。
+- **NNAPI 需要自编才会生效**：预编译的 `sherpa-onnx-v1.13.5-android.tar.bz2` 基于 API
+  level 21 构建，即使把 provider 设为 `nnapi`，C 库也会打印
+  `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`，
+  实际后端等于 CPU。现在 `pnpm android:build`（经
+  `scripts/package-android-sherpa-libs.mjs`）默认会**构建时自编**一份
+  `-DANDROID_PLATFORM=android-27` 的 sherpa，NNAPI 才真的编进二进制；要退回官方 CPU 包
+  用 `SHERPA_ANDROID_CPU=1 pnpm android:build`。见 `docs/inference-devices.md` §9.2。
 
 - **APK 内的 `data.7z` 必须以 `Stored`（不压缩）方式存放**：aapt2 默认会对
   `assets/data/data.7z` 做 DEFLATE，而 `tauri-plugin-fs` 读 APK 内资源的方式是
