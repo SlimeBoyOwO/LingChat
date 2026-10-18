@@ -16,13 +16,14 @@ use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
 
 /// 本次编译链接进来的 sherpa-onnx 把哪个执行提供方编进去了：`dml`（Windows DirectML
-/// 版，见 scripts/build-desktop-sherpa-dml.mjs）或 `cpu`。
+/// 版，见 scripts/build-desktop-sherpa-dml.mjs）、`nnapi`（Android NNAPI 版，见
+/// scripts/build-android-sherpa-nnapi.mjs）或 `cpu`。
 ///
 /// 由本 crate 的 build.rs 读 `SHERPA_ONNX_LIB_DIR/sherpa-build.json` 发射（见
 /// `emit_sherpa_provider`）——以**实际链接的那套库**为准：上游 build.rs 自己下的官方
-/// 预编译包没编 DirectML，此时请求 GPU 只会被静默降级到 CPU，所以那种情况就不该把
-/// provider 交给 sherpa。
-#[cfg(target_os = "windows")]
+/// 预编译包没编 DirectML / NNAPI，此时请求 GPU 只会被静默降级到 CPU，所以那种情况就
+/// 不该把 provider 交给 sherpa。
+#[cfg(any(target_os = "windows", target_os = "android"))]
 const SHERPA_PROVIDER: &str = env!("SHERPA_ONNX_PROVIDER");
 
 pub struct SherpaOnnxAdapter {
@@ -118,8 +119,11 @@ impl SherpaOnnxAdapter {
     /// 根据是否开启 GPU 加速与目标平台，选择 ONNX Runtime 执行提供方。
     ///
     /// 返回 `None` 表示使用 CPU。各平台：
-    /// - Android: `nnapi`（设备后端；官方包的 API 级别会让它降级，见
-    ///   docs/inference-devices.md）
+    /// - Android: `nnapi`（设备后端，Android 8.1+）。只有本次链接的 sherpa 是**编了
+    ///   NNAPI 的那份**（`pnpm android:build` 会自编，见
+    ///   scripts/build-android-sherpa-nnapi.mjs）才给 `nnapi`：官方 `-android` 包按
+    ///   API 21 编，NNAPI 那段代码根本不在，传了只会打一行 fallback 日志再静默回落
+    ///   CPU。以编译期常量 `SHERPA_ONNX_PROVIDER`（来自 sherpa-build.json）为准。
     /// - Apple（macOS / iOS）: `coreml`
     /// - Windows: 只有本次链接的 sherpa 是**编了 DirectML 的那份**（用
     ///   `pnpm tauri:build:win` 打的包，见 scripts/build-desktop-sherpa-dml.mjs）才给
@@ -133,7 +137,14 @@ impl SherpaOnnxAdapter {
         }
         #[cfg(target_os = "android")]
         {
-            return Some("nnapi");
+            if SHERPA_PROVIDER == "nnapi" {
+                return Some("nnapi");
+            }
+            tracing::warn!(
+                "Sherpa-ONNX 这份构建没编 NNAPI（SHERPA_ONNX_PROVIDER={SHERPA_PROVIDER}），\
+                 本次按 CPU 推理；要 GPU 请用 `pnpm android:build` 打包"
+            );
+            return None;
         }
         #[cfg(target_os = "windows")]
         {

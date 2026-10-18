@@ -28,14 +28,14 @@ fn main() {
     emit_sherpa_provider();
 }
 
-/// 发射编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `cpu`），供
-/// `adapters/sherpa_onnx.rs` 判断「链接进来的这套 sherpa-onnx 到底会不会用 DirectML」。
+/// 发射编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `nnapi` / `cpu`），供
+/// `adapters/sherpa_onnx.rs` 判断「链接进来的这套 sherpa-onnx 到底有没有编 GPU 后端」。
 ///
-/// 判定依据是 `SHERPA_ONNX_LIB_DIR` 里那份 `sherpa-build.json` —— 由
-/// scripts/build-desktop-sherpa-dml.mjs 在自编 DirectML 版时写出。以**实际链接的库**
-/// 为准：目录里带标记才算 DirectML 版；没有标记（上游 build.rs 自己下官方 CPU 包，或者
-/// 没走 `pnpm tauri:build:win` 而直接 cargo build）一律按 CPU 处理 —— 官方包没编
-/// DirectML，把 provider 交给 sherpa 只会静默回落，等于给用户一个假的开关。
+/// 判定依据是 `SHERPA_ONNX_LIB_DIR` 里那份 `sherpa-build.json` —— 由自编脚本在构建时
+/// 写出（`scripts/build-desktop-sherpa-dml.mjs` 写 `dml`、`scripts/build-android-sherpa-nnapi.mjs`
+/// 写 `nnapi`）。以**实际链接的库**为准：目录里带标记才算 GPU 版；没有标记（上游 build.rs
+/// 自己下官方预编译包，或者直接 cargo build）一律按 CPU 处理 —— 官方包没编 DirectML /
+/// NNAPI，把 provider 交给 sherpa 只会静默回落，等于给用户一个假的开关。
 fn emit_sherpa_provider() {
     println!("cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR");
     println!("cargo:rerun-if-env-changed=SHERPA_ONNX_GPU");
@@ -50,6 +50,7 @@ fn emit_sherpa_provider() {
 
     let provider = match provider.as_deref() {
         Some("dml") => "dml",
+        Some("nnapi") => "nnapi",
         Some(other) => {
             println!(
                 "cargo:warning=sherpa-build.json 里的 provider={other} 无法识别，本次按 CPU 处理"
@@ -57,7 +58,15 @@ fn emit_sherpa_provider() {
             "cpu"
         },
         None => {
-            if std::env::var("SHERPA_ONNX_GPU").is_ok_and(|v| v.trim().eq_ignore_ascii_case("dml"))
+            let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+            if target_os == "android" {
+                println!(
+                    "cargo:warning=这份构建链接的是没编 NNAPI 的 sherpa（官方预编译包按 API 21 编），\
+                     Android 的「GPU 推理」开关会诚实地回落 CPU。要 GPU 请用 `pnpm android:build`\
+                     （会自编 NNAPI 版，见 scripts/build-android-sherpa-nnapi.mjs）。"
+                );
+            } else if std::env::var("SHERPA_ONNX_GPU")
+                .is_ok_and(|v| v.trim().eq_ignore_ascii_case("dml"))
             {
                 println!(
                     "cargo:warning=SHERPA_ONNX_GPU=dml，但 SHERPA_ONNX_LIB_DIR 里没有 \
