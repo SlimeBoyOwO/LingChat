@@ -23,6 +23,7 @@ pub struct AIService {
     pub db: DatabaseConnection,
     pub data_dir: PathBuf,
     pub game_status: Arc<Mutex<GameStatus>>,
+    pub save_service: Arc<crate::ai_service::game_system::save_service::SaveService>,
     pub config: AIServiceConfig,
 
     pub init_character_id: Option<i32>, // 注释：这个是用于标记游戏状态初始化角色的
@@ -67,6 +68,7 @@ impl AIService {
             db,
             data_dir,
             game_status,
+            save_service: Arc::new(Default::default()),
             config: AIServiceConfig::default(),
             init_character_id: None,
             prompt_options: None,

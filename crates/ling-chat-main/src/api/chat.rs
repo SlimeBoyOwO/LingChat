@@ -445,6 +445,8 @@ pub async fn rollback_conversation(
     let _lock = gen_lock.lock().await;
 
     let remaining = {
+        let saves = state.ai_service.lock().await.save_service.clone();
+        let _save_guard = saves.gate.lock().await;
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
@@ -565,6 +567,8 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     let _ = app.emit("tts://status-changed", ());
 
     let file_name = {
+        let saves = state.ai_service.lock().await.save_service.clone();
+        let _save_guard = saves.gate.lock().await;
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
