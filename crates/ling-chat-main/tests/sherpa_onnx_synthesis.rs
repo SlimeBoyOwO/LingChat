@@ -54,6 +54,14 @@ const LONG_TEXT: &str = "老师早。今天天气很好，我们一起去散步�
 我想先把昨天的作业交给你，顺便问问你有没有什么需要我帮忙的事情，\
 比如第 3 章的那些题目。";
 
+/// 数字读法回归：同一句话的「阿拉伯数字」与「汉字数字」两版。
+///
+/// 中文模型走 CharacterLexicon 时，非汉字在缺 rule_fsts 的情况下会被直接丢词
+/// （日志 `Ignore OOV '3'`），用户听到的是「第 3 章」读成「第 章」。挂上模型自带的
+/// `number.fst` 后阿拉伯数字会在分词前被改写成汉字，两版时长应该接近。
+const DIGIT_TEXT: &str = "第 3 章很重要。";
+const DIGIT_TEXT_HAN: &str = "第三章很重要。";
+
 /// 解析 44 字节 WAV 头并取出单声道 16 位样本。
 fn parse_wav(wav: &[u8]) -> (u32, Vec<i16>) {
     assert!(wav.len() > 44, "WAV 太短: {} 字节", wav.len());
@@ -221,6 +229,42 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         .fold(0.0_f64, f64::max);
     assert!(lead <= 0.15, "段首静音未裁干净：{:.0}ms", lead * 1000.0);
     assert!(trail <= 0.2, "段尾静音未裁干净：{:.0}ms", trail * 1000.0);
+
+    // 数字读法回归：只对「模型目录里带规则 FST」的模型断言——那正是 with_rule_files 真正
+    // 挂上去的东西（matcha-zh 的 phone/date/number.fst、kokoro 的 *-zh.fst）。
+    // zipvoice 的 impl 不消费 rule_fsts（上游实现如此），数字走 espeak 英文路径，且它的
+    // 时长抖动有 ±0.3 秒，用时长断言会假失败，这里直接跳过。
+    let rule_fst = std::fs::read_dir(&model_dir).ok().and_then(|it| {
+        it.flatten()
+            .map(|e| e.file_name().to_string_lossy().to_string())
+            .find(|name| name.ends_with(".fst"))
+    });
+    match rule_fst {
+        Some(name) => {
+            println!("数字读法回归：模型目录带规则 FST（{name}），检查阿拉伯数字是否被改写");
+            let mut digit_seconds = 0.0;
+            for (label, text) in [("阿拉伯数字", DIGIT_TEXT), ("汉字数字", DIGIT_TEXT_HAN)]
+            {
+                let wav = adapter
+                    .generate_voice(text, "")
+                    .await
+                    .unwrap_or_else(|e| panic!("{label}数字回归合成失败: {e}"));
+                let (sr, samples) = parse_wav(&wav);
+                let seconds = samples.len() as f64 / f64::from(sr);
+                println!("数字读法: {label}「{text}」→ {seconds:.3}s");
+                if label == "阿拉伯数字" {
+                    digit_seconds = seconds;
+                } else {
+                    assert!(
+                        digit_seconds >= seconds * 0.8,
+                        "阿拉伯数字疑似被丢词：「{DIGIT_TEXT}」{digit_seconds:.3}s vs \
+                         「{DIGIT_TEXT_HAN}」{seconds:.3}s（检查 rule_fsts 是否被挂上）"
+                    );
+                }
+            }
+        },
+        None => println!("数字读法回归：{model_dir} 里没有规则 FST，跳过"),
+    }
 
     // 对比 CPU / GPU 后端性能时看这一行（音频时长本身当然和 provider 无关）。
     println!(

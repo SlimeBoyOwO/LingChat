@@ -607,12 +607,40 @@ fn find_file(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
     ))
 }
 
-/// 若模型目录内附带 Thrax 规则文件（rule_fst.fst / rule.far 等），自动挂载到
-/// `OfflineTtsConfig`，使长文本/数字的书名号、日期等规范化更准确。
+/// 模型目录里可能出现的文本规则 FST，按应用顺序排列。
+///
+/// 中文模型把规则 FST 放在模型目录里，sherpa 会在分词前依次改写文本（实测
+/// `text = tn->Normalize(text)`）：阿拉伯数字「3」先被改写成「三」，再交给 lexicon。
+///
+/// 不挂这些文件时，中文模型的 CharacterLexicon 对非汉字只能丢词——设备日志里就是
+/// `Ignore OOV '3'`，用户听到的是「第 3 章」读成「第 章」。名字与顺序都照上游示例：
+/// matcha-zh 是 `phone/date/number.fst`（scripts/matcha-tts/zh/generate_samples.py），
+/// kokoro 多语种是 `phone-zh/date-zh/number-zh.fst`（scripts/kokoro/v1.1-zh/…）。
+const RULE_FST_ORDER: &[&str] = &[
+    "phone.fst",
+    "date.fst",
+    "number.fst",
+    "phone-zh.fst",
+    "date-zh.fst",
+    "number-zh.fst",
+    // 兜底：有的模型只给一个合并好的规则文件。
+    "rule_fst.fst",
+    "rule_fst.far",
+    "rule.fst",
+];
+
+/// 若模型目录内附带文本规则 FST（matcha-zh 的 `number/date/phone.fst`、kokoro 的
+/// `*-zh.fst` 等），自动挂载到 `OfflineTtsConfig`，使数字、日期、电话号码在读之前
+/// 先被改写成可读文本。
 fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTtsConfig {
-    if let Some(fst) = find_file_optional(model_dir, &["rule_fst.fst", "rule_fst.far", "rule.fst"])
-    {
-        config.rule_fsts = Some(fst.to_string_lossy().to_string());
+    let fsts: Vec<String> = RULE_FST_ORDER
+        .iter()
+        .filter_map(|name| find_file_optional(model_dir, &[name]))
+        .map(|path| path.to_string_lossy().to_string())
+        .collect();
+    if !fsts.is_empty() {
+        // sherpa 侧按逗号切分，依次 Normalize。
+        config.rule_fsts = Some(fsts.join(","));
     }
     if let Some(far) = find_file_optional(model_dir, &["rulefst.far", "rule.far"]) {
         config.rule_fars = Some(far.to_string_lossy().to_string());
