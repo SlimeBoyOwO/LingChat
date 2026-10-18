@@ -118,9 +118,24 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
+      # Windows：编 DirectML 版 sherpa-onnx。
+      # 官方预编译包只有 CPU 版，而情绪模型用的 WinML onnxruntime.dll 本身带 DML EP，
+      # 所以这边自编一份「共享库版 sherpa」复用它，GPU 开关才是真的（docs/inference-devices.md §9.1）。
+      # 脚本自己会准备 ORT 依赖（pnpm run init 已跑过）、下 sherpa 源码、编库、暂存 DLL
+      # 并生成 --config；签名/updater 产物照旧由 TAURI_SIGNING_* 环境变量驱动。
+      - name: 构建 Tauri 应用（Windows：自编 DirectML）
+        if: matrix.platform == 'windows-amd64'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUSTFLAGS: -C linker=rust-lld
+        run: pnpm tauri:build:win
+
       # 其它平台：tauri-action 直接构建
       - name: 构建 Tauri 应用
-        if: matrix.platform != 'linux-amd64'
+        if: matrix.platform != 'linux-amd64' && matrix.platform != 'windows-amd64'
         uses: tauri-apps/tauri-action@v1
         continue-on-error: true
         env:
