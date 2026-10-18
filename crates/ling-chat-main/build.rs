@@ -25,78 +25,60 @@ fn main() {
         );
     }
 
-    emit_sherpa_gpu_variant();
+    emit_sherpa_provider();
 }
 
-/// 发射编译期常量 `SHERPA_ONNX_GPU_VARIANT`，供 `adapters/sherpa_onnx.rs` 判断
-/// 「链接进来的 sherpa-onnx 是不是官方 CUDA 包」。
+/// 发射编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `cpu`），供
+/// `adapters/sherpa_onnx.rs` 判断「链接进来的这套 sherpa-onnx 到底会不会用 DirectML」。
 ///
-/// 以前这个常量由 vendored 的 sherpa-onnx-sys build.rs 发射，那份副本删掉之后
-/// 改由本 crate 负责：`SHERPA_ONNX_GPU` 决定要哪个变体，`SHERPA_ONNX_LIB_DIR`
-/// （由 scripts/fetch-sherpa-onnx-libs.mjs 导出）决定实际链接哪套库 —— 两者不一致
-/// 时以**实际链接的库**为准，宁可退回 CPU 也不要让运行期去点不存在的 CUDA provider。
-///
-/// 别名表与 scripts/stage-desktop-runtime-libs.mjs 的 `resolveVariant`、
-/// scripts/fetch-sherpa-onnx-libs.mjs 保持一致；改一处要改三处。
-fn emit_sherpa_gpu_variant() {
-    println!("cargo:rerun-if-env-changed=SHERPA_ONNX_GPU");
+/// 判定依据是 `SHERPA_ONNX_LIB_DIR` 里那份 `sherpa-build.json` —— 由
+/// scripts/build-desktop-sherpa-dml.mjs 在自编 DirectML 版时写出。以**实际链接的库**
+/// 为准：目录里带标记才算 DirectML 版；没有标记（上游 build.rs 自己下官方 CPU 包，或者
+/// 没走 `pnpm tauri:build:win` 而直接 cargo build）一律按 CPU 处理 —— 官方包没编
+/// DirectML，把 provider 交给 sherpa 只会静默回落，等于给用户一个假的开关。
+fn emit_sherpa_provider() {
     println!("cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR");
-
-    let raw = std::env::var("SHERPA_ONNX_GPU").unwrap_or_default();
-    let requested = match raw.trim().to_ascii_lowercase().as_str() {
-        "" | "0" | "off" | "false" | "cpu" | "none" => "cpu",
-        "12" | "cuda" | "cuda12" | "cuda-12" => "cuda12",
-        "13" | "cuda13" | "cuda-13" => "cuda13",
-        other => panic!("SHERPA_ONNX_GPU 取值无法识别: {other}（可用: cpu / cuda12 / cuda13）"),
-    };
+    println!("cargo:rerun-if-env-changed=SHERPA_ONNX_GPU");
 
     let lib_dir = std::env::var_os("SHERPA_ONNX_LIB_DIR").map(std::path::PathBuf::from);
-    let variant = match (&lib_dir, requested) {
-        // 没给库目录：上游 build.rs 会自己下官方 CPU 包，这次编出来就是 CPU 版。
-        (None, "cpu") => "cpu",
-        (None, want) => {
+    let provider = lib_dir
+        .as_ref()
+        .map(|dir| dir.join("sherpa-build.json"))
+        .filter(|marker| marker.is_file())
+        .and_then(|marker| std::fs::read_to_string(marker).ok())
+        .and_then(|text| parse_sherpa_build_provider(&text));
+
+    let provider = match provider.as_deref() {
+        Some("dml") => "dml",
+        Some(other) => {
             println!(
-                "cargo:warning=SHERPA_ONNX_GPU={raw}，但没设 SHERPA_ONNX_LIB_DIR：本次按 CPU 包编译。\
-                 先跑 `node scripts/fetch-sherpa-onnx-libs.mjs --variant={want} --print-env` 并 eval 它，\
-                 或直接用 `pnpm tauri:build:gpu`（会串好这两步）。"
+                "cargo:warning=sherpa-build.json 里的 provider={other} 无法识别，本次按 CPU 处理"
             );
             "cpu"
         },
-        // 给了库目录却没看到 CUDA provider 库：目录与变体不匹配，按 CPU 处理（有日志）。
-        (Some(dir), want) if want != "cpu" && !has_cuda_provider(dir) => {
-            println!(
-                "cargo:warning=SHERPA_ONNX_LIB_DIR={} 里没有 CUDA 执行提供方库，\
-                 与 SHERPA_ONNX_GPU={raw} 不符：本次按 CPU 包编译。",
-                dir.display()
-            );
+        None => {
+            if std::env::var("SHERPA_ONNX_GPU").is_ok_and(|v| v.trim().eq_ignore_ascii_case("dml"))
+            {
+                println!(
+                    "cargo:warning=SHERPA_ONNX_GPU=dml，但 SHERPA_ONNX_LIB_DIR 里没有 \
+                     sherpa-build.json（不像 DirectML 版产物），本次按 CPU 编译。\
+                     请用 `pnpm tauri:build:win`。"
+                );
+            }
             "cpu"
         },
-        (Some(_), want) => want,
     };
 
-    if variant != "cpu" && std::env::var_os("CARGO_FEATURE_SHERPA_SHARED").is_none() {
-        println!(
-            "cargo:warning=GPU 变体需要 `--features sherpa-shared`：官方 CUDA 包只有动态库，\
-             静态链接会链不上（上游 build.rs 也拒绝 static 与 shared 同时开）。"
-        );
-    }
-
-    println!("cargo:rustc-env=SHERPA_ONNX_GPU_VARIANT={variant}");
+    println!("cargo:rustc-env=SHERPA_ONNX_PROVIDER={provider}");
 }
 
-/// 目录里有没有 CUDA 执行提供方（`libonnxruntime_providers_cuda.so` / `.dll`）。
-fn has_cuda_provider(dir: &std::path::Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(dir) else {
-        return false;
-    };
-    entries.flatten().any(|entry| {
-        entry
-            .file_name()
-            .to_string_lossy()
-            .starts_with("libonnxruntime_providers_cuda")
-            || entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("onnxruntime_providers_cuda")
-    })
+/// 从 sherpa-build.json 里抠出 `provider` 的值。
+/// 只有一个键要读，不值得为它给 build.rs 引 JSON 依赖。
+fn parse_sherpa_build_provider(text: &str) -> Option<String> {
+    const KEY: &str = "\"provider\"";
+    let rest = &text[text.find(KEY)? + KEY.len()..];
+    let rest = rest[rest.find(':')? + 1..].trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }

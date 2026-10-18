@@ -4350,7 +4350,6 @@ dependencies = [
  "image",
  "indoc",
  "infer 0.19.0",
- "libloading 0.8.9",
  "ling-chat-notes",
  "mdns-sd",
  "ndarray",

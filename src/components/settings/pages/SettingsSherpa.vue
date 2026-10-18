@@ -106,12 +106,18 @@
             </div>
             <div class="config-item">
               <label class="config-label">{{ t("settings.sherpa.useGpu") }}</label>
-              <label class="toggle-wrapper">
-                <input v-model="config.use_gpu" type="checkbox" class="toggle-input" />
+              <label class="toggle-wrapper" :class="{ disabled: gpuUnsupported }">
+                <input
+                  v-model="config.use_gpu"
+                  type="checkbox"
+                  class="toggle-input"
+                  :disabled="gpuUnsupported"
+                />
                 <span class="toggle-track">
                   <span class="toggle-thumb" />
                 </span>
               </label>
+              <p v-if="gpuSwitchHint" class="gpu-hint">{{ gpuSwitchHint }}</p>
             </div>
           </div>
         </section>
@@ -277,6 +283,7 @@ import {
 } from "@/api/services/tts/tts-local";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { decodePathFileName } from "@/utils/path";
+import { isAndroid, isIOS, isMacOS, isWindows } from "@/utils/platform";
 import { audioDialogFilters } from "@/utils/dialogFilters";
 import { useUIStore } from "@/stores/modules/ui/ui";
 
@@ -304,6 +311,16 @@ const config = ref({
   speed: 1.0,
   ref_audio_path: "",
   ref_text: "",
+});
+
+/// Linux 桌面上 sherpa-onnx 只剩 CPU（GPU 只能走官方 CUDA 包，安装包 +235 MB，已按
+/// 体积取舍移除），置灰开关并说明；Windows 上提醒需要 DirectML 版构建
+/// （`pnpm tauri:build:win`）。详见 docs/inference-devices.md §9。
+const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
+const gpuSwitchHint = computed(() => {
+  if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
+  if (isWindows()) return t("settings.sherpa.useGpuWindowsHint");
+  return "";
 });
 
 const refAudioName = computed(() => {
@@ -674,6 +691,11 @@ const formatSize = (bytes: number): string => {
   display: inline-flex;
 }
 
+.toggle-wrapper.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
 .toggle-input {
   display: none;
 }
@@ -704,6 +726,12 @@ const formatSize = (bytes: number): string => {
 
 .toggle-input:checked + .toggle-track .toggle-thumb {
   transform: translateX(18px);
+}
+
+.gpu-hint {
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 .param-grid {
