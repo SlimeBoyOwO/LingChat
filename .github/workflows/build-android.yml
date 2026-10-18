@@ -117,6 +117,24 @@ jobs:
       - name: 构建 Android APK
         run: pnpm android:build
 
+      - name: 校验打进包里的 sherpa 是 NNAPI 版
+        # `pnpm android:build` 默认会自编 NNAPI 版 sherpa（约十几分钟）；但如果前置条件
+        # （NDK/cmake）缺失，脚本会安静回落到官方 CPU 包。发行版不能打出「假 GPU 包」，
+        # 所以对已经进 jniLibs 的那份 .so 再验一次：自编版含 "Use nnapi"，官方 CPU 包
+        # 只含 "Android NNAPI requires API level >= 27" 那段回落提示。
+        run: |
+          LIB="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libsherpa-onnx-c-api.so"
+          test -f "$LIB" || { echo "::error::找不到 $LIB"; exit 1; }
+          if ! strings "$LIB" | grep -q "Use nnapi"; then
+            echo "::error::$LIB 里没有 NNAPI 初始化代码，打进包的是 CPU 版 sherpa"
+            exit 1
+          fi
+          if strings "$LIB" | grep -q "Android NNAPI requires API level >= 27"; then
+            echo "::error::$LIB 是官方预编译包（按 android-21 编的），NNAPI 那段被编掉了"
+            exit 1
+          fi
+          echo "✓ NNAPI 版 sherpa 已进包"
+
       - name: 重命名 APK
         run: |
           VERSION="${{ github.event.inputs.tag_name }}"
