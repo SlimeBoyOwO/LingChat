@@ -269,7 +269,7 @@ import {
   Trash2,
   Loader2,
   X,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { MenuItem, MenuPage } from "../../ui";
