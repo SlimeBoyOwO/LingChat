@@ -40,6 +40,16 @@ const SHERPA_PROVIDER: &str = env!("SHERPA_ONNX_PROVIDER");
 /// token 展平回一条序列再推理，所以这里只需要管好这个缩放系数。
 const SILENCE_SCALE: f32 = 0.6;
 
+/// 一次推理里最多放几句——就是 sherpa 的 `max_num_sentences`，取 0 表示不限。
+///
+/// 超过这个数，sherpa 会把文本里的句子**分批**推理，批与批之间是硬接
+/// （`offline-tts-matcha-impl.h` 里就是 `ans.samples.insert(...)`：没有静音、没有
+/// 淡入淡出），上下文也断在批边界上。我们自己在按标点切句（见 [`split_clauses`]），
+/// 一片里可能有两三个标点（短句合并、`9:30` 这种词内标点），撞上分批就前功尽弃，
+/// 所以干脆不限批：一片永远只跑一次推理，各句 token 展平回一条序列，标点和语气
+/// 都还连着（见 `Process()`）。我们切的每一片最长也就几句话，不存在内存问题。
+const MAX_NUM_SENTENCES: i32 = 0;
+
 /// 首尾静音最多各保留多久（秒）。中间的停顿是句读，要留着；前后的空白在多段台词的
 /// 场景里只会变成「每句都要等一会儿才开口」——zipvoice 逐次推理的段首静音实测能到
 /// 0.4 秒，各模型之间也不一致。
@@ -61,8 +71,10 @@ const ZIPVOICE_NUM_STEPS: i32 = 4;
 const SENTENCE_PUNCT: &[char] = &['。', '！', '？', '.', '!', '?', '…'];
 /// 从句标点（逗号、顿号、分号、冒号）：也切句，后面停 [`CLAUSE_PAUSE`]。
 ///
-/// 只想「按句号切」的话把这里清空即可：逗号会退回原来的处理（换成空格，由模型自己
-/// 决定停顿），整句只做一次推理、语气更连贯，但逗号处的停顿就不可控了。
+/// 只想「按句号切」的话把这里清空即可：逗号会留在文本里交给模型自己处理，整句只做
+/// 一次推理、语气更连贯，但逗号处的停顿长度就不可控了。
+///
+/// 数字/字母中间的这些标点不算断句（`9:30`、`3.14`、`1,000`），见 [`split_clauses`]。
 const CLAUSE_PUNCT: &[char] = &['，', '、', '；', '：', ',', ';', ':', '—'];
 
 /// 小句之间插多长静音（秒）。取值沿用先前实测的自然句读：句号后 0.4 秒左右、
@@ -264,7 +276,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -314,7 +326,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -373,7 +385,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -429,7 +441,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -457,7 +469,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -512,7 +524,7 @@ impl SherpaOnnxAdapter {
                 provider: provider.map(|s| s.to_string()),
                 ..Default::default()
             },
-            max_num_sentences: 2,
+            max_num_sentences: MAX_NUM_SENTENCES,
             silence_scale: SILENCE_SCALE,
             ..Default::default()
         };
@@ -594,6 +606,17 @@ impl TtsAdapter for SherpaOnnxAdapter {
             gen_config.num_steps = ZIPVOICE_NUM_STEPS; // 见 ZIPVOICE_NUM_STEPS
         }
 
+        // 中文文本里数字之间的冒号要先改掉：模型自带的规则 FST 只改数字、不动冒号
+        // （实测「上午9:30」→「上午九:三十」），而冒号在 sherpa 前端会被当句读丢掉，
+        // 念出来是「九三十」。见 chinese_digits::normalize_colon。
+        let with_colons;
+        let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
+            with_colons = crate::ai_service::tts::chinese_digits::normalize_colon(text);
+            &with_colons
+        } else {
+            text
+        };
+
         // 中文文本且模型里没带规则 FST 时，先把阿拉伯数字改写成汉字（见 chinese_digits）：
         // 那些模型下数字读法都不对——CharacterLexicon 会直接丢词，zipvoice 这类会念错
         // （反读实测「第 3 章」听成「对章」）。纯英文台词不改写，数字该按英文念。
@@ -611,13 +634,13 @@ impl TtsAdapter for SherpaOnnxAdapter {
         let clauses = if crate::ai_service::tts::chinese_digits::has_han(text) {
             split_clauses(text)
         } else {
-            vec![(text.to_owned(), 0.0)]
+            vec![(text.to_owned(), 0.0, None)]
         };
 
         let mut assembled: Vec<f32> = Vec::new();
         let mut sample_rate = tts.sample_rate();
 
-        for (clause, pause) in clauses {
+        for (clause, pause, _) in clauses {
             // 数字改写可能带出分隔符，这里按小句统一清掉读不出来的字符
             // （见 strip_unreadable）。
             let piece_text = strip_unreadable(&clause, self.reads_latin);
@@ -827,13 +850,14 @@ fn is_han(c: char) -> bool {
 ///
 /// 三件事：
 ///
-/// 1. 从句标点（`，、；：`、引号）在 sherpa 前端等同于句末——整句会被切成几截分别推理、
-///    再用静音拼回去，每个逗号都让语调和停顿重置一次。换掉之后词边界仍在（前端按
-///    空白切词），句子是一个整体；句末标点 `。！？` 保留（切句与停顿现在由
-///    [`split_clauses`] 显式控制）。
-/// 2. 其余符号（`~`、`～`、`♪`、`♡`、`→`、emoji、孤立括号……）既不在词表里、也不是
-///    汉字，`MatchaTtsLexicon` 会走 **espeak（en-us）兜底**当英文念出来：ASCII `~`
-///    实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」）。
+/// 1. 从句标点（`，、；：,;:—`）要留着：短句合并后一片里有两个小句（见 [`Clause`]），
+///    标点在 sherpa 前端有对应的 token（词表没收录的会退化成 pad），模型据此收语气、
+///    给停顿；换成空格它只是个读不出来的空词（日志里 `Ignore OOV ' '`），停顿全靠模型
+///    临场发挥。标点把这一片切成多份 token 序列也没关系——[`MAX_NUM_SENTENCES`] 之内
+///    仍在一次推理里。
+/// 2. 其余符号（`~`、`～`、`♪`、`♡`、`→`、emoji、孤立括号、引号……）既不在词表里、
+///    也不是汉字，`MatchaTtsLexicon` 会走 **espeak（en-us）兜底**当英文念出来：ASCII
+///    `~` 实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」）。
 /// 3. 模型读不了的文字——英文、罗马音、假名——会被同一套 espeak 兜底音素化：中文
 ///    matcha 的词表里一个英文词都没有，`hello` 这类要么被丢词、要么按字母念；零样本
 ///    的 zipvoice 更糟，夹一句英文会把整句带跑（SenseVoice 反读里冒出参考音频的内容，
@@ -847,8 +871,10 @@ fn strip_unreadable(text: &str, keep_latin: bool) -> String {
         let speakable = is_han(c)
             || c.is_ascii_digit()
             || matches!(c, '０'..='９')
-            // 句末标点留给前端断句（句与句之间的停顿由它决定）。
+            // 句末标点：切句与停顿由 split_clauses 决定，标点本身留给模型收尾。
             || matches!(c, '。' | '！' | '？' | '.' | '!' | '?')
+            // 从句标点：合并短句时放回来的那个（见 Clause），别在这里又抹掉。
+            || CLAUSE_PUNCT.contains(&c)
             || (keep_latin
                 && (c.is_alphanumeric()
                     // 英文缩写里的撇号，留在词里，别把 don't 拆成两个词。
@@ -858,6 +884,10 @@ fn strip_unreadable(text: &str, keep_latin: bool) -> String {
                         && chars[i - 1].is_ascii_alphanumeric()
                         && chars[i + 1].is_ascii_alphanumeric())));
         if speakable && !c.is_whitespace() {
+            // 标点紧贴前面的词：别把符号换出来的空格留在标点前（`别走 ,好嘛`）。
+            if (SENTENCE_PUNCT.contains(&c) || CLAUSE_PUNCT.contains(&c)) && out.ends_with(' ') {
+                out.pop();
+            }
             out.push(c);
         } else if !out.ends_with(' ') {
             // 连续符号/空白只留一个空格，免得前端切出多个空词。
@@ -871,10 +901,9 @@ fn strip_unreadable(text: &str, keep_latin: bool) -> String {
 /// 「饿了」（同一句里连着念就是对的）——短句缺少上下文，模型容易读错、读得生硬。
 /// 短于这个字数的先并到下一句里（末尾实在只剩一句短的，就并回前一句）。
 ///
-/// 这个值不能取大：合并会把该处的标点停顿一起吃掉。取 6 时，聊天回复里极常见的
-/// 「嗯，好的呀，那我们走吧。」（1/3/5 字）会被整段并成一片、一口气念完，听感就是
-/// 「标点处不停、句中乱停」。实测 3 字以上单独合成都没问题（好的呀 / 我觉得 /
-/// 那当然 / 好吧 / 行吧），所以只合并 1~2 字的语气词。
+/// 合并处那个标点会原样放回文本（见 [`Clause`] / [`merge_short_clauses`]），所以
+/// 停顿不会被吃掉；实测同样一句「喂？你在听吗？」，并成「喂？你在听吗？」（标点留着）
+/// 比并成「喂 你在听吗？」（空格）读得准——空格那版 SenseVoice 把「喂」听成「问」。
 const MIN_CLAUSE_CHARS: usize = 3;
 
 /// 情绪 →（语速倍率，停顿倍率）。
@@ -906,35 +935,59 @@ fn emotion_prosody(emo: &str) -> (f32, f32) {
     }
 }
 
+/// 切出来的小句：文本、之后停多久（秒）、以及**被切掉的那个从句标点**（没有就是
+/// `None`）。
+///
+/// 标点要单独留一份，是因为短句合并时得把它放回文本里（见 [`merge_short_clauses`]）：
+/// 直接从文本里丢掉，合并处就只剩一个空格——那在 sherpa 前端是个读不出来的空词，
+/// 模型既读不到标点、也拿不到标点该有的语气。句末标点（`。！？`）本来就写在小句里，
+/// 所以这里只记从句标点。
+type Clause = (String, f32, Option<char>);
+
 /// 按标点把文本切成小句，并给出每句之后该停多久（秒；最后一句是 0）。
 ///
-/// 为什么要自己切：sherpa 自己也会按标点把文本切成若干句、每句一份 token 序列送进
-/// 模型，但**拼接处是硬接**——`offline-tts-matcha-impl.h`（v1.13.5）里多句/多批的
-/// 结果就是 `ans.samples.insert(ans.samples.end(), ...)`，既没有淡入淡出也没有额外
-/// 静音；两截波形在接缝处幅值不连续，听感上就是「咔哒」一声（零样本模型接缝两侧
-/// 音色也会微微跳）。自己切之后每处停顿长度可控，接缝两侧再各做一次淡入淡出
-/// （见 [`apply_edge_fades`]）。
-fn split_clauses(text: &str) -> Vec<(String, f32)> {
-    let mut raw: Vec<(String, f32)> = Vec::new();
+/// 为什么要自己切：sherpa 自己也会按标点把文本切成若干份 token 序列送进模型，但
+/// **拼接处是硬接**——`offline-tts-matcha-impl.h`（v1.13.5）里多句/多批的结果就是
+/// `ans.samples.insert(ans.samples.end(), ...)`，既没有淡入淡出也没有额外静音；两截
+/// 波形在接缝处幅值不连续，听感上就是「咔哒」一声（零样本模型接缝两侧音色也会微微
+/// 跳）。自己切之后每处停顿长度可控，接缝两侧再各做一次淡入淡出（见
+/// [`apply_edge_fades`]）。
+///
+/// 数字/字母**中间**的标点不算断句：`9:30`、`3.14`、`1,000`、`www.bing.com` 都要整块
+/// 念（模型自带的 rule FST 也认这些写法，见 [`crate::ai_service::tts::chinese_digits`]）。
+/// 判定只看前后是不是紧挨着的 ASCII 字母数字，所以全角的 `1，000` 一样不会在那里切。
+fn split_clauses(text: &str) -> Vec<Clause> {
+    let chars: Vec<char> = text.chars().collect();
+    let mut raw: Vec<Clause> = Vec::new();
     let mut cur = String::new();
 
-    for c in text.chars() {
+    for (i, &c) in chars.iter().enumerate() {
+        let inside_word = i > 0
+            && chars[i - 1].is_ascii_alphanumeric()
+            && chars.get(i + 1).is_some_and(|n| n.is_ascii_alphanumeric());
+
         if SENTENCE_PUNCT.contains(&c) {
             cur.push(c);
-            raw.push((std::mem::take(&mut cur), SENTENCE_PAUSE));
+            if !inside_word {
+                raw.push((std::mem::take(&mut cur), SENTENCE_PAUSE, None));
+            }
         } else if CLAUSE_PUNCT.contains(&c) {
-            raw.push((std::mem::take(&mut cur), CLAUSE_PAUSE));
+            if inside_word {
+                cur.push(c);
+            } else {
+                raw.push((std::mem::take(&mut cur), CLAUSE_PAUSE, Some(c)));
+            }
         } else {
             cur.push(c);
         }
     }
     if !cur.trim().is_empty() {
-        raw.push((cur, 0.0));
+        raw.push((cur, 0.0, None));
     }
 
     // 连写的标点（「真的？！」）会切出空片段，只剩标点的片段（「！」「……」）也一起
     // 去掉；整段末尾不留停顿。
-    raw.retain(|(clause, _)| clause.chars().any(char::is_alphanumeric));
+    raw.retain(|(clause, _, _)| clause.chars().any(char::is_alphanumeric));
     if let Some(last) = raw.last_mut() {
         last.1 = 0.0;
     }
@@ -949,40 +1002,46 @@ fn speakable_len(text: &str) -> usize {
 
 /// 把短于 [`MIN_CLAUSE_CHARS`] 的小句并到下一句（末尾的短句并回前一句）。
 ///
-/// 合并处原本的标点换成空格：留着它 sherpa 又会把这一片当成两句、硬接到一起，
-/// 等于白合并。
-fn merge_short_clauses(raw: Vec<(String, f32)>) -> Vec<(String, f32)> {
-    let mut out: Vec<(String, f32)> = Vec::new();
-    let mut pending: Option<(String, f32)> = None;
+/// 合并处原来那个标点要放回去（见 [`Clause`]）：留着它 sherpa 就把这一片切成两份
+/// token 序列——只要不撞上 [`MAX_NUM_SENTENCES`] 就还是一次推理——模型既读得到标点
+/// 带来的语气和停顿，短句也从后半句拿到了上下文。
+fn merge_short_clauses(raw: Vec<Clause>) -> Vec<Clause> {
+    let mut out: Vec<Clause> = Vec::new();
+    let mut pending: Option<Clause> = None;
 
-    for (clause, pause) in raw {
+    for (clause, pause, tail_punct) in raw {
         let merged = match pending.take() {
-            Some((prev, _)) => format!("{} {clause}", trim_tail_punct(&prev)),
-            None => clause,
+            Some((prev, _, prev_punct)) => {
+                (join_clauses(&prev, prev_punct, &clause), pause, tail_punct)
+            },
+            None => (clause, pause, tail_punct),
         };
-        if speakable_len(&merged) < MIN_CLAUSE_CHARS {
-            pending = Some((merged, pause));
+        if speakable_len(&merged.0) < MIN_CLAUSE_CHARS {
+            pending = Some(merged);
         } else {
-            out.push((merged, pause));
+            out.push(merged);
         }
     }
 
-    if let Some((tail, _)) = pending {
+    if let Some((tail, _, _)) = pending {
         match out.last_mut() {
             Some(last) => {
-                last.0 = format!("{} {tail}", trim_tail_punct(&last.0));
+                last.0 = join_clauses(&last.0, last.2, &tail);
+                last.2 = None;
                 last.1 = 0.0; // 并完就是整段最后一句了，后面不留停顿
             },
-            None => out.push((tail, 0.0)),
+            None => out.push((tail, 0.0, None)),
         }
     }
     out
 }
 
-/// 去掉结尾的标点：合并短句时留着它，sherpa 又会把这一片当成两句、硬接到一起。
-fn trim_tail_punct(text: &str) -> &str {
-    text.trim_end_matches(|c: char| SENTENCE_PUNCT.contains(&c) || CLAUSE_PUNCT.contains(&c))
-        .trim_end()
+/// 合并两个小句：把前一句被切掉的标点放回去，而不是塞一个空格。
+fn join_clauses(prev: &str, prev_punct: Option<char>, next: &str) -> String {
+    match prev_punct {
+        Some(punct) => format!("{prev}{punct}{next}"),
+        None => format!("{prev}{next}"),
+    }
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -1445,15 +1504,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 符号换成空格：句末标点保留，逗号/顿号/引号不再断句，`~`/`♪`/emoji 不再被
-    /// espeak 兜底念成英文（ASCII `~` 会被念成 "tilde"）；模型读不了的英文/假名整段剔掉。
+    /// 符号换成空格：句末标点保留，从句标点（逗号/顿号/分号/冒号）也保留（短句合并
+    /// 之后要靠它给停顿），`~`/`♪`/emoji 不再被 espeak 兜底念成英文（ASCII `~` 会被
+    /// 念成 "tilde"）；模型读不了的英文/假名整段剔掉。
     #[test]
     fn strips_unreadable_chars_but_keeps_sentence_ends() {
-        // 认得拉丁字母的模型（kokoro 多语言）：英文原样留着。
+        // 认得拉丁字母的模型（kokoro 多语言）：英文原样留着，标点都留着。
         let latin = true;
         assert_eq!(
             strip_unreadable("他说，你好、今天：很好；真的？", latin),
-            "他说 你好 今天 很好 真的？"
+            "他说，你好、今天：很好；真的？"
         );
         // 句末标点原样保留（切句与停顿由 split_clauses 负责）。
         assert_eq!(
@@ -1465,10 +1525,10 @@ mod tests {
         assert_eq!(strip_unreadable("好～♪♡→呀", latin), "好 呀");
         // 英文缩写里的撇号要留着，别把 don't 拆开。
         assert_eq!(strip_unreadable("I don't ~know~", latin), "I don't know");
-        // 连续符号只留一个空格。
+        // 连续符号只留一个空格；符号换出来的空格不留在标点前面。
         assert_eq!(
             strip_unreadable("他说,\"别走\",好嘛.", latin),
-            "他说 别走 好嘛."
+            "他说, 别走,好嘛."
         );
 
         // 中文模型（matcha / zipvoice）读不了英文、罗马音、假名：连着符号一起剔掉，
@@ -1482,54 +1542,93 @@ mod tests {
         );
         assert_eq!(
             strip_unreadable("AI 帮你查了 wiki，好呀~", no_latin),
-            "帮你查了 好呀"
+            "帮你查了，好呀"
         );
-        // 数字和句末标点必须留着：数字交给 FST / 数字改写，标点决定切句与停顿。
+        // 数字和标点必须留着：数字交给 FST / 数字改写，标点决定切句与停顿
+        // （从句标点是短句合并时放回来的，绝不能在这里又抹掉）。
         assert_eq!(strip_unreadable("第 3 章。", no_latin), "第 3 章。");
+        assert_eq!(strip_unreadable("嗯，好的呀", no_latin), "嗯，好的呀");
     }
 
-    /// 按标点切小句时，句末停顿要长于逗号停顿，末尾不留停顿，空片段丢掉；
-    /// 太短的小句要并到下一句（「对了」单独念会被读成「饿了」）。
+    /// 按标点切小句时，句末停顿要长于逗号停顿，末尾不留停顿，空片段丢掉；太短的小句
+    /// 要并到下一句（「对了」单独念会被读成「饿了」）、且合并处的标点要放回去；数字/
+    /// 字母中间的标点不算断句（`9:30`、`3.14`、`1,000`）。
     #[test]
     fn splits_clauses_with_pauses() {
         assert_eq!(
             split_clauses("他说今天很好，你好呀我的朋友。今天天气真好，我们一起出去玩吧！"),
             vec![
-                ("他说今天很好".to_string(), CLAUSE_PAUSE),
-                ("你好呀我的朋友。".to_string(), SENTENCE_PAUSE),
-                ("今天天气真好".to_string(), CLAUSE_PAUSE),
-                ("我们一起出去玩吧！".to_string(), 0.0),
+                ("他说今天很好".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("你好呀我的朋友。".to_string(), SENTENCE_PAUSE, None),
+                ("今天天气真好".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("我们一起出去玩吧！".to_string(), 0.0, None),
             ]
         );
-        // 两字的小句没有上下文，并到下一句；合并处的标点换成空格。
+        // 两字的小句没有上下文，并到下一句；合并处的标点原样放回去，停顿才不会丢。
         assert_eq!(
             split_clauses("对了，你吃饭了吗？"),
-            vec![("对了 你吃饭了吗？".to_string(), 0.0)]
+            vec![("对了，你吃饭了吗？".to_string(), 0.0, None)]
         );
         // 末尾剩一句短的：并回前一句。
         assert_eq!(
             split_clauses("今天天气真不错。好吧。"),
-            vec![("今天天气真不错 好吧。".to_string(), 0.0)]
+            vec![("今天天气真不错。好吧。".to_string(), 0.0, None)]
         );
         // 3 字以上就单独成句、保留标点停顿（阈值取 6 会把这些并成一片，标点处全没停顿）。
         assert_eq!(
             split_clauses("嗯，好的呀，那我们走吧。"),
             vec![
-                ("嗯 好的呀".to_string(), CLAUSE_PAUSE),
-                ("那我们走吧。".to_string(), 0.0),
+                ("嗯，好的呀".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("那我们走吧。".to_string(), 0.0, None),
             ]
         );
         assert_eq!(
             split_clauses("我觉得，还是算了吧。"),
             vec![
-                ("我觉得".to_string(), CLAUSE_PAUSE),
-                ("还是算了吧。".to_string(), 0.0),
+                ("我觉得".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("还是算了吧。".to_string(), 0.0, None),
             ]
         );
         // 没有标点的整句只有一片。
-        assert_eq!(split_clauses("你好呀"), vec![("你好呀".to_string(), 0.0)]);
+        assert_eq!(
+            split_clauses("你好呀"),
+            vec![("你好呀".to_string(), 0.0, None)]
+        );
         // 连写标点切出来的空片段（只剩「！」）要丢掉。
-        assert_eq!(split_clauses("真的？！"), vec![("真的？".to_string(), 0.0)]);
+        assert_eq!(
+            split_clauses("真的？！"),
+            vec![("真的？".to_string(), 0.0, None)]
+        );
+
+        // 数字/字母中间的标点不算断句：时刻、小数、千分位、域名都要整块念
+        // （以前 `9:30` 会在冒号处切一刀，停顿插进时间中间，读成「上午九，三十开会」）。
+        assert_eq!(
+            split_clauses("上午 9:30 开会，别迟到了。"),
+            vec![
+                ("上午 9:30 开会".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("别迟到了。".to_string(), 0.0, None),
+            ]
+        );
+        assert_eq!(
+            split_clauses("圆周率是 3.14。"),
+            vec![("圆周率是 3.14。".to_string(), 0.0, None)]
+        );
+        assert_eq!(
+            split_clauses("一共 1,000 块，别忘了。"),
+            vec![
+                ("一共 1,000 块".to_string(), CLAUSE_PAUSE, Some('，')),
+                ("别忘了。".to_string(), 0.0, None),
+            ]
+        );
+        // 末尾的短句并回前一句时，那句被切掉的逗号同样要放回去。
+        assert_eq!(
+            split_clauses("一共 1,000 块，收好。"),
+            vec![("一共 1,000 块，收好。".to_string(), 0.0, None)]
+        );
+        assert_eq!(
+            split_clauses("我打开了 www.bing.com。"),
+            vec![("我打开了 www.bing.com。".to_string(), 0.0, None)]
+        );
     }
 
     /// 情绪只落在语速/停顿两个参数上（这些模型没有 emotion 输入），分类走 GSV 六分类。
