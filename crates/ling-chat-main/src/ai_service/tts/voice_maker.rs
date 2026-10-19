@@ -211,11 +211,13 @@ impl VoiceMaker {
         self.availability
     }
 
-    /// 该 TTS 是否按「整句」合成——即适配器忽略 `emo`，同一句被 【情绪】 标签切成
-    /// 几段送进去只会让语调和停顿各自重置。
+    /// 该 TTS 是否按「整句」合成——即同一句被 【情绪】 标签切成几段送进去，
+    /// 语调和停顿会各自重置（生产链见 `StreamProducer`）。
     ///
-    /// 目前只有 sherpa-onnx 走这条路径：它的 `generate_voice` 收下 `_emo` 不用，
-    /// 所以对使用它的角色要把片段拼回一段再合成（生产链见 `StreamProducer`）。
+    /// 目前只有 sherpa-onnx 走这条路径：它的情绪没有模型级入口（只有 `vits` 支持
+    /// `emotion_id`，且要模型自带该输入），情绪只落成语速与停顿（见
+    /// `sherpa_onnx::emotion_prosody`），不换音色——所以拆段合成只会亏了整句语气，
+    /// 换不来情绪差别，仍然拼回一段（合并后取该句第一个情绪标签）。
     pub fn uses_whole_sentence_input(&self) -> bool {
         matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
     }
@@ -736,8 +738,9 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            // 将情绪分类器的预测标签传给 TTS 适配器（IndexTTS2 与 Fish S2
-            // 会消费 emo，其余适配器忽略该参数）。
+            // 将情绪分类器的预测标签传给 TTS 适配器。消费它的有 IndexTTS2 / Fish S2
+            // （切换情绪参考音频或情绪参数）和 sherpa-onnx（没有情绪输入，只把情绪落成
+            // 语速与停顿，见 sherpa_onnx::emotion_prosody）；其余适配器忽略该参数。
             let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {
