@@ -563,11 +563,11 @@ impl TtsAdapter for SherpaOnnxAdapter {
                 text
             };
 
-        // 再把从句标点换成空格（见 soften_clause_punctuation）：数字改写可能带出分隔符，
-        // 放在它后面做。纯英文台词不动，英文的逗号停顿交给模型自己处理。
+        // 再把读不出来的符号换成空格（见 neutralize_symbols）：数字改写可能带出分隔符，
+        // 放在它后面做。纯英文台词不动，英文的标点/货币符号该由模型自己处理。
         let softened;
         let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
-            softened = soften_clause_punctuation(text);
+            softened = neutralize_symbols(text);
             &softened
         } else {
             text
@@ -695,35 +695,41 @@ fn needs_digit_normalization(model_dir: &Path) -> bool {
     rule_fst_paths(model_dir).is_empty()
 }
 
-/// 从句标点（逗号/顿号/分号/冒号/引号）改成空格再送进 sherpa。
+/// 送给 sherpa 之前，把「读不出来、还会被硬念出来」的符号换成空格。
 ///
-/// sherpa 的前端（`character-lexicon.cc` / `matcha-tts-lexicon.cc` / kokoro）会先把
-/// `，、；：` 归一成 `,;:`、`。` 归一成 `.`，随后只要当前词是标点（`IsPunct`）就结束
-/// 当前"句子"、另起一次推理，最后用静音把各截拼回去。也就是说：**整句从没作为一个
-/// 句子进过模型**——每个逗号都让语调和停顿重置一次，段间静音还会被 `SILENCE_SCALE`
-/// 放大。零样本克隆的模型（zipvoice）尤其明显：每一截都照参考音频的句尾语气收。
+/// 两件事一起做：
 ///
-/// 换成空格后句子是一个整体（前端按空白切词，词边界还在），句末标点 `。！？` 保留，
-/// 句与句之间的停顿不受影响。实测同一句：逗号版 7.29s / 4 个停顿，空格版 6.39s /
-/// 2 个停顿。
-fn soften_clause_punctuation(text: &str) -> String {
-    /// 被 sherpa 当"句末"的从句标点。
-    const CLAUSE_PUNCT: [char; 13] = [
-        '，', ',', '、', '；', ';', '：', ':', '“', '”', '‘', '’', '"', '\'',
-    ];
-
+/// 1. 从句标点（`，、；：`、引号）在 sherpa 前端等同于句末——整句会被切成几截分别推理、
+///    再用静音拼回去，每个逗号都让语调和停顿重置一次。换成空格后词边界仍在（前端按
+///    空白切词），句子是一个整体；句末标点 `。！？` 保留，句与句之间的停顿不动。
+/// 2. 其余符号（`~`、`～`、`♪`、`♡`、`→`、emoji、孤立括号……）既不在词表里、也不是
+///    汉字，`MatchaTtsLexicon` 会走 **espeak（en-us）兜底**当英文念出来：ASCII `~`
+///    实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」），零样本的 zipvoice
+///    还会被这一截带跑，整句都念歪（反读里冒出参考音频的词）。换成空格就等于跳过。
+///
+/// 保留的是「读得出来的东西」：字母数字（含汉字/假名）、空白、句末标点 `。！？.`，
+/// 以及英文缩写里的撇号（don't）。
+///
+/// 实测同一句（逗号版 → 本函数处理后）：matcha 7.29s/4 个停顿 → 6.40s/2 个停顿，
+/// zipvoice 7.27s → 6.86s。
+fn neutralize_symbols(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
-    let mut last_space = false;
-    for c in text.chars() {
-        if CLAUSE_PUNCT.contains(&c) {
-            // 连续标点只留一个空格，免得前端切出多个空词。
-            if !last_space {
-                out.push(' ');
-                last_space = true;
-            }
-        } else {
+    for (i, &c) in chars.iter().enumerate() {
+        let speakable = c.is_alphanumeric()
+            // 句末标点留给前端断句（句与句之间的停顿由它决定）。
+            || matches!(c, '。' | '！' | '？' | '.' | '!' | '?')
+            // 英文缩写里的撇号，留在词里，别把 don't 拆成两个词。
+            || (matches!(c, '\'' | '’')
+                && i > 0
+                && i + 1 < chars.len()
+                && chars[i - 1].is_ascii_alphanumeric()
+                && chars[i + 1].is_ascii_alphanumeric());
+        if speakable && !c.is_whitespace() {
             out.push(c);
-            last_space = c == ' ';
+        } else if !out.ends_with(' ') {
+            // 连续符号/空白只留一个空格，免得前端切出多个空词。
+            out.push(' ');
         }
     }
     out.trim().to_string()
@@ -1086,23 +1092,26 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 从句标点换空格：句末标点保留，逗号/顿号/引号不再让 sherpa 断句。
+    /// 符号换成空格：句末标点保留，逗号/顿号/引号不再断句，`~`/`♪`/emoji 不再被
+    /// espeak 兜底念成英文（ASCII `~` 会被念成 "tilde"）。
     #[test]
-    fn softens_clause_punctuation_but_keeps_sentence_ends() {
+    fn neutralizes_symbols_but_keeps_sentence_ends() {
         assert_eq!(
-            soften_clause_punctuation("他说，你好、今天：很好；真的？"),
+            neutralize_symbols("他说，你好、今天：很好；真的？"),
             "他说 你好 今天 很好 真的？"
         );
         // 句末标点原样保留（前端仍按它分句，句间停顿不变）。
         assert_eq!(
-            soften_clause_punctuation("你好。真的吗！好呀？"),
+            neutralize_symbols("你好。真的吗！好呀？"),
             "你好。真的吗！好呀？"
         );
-        // 半角标点与引号同样处理，连续标点只留一个空格。
-        assert_eq!(
-            soften_clause_punctuation("他说,\"别走\",好嘛."),
-            "他说 别走 好嘛."
-        );
+        // 波浪号、音乐符号、箭头、装饰符号一律换成空格。
+        assert_eq!(neutralize_symbols("好~呀"), "好 呀");
+        assert_eq!(neutralize_symbols("好～♪♡→呀"), "好 呀");
+        // 英文缩写里的撇号要留着，别把 don't 拆开。
+        assert_eq!(neutralize_symbols("I don't ~know~"), "I don't know");
+        // 连续符号只留一个空格。
+        assert_eq!(neutralize_symbols("他说,\"别走\",好嘛."), "他说 别走 好嘛.");
     }
 
     /// 解析 WAV 字节并返回 (采样率, 单声道样本数)。
