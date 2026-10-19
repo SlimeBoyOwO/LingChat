@@ -45,6 +45,36 @@ const SILENCE_SCALE: f32 = 0.6;
 const LEAD_SILENCE_KEEP: f32 = 0.1;
 const TRAIL_SILENCE_KEEP: f32 = 0.15;
 
+/// ZipVoice 的 flow-matching 推理步数。
+///
+/// 官方文档与示例都用 4（`--num-steps=4`，见 `python-api-examples/zipvoice-tts.py`、
+/// `c-api-examples/zipvoice-tts-zh-en-c-api.c`），而 sherpa-onnx 的 Rust 绑定
+/// `GenerationConfig::default()` 给的是 5，原生侧 `SHERPA_ONNX_OR(config->num_steps, 5)`
+/// 又把这个 5 原样透传，于是每次都比官方多跑一步。实测 4/5/8/16 步的输出时长
+/// （3.50~3.74 秒）与音色（余弦距离 1.1~5.5‰，与同一配置重复生成的抖动同量级）没有
+/// 可辨差别，16 步只是把耗时从 5.7 秒拉到 18.2 秒——所以这里不是为了修音质，而是
+/// 对齐上游、顺带省一步推理。
+const ZIPVOICE_NUM_STEPS: i32 = 4;
+
+/// 句末标点：在这里切句，标点本身留在小句里（模型据此收尾），后面停 [`SENTENCE_PAUSE`]。
+const SENTENCE_PUNCT: &[char] = &['。', '！', '？', '.', '!', '?', '…'];
+/// 从句标点（逗号、顿号、分号、冒号）：也切句，后面停 [`CLAUSE_PAUSE`]。
+///
+/// 只想「按句号切」的话把这里清空即可：逗号会退回原来的处理（换成空格，由模型自己
+/// 决定停顿），整句只做一次推理、语气更连贯，但逗号处的停顿就不可控了。
+const CLAUSE_PUNCT: &[char] = &['，', '、', '；', '：', ',', ';', ':', '—'];
+
+/// 小句之间插多长静音（秒）。取值沿用先前实测的自然句读：句号后 0.4 秒左右、
+/// 逗号后 0.2 秒左右（见 SILENCE_SCALE 的注释）。
+const SENTENCE_PAUSE: f32 = 0.40;
+const CLAUSE_PAUSE: f32 = 0.20;
+
+/// 拼接处淡入淡出多久（秒）。20ms 足够把波形接缝压回静音，又短到听不出音量变化。
+const JOINT_FADE: f32 = 0.02;
+
+/// 静音判定阈值，与 sherpa 的 `ScaleSilence` 一致（0.01，约 -40 dBFS）。
+const SILENCE_AMP: f32 = 0.01;
+
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
     sid: i32,
@@ -59,6 +89,10 @@ pub struct SherpaOnnxAdapter {
     reference_text: Option<String>,
     /// 中文模型 + 模型目录里没有规则 FST 时，需要在合成前把阿拉伯数字改写成汉字。
     digit_normalization: bool,
+    /// 模型自己认得拉丁字母 / 日文假名吗。kokoro 多语言版带英文词表（`lexicon-us-en.txt`）
+    /// 所以认得；中文 matcha / zipvoice 的词表里一个拉丁字母都没有。不认得时，汉字句子
+    /// 里夹的英文、罗马音、假名要在合成前剔掉，见 [`strip_unreadable`]。
+    reads_latin: bool,
 }
 
 impl SherpaOnnxAdapter {
@@ -120,8 +154,9 @@ impl SherpaOnnxAdapter {
         // 中文模型若模型目录里没带规则 FST（zipvoice/supertonic 的实现不读 rule_fsts，
         // 别的中文模型也可能没随包带），数字得由我们在送进 sherpa 之前改写。
         let digit_normalization = needs_digit_normalization(model_dir);
+        let reads_latin = model_reads_latin(model_dir);
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}",
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 认得拉丁字母={reads_latin}",
             provider.unwrap_or("cpu")
         );
 
@@ -138,6 +173,7 @@ impl SherpaOnnxAdapter {
             reference_sample_rate: None,
             reference_text: None,
             digit_normalization,
+            reads_latin,
         })
     }
 
@@ -540,7 +576,7 @@ impl TtsAdapter for SherpaOnnxAdapter {
             .as_ref()
             .ok_or_else(|| anyhow!("Sherpa-ONNX 引擎未初始化"))?;
 
-        let gen_config = GenerationConfig {
+        let mut gen_config = GenerationConfig {
             sid: self.sid,
             speed: self.speed,
             // 见 SILENCE_SCALE：压掉两成的默认值会让句读停顿和逗号停顿分不出来。
@@ -550,6 +586,9 @@ impl TtsAdapter for SherpaOnnxAdapter {
             reference_text: self.reference_text.clone(),
             ..Default::default()
         };
+        if self.model_type == "zipvoice" {
+            gen_config.num_steps = ZIPVOICE_NUM_STEPS; // 见 ZIPVOICE_NUM_STEPS
+        }
 
         // 中文文本且模型里没带规则 FST 时，先把阿拉伯数字改写成汉字（见 chinese_digits）：
         // 那些模型下数字读法都不对——CharacterLexicon 会直接丢词，zipvoice 这类会念错
@@ -563,28 +602,63 @@ impl TtsAdapter for SherpaOnnxAdapter {
                 text
             };
 
-        // 再把读不出来的符号换成空格（见 neutralize_symbols）：数字改写可能带出分隔符，
-        // 放在它后面做。纯英文台词不动，英文的标点/货币符号该由模型自己处理。
-        let softened;
-        let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
-            softened = neutralize_symbols(text);
-            &softened
+        // 汉字句子按标点自己切句、逐句推理、再拼回去（见 split_clauses）：纯英文台词
+        // 不切，英文的标点交给模型自己处理。
+        let clauses = if crate::ai_service::tts::chinese_digits::has_han(text) {
+            split_clauses(text)
         } else {
-            text
+            vec![(text.to_owned(), 0.0)]
         };
 
-        let audio = tts
-            .generate_with_config(text, &gen_config, None::<fn(&[f32], f32) -> bool>)
-            .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败"))?;
+        let mut assembled: Vec<f32> = Vec::new();
+        let mut sample_rate = tts.sample_rate();
 
-        let sample_rate = audio.sample_rate();
+        for (clause, pause) in clauses {
+            // 数字改写可能带出分隔符，这里按小句统一清掉读不出来的字符
+            // （见 strip_unreadable）。
+            let piece_text = strip_unreadable(&clause, self.reads_latin);
+            // 只剩标点的小句（「……」「~」）没有可念的字，跳过：丢给模型只会得到一段
+            // 空音频或一声怪音。
+            if !piece_text.chars().any(char::is_alphanumeric) {
+                continue;
+            }
 
-        if audio.samples().is_empty() {
+            let audio = tts
+                .generate_with_config(&piece_text, &gen_config, None::<fn(&[f32], f32) -> bool>)
+                .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败（小句「{piece_text}」）"))?;
+            if audio.samples().is_empty() {
+                return Err(anyhow!(
+                    "Sherpa-ONNX 生成的音频为空（小句「{piece_text}」）"
+                ));
+            }
+            sample_rate = audio.sample_rate();
+
+            // 每片的静音都去掉：停顿由我们按标点精确插入，片自带的静音只会让停顿
+            // 忽长忽短；接缝两侧各做一次淡入淡出，避免波形跳变听起来是「咔哒」。
+            let edge = strip_edge_silence(audio.samples());
+            if edge.is_empty() {
+                continue;
+            }
+            let start = assembled.len();
+            assembled.extend_from_slice(edge);
+            apply_edge_fades(&mut assembled[start..], sample_rate);
+
+            if pause > 0.0 {
+                assembled.extend_from_slice(&vec![0.0; (sample_rate as f32 * pause) as usize]);
+            }
+        }
+
+        if assembled.is_empty() {
             return Err(anyhow!("Sherpa-ONNX 生成的音频为空"));
         }
 
-        // 首尾的空白裁到固定上限，中间的句读停顿交给 SILENCE_SCALE 决定。
-        let samples = trim_edge_silence(audio.samples().to_vec(), sample_rate);
+        // 首尾各留一点点静音（与串联多段台词时的观感一致，见 LEAD/TRAIL_SILENCE_KEEP）。
+        let lead = vec![0.0; (sample_rate as f32 * LEAD_SILENCE_KEEP) as usize];
+        let trail = vec![0.0; (sample_rate as f32 * TRAIL_SILENCE_KEEP) as usize];
+        let mut samples = Vec::with_capacity(lead.len() + assembled.len() + trail.len());
+        samples.extend_from_slice(&lead);
+        samples.extend_from_slice(&assembled);
+        samples.extend_from_slice(&trail);
 
         Ok(f32_to_wav(&samples, sample_rate))
     }
@@ -695,36 +769,89 @@ fn needs_digit_normalization(model_dir: &Path) -> bool {
     rule_fst_paths(model_dir).is_empty()
 }
 
-/// 送给 sherpa 之前，把「读不出来、还会被硬念出来」的符号换成空格。
+/// 模型自己认得拉丁字母 / 日文假名吗——决定汉字句子里的英文、罗马音、假名要不要剔掉。
 ///
-/// 两件事一起做：
+/// 依据是「模型目录里的词表认不认识拉丁字母」：kokoro 多语言版自带英文词表
+/// （`lexicon-us-en.txt` / `lexicon-gb-en.txt`），英文片段能直接读；中文 matcha /
+/// zipvoice 的词表里一个带字母的词条都没有（实测三张中文表 66k / 68k 条，键里含
+/// 拉丁字母的条目数为 0）。
+///
+/// 先看文件名（省一次读表）：文件名里带独立的一段 `en`（`lexicon-us-en.txt`、
+/// `lexicon-zh-en.txt`）就当作认得英文。没有这种文件时再看词表内容——自定义的
+/// 中英模型可能只给一个 `lexicon.txt`，键里出现拉丁字母同样说明模型认得。
+fn model_reads_latin(model_dir: &Path) -> bool {
+    let Ok(entries) = std::fs::read_dir(model_dir) else {
+        return false;
+    };
+    let mut unnamed: Vec<PathBuf> = Vec::new();
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        if !(name.starts_with("lexicon") && name.ends_with(".txt")) {
+            continue;
+        }
+        if name.split(['-', '_', '.']).any(|part| part == "en") {
+            return true;
+        }
+        unnamed.push(path);
+    }
+    // 词表内容里出现拉丁字母的键，同样说明模型自己认得（查到一个就收工）。
+    unnamed.iter().any(|path| {
+        std::fs::read_to_string(path).is_ok_and(|text| {
+            text.lines().any(|line| {
+                line.split_whitespace()
+                    .next()
+                    .is_some_and(|word| word.chars().any(|c| c.is_ascii_alphabetic()))
+            })
+        })
+    })
+}
+
+/// 是不是汉字（范围与 `chinese_digits::has_han` 一致）。
+fn is_han(c: char) -> bool {
+    let cp = c as u32;
+    (0x3400..=0x4DBF).contains(&cp)
+        || (0x4E00..=0x9FFF).contains(&cp)
+        || (0xF900..=0xFAFF).contains(&cp)
+        || (0x2_0000..=0x3_FFFF).contains(&cp)
+}
+
+/// 送给 sherpa 之前，把「读不出来、还会被硬念出来或带跑整句」的字符换成空格。
+///
+/// 三件事：
 ///
 /// 1. 从句标点（`，、；：`、引号）在 sherpa 前端等同于句末——整句会被切成几截分别推理、
-///    再用静音拼回去，每个逗号都让语调和停顿重置一次。换成空格后词边界仍在（前端按
-///    空白切词），句子是一个整体；句末标点 `。！？` 保留，句与句之间的停顿不动。
+///    再用静音拼回去，每个逗号都让语调和停顿重置一次。换掉之后词边界仍在（前端按
+///    空白切词），句子是一个整体；句末标点 `。！？` 保留（切句与停顿现在由
+///    [`split_clauses`] 显式控制）。
 /// 2. 其余符号（`~`、`～`、`♪`、`♡`、`→`、emoji、孤立括号……）既不在词表里、也不是
 ///    汉字，`MatchaTtsLexicon` 会走 **espeak（en-us）兜底**当英文念出来：ASCII `~`
-///    实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」），零样本的 zipvoice
-///    还会被这一截带跑，整句都念歪（反读里冒出参考音频的词）。换成空格就等于跳过。
-///
-/// 保留的是「读得出来的东西」：字母数字（含汉字/假名）、空白、句末标点 `。！？.`，
-/// 以及英文缩写里的撇号（don't）。
-///
-/// 实测同一句（逗号版 → 本函数处理后）：matcha 7.29s/4 个停顿 → 6.40s/2 个停顿，
-/// zipvoice 7.27s → 6.86s。
-fn neutralize_symbols(text: &str) -> String {
+///    实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」）。
+/// 3. 模型读不了的文字——英文、罗马音、假名——会被同一套 espeak 兜底音素化：中文
+///    matcha 的词表里一个英文词都没有，`hello` 这类要么被丢词、要么按字母念；零样本
+///    的 zipvoice 更糟，夹一句英文会把整句带跑（SenseVoice 反读里冒出参考音频的内容，
+///    听起来就是「换了个人、还念了参考音频里的话」）。所以模型不认得拉丁字母时
+///    （见 [`model_reads_latin`]）连同假名一起整段剔掉——宁可少念一句英文，也不要
+///    整句走样。纯英文台词不走这里（调用处只在含汉字时才动手），英文由模型自己处理。
+fn strip_unreadable(text: &str, keep_latin: bool) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     for (i, &c) in chars.iter().enumerate() {
-        let speakable = c.is_alphanumeric()
+        let speakable = is_han(c)
+            || c.is_ascii_digit()
+            || matches!(c, '０'..='９')
             // 句末标点留给前端断句（句与句之间的停顿由它决定）。
             || matches!(c, '。' | '！' | '？' | '.' | '!' | '?')
-            // 英文缩写里的撇号，留在词里，别把 don't 拆成两个词。
-            || (matches!(c, '\'' | '’')
-                && i > 0
-                && i + 1 < chars.len()
-                && chars[i - 1].is_ascii_alphanumeric()
-                && chars[i + 1].is_ascii_alphanumeric());
+            || (keep_latin
+                && (c.is_alphanumeric()
+                    // 英文缩写里的撇号，留在词里，别把 don't 拆成两个词。
+                    || (matches!(c, '\'' | '’')
+                        && i > 0
+                        && i + 1 < chars.len()
+                        && chars[i - 1].is_ascii_alphanumeric()
+                        && chars[i + 1].is_ascii_alphanumeric())));
         if speakable && !c.is_whitespace() {
             out.push(c);
         } else if !out.ends_with(' ') {
@@ -733,6 +860,90 @@ fn neutralize_symbols(text: &str) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// 小句太短时不要单独送进模型：实测两字的「对了」单独合成，SenseVoice 反读成
+/// 「饿了」（同一句里连着念就是对的）——短句缺少上下文，模型容易读错、读得生硬。
+/// 短于这个字数的先并到下一句里（末尾实在只剩一句短的，就并回前一句）。
+const MIN_CLAUSE_CHARS: usize = 6;
+
+/// 按标点把文本切成小句，并给出每句之后该停多久（秒；最后一句是 0）。
+///
+/// 为什么要自己切：sherpa 自己也会按标点把文本切成若干句、每句一份 token 序列送进
+/// 模型，但**拼接处是硬接**——`offline-tts-matcha-impl.h`（v1.13.5）里多句/多批的
+/// 结果就是 `ans.samples.insert(ans.samples.end(), ...)`，既没有淡入淡出也没有额外
+/// 静音；两截波形在接缝处幅值不连续，听感上就是「咔哒」一声（零样本模型接缝两侧
+/// 音色也会微微跳）。自己切之后每处停顿长度可控，接缝两侧再各做一次淡入淡出
+/// （见 [`apply_edge_fades`]）。
+fn split_clauses(text: &str) -> Vec<(String, f32)> {
+    let mut raw: Vec<(String, f32)> = Vec::new();
+    let mut cur = String::new();
+
+    for c in text.chars() {
+        if SENTENCE_PUNCT.contains(&c) {
+            cur.push(c);
+            raw.push((std::mem::take(&mut cur), SENTENCE_PAUSE));
+        } else if CLAUSE_PUNCT.contains(&c) {
+            raw.push((std::mem::take(&mut cur), CLAUSE_PAUSE));
+        } else {
+            cur.push(c);
+        }
+    }
+    if !cur.trim().is_empty() {
+        raw.push((cur, 0.0));
+    }
+
+    // 连写的标点（「真的？！」）会切出空片段，只剩标点的片段（「！」「……」）也一起
+    // 去掉；整段末尾不留停顿。
+    raw.retain(|(clause, _)| clause.chars().any(char::is_alphanumeric));
+    if let Some(last) = raw.last_mut() {
+        last.1 = 0.0;
+    }
+
+    merge_short_clauses(raw)
+}
+
+/// 可念的字数（汉字/字母/数字），不算标点与空白。
+fn speakable_len(text: &str) -> usize {
+    text.chars().filter(|c| c.is_alphanumeric()).count()
+}
+
+/// 把短于 [`MIN_CLAUSE_CHARS`] 的小句并到下一句（末尾的短句并回前一句）。
+///
+/// 合并处原本的标点换成空格：留着它 sherpa 又会把这一片当成两句、硬接到一起，
+/// 等于白合并。
+fn merge_short_clauses(raw: Vec<(String, f32)>) -> Vec<(String, f32)> {
+    let mut out: Vec<(String, f32)> = Vec::new();
+    let mut pending: Option<(String, f32)> = None;
+
+    for (clause, pause) in raw {
+        let merged = match pending.take() {
+            Some((prev, _)) => format!("{} {clause}", trim_tail_punct(&prev)),
+            None => clause,
+        };
+        if speakable_len(&merged) < MIN_CLAUSE_CHARS {
+            pending = Some((merged, pause));
+        } else {
+            out.push((merged, pause));
+        }
+    }
+
+    if let Some((tail, _)) = pending {
+        match out.last_mut() {
+            Some(last) => {
+                last.0 = format!("{} {tail}", trim_tail_punct(&last.0));
+                last.1 = 0.0; // 并完就是整段最后一句了，后面不留停顿
+            },
+            None => out.push((tail, 0.0)),
+        }
+    }
+    out
+}
+
+/// 去掉结尾的标点：合并短句时留着它，sherpa 又会把这一片当成两句、硬接到一起。
+fn trim_tail_punct(text: &str) -> &str {
+    text.trim_end_matches(|c: char| SENTENCE_PUNCT.contains(&c) || CLAUSE_PUNCT.contains(&c))
+        .trim_end()
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -890,16 +1101,8 @@ fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
         .all(|line| line.split_whitespace().skip(1).all(|p| tokens.contains(p)))
 }
 
-/// 裁掉首尾多余的静音：最多各留 [`LEAD_SILENCE_KEEP`] / [`TRAIL_SILENCE_KEEP`] 秒，
-/// 中间的停顿（句读）一律不动。静音判定阈值与 sherpa 的 `ScaleSilence` 一致
-/// （0.01，约 -40 dBFS）。整段都是静音时原样返回，交给调用方按空音频处理。
-fn trim_edge_silence(samples: Vec<f32>, sample_rate: i32) -> Vec<f32> {
-    const SILENCE_AMP: f32 = 0.01;
-
-    if sample_rate <= 0 {
-        return samples;
-    }
-
+/// 首尾静音的边界 `[start, end)`（整段都静音时 `start >= end`）。
+fn silence_bounds(samples: &[f32]) -> (usize, usize) {
     let mut start = 0;
     while start < samples.len() && samples[start].abs() <= SILENCE_AMP {
         start += 1;
@@ -908,16 +1111,35 @@ fn trim_edge_silence(samples: Vec<f32>, sample_rate: i32) -> Vec<f32> {
     while end > start && samples[end - 1].abs() <= SILENCE_AMP {
         end -= 1;
     }
-    if start >= end {
-        return samples;
+    (start, end)
+}
+
+/// 去掉首尾**全部**静音（不留余量）。
+///
+/// 逐句合成时片与片之间要插我们自己算好的停顿，各片自带的静音（0.1~0.4 秒不等，
+/// 模型之间还不一样）只会让停顿忽长忽短，所以这里一点不留；整段首尾的静音由
+/// 调用处按 [`LEAD_SILENCE_KEEP`] / [`TRAIL_SILENCE_KEEP`] 补回来。
+fn strip_edge_silence(samples: &[f32]) -> &[f32] {
+    let (start, end) = silence_bounds(samples);
+    &samples[start..end]
+}
+
+/// 给一段音频的首尾各加一小段线性淡入/淡出（时长见 [`JOINT_FADE`]）。
+///
+/// 拼接处需要它：两截波形在接缝处的幅值一般不连续（sherpa 内部就是直接把多段
+/// `insert` 到一起的），听感上就是「咔哒」一声。淡入淡出把接缝两侧压到 0，
+/// 接缝就落回静音里了。
+fn apply_edge_fades(samples: &mut [f32], sample_rate: i32) {
+    if sample_rate <= 0 {
+        return;
     }
-
-    let lead = (sample_rate as f32 * LEAD_SILENCE_KEEP) as usize;
-    let trail = (sample_rate as f32 * TRAIL_SILENCE_KEEP) as usize;
-    let start = start.saturating_sub(lead);
-    let end = (end + trail).min(samples.len());
-
-    samples[start..end].to_vec()
+    let fade = ((sample_rate as f32 * JOINT_FADE) as usize).min(samples.len() / 2);
+    for i in 0..fade {
+        let gain = i as f32 / fade as f32;
+        samples[i] *= gain;
+        let last = samples.len() - 1 - i;
+        samples[last] *= gain;
+    }
 }
 
 fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
@@ -981,52 +1203,38 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let data = std::fs::read(path)
         .map_err(|e| anyhow!("无法读取参考音频文件 {}: {}", path.display(), e))?;
 
-    // 最小 WAV 头：44 字节（RIFF/WAVE/fmt/data 头）。低于此长度的输入直接报错，
-    // 避免下方切片越界 panic。
-    if data.len() < 44 {
+    // 按块流解析，而不是按固定偏移：`fmt ` 前面可能排着 `bext`（广播 WAV）、`LIST`、
+    // `JUNK` 等块（摄像/录音软件导出很常见），固定偏移在那里读到的是无关字节。
+    let wav = parse_wav(&data)
+        .ok_or_else(|| anyhow!("WAV 文件结构不对（缺 fmt / data 块）: {}", path.display()))?;
+    let format = wav.format;
+
+    // 采样率要原样交给 sherpa 重采样：读错一位，参考音频就等于被按错误的速度播放，
+    // 合成出来音色、语速全变（实测把 22050 的样本标成 48000，时长少一半；标成
+    // 16000，时长多三成，音色距离 41~55‰——接近「换了个人」的量级）。
+    if !(1..=384_000).contains(&format.sample_rate) {
         return Err(anyhow!(
-            "WAV 文件过短（{} 字节，至少需要 44 字节）: {}",
-            data.len(),
+            "WAV 头里的采样率不对（读到 {}），请用「导入参考音频」重新导入: {}",
+            format.sample_rate,
+            path.display()
+        ));
+    }
+    if !(1..=8).contains(&format.channels) {
+        return Err(anyhow!(
+            "WAV 头里的声道数不对（读到 {}）: {}",
+            format.channels,
             path.display()
         ));
     }
 
-    let channels = u16::from_le_bytes(data[22..24].try_into().unwrap()) as u32;
-    let sample_rate = i32::from_le_bytes(data[24..28].try_into().unwrap());
-    let bits_per_sample = u16::from_le_bytes(data[34..36].try_into().unwrap());
+    let samples = decode_wav_samples(&data[wav.offset..wav.offset + wav.len], &format)
+        .map_err(|e| anyhow!("{e}: {}", path.display()))?;
 
-    let data_offset = find_wav_data_chunk(&data)
-        .ok_or_else(|| anyhow!("WAV 文件中未找到 data 块: {}", path.display()))?;
-
-    let samples = match bits_per_sample {
-        16 => {
-            let raw = &data[data_offset..];
-            raw.as_chunks::<2>()
-                .0
-                .iter()
-                .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0)
-                .collect::<Vec<_>>()
-        },
-        32 => {
-            let raw = &data[data_offset..];
-            raw.as_chunks::<4>()
-                .0
-                .iter()
-                .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2147483648.0)
-                .collect::<Vec<_>>()
-        },
-        _ => {
-            return Err(anyhow!(
-                "不支持的 WAV 位深度: {} (仅支持 16/32)",
-                bits_per_sample
-            ));
-        },
-    };
-
-    let mono_samples = if channels > 1 {
+    // 多声道取平均。chunks_exact：末尾不足一帧的残字节丢掉，不能让它们单独成一帧。
+    let mono_samples = if format.channels > 1 {
         samples
-            .chunks(channels as usize)
-            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+            .chunks_exact(format.channels as usize)
+            .map(|frame| frame.iter().sum::<f32>() / format.channels as f32)
             .collect()
     } else {
         samples
@@ -1036,23 +1244,129 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
         return Err(anyhow!("参考音频为空"));
     }
 
-    Ok((mono_samples, sample_rate))
+    Ok((mono_samples, format.sample_rate))
 }
 
-fn find_wav_data_chunk(data: &[u8]) -> Option<usize> {
+/// WAV 的 `fmt ` 块内容。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct WavFormat {
+    /// 1 = PCM，3 = IEEE float（`0xFFFE` = WAVE_FORMAT_EXTENSIBLE 已按子格式解开）。
+    format_tag: u16,
+    channels: u16,
+    sample_rate: i32,
+    bits_per_sample: u16,
+}
+
+/// 解析出来的 WAV：格式 + `data` 块在文件里的位置。
+struct WavData {
+    format: WavFormat,
+    /// `data` 块载荷的起始偏移。
+    offset: usize,
+    /// `data` 块载荷的字节数（以文件实际长度收口）。
+    len: usize,
+}
+
+/// 遍历 RIFF 块，定位 `fmt ` 与 `data`。
+fn parse_wav(data: &[u8]) -> Option<WavData> {
+    if data.len() < 12 || &data[0..4] != b"RIFF" || &data[8..12] != b"WAVE" {
+        return None;
+    }
+
+    let mut format = None;
+    let mut audio: Option<(usize, usize)> = None;
     let mut pos = 12;
     while pos + 8 <= data.len() {
-        let chunk_id = &data[pos..pos + 4];
-        let chunk_size = u32::from_le_bytes(data[pos + 4..pos + 8].try_into().ok()?) as usize;
-        if chunk_id == b"data" {
-            return Some(pos + 8);
+        let id: [u8; 4] = data[pos..pos + 4].try_into().ok()?;
+        let declared = u32::from_le_bytes(data[pos + 4..pos + 8].try_into().ok()?) as usize;
+        let body = pos + 8;
+        // 截断的文件里块长度可能超过实际剩余字节，按实际长度收口。
+        let end = body.saturating_add(declared).min(data.len());
+        match &id {
+            b"fmt " => format = parse_fmt_chunk(&data[body..end]),
+            b"data" => audio = Some((body, end - body)),
+            _ => {},
         }
-        pos += 8 + chunk_size;
-        if pos % 2 != 0 {
-            pos += 1;
-        }
+        // RIFF 块按偶数字节对齐。
+        pos = end.saturating_add(declared & 1).max(body);
     }
-    None
+
+    Some(WavData {
+        format: format?,
+        offset: audio?.0,
+        len: audio?.1,
+    })
+}
+
+fn parse_fmt_chunk(body: &[u8]) -> Option<WavFormat> {
+    if body.len() < 16 {
+        return None;
+    }
+    let mut format_tag = u16::from_le_bytes([body[0], body[1]]);
+    let channels = u16::from_le_bytes([body[2], body[3]]);
+    let sample_rate = i32::from_le_bytes([body[4], body[5], body[6], body[7]]);
+    let bits_per_sample = u16::from_le_bytes([body[14], body[15]]);
+    // WAVE_FORMAT_EXTENSIBLE（24 位/多声道常见）：真正的编码在 fmt 块尾部
+    // SubFormat GUID 的前两个字节。
+    if format_tag == 0xFFFE && body.len() >= 26 {
+        format_tag = u16::from_le_bytes([body[24], body[25]]);
+    }
+    Some(WavFormat {
+        format_tag,
+        channels,
+        sample_rate,
+        bits_per_sample,
+    })
+}
+
+/// 把 WAV 的样本数据解码成 -1.0~1.0 的 f32。
+fn decode_wav_samples(raw: &[u8], format: &WavFormat) -> Result<Vec<f32>> {
+    const PCM: u16 = 1;
+    const FLOAT: u16 = 3;
+
+    let samples: Vec<f32> = match (format.format_tag, format.bits_per_sample) {
+        // 8 位 WAV 是无符号 PCM，中点 128。
+        (PCM, 8) => raw.iter().map(|&b| (b as f32 - 128.0) / 128.0).collect(),
+        (PCM, 16) => raw
+            .as_chunks::<2>()
+            .0
+            .iter()
+            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32_768.0)
+            .collect(),
+        (PCM, 24) => raw
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|b| {
+                // 24 位小端、手工符号扩展。
+                let v = ((b[2] as i8 as i32) << 16) | ((b[1] as i32) << 8) | b[0] as i32;
+                v as f32 / 8_388_608.0
+            })
+            .collect(),
+        (PCM, 32) => raw
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0)
+            .collect(),
+        (FLOAT, 32) => raw
+            .as_chunks::<4>()
+            .0
+            .iter()
+            .map(|b| f32::from_le_bytes(*b))
+            .collect(),
+        (FLOAT, 64) => raw
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|b| f64::from_le_bytes(*b) as f32)
+            .collect(),
+        (tag, bits) => {
+            return Err(anyhow!(
+                "不支持的 WAV 编码（format tag = {tag}、位深 = {bits} 位；支持 PCM 8/16/24/32 与 float 32/64）"
+            ));
+        },
+    };
+    Ok(samples)
 }
 
 #[cfg(test)]
@@ -1093,37 +1407,229 @@ mod tests {
     }
 
     /// 符号换成空格：句末标点保留，逗号/顿号/引号不再断句，`~`/`♪`/emoji 不再被
-    /// espeak 兜底念成英文（ASCII `~` 会被念成 "tilde"）。
+    /// espeak 兜底念成英文（ASCII `~` 会被念成 "tilde"）；模型读不了的英文/假名整段剔掉。
     #[test]
-    fn neutralizes_symbols_but_keeps_sentence_ends() {
+    fn strips_unreadable_chars_but_keeps_sentence_ends() {
+        // 认得拉丁字母的模型（kokoro 多语言）：英文原样留着。
+        let latin = true;
         assert_eq!(
-            neutralize_symbols("他说，你好、今天：很好；真的？"),
+            strip_unreadable("他说，你好、今天：很好；真的？", latin),
             "他说 你好 今天 很好 真的？"
         );
-        // 句末标点原样保留（前端仍按它分句，句间停顿不变）。
+        // 句末标点原样保留（切句与停顿由 split_clauses 负责）。
         assert_eq!(
-            neutralize_symbols("你好。真的吗！好呀？"),
+            strip_unreadable("你好。真的吗！好呀？", latin),
             "你好。真的吗！好呀？"
         );
         // 波浪号、音乐符号、箭头、装饰符号一律换成空格。
-        assert_eq!(neutralize_symbols("好~呀"), "好 呀");
-        assert_eq!(neutralize_symbols("好～♪♡→呀"), "好 呀");
+        assert_eq!(strip_unreadable("好~呀", latin), "好 呀");
+        assert_eq!(strip_unreadable("好～♪♡→呀", latin), "好 呀");
         // 英文缩写里的撇号要留着，别把 don't 拆开。
-        assert_eq!(neutralize_symbols("I don't ~know~"), "I don't know");
+        assert_eq!(strip_unreadable("I don't ~know~", latin), "I don't know");
         // 连续符号只留一个空格。
-        assert_eq!(neutralize_symbols("他说,\"别走\",好嘛."), "他说 别走 好嘛.");
+        assert_eq!(
+            strip_unreadable("他说,\"别走\",好嘛.", latin),
+            "他说 别走 好嘛."
+        );
+
+        // 中文模型（matcha / zipvoice）读不了英文、罗马音、假名：连着符号一起剔掉，
+        // 否则要么被丢词，要么被 espeak 按字母念、把整句带跑。
+        let no_latin = false;
+        assert_eq!(strip_unreadable("今天真开心 hello", no_latin), "今天真开心");
+        assert_eq!(strip_unreadable("hello 今天真开心", no_latin), "今天真开心");
+        assert_eq!(
+            strip_unreadable("おはよう 今日はいい天気", no_latin),
+            "今日 天気"
+        );
+        assert_eq!(
+            strip_unreadable("AI 帮你查了 wiki，好呀~", no_latin),
+            "帮你查了 好呀"
+        );
+        // 数字和句末标点必须留着：数字交给 FST / 数字改写，标点决定切句与停顿。
+        assert_eq!(strip_unreadable("第 3 章。", no_latin), "第 3 章。");
     }
 
-    /// 解析 WAV 字节并返回 (采样率, 单声道样本数)。
-    fn parse_wav(wav: &[u8]) -> (u32, usize) {
-        assert!(wav.len() >= 44, "WAV 太短");
-        assert_eq!(&wav[0..4], b"RIFF", "缺 RIFF 头");
-        assert_eq!(&wav[8..12], b"WAVE", "缺 WAVE");
-        let sample_rate = u32::from_le_bytes(wav[24..28].try_into().unwrap());
-        let bits = u16::from_le_bytes(wav[34..36].try_into().unwrap());
-        let data_start = find_wav_data_chunk(wav).expect("缺 data chunk");
-        let data_bytes = wav.len() - data_start;
-        (sample_rate, data_bytes / (bits as usize / 8))
+    /// 按标点切小句时，句末停顿要长于逗号停顿，末尾不留停顿，空片段丢掉；
+    /// 太短的小句要并到下一句（「对了」单独念会被读成「饿了」）。
+    #[test]
+    fn splits_clauses_with_pauses() {
+        assert_eq!(
+            split_clauses("他说今天很好，你好呀我的朋友。今天天气真好，我们一起出去玩吧！"),
+            vec![
+                ("他说今天很好".to_string(), CLAUSE_PAUSE),
+                ("你好呀我的朋友。".to_string(), SENTENCE_PAUSE),
+                ("今天天气真好".to_string(), CLAUSE_PAUSE),
+                ("我们一起出去玩吧！".to_string(), 0.0),
+            ]
+        );
+        // 两字的小句没有上下文，并到下一句；合并处的标点换成空格。
+        assert_eq!(
+            split_clauses("对了，你吃饭了吗？"),
+            vec![("对了 你吃饭了吗？".to_string(), 0.0)]
+        );
+        // 末尾剩一句短的：并回前一句。
+        assert_eq!(
+            split_clauses("今天天气真不错。好吧。"),
+            vec![("今天天气真不错 好吧。".to_string(), 0.0)]
+        );
+        // 没有标点的整句只有一片。
+        assert_eq!(split_clauses("你好呀"), vec![("你好呀".to_string(), 0.0)]);
+        // 连写标点切出来的空片段（只剩「！」）要丢掉。
+        assert_eq!(split_clauses("真的？！"), vec![("真的？".to_string(), 0.0)]);
+    }
+
+    /// 拼接处的淡入淡出：首尾样本归零、中间不动，20ms 以外不受影响。
+    #[test]
+    fn fades_clause_edges_and_strips_silence() {
+        let sample_rate = 1000; // 20ms = 20 个样本
+        let mut samples = vec![1.0f32; 100];
+        apply_edge_fades(&mut samples, sample_rate);
+        assert_eq!(samples[0], 0.0);
+        assert_eq!(samples[99], 0.0);
+        assert!(samples[10] < 1.0 && samples[19] < 1.0);
+        assert_eq!(samples[20], 1.0, "20ms 之后的样本不该被动");
+        assert_eq!(samples[50], 1.0);
+
+        // 首尾静音要全部去掉（停顿由调用处按标点精确插入）。
+        let mut padded = vec![0.0; 10];
+        padded.extend_from_slice(&[0.5; 5]);
+        padded.extend_from_slice(&[0.0; 10]);
+        let edge = strip_edge_silence(&padded);
+        assert_eq!(edge.len(), 5);
+        assert!(edge.iter().all(|s| *s == 0.5));
+    }
+
+    /// WAV 头必须按块流解析：`fmt ` 前面多一个块（广播 WAV 的 `bext`、`LIST`）时，
+    /// 固定偏移读到的是无关字节（实测 44100Hz 被读成 sr=808464432）。
+    #[test]
+    fn parses_wav_with_chunks_before_fmt() {
+        let data = build_wav(&[
+            (b"bext", &[b'0'; 602]),
+            (b"fmt ", &pcm16_fmt(44_100, 1)),
+            (b"data", &[0u8; 8]),
+        ]);
+        let parsed = parse_wav(&data).expect("应能解析");
+        assert_eq!(parsed.format.sample_rate, 44_100);
+        assert_eq!(parsed.format.channels, 1);
+        assert_eq!(parsed.format.bits_per_sample, 16);
+        assert_eq!(parsed.len, 8);
+
+        // 标准头（fmt 在最前）同样要对。
+        let data = build_wav(&[(b"fmt ", &pcm16_fmt(22_050, 2)), (b"data", &[0u8; 16])]);
+        let parsed = parse_wav(&data).expect("应能解析");
+        assert_eq!(parsed.format.sample_rate, 22_050);
+        assert_eq!(parsed.format.channels, 2);
+    }
+
+    /// 参考音频的样本格式：16/24/32 位 PCM 与 32 位 float 都要按对的解释读。
+    #[test]
+    fn decodes_reference_audio_formats() {
+        // 24 位：0x7FFFFF 是满幅正，0x800000 是满幅负。
+        let raw = [0xFFu8, 0xFF, 0x7F, 0x00, 0x00, 0x80];
+        let fmt = WavFormat {
+            format_tag: 1,
+            channels: 1,
+            sample_rate: 44_100,
+            bits_per_sample: 24,
+        };
+        let samples = decode_wav_samples(&raw, &fmt).expect("24 位应能解码");
+        assert!((samples[0] - 1.0).abs() < 1e-6);
+        assert!((samples[1] + 1.0).abs() < 1e-6);
+
+        // float32 的位模式按 float 读，而不是按 int32 读（按 int32 读会得到畸变波形）。
+        let raw: Vec<u8> = [0.25f32, -0.5]
+            .iter()
+            .flat_map(|s| s.to_le_bytes())
+            .collect();
+        let fmt = WavFormat {
+            format_tag: 3,
+            channels: 1,
+            sample_rate: 44_100,
+            bits_per_sample: 32,
+        };
+        let samples = decode_wav_samples(&raw, &fmt).expect("float32 应能解码");
+        assert_eq!(samples, vec![0.25, -0.5]);
+
+        // 不认识的编码要报错，别把 ADPCM 当 PCM 读。
+        let fmt = WavFormat {
+            format_tag: 2,
+            channels: 1,
+            sample_rate: 44_100,
+            bits_per_sample: 4,
+        };
+        assert!(decode_wav_samples(&raw, &fmt).is_err());
+    }
+
+    /// Android 早期版本存下来的 `content://` 路径要给出可操作的提示。
+    #[test]
+    fn rejects_content_uri_reference() {
+        let err = load_reference_audio(Path::new("content://media/external/audio/1.wav"))
+            .expect_err("content:// 应直接报错");
+        assert!(err.to_string().contains("重新导入"), "{err}");
+    }
+
+    /// 只带简单规则表的模型目录：有英文词表就认为认得拉丁字母。
+    #[test]
+    fn detects_models_that_read_latin() {
+        let dir = std::env::temp_dir().join(format!("lingchat-latin-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时目录失败");
+
+        // 没有词表 / 词表里只有汉字：读不了拉丁字母。
+        assert!(!model_reads_latin(&dir));
+        std::fs::write(dir.join("lexicon.txt"), "好 h0 ao3\n行 xing2\n").expect("写词表失败");
+        assert!(!model_reads_latin(&dir));
+
+        // kokoro 那种独立的英文词表：文件名带 -en 就算认得。
+        std::fs::write(dir.join("lexicon-us-en.txt"), "hello HH AH0 L OW1\n")
+            .expect("写英文词表失败");
+        assert!(model_reads_latin(&dir));
+
+        // 只给 lexicon.txt 的自定义中英模型：键里有拉丁字母同样算认得。
+        std::fs::remove_file(dir.join("lexicon-us-en.txt")).expect("删英文词表失败");
+        std::fs::write(dir.join("lexicon.txt"), "hello hh ah l ow\n").expect("写词表失败");
+        assert!(model_reads_latin(&dir));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 拼一个最简 WAV（只有 RIFF 头 + 给定块序列）。
+    fn build_wav(chunks: &[(&[u8; 4], &[u8])]) -> Vec<u8> {
+        let mut body = b"WAVE".to_vec();
+        for (id, payload) in chunks {
+            body.extend_from_slice(*id);
+            body.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+            body.extend_from_slice(payload);
+            if payload.len() % 2 == 1 {
+                body.push(0);
+            }
+        }
+        let mut wav = b"RIFF".to_vec();
+        wav.extend_from_slice(&(body.len() as u32).to_le_bytes());
+        wav.extend_from_slice(&body);
+        wav
+    }
+
+    /// 16 位 PCM 的 fmt 块内容。
+    fn pcm16_fmt(sample_rate: u32, channels: u16) -> Vec<u8> {
+        let mut fmt = Vec::new();
+        fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM
+        fmt.extend_from_slice(&channels.to_le_bytes());
+        fmt.extend_from_slice(&sample_rate.to_le_bytes());
+        fmt.extend_from_slice(&(sample_rate * 2 * channels as u32).to_le_bytes());
+        fmt.extend_from_slice(&(2 * channels).to_le_bytes());
+        fmt.extend_from_slice(&16u16.to_le_bytes());
+        fmt
+    }
+
+    /// 解析我们生成的 WAV 字节并返回 (采样率, 单声道样本数)。
+    fn parse_generated_wav(wav: &[u8]) -> (u32, usize) {
+        let parsed = parse_wav(wav).expect("缺 RIFF/WAVE/fmt /data 头");
+        assert_eq!(parsed.format.format_tag, 1, "输出应是 PCM");
+        assert_eq!(parsed.format.channels, 1, "输出应是单声道");
+        assert_eq!(parsed.format.bits_per_sample, 16);
+        assert_eq!(wav.len(), 44 + parsed.len, "WAV 里有多余字节");
+        (parsed.format.sample_rate as u32, parsed.len / 2)
     }
 
     /// 造一个「假 ZipVoice 模型目录」：只会写 tokens.txt。
@@ -1263,12 +1769,12 @@ mod tests {
         eprintln!("合成文本: {text}");
         let wav = adapter.generate_voice(text, "").await.expect("合成失败");
 
-        let (sr, num_samples) = parse_wav(&wav);
+        let (sr, num_samples) = parse_generated_wav(&wav);
         eprintln!("输出: sr={sr}, 样本数={num_samples}, WAV-Ok");
 
         // 验证音频非静音
-        let data_start = find_wav_data_chunk(&wav).unwrap();
-        let pcm = &wav[data_start..];
+        let parsed = parse_wav(&wav).unwrap();
+        let pcm = &wav[parsed.offset..parsed.offset + parsed.len];
         let has_signal = pcm
             .as_chunks::<2>()
             .0
@@ -1312,12 +1818,12 @@ mod tests {
                 .await
                 .expect("生成失败");
 
-            let (sr, samples) = parse_wav(&wav);
+            let (sr, samples) = parse_generated_wav(&wav);
             assert_eq!(sr, 22050, "Matcha-zh 采样率应为 22050");
             assert!(samples >= 5, "生成音频过短");
 
-            let data_start = find_wav_data_chunk(&wav).unwrap();
-            let pcm = &wav[data_start..];
+            let parsed = parse_wav(&wav).unwrap();
+            let pcm = &wav[parsed.offset..parsed.offset + parsed.len];
             let has_signal = pcm.as_chunks::<2>().0.iter().any(|c| {
                 let v = i16::from_le_bytes(*c);
                 v.unsigned_abs() > 200
