@@ -12,6 +12,7 @@ use sherpa_onnx::{
     OfflineTtsZipvoiceModelConfig,
 };
 
+use crate::ai_service::tts::adapters::gsv::gsv_emo_category;
 use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
 
@@ -570,15 +571,18 @@ impl SherpaOnnxAdapter {
 
 #[async_trait]
 impl TtsAdapter for SherpaOnnxAdapter {
-    async fn generate_voice(&self, text: &str, _emo: &str) -> Result<Vec<u8>> {
+    async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>> {
         let tts = self
             .tts
             .as_ref()
             .ok_or_else(|| anyhow!("Sherpa-ONNX 引擎未初始化"))?;
 
+        // 情绪没有模型级入口（见 emotion_prosody），只调语速和标点停顿。
+        let (speed_mul, pause_mul) = emotion_prosody(emo);
+
         let mut gen_config = GenerationConfig {
             sid: self.sid,
-            speed: self.speed,
+            speed: self.speed * speed_mul,
             // 见 SILENCE_SCALE：压掉两成的默认值会让句读停顿和逗号停顿分不出来。
             silence_scale: SILENCE_SCALE,
             reference_audio: self.reference_audio.clone(),
@@ -644,6 +648,7 @@ impl TtsAdapter for SherpaOnnxAdapter {
             apply_edge_fades(&mut assembled[start..], sample_rate);
 
             if pause > 0.0 {
+                let pause = pause * pause_mul; // 见 emotion_prosody
                 assembled.extend_from_slice(&vec![0.0; (sample_rate as f32 * pause) as usize]);
             }
         }
@@ -871,6 +876,35 @@ fn strip_unreadable(text: &str, keep_latin: bool) -> String {
 /// 「标点处不停、句中乱停」。实测 3 字以上单独合成都没问题（好的呀 / 我觉得 /
 /// 那当然 / 好吧 / 行吧），所以只合并 1~2 字的语气词。
 const MIN_CLAUSE_CHARS: usize = 3;
+
+/// 情绪 →（语速倍率，停顿倍率）。
+///
+/// sherpa-onnx 的这几个引擎里只有 `vits` 能接 `emotion_id`，而且还要模型导出时带
+/// `emotion_id` 输入 + `num_emotions` 元数据；matcha / kokoro / zipvoice 完全没有
+/// 情绪入口。所以在这些模型上，情绪只能落成**不动音色**的两个参数：语速和标点
+/// 停顿。倍率都收在 ±12% / ±25% 内，避免听成「变速播放」。
+///
+/// 分类沿用 GSV 的六分类（[`gsv_emo_category`]，与提示词里的情绪清单一致）：
+/// 吃惊 / 开心 / 恐惧 / 难过 / 生气 / 中立；未识别的情绪一律按中立。
+fn emotion_prosody(emo: &str) -> (f32, f32) {
+    // 六分类名本身（「开心」「恐惧」…）也是合法输入：提示词给的是「高兴 / 害怕 /
+    // 惊讶」这类同义词，但分类器与立绘槽位会直接给分类名，所以先原样认一次。
+    let category = match emo {
+        "吃惊" | "开心" | "恐惧" | "难过" | "生气" | "中立" => emo,
+        other => gsv_emo_category(other),
+    };
+
+    match category {
+        // 情绪越高涨，语速越快、标点停顿越短。
+        "开心" => (1.05, 0.90),
+        "生气" => (1.08, 0.80),
+        "恐惧" => (1.10, 0.80),
+        "吃惊" => (1.08, 0.75),
+        // 低落时放慢、句读拉长。
+        "难过" => (0.90, 1.25),
+        _ => (1.0, 1.0),
+    }
+}
 
 /// 按标点把文本切成小句，并给出每句之后该停多久（秒；最后一句是 0）。
 ///
@@ -1496,6 +1530,28 @@ mod tests {
         assert_eq!(split_clauses("你好呀"), vec![("你好呀".to_string(), 0.0)]);
         // 连写标点切出来的空片段（只剩「！」）要丢掉。
         assert_eq!(split_clauses("真的？！"), vec![("真的？".to_string(), 0.0)]);
+    }
+
+    /// 情绪只落在语速/停顿两个参数上（这些模型没有 emotion 输入），分类走 GSV 六分类。
+    #[test]
+    fn maps_emotion_to_prosody() {
+        // 中立与未识别（含空标签）不改变任何参数。
+        for emo in ["", "中立", "平静", "正常", "疑惑"] {
+            assert_eq!(emotion_prosody(emo), (1.0, 1.0), "{emo}");
+        }
+        // 高涨：语速更快、标点停顿更短。
+        for emo in ["开心", "生气", "恐惧", "吃惊"] {
+            let (speed, pause) = emotion_prosody(emo);
+            assert!(speed > 1.0 && pause < 1.0, "{emo}: {speed}/{pause}");
+        }
+        // 低落：语速更慢、标点停顿更长。
+        let (speed, pause) = emotion_prosody("难过");
+        assert!(speed < 1.0 && pause > 1.0, "难过: {speed}/{pause}");
+        // 同义词归到同一类，避免提示词/分类器的不同叫法失效。
+        assert_eq!(emotion_prosody("高兴"), emotion_prosody("开心"));
+        assert_eq!(emotion_prosody("害怕"), emotion_prosody("恐惧"));
+        assert_eq!(emotion_prosody("惊讶"), emotion_prosody("吃惊"));
+        assert_eq!(emotion_prosody("哭泣"), emotion_prosody("难过"));
     }
 
     /// 拼接处的淡入淡出：首尾样本归零、中间不动，20ms 以外不受影响。
