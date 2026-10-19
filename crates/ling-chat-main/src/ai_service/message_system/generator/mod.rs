@@ -435,12 +435,14 @@ impl MessageGenerator {
         drop(publish_tx);
 
         // producer：LLM 流 -> 句子
+        let join_sentences = whole_sentence_tts(&self.deps.game_status).await;
         let producer = StreamProducer::new(
             llm_stream,
             sentence_tx,
             self.deps.app.clone(),
             thinking_buf,
             tool_calls_seen,
+            join_sentences,
         );
         let output = producer.run().await.context("StreamProducer 失败")?;
         let acc = output.accumulated;
@@ -664,7 +666,7 @@ pub(crate) async fn consume_sentence(
     }
 
     // 1. 解析情绪分段
-    let mut segments = parse_segments(deps, &sentence);
+    let mut segments = parse_segments(deps, &sentence).await;
     if segments.is_empty() {
         return Ok(None);
     }
@@ -708,14 +710,29 @@ pub(crate) async fn consume_sentence(
 }
 
 /// Step A: 解析并分类情绪片段。
-fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
-    let segments = deps
-        .processor
-        .parse_and_classify_emotional_segments(sentence);
+///
+/// 当前角色用的 TTS 按整句合成（sherpa-onnx 忽略情绪标签）时，顺手把被 【情绪】 标签
+/// 打断的同一句并回一段——同一句话分两次推理只会让语调和停顿各自重置。
+async fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
+    let segments = if whole_sentence_tts(&deps.game_status).await {
+        deps.processor.parse_whole_sentence_segments(sentence)
+    } else {
+        deps.processor
+            .parse_and_classify_emotional_segments(sentence)
+    };
     if segments.is_empty() {
         tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
     }
     segments
+}
+
+/// 当前角色加载中的 TTS 是否按“整句”合成（见 `VoiceMaker::uses_whole_sentence_input`）。
+async fn whole_sentence_tts(game_status: &Arc<Mutex<GameStatus>>) -> bool {
+    let gs = game_status.lock().await;
+    gs.current_role_id
+        .and_then(|rid| gs.role_manager.get_loaded(rid))
+        .and_then(|role| role.voice_maker.clone())
+        .is_some_and(|vm| vm.uses_whole_sentence_input())
 }
 
 /// 返回当前 TTS 需要的目标翻译语言。

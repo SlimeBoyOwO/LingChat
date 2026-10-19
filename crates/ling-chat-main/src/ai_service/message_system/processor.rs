@@ -126,6 +126,22 @@ impl MessageProcessor {
         let re = emotion_re();
         let mut i = 0usize;
 
+        // 第一个【情绪】标签之前的文本：正则从 `【` 才开始匹配，过去这一截会被整段丢掉
+        // （回复以台词/旁白开头、标签在后面时，第一句根本不进 TTS）。按同一套规则清洗后
+        // 并进第一个片段的正文，保证它会被念出来。
+        let leading_end = re.find(&text).map(|m| m.start()).unwrap_or(text.len());
+        let leading_text = Self::clean_following_text(&text[..leading_end]);
+        // 只有需要译文（enable_translate）时才关心标签之前那截里的 <日文>。
+        let leading_japanese = if self.options.enable_translate {
+            japanese_re()
+                .captures(&text[..leading_end])
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().trim().replace('~', "。"))
+                .unwrap_or_default()
+        } else {
+            String::new()
+        };
+
         for cap in re.captures_iter(&text) {
             i += 1;
             let emotion_tag = cap.get(1).map(|m| m.as_str()).unwrap_or("");
@@ -146,10 +162,13 @@ impl MessageProcessor {
                 .map(|m| m.as_str().trim().to_string())
                 .unwrap_or_default();
 
-            let cleaned_text = strip_jp_action_re()
-                .replace_all(&following_text, "")
-                .trim()
-                .to_string();
+            let cleaned_text = Self::clean_following_text(following_raw);
+            // 标签之前的正文并进第一个片段，别让第一句被吞掉。
+            let cleaned_text = if i == 1 && !leading_text.is_empty() {
+                format!("{leading_text}{cleaned_text}")
+            } else {
+                cleaned_text
+            };
 
             // 翻译关闭：cleaned_text 即 japanese_text
             let japanese_text = if !self.options.enable_translate {
@@ -159,6 +178,9 @@ impl MessageProcessor {
                 let step1 = motion_re().replace_all(&japanese_text, "");
                 let step2 = strip_corner_re().replace_all(&step1, "");
                 step2.trim().replace('~', "。")
+            } else if i == 1 && !leading_japanese.is_empty() {
+                // 日文写在标签前面（`她……<日文>【开心】你好`）时别漏掉
+                leading_japanese.clone()
             } else {
                 japanese_text
             };
@@ -197,6 +219,23 @@ impl MessageProcessor {
         }
 
         results
+    }
+
+    /// 与 [`Self::parse_and_classify_emotional_segments`] 相同，但会把被 【情绪】 标签
+    /// 打断的同一句并回一段（本地 TTS 按整句合成时用，见 [`merge_unfinished_segments`]）。
+    pub fn parse_whole_sentence_segments(&self, text: &str) -> Vec<EmotionSegment> {
+        let mut segments = self.parse_and_classify_emotional_segments(text);
+        merge_unfinished_segments(&mut segments, self.options.enable_translate);
+        segments
+    }
+
+    /// 片段正文清洗：统一括号后去掉 `<日文>` 与 `（动作）`。
+    fn clean_following_text(raw: &str) -> String {
+        let normalized = raw.replace('(', "（").replace(')', "）");
+        strip_jp_action_re()
+            .replace_all(&normalized, "")
+            .trim()
+            .to_string()
     }
 
     /// 文本预处理：修复标签、清理非法内容
@@ -349,6 +388,61 @@ impl MessageProcessor {
     }
 }
 
+/// 片段正文是否已经收句（句末标点，允许后面跟引号/右括号）。
+///
+/// 用来判断"这句话说完了没有"：没说完的片段会被并进下一段再送给 TTS。
+pub fn ends_with_sentence_end(text: &str) -> bool {
+    let trimmed = text.trim_end_matches(|c: char| {
+        c.is_whitespace() || matches!(c, '”' | '’' | '"' | '\'' | '」' | '』' | '）' | ')' | '】')
+    });
+    trimmed
+        .chars()
+        .last()
+        .is_some_and(|c| matches!(c, '。' | '！' | '？' | '.' | '!' | '?'))
+}
+
+/// 把相邻片段里"上一段还没说完"的部分并成一段。
+///
+/// 生产链按 【情绪】 标签切句：`【开心】哇，真的吗【兴奋】那我们走！` 会被切成两段。
+/// 对不看情绪的本地 TTS 来说这种切法只有坏处——同一句话做了两次推理，语调和停顿各自
+/// 重置。这里把没收到句末标点的片段并到下一段前面，交给 TTS 一次读完。
+///
+/// `enable_translate` 为 true 时片段自带日文译文，需要跟着正文一起拼上。
+pub fn merge_unfinished_segments(segments: &mut Vec<EmotionSegment>, enable_translate: bool) {
+    let mut merged: Vec<EmotionSegment> = Vec::with_capacity(segments.len());
+    for segment in segments.drain(..) {
+        match merged.last_mut() {
+            Some(previous) if !ends_with_sentence_end(&previous.following_text) => {
+                append_segment(previous, segment, enable_translate);
+            },
+            _ => merged.push(segment),
+        }
+    }
+    *segments = merged;
+}
+
+/// 把 `next` 并进 `target`：正文直接相接（原文里本来就是一句话），补上空的动作/译文。
+fn append_segment(target: &mut EmotionSegment, next: EmotionSegment, enable_translate: bool) {
+    target.following_text.push_str(&next.following_text);
+    if target.motion_text.is_empty() {
+        target.motion_text = next.motion_text;
+    }
+    if !enable_translate {
+        // 关闭翻译时 japanese_text 就是 cleaned_text，跟着正文一起变长。
+        target.japanese_text = target.following_text.clone();
+        return;
+    }
+    if target.japanese_text.is_empty() {
+        target.japanese_text = next.japanese_text;
+    } else if !next.japanese_text.is_empty() {
+        target.japanese_text.push_str(&next.japanese_text);
+    } else {
+        // 一边有译文、一边没有：拼出来的译文不完整（日文语音会漏读半句），清掉让
+        // 翻译器按拼接后的整句重译一次。
+        target.japanese_text.clear();
+    }
+}
+
 /// `Function.fix_ai_generated_text`：规范化带情绪标签的文本。语义 1:1 对照。
 pub fn fix_ai_generated_text(text: &str) -> String {
     let text = text
@@ -466,5 +560,88 @@ pub fn truncate_at_turn_end(text: &str) -> &str {
     match find_turn_end(text) {
         Some((pos, _)) => &text[..pos],
         None => text,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn processor() -> MessageProcessor {
+        MessageProcessor::new(ProcessorOptions::default(), None)
+    }
+
+    /// 第一个【情绪】标签之前的文本不再被丢掉（并进第一段正文）。
+    #[test]
+    fn keeps_text_before_first_emotion_tag() {
+        let p = processor();
+
+        // （动作）剥掉后，标签之前的旁白并进第一段，和标签正文连成一句。
+        let segs =
+            p.parse_and_classify_emotional_segments("（她转过头）窗外的雨还在下。【开心】你好呀。");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].following_text, "窗外的雨还在下。你好呀。");
+        assert_eq!(segs[0].original_tag, "开心");
+        assert_eq!(segs[0].japanese_text, "窗外的雨还在下。你好呀。");
+
+        // 常规写法（标签就在句首）行为不变。
+        let segs = p.parse_and_classify_emotional_segments("【开心】你好呀。");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].following_text, "你好呀。");
+
+        // 标签之前只有动作时不会凭空多出正文。
+        let segs =
+            p.parse_and_classify_emotional_segments("（她轻轻叹气）【无奈】算了，随便你吧。");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].following_text, "算了，随便你吧。");
+    }
+
+    /// 被 【情绪】 标签打断的同一句会被并回一段；已经收句的不动。
+    #[test]
+    fn merges_segments_split_inside_one_sentence() {
+        let p = processor();
+
+        let segs = p.parse_whole_sentence_segments("【开心】哇，真的吗【兴奋】那我们赶紧出发吧！");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].following_text, "哇，真的吗那我们赶紧出发吧！");
+        assert_eq!(segs[0].original_tag, "开心");
+
+        // 两句各自收句 → 保留两段（句与句之间的停顿不动）。
+        let segs =
+            p.parse_whole_sentence_segments("【开心】哇，真的吗？【兴奋】那我们赶紧出发吧！");
+        assert_eq!(segs.len(), 2);
+
+        // 原解析器（不看情绪的云端 TTS 走这条）行为不变。
+        let segs =
+            p.parse_and_classify_emotional_segments("【开心】哇，真的吗【兴奋】那我们赶紧出发吧！");
+        assert_eq!(segs.len(), 2);
+    }
+
+    /// 打开翻译时，一边有译文一边没有：清掉译文让翻译器按整句重译，别漏读半句。
+    #[test]
+    fn drops_partial_translation_when_merging() {
+        let p = MessageProcessor::new(
+            ProcessorOptions {
+                enable_translate: true,
+                ..Default::default()
+            },
+            None,
+        );
+        let segs =
+            p.parse_whole_sentence_segments("【开心】哇，真的吗<哇真的吗>【兴奋】那我们走！");
+        assert_eq!(segs.len(), 1);
+        assert_eq!(segs[0].following_text, "哇，真的吗那我们走！");
+        assert_eq!(segs[0].japanese_text, "");
+    }
+
+    #[test]
+    fn detects_finished_sentences() {
+        assert!(ends_with_sentence_end("你好。"));
+        assert!(ends_with_sentence_end("真的吗？”"));
+        assert!(ends_with_sentence_end("let's go!"));
+        assert!(!ends_with_sentence_end("真的吗"));
+        assert!(!ends_with_sentence_end("她说："));
+        assert!(!ends_with_sentence_end("我……"));
+        assert!(!ends_with_sentence_end(""));
     }
 }
