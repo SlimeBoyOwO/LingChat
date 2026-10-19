@@ -16,6 +16,14 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// 获取已缓存的 data 目录；没初始化时返回 `None`。
+///
+/// 给「直接构造服务、不走 App 启动流程」的调用方用（单测、集成测试、外部工具）——
+/// 它们拿不到 AppHandle，调用 [`get_data_dir`] 会直接 panic。
+pub fn try_get_data_dir() -> Option<&'static PathBuf> {
+    DATA_DIR.get()
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：

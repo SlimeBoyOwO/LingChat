@@ -152,6 +152,10 @@ data/data_manifest.json
 !data/third_party/embedding_model_bge_small_zh/
 !data/third_party/embedding_model_bge_small_zh/.gitkeep
 !data/third_party/embedding_model_bge_small_zh/README.md
+# ZipVoice 中英音素表：随包资源（上游 CI 才生成，模型包里没有），
+# 只在模型缺 lexicon.txt 时写回模型目录。
+!data/third_party/zipvoice/
+!data/third_party/zipvoice/**
 # 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
 data/game_data/backgrounds/**
 !data/game_data/backgrounds/
