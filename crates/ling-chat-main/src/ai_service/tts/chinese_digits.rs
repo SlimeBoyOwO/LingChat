@@ -25,9 +25,11 @@
 //! | `3.14`        | `三点一四`                 |
 //! | `13800138000` | `幺三八零零一三八零零零`     |
 //!
-//! 数字之间的半角冒号单独有一条规则（[`normalize_colon`]），**所有**中文模型都在用：
-//! 模型自带的 FST 不会动冒号（实测 `上午9:30` → `上午九:三十`），而 sherpa 的前端把
-//! 冒号当句读丢掉，不换掉的话读出来是「九三十」、比分是「三二」。
+//! 数字之间（或数字里）夹着的标点另有一条规则（[`normalize_number_punct`]），**所有**
+//! 中文模型都在用：模型自带的 FST 只改数字、不懂标点（实测 `上午9:30` → `上午九:三十`、
+//! `1,000` → `一,零零零`），而 sherpa 的前端会把标点当句读丢掉或把数字切成两截，读出来
+//! 是「九三十」「一零零零」「二千零二十六十二十」。时刻/比分、千分位、区间、日期都在
+//! 那里先换成读得出来的写法。
 //!
 //! 刻意**不跟**的部分：模型还带 `phone.fst`，会把 `1100` 念成「幺幺零零」、
 //! `11000` 念成「幺幺零零零」——那是按短号码规则硬套的，做数量词时会读错，
@@ -91,51 +93,129 @@ pub(crate) fn normalize(text: &str) -> String {
     out
 }
 
-/// 数字之间那个半角冒号：`9:30` 该念「九点三十」、`3:2` 该念「三比二」。
+/// 数字里夹着的标点先归置一下：`9:30` → `9点30`、`1,000` → `1000`、
+/// `10-20` → `10到20`、`2026-10-20` → `二零二六年十月二十日`。
 ///
-/// 模型自带的规则 FST 只改数字、不动冒号（实测 `上午9:30` → `上午九:三十`），而 sherpa
-/// 的前端把冒号当句读丢掉——不换掉的话读出来是「九三十」，比分是「三二」。
+/// 这些写法模型自带的规则 FST 都认不全——FST 只改数字、不懂标点（实测
+/// `上午9:30` → `上午九:三十`、`1,000` → `一,零零零`），而 sherpa 的前端要么把标点
+/// 当句读丢掉、要么把数字切成两截，读出来就是「九三十」「一零零零」「十二十」。
+/// 所以在切句之前先换成读得出来的写法。**所有**中文模型都走这一步，不只是没带
+/// FST 的那些（见模块文档）。
+pub(crate) fn normalize_number_punct(text: &str) -> String {
+    normalize_separators(&normalize_dates(text))
+}
+
+/// `2026-10-20` / `2026/1/5` → `二零二六年十月二十日`。
 ///
-/// 判定：两边都得是紧挨着的数字、左边 1~2 位；右边正好 2 位且左边 ≤ 24、右边 ≤ 59 才
-/// 当时刻（`9:30`、`12:05`），其余都当比分/比例（`3:2`、`25:30`、`1:1`）。不满足条件
-/// （`123:45`、`a:1`）就原样留着，交给模型自己的规则。
-pub(crate) fn normalize_colon(text: &str) -> String {
+/// 只认「4 位年份 + 两位以内的月 + 两位以内的日」这种写法，`10-20` 这种可能只是区间的
+/// 留给 [`normalize_separators`]。年份按汉字逐位念（`二零二六`，不是「二千零二十六」），
+/// 写出汉字之后带 FST 的模型也不会再去动它。
+fn normalize_dates(text: &str) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     let mut i = 0;
 
     while i < chars.len() {
-        if chars[i] != ':' {
-            out.push(chars[i]);
+        match match_date(&chars, i) {
+            Some((end, year, month, day)) => {
+                out.push_str(&read_number(&year, true));
+                out.push('年');
+                out.push_str(&read_month_or_day(&month));
+                out.push('月');
+                out.push_str(&read_month_or_day(&day));
+                out.push('日');
+                i = end;
+            },
+            None => {
+                out.push(chars[i]);
+                i += 1;
+            },
+        }
+    }
+
+    out
+}
+
+/// 从 `start` 起匹配 `2026-10-20` / `2026/1/5`，返回（结束下标, 年, 月, 日）。
+fn match_date(chars: &[char], start: usize) -> Option<(usize, String, String, String)> {
+    let take_digits = |from: usize, max: usize| -> Option<(usize, String)> {
+        let mut end = from;
+        while end < chars.len() && end - from < max && chars[end].is_ascii_digit() {
+            end += 1;
+        }
+        (end > from).then(|| (end, chars[from..end].iter().collect()))
+    };
+    let is_sep = |idx: usize| matches!(chars.get(idx).copied(), Some('-') | Some('/'));
+
+    let (year_end, year) = take_digits(start, 4)?;
+    if year.len() != 4 || !is_sep(year_end) {
+        return None;
+    }
+    let (month_end, month) = take_digits(year_end + 1, 2)?;
+    if !is_sep(month_end) {
+        return None;
+    }
+    let (day_end, day) = take_digits(month_end + 1, 2)?;
+    Some((day_end, year, month, day))
+}
+
+/// 月、日这种「可能有前导零」的数字：`05` 念「五」而不是「零五」。
+fn read_month_or_day(digits: &str) -> String {
+    let trimmed = digits.trim_start_matches('0');
+    if trimmed.is_empty() {
+        return "零".to_string();
+    }
+    read_number(trimmed, false)
+}
+
+/// 数字之间夹着的分隔符：`9:30` 念「九点三十」、`3:2` 念「三比二」、`1,000` 念
+/// 「一千」、`10-20` 念「十到二十」。
+///
+/// 判定都要求两边是紧挨着的数字：冒号要求左边 1~2 位、右边正好 2 位且时 ≤ 24、分 ≤ 59
+/// 才算时刻（`9:30`、`12:05`），其余当比分（`3:2`、`25:30`）；逗号只在「左边 1~3 位、
+/// 右边正好 3 位」时当千分位（`1,000`、`12,345,678`）；短横只要求两边都有数字。
+/// 不满足的（`123:45`、`a:1`、`9:`、`1,2,3`、`1,23`）原样留着，交给模型自己的规则。
+fn normalize_separators(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+
+    while i < chars.len() {
+        let c = chars[i];
+        if !matches!(c, ':' | ',' | '，' | '-') {
+            out.push(c);
             i += 1;
             continue;
         }
 
-        // 冒号左边紧挨着的数字串（要 1~2 位）。
+        // 分隔符两边紧挨着的数字串。
         let left_start = chars[..i]
             .iter()
             .rposition(|c| !c.is_ascii_digit())
             .map_or(0, |pos| pos + 1);
         let left: String = chars[left_start..i].iter().collect();
-        // 冒号右边紧挨着的数字串。
         let right: String = chars[i + 1..]
             .iter()
             .take_while(|c| c.is_ascii_digit())
             .collect();
+        let (left_len, right_len) = (left.len(), right.len());
 
-        let colon = if (1..=2).contains(&left.len()) && (1..=2).contains(&right.len()) {
-            let hour = left.parse::<u32>().unwrap_or(u32::MAX);
-            let minutes = right.parse::<u32>().unwrap_or(u32::MAX);
-            if right.len() == 2 && hour <= 24 && minutes <= 59 {
-                '点'
-            } else {
-                '比'
-            }
-        } else {
-            ':'
-        };
-
-        out.push(colon);
+        match c {
+            ':' if (1..=2).contains(&left_len) && (1..=2).contains(&right_len) => {
+                let hour = left.parse::<u32>().unwrap_or(u32::MAX);
+                let minutes = right.parse::<u32>().unwrap_or(u32::MAX);
+                out.push(if right_len == 2 && hour <= 24 && minutes <= 59 {
+                    '点'
+                } else {
+                    '比'
+                });
+            },
+            // 千分位：逗号拿掉，数字连成一串再交给 FST / 数字改写。
+            ',' | '，' if (1..=3).contains(&left_len) && right_len == 3 => {},
+            // 区间：日期的短横在 normalize_dates 里已经处理掉了，这里剩下的是「到」。
+            '-' if left_len > 0 && right_len > 0 => out.push('到'),
+            _ => out.push(c),
+        }
         i += 1;
     }
 
@@ -382,9 +462,9 @@ mod tests {
         assert!(!has_han("안녕하세요 3"), "谚文不是汉字");
     }
 
-    /// 数字之间的半角冒号：时刻念「点」、比分念「比」，别的原样留着。
+    /// 数字里夹的分隔符：时刻「点」、比分「比」、千分位去逗号、区间「到」、日期写成年月日。
     #[test]
-    fn rewrites_colon_between_digits() {
+    fn rewrites_number_separators() {
         let cases: &[(&str, &str)] = &[
             // 时刻：左边 1~2 位、右边正好 2 位（分钟 ≤ 59）。
             ("9:30", "9点30"),
@@ -396,22 +476,45 @@ mod tests {
             ("25:30", "25比30"),
             ("1:1", "1比1"),
             ("比分3:2", "比分3比2"),
-            // 不认识的写法不碰：左边三位、冒号贴着字母、右边为空。
+            // 千分位：逗号拿掉，数字连成一串再交给 FST / 数字改写。
+            ("1,000", "1000"),
+            ("12,345,678", "12345678"),
+            ("1，000", "1000"),
+            ("这个 1,000 块的", "这个 1000 块的"),
+            // 区间。
+            ("10-20", "10到20"),
+            ("第3-5章", "第3到5章"),
+            // 日期：写成汉字，年份逐位念。
+            ("2026-10-20", "二零二六年十月二十日"),
+            ("2026/1/5", "二零二六年一月五日"),
+            (
+                "今天是 2026-10-20，别忘了。",
+                "今天是 二零二六年十月二十日，别忘了。",
+            ),
+            // 不认识的写法不碰：左边三位（冒号）、冒号贴着字母、右边为空、枚举、缺一半。
             ("123:45", "123:45"),
             ("a:1", "a:1"),
             ("9:", "9:"),
             (":30", ":30"),
+            ("1,2,3", "1,2,3"),
+            ("1,23", "1,23"),
+            ("a-1", "a-1"),
+            ("1-", "1-"),
             // 中文全角冒号是句读，不归这里管。
             ("9：30", "9：30"),
         ];
         for (input, expected) in cases {
-            assert_eq!(&normalize_colon(input), expected, "改错：{input}");
+            assert_eq!(&normalize_number_punct(input), expected, "改错：{input}");
         }
-        // 数字改写接着做：「9:30」先变「9点30」，再按汉字念。
+        // 数字改写接着做：先归置标点，再按汉字念。
         assert_eq!(
-            normalize(&normalize_colon("上午9:30开会")),
+            normalize(&normalize_number_punct("上午9:30开会")),
             "上午九点三十开会"
         );
-        assert_eq!(normalize(&normalize_colon("比分3:2")), "比分三比二");
+        assert_eq!(normalize(&normalize_number_punct("比分3:2")), "比分三比二");
+        assert_eq!(
+            normalize(&normalize_number_punct("一共1,000块")),
+            "一共一千块"
+        );
     }
 }
