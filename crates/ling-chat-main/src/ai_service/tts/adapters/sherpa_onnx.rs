@@ -1,4 +1,3 @@
-use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
@@ -1122,9 +1121,9 @@ fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
     None
 }
 
-/// 内置的 ZipVoice 中英音素表（`字/词 → 声母0 韵母…`），随二进制一起发布。
+/// 随包的 ZipVoice 中英音素表（`字/词 → 声母0 韵母…`）在 data 目录下的相对路径。
 ///
-/// 为什么必须内置：sherpa-onnx 的 `MatchaTtsLexicon` 在 lexicon 为空时直接
+/// 为什么必须随包带一份：sherpa-onnx 的 `MatchaTtsLexicon` 在 lexicon 为空时直接
 /// `SHERPA_ONNX_EXIT(-1)`（= `_Exit(-1)`，进程以 255 静默退出，Rust 侧捕不到），
 /// 而 ZipVoice 的 `InitFrontend()` 必然走这个类。上游官方包里的 `lexicon.txt` 并不是
 /// 模型自带文件，而是 CI 打包时用 `scripts/zipvoice/zh-en/generate_lexicon.py`
@@ -1133,10 +1132,43 @@ fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
 /// （`好 hao3`）与模型 `tokens.txt` 的「声母+0 / 韵母」方案（`h0 ao3`）不兼容，
 /// 不能直接拿来当 lexicon。
 ///
-/// 本文件即上述脚本的输出（68037 条），音素已逐条校验都在模型 `tokens.txt` 里。
-const ZIPVOICE_LEXICON_ZH_EN: &str = include_str!("zipvoice-lexicon-zh-en.txt");
+/// 这个文件即上述脚本的输出（68037 条），音素已逐条校验都在模型 `tokens.txt` 里。
+/// 它放在 `data/third_party/` 下随包发布（桌面端进 `bundle.resources`、移动端进
+/// `data.7z`），而不是 `include_str!` 进二进制——1.7MB 文本只有 ZipVoice 用得上，
+/// 没必要让每个构建产物都背上它。
+const ZIPVOICE_LEXICON_REL_PATH: &str = "third_party/zipvoice/lexicon-zh-en.txt";
 
-/// 定位 ZipVoice 的 lexicon：优先模型目录自带的，缺失时写入内置的中英音素表。
+/// 读取随包的中英音素表，行尾统一成 LF。
+///
+/// 行尾必须干净：`\r` 会被当成音素的一部分而全部查不到（`.gitattributes` 已固定
+/// 该文件 LF，这里再兜一层——手工拷贝过的副本可能不是）。
+fn bundled_zipvoice_lexicon(data_dir: &Path) -> Result<String> {
+    let path = data_dir.join(ZIPVOICE_LEXICON_REL_PATH);
+    let text = std::fs::read_to_string(&path).map_err(|e| {
+        anyhow!(
+            "读取随包 ZipVoice 音素表失败（{}）: {e}——安装包不完整？",
+            path.display()
+        )
+    })?;
+    Ok(if text.contains('\r') {
+        text.replace("\r\n", "\n")
+    } else {
+        text
+    })
+}
+
+/// 随包资源所在的 data 目录。
+///
+/// 正常路径是 [`crate::data_dir::get_data_dir`]（App 启动时初始化）；单测/集成测试
+/// 直接构造适配器、不走启动流程，这里退回仓库里的 `data/`（与 [`crate::data_dir`]
+/// 在 debug 模式下的解析一致）。
+fn bundled_assets_data_dir() -> PathBuf {
+    crate::data_dir::try_get_data_dir()
+        .cloned()
+        .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
+}
+
+/// 定位 ZipVoice 的 lexicon：优先模型目录自带的，缺失时写入随包的中英音素表。
 ///
 /// 写回模型目录而不是临时目录，是为了让模型目录自洽（其它工具、以及下次启动
 /// 都直接命中），而且只需要写一次。
@@ -1148,15 +1180,15 @@ fn zipvoice_lexicon(model_dir: &Path) -> Result<PathBuf> {
             return Ok(path);
         }
         tracing::warn!(
-            "ZipVoice 模型自带的 {} 为空，改用内置中英音素表",
+            "ZipVoice 模型自带的 {} 为空，改用随包中英音素表",
             path.display()
         );
     }
 
-    let text = bundled_zipvoice_lexicon();
+    let text = bundled_zipvoice_lexicon(&bundled_assets_data_dir())?;
     if !zipvoice_lexicon_matches_tokens(model_dir, &text) {
         return Err(anyhow!(
-            "ZipVoice 模型缺少 lexicon.txt，且内置中英音素表与 {} 里的 tokens.txt 不匹配（不是同一个中英模型）",
+            "ZipVoice 模型缺少 lexicon.txt，且随包中英音素表与 {} 里的 tokens.txt 不匹配（不是同一个中英模型）",
             model_dir.display()
         ));
     }
@@ -1165,25 +1197,13 @@ fn zipvoice_lexicon(model_dir: &Path) -> Result<PathBuf> {
     std::fs::write(&path, text.as_bytes())
         .map_err(|e| anyhow!("写入 ZipVoice lexicon.txt 失败（{}）: {e}", path.display()))?;
     tracing::info!(
-        "ZipVoice 模型缺少 lexicon.txt（上游由 CI 生成），已写入内置中英音素表: {}",
+        "ZipVoice 模型缺少 lexicon.txt（上游由 CI 生成），已写入随包中英音素表: {}",
         path.display()
     );
     Ok(path)
 }
 
-/// 内置音素表文本，行尾统一成 LF。
-///
-/// `include_str!` 是逐字节嵌入：Windows 上若把换行检出成 CRLF，行尾的 `\r` 会被
-/// 当成音素的一部分而全部查不到（`.gitattributes` 已固定 LF，这里再兜一层）。
-fn bundled_zipvoice_lexicon() -> Cow<'static, str> {
-    if ZIPVOICE_LEXICON_ZH_EN.contains('\r') {
-        Cow::Owned(ZIPVOICE_LEXICON_ZH_EN.replace("\r\n", "\n"))
-    } else {
-        Cow::Borrowed(ZIPVOICE_LEXICON_ZH_EN)
-    }
-}
-
-/// 内置音素表的音素是否都被模型 `tokens.txt` 收录。
+/// 随包音素表的音素是否都被模型 `tokens.txt` 收录。
 ///
 /// 防止把中英音素表塞给别的 ZipVoice 模型（例如纯英文模型）——那种情况下宁可报错，
 /// 也不要念出一堆 OOV。
@@ -1808,9 +1828,14 @@ mod tests {
         (parsed.format.sample_rate as u32, parsed.len / 2)
     }
 
+    /// 仓库里的 data 目录：单测不走 App 启动流程，`data_dir` 没初始化。
+    fn test_data_dir() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")
+    }
+
     /// 造一个「假 ZipVoice 模型目录」：只会写 tokens.txt。
     ///
-    /// `tokens_from_bundled = true` 时用内置音素表的音素生成 tokens.txt（模拟中英
+    /// `tokens_from_bundled = true` 时用随包音素表的音素生成 tokens.txt（模拟中英
     /// 模型，音素全部命中）；否则只放无关音素（模拟别的 ZipVoice 模型）。
     fn fake_zipvoice_dir(tag: &str, tokens_from_bundled: bool) -> PathBuf {
         let dir =
@@ -1819,7 +1844,7 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("建临时模型目录失败");
 
         let tokens = if tokens_from_bundled {
-            let bundled = bundled_zipvoice_lexicon();
+            let bundled = bundled_zipvoice_lexicon(&test_data_dir()).expect("读取随包音素表");
             let mut phonemes: Vec<&str> = bundled
                 .lines()
                 .flat_map(|line| line.split_whitespace().skip(1))
@@ -1834,19 +1859,36 @@ mod tests {
         dir
     }
 
-    /// 模型目录缺 lexicon.txt 时，应写入内置中英音素表并返回该路径。
+    /// 随包音素表读不到（安装包不完整）时报明确的错，而不是静默地念不出声。
+    #[test]
+    fn zipvoice_missing_bundled_lexicon_errors() {
+        let empty =
+            std::env::temp_dir().join(format!("lingchat-empty-data-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&empty);
+        std::fs::create_dir_all(&empty).expect("建空目录失败");
+
+        let err = bundled_zipvoice_lexicon(&empty).expect_err("缺文件时应报错");
+        assert!(
+            err.to_string().contains("读取随包 ZipVoice 音素表失败"),
+            "错误信息应说明读不到随包音素表: {err}"
+        );
+
+        let _ = std::fs::remove_dir_all(&empty);
+    }
+
+    /// 模型目录缺 lexicon.txt 时，应写入随包中英音素表并返回该路径。
     #[test]
     fn zipvoice_missing_lexicon_falls_back_to_bundled() {
         let dir = fake_zipvoice_dir("bundled", true);
 
-        let path = zipvoice_lexicon(&dir).expect("应回退到内置音素表");
+        let path = zipvoice_lexicon(&dir).expect("应回退到随包音素表");
         assert_eq!(path, dir.join("lexicon.txt"));
 
         let written = std::fs::read_to_string(&path).expect("读取写入的 lexicon 失败");
-        assert_eq!(written, bundled_zipvoice_lexicon().as_ref());
+        assert_eq!(written, bundled_zipvoice_lexicon(&test_data_dir()).unwrap());
         assert!(
             written.lines().count() > 60_000,
-            "内置音素表疑似被截断: {} 行",
+            "随包音素表疑似被截断: {} 行",
             written.lines().count()
         );
 
@@ -1867,9 +1909,9 @@ mod tests {
         let dir = fake_zipvoice_dir("empty", true);
         std::fs::write(dir.join("lexicon.txt"), "").expect("写空 lexicon 失败");
 
-        let path = zipvoice_lexicon(&dir).expect("空 lexicon 应被内置音素表替换");
+        let path = zipvoice_lexicon(&dir).expect("空 lexicon 应被随包音素表替换");
         let written = std::fs::read_to_string(&path).expect("读取 lexicon 失败");
-        assert!(written.lines().count() > 60_000, "应写入完整内置音素表");
+        assert!(written.lines().count() > 60_000, "应写入完整随包音素表");
 
         let _ = std::fs::remove_dir_all(&dir);
     }
