@@ -606,13 +606,14 @@ impl TtsAdapter for SherpaOnnxAdapter {
             gen_config.num_steps = ZIPVOICE_NUM_STEPS; // 见 ZIPVOICE_NUM_STEPS
         }
 
-        // 中文文本里数字之间的冒号要先改掉：模型自带的规则 FST 只改数字、不动冒号
-        // （实测「上午9:30」→「上午九:三十」），而冒号在 sherpa 前端会被当句读丢掉，
-        // 念出来是「九三十」。见 chinese_digits::normalize_colon。
-        let with_colons;
+        // 中文文本里数字之间夹的标点先归置：`9:30` 要念「九点三十」、`1,000` 要念
+        // 「一千」、`2026-10-20` 要念「二零二六年十月二十日」。模型自带的规则 FST
+        // 只改数字、不懂标点（实测「上午9:30」→「上午九:三十」），冒号/逗号的读法
+        // 全靠这里。见 chinese_digits::normalize_number_punct。
+        let with_punct;
         let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
-            with_colons = crate::ai_service::tts::chinese_digits::normalize_colon(text);
-            &with_colons
+            with_punct = crate::ai_service::tts::chinese_digits::normalize_number_punct(text);
+            &with_punct
         } else {
             text
         };
