@@ -33,7 +33,8 @@
 crates/ling-chat-main/src/ai_service/skill_agent/prompts/** text eol=lf
 
 # ZipVoice 音素表：同上，CRLF 会让行尾音素带上 \r 而全部查不到
-crates/ling-chat-main/src/ai_service/tts/adapters/zipvoice-lexicon-zh-en.txt text eol=lf
+# （现在随 data/ 打包，不再 include_str!，但写回模型目录的副本仍按字节拷贝）
+data/third_party/zipvoice/lexicon-zh-en.txt text eol=lf
 
 # MC 桥接模组：Java/Gradle 惯例 LF；gradlew 无扩展名，不显式声明会被 autocrlf 检出成 CRLF
 extension/maid_mod/gradlew text eol=lf
