@@ -8,8 +8,8 @@ use sea_orm::DatabaseConnection;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::player_identity::{
-    RelationEndpoint, ScenePeer, build_peers_block, build_player_block, resolve_relation,
-    runtime_relations,
+    AliasEntry, RelationEndpoint, ScenePeer, build_peers_block, build_player_block,
+    effective_user_alias, resolve_relation, runtime_relations,
 };
 use crate::ai_service::types::{CharacterSettings, LineAttributeExt, LineBase};
 use crate::db::entities::line::LineAttribute;
@@ -35,9 +35,29 @@ pub fn collect_peers(gs: &GameStatus, data_dir: &Path, self_folder: &str) -> Vec
         .collect()
 }
 
+/// 在场各角色对玩家身份的称呼一览（含自身，自身行标 is_self）。
+pub fn alias_roster(gs: &GameStatus, self_role_id: Option<i32>) -> Vec<AliasEntry> {
+    let identity_name = gs.player.user_name.clone();
+    let identity_id = gs.player.identity_id.clone();
+    let ids: Vec<i32> = gs.onstage_role_ids.iter().copied().collect();
+    ids.into_iter()
+        .filter_map(|role_id| {
+            gs.role_manager.get_loaded(role_id).map(|role| AliasEntry {
+                name: role
+                    .display_name
+                    .clone()
+                    .unwrap_or_else(|| role.settings.ai_name.clone()),
+                alias: effective_user_alias(&role.settings, identity_id.as_deref(), &identity_name),
+                is_self: Some(role_id) == self_role_id,
+            })
+        })
+        .collect()
+}
+
 /// 组装「某角色视角」的玩家注入块：关系只看说话者（该角色）一侧，称呼按该角色的 alias 规则。
 pub fn player_block_for(
     gs: &GameStatus,
+    role_id: i32,
     settings: &CharacterSettings,
     alias: &str,
     speaker_relations: &HashMap<String, String>,
@@ -45,7 +65,21 @@ pub fn player_block_for(
     let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
     let target = RelationEndpoint::Me(gs.player.identity_id.clone().unwrap_or_default());
     let relation = resolve_relation(&speaker, &target, speaker_relations, &HashMap::new(), None);
-    build_player_block(alias, "", &gs.player.user_prompt, relation.as_ref())
+    let player_view = gs
+        .player
+        .relations
+        .get(&RelationEndpoint::Ai(settings.character_folder.clone()).key())
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty());
+    let roster = alias_roster(gs, Some(role_id));
+    build_player_block(
+        &gs.player.user_name,
+        alias,
+        &gs.player.user_prompt,
+        relation.as_ref(),
+        player_view.as_deref(),
+        &roster,
+    )
 }
 
 /// 按当前阵容重建某角色的人设行：原位替换第一条 SYSTEM 行，没有才追加。
@@ -76,8 +110,9 @@ pub async fn rebuild_persona_line(
 
     let speaker = RelationEndpoint::Ai(folder.clone());
     let speaker_relations = runtime_relations::load_effective(data_dir, &folder, gs);
-    let user_name = gs.player.user_name.clone();
-    let player_block = player_block_for(gs, &settings, &user_name, &speaker_relations);
+    let user_alias =
+        effective_user_alias(&settings, gs.player.identity_id.as_deref(), &gs.player.user_name);
+    let player_block = player_block_for(gs, role_id, &settings, &user_alias, &speaker_relations);
 
     let peers = collect_peers(gs, data_dir, &folder);
     let peers_block = build_peers_block(&speaker, &speaker_relations, &peers);
@@ -85,7 +120,7 @@ pub async fn rebuild_persona_line(
     let injected = format!("{player_block}{peers_block}");
     let system_prompt = sys_prompt_builder_by_settings_with_player(
         &settings,
-        &user_name,
+        &user_alias,
         &injected,
         prompt_options,
     );

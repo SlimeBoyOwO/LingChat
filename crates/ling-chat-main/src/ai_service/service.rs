@@ -113,7 +113,7 @@ impl AIService {
         let boot = resolve_player_bootstrap(&self.data_dir, &gs, &settings);
 
         let ai_prompt = sys_prompt_builder_with_player(
-            &boot.user_name,
+            &boot.alias,
             &settings.ai_name.clone(),
             &boot.player_block,
             &settings.system_prompt.clone().unwrap_or(default_prompt),
@@ -165,6 +165,16 @@ impl AIService {
         Ok(())
     }
 
+    /// 播种初始好感：把（该身份覆写 → 卡片默认）的 initial_affection 写进本局全局变量。
+    /// 已有值（该身份专属值或旧档共享默认）不覆盖。
+    pub async fn seed_initial_affection(&mut self, cid: i32) -> Result<()> {
+        let mut gs = self.game_status.lock().await;
+        let identity_id = gs.player.identity_id.clone();
+        gs.seed_identity_affection(&self.db, cid, identity_id.as_deref())
+            .await?;
+        Ok(())
+    }
+
     pub async fn reset_game_status(&mut self) -> Result<()> {
         self.clear_game_status().await;
         let prompt_options = match self.prompt_options {
@@ -176,6 +186,9 @@ impl AIService {
         };
         self.init_game_intro_character(self.init_character_id, prompt_options)
             .await?;
+        if let Some(cid) = self.init_character_id {
+            self.seed_initial_affection(cid).await?;
+        }
         Ok(())
     }
 

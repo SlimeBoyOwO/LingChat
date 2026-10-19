@@ -2,6 +2,27 @@
 
 use std::collections::HashMap;
 
+use crate::ai_service::types::CharacterSettings;
+
+/// 该角色眼里「我」的称呼：per-身份覆写 → 老卡 settings.user_name → 身份卡名字。
+pub fn effective_user_alias(
+    settings: &CharacterSettings,
+    identity_id: Option<&str>,
+    identity_name: &str,
+) -> String {
+    if let Some(id) = identity_id {
+        if let Some(alias) = settings.user_aliases.get(id) {
+            if !alias.name.trim().is_empty() {
+                return alias.name.trim().to_string();
+            }
+        }
+    }
+    if !settings.user_name.trim().is_empty() {
+        return settings.user_name.trim().to_string();
+    }
+    identity_name.trim().to_string()
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum RelationEndpoint {
     Ai(String),
@@ -69,27 +90,64 @@ pub fn resolve_relation(
     None
 }
 
+/// 在场一位角色对玩家身份的称呼（玩家块的称呼一览用）。
+#[derive(Clone, Debug)]
+pub struct AliasEntry {
+    /// 角色展示名（与旁白里出现的一致）。
+    pub name: String,
+    /// 该角色对玩家身份的称呼。
+    pub alias: String,
+    /// 是否本角色自己那一行。
+    pub is_self: bool,
+}
+
 /// 把「正在与你对话的这个人」拼成一段带优先级声明的指令块；全空时返回空串。
+/// 称呼有差异时输出身份名与全场称呼一览，并声明不同称呼指同一人。
 pub fn build_player_block(
-    name: &str,
-    _subtitle: &str,
+    identity_name: &str,
+    alias: &str,
     prompt: &str,
     relation: Option<&RelationView>,
+    player_view: Option<&str>,
+    roster: &[AliasEntry],
 ) -> String {
-    let name = name.trim();
+    let identity_name = identity_name.trim();
+    let alias = alias.trim();
     let prompt = prompt.trim();
 
-    if name.is_empty() && prompt.is_empty() && relation.is_none() {
+    if identity_name.is_empty() && prompt.is_empty() && relation.is_none() && player_view.is_none()
+    {
         return String::new();
     }
+
+    let call_name = if alias.is_empty() {
+        identity_name
+    } else {
+        alias
+    };
+    let has_diff = roster.iter().any(|e| e.alias != identity_name) || alias != identity_name;
 
     let mut out = String::from("\n\n【本局必须遵守：正在与你对话的「我」】\n");
     out.push_str(
         "（本节优先于上面人设、历史台词与记忆里关于这个人的任何写法；因为此处相当于现实的基础设定，所以两者冲突时以本节为主）\n",
     );
 
-    if !name.is_empty() {
-        out.push_str(&format!("名字：{name}\n"));
+    if has_diff {
+        out.push_str(&format!(
+            "名字：{identity_name}（旁白与系统提示里会用这个名字称呼 ta）\n"
+        ));
+        if !roster.is_empty() {
+            out.push_str("在场各角色对 ta 的称呼：\n");
+            for entry in roster {
+                if entry.is_self {
+                    out.push_str(&format!("- 你（{}）：{}\n", entry.name, entry.alias));
+                } else {
+                    out.push_str(&format!("- {}：{}\n", entry.name, entry.alias));
+                }
+            }
+        }
+    } else if !identity_name.is_empty() {
+        out.push_str(&format!("名字：{identity_name}\n"));
     }
     if !prompt.is_empty() {
         out.push_str(&format!(
@@ -100,22 +158,38 @@ pub fn build_player_block(
         match r.source {
             RelationSource::Speaker => {
                 out.push_str(&format!(
-                    "你和我的关系（必须体现在称呼、语气、动作与你的反应里，不要只是知道）：{}\n",
+                    "你对我的认知（你们的关系；这是你单方面的私人认知，必须体现在称呼、语气、动作与你的反应里，不要只是知道）：{}\n",
                     r.text
                 ));
-                out.push_str("关于关系：上面你和我的关系是我的基础设定以外的更为特殊的联系。\n");
+                out.push_str(
+                    "关于这一条：它不一定与事实相符，也不必与其他角色的认知一致；这是我在基础设定以外的更特殊的联系。\n",
+                );
             },
             RelationSource::Counterparty => {},
             RelationSource::PromptFallback => {},
         }
     }
+    if let Some(text) = player_view {
+        let text = text.trim();
+        if !text.is_empty() {
+            out.push_str(&format!(
+                "我对你的认知（你怎么看我；这是我对你的私人认知，同样不一定与事实相符）：{text}\n"
+            ));
+        }
+    }
 
     let has_attitude = matches!(relation.map(|r| r.source), Some(RelationSource::Speaker));
-    if !name.is_empty() || has_attitude {
+    if !call_name.is_empty() || has_attitude {
         out.push_str("\n");
-        out.push_str(&format!(
-            "要求：在一般情况下，称呼 ta 时用「{name}」，该称呼优先于其他设定；在合适的台词里可以适时体现这层态度；不要复述本节内容，也不要提“设定 / 关系”这些字眼。\n"
-        ));
+        if has_diff {
+            out.push_str(&format!(
+                "要求：回答时称呼 ta 用「{call_name}」；ta 的身份名是「{identity_name}」，旁白、系统提示与其他角色提到「{identity_name}」时，指的都是同一个 ta，不要因为不同角色对 ta 的称呼不同而影响你的判断；不要复述本节内容，也不要提“设定 / 关系 / 认知”这些字眼。\n"
+            ));
+        } else {
+            out.push_str(&format!(
+                "要求：在一般情况下，称呼 ta 时用「{call_name}」；不要复述本节内容，也不要提“设定 / 关系 / 认知”这些字眼。\n"
+            ));
+        }
     }
 
     out
@@ -143,7 +217,7 @@ pub fn build_peers_block(
             continue;
         };
         let text = match view.source {
-            RelationSource::Speaker => format!("你对 ta 的看法：{}", view.text),
+            RelationSource::Speaker => format!("你对 ta 的认知：{}", view.text),
             RelationSource::Counterparty => {
                 format!("ta 对你的说法（是 ta 的说法，未必是事实）：{}", view.text)
             },

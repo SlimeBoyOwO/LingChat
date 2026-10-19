@@ -17,8 +17,10 @@ use tauri_plugin_store::StoreExt;
 use crate::AppState;
 use crate::ai_service::types::{CharacterSettings, strip_transient_fields};
 use crate::config;
+use crate::config::AppConfig;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::system::open_folder;
 use crate::utils::yaml_file::{resolve_settings_file, write_json_as_yaml};
 
@@ -675,16 +677,103 @@ pub async fn update_role_settings(
     let yaml_path = resolve_settings_file(&base_path);
     write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
+    let app_config = AppConfig::load(&app).unwrap_or_default();
+    let prompt_options = crate::utils::prompt::PromptOptions::from_config(&app_config);
+
     let runtime_updated = {
         let service = state.ai_service.lock().await;
         let mut gs = service.game_status.lock().await;
+
+        let identity_id = gs.player.identity_id.clone();
+        let old_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
+            crate::ai_service::affection::effective_initial_affection(
+                &role.settings,
+                identity_id.as_deref(),
+            )
+        });
+
         let voice_updated = gs
             .role_manager
             .update_role_voice_settings(role_id, &validated);
         let visual_updated = gs
             .role_manager
             .update_role_visual_settings(role_id, &validated);
-        voice_updated || visual_updated
+
+        let prompt_changed = gs
+            .role_manager
+            .update_role_prompt_settings(role_id, &validated);
+
+        // 保存即烘：称呼/人设类字段有变化时，按当前阵容重建在场人设行，刷新记忆并落一次当前存档。
+        if prompt_changed {
+            crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
+                &mut gs,
+                db,
+                &crate::api::data_dir(),
+                prompt_options,
+            )
+            .await
+            .map_err(|e| format!("重建人设行失败: {}", e))?;
+            gs.persist_lines_if_bound(db).await;
+        }
+
+        // 改初始好感度即同步：本次保存若改变了当前身份的有效初始值，把当前存档里
+        // 「该角色 × 当前身份」的数值直接同步为新初始值，并写一次快照落库。
+        if let Some(old) = old_initial {
+            let new_initial = crate::ai_service::affection::effective_initial_affection(
+                &validated,
+                identity_id.as_deref(),
+            );
+            if let Some(init) = new_initial.filter(|v| *v != old) {
+                gs.set_identity_affection_initial(role_id, identity_id.as_deref(), init);
+                // 补发一次变更事件：面板即时刷新新值（本路径不经过上帝 Agent）。
+                let vector = crate::ai_service::affection::uniform_vector(init);
+                let _ = app.emit(
+                    "affection:changed",
+                    crate::ai_service::affection::AffectionChangedPayload {
+                        role_id,
+                        deltas: std::collections::HashMap::new(),
+                        negative_deltas: std::collections::HashMap::new(),
+                        average: vector.average(),
+                        values: vector,
+                        negative: crate::ai_service::types::NegativeVector::default(),
+                        reason: "初始好感度已同步到当前存档".to_string(),
+                    },
+                );
+                if init != 0 {
+                    let role_name = gs
+                        .role_manager
+                        .get_loaded(role_id)
+                        .map(|r| {
+                            r.display_name
+                                .clone()
+                                .unwrap_or_else(|| r.settings.ai_name.clone())
+                        })
+                        .unwrap_or_default();
+                    if !role_name.is_empty() {
+                        if let Err(e) = gs.add_affection_state_narration(db, &role_name, init).await
+                        {
+                            tracing::warn!("写入感情档位旁白失败: {}", e);
+                        } else {
+                            gs.persist_lines_if_bound(db).await;
+                        }
+                    }
+                }
+                if let Some(save_id) = gs.active_save_id {
+                    match serde_json::to_string(&gs.to_snapshot()) {
+                        Ok(snapshot_json) => {
+                            if let Err(e) =
+                                SaveRepo::update_save_status(db, save_id, &snapshot_json).await
+                            {
+                                tracing::warn!("初始好感度同步后落档失败: {}", e);
+                            }
+                        },
+                        Err(e) => tracing::warn!("序列化状态失败: {}", e),
+                    }
+                }
+            }
+        }
+
+        voice_updated || visual_updated || prompt_changed
     };
 
     tracing::info!(

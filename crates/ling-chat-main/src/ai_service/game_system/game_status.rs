@@ -294,10 +294,12 @@ impl GameStatus {
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<&'a mut GameRole> {
-        let var = self
-            .global_variables
-            .get(&crate::ai_service::affection::var_key(role_id))
-            .cloned();
+        let var = crate::ai_service::affection::resolve_var(
+            &self.global_variables,
+            role_id,
+            self.player.identity_id.as_deref(),
+        )
+        .cloned();
         let role = self.role_manager.get_role(db, role_id).await?;
         if let Some(state) = var
             .as_ref()
@@ -307,6 +309,96 @@ impl GameStatus {
             role.negative = state.negative;
         }
         Ok(role)
+    }
+
+    pub fn overlay_affections_for_identity(&mut self, identity_id: Option<&str>) {
+        self.role_manager
+            .overlay_affections_from_vars(&self.global_variables, identity_id);
+    }
+
+    /// 按（角色 × 身份）播种初始好感：该身份已有专属值、或旧档共享默认值存在时不覆盖。
+    /// 播种成功且非默认值时，补写一条「感情档位」旁白——好感度不做逐轮注入，缺这条
+    /// 旁白时角色要等第一次评估才知道自己的感情，设定完的初始值就不会体现在第一轮。
+    pub async fn seed_identity_affection(
+        &mut self,
+        db: &DatabaseConnection,
+        role_id: i32,
+        identity_id: Option<&str>,
+    ) -> Result<()> {
+        let (init, role_name) = {
+            let Some(role) = self.role_manager.get_loaded(role_id) else {
+                return Ok(());
+            };
+            (
+                crate::ai_service::affection::effective_initial_affection(
+                    &role.settings,
+                    identity_id,
+                ),
+                role.display_name
+                    .clone()
+                    .unwrap_or_else(|| role.settings.ai_name.clone()),
+            )
+        };
+        let Some(init) = init else {
+            return Ok(());
+        };
+        let key = crate::ai_service::affection::var_key_for(role_id, identity_id);
+        if self.global_variables.contains_key(&key) {
+            return Ok(());
+        }
+        if identity_id.is_some()
+            && self
+                .global_variables
+                .contains_key(&crate::ai_service::affection::var_key(role_id))
+        {
+            return Ok(());
+        }
+        self.set_identity_affection_initial(role_id, identity_id, init);
+        if init != 0 {
+            self.add_affection_state_narration(db, &role_name, init)
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub async fn add_affection_state_narration(
+        &mut self,
+        db: &DatabaseConnection,
+        role_name: &str,
+        value: i32,
+    ) -> Result<()> {
+        let v = value.clamp(-100, 100);
+        let vector = crate::ai_service::affection::uniform_vector(v);
+        let text = crate::ai_service::affection::describe_change_for_line(
+            role_name,
+            &self.player.user_name,
+            &vector,
+            &crate::ai_service::types::NegativeVector::default(),
+        );
+        let line = LineBase {
+            content: PromptRole::Narrator.build_prompt(&text),
+            attribute: LineAttributeExt(LineAttribute::User),
+            sender_role_id: Some(0),
+            display_name: Some("系统".to_string()),
+            ..Default::default()
+        };
+        self.add_line(db, line).await
+    }
+
+    pub fn set_identity_affection_initial(
+        &mut self,
+        role_id: i32,
+        identity_id: Option<&str>,
+        init: i32,
+    ) {
+        let vector = crate::ai_service::affection::uniform_vector(init);
+        self.set_variable(
+            &crate::ai_service::affection::var_key_for(role_id, identity_id),
+            crate::ai_service::affection::state_to_value(
+                &crate::ai_service::affection::state_from_vector(vector),
+            ),
+        );
+        self.overlay_affections_for_identity(identity_id);
     }
 
     /// 已绑档时把内存台词表同步落库一次；失败只告警。
@@ -333,7 +425,16 @@ impl GameStatus {
             line.identity_id = self.player.identity_id.clone();
         }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
-        let game_line = GameLine::from_base(line, perceived);
+        self.add_line_perceived(db, line, perceived).await
+    }
+
+    pub async fn add_line_perceived(
+        &mut self,
+        db: &DatabaseConnection,
+        line: LineBase,
+        perceived_role_ids: Vec<i32>,
+    ) -> Result<()> {
+        let game_line = GameLine::from_base(line, perceived_role_ids);
         self.line_list.push(game_line);
         self.refresh_memories(db).await?;
         Ok(())
@@ -702,8 +803,10 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
-        self.role_manager
-            .overlay_affections_from_vars(&self.global_variables);
+        self.role_manager.overlay_affections_from_vars(
+            &self.global_variables,
+            self.player.identity_id.as_deref(),
+        );
     }
 }
 

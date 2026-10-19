@@ -123,6 +123,10 @@ pub(super) fn build_service_graph(
     }
 
     rt.block_on(ai_service.init_game_status(character_id, prompt_options))?;
+    // 冷启动直接恢复上次角色，不经过 select_character，这里补播种初始好感度（与切角色同构）。
+    if let Some(cid) = character_id {
+        rt.block_on(ai_service.seed_initial_affection(cid))?;
+    }
 
     tracing::info!("AIService 初始化完成");
 

@@ -8,7 +8,7 @@ use crate::api::character::{ClothesItem, read_character_settings, scan_clothes};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::ai_service::game_system::player_identity::runtime_relations;
+use crate::ai_service::game_system::player_identity::{effective_user_alias, runtime_relations};
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -137,10 +137,15 @@ impl Tool for CharacterSwitch {
                 &loaded.settings.character_folder,
                 &gs,
             );
-            let alias = gs.player.user_name.clone();
+            let alias = effective_user_alias(
+                &loaded.settings,
+                gs.player.identity_id.as_deref(),
+                &gs.player.user_name,
+            );
             let player_block =
                 crate::ai_service::game_system::player_identity::persona::player_block_for(
                     &gs,
+                    role_id,
                     &loaded.settings,
                     &alias,
                     &speaker_relations,

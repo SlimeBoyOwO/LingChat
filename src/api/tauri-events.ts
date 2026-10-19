@@ -357,6 +357,18 @@ export function initializeTauriEventListeners() {
     });
   });
 
+  listen("save:auto-save-failed", (event) => {
+    const payload = event.payload as { message: string; timestamp: string };
+    console.log("[Tauri] 收到 save:auto-save-failed", payload);
+    useUIStore().showNotification({
+      type: "warning",
+      title: i18n.global.t("api.events.autoSaveFailed.title"),
+      message: i18n.global.t("api.events.autoSaveFailed.message", { time: payload.timestamp }),
+      duration: 4000,
+      skipTipsCheck: true,
+    });
+  });
+
   // === Affection events ===
 
   // 好感度评估结果（仅实际变化时发）：写回角色并记录最近一次变化

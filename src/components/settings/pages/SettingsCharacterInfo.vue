@@ -168,9 +168,54 @@
                 </div>
               </div>
 
+              <!-- 该角色对「我」的称呼/副标题：按「我的身份」分别设置，落到 user_aliases -->
+              <div v-if="activeTab === 'basic'" class="flex flex-col gap-2">
+                <label class="text-[13px] font-medium text-white/60">{{
+                  $t("settings.characterInfo.alias.identityLabel")
+                }}</label>
+                <SelectMenu v-model="aliasIdentityId" :options="aliasIdentityOptions" />
+
+                <template v-if="aliasIdentityId">
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.nameLabel")
+                  }}</label>
+                  <input
+                    v-model="aliasName"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.alias.namePlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.affectionLabel")
+                  }}</label>
+                  <input
+                    v-model.number="aliasInitialAffection"
+                    type="number"
+                    min="-100"
+                    max="100"
+                    :placeholder="$t('settings.characterInfo.alias.affectionPlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+                  <p class="text-[11px] leading-relaxed text-white/40">
+                    &lt; 0 {{ $t("settings.characterInfo.initialAffection.tiers.estranged") }} ·
+                    0-20 {{ $t("settings.characterInfo.initialAffection.tiers.initial") }} · 21-40
+                    {{ $t("settings.characterInfo.initialAffection.tiers.calm") }} · 41-60
+                    {{ $t("settings.characterInfo.initialAffection.tiers.familiar") }} · 61-80
+                    {{ $t("settings.characterInfo.initialAffection.tiers.deep") }} · 81-100
+                    {{ $t("settings.characterInfo.initialAffection.tiers.blazing") }}
+                  </p>
+
+                  <p class="text-[12px] leading-relaxed text-white/40">
+                    {{ $t("settings.characterInfo.alias.hint") }}
+                  </p>
+                </template>
+              </div>
+
               <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
               <CharacterRelationsEditor
                 v-if="activeTab === 'basic' && props.roleId"
+                ref="relationsEditor"
                 :role-id="props.roleId"
                 :character-folder="String(localSettings.character_folder || '')"
               />
@@ -386,6 +431,8 @@ import {
   getLive2dFilePath,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services/player-identity";
+import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
@@ -556,6 +603,9 @@ const handleDelete = async () => {
   }
 };
 
+/** 关系编辑器：设置保存前要先让它把关系落盘 */
+const relationsEditor = ref<InstanceType<typeof CharacterRelationsEditor> | null>(null);
+
 const tabs = computed(() => [
   { id: "basic", label: t("settings.characterInfo.tabs.basic") },
   { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
@@ -668,6 +718,63 @@ const removeClothesItem = (idx: number) => {
   }
 };
 
+const playerIdentities = ref<PlayerIdentitySummary[]>([]);
+const aliasIdentityId = ref("");
+
+const aliasIdentityOptions = computed(() => [
+  { label: t("settings.characterInfo.alias.noneOption"), value: "" },
+  ...playerIdentities.value.map((identity) => ({ label: identity.name, value: identity.id })),
+]);
+
+/** user_aliases 条目形状；initial_affection 为该身份专享的初始好感度覆写（null = 用卡片默认） */
+type UserAliasEntry = { name: string; subtitle: string; initial_affection?: number | null };
+
+const aliasEntry = computed<UserAliasEntry | null>(() => {
+  const id = aliasIdentityId.value;
+  if (!id) return null;
+  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry> | undefined;
+  return map?.[id] ?? null;
+});
+
+const ensureAliasEntry = () => {
+  const id = aliasIdentityId.value;
+  if (!id) return null;
+  if (!localSettings.value.user_aliases || typeof localSettings.value.user_aliases !== "object") {
+    localSettings.value.user_aliases = {};
+  }
+  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry>;
+  if (!map[id]) map[id] = { name: "", subtitle: "", initial_affection: null };
+  return map[id];
+};
+
+const aliasName = computed({
+  get: () => aliasEntry.value?.name ?? "",
+  set: (value: string) => {
+    const entry = ensureAliasEntry();
+    if (entry) entry.name = value;
+  },
+});
+
+/** 该身份的初始好感度覆写；留空（""）表示用卡片默认值（保存为 null） */
+const aliasInitialAffection = computed<number | "">({
+  get: () => aliasEntry.value?.initial_affection ?? "",
+  set: (value) => {
+    const entry = ensureAliasEntry();
+    if (!entry) return;
+    entry.initial_affection =
+      typeof value === "number" && !Number.isNaN(value) ? Math.trunc(value) : null;
+  },
+});
+
+const loadPlayerIdentities = async () => {
+  try {
+    playerIdentities.value = await listPlayerIdentities();
+  } catch (e) {
+    console.error("读取身份列表失败:", e);
+    playerIdentities.value = [];
+  }
+};
+
 // --- Watchers & Methods ---
 
 watch(
@@ -697,6 +804,8 @@ watch(
         if (!localSettings.value.voice_lang) {
           localSettings.value.voice_lang = "ja";
         }
+        aliasIdentityId.value = gameStore.playerIdentityId ?? "";
+        void loadPlayerIdentities();
         // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
         if (!localSettings.value.avatar_mode) {
           localSettings.value.avatar_mode = "live2d";
@@ -805,8 +914,15 @@ async function isLive2dModelAvailable(): Promise<boolean> {
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  const confirmed = await confirmSaveEffect(
+    (save) => t("settings.characterInfo.saveConfirm", { save }),
+    t("settings.characterInfo.saveConfirmNoSave"),
+  );
+  if (!confirmed) return false;
   saving.value = true;
   try {
+    // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
+    await relationsEditor.value?.submit(true);
     // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
     // WebGL 上下文、失败之后才退回静态
     if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {

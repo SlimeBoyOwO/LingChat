@@ -3,10 +3,15 @@
 //! 情感维度的调整、存档落点、事件广播与旁白台词由
 //! `tools::god_agent::UpdateAffection` 在执行时完成。
 
+use std::collections::HashMap;
+
 use anyhow::Result;
 use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::player_identity::{
+    RelationEndpoint, resolve_relation, runtime_relations,
+};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
 use crate::ai_service::tools::god_agent::UPDATE_AFFECTION;
 use crate::ai_service::types::{AffectionVector, GameLine, NegativeVector};
@@ -26,6 +31,8 @@ pub struct NpcAffectionView {
     pub current: AffectionVector,
     /// 当前负面情绪六维强度（评估参考：安抚后应减回去）。
     pub negative: NegativeVector,
+    /// 该角色对玩家身份的认知（说话者侧关系，可为空）。
+    pub player_relation: Option<String>,
 }
 
 impl NpcAffectionView {
@@ -41,6 +48,15 @@ impl NpcAffectionView {
             .filter_map(|&id| gs.role_manager.get_loaded(id))
             .filter_map(|r| {
                 let role_id = r.role_id?;
+                let folder = r.settings.character_folder.clone();
+                let player_relation = resolve_relation(
+                    &RelationEndpoint::Ai(folder.clone()),
+                    &RelationEndpoint::Me(gs.player.identity_id.clone().unwrap_or_default()),
+                    &runtime_relations::load_effective(&crate::api::data_dir(), &folder, gs),
+                    &HashMap::new(),
+                    None,
+                )
+                .map(|view| view.text);
                 Some(NpcAffectionView {
                     role_id,
                     name: r
@@ -51,6 +67,7 @@ impl NpcAffectionView {
                     info: r.settings.info.clone().unwrap_or_default(),
                     current: r.affection,
                     negative: r.negative,
+                    player_relation,
                 })
             })
             .collect();
@@ -117,6 +134,9 @@ fn build_task(npcs: &[NpcAffectionView], lines: &[GameLine]) -> AgentTask {
             dims,
             neg_dims,
         ));
+        if let Some(relation) = &npc.player_relation {
+            npc_block.push_str(&format!("  对玩家的认知（关系）: {}\n", relation));
+        }
     }
 
     let mut dialog_block = String::from("【最近对话记录（由旧到新）】\n");

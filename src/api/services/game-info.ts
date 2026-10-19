@@ -8,6 +8,7 @@ export interface CharacterSettings {
   ai_subtitle: string;
   user_name: string;
   user_subtitle: string;
+  user_aliases?: Record<string, { name: string; subtitle: string }>;
   character_id: number | null;
   thinking_message: string;
   scale: number;
