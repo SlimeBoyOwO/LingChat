@@ -563,6 +563,16 @@ impl TtsAdapter for SherpaOnnxAdapter {
                 text
             };
 
+        // 再把从句标点换成空格（见 soften_clause_punctuation）：数字改写可能带出分隔符，
+        // 放在它后面做。纯英文台词不动，英文的逗号停顿交给模型自己处理。
+        let softened;
+        let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
+            softened = soften_clause_punctuation(text);
+            &softened
+        } else {
+            text
+        };
+
         let audio = tts
             .generate_with_config(text, &gen_config, None::<fn(&[f32], f32) -> bool>)
             .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败"))?;
@@ -683,6 +693,40 @@ fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTts
 /// 真正动不动手还要看当次文本（纯英文台词不塞汉字数字，见 [`chinese_digits::has_han`]）。
 fn needs_digit_normalization(model_dir: &Path) -> bool {
     rule_fst_paths(model_dir).is_empty()
+}
+
+/// 从句标点（逗号/顿号/分号/冒号/引号）改成空格再送进 sherpa。
+///
+/// sherpa 的前端（`character-lexicon.cc` / `matcha-tts-lexicon.cc` / kokoro）会先把
+/// `，、；：` 归一成 `,;:`、`。` 归一成 `.`，随后只要当前词是标点（`IsPunct`）就结束
+/// 当前"句子"、另起一次推理，最后用静音把各截拼回去。也就是说：**整句从没作为一个
+/// 句子进过模型**——每个逗号都让语调和停顿重置一次，段间静音还会被 `SILENCE_SCALE`
+/// 放大。零样本克隆的模型（zipvoice）尤其明显：每一截都照参考音频的句尾语气收。
+///
+/// 换成空格后句子是一个整体（前端按空白切词，词边界还在），句末标点 `。！？` 保留，
+/// 句与句之间的停顿不受影响。实测同一句：逗号版 7.29s / 4 个停顿，空格版 6.39s /
+/// 2 个停顿。
+fn soften_clause_punctuation(text: &str) -> String {
+    /// 被 sherpa 当"句末"的从句标点。
+    const CLAUSE_PUNCT: [char; 13] = [
+        '，', ',', '、', '；', ';', '：', ':', '“', '”', '‘', '’', '"', '\'',
+    ];
+
+    let mut out = String::with_capacity(text.len());
+    let mut last_space = false;
+    for c in text.chars() {
+        if CLAUSE_PUNCT.contains(&c) {
+            // 连续标点只留一个空格，免得前端切出多个空词。
+            if !last_space {
+                out.push(' ');
+                last_space = true;
+            }
+        } else {
+            out.push(c);
+            last_space = c == ' ';
+        }
+    }
+    out.trim().to_string()
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -1040,6 +1084,25 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 从句标点换空格：句末标点保留，逗号/顿号/引号不再让 sherpa 断句。
+    #[test]
+    fn softens_clause_punctuation_but_keeps_sentence_ends() {
+        assert_eq!(
+            soften_clause_punctuation("他说，你好、今天：很好；真的？"),
+            "他说 你好 今天 很好 真的？"
+        );
+        // 句末标点原样保留（前端仍按它分句，句间停顿不变）。
+        assert_eq!(
+            soften_clause_punctuation("你好。真的吗！好呀？"),
+            "你好。真的吗！好呀？"
+        );
+        // 半角标点与引号同样处理，连续标点只留一个空格。
+        assert_eq!(
+            soften_clause_punctuation("他说,\"别走\",好嘛."),
+            "他说 别走 好嘛."
+        );
     }
 
     /// 解析 WAV 字节并返回 (采样率, 单声道样本数)。
