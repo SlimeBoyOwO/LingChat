@@ -216,6 +216,15 @@ impl VoiceMaker {
         self.availability
     }
 
+    /// 该 TTS 是否按「整句」合成——即适配器忽略 `emo`，同一句被 【情绪】 标签切成
+    /// 几段送进去只会让语调和停顿各自重置。
+    ///
+    /// 目前只有 sherpa-onnx 走这条路径：它的 `generate_voice` 收下 `_emo` 不用，
+    /// 所以对使用它的角色要把片段拼回一段再合成（生产链见 `StreamProducer`）。
+    pub fn uses_whole_sentence_input(&self) -> bool {
+        matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
+    }
+
     pub fn is_enabled(&self) -> bool {
         self.provider.is_enabled() && !self.tts_type.is_empty()
     }
