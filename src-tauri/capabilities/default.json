@@ -26,6 +26,7 @@
     "opener:default",
     "dialog:allow-open",
     "screenshots:default",
+    "floating-pet:default",
     "fs:default",
     "dialog:default",
     "notification:default",

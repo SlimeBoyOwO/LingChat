@@ -420,9 +420,57 @@ pub fn image_bytes_to_native_data_url(
     Some(format!("data:image/jpeg;base64,{b64}"))
 }
 
-/// 捕获整个桌面并返回 JPEG 格式的字节。
-/// Windows: 使用 GDI (BitBlt + GetDIBits) 捕获，然后压缩为 1024x768 JPEG。
-/// 其他平台: 返回 None。
+/// Android 截屏的**注入点**。
+///
+/// ## 为什么是一个全局回调，而不是直接调原生
+///
+/// `ling-chat-main` 是底层 crate，**不能**依赖 `tauri-plugin-floating-pet`
+/// （那是个 Tauri 插件，依赖方向是反的）。但「截一帧」这件事只有 Android 侧的
+/// 原生能力能做，而那条通道（`run_mobile_plugin`）又必须从插件里走。
+///
+/// 于是把方向倒过来：**app 层（`src-tauri`）在启动时把「怎么截一帧」注册进来**，
+/// 这里只管调用。好处是 `capture_screen_as_jpeg()` 的签名不用变，桌面端也不用
+/// 注册 —— Windows 那条路自己走 GDI，压根读不到这个槽位。
+///
+/// 注册方见 `src-tauri` 的 setup（`set_android_screen_capture`）。
+#[cfg(target_os = "android")]
+static ANDROID_SCREEN_CAPTURE: std::sync::OnceLock<ScreenCaptureFn> = std::sync::OnceLock::new();
+
+/// 截屏回调：返回 JPEG 字节；拿不到时返回 `None`。
+///
+/// 用 `Box<dyn Fn>` 而不是 `fn` 指针，是因为注册方要捕获 `AppHandle`。
+#[cfg(target_os = "android")]
+pub type ScreenCaptureFn = Box<dyn Fn() -> Option<Vec<u8>> + Send + Sync>;
+
+/// 注册 Android 的截屏通道（由 app 层在启动时调用一次）。
+///
+/// `OnceLock` 语义：**重复注册是空操作**（只留第一次的），不会 panic。
+///
+/// ⚠️ 注册成功 ≠ 能截到图。Android 上第一次取景前用户还没同意
+/// MediaProjection 的授权框时，回调会返回 `None`（app 层会顺手补弹一次授权框）
+/// —— 那是正常状态，调用方（`get_screen_prompt`）会照旧早退，
+/// 屏幕策略不触发，与改造前行为一致。
+#[cfg(target_os = "android")]
+pub fn set_android_screen_capture(f: ScreenCaptureFn) {
+    if ANDROID_SCREEN_CAPTURE.set(f).is_err() {
+        tracing::warn!("[ScreenCapture] Android 截屏通道已注册过，本次忽略");
+    }
+}
+
+/// 调一次已注册的 Android 截屏通道。
+#[cfg(target_os = "android")]
+fn capture_screen_android() -> Option<Vec<u8>> {
+    let capture = ANDROID_SCREEN_CAPTURE.get()?;
+    capture()
+}
+
+/// 捕获整个屏幕并返回 JPEG 格式的字节。
+///
+/// - **Windows**：GDI（`BitBlt` + `GetDIBits`）截全屏，等比缩到 1024×768 再压 JPEG。
+/// - **Android**：转发给 [set_android_screen_capture] 注册进来的通道 ——
+///   `MediaProjection`（见插件的 `ScreenCaptureManager`）。
+///   未注册、未授权（用户还没同意系统的截屏授权框）、或等帧超时时返回 `None`。
+/// - **其他平台**：返回 `None`。
 pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
     #[cfg(target_os = "windows")]
     {
@@ -496,7 +544,17 @@ pub fn capture_screen_as_jpeg() -> Option<Vec<u8>> {
         }
     }
 
-    #[cfg(not(target_os = "windows"))]
+    // ★ Android：转发给注册进来的截屏通道（`ScreenCaptureManager` 的 MediaProjection）。
+    //
+    // 这里**不能**直接调插件 —— `ling-chat-main` 是底层 crate，依赖方向不允许
+    // 它反向依赖 `tauri-plugin-floating-pet`。所以由 app 层在启动时把通道注册
+    // 进来，详见 set_android_screen_capture 的说明。
+    #[cfg(target_os = "android")]
+    {
+        capture_screen_android()
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "android")))]
     {
         None
     }

@@ -47,14 +47,14 @@
                 ref="cancelBtn"
                 class="rounded-xl border border-white/20 bg-transparent px-6 py-1.5 text-sm font-bold text-white/70 transition-all hover:bg-white/10 hover:text-white"
               >
-                {{ $t("ui.appDialog.cancel") }}
+                {{ dialogStore.cancelText || $t("ui.appDialog.cancel") }}
               </button>
               <button
                 @click="dialogStore.ok()"
                 ref="okBtn"
                 class="rounded-xl bg-cyan-500 px-6 py-1.5 text-sm font-bold text-white shadow-lg shadow-cyan-500/25 transition-all hover:bg-cyan-400 active:scale-100"
               >
-                {{ $t("ui.appDialog.ok") }}
+                {{ dialogStore.okText || $t("ui.appDialog.ok") }}
               </button>
             </div>
           </div>

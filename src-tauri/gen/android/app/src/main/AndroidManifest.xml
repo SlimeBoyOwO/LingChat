@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- 桌宠悬浮窗「点 ✕ 收回后把 App 拉回前台」用 ActivityManager.moveTaskToFront，
+         它需要 REORDER_TASKS。normal 级权限，声明即授予，无需运行时请求。
+         早先用 startActivity（不需要权限）会闪退，见 FloatingPetPlugin.bringActivityToFront。 -->
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
     <!-- 必须声明：WebView 的 onPermissionRequest 请求麦克风时捆绑请求
          MODIFY_AUDIO_SETTINGS + RECORD_AUDIO，未声明的权限被系统直接拒绝
          且不弹窗，导致整个请求被判失败（NotAllowedError: Permission denied）。
@@ -33,6 +37,112 @@
                 <category android:name="android.intent.category.LEANBACK_LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- 桌宠「设置」独立窗口的宿主（见 SettingsActivity.kt）。
+             Tauri 在 Android 上建窗走的是 `tao` 的 `startActivity(Class)`，
+             所以这个 Activity **必须在这里声明**，否则 startActivity 直接抛
+             ActivityNotFoundException。
+
+             · configChanges 与 MainActivity 保持一致：不声明的话转屏会重建
+               Activity，而 Activity 一重建 WebView 就没了，设置页要重新加载。
+             · exported="false"：只给本应用自己启动。tao 是从 MainActivity 的
+               Context 调 startActivity（同应用同 UID），不需要导出。
+             · theme 必须换成 Theme.ling_chat.settings：默认继承的是 application 上的
+               Theme.ling_chat（全屏 + 半透明 + 透壁纸），设置窗用那套会糊在壁纸上，
+               见 res/values/themes.xml 里的说明。
+
+             · ★ taskAffinity / launchMode 是 2026-10-03 一起加的，**缺一不可**
+               （excludeFromRecents 已于 2026-10-17 移除，理由见本节末尾）。 -->
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:theme="@style/Theme.ling_chat.settings"
+            android:label="@string/main_activity_title"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode"
+            android:windowSoftInputMode="adjustResize"
+            android:taskAffinity="${applicationId}.settings"
+            android:launchMode="singleTask" />
+
+        <!--
+            ## 为什么设置页要独占一个任务栈（2026-10-03）
+
+            ### 要同时成立的两件事
+
+            用户按桌宠的「返回键 / 返回主页」时，必须**同时**做到：
+
+            1. 设置页收起来（回到聊天页）；
+            2. 设置页**不销毁**（`finish()` 会让设置窗的 WebView、Pinia store、
+               标签页选择全部重来，用户明确要求「尽量只用退回，不要用关闭」）。
+
+            同一个任务栈里这两条**不可能同时成立**（设置窗与 MainActivity
+            原先同在 MainActivity 的任务里）：
+
+            · `SettingsActivity.moveTaskToBack(true)` 是**任务级**的 ——
+              会把 MainActivity 一起退到后台，用户看到的是桌面；
+            · `FloatingPetPlugin.bringActivityToFront()` 走的是
+              `moveTaskToFront(MainActivity.taskId)`，它拉的是**整个任务**，
+              而栈顶仍是设置窗 —— 用户按了返回键却还停在设置页
+              （**真机反馈的正是这条**）；
+            · `startActivity` 拉 MainActivity 更不行：它是 `singleTask`，
+              会把它上面的 Activity 一并销毁（见 bringActivityToFront 的注释）。
+
+            让设置窗独占一个任务栈就解开了：`moveTaskToFront(聊天任务)`
+            只把聊天页翻到最前面，设置窗原样留在它自己的任务里 ——
+            退回、且不销毁。设置页自己的 ✕ / 返回键则走
+            `SettingsActivity.sendWholeAppToBack()`（两个任务一起退），
+            保持「回到进来之前那个 App」的原有语义。
+
+            ### 为什么是 launchMode 而不是只写 taskAffinity
+
+            `taskAffinity` **只在 `FLAG_ACTIVITY_NEW_TASK` 下才参与任务选择**。
+            而 tao 建窗走的是 `WryActivity.startActivity(cls)`，它构造的是
+            裸 `Intent(this, cls)`，**一个 flag 都没加**（见
+            `generated/WryActivity.kt`）—— 所以光写 taskAffinity 会被忽略，
+            设置窗照样落进调用者（MainActivity）的任务栈。
+
+            `singleTask`（与 `singleInstance` 同理）由系统的 `ActivityStarter`
+            自动补上 `NEW_TASK`，这是 manifest 里**唯一**能拿到「另起任务」
+            的杠杆。不能去改 `WryActivity.kt` 加 flag：那是 tao 的自动生成
+            文件（头部写着 `DO NOT MODIFY`），且被
+            `app/.gitignore` 的 `/src/main/**/generated` 忽略、根本不入库。
+
+            ### ★ 2026-10-17：singleInstance → singleTask，并去掉 excludeFromRecents
+
+            真机抓到的现场：设置页被**连续建了四次**，每次都是全新任务栈
+            （`t1900 → t1901 → t1902 → t1903`），2~4 秒后就被系统拆掉，
+            最后落到 `NO_INPUT_CHANNEL` + `Waited 5000ms for MotionEvent` 的 ANR。
+            而 `SettingsActivity` 与 `MainActivity.sendTaskToBack()` 里
+            **都没有 `finish()`**（全走 `moveTaskToBack`），所以拆它的是系统。
+
+            两个杠杆一起上：
+
+            · `singleInstance` 的 task 是「独占、且不允许任何别的 Activity
+              进入」的，部分 ROM 对它的生命周期管理更激进（不按普通后台 task
+              对待）；`singleTask` 拿到同样的 `NEW_TASK` 效果，但走标准 task 语义。
+            · `excludeFromRecents="true"` 让这个 task 在最近任务里**没有任何
+              用户可见入口**。退到后台之后，系统在 `trimApplications` 时更容易
+              把它当成可丢弃的孤儿 task 清掉 —— 与观察到的「退到后台 → 被
+              finish → 下次又新建」完全吻合。
+
+            **代价**：最近任务里会多一张设置页卡片。这是有意的取舍 ——
+            那张卡片同时也是一个「直接切回设置页」的入口，而且它让系统认为
+            这个 task 有用户价值，不会随手回收。
+
+            ### ⚠️ 已知代价：实例已存在时**不能**再走 tao 建窗
+
+            tao 建窗后会等 Activity 的创建回调（`ACTIVITY_CREATED`，
+            超时 5 秒）。而 `singleTask` 在**复用已有实例**时走的是
+            `onNewIntent`、不会再触发 `onCreate`，回调也就不会来 ——
+            那次建窗会白等 5 秒然后失败。
+
+            所以「设置窗实例还在时，绝不能再调 tao 建窗」是硬约束，由前端
+            保证：`PetMode.handleOpenSettings` 先走原生桥
+            `LingChatApp.focusSettings()`（即 `SettingsActivity.bringToFront()`）
+            问「实例还在不在」，在就 `moveTaskToFront` 拉回前台、到此为止；
+            只有拿到 `false` 时才新建。设置窗从 `finish()` 改成永不销毁之后，
+            实例要么「不存在（首次创建）」，要么「存在且被复用」，不会出现
+            「实例在、tao 又建窗」。
+        -->
 
         <provider
           android:name="androidx.core.content.FileProvider"

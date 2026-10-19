@@ -127,6 +127,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::chat::feed_image,
         api::chat::feed_text,
         api::screenshot::start_screenshot,
+        api::screenshot::take_screenshot_base64,
         api::screenshot::get_overlay_data,
         api::screenshot::confirm_screenshot,
         api::screenshot::cancel_screenshot,

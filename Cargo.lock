@@ -4431,6 +4431,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-android-fs",
  "tauri-plugin-dialog",
+ "tauri-plugin-floating-pet",
  "tauri-plugin-fs",
  "tauri-plugin-global-shortcut",
  "tauri-plugin-notification",
@@ -8742,6 +8743,17 @@ dependencies = [
  "tauri-plugin-fs",
  "thiserror 2.0.21",
  "url",
+]
+
+[[package]]
+name = "tauri-plugin-floating-pet"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "serde",
+ "tauri",
+ "tauri-plugin",
+ "thiserror 2.0.21",
 ]
 
 [[package]]
