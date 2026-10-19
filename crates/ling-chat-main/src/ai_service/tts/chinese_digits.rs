@@ -25,6 +25,10 @@
 //! | `3.14`        | `三点一四`                 |
 //! | `13800138000` | `幺三八零零一三八零零零`     |
 //!
+//! 数字之间的半角冒号单独有一条规则（[`normalize_colon`]），**所有**中文模型都在用：
+//! 模型自带的 FST 不会动冒号（实测 `上午9:30` → `上午九:三十`），而 sherpa 的前端把
+//! 冒号当句读丢掉，不换掉的话读出来是「九三十」、比分是「三二」。
+//!
 //! 刻意**不跟**的部分：模型还带 `phone.fst`，会把 `1100` 念成「幺幺零零」、
 //! `11000` 念成「幺幺零零零」——那是按短号码规则硬套的，做数量词时会读错，
 //! 所以这里只有 11 位以上的长号码才逐位念。另外模型自带 FST 对部分八位以上
@@ -82,6 +86,57 @@ pub(crate) fn normalize(text: &str) -> String {
             out.push('点');
             out.extend(digits.chars().map(digit_char));
         }
+    }
+
+    out
+}
+
+/// 数字之间那个半角冒号：`9:30` 该念「九点三十」、`3:2` 该念「三比二」。
+///
+/// 模型自带的规则 FST 只改数字、不动冒号（实测 `上午9:30` → `上午九:三十`），而 sherpa
+/// 的前端把冒号当句读丢掉——不换掉的话读出来是「九三十」，比分是「三二」。
+///
+/// 判定：两边都得是紧挨着的数字、左边 1~2 位；右边正好 2 位且左边 ≤ 24、右边 ≤ 59 才
+/// 当时刻（`9:30`、`12:05`），其余都当比分/比例（`3:2`、`25:30`、`1:1`）。不满足条件
+/// （`123:45`、`a:1`）就原样留着，交给模型自己的规则。
+pub(crate) fn normalize_colon(text: &str) -> String {
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0;
+
+    while i < chars.len() {
+        if chars[i] != ':' {
+            out.push(chars[i]);
+            i += 1;
+            continue;
+        }
+
+        // 冒号左边紧挨着的数字串（要 1~2 位）。
+        let left_start = chars[..i]
+            .iter()
+            .rposition(|c| !c.is_ascii_digit())
+            .map_or(0, |pos| pos + 1);
+        let left: String = chars[left_start..i].iter().collect();
+        // 冒号右边紧挨着的数字串。
+        let right: String = chars[i + 1..]
+            .iter()
+            .take_while(|c| c.is_ascii_digit())
+            .collect();
+
+        let colon = if (1..=2).contains(&left.len()) && (1..=2).contains(&right.len()) {
+            let hour = left.parse::<u32>().unwrap_or(u32::MAX);
+            let minutes = right.parse::<u32>().unwrap_or(u32::MAX);
+            if right.len() == 2 && hour <= 24 && minutes <= 59 {
+                '点'
+            } else {
+                '比'
+            }
+        } else {
+            ':'
+        };
+
+        out.push(colon);
+        i += 1;
     }
 
     out
@@ -325,5 +380,38 @@ mod tests {
             "假名不是汉字，日文台词不该被塞进汉字数字"
         );
         assert!(!has_han("안녕하세요 3"), "谚文不是汉字");
+    }
+
+    /// 数字之间的半角冒号：时刻念「点」、比分念「比」，别的原样留着。
+    #[test]
+    fn rewrites_colon_between_digits() {
+        let cases: &[(&str, &str)] = &[
+            // 时刻：左边 1~2 位、右边正好 2 位（分钟 ≤ 59）。
+            ("9:30", "9点30"),
+            ("12:05", "12点05"),
+            ("上午9:30开会", "上午9点30开会"),
+            ("24:00", "24点00"),
+            // 比分/比例。
+            ("3:2", "3比2"),
+            ("25:30", "25比30"),
+            ("1:1", "1比1"),
+            ("比分3:2", "比分3比2"),
+            // 不认识的写法不碰：左边三位、冒号贴着字母、右边为空。
+            ("123:45", "123:45"),
+            ("a:1", "a:1"),
+            ("9:", "9:"),
+            (":30", ":30"),
+            // 中文全角冒号是句读，不归这里管。
+            ("9：30", "9：30"),
+        ];
+        for (input, expected) in cases {
+            assert_eq!(&normalize_colon(input), expected, "改错：{input}");
+        }
+        // 数字改写接着做：「9:30」先变「9点30」，再按汉字念。
+        assert_eq!(
+            normalize(&normalize_colon("上午9:30开会")),
+            "上午九点三十开会"
+        );
+        assert_eq!(normalize(&normalize_colon("比分3:2")), "比分三比二");
     }
 }
