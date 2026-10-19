@@ -286,7 +286,7 @@ async fn find_missing_script(dir: &Path, manifest: &PluginManifest) -> Option<St
         .chain(manifest.subscribe.iter().map(|sub| &sub.script))
         .chain(manifest.startup.iter().map(|startup| &startup.script))
         .chain(manifest.ws.iter().filter_map(|ws| ws.script.as_ref()))
-        // manifest::validate 已保证 script 是单个文件名，这里只判存在性。
+        // manifest::validate 已保证 script 是插件目录内的相对路径，这里只判存在性。
         .find(|script| !dir.join(script).is_file())
         .cloned()
 }

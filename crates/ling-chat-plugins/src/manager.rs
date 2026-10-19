@@ -733,7 +733,8 @@ impl PluginManager {
                 );
                 continue;
             };
-            let script_path = sub.dir.join(&sub.decl.script);
+            let plugin_dir = sub.dir.clone();
+            let script_path = plugin_dir.join(&sub.decl.script);
             let handler = sub.decl.handler.clone();
             let timeout = Duration::from_millis(sub.decl.timeout_ms);
             let plugin_id = sub.plugin_id.clone();
@@ -753,6 +754,7 @@ impl PluginManager {
                         let manager = app.state::<Arc<PluginManager>>().inner().clone();
                         let run_env = manager.plugin_run_env(&plugin_id);
                         python_backend::run_plugin_handler(
+                            &plugin_dir,
                             &script_path,
                             &handler,
                             &signal_name,
@@ -1218,7 +1220,8 @@ impl PluginManager {
         decl: &StartupDecl,
         token: &CancellationToken,
     ) -> Result<(), String> {
-        let script_path = dir.join(&decl.script);
+        let plugin_dir = dir.to_path_buf();
+        let script_path = plugin_dir.join(&decl.script);
         let handler = decl.handler.clone();
         let timeout = Duration::from_millis(decl.timeout_ms);
         let plugin_id = id.to_string();
@@ -1235,7 +1238,13 @@ impl PluginManager {
                 }
                 let manager = app_handle.state::<Arc<PluginManager>>().inner().clone();
                 let run_env = manager.plugin_run_env(&plugin_id);
-                python_backend::run_plugin_startup(&script_path, &handler, run_env, app_handle)
+                python_backend::run_plugin_startup(
+                    &plugin_dir,
+                    &script_path,
+                    &handler,
+                    run_env,
+                    app_handle,
+                )
             }),
         )
         .await;

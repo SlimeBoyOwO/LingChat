@@ -3,9 +3,9 @@
 //! 三类能力：
 //! - **HTTP**：`http_get` / `http_post`，复用 `factory::build_http_client`
 //!   （webpki-roots，Android 兼容），返回 `{ status, ok, body }`。
-//! - **宿主控制**：`switch_character`（完整切换当前角色）、`set_auto_mode`（切换主界面
-//!   的自动推进），以及台词历史（上下文源）的 `read_context` / `edit_context` /
-//!   `add_prompt_line` / `compress_context`。
+//! - **宿主控制**：`switch_character`（完整切换当前角色）、`current_names`（当前角色名
+//!   与玩家名，写旁白用）、`set_auto_mode`（切换主界面的自动推进），以及台词历史
+//!   （上下文源）的 `read_context` / `edit_context` / `add_prompt_line` / `compress_context`。
 //! - **读素材**：`read_data_file`，把 `data/` 下的文件（角色立绘、TTS 语音等）
 //!   读成 base64 交给插件；只允许 `data/` 内的相对路径，且必须落在该插件
 //!   manifest `read` 声明的前缀之下（未声明一律拒绝）。
@@ -229,10 +229,33 @@ async fn switch_character_impl(app: AppHandle, role_id: i32) -> serde_json::Valu
     }
 }
 
+/// 当前角色与玩家的显示名。插件写旁白时用这两个名字做第三人称称呼，
+/// 不再用「你 / 玩家」这类泛指。
+async fn current_names_impl(app: &AppHandle) -> serde_json::Value {
+    let gs = game_status_handle(app).await;
+    let gs = gs.lock().await;
+    let role_id = gs.current_role_id;
+    let ai_name = role_id
+        .and_then(|id| gs.role_manager.get_loaded(id))
+        .map(|role| {
+            role.display_name
+                .clone()
+                .filter(|name| !name.trim().is_empty())
+                .unwrap_or_else(|| role.settings.ai_name.clone())
+        })
+        .unwrap_or_default();
+    serde_json::json!({
+        "ok": true,
+        "role_id": role_id,
+        "ai_name": ai_name,
+        "user_name": gs.player.user_name,
+    })
+}
+
 /// `plugin_host.set_auto_mode` 的实现：把主界面的「自动模式」切到指定状态。
 ///
 /// 模式的持有者是前端——Pinia 里那个 flag 与推进定时器都在那儿，宿主改不了，所以这里
-/// 只广播一条事件，实际切换由前端完成（与 `switch_character` 同款）。
+/// 只负责广播，实际切换由前端完成（与 `switch_character` 同款）。
 fn set_auto_mode_impl(app: &AppHandle, enabled: bool) -> serde_json::Value {
     match app.emit(
         "plugin:auto-mode",
@@ -902,6 +925,21 @@ mod plugin_host {
             ));
         };
         let result = super::runtime().block_on(super::switch_character_impl(app, role_id));
+        Ok(super::value_to_pyobject(vm, &result))
+    }
+
+    /// 取当前角色名与玩家名：插件写旁白时用第三人称称呼，不再说「你 / 玩家」。
+    ///
+    /// 用法：`current_names()`
+    ///
+    /// 返回：`{ "ok": true, "role_id": 3, "ai_name": "...", "user_name": "..." }`；
+    /// 没有加载角色时 `ai_name` 为空串。失败 `{ "ok": false, "error": "..." }`（不抛异常）。
+    #[pyfunction]
+    fn current_names(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        let Some(app) = crate::app_handle() else {
+            return Ok(super::no_host(vm));
+        };
+        let result = super::runtime().block_on(super::current_names_impl(&app));
         Ok(super::value_to_pyobject(vm, &result))
     }
 

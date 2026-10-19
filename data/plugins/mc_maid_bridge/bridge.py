@@ -90,8 +90,8 @@ def ready(ctx):
 def player_name(cfg):
     """玩家在 MC 里的用户名（配置项）。没填就是空串。
 
-    只用来把事件旁白里撞上的名字改写成「玩家」——模组给的名字是裸的，模型不知道那是谁。
-    填了最稳；不填也有一条兜底：接上游戏的第一帧旁白里会写明玩家叫什么。
+    只用来判断「游戏里说话的是不是主人本人」：是就不带账号名，不是才点名。
+    事件旁白不再用它——那边一律用 `current_names()` 给的 LingChat 名字。
     """
     raw = cfg.get("player_name")
     return raw.strip() if isinstance(raw, str) else ""
