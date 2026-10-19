@@ -311,10 +311,11 @@ async fn synth_env_text() {
         adapter.set_reference_audio(samples, sample_rate, ref_text);
     }
 
-    let wav = adapter.generate_voice(&text, "").await.expect("合成失败");
+    let emo = std::env::var("SHERPA_EMO").unwrap_or_default();
+    let wav = adapter.generate_voice(&text, &emo).await.expect("合成失败");
     let (sr, samples) = parse_wav(&wav);
     println!(
-        "自定义文本 @ {model_type}/{lang}「{text}」→ {:.3}s sr={sr}",
+        "自定义文本 @ {model_type}/{lang}「{text}」情绪「{emo}」→ {:.3}s sr={sr}",
         samples.len() as f64 / f64::from(sr)
     );
 
