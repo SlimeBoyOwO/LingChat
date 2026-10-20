@@ -727,8 +727,9 @@ impl TtsAdapter for SherpaOnnxAdapter {
 
         for (clause, pause, _) in clauses {
             // 数字改写可能带出分隔符，这里按小句统一清掉读不出来的字符
-            // （见 strip_unreadable）。
-            let piece_text = strip_unreadable(&clause, self.scripts);
+            // （见 strip_unreadable）；再收掉中文/日文里没意义的空格——kokoro 会把
+            // 空格当成一个非汉字段单独推理，多出一整句的停顿（见 collapse_cjk_spaces）。
+            let piece_text = collapse_cjk_spaces(&strip_unreadable(&clause, self.scripts));
             // 只剩标点的小句（「……」「~」）没有可念的字，跳过：丢给模型只会得到一段
             // 空音频或一声怪音。
             if !piece_text.chars().any(char::is_alphanumeric) {
@@ -1032,6 +1033,44 @@ fn strip_unreadable(text: &str, scripts: ReadableScripts) -> String {
         }
     }
     out.trim().to_string()
+}
+
+/// 去掉中文/日文里没有意义的空格。
+///
+/// kokoro 的多语言前端（`kokoro-multi-lang-lexicon.cc` 的 `ConvertTextToTokenIds`）按
+/// 「汉字 / 非汉字」把文本切成若干段，非汉字段一律交给 espeak 音素化，而且**每段都
+/// 当成独立的一句**（kokoro 的 batch 恒为 1，逐句 `Process` 后硬拼）。于是汉字中间夹
+/// 一个空格就多出一个「空格段」→ 多出一整句的停顿：实测「今天 天气真不错」比
+/// 「今天天气真不错」多 0.71 秒静音；「好~呀」经 [`strip_unreadable`] 变成「好 呀」、
+/// 「好呀，😊今天」变成「好呀， 今天」时也一样（0.72 / 0.76 秒，每句都这样）。
+///
+/// 中文/日文本来不靠空格分词，所以只保留真正有用的空格：两侧任意一边是拉丁字母/
+/// 数字（英文单词）或谚文（韩文按空格分词）时留一个，其余（汉字之间、CJK 标点之后、
+/// 符号换出来、换行/制表符换出来的空格）全部去掉。
+fn collapse_cjk_spaces(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if !c.is_whitespace() {
+            out.push(c);
+            continue;
+        }
+        // 连续空白算一段，按两侧的字符决定留不留。
+        while chars.peek().is_some_and(|next| next.is_whitespace()) {
+            chars.next();
+        }
+        let prev = out.chars().next_back();
+        let next = chars.peek().copied();
+        if needs_word_space(prev) || needs_word_space(next) {
+            out.push(' ');
+        }
+    }
+    out.trim().to_string()
+}
+
+/// 这个字符是不是「靠空格分词、因此空格不能去掉」的文字：拉丁字母/数字、谚文。
+fn needs_word_space(c: Option<char>) -> bool {
+    c.is_some_and(|c| c.is_ascii_alphanumeric() || is_hangul(c))
 }
 
 /// 小句太短时不要单独送进模型：实测两字的「对了」单独合成，SenseVoice 反读成
@@ -1844,6 +1883,43 @@ mod tests {
         assert!(reads_han_as_chinese("en"));
         assert!(!reads_han_as_chinese("ja"));
         assert!(!reads_han_as_chinese(" ko "));
+    }
+
+    /// 中文/日文里的空格没有意义，去掉后 kokoro 才不会有「空格段」的假停顿；
+    /// 英文/韩文靠空格分词，必须留着。这是 kokoro 中文语音里「莫名多停一拍」的根因。
+    #[test]
+    fn drops_spaces_that_cjk_does_not_need() {
+        // 汉字之间、CJK 标点之后、换行/连续空白：全部去掉。
+        assert_eq!(collapse_cjk_spaces("今天 天气 真不错"), "今天天气真不错");
+        assert_eq!(collapse_cjk_spaces("好 呀， 今天"), "好呀，今天");
+        assert_eq!(
+            collapse_cjk_spaces("你好。 今天\n天气\t不错"),
+            "你好。今天天气不错"
+        );
+        assert_eq!(collapse_cjk_spaces("  今天 天气  "), "今天天气");
+        // 日文同样不靠空格分词（长音符「ー」也不会被当成空白）。
+        assert_eq!(collapse_cjk_spaces("こんにちは 世界"), "こんにちは世界");
+        assert_eq!(
+            collapse_cjk_spaces("コーヒー を ください"),
+            "コーヒーをください"
+        );
+        // 英文/韩文的词间空格留着（韩文按空格分词，去掉就是病句）。
+        assert_eq!(
+            collapse_cjk_spaces("hello  brave  world"),
+            "hello brave world"
+        );
+        assert_eq!(
+            collapse_cjk_spaces("안녕하세요 오늘 날씨가 좋네요"),
+            "안녕하세요 오늘 날씨가 좋네요"
+        );
+        // 汉字与英文/数字之间也要留一格：不然「今天hello」「第3章」会粘成一个词。
+        assert_eq!(collapse_cjk_spaces("今天 hello 天气"), "今天 hello 天气");
+        assert_eq!(collapse_cjk_spaces("第 3 章"), "第 3 章");
+        // 英文标点后跟英文单词：空格留着（`hello,world` 会被读成一个词）。
+        assert_eq!(collapse_cjk_spaces("hello, world"), "hello, world");
+        // 只有标点的串不去动它。
+        assert_eq!(collapse_cjk_spaces(""), "");
+        assert_eq!(collapse_cjk_spaces("  "), "");
     }
 
     /// 按标点切小句时，句末停顿要长于逗号停顿，末尾不留停顿，空片段丢掉；太短的小句
