@@ -42,6 +42,43 @@ pub(super) fn strip_edge_silence(samples: &[f32]) -> &[f32] {
     &samples[start..end]
 }
 
+/// 把一段音频**内部**超过 `max_gap` 秒的静音压到 `max_gap`。
+///
+/// 只用于短语气词合并出来的那一片（见 [`super::text::has_inner_clause_punct`]）：
+/// 「好的，今天天气真不错」交给 kokoro 一次推理时，模型会在合并处的逗号后面塞 0.35 秒
+/// 静音（英文音色 0.68 秒），而别处的逗号停顿都是我们按 [`super::text::CLAUSE_PAUSE`]
+/// 插的 0.2 秒——同一段话里两个逗号停得不一样长，听感就是「语气词后面愣一下」。
+///
+/// 只动内部静音：首尾由 [`strip_edge_silence`] 处理，语气词本身被拉长的部分（标点带来
+/// 的拖音）也保留，只是把多出来的空白删掉。
+pub(super) fn cap_inner_silence(samples: &mut Vec<f32>, sample_rate: i32, max_gap: f32) {
+    if sample_rate <= 0 || max_gap <= 0.0 {
+        return;
+    }
+    let max_len = (sample_rate as f32 * max_gap) as usize;
+    let mut out = Vec::with_capacity(samples.len());
+    let mut i = 0;
+    while i < samples.len() {
+        if samples[i].abs() > SILENCE_AMP {
+            out.push(samples[i]);
+            i += 1;
+            continue;
+        }
+        let start = i;
+        while i < samples.len() && samples[i].abs() <= SILENCE_AMP {
+            i += 1;
+        }
+        // 长静音只留末尾 max_len 个样本（波形在静音里恒为 0，删哪一段都一样）。
+        let keep_from = if i - start > max_len {
+            i - max_len
+        } else {
+            start
+        };
+        out.extend_from_slice(&samples[keep_from..i]);
+    }
+    *samples = out;
+}
+
 /// 给一段音频的首尾各加一小段线性淡入/淡出（时长见 [`JOINT_FADE`]）。
 ///
 /// 拼接处需要它：两截波形在接缝处的幅值一般不连续（sherpa 内部就是直接把多段
@@ -314,6 +351,22 @@ pub(super) fn pcm_has_signal(wav: &[u8], threshold: u16) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 片内长静音压到上限；短静音和波形本身不动。
+    #[test]
+    fn caps_inner_silence_only() {
+        let sr = 1000; // 1 个样本 = 1ms，方便数
+        let mut samples = vec![0.0; 500];
+        samples.extend(std::iter::repeat_n(0.5, 100));
+        samples.extend(std::iter::repeat_n(0.0, 600));
+        samples.extend(std::iter::repeat_n(0.5, 100));
+        samples.extend(std::iter::repeat_n(0.0, 500));
+        cap_inner_silence(&mut samples, sr, 0.2);
+        // 中间 600ms 压到 200ms；首尾也不是例外（这里一视同仁，之后
+        // `strip_edge_silence` 会把首尾清掉），500ms → 200ms。
+        assert_eq!(samples.len(), 200 + 100 + 200 + 100 + 200);
+        assert_eq!(samples.iter().filter(|s| s.abs() > 0.1).count(), 200);
+    }
 
     /// 拼接处的淡入淡出：首尾样本归零、中间不动，20ms 以外不受影响。
     #[test]
