@@ -143,7 +143,36 @@
                 class="param-slider"
               />
             </div>
+            <div class="param-item">
+              <div class="param-header">
+                <label class="param-label">{{ t("settings.sherpa.numSteps") }}</label>
+                <span class="param-value">{{ config.num_steps }}</span>
+              </div>
+              <input
+                v-model.number="config.num_steps"
+                type="range"
+                min="1"
+                max="10"
+                step="1"
+                class="param-slider"
+              />
+            </div>
+            <div class="param-item">
+              <div class="param-header">
+                <label class="param-label">{{ t("settings.sherpa.guidanceScale") }}</label>
+                <span class="param-value">{{ config.guidance_scale.toFixed(1) }}</span>
+              </div>
+              <input
+                v-model.number="config.guidance_scale"
+                type="range"
+                min="1"
+                max="10"
+                step="0.1"
+                class="param-slider"
+              />
+            </div>
           </div>
+          <p class="param-hint">{{ t("settings.sherpa.tuningHint") }}</p>
         </section>
 
         <!-- 零样本声音克隆 -->
@@ -309,6 +338,10 @@ const config = ref({
   voice: "female",
   use_gpu: false,
   speed: 1.0,
+  // 推理步数 / 引导强度：默认值与后端 SherpaTuning::default() 一致（4 / 1.0），
+  // 只有 ZipVoice 这类 flow-matching 模型读它们。
+  num_steps: 4,
+  guidance_scale: 1.0,
   ref_audio_path: "",
   ref_text: "",
 });
@@ -454,6 +487,8 @@ async function testVoice() {
           sherpa_onnx_voice: config.value.voice,
           sherpa_onnx_use_gpu: config.value.use_gpu,
           sherpa_onnx_speed: config.value.speed,
+          sherpa_onnx_num_steps: config.value.num_steps,
+          sherpa_onnx_guidance_scale: config.value.guidance_scale,
           sherpa_onnx_ref_audio_path: config.value.ref_audio_path,
           sherpa_onnx_ref_text: config.value.ref_text,
         },
@@ -752,6 +787,13 @@ const formatSize = (bytes: number): string => {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.param-hint {
+  margin: 10px 0 0 0;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .param-label {

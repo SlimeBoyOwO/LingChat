@@ -41,13 +41,26 @@
 //! ```
 
 use ling_chat_main::ai_service::tts::adapters::sherpa_onnx::{
-    SherpaOnnxAdapter, load_reference_audio,
+    SherpaOnnxAdapter, SherpaTuning, load_reference_audio,
 };
 use ling_chat_main::ai_service::tts::provider::TtsAdapter;
 use ling_chat_main::config::tts::TtsConfig;
 
 /// 短测试句（12 字）。
 const SHORT_TEXT: &str = "你好，这是一段测试语音。";
+
+/// 用户可调的采样参数（对应设置页的两个滑动条）：
+/// `SHERPA_NUM_STEPS` 推理步数、`SHERPA_GUIDANCE_SCALE` 引导强度（仅 ZipVoice 生效）。
+fn tuning_from_env() -> SherpaTuning {
+    SherpaTuning::from_options(
+        std::env::var("SHERPA_NUM_STEPS")
+            .ok()
+            .and_then(|v| v.parse().ok()),
+        std::env::var("SHERPA_GUIDANCE_SCALE")
+            .ok()
+            .and_then(|v| v.parse().ok()),
+    )
+}
 
 /// 约 4 倍长、含标点与数字的测试句（59 字）。
 const LONG_TEXT: &str = "老师早。今天天气很好，我们一起去散步吧？不过在那之前，\
@@ -128,6 +141,7 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
         language.clone(),
         "female".into(),
         use_gpu,
+        tuning_from_env(),
     )
     .expect("初始化 Sherpa-ONNX 适配器失败");
 
@@ -301,6 +315,7 @@ async fn synth_env_text() {
         lang.clone(),
         String::new(),
         std::env::var("SHERPA_USE_GPU").is_ok(),
+        tuning_from_env(),
     )
     .expect("初始化适配器失败");
 

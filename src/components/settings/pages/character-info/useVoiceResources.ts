@@ -24,6 +24,8 @@ const voiceModelKeys = [
   "sherpa_onnx_voice",
   "sherpa_onnx_use_gpu",
   "sherpa_onnx_speed",
+  "sherpa_onnx_num_steps",
+  "sherpa_onnx_guidance_scale",
   "sherpa_onnx_ref_audio_path",
   "sherpa_onnx_ref_text",
 ] as const;
