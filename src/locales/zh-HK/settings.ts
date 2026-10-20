@@ -169,8 +169,10 @@ export default {
       skip: "跳過，用預設",
       confirm: "確認切換",
     },
-    saveConfirm: "今次保存會更新身份卡：如果修改嘅係而家用緊嘅身份（名 / 副標題 / 身份設定 / 關係），當前存檔《{save}》會同步改變；改其他身份唔影響當前存檔。確定保存？",
-    saveConfirmNoSave: "今次保存會更新身份卡：而家冇進行緊嘅存檔，今次保存只更新身份卡本身。確定保存？",
+    saveConfirm:
+      "今次保存會更新身份卡：如果修改嘅係而家用緊嘅身份（名 / 副標題 / 身份設定 / 關係），當前存檔《{save}》會同步改變；改其他身份唔影響當前存檔。確定保存？",
+    saveConfirmNoSave:
+      "今次保存會更新身份卡：而家冇進行緊嘅存檔，今次保存只更新身份卡本身。確定保存？",
     empty: "仲未有身份卡。撳下面嘅掣開一張；唔開都可以用預設身份。",
     current: "而家用緊",
     edit: "編輯",
@@ -625,8 +627,10 @@ export default {
       title: "{title} - 配置編輯",
       subtitle: "修改角色嘅詳細設定",
     },
-    saveConfirm: "今次保存會更新角色卡：如果修改包含「人設與稱呼」「關係」或者「初始好感度」，當前存檔《{save}》對應內容會同步改變；只改立繪、語音、稱號、簡介等就只更新卡片本身。確定保存？",
-    saveConfirmNoSave: "今次保存會更新角色卡：而家冇進行緊嘅存檔，今次保存只更新卡片本身。確定保存？",
+    saveConfirm:
+      "今次保存會更新角色卡：如果修改包含「人設與稱呼」「關係」或者「初始好感度」，當前存檔《{save}》對應內容會同步改變；只改立繪、語音、稱號、簡介等就只更新卡片本身。確定保存？",
+    saveConfirmNoSave:
+      "今次保存會更新角色卡：而家冇進行緊嘅存檔，今次保存只更新卡片本身。確定保存？",
     tabs: {
       basic: "基本資料",
       prompts: "提示詞",
@@ -702,6 +706,12 @@ export default {
       sherpaOnnxVoice: "音色",
       sherpaOnnxUseGpu: "GPU 推理",
       sherpaOnnxSpeed: "語速",
+      sherpaOnnxNumSteps: "推理步數",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice 的 flow-matching 採樣步數（1~10）。實測 4 步與 16 步聽不出差別，步數越多合成越慢，一般保持 4 即可。",
+      sherpaOnnxGuidanceScale: "引導強度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice 的 guidance_scale（1.0~10.0），越大越貼近參考音頻的音色；改完需要重新初始化模型，首次合成會稍慢。",
       sherpaOnnxParameters: "參數",
       sherpaOnnxManageModels: "管理模型",
       sherpaOnnxVoicesMale: "男聲",
@@ -1637,6 +1647,10 @@ export default {
       "走 NNAPI 設備後端（需要 Android 8.1+）。pnpm android:build 打出的包已帶 NNAPI；用官方預編譯包構建的包會按 CPU 運行。",
     parameters: "參數",
     speed: "語速",
+    numSteps: "推理步數",
+    guidanceScale: "引導強度",
+    tuningHint:
+      "推理步數與引導強度只對 ZipVoice（flow-matching）生效，其它模型會忽略。試聽用的是這裏的臨時值，角色實際說話請到角色設定的語音頁調整。",
     zeroShot: "零樣本聲音克隆",
     zeroShotDesc: "部分模型（如 kokoro/kitten 等）支援參考音訊 + 參考文字的零樣本克隆。",
     refLoaded: "參考音訊已載入",

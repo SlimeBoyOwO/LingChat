@@ -382,6 +382,14 @@ pub struct VoiceModel {
     /// Sherpa-ONNX 语速（0.5–2.0，1.0 为原速）
     #[serde(default, rename = "sherpa_onnx_speed")]
     pub sherpa_onnx_speed: Option<f32>,
+    /// Sherpa-ONNX 推理步数（1–10，默认 4）。只有 ZipVoice 这类 flow-matching 模型读它；
+    /// 逐次生成生效，不用重建引擎。
+    #[serde(default, rename = "sherpa_onnx_num_steps")]
+    pub sherpa_onnx_num_steps: Option<i32>,
+    /// Sherpa-ONNX 引导强度 guidance_scale（1.0–10.0，默认 1.0）。只有 ZipVoice 读它，
+    /// 且属于模型配置：改了要重建引擎（设置页保存后会重建适配器）。
+    #[serde(default, rename = "sherpa_onnx_guidance_scale")]
+    pub sherpa_onnx_guidance_scale: Option<f32>,
     /// Sherpa-ONNX 零样本参考音频路径（保留导入的 unicode-escape 形式）
     #[serde(default, rename = "sherpa_onnx_ref_audio_path")]
     pub sherpa_onnx_ref_audio_path: Option<String>,

@@ -35,8 +35,10 @@ export default {
       skip: "スキップ（デフォルト）",
       confirm: "切り替えを確定",
     },
-    saveConfirm: "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
-    saveConfirmNoSave: "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
+    saveConfirmNoSave:
+      "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     empty:
       "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
     current: "使用中",
@@ -437,8 +439,10 @@ export default {
       title: "{title} - 設定編集",
       subtitle: "キャラクターの詳細設定を変更します",
     },
-    saveConfirm: "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
-    saveConfirmNoSave: "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
+    saveConfirmNoSave:
+      "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     tabs: {
       basic: "基本情報",
       prompts: "プロンプト",
@@ -516,6 +520,12 @@ export default {
       sherpaOnnxVoice: "音声",
       sherpaOnnxUseGpu: "GPU 推論",
       sherpaOnnxSpeed: "話速",
+      sherpaOnnxNumSteps: "推論ステップ数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice の flow-matching サンプリング回数（1〜10）。4 回と 16 回で聴感差はなく、増やすほど遅くなるだけです。",
+      sherpaOnnxGuidanceScale: "ガイダンス強度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice の guidance_scale（1.0〜10.0）。大きいほど参照音声の声質に寄ります。変更するとモデルを再初期化するため、次の合成は少し遅くなります。",
       sherpaOnnxParameters: "パラメータ",
       sherpaOnnxManageModels: "モデル管理",
       sherpaOnnxVoicesMale: "男性",
@@ -1458,6 +1468,10 @@ export default {
       "NNAPI デバイスバックエンドを使用します（Android 8.1 以上が必要）。pnpm android:build で作成したパッケージには NNAPI が含まれます。公式のビルド済みパッケージを使った場合は CPU で動作します。",
     parameters: "パラメータ",
     speed: "話速",
+    numSteps: "推論ステップ数",
+    guidanceScale: "ガイダンス強度",
+    tuningHint:
+      "推論ステップ数とガイダンス強度は ZipVoice（flow-matching）でのみ有効で、他のモデルでは無視されます。ここは試聴用の一時値です。実際の読み上げはキャラクター設定の音声ページで調整してください。",
     zeroShot: "ゼロショット音声クローン",
     zeroShotDesc:
       "一部のモデル（kokoro/kitten 等）は参照音声 + 参照テキストによるゼロショットクローンに対応しています。",

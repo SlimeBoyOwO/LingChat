@@ -168,8 +168,10 @@ export default {
       skip: "跳过，用默认",
       confirm: "确认切换",
     },
-    saveConfirm: "本次保存会更新身份卡：若修改的是当前使用中的身份（名字 / 副标题 / 身份设定 / 关系），当前存档《{save}》会同步改变；修改其他身份不影响当前存档。确定保存吗？",
-    saveConfirmNoSave: "本次保存会更新身份卡：当前没有进行中的存档，本次保存只更新身份卡本身。确定保存吗？",
+    saveConfirm:
+      "本次保存会更新身份卡：若修改的是当前使用中的身份（名字 / 副标题 / 身份设定 / 关系），当前存档《{save}》会同步改变；修改其他身份不影响当前存档。确定保存吗？",
+    saveConfirmNoSave:
+      "本次保存会更新身份卡：当前没有进行中的存档，本次保存只更新身份卡本身。确定保存吗？",
     empty: "还没有身份卡。点下面的按钮新建一张；不新建也能用默认身份。",
     current: "当前使用",
     edit: "编辑",
@@ -614,8 +616,10 @@ export default {
       title: "{title} - 配置编辑",
       subtitle: "修改角色的详细设置",
     },
-    saveConfirm: "本次保存会更新角色卡：若修改包含「人设与称呼」「关系」或「初始好感度」，当前存档《{save}》的对应内容会同步改变；只改立绘、语音、称号、简介等则只更新卡片本身。确定保存吗？",
-    saveConfirmNoSave: "本次保存会更新角色卡：当前没有进行中的存档，本次保存只更新卡片本身。确定保存吗？",
+    saveConfirm:
+      "本次保存会更新角色卡：若修改包含「人设与称呼」「关系」或「初始好感度」，当前存档《{save}》的对应内容会同步改变；只改立绘、语音、称号、简介等则只更新卡片本身。确定保存吗？",
+    saveConfirmNoSave:
+      "本次保存会更新角色卡：当前没有进行中的存档，本次保存只更新卡片本身。确定保存吗？",
     tabs: {
       basic: "基本信息",
       prompts: "提示词",
@@ -715,6 +719,12 @@ export default {
       sherpaOnnxVoice: "音色",
       sherpaOnnxUseGpu: "GPU 推理",
       sherpaOnnxSpeed: "语速",
+      sherpaOnnxNumSteps: "推理步数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice 的 flow-matching 采样步数（1~10）。实测 4 步与 16 步听不出差别，步数越多合成越慢，一般保持 4 即可。",
+      sherpaOnnxGuidanceScale: "引导强度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice 的 guidance_scale（1.0~10.0），越大越贴近参考音频的音色；改完需要重新初始化模型，首次合成会稍慢。",
       sherpaOnnxParameters: "参数",
       sherpaOnnxManageModels: "管理模型",
       sherpaOnnxVoicesMale: "男声",
@@ -1652,6 +1662,10 @@ export default {
       "走 NNAPI 设备后端（需要 Android 8.1+）。pnpm android:build 打出的包已带 NNAPI；用官方预编译包构建的包会按 CPU 运行。",
     parameters: "参数",
     speed: "语速",
+    numSteps: "推理步数",
+    guidanceScale: "引导强度",
+    tuningHint:
+      "推理步数与引导强度只对 ZipVoice（flow-matching）生效，其它模型会忽略。试听用的是这里的临时值，角色实际说话请到角色设置的语音页调整。",
     zeroShot: "零样本声音克隆",
     zeroShotDesc: "部分模型（如 kokoro/kitten 等）支持参考音频 + 参考文本的零样本克隆。",
     refLoaded: "参考音频已加载",

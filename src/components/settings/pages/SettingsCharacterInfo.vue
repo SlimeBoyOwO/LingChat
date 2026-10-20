@@ -118,6 +118,23 @@
                     :placeholder="field.placeholder"
                     class="glass-input"
                   />
+                  <!-- 滑动条：推理步数 / 引导强度这类范围有限的数值。
+                       设置里还没存过值时显示 defaultValue（后端默认值），而非贴在 min 上。 -->
+                  <div v-else-if="field.type === 'range'" class="flex items-center gap-3">
+                    <input
+                      :id="field.key"
+                      type="range"
+                      :min="field.min ?? 0"
+                      :max="field.max ?? 100"
+                      :step="field.step ?? 1"
+                      :value="fieldValue(field) ?? field.defaultValue ?? field.min ?? 0"
+                      class="accent-brand h-1.5 flex-1 cursor-pointer"
+                      @input="onRangeInput(field, $event)"
+                    />
+                    <span class="w-10 shrink-0 text-right text-sm text-white/80 tabular-nums">
+                      {{ formatRangeValue(field) }}
+                    </span>
+                  </div>
                   <DialogueExamplesEditor
                     v-else-if="field.type === 'examples'"
                     v-model="fieldModel(field).value"
@@ -783,7 +800,11 @@ const fieldModel = (field: FieldSchema) => {
     set: (val: any) => {
       const isBlank = val === "" || val === null || val === undefined || Number.isNaN(Number(val));
       const coerced =
-        field.type === "number" ? (field.nullable && isBlank ? undefined : Number(val)) : val;
+        field.type === "number" || field.type === "range"
+          ? field.nullable && isBlank
+            ? undefined
+            : Number(val)
+          : val;
       let target: any;
       if (field.parent) {
         if (
@@ -805,6 +826,20 @@ const fieldModel = (field: FieldSchema) => {
 
 /** 读取字段当前值；模板里要多次读同一个字段时，避免重复 new computed。 */
 const fieldValue = (field: FieldSchema): any => fieldModel(field).value;
+
+/** 滑块右侧的数值：没存过时显示 defaultValue，小数位跟随 step（4 / 1.0）。 */
+const formatRangeValue = (field: FieldSchema): string => {
+  const raw = fieldValue(field) ?? field.defaultValue ?? field.min ?? 0;
+  const decimals = String(field.step ?? "1").includes(".") ? 1 : 0;
+  return Number(raw).toFixed(decimals);
+};
+
+/** range 输入框给的是字符串，必须显式转数字，否则会被存成 "4"。 */
+const onRangeInput = (field: FieldSchema, event: Event): void => {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  fieldModel(field).value = value;
+};
 
 // 兼容历史遗留的取值：早期版本存的是用户手填的路径，Android 上还可能是
 // `content://` URI（末段是 percent-encoded 的 document id），统一交给公共

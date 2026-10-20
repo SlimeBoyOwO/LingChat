@@ -11,8 +11,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
 
-use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_ref_audio;
+use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, SherpaTuning};
 use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxManager, SherpaOnnxModelInfo};
 use crate::ai_service::tts::provider::TtsAdapter;
 
@@ -644,6 +644,8 @@ pub struct SherpaPreviewSettings {
     pub sherpa_onnx_voice: Option<String>,
     pub sherpa_onnx_use_gpu: Option<bool>,
     pub sherpa_onnx_speed: Option<f32>,
+    pub sherpa_onnx_num_steps: Option<i32>,
+    pub sherpa_onnx_guidance_scale: Option<f32>,
     pub sherpa_onnx_ref_audio_path: Option<String>,
     pub sherpa_onnx_ref_text: Option<String>,
 }
@@ -704,6 +706,10 @@ pub async fn test_sherpa_onnx_voice(
         language,
         voice,
         use_gpu,
+        SherpaTuning::from_options(
+            settings.sherpa_onnx_num_steps,
+            settings.sherpa_onnx_guidance_scale,
+        ),
     )
     .map_err(|e| e.to_string())?;
 

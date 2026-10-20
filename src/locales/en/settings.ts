@@ -28,7 +28,7 @@ export default {
     switchFailTitle: "Failed to switch identity",
     transition: {
       title: 'Switch to "{name}"',
-      hint: "Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard \"left / joined the conversation\" lines and the departure notes are always added, and they only affect the current save.",
+      hint: 'Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard "left / joined the conversation" lines and the departure notes are always added, and they only affect the current save.',
       exitLabel: "Exit style (optional)",
       exitPlaceholder: "e.g. walked away in the rain without looking back",
       enterLabel: "Entrance style (optional)",
@@ -539,6 +539,12 @@ export default {
       sherpaOnnxVoice: "Voice",
       sherpaOnnxUseGpu: "GPU inference",
       sherpaOnnxSpeed: "Speed",
+      sherpaOnnxNumSteps: "Inference steps",
+      sherpaOnnxNumStepsHint:
+        "Flow-matching sampling steps for ZipVoice (1–10). 4 steps already sounds the same as 16; more steps only make synthesis slower.",
+      sherpaOnnxGuidanceScale: "Guidance scale",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice guidance_scale (1.0–10.0). Higher values follow the reference voice more closely; changing it reloads the model, so the next synthesis is slower.",
       sherpaOnnxParameters: "Parameters",
       sherpaOnnxManageModels: "Manage Models",
       sherpaOnnxVoicesMale: "Male",
@@ -1477,6 +1483,10 @@ export default {
       "Uses the NNAPI device backend (Android 8.1+). Builds made by pnpm android:build already include NNAPI; builds using the official prebuilt package run on CPU.",
     parameters: "Parameters",
     speed: "Speed",
+    numSteps: "Inference steps",
+    guidanceScale: "Guidance scale",
+    tuningHint:
+      "Inference steps and guidance scale only affect ZipVoice (flow-matching); other models ignore them. This page uses temporary values for preview — adjust the character's own voice page for actual speech.",
     zeroShot: "Zero-shot Voice Cloning",
     zeroShotDesc:
       "Some models (e.g. kokoro/kitten) support zero-shot cloning via a reference audio + reference text.",

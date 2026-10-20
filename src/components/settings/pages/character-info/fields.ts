@@ -1,6 +1,15 @@
 import type { ComposerTranslation } from "vue-i18n";
 
-export type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch" | "audio";
+export type FieldType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "examples"
+  | "select"
+  | "switch"
+  | "audio"
+  /** 滑动条：范围有限、适合「边拖边听」的数值（如推理步数、引导强度） */
+  | "range";
 
 export interface FieldOption {
   label: string;
@@ -23,6 +32,8 @@ export interface FieldSchema {
   disabled?: boolean;
   /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
   nullable?: boolean;
+  /** `range` 滑块在设置里还没有值时的显示值（否则会贴在 min 上看不出真实默认） */
+  defaultValue?: number;
   options?: FieldOption[];
   // Dynamic options computed from refs/state; overrides options when set.
   dynamicOptions?: () => { label: string; value: string }[];
@@ -518,6 +529,30 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         label: t("settings.characterInfo.fields.sherpaOnnxSpeed"),
         type: "number",
         step: "0.05",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_num_steps",
+        label: t("settings.characterInfo.fields.sherpaOnnxNumSteps"),
+        type: "range",
+        min: 1,
+        max: 10,
+        step: "1",
+        defaultValue: 4,
+        hint: t("settings.characterInfo.fields.sherpaOnnxNumStepsHint"),
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_guidance_scale",
+        label: t("settings.characterInfo.fields.sherpaOnnxGuidanceScale"),
+        type: "range",
+        min: 1,
+        max: 10,
+        step: "0.1",
+        defaultValue: 1,
+        hint: t("settings.characterInfo.fields.sherpaOnnxGuidanceScaleHint"),
         isVoiceModel: true,
         visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
