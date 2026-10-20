@@ -307,13 +307,15 @@ async fn synth_env_text() {
     let model_type = std::env::var("SHERPA_MODEL_TYPE").expect("请设置 SHERPA_MODEL_TYPE");
     let lang = std::env::var("SHERPA_LANG").unwrap_or_else(|_| "zh".to_string());
     let text = std::env::var("SHERPA_TEXT").expect("请设置 SHERPA_TEXT");
+    // 设置页的「音色」标签；kokoro 还会认纯数字（直接指定 sid，方便逐个试音色）。
+    let voice = std::env::var("SHERPA_VOICE").unwrap_or_default();
 
     let mut adapter = SherpaOnnxAdapter::new(
         TtsConfig::default(),
         model_dir.clone(),
         model_type.clone(),
         lang.clone(),
-        String::new(),
+        voice.clone(),
         std::env::var("SHERPA_USE_GPU").is_ok(),
         tuning_from_env(),
     )
@@ -330,7 +332,7 @@ async fn synth_env_text() {
     let wav = adapter.generate_voice(&text, &emo).await.expect("合成失败");
     let (sr, samples) = parse_wav(&wav);
     println!(
-        "自定义文本 @ {model_type}/{lang}「{text}」情绪「{emo}」→ {:.3}s sr={sr}",
+        "自定义文本 @ {model_type}/{lang}/{voice}「{text}」情绪「{emo}」→ {:.3}s sr={sr}",
         samples.len() as f64 / f64::from(sr)
     );
 

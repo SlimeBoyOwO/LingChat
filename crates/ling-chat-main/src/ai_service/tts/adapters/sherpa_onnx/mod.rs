@@ -22,12 +22,13 @@ mod text;
 
 pub use audio::load_reference_audio;
 use audio::{
-    LEAD_SILENCE_KEEP, TRAIL_SILENCE_KEEP, apply_edge_fades, f32_to_wav, strip_edge_silence,
+    LEAD_SILENCE_KEEP, TRAIL_SILENCE_KEEP, apply_edge_fades, cap_inner_silence, f32_to_wav,
+    strip_edge_silence,
 };
-use engine::{model_reads_latin, needs_digit_normalization};
+use engine::{kokoro_sid, model_reads_latin, needs_digit_normalization};
 use text::{
-    ReadableScripts, collapse_cjk_spaces, emotion_prosody, readable_scripts, reads_han_as_chinese,
-    split_clauses, strip_unreadable,
+    CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
+    readable_scripts, reads_han_as_chinese, split_clauses, strip_unreadable,
 };
 
 /// 本次编译链接进来的 sherpa-onnx 把哪个执行提供方编进去了：`dml`（Windows DirectML
@@ -129,6 +130,7 @@ impl SherpaTuning {
 
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
+    /// 传给模型的说话人下标（kokoro 由 [`kokoro_sid`] 按语言/音色挑，其余模型为 0）。
     sid: i32,
     speed: f32,
     /// 用户调的 flow-matching 推理步数（见 [`SherpaTuning`]）。
@@ -136,6 +138,7 @@ pub struct SherpaOnnxAdapter {
     model_path: String,
     model_type: String,
     language: String,
+    /// 设置页的「音色」标签（female/male/…；kokoro 还认纯数字 sid）。
     voice: String,
     use_gpu: bool,
     reference_audio: Option<Vec<f32>>,
@@ -201,14 +204,21 @@ impl SherpaOnnxAdapter {
         // 假名/谚文按目标语言留：用户在角色设置里选的 `sherpa_onnx_lang` 就是模型
         // 说的语言（见 fields.ts），日文/韩文模型不需要英文词表也能读自己的文字。
         let scripts = readable_scripts(&language, model_reads_latin(model_dir));
+        // kokoro 的 sid 是模型自带的音色下标（见 [`kokoro_sid`]）；其余模型的 sid 只有
+        // 多说话人 VITS / Kitten 用得上，保持 0。
+        let sid = if model_type == "kokoro" {
+            kokoro_sid(&language, &voice, tts.num_speakers())
+        } else {
+            0
+        };
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}",
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, voice={voice}, sid={sid}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}",
             provider.unwrap_or("cpu")
         );
 
         Ok(Self {
             tts: Some(tts),
-            sid: 0,
+            sid,
             speed: 1.0,
             num_steps: tuning.num_steps,
             model_path,
@@ -372,9 +382,16 @@ impl TtsAdapter for SherpaOnnxAdapter {
             }
             sample_rate = audio.sample_rate();
 
+            // 合并出来的那片可能带着模型自己在逗号后塞的静音（0.35~0.68 秒，见
+            // cap_inner_silence），先压回我们自己的从句停顿，再和别处对齐。
+            let mut samples = audio.samples().to_vec();
+            if has_inner_clause_punct(&piece_text) {
+                cap_inner_silence(&mut samples, sample_rate, CLAUSE_PAUSE);
+            }
+
             // 每片的静音都去掉：停顿由我们按标点精确插入，片自带的静音只会让停顿
             // 忽长忽短；接缝两侧各做一次淡入淡出，避免波形跳变听起来是「咔哒」。
-            let edge = strip_edge_silence(audio.samples());
+            let edge = strip_edge_silence(&samples);
             if edge.is_empty() {
                 continue;
             }
