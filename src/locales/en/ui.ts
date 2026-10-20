@@ -372,6 +372,7 @@ export default {
       schedule_update_todo: "Update To-do",
       schedule_delete_todo: "Delete To-do",
       memory_get_current: "Read Memory",
+      memory_search: "Search memories",
       memory_get_notes: "Read Notes",
       memory_add_note: "Take Note",
       memory_update_note: "Update Note",

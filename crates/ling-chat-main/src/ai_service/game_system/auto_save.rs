@@ -73,6 +73,8 @@ pub struct AutoSaveManager {
     app: AppHandle,
     db: DatabaseConnection,
     ai_service: SharedAIService,
+    // 保存会更新活动存档编号，需等生成空闲后再做，避免误取消当前回复。
+    generation_lock: Arc<Mutex<()>>,
     /// Hash of line_list at the moment of the last successful auto-save.
     last_saved_hash: Option<u64>,
     /// Resolved auto-save slot ID (lazily found or created on first save).
@@ -82,11 +84,17 @@ pub struct AutoSaveManager {
 }
 
 impl AutoSaveManager {
-    pub fn new(app: AppHandle, db: DatabaseConnection, ai_service: SharedAIService) -> Self {
+    pub fn new(
+        app: AppHandle,
+        db: DatabaseConnection,
+        ai_service: SharedAIService,
+        generation_lock: Arc<Mutex<()>>,
+    ) -> Self {
         Self {
             app,
             db,
             ai_service,
+            generation_lock,
             last_saved_hash: None,
             auto_save_id: None,
             grace_until: None,
@@ -100,6 +108,7 @@ impl AutoSaveManager {
     /// 每轮先 sleep 再存：避免 `tokio::time::interval` 首次 `tick()` 立即返回导致启动抢跑，
     /// 并让开关与间隔每轮热重读（改设置无需重启）。
     pub async fn run_periodic(manager: Arc<Mutex<Self>>) {
+        let generation_lock = manager.lock().await.generation_lock.clone();
         loop {
             let (enabled, interval_secs) = {
                 let mgr = manager.lock().await;
@@ -113,8 +122,11 @@ impl AutoSaveManager {
                 continue;
             }
 
-            let mut mgr = manager.lock().await;
-            if let Err(e) = mgr.perform_save().await {
+            let result = with_generation_idle(&generation_lock, async {
+                manager.lock().await.perform_save().await
+            })
+            .await;
+            if let Err(e) = result {
                 tracing::warn!("[AutoSave] 自动存档失败: {e}");
             }
         }
@@ -138,8 +150,11 @@ impl AutoSaveManager {
 
                     let save_result =
                         tokio::time::timeout(Duration::from_secs(EXIT_SAVE_TIMEOUT_SECS), async {
-                            let mut mgr = mgr.lock().await;
-                            mgr.perform_exit_save().await
+                            let generation_lock = mgr.lock().await.generation_lock.clone();
+                            with_generation_idle(&generation_lock, async {
+                                mgr.lock().await.perform_exit_save().await
+                            })
+                            .await
                         })
                         .await;
 
@@ -362,4 +377,13 @@ impl AutoSaveManager {
         self.auto_save_id = Some(model.id);
         Ok(model.id)
     }
+}
+
+// 先取得生成锁，再执行存档，周期保存与退出保存使用相同的锁顺序。
+pub(crate) async fn with_generation_idle<Output>(
+    generation_lock: &Mutex<()>,
+    save: impl std::future::Future<Output = Output>,
+) -> Output {
+    let _generation = generation_lock.lock().await;
+    save.await
 }

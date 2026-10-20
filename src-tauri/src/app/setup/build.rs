@@ -186,6 +186,9 @@ pub(super) fn build_service_graph(
         ling_chat_main::utils::onnx::onnx_available(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
+    // 与工具和笔记检索共享模型实例，避免重复加载模型及推理会话。
+    let memory_recall =
+        ai_service::game_system::memory_recall::MemoryRecall::new(embedding.clone());
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
@@ -251,6 +254,7 @@ pub(super) fn build_service_graph(
             app.handle().clone(),
             db.clone(),
             ai_service.clone(),
+            generation_lock.clone(),
         ),
     ));
 
@@ -279,6 +283,7 @@ pub(super) fn build_service_graph(
         tool_settings,
         embedding,
         tool_rag,
+        memory_recall,
         plugin_resources,
         proactive_system: Some(proactive),
         achievement_manager,

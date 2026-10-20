@@ -148,6 +148,7 @@ impl ScriptEvent for FreeDialogueEvent {
         drop(game_status_guard); // 尽早释放锁
 
         // ---- 主循环（支持无限轮次） ----
+        let generation_lock = ctx.app.state::<AppState>().generation_lock.clone();
         let mut rounds: i32 = 0;
         loop {
             let mut is_last_round = false;
@@ -181,6 +182,7 @@ impl ScriptEvent for FreeDialogueEvent {
             let _ = emit(ctx.app, SCRIPT_INPUT, &payload);
 
             let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
+            let _generation = generation_lock.lock().await;
 
             // ---- 添加用户输入台词先 ----
             {

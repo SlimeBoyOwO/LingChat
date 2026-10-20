@@ -23,6 +23,9 @@ pub struct ToolContext {
     pub role_name: Option<String>,
     /// 用于访问 AppState 共享状态的句柄；无宿主环境时为 `None`。
     pub app: Option<AppHandle>,
+    /// 本轮固定的角色与存档范围，也用于共享历史引用预算。
+    pub memory_session:
+        Option<std::sync::Arc<crate::ai_service::game_system::memory_recall::RecallSession>>,
 }
 
 impl ToolContext {
@@ -32,6 +35,7 @@ impl ToolContext {
             allowed_tools,
             role_name: None,
             app: None,
+            memory_session: None,
         }
     }
 
@@ -50,6 +54,14 @@ impl ToolContext {
     /// 绑定 AppHandle，供工具访问 db / ai_service / game_status 等共享状态。
     pub fn with_app(mut self, app: AppHandle) -> Self {
         self.app = Some(app);
+        self
+    }
+
+    pub fn with_memory_session(
+        mut self,
+        session: std::sync::Arc<crate::ai_service::game_system::memory_recall::RecallSession>,
+    ) -> Self {
+        self.memory_session = Some(session);
         self
     }
 

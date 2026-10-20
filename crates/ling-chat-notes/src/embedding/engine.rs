@@ -11,9 +11,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 
+use crate::memory::{EmbeddingVersion, memory_version};
 use anyhow::{Result, anyhow};
 use ort::session::{Session, SessionInputValue};
 use ort::value::{DynValue, Tensor};
+use sha2::{Digest, Sha256};
 use tokenizers::{Tokenizer, TruncationParams};
 
 /// `data/third_party/` 下的模型目录名。
@@ -38,6 +40,10 @@ const PREFERRED_OUTPUTS: [&str; 3] = ["last_hidden_state", "sentence_embedding",
 pub struct EmbeddingEngine {
     onnx_path: PathBuf,
     tokenizer: Option<Tokenizer>,
+    // 计数用分词器取消截断，才能发现超过模型长度的文本。
+    counting_tokenizer: OnceLock<Tokenizer>,
+    // 模型与分词器的指纹只计算一次，供索引和缓存判断能否复用。
+    memory_model: OnceLock<EmbeddingVersion>,
     /// 惰性创建的推理会话；`None` 表示创建失败且不再重试。
     session: OnceLock<Option<Mutex<Session>>>,
     /// 模型文件与分词器是否齐备（静态检查结果）。
@@ -61,6 +67,8 @@ impl EmbeddingEngine {
         let mut engine = Self {
             onnx_path: onnx_path.clone(),
             tokenizer: None,
+            counting_tokenizer: OnceLock::new(),
+            memory_model: OnceLock::new(),
             session: OnceLock::new(),
             ready: false,
             failed: AtomicBool::new(false),
@@ -117,6 +125,55 @@ impl EmbeddingEngine {
     /// 句向量维度（模型固定输出，见 [`EXPECTED_DIMENSION`]）。
     pub const fn dimension(&self) -> usize {
         EXPECTED_DIMENSION
+    }
+
+    pub const fn max_sequence_length(&self) -> usize {
+        MAX_SEQ_LEN
+    }
+
+    /// 计算包含特殊 token 的完整长度，原有推理分词器的截断设置保持不变。
+    pub fn token_count(&self, text: &str) -> Result<usize> {
+        if self.counting_tokenizer.get().is_none() {
+            let mut tokenizer = self
+                .tokenizer
+                .as_ref()
+                .ok_or_else(|| anyhow!("分词器未加载"))?
+                .clone();
+            tokenizer
+                .with_truncation(None)
+                .map_err(|error| anyhow!("取消截断失败: {error}"))?;
+            self.counting_tokenizer.get_or_init(|| tokenizer);
+        }
+        self.counting_tokenizer
+            .get()
+            .unwrap()
+            .encode(text, true)
+            .map(|encoding| encoding.len())
+            .map_err(|error| anyhow!("分词失败: {error}"))
+    }
+
+    /// 同名模型被替换或分词规则变化后，旧向量不能继续使用。
+    pub fn memory_model_version(&self) -> EmbeddingVersion {
+        self.memory_model
+            .get_or_init(|| {
+                let model_hash = std::fs::read(&self.onnx_path)
+                    .map(|bytes| format!("{:x}", Sha256::digest(bytes)))
+                    .unwrap_or_else(|_| "unavailable".into());
+                let tokenizer_hash = self
+                    .tokenizer
+                    .as_ref()
+                    .and_then(|tokenizer| tokenizer.to_string(false).ok())
+                    .and_then(|text| memory_version(&text).ok())
+                    .unwrap_or_else(|| "unavailable".into());
+                EmbeddingVersion {
+                    model: format!("bge-small-zh-v1.5:uint8:{model_hash}"),
+                    dimension: EXPECTED_DIMENSION,
+                    preprocessing: format!(
+                        "cls-l2-v1:prefix-none:max512:tokenizer-{tokenizer_hash}"
+                    ),
+                }
+            })
+            .clone()
     }
 
     /// 计算文本的 L2 归一化句向量。

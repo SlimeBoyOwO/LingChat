@@ -350,6 +350,7 @@ export default {
       schedule_update_todo: "更新待办",
       schedule_delete_todo: "删除待办",
       memory_get_current: "读取记忆",
+      memory_search: "检索历史记忆",
       memory_get_notes: "读取笔记",
       memory_add_note: "记笔记",
       memory_update_note: "更新笔记",

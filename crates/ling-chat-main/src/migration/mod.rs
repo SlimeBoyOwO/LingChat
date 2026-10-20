@@ -19,6 +19,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000001_add_line_identity_id::Migration),
             // 身份索引表（文件为真源，本表供查询）：必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261016_000001_create_player_identity_index::Migration),
+            Box::new(m20261018_000001_create_memory_index::Migration),
+            Box::new(m20261018_000002_add_memory_chunking_version::Migration),
         ]
     }
 }
@@ -33,3 +35,5 @@ pub mod m20260815_000001_add_skill_agent_cached_tokens;
 pub mod m20260918_000001_create_save_identity;
 pub mod m20261015_000001_add_line_identity_id;
 pub mod m20261016_000001_create_player_identity_index;
+pub mod m20261018_000001_create_memory_index;
+pub mod m20261018_000002_add_memory_chunking_version;

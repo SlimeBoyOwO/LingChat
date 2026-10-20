@@ -215,6 +215,7 @@ impl AIService {
             gs.clear_pending_recent_memories();
             gs.clear_pending_temporary_memories();
             gs.line_list = lines;
+            gs.preview_generation = gs.preview_generation.wrapping_add(1);
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
             }

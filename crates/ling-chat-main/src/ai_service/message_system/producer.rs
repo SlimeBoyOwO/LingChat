@@ -17,6 +17,7 @@ use futures_util::StreamExt;
 use tauri::AppHandle;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
+use crate::ai_service::game_system::memory_recall::RecallStamp;
 use crate::ai_service::llm::LlmChunk;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generated_text};
@@ -27,6 +28,7 @@ use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generat
 /// 可等待的同步点——工具事件是裸 `app.emit`，而 `ai:reply` 要经过 consumer 的
 /// 翻译/TTS 才由 publisher 发出，两者原本没有任何顺序关系。
 pub enum PresentationChunk {
+    Context(RecallStamp),
     Chunk(LlmChunk),
     /// 工具即将执行：携带一个 ack，publisher 按序处理完更早的项后回传
     /// "栅栏之前是否已发布过正式回复"。
@@ -38,12 +40,13 @@ pub type PresentationStream =
 
 /// 投递到 sentence channel 的工作项。
 pub enum SentenceItem {
-    /// 一个完整情绪段：(句子文本, 有序索引, 是否为最后一项)
-    Reply(String, usize, bool),
+    /// 一个完整情绪段：(句子文本, 有序索引, 是否为最后一项, 来源快照)
+    Reply(String, usize, bool, Option<RecallStamp>),
     /// 呈现栅栏：**自身占用一个索引**，publisher 按序推进到它时才回 ack。
     BeforeTools {
         index: usize,
         ack: oneshot::Sender<bool>,
+        stamp: Option<RecallStamp>,
     },
 }
 
@@ -110,9 +113,22 @@ impl StreamProducer {
         // 继续替玩家发言（`\n\n\nuser\n…`），那些内容一旦落进台词表就会被记忆反复复读。
         let mut turn_ended = false;
         let mut logged_discard = false;
+        // 每个句子携带产生它的上下文版本，后续换角色或改笔记不能重标旧句子。
+        let mut stamp = None;
 
         while let Some(item) = self.llm_stream.next().await {
             match item? {
+                PresentationChunk::Context(current) => {
+                    if stamp.as_ref() != Some(&current) {
+                        anyhow::ensure!(
+                            buffer.trim().is_empty() && pending_sentence.is_none(),
+                            "切换上下文前仍有未投递正文"
+                        );
+                        buffer.clear();
+                        seen_sentences.clear();
+                        stamp = Some(current);
+                    }
+                },
                 PresentationChunk::Chunk(LlmChunk::Content(text)) => {
                     if turn_ended {
                         // 边界之后仍有内容：丢弃，并报一次警（便于定位写偏的回合）
@@ -169,6 +185,7 @@ impl StreamProducer {
                             &mut seen_sentences,
                             &mut pending_sentence,
                             &self.tool_calls_seen,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -217,6 +234,7 @@ impl StreamProducer {
                             &mut sentence_index,
                             &mut round_indices,
                             false,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -232,6 +250,7 @@ impl StreamProducer {
                             &mut sentence_index,
                             &mut round_indices,
                             false,
+                            &stamp,
                         )
                         .await?;
                     }
@@ -244,7 +263,11 @@ impl StreamProducer {
                     let index = sentence_index;
                     sentence_index += 1;
                     self.tx
-                        .send(SentenceItem::BeforeTools { index, ack })
+                        .send(SentenceItem::BeforeTools {
+                            index,
+                            ack,
+                            stamp: stamp.clone(),
+                        })
                         .await
                         .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
                 },
@@ -274,6 +297,7 @@ impl StreamProducer {
                         &mut sentence_index,
                         &mut round_indices,
                         true,
+                        &stamp,
                     )
                     .await?;
                     sent_final = true;
@@ -293,6 +317,7 @@ impl StreamProducer {
                         &mut sentence_index,
                         &mut round_indices,
                         false,
+                        &stamp,
                     )
                     .await?;
                 }
@@ -302,6 +327,7 @@ impl StreamProducer {
                     &mut sentence_index,
                     &mut round_indices,
                     true,
+                    &stamp,
                 )
                 .await?;
                 sent_final = true;
@@ -312,6 +338,7 @@ impl StreamProducer {
                     &mut sentence_index,
                     &mut round_indices,
                     true,
+                    &stamp,
                 )
                 .await?;
                 sent_final = true;
@@ -323,6 +350,7 @@ impl StreamProducer {
                 &mut sentence_index,
                 &mut round_indices,
                 true,
+                &stamp,
             )
             .await?;
             sent_final = true;
@@ -343,6 +371,7 @@ impl StreamProducer {
         seen: &mut std::collections::HashSet<String>,
         pending: &mut Option<String>,
         tool_calls_seen: &AtomicBool,
+        stamp: &Option<RecallStamp>,
     ) -> Result<()> {
         let s = std::mem::take(sentence);
         // 复读去重：与本轮已接收句子逐字重复（忽略空白差异）时丢弃。
@@ -354,12 +383,13 @@ impl StreamProducer {
 
         if tool_calls_seen.load(Ordering::Acquire) {
             if let Some(previous) = pending.replace(s) {
-                Self::send_sentence(tx, previous, sentence_index, round_indices, false).await?;
+                Self::send_sentence(tx, previous, sentence_index, round_indices, false, stamp)
+                    .await?;
             }
             return Ok(());
         }
 
-        Self::send_sentence(tx, s, sentence_index, round_indices, false).await
+        Self::send_sentence(tx, s, sentence_index, round_indices, false, stamp).await
     }
 
     async fn send_sentence(
@@ -368,11 +398,12 @@ impl StreamProducer {
         sentence_index: &mut usize,
         round_indices: &mut Vec<usize>,
         is_final: bool,
+        stamp: &Option<RecallStamp>,
     ) -> Result<()> {
         let idx = *sentence_index;
         *sentence_index += 1;
         round_indices.push(idx);
-        tx.send(SentenceItem::Reply(sentence, idx, is_final))
+        tx.send(SentenceItem::Reply(sentence, idx, is_final, stamp.clone()))
             .await
             .map_err(|_| anyhow::anyhow!("sentence channel closed"))?;
         Ok(())
