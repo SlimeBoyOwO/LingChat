@@ -6,6 +6,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // 文档保存来源，分块保存检索正文，向量独立存储以便模型变化后重建。
         for sql in [
             "CREATE TABLE memory_document (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -26,6 +27,7 @@ impl MigrationTrait for Migration {
                 chunk_id TEXT PRIMARY KEY NOT NULL REFERENCES memory_chunk(id) ON DELETE CASCADE,
                 chunk_version TEXT NOT NULL, model_version TEXT NOT NULL, payload TEXT NOT NULL
             )",
+            // 每个存档与角色保留独立版本，防止并发任务互相覆盖索引状态。
             "CREATE TABLE memory_index_state (
                 save_id INTEGER NOT NULL REFERENCES save(id) ON DELETE CASCADE,
                 role_id INTEGER NOT NULL REFERENCES role(id) ON DELETE CASCADE,

@@ -1,0 +1,1088 @@
+//! 消息生成协调器。对标 Python `MessageGenerator.process_message_stream`。
+//!
+//! 职责：
+//! 1. 把用户消息（如有）走 MessageProcessor 预处理后，作为 USER 行入 GameStatus。
+//! 2. 读取当前角色的 memory 作为 LLM 上下文。
+//! 3. 启动 StreamProducer 从 LLM 流中切句子，送入 consumer 并行处理（情绪解析 + 翻译 + TTS）。
+//! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
+//! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
+
+mod post;
+mod pre;
+
+use std::collections::HashMap;
+use std::sync::Arc;
+
+use anyhow::{Context, Result};
+use sea_orm::DatabaseConnection;
+use tauri::{AppHandle, Emitter};
+use tokio::sync::{Mutex, mpsc, oneshot};
+
+use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::memory_recall::{RecallSession, RecallStamp};
+use crate::ai_service::god_agent::GodAgentCore;
+use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
+use crate::ai_service::llm::LlmClient;
+use crate::ai_service::message_system::events;
+use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor};
+use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
+use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
+use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
+use crate::ai_service::translator::Translator;
+use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::api::data_dir;
+use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::{RoundReply, scan_reply_shape};
+
+/// MessageGenerator 的业务调用来源。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GeneratorSource {
+    UserChat,
+    Proactive,
+    ScriptAiDialogue,
+    ScriptFreeDialogue,
+    EntryGreeting,
+}
+
+/// MessageGenerator 运行时依赖。
+#[derive(Clone)]
+pub struct GeneratorDeps {
+    /// 调用本轮生成的业务来源。
+    pub source: GeneratorSource,
+    pub app: AppHandle,
+    pub db: DatabaseConnection,
+    pub game_status: Arc<Mutex<GameStatus>>,
+    pub processor: Arc<MessageProcessor>,
+    pub translator: Arc<Translator>,
+    /// 当前生成轮次使用的 LLM 客户端快照（构建 deps 时从槽位读取）。
+    pub llm: Arc<LlmClient>,
+    /// 普通聊天可调用的共享工具注册表。
+    pub tool_registry: Arc<ToolRegistry>,
+    pub concurrency: usize,
+    /// 上帝 Agent（多人自由对话编排器），`None` 时退化为单角色对话。
+    pub god_agent: Option<Arc<GodAgentCore>>,
+    /// 抑制 ai:thinking 事件。用于系统触发的后台生成（如入场问候）。
+    pub suppress_thinking: bool,
+    /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
+    /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
+    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
+    pub generation: u64,
+    /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
+    /// 前端据此丢弃中止后迟到的流式回复。
+    pub is_preview: bool,
+    /// 当轮附带的多模态图片（`data:image/...;base64,...` data URL）。
+    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
+    /// 不写入角色记忆，从源头控制上下文/缓存占用。
+    pub transient_image: Option<String>,
+    /// 本轮 user 行的下标。提示行在 `process_message` 之前写好的路径由调用方传入，
+    /// 普通聊天保持 None。
+    pub round_anchor_hint: Option<usize>,
+}
+
+/// `process_message` 各步骤间传递的用户消息上下文。
+struct UserMessageContext {
+    /// 处理后的完整消息（含 temp 段）。
+    processed: String,
+    /// 临时消息段（如有）。
+    temp: Option<String>,
+    /// 插入的用户行在 line_list 中的索引。
+    line_index: Option<usize>,
+    /// 用户消息序号（1-indexed，按 sender_role_id==0 且 User 属性计数）。
+    seq: Option<u32>,
+}
+
+pub struct MessageGenerator {
+    deps: GeneratorDeps,
+}
+
+impl MessageGenerator {
+    pub fn new(deps: GeneratorDeps) -> Self {
+        Self { deps }
+    }
+
+    /// 处理一轮用户消息。返回 accumulated LLM 原始输出（便于日志 / 单测）。
+    ///
+    /// `None` 只表示本轮没有原始用户输入；业务调用来源由 `GeneratorDeps::source` 表示。
+    /// 此时会跳过 user 行构造，直接走 `GameStatus` 的 current role memory 发起 LLM。
+    ///
+    /// 在多人自由对话模式下（God Agent 激活），会自动循环生成多轮 NPC 对话。
+    pub async fn process_message(&self, user_message: Option<String>) -> Result<String> {
+        // 1. 处理用户消息
+        let user_ctx = self.handle_user_message(user_message.as_deref()).await?;
+
+        // 1.5. 场景变化检测
+        self.detect_scene_change().await?;
+
+        // 1.6. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
+        // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
+        let recent_anchor_hint = user_ctx.line_index.or(self.deps.round_anchor_hint);
+
+        // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应
+        if user_message.is_some() {
+            self.god_agent_pre_select().await?;
+        }
+
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
+        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        let tool_hint = if user_message.is_some() {
+            self.tool_hint(user_message.as_deref().unwrap_or_default())
+                .await
+        } else {
+            None
+        };
+
+        // 3. 生成循环（God Agent 激活时可能多轮）
+        let mut accumulated = String::new();
+        let mut consecutive_npc_rounds: usize = 0;
+        // 每轮的纠偏输入，供回复后处理使用。按轮记而不是统计整轮 accumulated：
+        // 多人模式下它是多个角色输出的拼接。
+        let mut round_replies: Vec<RoundReply> = Vec::new();
+        let original_msg = user_message.as_deref().unwrap_or_default();
+
+        loop {
+            // 取当前角色记忆（每轮重新获取，因为 current_role_id 可能已变化）
+            let Some((context, recall)) = self.get_current_context(user_message.as_deref()).await?
+            else {
+                break;
+            };
+            if context.is_empty() {
+                break;
+            }
+
+            // 启动 LLM 流生成
+            let round_msg_seq = if consecutive_npc_rounds == 0 {
+                user_ctx.seq
+            } else {
+                None
+            };
+            let before_lines = {
+                let gs = self.deps.game_status.lock().await;
+                gs.line_list.len()
+            };
+            let round_acc = self
+                .execute_pipeline(
+                    context,
+                    original_msg,
+                    round_msg_seq,
+                    tool_hint.as_ref(),
+                    recall,
+                )
+                .await?;
+            accumulated.push_str(&round_acc);
+            let landed_lines = {
+                let gs = self.deps.game_status.lock().await;
+                gs.line_list[before_lines.min(gs.line_list.len())..]
+                    .iter()
+                    .filter(|l| {
+                        // 与 auto_save::is_real_dialogue 的 assistant 判据一致：
+                        // 工具调用回填的行 sender 为空，不算台词
+                        matches!(l.attribute(), LineAttribute::Assistant)
+                            && l.base.sender_role_id.is_some()
+                    })
+                    .count()
+            };
+            // 形态取自模型原始输出，落地条数取自台词表：翻译覆写只影响行、不影响原文
+            round_replies.push(RoundReply {
+                landed_lines,
+                shapes: scan_reply_shape(&round_acc),
+            });
+
+            // 后处理：仅第一轮清理 temp_message
+            if consecutive_npc_rounds == 0 {
+                self.cleanup_temp_message(&user_ctx).await?;
+            }
+
+            consecutive_npc_rounds += 1;
+
+            // 上帝 Agent 后处理：决定下一个说话者
+            let (should_continue, _next_role) =
+                self.god_agent_post_select(consecutive_npc_rounds).await?;
+            if !should_continue {
+                break;
+            }
+        }
+
+        // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
+        // 不阻塞本轮回复的呈现。
+        self.maybe_evaluate_affection(recent_anchor_hint).await;
+
+        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚排队的提示混进评估快照）：
+        // 新增的回复后处理一律加在 `maybe_correct_reply_shape` 旁边——轻量动作
+        // 直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
+        // 绝不能影响已经呈现给用户的回复。
+        self.maybe_correct_reply_shape(&round_replies).await;
+
+        // 近期记忆落位：等这一轮所有写入结束再做，避免中段插入打乱流式行号。
+        // 调用方（非剧本路径）已持有 generation_lock，这里只锁 game_status。
+        self.flush_recent_memories().await;
+
+        Ok(accumulated)
+    }
+
+    /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
+    /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
+    #[cfg_attr(not(desktop), allow(dead_code))]
+    pub async fn process_notification(&self, notification: String) -> Result<String> {
+        // 调用方持有生成锁，先把待落位的近期记忆写回历史。
+        self.flush_recent_memories().await;
+        let Some((mut context, recall)) = self.get_current_context(None).await? else {
+            return Ok(String::new());
+        };
+        if context.is_empty() {
+            return Ok(String::new());
+        }
+        let message = LlmMessage::user(notification);
+        recall.append_context(message.clone());
+        context.push(message);
+        self.execute_pipeline(context, "", None, None, recall).await
+    }
+
+    // ============================================================
+    // 生成管线（生成前的准备见 `pre.rs`，生成后的收尾见 `post.rs`）
+    // ============================================================
+
+    /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
+    async fn execute_pipeline(
+        &self,
+        context: Vec<LlmMessage>,
+        user_message: &str,
+        user_msg_seq: Option<u32>,
+        tool_hint: Option<&god_tool_hint::ToolHint>,
+        recall: Arc<RecallSession>,
+    ) -> Result<String> {
+        if !self.deps.suppress_thinking {
+            events::emit_thinking(&self.deps.app, true);
+        }
+
+        match self
+            .run_pipeline(
+                context,
+                user_message.to_string(),
+                user_msg_seq,
+                tool_hint,
+                recall,
+            )
+            .await
+        {
+            Ok(acc) => {
+                if !self.deps.suppress_thinking {
+                    events::emit_thinking(&self.deps.app, false);
+                }
+                Ok(acc)
+            },
+            Err(e) => {
+                events::emit_error(&self.deps.app, &e);
+                if !self.deps.suppress_thinking {
+                    events::emit_thinking(&self.deps.app, false);
+                }
+                Err(e)
+            },
+        }
+    }
+
+    async fn run_pipeline(
+        &self,
+        context: Vec<LlmMessage>,
+        user_message: String,
+        user_message_seq: Option<u32>,
+        tool_hint: Option<&god_tool_hint::ToolHint>,
+        recall: Arc<RecallSession>,
+    ) -> Result<String> {
+        let role_name = {
+            let mut gs = self.deps.game_status.lock().await;
+            anyhow::ensure!(recall.matches(&gs), "当前会话已变化，取消旧请求");
+            let Some(role_id) = gs.current_role_id else {
+                return Err(anyhow::anyhow!("工具调用时没有当前角色"));
+            };
+            gs.get_role(&self.deps.db, role_id)
+                .await?
+                .display_name
+                .clone()
+        };
+        // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
+        // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
+        // 让模型把图片与最近的用户语境关联起来。
+        let context = if let Some(image) = self.deps.transient_image.clone() {
+            let mut ctx = context;
+            let gs_guard = self.deps.game_status.lock().await;
+            let user_name = gs_guard.player.user_name.clone();
+            drop(gs_guard);
+            let marker = if user_message.trim().is_empty() {
+                format!("（用户「{}」发来一张图片，请查看图片内容。）", user_name)
+            } else {
+                format!(
+                    "【图片】用户「{}」发来一张图片，请结合图片内容回复。",
+                    user_name
+                )
+            };
+            let message = LlmMessage::user_with_image(marker, image);
+            recall.append_context(message.clone());
+            ctx.push(message);
+            ctx
+        } else {
+            context
+        };
+        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
+        let context = if let Some(hint) = tool_hint {
+            let mut ctx = context;
+            let message = LlmMessage::system(hint.text.clone());
+            recall.prepend_context(message.clone());
+            ctx.insert(0, message);
+            ctx
+        } else {
+            context
+        };
+        let tool_loop_result = stream_with_tool_loop(
+            &self.deps.llm,
+            &self.deps.tool_registry,
+            context,
+            self.deps.source,
+            role_name,
+            &self.deps.app,
+            tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
+            recall.clone(),
+        )
+        .await?;
+        // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
+        // 先记下回填位置（当前台词末尾，即本轮助手回复写入之前），
+        // 待流消费完毕后统一插入，保持「用户 → 工具消息 → 助手回复」的顺序。
+        let tool_insert_pos = {
+            let gs = self.deps.game_status.lock().await;
+            gs.line_list.len()
+        };
+        let tool_messages = tool_loop_result.tool_messages;
+        let tool_calls_seen = tool_loop_result.tool_calls_seen;
+        let llm_stream = tool_loop_result.stream;
+
+        let (sentence_tx, sentence_rx) =
+            mpsc::channel::<SentenceItem>(self.deps.concurrency.max(1) * 2);
+        let (publish_tx, publish_rx) =
+            mpsc::channel::<PublishItem>(self.deps.concurrency.max(1) * 2);
+
+        // producer 与 consumer 共享的思考链缓冲：累积本轮生成的完整思考文本，
+        // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
+        let thinking_buf = Arc::new(Mutex::new(String::new()));
+
+        // 句子序号 → 台词表行下标。工具闭环回填时用它抹掉「前导台词」先落的行：
+        // 同一段原文已经在带 tool_call 的助手行里，留着就是同一句话说两遍。
+        let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
+
+        // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
+        let app = self.deps.app.clone();
+        let publish_status = self.deps.game_status.clone();
+        let publish_recall = recall.clone();
+        let publish_db = self.deps.db.clone();
+        let publisher = tokio::spawn(async move {
+            publish_ordered(
+                publish_rx,
+                |resp| {
+                    app.emit(event_names::AI_REPLY, resp)
+                        .map_err(anyhow::Error::from)
+                },
+                Some(PublishGuard {
+                    status: publish_status,
+                    recall: publish_recall,
+                    db: publish_db,
+                    store: ling_chat_notes::NotesStore::new(data_dir()),
+                }),
+            )
+            .await
+        });
+
+        // consumer 池：并发处理句子
+        let sentence_rx = Arc::new(Mutex::new(sentence_rx));
+        let concurrency = self.deps.concurrency.max(1);
+        let mut consumer_tasks = Vec::with_capacity(concurrency);
+        for cid in 0..concurrency {
+            let deps = self.deps.clone();
+            let sentence_rx = sentence_rx.clone();
+            let publish_tx = publish_tx.clone();
+            let user_message = user_message.clone();
+            let thinking_buf = thinking_buf.clone();
+            let sentence_lines = sentence_lines.clone();
+            let recall = recall.clone();
+            consumer_tasks.push(tokio::spawn(async move {
+                // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
+                let mut sdeps = SentenceDeps::from(&deps);
+                sdeps.recall = Some(recall);
+                sdeps.sentence_lines = Some(sentence_lines.clone());
+                loop {
+                    let item = {
+                        let mut rx = sentence_rx.lock().await;
+                        rx.recv().await
+                    };
+                    let Some(item) = item else {
+                        break;
+                    };
+                    let (sentence, index, is_final, stamp) = match item {
+                        // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
+                        // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
+                        // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
+                        SentenceItem::BeforeTools { index, ack, stamp } => {
+                            if publish_tx
+                                .send(PublishItem::BeforeTools { index, ack, stamp })
+                                .await
+                                .is_err()
+                            {
+                                break;
+                            }
+                            continue;
+                        },
+                        SentenceItem::Reply(sentence, index, is_final, stamp) => {
+                            (sentence, index, is_final, stamp)
+                        },
+                    };
+                    sdeps.recall_stamp = stamp;
+                    let resp = match consume_sentence(
+                        &sdeps,
+                        sentence,
+                        Some(index),
+                        &user_message,
+                        is_final,
+                        user_message_seq,
+                        &thinking_buf,
+                        &ReplyOverrides::default(),
+                    )
+                    .await
+                    {
+                        Ok(r) => r,
+                        Err(e) => {
+                            tracing::error!("consumer {cid} 处理句子失败: {e}");
+                            None
+                        },
+                    };
+                    let _ = publish_tx
+                        .send(PublishItem::Reply {
+                            index,
+                            response: resp,
+                            stamp: sdeps.recall_stamp.clone(),
+                        })
+                        .await;
+                    if is_final {
+                        break;
+                    }
+                }
+            }));
+        }
+        drop(publish_tx);
+
+        // producer：LLM 流 -> 句子
+        let producer = StreamProducer::new(
+            llm_stream,
+            sentence_tx,
+            self.deps.app.clone(),
+            thinking_buf,
+            tool_calls_seen,
+        );
+        let output = producer.run().await.context("StreamProducer 失败")?;
+        let acc = output.accumulated;
+
+        for t in consumer_tasks {
+            let _ = t.await;
+        }
+        // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
+        let published_final = publisher.await.unwrap_or(false);
+
+        // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
+        let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
+        let completed_turn = published_final || (!output.sent_final && !tool_msgs.is_empty());
+        if !tool_msgs.is_empty() {
+            let mut gs = self.deps.game_status.lock().await;
+            // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
+            if gs.preview_generation == self.deps.generation && recall.matches(&gs) {
+                gs.role_manager.invalidate_memory_history();
+                let insert_pos = tool_insert_pos.min(gs.line_list.len());
+                let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+
+                if !output.preamble_indices.is_empty() {
+                    let doomed: Vec<usize> = {
+                        let ledger = sentence_lines.lock().await;
+                        ledger
+                            .iter()
+                            .filter(|(sentence, _)| output.preamble_indices.contains(sentence))
+                            .map(|(_, line)| *line)
+                            .collect()
+                    };
+                    // 从后往前删，前面的下标才不会被自己挤动
+                    for index in doomed.into_iter().rev() {
+                        if index < gs.line_list.len() {
+                            gs.line_list.remove(index);
+                        }
+                    }
+                }
+
+                for msg in tool_msgs.iter().rev() {
+                    let (attribute, content, tool_call) = match msg.role.as_str() {
+                        "assistant" => {
+                            let tool_call = msg
+                                .tool_calls
+                                .as_ref()
+                                .map(|calls| serde_json::to_string(calls).unwrap_or_default());
+                            (LineAttribute::Assistant, msg.content.clone(), tool_call)
+                        },
+                        "tool" => (
+                            LineAttribute::Tool,
+                            serde_json::to_string(&serde_json::json!({
+                                "tool_call_id": msg.tool_call_id,
+                                "result": serde_json::from_str::<serde_json::Value>(&msg.content)
+                                    .unwrap_or(serde_json::Value::String(msg.content.clone())),
+                            }))
+                            .unwrap_or_default(),
+                            None,
+                        ),
+                        _ => continue,
+                    };
+                    let line = LineBase {
+                        content,
+                        tool_call,
+                        attribute: LineAttributeExt(attribute),
+                        sender_role_id: None,
+                        display_name: None,
+                        ..Default::default()
+                    };
+                    gs.line_list
+                        .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+                }
+                gs.refresh_memories(&self.deps.db).await?;
+            }
+        }
+
+        if completed_turn {
+            let mut gs = self.deps.game_status.lock().await;
+            if gs.preview_generation == self.deps.generation {
+                gs.refresh_memories_after_completed_turn(&self.deps.db)
+                    .await?;
+            }
+        }
+
+        // 空回复兜底：模型流没有任何正文时，主动通知前端并重置状态，
+        // 否则界面会一直停在「思考中」
+        if acc.trim().is_empty() {
+            tracing::warn!("LLM 流未产生任何正文内容，重置前端状态");
+            events::emit_error(
+                &self.deps.app,
+                &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
+            );
+        } else if !published_final {
+            // 有正文、但没有一条 `is_final` 的回复成功落地——前端队列只认 is_final 或
+            // status:reset 来复位，缺了它界面会永远停在等待态。工具闭环下这条是可达的：
+            // 呈现栅栏已经把前导缓冲清空，工具后模型若不再产出正文，EOF 就没有可提升为
+            // 终句的内容（旧行为会重放前导，但那会让用户看到同一句话两次）。
+            // 这里只做温和复位：不重放、不弹错误提示。
+            tracing::warn!(
+                sent_final = output.sent_final,
+                "本轮没有成功发布收尾句，仅复位前端状态"
+            );
+            events::emit_status_reset(&self.deps.app);
+        }
+
+        Ok(acc)
+    }
+}
+
+// ============================================================
+// 有序发布
+// ============================================================
+
+/// 投递到 publisher 的工作项。
+///
+/// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
+/// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
+/// `ai:reply` 已 emit"严格先于"工具事件 emit"。
+#[allow(clippy::large_enum_variant)]
+pub(super) enum PublishItem {
+    Reply {
+        index: usize,
+        response: Option<ReplyResponse>,
+        stamp: Option<RecallStamp>,
+    },
+    BeforeTools {
+        index: usize,
+        ack: oneshot::Sender<bool>,
+        stamp: Option<RecallStamp>,
+    },
+}
+
+impl PublishItem {
+    fn stamp(&self) -> Option<&RecallStamp> {
+        match self {
+            Self::Reply { stamp, .. } | Self::BeforeTools { stamp, .. } => stamp.as_ref(),
+        }
+    }
+
+    fn index(&self) -> usize {
+        match self {
+            Self::Reply { index, .. } | Self::BeforeTools { index, .. } => *index,
+        }
+    }
+}
+
+pub(super) struct PublishGuard {
+    status: Arc<Mutex<GameStatus>>,
+    recall: Arc<RecallSession>,
+    db: DatabaseConnection,
+    store: ling_chat_notes::NotesStore,
+}
+
+/// 按索引顺序发布；栅栏在其索引被推进到时回传"此前是否已发布过回复"。
+///
+/// 返回值 = **是否成功发出过收尾句（`is_final`）**：
+/// - `true`：某条 `is_final` 的回复已 emit；
+/// - `false`：`emit` 失败而中断，或通道关闭时都没等到终句。
+///
+/// `emit` 失败会立即返回，`pending` 里尚未回传的 ack 随函数一起被丢弃，
+/// 工具侧因此 fail-closed（不会在回复发布失败后继续执行工具）。
+///
+/// 生产与顺序契约测试共用本函数（`ordering_tests`）。
+pub(super) async fn publish_ordered(
+    mut rx: mpsc::Receiver<PublishItem>,
+    mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
+    guard: Option<PublishGuard>,
+) -> bool {
+    let mut next_index = 0usize;
+    let mut reply_before_fence = false;
+    let mut pending: HashMap<usize, PublishItem> = HashMap::new();
+    while let Some(item) = rx.recv().await {
+        pending.insert(item.index(), item);
+        while let Some(item) = pending.remove(&next_index) {
+            next_index += 1;
+            // 翻译或语音处理可能晚于上下文变化，发布前再校验任务来源。
+            let status = if let Some(guard) = &guard {
+                if let Err(error) = guard.recall.validate(&guard.db, &guard.store).await {
+                    tracing::warn!("发送前记忆来源复核失败: {error}");
+                    return false;
+                }
+                let status = guard.status.lock().await;
+                if !guard.recall.matches(&status) {
+                    return false;
+                }
+                if item
+                    .stamp()
+                    .is_none_or(|stamp| !guard.recall.is_current(stamp))
+                {
+                    continue;
+                }
+                Some(status)
+            } else {
+                None
+            };
+            match item {
+                PublishItem::Reply {
+                    response: Some(resp),
+                    stamp,
+                    ..
+                } => {
+                    if let (Some(status), Some(stamp)) = (&status, stamp) {
+                        if !stamp.matches(status) {
+                            return false;
+                        }
+                    }
+                    let is_final = resp.is_final;
+                    if let Err(e) = emit(&resp) {
+                        tracing::warn!("emit ai:reply 失败: {e}");
+                        return false;
+                    }
+                    // 插件信号：同一条回复也转发给订阅了 ai_reply 的插件
+                    //（补字段与派发在启动时登记的回调里，见 plugin_contract::set_reply_hook）。
+                    // 测试环境未登记回调，这里自然跳过。
+                    crate::plugin_contract::notify_reply(&resp);
+                    reply_before_fence = true;
+                    if is_final {
+                        return true;
+                    }
+                },
+                PublishItem::Reply { response: None, .. } => {},
+                PublishItem::BeforeTools { ack, .. } => {
+                    let _ = ack.send(reply_before_fence);
+                    reply_before_fence = false;
+                },
+            }
+            drop(status);
+        }
+    }
+    false
+}
+
+// ============================================================
+// consumer 句子处理
+// ============================================================
+
+/// 句子序号 → 台词表行下标。
+pub type SentenceLineLedger = Arc<Mutex<Vec<(usize, usize)>>>;
+
+/// `consume_sentence` 的最小依赖集。仅含句子处理真正用到的字段，
+/// 不要求 LLM / 工具，剧本 `dialogue` 事件可在未配置模型时直接构建。
+#[derive(Clone)]
+pub struct SentenceDeps {
+    pub processor: Arc<MessageProcessor>,
+    pub translator: Arc<Translator>,
+    pub game_status: Arc<Mutex<GameStatus>>,
+    pub db: DatabaseConnection,
+    /// 试玩代号（写入守卫用）。非试玩时传入当前值即可，守卫恒等。
+    pub generation: u64,
+    pub is_preview: bool,
+    /// 「这一句正文落成了台词表第几行」的台账（句子序号 → 行下标）。
+    ///
+    /// 工具闭环下前导台词只做呈现，生成结束后要按台账把它先落的那些行抹掉
+    /// （同一段原文已经在带 `tool_call` 的助手行里）。非生成路径（剧本固定台词）
+    /// 传 `None`：那边没有句子序号，也不存在要抹的行。
+    pub sentence_lines: Option<SentenceLineLedger>,
+    /// 当前回合的共享会话，剧本固定台词不经过检索时为空。
+    pub recall: Option<Arc<RecallSession>>,
+    /// 句子生成时的固定来源，不能随着共享会话更新而改标。
+    pub recall_stamp: Option<RecallStamp>,
+}
+
+impl From<&GeneratorDeps> for SentenceDeps {
+    fn from(d: &GeneratorDeps) -> Self {
+        Self {
+            processor: d.processor.clone(),
+            translator: d.translator.clone(),
+            game_status: d.game_status.clone(),
+            db: d.db.clone(),
+            generation: d.generation,
+            is_preview: d.is_preview,
+            sentence_lines: None,
+            recall: None,
+            recall_stamp: None,
+        }
+    }
+}
+
+/// 剧本固定台词（dialogue 事件）对 `consume_sentence` 构建响应的覆盖字段。
+/// 生成路径用默认值，不覆盖任何字段。
+#[derive(Default, Clone)]
+pub struct ReplyOverrides {
+    pub display_name: Option<String>,
+    pub display_subtitle: Option<String>,
+    pub duration: Option<f64>,
+}
+
+/// 处理单个句子：解析 → 富化 → 构建响应 → 保存行。
+///
+/// 供 MessageGenerator 的 consumer 池与剧本 `dialogue` 事件复用。
+/// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn consume_sentence(
+    deps: &SentenceDeps,
+    sentence: String,
+    sentence_index: Option<usize>,
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
+    overrides: &ReplyOverrides,
+) -> Result<Option<ReplyResponse>> {
+    if sentence.is_empty() {
+        return Ok(None);
+    }
+    if let Some(stamp) = &deps.recall_stamp {
+        if !stamp.matches(&*deps.game_status.lock().await)
+            || deps
+                .recall
+                .as_ref()
+                .is_some_and(|recall| !recall.is_current(stamp))
+        {
+            return Ok(None);
+        }
+    }
+
+    // 1. 解析情绪分段
+    let mut segments = parse_segments(deps, &sentence);
+    if segments.is_empty() {
+        return Ok(None);
+    }
+
+    // 2. 富化：翻译 + 语音
+    enrich_segments(deps, &mut segments).await?;
+
+    // 3. 构建前端响应
+    let mut response = build_reply_response(
+        deps,
+        &segments,
+        user_message,
+        is_final,
+        user_message_seq,
+        overrides,
+    )
+    .await?;
+
+    // 3.5 最终句：快照本轮思考链，挂载到响应与台词行（供历史对话展示思考过程）
+    if is_final {
+        let thinking = thinking_buf.lock().await;
+        if !thinking.is_empty() {
+            response.thinking = Some(thinking.clone());
+        }
+    }
+
+    // 4. 写入 GameStatus
+    add_assistant_line(deps, &response, sentence_index).await?;
+
+    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
+    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
+    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation
+            || deps
+                .recall
+                .as_ref()
+                .is_some_and(|recall| !recall.matches(&gs))
+            || deps.recall_stamp.as_ref().is_some_and(|stamp| {
+                !stamp.matches(&gs)
+                    || deps
+                        .recall
+                        .as_ref()
+                        .is_some_and(|recall| !recall.is_current(stamp))
+            })
+        {
+            return Ok(None);
+        }
+    }
+
+    Ok(Some(response))
+}
+
+/// Step A: 解析并分类情绪片段。
+fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
+    let segments = deps
+        .processor
+        .parse_and_classify_emotional_segments(sentence);
+    if segments.is_empty() {
+        tracing::warn!("AI 回复格式错误（未找到情绪 tag）");
+    }
+    segments
+}
+
+/// 返回当前 TTS 需要的目标翻译语言。
+fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
+    match (tts_type, voice_lang) {
+        ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
+        // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
+        // voice_lang 为非中文目标语言时先翻译成对应语言再合成
+        // （日语台词主模型已自带 japanese_text，无需在此强制重译）
+        ("indextts2", "en") => Some("en"),
+        ("indextts2", "es") => Some("es"),
+        ("indextts2", "ar") => Some("ar"),
+        ("gsv" | "opentts", "ko") => Some("ko"),
+        // CosyVoice 多语言自动检测：voice_lang 为 en/ko/de/fr/ru/pt 时先翻译成目标语言
+        // 再合成，否则会朗读主模型默认附带的日文译文（japanese_text）；
+        // ja 例外——主模型已自带日文译文，无需重译
+        ("cosyvoice", "en") => Some("en"),
+        ("cosyvoice", "ko") => Some("ko"),
+        ("cosyvoice", "de") => Some("de"),
+        ("cosyvoice", "fr") => Some("fr"),
+        ("cosyvoice", "ru") => Some("ru"),
+        ("cosyvoice", "pt") => Some("pt"),
+        _ => None,
+    }
+}
+
+/// 判断文本是否适合作为日语 TTS 输入。
+fn looks_like_japanese(text: &str) -> bool {
+    let has_kana = text
+        .chars()
+        .any(|c| matches!(c, '\u{3040}'..='\u{30ff}' | '\u{31f0}'..='\u{31ff}'));
+    let has_cjk = text
+        .chars()
+        .any(|c| matches!(c, '\u{3400}'..='\u{4dbf}' | '\u{4e00}'..='\u{9fff}'));
+    let has_ascii_letters = text.chars().any(|c| c.is_ascii_alphabetic());
+
+    has_kana || (has_cjk && !has_ascii_letters)
+}
+
+/// 切回日语后，检测并修复上一次英语模式残留的译文。
+fn needs_japanese_translation(segments: &[EmotionSegment]) -> bool {
+    segments.iter().any(|segment| {
+        !segment.following_text.trim().is_empty()
+            && !looks_like_japanese(segment.japanese_text.trim())
+    })
+}
+
+/// Step B: 翻译与语音生成。
+async fn enrich_segments(deps: &SentenceDeps, segments: &mut [EmotionSegment]) -> Result<()> {
+    let (voice_maker, tts_type, voice_lang) = {
+        let gs = deps.game_status.lock().await;
+        gs.current_role_id
+            .and_then(|rid| {
+                gs.role_manager.get_loaded(rid).map(|role| {
+                    (
+                        role.voice_maker.clone(),
+                        role.settings.tts_type.clone().unwrap_or_default(),
+                        role.settings.voice_lang.clone().unwrap_or_default(),
+                    )
+                })
+            })
+            .unwrap_or_default()
+    };
+
+    let translation_language = tts_translation_language(&tts_type, &voice_lang).or_else(|| {
+        if voice_lang == "ja" && needs_japanese_translation(segments) {
+            Some("ja")
+        } else {
+            None
+        }
+    });
+
+    if let Some(target_lang) = translation_language {
+        let translated = deps
+            .translator
+            .translate_segments_to(segments, true, target_lang)
+            .await?;
+        if !translated {
+            // 目标语言翻译失败时不要回退朗读主模型附带的其他语言译文。
+            for segment in segments.iter_mut() {
+                segment.japanese_text.clear();
+            }
+        }
+    }
+
+    if let Some(vm) = voice_maker {
+        vm.generate_voice_files(segments).await;
+    }
+
+    Ok(())
+}
+
+/// Step C: 构建 ReplyResponse（含角色信息填充）。
+async fn build_reply_response(
+    deps: &SentenceDeps,
+    segments: &[EmotionSegment],
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+    overrides: &ReplyOverrides,
+) -> Result<ReplyResponse> {
+    // 从 GameStatus 取当前角色信息
+    let role_info: Option<(Option<String>, Option<i32>)> = {
+        let gs = deps.game_status.lock().await;
+        gs.current_role_id.map(|rid| {
+            // 角色未加载（如工具刚切换）时也保留 rid，
+            // 让前端能按 role_id 自行加载，而不是丢成 None 被丢弃
+            let name = gs
+                .role_manager
+                .get_loaded(rid)
+                .and_then(|role| role.display_name.clone());
+            (name, Some(rid))
+        })
+    };
+
+    let first = &segments[0];
+    let (character, role_id) = match role_info {
+        Some((name, rid)) => (name.or(first.character.clone()), rid),
+        None => (first.character.clone(), first.role_id),
+    };
+
+    let mut response = ReplyResponse::new_reply();
+    response.character = character;
+    response.role_id = role_id;
+    response.emotion = if !first.predicted.is_empty() {
+        first.predicted.clone()
+    } else {
+        first.original_tag.clone()
+    };
+    response.original_tag = first.original_tag.clone();
+    response.message = first.following_text.clone();
+    response.tts_text = if first.japanese_text.is_empty() {
+        None
+    } else {
+        Some(first.japanese_text.clone())
+    };
+    response.motion_text = if first.motion_text.is_empty() {
+        None
+    } else {
+        Some(first.motion_text.clone())
+    };
+    response.audio_file = if first.voice_file.is_empty() {
+        None
+    } else {
+        let p = std::path::Path::new(&first.voice_file);
+        if p.exists() {
+            p.file_name().map(|n| n.to_string_lossy().to_string())
+        } else {
+            None
+        }
+    };
+    response.original_message = user_message.to_string();
+    response.is_final = is_final;
+    response.user_message_seq = user_message_seq;
+    // 试玩标记：前端据此丢弃中止后迟到的流式回复（非试玩为 None，不序列化）
+    response.preview_gen = if deps.is_preview {
+        Some(deps.generation)
+    } else {
+        None
+    };
+
+    // 固定台词覆盖：dialogue 事件传入显示名/副标题/时长，生成路径全为默认值
+    if let Some(dn) = &overrides.display_name {
+        response.display_name = Some(dn.clone());
+    }
+    if let Some(ds) = &overrides.display_subtitle {
+        response.display_subtitle = Some(ds.clone());
+    }
+    response.duration = overrides.duration.unwrap_or(-1.0);
+
+    Ok(response)
+}
+
+/// Step D: 将 assistant LINE 写入 GameStatus。
+async fn add_assistant_line(
+    deps: &SentenceDeps,
+    response: &ReplyResponse,
+    sentence_index: Option<usize>,
+) -> Result<()> {
+    if let Some(recall) = &deps.recall {
+        recall
+            .validate(&deps.db, &ling_chat_notes::NotesStore::new(data_dir()))
+            .await?;
+    }
+    {
+        let gs = deps.game_status.lock().await;
+        if gs.preview_generation != deps.generation {
+            tracing::warn!(
+                "[Generator] 丢弃过期试玩回复（代号 {} != 当前 {}），试玩已结束",
+                deps.generation,
+                gs.preview_generation
+            );
+            return Ok(());
+        }
+    }
+    let line = LineBase {
+        content: response.message.clone(),
+        sender_role_id: response.role_id,
+        original_emotion: Some(response.original_tag.clone()),
+        predicted_emotion: Some(response.emotion.clone()),
+        tts_content: response.tts_text.clone(),
+        action_content: response.motion_text.clone(),
+        audio_file: response.audio_file.clone(),
+        thinking: response.thinking.clone(),
+        // 优先使用覆盖的显示名（dialogue 事件），生成路径 display_name 为 None 时回退角色名
+        display_name: response.display_name.clone().or(response.character.clone()),
+        attribute: LineAttributeExt(LineAttribute::Assistant),
+        ..Default::default()
+    };
+    let mut gs = deps.game_status.lock().await;
+    if gs.preview_generation != deps.generation
+        || deps
+            .recall
+            .as_ref()
+            .is_some_and(|recall| !recall.matches(&gs))
+        || deps.recall_stamp.as_ref().is_some_and(|stamp| {
+            !stamp.matches(&gs)
+                || deps
+                    .recall
+                    .as_ref()
+                    .is_some_and(|recall| !recall.is_current(stamp))
+        })
+    {
+        return Ok(());
+    }
+    gs.add_line(&deps.db, line).await?;
+    // 台账：这一句落成了哪一行。工具闭环回填时按它抹掉「前导台词」先落的行。
+    // 记录与写入同在一把锁里，另一个 consumer 插不进来，行下标不会错位。
+    if let (Some(ledger), Some(index)) = (&deps.sentence_lines, sentence_index) {
+        ledger.lock().await.push((index, gs.line_list.len() - 1));
+    }
+    Ok(())
+}

@@ -1,0 +1,42 @@
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="LingChat 女仆桥接"
+authors="${mod_authors}"
+description='''
+在本机的 LingChat 桌面应用与《车万女仆》之间架一条本地回环 WebSocket 桥：
+游戏里玩家说的话送进对话，LingChat 里角色的回复变成女仆的聊天气泡。
+只监听 127.0.0.1，且只实现说话相关的那几个消息类型。
+'''
+
+[[dependencies.${mod_id}]]
+modId="neoforge"
+type="required"
+versionRange="${neo_version_range}"
+ordering="NONE"
+side="BOTH"
+
+[[dependencies.${mod_id}]]
+modId="minecraft"
+type="required"
+versionRange="${minecraft_version_range}"
+ordering="NONE"
+side="BOTH"
+
+# 类加载期就要用 EntityMaid，所以是必需依赖：没装车万女仆时直接给出明确的缺失依赖提示，
+# 而不是进了游戏才崩。
+[[dependencies.${mod_id}]]
+modId="touhou_little_maid"
+type="required"
+versionRange="${tlm_version_range}"
+ordering="AFTER"
+side="BOTH"
+
+# 一处很小的服务端 mixin：执行桥接自己的长任务时，暂时不让车万女仆的跟随行为把她
+# 传送回主人身边。见 mixin/MaidFollowOwnerTaskMixin。
+[[mixins]]
+config="lingchat_maid_bridge.mixins.json"

@@ -2,7 +2,7 @@
 
 模组那一侧只给机器可读的东西：专用服务端上 `getName()` 只有英文（甚至裸翻译键），
 中文只在客户端按玩家语言选得出来。所以中文表全在插件这一侧，事件的具体措辞在
-events.py、工具的说法在 tools.py，这里只管「某个 id 叫什么」。
+events/、工具的说法在 tools/，这里只管「某个 id 叫什么」。
 """
 
 # 常见维度。没收录的退回到 id 的后半段（英文），模型也认。
@@ -702,7 +702,7 @@ NEAR_CLOSE = 5.0
 NEAR_MID = 10.0
 
 # 附近那只算哪一类。有自己名字的生物直接用名字，所以 living 不带称呼。
-CATEGORY_NAMES = {"player": "另一个玩家", "maid": "别的女仆", "living": ""}
+CATEGORY_NAMES = {"player": "另一个人", "maid": "另一位女仆", "living": ""}
 
 # 说不清是谁打的时候，用伤害类型兜个底（模组给的是伤害类型的 msg id）。
 DAMAGE_HINTS = {
@@ -963,6 +963,30 @@ def nearness(distance):
 def nearness_place(distance):
     """同上，但给的是「近处」/「不远处」/「远处」这种能直接塞进句子的说法。"""
     return {"近": "近处", "中": "不远处", "远": "远处"}[nearness(distance)]
+
+
+# 光照档：0-3 一片漆黑（会刷怪），4-7 昏暗，8 以上算亮。问「周围有什么」时三档都说，
+# 随发言携带的那句只在暗的时候带——大白天每句都念「光线明亮」是噪音。
+LIGHT_DARK_MAX = 3
+LIGHT_DIM_MAX = 7
+LIGHT_PHRASES = {"dark": "四周一片漆黑", "dim": "光线昏暗", "bright": "光线明亮"}
+
+
+def light_band(raw):
+    """0-15 的光照 → dark / dim / bright；说不清时给空串（老模组没有这个字段）。"""
+    value = as_int(raw, -1)
+    if value < 0:
+        return ""
+    if value <= LIGHT_DARK_MAX:
+        return "dark"
+    if value <= LIGHT_DIM_MAX:
+        return "dim"
+    return "bright"
+
+
+def light_phrase(raw):
+    """光照 → 「光线昏暗」这类说法；说不清时给空串。"""
+    return LIGHT_PHRASES.get(light_band(raw), "")
 
 
 def as_int(value, default=0):

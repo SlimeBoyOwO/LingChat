@@ -39,11 +39,6 @@ pub async fn send_chat_message(
     dispatch_chat_turn(app, Some(text), screenshot_base64, None).await
 }
 
-/// 发送系统消息（系统事件、玩法提示等），本轮没有玩家发言，
-/// 只写入一条系统台词作为上下文，再走与 send_chat_message 相同的生成流程。
-///
-/// 该台词属性仍为 USER —— 这是刻意设计：系统提示需要进入模型的历史上下文，
-/// 但语义上不是旁白，具体封装交给 PromptRole::System。
 #[tauri::command]
 pub async fn send_system_message(
     app: AppHandle,
@@ -59,18 +54,10 @@ pub async fn send_system_message(
     dispatch_chat_turn(app, None, screenshot_base64, Some(preamble)).await
 }
 
-/// 回复台词数量档位当前是否可调整：尚未进入对话（没有当前角色 / 台词表为空）
-/// 或处于剧本模式时不可调整。
 fn reply_length_adjustable(gs: &GameStatus) -> bool {
     gs.script_status.is_none() && gs.current_role_id.is_some() && !gs.line_list.is_empty()
 }
 
-/// 读取当前存档的回复台词数量档位。
-///
-/// 返回 `None` 表示当前不可调整（剧本模式 / 剧本编辑器试玩中 / 尚未进入对话），
-/// 前端据此把选项置灰；`Some("short" | "normal" | "free")` 表示可调整。
-/// 这是跟随存档的运行时状态（存在存档全局变量里），不是应用配置，
-/// 因此不走 settings 配置树，`get_setting_by_key` 也查不到它。
 #[tauri::command]
 pub async fn get_reply_length_mode(app: AppHandle) -> Result<Option<String>, String> {
     let state = app.state::<AppState>();
@@ -86,9 +73,6 @@ pub async fn get_reply_length_mode(app: AppHandle) -> Result<Option<String>, Str
     Ok(Some(gs.reply_length_mode().as_str().to_string()))
 }
 
-/// 设置回复台词数量档位：写入存档全局变量，并插一条系统提示台词告知模型新要求。
-///
-/// 档位没变化时直接返回（不重复插台词）；守卫不满足时报错而不是静默成功。
 #[tauri::command]
 pub async fn set_reply_length_mode(app: AppHandle, mode: String) -> Result<String, String> {
     let new_mode = match mode.trim().to_ascii_lowercase().as_str() {
@@ -104,8 +88,6 @@ pub async fn set_reply_length_mode(app: AppHandle, mode: String) -> Result<Strin
         return Err("剧本编辑器试玩中无法调整回复台词数量".to_string());
     }
 
-    // 锁序固定为 ai_service -> game_status（与全仓一致）。这里只追加台词、不改已有下标，
-    // 因此不取 generation_lock——它被整轮生成持有（最长一个 LLM 超时），设置页按钮等不起。
     let svc = state.ai_service.lock().await;
     let mut gs = svc.game_status.lock().await;
 
@@ -120,19 +102,20 @@ pub async fn set_reply_length_mode(app: AppHandle, mode: String) -> Result<Strin
         return Ok(new_mode.as_str().to_string());
     }
 
-    // 先落提示台词再改变量：写台词失败时变量保持原样，避免「变量说短档、模型却没被告知」
     gs.add_system_hint_line(&state.db, new_mode.announce_text())
         .await
         .map_err(|e| format!("写入系统提示台词失败: {e}"))?;
     gs.set_variable(REPLY_LENGTH_VAR_KEY, serde_json::json!(new_mode.as_str()));
-    Ok(new_mode.as_str().to_string())
+    let mode = new_mode.as_str().to_string();
+    // 插件也会调这个命令（连上 MC 自动切短档），设置页可能已经挂在 KeepAlive 里，
+    // 不广播的话它会一直显示旧档位。先放锁再广播，别让前端处理事件时撞上同一把锁。
+    drop(gs);
+    drop(svc);
+    let _ = app.emit("reply-length:changed", serde_json::json!({ "mode": mode }));
+    Ok(mode)
 }
 
 /// 一轮对话的公共流程：截图处理 → 组装生成依赖 → 入队生成。
-///
-/// `text` 为本轮玩家消息，None 表示本轮没有玩家发言（系统消息、主动触发）。
-/// `preamble` 非空时，会在拿到 generation_lock 之后、生成本轮回复之前先落库，
-/// 保证系统台词排在本轮上下文的最前面，且不会被插进还在生成中的上一轮里。
 async fn dispatch_chat_turn(
     app: AppHandle,
     text: Option<String>,
@@ -221,6 +204,7 @@ async fn dispatch_chat_turn(
         generation: preview_generation,
         is_preview: false,
         transient_image,
+        round_anchor_hint: None,
     };
 
     // Notify proactive system of user input
@@ -283,15 +267,15 @@ async fn dispatch_chat_turn(
     tokio::spawn(async move {
         let _lock = gen_lock.lock().await;
 
-        // 上一轮生成期间插件攒下的旁白先补进来：它们发生在上一轮，按顺序排在本轮输入之前。
+        // 上一轮生成期间插件攒下的旁白先补进来，按发生顺序排在本轮输入之前。
         {
             let mut gs = preamble_gs.lock().await;
             gs.flush_pending_prompt_lines(&preamble_db).await;
+            // 上一轮评估排队的近期记忆，赶在玩家消息落库之前落位。
+            gs.flush_recent_memories(&preamble_db).await;
         }
 
-        // 系统台词先于本轮玩家消息落库，模型按「系统提示 → 玩家发言」的顺序读取；
-        // 本轮无玩家发言时它就是本轮唯一的输入。
-        // sender_role_id 保持 None，不计入玩家消息序号，回溯对话不会在它上面截断。
+        // 系统台词先于本轮玩家消息落库；sender_role_id 保持 None，不计入玩家消息序号。
         if let Some(content) = preamble {
             let mut gs = preamble_gs.lock().await;
             let line = LineBase {
@@ -429,9 +413,6 @@ async fn handle_debug_command(app: &AppHandle, text: &str) -> Result<(), String>
     Ok(())
 }
 
-/// 回溯对话：将台词列表截断到指定玩家消息之前（移除该消息及之后所有内容）。
-///
-/// `message_seq` 为 1-indexed 的玩家消息序号（由 `sender_role_id == Some(0)` 标识）。
 #[tauri::command]
 pub async fn rollback_conversation(
     app: AppHandle,
@@ -512,25 +493,13 @@ pub async fn rollback_conversation(
     Ok(init_lines)
 }
 
-/// 判断该台词行是否属于「可补生成语音」的 AI 台词：
-/// 剥掉 `{...}` 动作段后仍有正文。与前端 `convertInitLines` 判空规则对齐，
-/// 避免纯动作行（如整行都是 `{...}`）前后端计数不一致。
 fn has_tts_countable_content(content: &str) -> bool {
     static RE: OnceLock<Regex> = OnceLock::new();
     let re = RE.get_or_init(|| Regex::new(r"\{[\s\S]*?\}").expect("invalid regex"));
     !re.replace_all(content, "").trim().is_empty()
 }
 
-/// 为历史中某条 AI 台词补生成语音（「生成语音」按钮后端）。
-///
-/// `line_seq` 为 0-based 的「AI 台词」全局序号：按 `line_list` 中
-/// attribute == Assistant 且有正文、且关联角色（sender_role_id 非空）的行计数。
-/// 前端历史展示与后端计数规则一致（同样跳过空内容与无角色行），因此任意来源的
-/// AI 台词都能定位——自由对话轮次、AI 开场白、主动对话、剧本台词均适用。
-///
-/// 语音生成复用该台词角色已构建的 `VoiceMaker`（未加载时从 DB 惰性注册，
-/// 保证重启后剧本 NPC 等角色也能正确对应），产物写入 `<data_dir>/voice/`
-/// 后回填 `audio_file`，存在活跃存档时同步到 DB，重启后仍可播放。
+/// 为历史中某条 AI 台词补生成语音；`line_seq` 为 0-based 的「AI 台词」全局序号。
 #[tauri::command]
 pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String, String> {
     let state = app.state::<AppState>();
@@ -541,8 +510,6 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     let _lock = gen_lock.lock().await;
 
     // ===== 预热（先于生成，保证配好 TTS 后第一次点击就能成功） =====
-    // 1. 本地 TTS 引擎：未就绪且 DeBERTa 已安装时初始化（秒级 ONNX 加载，
-    //    此时不持 gs 锁，避免堵住对话）
     {
         let local_state = app.state::<LocalTtsState>();
         if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
@@ -552,25 +519,18 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
         }
     }
 
-    // 2. 已加载角色按 DB 最新 TTS 配置重建 VoiceMaker：恢复被后台探测禁用的
-    //    provider、补齐「角色先于 TTS 配置注册」产生的 None，本次生成即用新配置
     {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
         gs.role_manager.rebuild_voice_makers_from_db(&db).await;
     }
 
-    // 3. 预热完成后再广播 TTS 状态变化事件：前端（TTS 设置页等）刷新到的是
-    //    真实就绪状态（静默刷新，无 toast），而非刷新前的旧状态
     let _ = app.emit("tts://status-changed", ());
 
     let file_name = {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        // 1. 定位目标台词：数「assistant 且有正文且关联角色」的行，取第 line_seq 条。
-        //    跳过 sender_role_id 为 None 的行（工具调用回填的 assistant 前缀行，
-        //    实时对话时前端不可见，重载后可见——若计入序号会造成前后端计数漂移）。
         let mut count = 0u32;
         let mut target_idx: Option<usize> = None;
         for (i, gl) in gs.line_list.iter().enumerate() {
@@ -588,7 +548,6 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
         let idx = target_idx
             .ok_or_else(|| format!("未找到序号为 {} 的 AI 台词（共 {} 条）", line_seq, count))?;
 
-        // 2. 先克隆台词数据（之后要对 gs 做可变借用）
         let role_id = gs.line_list[idx].base.sender_role_id;
         let role_id = role_id.ok_or_else(|| "该台词没有关联角色，无法生成语音".to_string())?;
         let text = gs.line_list[idx].base.content.clone();
@@ -616,8 +575,6 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
             .clone()
             .unwrap_or_default();
 
-        // 3. 取角色 VoiceMaker：优先已加载角色；未加载（如重启后剧本 NPC）
-        //    从 DB 惰性注册再取，保证语音始终对应台词自己的角色
         let voice_maker = {
             let loaded = gs
                 .role_manager
@@ -635,10 +592,6 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
         let voice_maker = voice_maker
             .ok_or_else(|| format!("角色 {} 未配置 TTS，请在角色设置中启用语音", role_id))?;
 
-        // 4. 构造单个情绪片段并生成语音。
-        //    选文逻辑与实时生成一致（voice_maker.rs 的 segment_text_for_lang：
-        //    语音语言为 ja 且存在日语译文时朗读译文）。
-        //    存储的台词已剥离【情绪】标签（生成时提取过），无需二次解析。
         let mut seg = EmotionSegment {
             index: 0,
             original_tag,
@@ -716,6 +669,8 @@ pub async fn trigger_ai_response(
         generation: preview_generation,
         is_preview: false,
         transient_image,
+        // 这一轮没有玩家 user 行（纯图片/通知触发），不挂旁白。
+        round_anchor_hint: None,
     };
     let gen_lock = state.generation_lock.clone();
     tokio::spawn(async move {

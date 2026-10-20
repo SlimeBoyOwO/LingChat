@@ -276,6 +276,7 @@ impl ProactiveSystem {
             let svc = self.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
             gs.flush_pending_prompt_lines(&self.db).await;
+            gs.flush_recent_memories(&self.db).await;
         }
         let generator = self.prepare_delivery(Some(prompt), transient_image).await?;
         let _ = generator.process_message(None).await;
@@ -325,14 +326,14 @@ impl ProactiveSystem {
         tracing::info!("[ProactiveSystem] Delivering proactive dialogue...");
         events::emit_thinking(&self.app, true);
 
-        let generator = {
+        let mut deps = {
             let (game_status, preview_generation) = {
                 let svc = self.ai_service.lock().await;
                 let gs = svc.game_status.clone();
                 let gen = gs.lock().await.preview_generation;
                 (gs, gen)
             };
-            let deps = GeneratorDeps {
+            GeneratorDeps {
                 source: GeneratorSource::Proactive,
                 app: self.app.clone(),
                 db: self.db.clone(),
@@ -355,8 +356,8 @@ impl ProactiveSystem {
                 is_preview: false,
                 // 屏幕感知原生识图时，把截图当轮直发给对话模型（不写记忆，省上下文/缓存）
                 transient_image,
-            };
-            MessageGenerator::new(deps)
+                round_anchor_hint: None,
+            }
         };
 
         if let Some(prompt) = prompt {
@@ -378,9 +379,16 @@ impl ProactiveSystem {
                 events::emit_thinking(&self.app, false);
                 return Err(e);
             }
+            // 本轮 user 块就是刚写的提示行，评估结果之后挂回它。
+            deps.round_anchor_hint = gs.line_list.len().checked_sub(1);
+        } else {
+            // 空提示的主动对话没有新写提示行：本轮开头刚 flush 的插件旁白就是 user 块。
+            let svc = self.ai_service.lock().await;
+            let gs = svc.game_status.lock().await;
+            deps.round_anchor_hint = gs.last_user_line_index();
         }
 
-        Ok(generator)
+        Ok(MessageGenerator::new(deps))
     }
 
     /// 遍历暂存队列，尝试投放一个合适的意图。
@@ -708,6 +716,7 @@ async fn deliver_when_idle(
             let svc = this.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
             gs.flush_pending_prompt_lines(&this.db).await;
+            gs.flush_recent_memories(&this.db).await;
         }
         // 提示语由插件给（那是策略，改它不该重编宿主），信封由宿主包——
         // 与 add_prompt_line 同一个原则：插件伪造不出旁白的形状。空提示语表示

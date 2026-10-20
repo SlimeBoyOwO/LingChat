@@ -73,6 +73,7 @@ pub struct AutoSaveManager {
     app: AppHandle,
     db: DatabaseConnection,
     ai_service: SharedAIService,
+    // 保存会更新活动存档编号，需等生成空闲后再做，避免误取消当前回复。
     generation_lock: Arc<Mutex<()>>,
     /// Hash of line_list at the moment of the last successful auto-save.
     last_saved_hash: Option<u64>,
@@ -239,6 +240,18 @@ impl AutoSaveManager {
         // 4c. Set active save
         service.game_status.lock().await.active_save_id = Some(save_id);
 
+        // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
+        {
+            let identity_id = service.game_status.lock().await.player.identity_id.clone();
+            if let Some(ref id) = identity_id {
+                if !id.trim().is_empty() {
+                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
+                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
+                    }
+                }
+            }
+        }
+
         // 4d. Write GameStatus snapshot
         let snapshot = service.game_status.lock().await.to_snapshot();
         let snapshot_json =
@@ -366,6 +379,7 @@ impl AutoSaveManager {
     }
 }
 
+// 先取得生成锁，再执行存档，周期保存与退出保存使用相同的锁顺序。
 pub(crate) async fn with_generation_idle<Output>(
     generation_lock: &Mutex<()>,
     save: impl std::future::Future<Output = Output>,

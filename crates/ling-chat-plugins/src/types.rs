@@ -100,7 +100,7 @@ impl MatchValue {
 pub struct SubscribeDecl {
     /// 宿主注册的信号名（如 `scene:switch`）。
     pub signal: String,
-    /// 处理该信号的脚本（相对插件目录的单个文件名）。
+    /// 处理该信号的脚本（相对插件目录的路径，可含子目录）。
     pub script: String,
     /// 脚本内的处理函数名，签名为 `handler(ctx)`。
     pub handler: String,
@@ -215,7 +215,7 @@ pub struct WsConnInfo {
 /// 插件在程序启动（或启用）时执行的入口声明。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StartupDecl {
-    /// 启动脚本（相对插件目录的单个文件名）。
+    /// 启动脚本（相对插件目录的路径，可含子目录）。
     pub script: String,
     /// 脚本内的入口函数名，签名为 `handler(ctx)`。
     pub handler: String,

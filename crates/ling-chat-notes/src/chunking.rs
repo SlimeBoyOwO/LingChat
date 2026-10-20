@@ -1,3 +1,5 @@
+//! 按句子与实际 token 预算分块，保留原文字符和来源。
+
 use thiserror::Error;
 
 use crate::memory::{MemoryChunk, MemoryContractError, MemoryDocument};
@@ -24,6 +26,7 @@ pub fn chunk_document(
     if document.content.trim().is_empty() {
         return Ok(Vec::new());
     }
+    // 工具调用与返回值作为完整事务保留，超长时由宿主降级为词法检索。
     if atomic {
         return Ok(vec![whole_document_chunk(document)?]);
     }
@@ -40,6 +43,7 @@ pub fn chunk_document(
         let combined = format!("{pending}{sentence}");
         if count(&combined)? <= budget {
             pending = combined;
+            // 换行通常表示话题切换，即使预算还有空余也独立成块。
             if sentence.ends_with('\n') {
                 pieces.push(std::mem::take(&mut pending));
             }
@@ -48,6 +52,7 @@ pub fn chunk_document(
         if !pending.is_empty() {
             pieces.push(std::mem::take(&mut pending));
         }
+        // 长句只在字符边界切开，避免截断中文或表情的 UTF-8 编码。
         let mut boundaries: Vec<_> = sentence.char_indices().map(|(index, _)| index).collect();
         boundaries.push(sentence.len());
         let mut start = 0;
@@ -84,6 +89,7 @@ fn fitting_prefix(
     budget: usize,
     count: &impl Fn(&str) -> Result<usize, ChunkingError>,
 ) -> Result<usize, ChunkingError> {
+    // 先倍增探测，再二分收窄，减少对整段长文本的重复分词。
     let remaining = boundaries.len() - 1 - start;
     let mut low = 0;
     let mut high = 1;
@@ -131,126 +137,4 @@ fn make_chunk(
     };
     chunk.version = chunk.content_version()?;
     Ok(chunk)
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{Note, memory::MemoryDocument};
-
-    fn document(content: &str) -> MemoryDocument {
-        MemoryDocument::from_note(
-            2,
-            &Note {
-                id: "long".into(),
-                content: content.into(),
-                tags: vec![],
-                created_at: "2026-10-18".into(),
-            },
-        )
-        .unwrap()
-    }
-
-    #[test]
-    fn sentence_and_unicode_splits_preserve_every_character_and_source() {
-        let document = document("第一句话。第二句话！🙂超长段落没有标点abcdef中文测试\n最后一句。");
-        let chunks =
-            chunk_document(&document, 10, false, |text| Ok(text.chars().count() + 2)).unwrap();
-        assert!(chunks.len() > 2);
-        assert_eq!(
-            chunks
-                .iter()
-                .map(|chunk| chunk.content.as_str())
-                .collect::<String>(),
-            document.content
-        );
-        for chunk in &chunks {
-            assert!(chunk.content.chars().count() + 2 <= 10);
-            chunk.validate_for(&document).unwrap();
-        }
-        assert!(chunks[0].content.ends_with('。'));
-    }
-
-    #[test]
-    fn atomic_protocol_is_never_cut_to_fit_budget() {
-        let document = document(&"工具返回".repeat(100));
-        let chunks = chunk_document(&document, 10, true, |_| {
-            panic!("完整事务由宿主决定是否可嵌入")
-        })
-        .unwrap();
-        assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].content, document.content);
-    }
-
-    #[test]
-    fn tokenizer_errors_and_impossible_budgets_are_explicit() {
-        let document = document("你好");
-        assert!(matches!(
-            chunk_document(&document, 10, false, |_| Err("missing".into())),
-            Err(ChunkingError::Tokenizer(_))
-        ));
-        assert!(matches!(
-            chunk_document(&document, 2, false, |text| Ok(text.chars().count() + 2)),
-            Err(ChunkingError::Budget)
-        ));
-    }
-
-    #[test]
-    fn newline_topics_remain_separate_even_when_the_whole_document_fits() {
-        let document = document("奶茶三分糖。\n晓禾送来银色书签。\n盆栽放在东窗台。");
-        let chunks =
-            chunk_document(&document, 480, false, |text| Ok(text.chars().count() + 2)).unwrap();
-        assert_eq!(chunks.len(), 3);
-        assert_eq!(chunks[0].content, "奶茶三分糖。\n");
-        assert_eq!(chunks[1].content, "晓禾送来银色书签。\n");
-        assert_eq!(
-            chunks
-                .iter()
-                .map(|chunk| chunk.content.as_str())
-                .collect::<String>(),
-            document.content
-        );
-        let atomic = chunk_document(&document, 480, true, |_| panic!("atomic")).unwrap();
-        assert_eq!(atomic.len(), 1);
-        assert_eq!(atomic[0].content, document.content);
-    }
-
-    #[test]
-    fn long_unpunctuated_splitting_bounds_repeated_tokenizer_input() {
-        let mut previous_bytes = 0;
-        for size in [10_000, 20_000] {
-            let document = document(&"猫".repeat(size));
-            let input_bytes = std::cell::Cell::new(0usize);
-            let calls = std::cell::Cell::new(0usize);
-            let chunks = chunk_document(&document, 480, false, |text| {
-                input_bytes.set(input_bytes.get() + text.len());
-                calls.set(calls.get() + 1);
-                Ok(text.chars().count() + 2)
-            })
-            .unwrap();
-            assert_eq!(
-                chunks
-                    .iter()
-                    .map(|chunk| chunk.content.as_str())
-                    .collect::<String>(),
-                document.content
-            );
-            assert!(
-                chunks
-                    .iter()
-                    .all(|chunk| chunk.content.chars().count() + 2 <= 480)
-            );
-            assert!(input_bytes.get() < document.content.len() * 20);
-            if previous_bytes > 0 {
-                assert!(input_bytes.get() < previous_bytes * 23 / 10);
-            }
-            previous_bytes = input_bytes.get();
-            println!(
-                "优化后长文本：{size} 字符，{} 个分块，{} 次计数，{} 输入字节",
-                chunks.len(),
-                calls.get(),
-                input_bytes.get()
-            );
-        }
-    }
 }

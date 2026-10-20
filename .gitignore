@@ -83,10 +83,7 @@ src-tauri/binaries/
 ~/.tauri/
 frontend_vue/
 .tsbuildinfo
-# MC 桥接模组（Gradle 工程）：构建输出与 dev 运行目录
-mc-mod/.gradle/
-mc-mod/run/
-mc-mod/
+# MC 桥接模组在 extension/maid_mod/，忽略规则由该目录下的 .gitignore 维护
 src-tauri/gen/android/app/src/main/assets/
 # Tauri 自动生成的图标
 src-tauri/icons/*.png

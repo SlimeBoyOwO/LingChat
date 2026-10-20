@@ -23,6 +23,7 @@ pub struct ToolContext {
     pub role_name: Option<String>,
     /// 用于访问 AppState 共享状态的句柄；无宿主环境时为 `None`。
     pub app: Option<AppHandle>,
+    /// 本轮固定的角色与存档范围，也用于共享历史引用预算。
     pub memory_session:
         Option<std::sync::Arc<crate::ai_service::game_system::memory_recall::RecallSession>>,
 }

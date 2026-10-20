@@ -7,14 +7,14 @@ on:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
-      - "mc-mod/**"
+      - "extension/maid_mod/**"
   pull_request:
     branches: ["dev", "dev/**"]
     paths-ignore:
       - "**.md"
       - "docs/**"
       - ".vscode/**"
-      - "mc-mod/**"
+      - "extension/maid_mod/**"
   workflow_dispatch:
 
 jobs:

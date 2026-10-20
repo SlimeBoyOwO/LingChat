@@ -8,6 +8,10 @@ export default {
       title: "自動セーブ",
       message: "{time} に自動保存しました",
     },
+    autoSaveFailed: {
+      title: "自動セーブ失敗",
+      message: "自動セーブを書き込めませんでした（{time}）。今回の進行が保存されていない可能性があります。",
+    },
   },
   ambient: {
     uploadFailed: "環境音のアップロードに失敗しました",

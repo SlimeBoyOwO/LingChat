@@ -127,8 +127,10 @@ pub struct AppConfig {
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
     pub use_persistent_memory: bool,
+    /// 独立控制历史检索，不改变原有摘要记忆的开关。
     #[serde(default = "default_true")]
     pub memory_rag_enabled: bool,
+    /// 单次检索最多等待多久；超时后继续普通聊天。
     #[serde(default = "default_memory_rag_timeout_ms")]
     pub memory_rag_timeout_ms: u32,
     #[serde(default = "default_memory_update_interval")]

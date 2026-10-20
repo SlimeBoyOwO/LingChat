@@ -107,6 +107,7 @@ impl ScriptEvent for AIDialogueEvent {
             generation: ctx.game_status.lock().await.preview_generation,
             is_preview: ctx.is_preview,
             transient_image: None,
+            round_anchor_hint: None,
         };
 
         let generation_lock = state.generation_lock.clone();

@@ -5,6 +5,8 @@ use anyhow::{Context, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 
+use crate::ai_service::game_system::player_identity::IdentityStore;
+use crate::db::entities::player_identity;
 use crate::db::entities::role::{self, RoleType};
 use crate::utils::yaml_file::resolve_settings_file;
 
@@ -22,11 +24,6 @@ pub struct PluginRoleInput {
     pub title: String,
 }
 
-/// 同步插件角色到 DB（决策 5：插件人物可完整对话，入 role 表，role_type=Main）。
-///
-/// 全量对齐：把 `inputs`（当前所有「启用 + 未隐藏 + 无冲突」的插件角色）逐条 upsert；
-/// 再删除所有 `resource_folder` 以 `plugin:` 开头、但不在 `inputs` 里的 Main 行
-/// （插件被禁用 / 隐藏 / 删除 / 与游戏冲突时清理）。游戏自有角色不受影响。
 pub async fn sync_plugin_roles(
     db: &DatabaseConnection,
     inputs: &[PluginRoleInput],
@@ -83,9 +80,7 @@ pub async fn sync_plugin_roles(
     for model in all_plugin {
         let folder = model.resource_folder.clone().unwrap_or_default();
         if !desired.contains(&folder) {
-            // 复用 delete_main_role 的完整级联：删该角色全部存档（含 line/line_perception
-            // 级联）、清记忆、解绑其他存档引用，并临时关闭 FK 防御。直接裸 delete_by_id
-            // 会因「聊过天」产生的 line_perception/save 等 FK 行而失败，残留行永远清不掉。
+            // 复用 delete_main_role 的完整级联，裸 delete_by_id 会因 FK 残留行而失败。
             crate::db::managers::role_repo::RoleRepo::delete_main_role(db, model.id).await?;
             tracing::info!("Removed stale plugin role #{} ({})", model.id, folder);
         }
@@ -111,9 +106,6 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
             continue;
         }
         let folder_name = entry.file_name().to_string_lossy().to_string();
-        // 跳过保留名与隐藏目录:
-        // - "avatar" 是资源子目录, 非角色
-        // - 以 "." 开头的是隐藏目录 (包括 .import_staging_* 临时解压目录, 避免被误注册为角色)
         if folder_name == "avatar" || folder_name.starts_with('.') {
             continue;
         }
@@ -168,4 +160,66 @@ fn load_title(path: &Path) -> Result<Option<String>> {
     let content = fs::read_to_string(path)?;
     let settings: CharacterSettings = serde_yaml::from_str(&content)?;
     Ok(settings.title.filter(|s| !s.is_empty()))
+}
+
+/// 同步身份卡到 `player_identity` 索引表（文件是真源，本表是索引）。
+pub async fn sync_player_identities(db: &DatabaseConnection, data_dir: &Path) -> Result<usize> {
+    let cards = IdentityStore::new(data_dir).list();
+    let mut inserted = 0usize;
+
+    for card in &cards {
+        let existing = player_identity::Entity::find_by_id(card.id.clone())
+            .one(db)
+            .await?;
+        match existing {
+            None => {
+                let active = player_identity::ActiveModel {
+                    identity_id: Set(card.id.clone()),
+                    name: Set(card.name.clone()),
+                    subtitle: Set(card.subtitle.clone()),
+                    updated_at: Set(now_string()),
+                    ..Default::default()
+                };
+                active.insert(db).await?;
+                inserted += 1;
+                tracing::info!("Inserted player identity: {} ({})", card.name, card.id);
+            },
+            Some(model) => {
+                if model.name != card.name || model.subtitle != card.subtitle {
+                    let mut active: player_identity::ActiveModel = model.into();
+                    active.name = Set(card.name.clone());
+                    active.subtitle = Set(card.subtitle.clone());
+                    active.updated_at = Set(now_string());
+                    active.update(db).await?;
+                    tracing::info!("Updated player identity: {} ({})", card.name, card.id);
+                }
+            },
+        }
+    }
+
+    // 全量对齐：表中存在而文件中已不存在的行删除。
+    let all = player_identity::Entity::find().all(db).await?;
+    let mut removed = 0usize;
+    for model in all {
+        if !cards.iter().any(|c| c.id == model.identity_id) {
+            let active: player_identity::ActiveModel = model.into();
+            active.delete(db).await?;
+            removed += 1;
+        }
+    }
+
+    tracing::info!(
+        "Synced player identities: {} cards, {} inserted, {} removed",
+        cards.len(),
+        inserted,
+        removed
+    );
+    Ok(inserted)
+}
+
+fn now_string() -> String {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_else(|_| "0".to_string())
 }

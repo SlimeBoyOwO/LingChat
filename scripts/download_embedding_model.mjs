@@ -1,6 +1,6 @@
 // download_embedding_model.mjs
 //
-// 下载 Tool RAG 用的文本嵌入模型（bge-small-zh-v1.5，uint8 量化单文件 ONNX）。
+// 下载工具、笔记和聊天记忆共用的嵌入模型（bge-small-zh-v1.5，uint8 量化单文件 ONNX）。
 // 结构与 download_emotion_model.mjs 保持一致：幂等、并行下载、失败退出非 0。
 //
 // 模型与 tokenizer 都不进 git（.gitignore 的 `data/**` 排除整个 data 目录），
@@ -81,6 +81,7 @@ export async function downloadEmbeddingModel({
   console.log(`📁 目标目录: ${targetDir}`);
 
   await fs.mkdir(targetDir, { recursive: true });
+  // 已有资源先检查能否读取，空文件或损坏的 JSON 按缺失处理。
   const missing = [];
   for (const entry of FILES) {
     try {
@@ -133,6 +134,7 @@ export async function downloadEmbeddingModel({
 
   console.log(`📥 开始并行下载 ${requested.length} 个文件...`);
 
+  // 先下载到各自的临时文件，所有下载成功后才开始替换现有资源。
   const results = await Promise.allSettled(
     requested.map(async ({ remote, local }) => {
       const content =
@@ -167,6 +169,7 @@ export async function downloadEmbeddingModel({
       console.log(`✅ 已保存: ${entry.local}`);
     }
   } finally {
+    // 下载失败或替换中断都清理临时文件，避免下次启动误读半成品。
     await Promise.all(staged.map((entry) => fs.rm(entry.temporary, { force: true })));
   }
   console.log(`🎉 所有必要文件已就绪，保存至: ${targetDir}`);

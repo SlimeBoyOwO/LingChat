@@ -1,3 +1,5 @@
+//! 记忆索引的持久化入口；读取时过滤失效来源，提交时防止旧任务覆盖新索引。
+
 use std::collections::{HashMap, HashSet};
 
 use anyhow::{Result, ensure};
@@ -26,6 +28,7 @@ impl MemoryIndexRepo {
         scope: &MemoryScopeSnapshot,
         model: &EmbeddingVersion,
     ) -> Result<MemoryIndexSnapshot> {
+        // 状态、文档和向量在同一快照中读取，避免混用不同次提交的数据。
         let transaction = db.begin().await?;
         let key = scope.key();
         let generation = generation(&transaction, key).await?;
@@ -46,6 +49,7 @@ impl MemoryIndexRepo {
             vec![key.role_id.into(), key.save_id.into()],
         )).await?;
         let mut documents = HashMap::new();
+        // 数据库列和正文里的身份必须一致，损坏或过期记录直接跳过。
         for row in rows {
             let payload: String = row.try_get_by_index(2)?;
             if let Ok(document) = serde_json::from_str::<MemoryDocument>(&payload) {
@@ -79,6 +83,7 @@ impl MemoryIndexRepo {
              WHERE d.role_id=? AND (d.save_id=? OR d.save_id IS NULL) ORDER BY c.ordinal",
             vec![key.role_id.into(), key.save_id.into()],
         )).await?;
+        // 旧模型或旧分块的向量不复用，但仍可保留正文参与词法检索。
         let expected_model_version = memory_version(model)?;
         for row in rows {
             let payload: String = row.try_get_by_index(2)?;
@@ -162,6 +167,7 @@ impl MemoryIndexRepo {
             }
         }
         let transaction = db.begin().await?;
+        // 计算在事务外完成，写入前用代数和历史版本阻止迟到任务覆盖新数据。
         ensure!(
             generation(&transaction, key).await? == expected_generation,
             "索引已被其他任务更新，请重试"
@@ -182,12 +188,14 @@ impl MemoryIndexRepo {
             .iter()
             .map(|item| item.document.id.as_str())
             .collect();
+        // 撤回、删笔记或切换有效历史后，清理不再需要的旧文档。
         for row in rows {
             let id: String = row.try_get_by_index(0)?;
             if !desired_ids.contains(id.as_str()) {
                 delete_document(&transaction, &id).await?;
             }
         }
+        // 未变化的文档保持原样，只替换变化文档及其分块、向量。
         for item in desired
             .iter()
             .filter(|item| changed.contains(&item.document.id))
@@ -276,6 +284,7 @@ async fn generation(db: &impl ConnectionTrait, key: &MemoryScopeKey) -> Result<i
         .unwrap_or(0))
 }
 
+// 按依赖顺序显式删除，兼容未启用 SQLite 外键级联的已有连接。
 async fn delete_document(db: &impl ConnectionTrait, id: &str) -> Result<()> {
     db.execute(statement("DELETE FROM memory_embedding WHERE chunk_id IN (SELECT id FROM memory_chunk WHERE document_id=?)", vec![id.to_owned().into()])).await?;
     db.execute(statement(

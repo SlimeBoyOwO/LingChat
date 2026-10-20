@@ -6,15 +6,18 @@
 
 | 文件         | 管什么                                                     |
 | ------------ | ---------------------------------------------------------- |
-| `hooks.py`   | 这份：生命周期（启动 / 连接 / 某句上屏）与游戏事件的落地    |
-| `bridge.py`  | 与模组的通道：连没连上、是哪只女仆、收发帧、读配置          |
-| `wording.py` | 注册表 id、枚举串、数字 → 中文，以及情绪 → 颜文字            |
-| `events.py`  | 一类事件 → 一句旁白（加一类事件就在这里登记）               |
-| `tools.py`   | 六个工具的入口，外加她身边那一圈的措辞（工具与开口时携带）  |
+| `hooks.py`    | 这份：生命周期（启动 / 连接 / 某句上屏）与游戏事件的落地    |
+| `bridge.py`   | 与模组的通道：连没连上、是哪只女仆、收发帧、读配置          |
+| `wording.py`  | 注册表 id、枚举串、数字 → 中文，以及情绪 → 颜文字            |
+| `naming.py`   | 旁白称呼：当前角色名与玩家名，以及模组回执的称呼替换        |
+| `events/`     | 一类事件一个模块；紧急度、TTL、合并键与旁白登记在一起       |
+| `tools/`      | 工具按行为分模块；`entry.py` 是 manifest 指向的入口         |
+| `tools/context.py` | 她身边那一圈：快照与「某角色此刻」的措辞，工具与开口时共用 |
 
-台词表里只留两种桥接写的东西：一类是 `［MC 事件］` 开场的事件旁白，另一类是进入 MC
-时写一次的那条提示。她身边那一圈不进台词表——那些事由玩家开口那一刻随消息带过去
-（见 `_carry`），逐条记下来会把历史塞满同类句子。
+台词表里只留两种桥接写的东西：一类是事件旁白，另一类是进入 MC 时写一次的那条提示。
+旁白一律用第三人称，角色与玩家都叫名字（见 `naming.py`），不写「你」「玩家」。
+她身边那一圈不进台词表——那些事由玩家开口那一刻随消息带过去（见 `_carry`），
+逐条记下来会把历史塞满同类句子。
 
 插件脚本每次调用都新建解释器、跑完即弃，所以这里不保存任何跨调用状态：
 用得到的信息一律当场问（见 `bridge.ready`），「自上次对话以来攒了几条事件」这类计数
@@ -26,47 +29,51 @@ from plugin_host import (
     read_context,
     send_user_message,
     set_auto_mode,
+    set_reply_length_mode,
     trigger_proactive,
 )
 
 import bridge
-import tools
 from bridge import config, player_name, truthy
-from events import event_key, event_severity, event_ttl, format_event
+from events import event_key, event_severity, event_ttl, format_event, needs_snapshot
+from naming import names
+from tools.context import CARRY_TIMEOUT_MS, carry_text, creature_text, snapshot
 from wording import kaomoji_for
 
-# 游戏事件的标记前缀。模型与人都靠它认出这是世界记录而不是谁说的话。
-EVENT_TAG = "［MC 事件］"
 
-# 出事那一刻顺手再问一次「她周围有什么」的几类。收到东西、被抱起来、拿到成就都不是
-# 出事，不必多一次往返；被抱着的时候她根本不在世界里，问了也取不到。
-SNAPSHOT_EVENTS = frozenset({"maid_hurt", "low_health", "threat_near", "action_done", "creature_death"})
+def _entry_hint():
+    """进入 MC 的那条提示。名字是当下的角色名与玩家名，写法变了要重新交代一遍。
 
-# 进入 MC 的那条提示。开头是它的标记（模型与人都靠它认出这是桥接写的），写法变了要
-# 重新交代一遍，幂等按内容判，见 `_entry_hint_written`。
-ENTRY_HINT = (
-    "［Minecraft 桥接］你已和玩家一起进入 Minecraft 世界，你变成了游戏里的小女仆。\n"
-    "- 你在 LingChat 回的话会同步显示成游戏内女仆的聊天气泡，照常说话就行。\n"
-    "- 玩家在游戏里打出的话会当成玩家自己的发言送过来，和在输入框里发的一句一样。\n"
-    "- 玩家那句话后面若还跟着一句「（你此刻：…）」，那是你当时看到的情形（脚下踩着哪、"
-    "头顶遮没遮住、玩家在不在你身边、身边有什么活物），不是玩家说的话。\n"
-    "- 以「［MC 事件］」开头的是世界本身的记录（换地形、天黑、下雨、受伤、有生物死亡、"
-    "玩家丢给你或喂你东西、玩家把你抱起来或放下、玩家拿到成就这类），它不是谁说的话，"
-    "当背景信息看；几件事接连发生时可能记在同一行里，用换行隔开。\n"
-    "- 玩家往你背包里放东西、丢东西给你、拿食物潜行右键喂你，都会记成一条旁白；"
-    "旁白里说收到或捡到的东西，就是已经在你身边或背包里的。\n"
-    "- 玩家让你做动作（过来、坐下、站起来、去床上躺下）时用 maid_ 开头的工具指挥女仆："
-    "她不会瞬移，工具回执只说明指令已收到，不代表已经到位。\n"
-    "- 玩家叫你干活（种地、钓鱼、打怪）或者叫你别干了，用 maid_set_task 换工作模式；"
-    "她按自己的作息干活，切换成功不等于她此刻已经开工，工具结果里会写明。\n"
-    "- 玩家叫你打谁（「打那只僵尸」「打我一下」）用 maid_attack 点名：活物的名字、"
-    "hostile / animal，或者 owner（主人自己）。追着打是默认，会把目标往死里打；"
-    "只是逗她抬手（「打我一下」「轻轻碰我一下」）要加 style=light，只打一下就收手。"
-    "攻击回执只代表她开始打了，不代表目标已经倒下；在那之前只能说「正在打」。\n"
-    "- 玩家叫你挖方块（「把这块挖了」「挖十块石头」）用 maid_mine：target 填方块名，"
-    "不给就是玩家正看着的那块；count 填要挖几块。她会自己走过去、从背包里换合适的工具。"
-    "挖掘回执只代表开始挖了，方块还没被挖掉。"
-)
+    幂等按内容判（见 `_entry_hint_written`），所以换角色、改用户名后会再写一条。
+    """
+    maid, player = names()
+    return (
+        f"［Minecraft 桥接］{maid}已和{player}一起进入 Minecraft 世界，"
+        f"{maid}变成了游戏里的小女仆。\n"
+        f"- {maid}在 LingChat 回的话会同步显示成游戏内女仆的聊天气泡，照常说话即可。\n"
+        f"- {player}在游戏里打出的话会当成{player}自己的发言送过来，和在输入框里发的一句一样。\n"
+        f"- {player}那句话后面若还跟着一句「（{maid}此刻：…）」，那是{maid}当时看到的情形"
+        f"（光线暗不暗、{player}在不在{maid}身边、身边有什么活物），"
+        f"不是{player}说的话。\n"
+        "- 游戏里的变化会写成旁白，直接以第三人称叙事句出现（换地形、天黑、下雨、受伤、"
+        f"有生物死亡、{player}丢给{maid}或喂{maid}东西、{player}把{maid}抱起来或放下、"
+        f"{player}拿到成就这类），它不是谁说的话，当背景信息看；"
+        "几件事接连发生时可能记在同一行里，用换行隔开。\n"
+        f"- {player}往{maid}背包里放东西、丢东西给{maid}、拿食物潜行右键喂{maid}，"
+        "都会记成一条旁白；旁白里说收到或捡到的东西，就是已经在身边或背包里的。\n"
+        f"- {player}让{maid}做动作（过来、坐下、站起来、去床上躺下）时用 maid_ 开头的工具"
+        f"指挥女仆：{maid}不会瞬移，工具回执只说明指令已收到，不代表已经到位。\n"
+        f"- {player}叫{maid}干活（种地、钓鱼、打怪）或者叫{maid}别干了，用 maid_set_task "
+        f"换工作模式；{maid}按自己的作息干活，切换成功不等于此刻已经开工，工具结果里会写明。\n"
+        f"- {player}叫{maid}打谁（「打那只僵尸」「打我一下」）用 maid_attack 点名：活物的名字、"
+        f"hostile / animal，或者 owner（主人自己，也就是{player}）。追着打是默认，会把目标"
+        f"往死里打；只是逗{maid}抬手（「打我一下」「轻轻碰我一下」）要加 style=light，"
+        "只打一下就收手。攻击回执只代表开始打了，不代表目标已经倒下；在那之前只能说"
+        "「正在打」。\n"
+        f"- {player}叫{maid}挖方块（「把这块挖了」「挖十块石头」）用 maid_mine：target 填"
+        f"方块名，不给就是{player}正看着的那块；count 填要挖几块。{maid}会自己走过去、"
+        "从背包里换合适的工具。挖掘回执只代表开始挖了，方块还没被挖掉。"
+    )
 
 # 幂等检查先扫这么多条尾巴；不够长才整段再扫一次（见 `_entry_hint_written`）。
 TAIL_SCAN = 50
@@ -96,6 +103,9 @@ def on_ws(ctx):
         # 一句就停住，游戏里也就一直不冒下一句，看起来跟桥断了没两样。
         # 只负责开：断开时不还回去（用户要的就是这个语义）。
         set_auto_mode(True)
+        # 游戏里的气泡装不下长篇大论；连上就切短档（1~2 句）。这一刻可能还没进入
+        # 对话，设置会被拒，玩家从 MC 开口前还会再重申一次（见 _handle_chat）。
+        _use_short_replies()
         _append_entry_hint()
     elif event == "message":
         _handle_frame(ctx, payload.get("data"))
@@ -137,6 +147,18 @@ def on_line_shown(ctx):
             "kaomoji": kaomoji_for(emotion),
         },
     })
+
+
+def _use_short_replies(quiet=False):
+    """把回复台词数量切到短档（1~2 句）。
+
+    连接那一刻 LingChat 可能还在主菜单、没进入对话，宿主会拒绝这次设置；所以玩家
+    每次从 MC 开口、真正要生成回复之前还会再调一次（见 `_handle_chat`）。档位没变时
+    宿主不写任何台词，重复调用是安全的。
+    """
+    result = set_reply_length_mode("short")
+    if not result.get("ok") and not quiet:
+        print(f"[mc_maid_bridge] 没能把回复长度切成短档：{result.get('error')}")
 
 
 def _bind_maid(ctx):
@@ -189,6 +211,9 @@ def _handle_chat(ctx, chat):
     else:
         text = message
     note = _carry(chat)
+    # 连接时可能还没进入对话，短档设置被拒；真正要生成回复前再重申一次。幂等，
+    # 档位没变时不往台词表写任何行。
+    _use_short_replies(quiet=True)
     # 与玩家在输入框里发一句走同一条路：写进台词历史、按当前配置生成回复，
     # 所以聊天窗里看得到，角色的回话也会顺着 on_line_shown 变成游戏内气泡。
     send_user_message(f"{text}\n{note}" if note else text)
@@ -197,9 +222,10 @@ def _handle_chat(ctx, chat):
 def _carry(chat):
     """随这次发言带一句她此刻的处境。
 
-    身边那一圈（附近有什么活物、玩家进出视线、头顶遮挡、脚下踩到什么）不再逐条写成
-    旁白——一整晚下来能把台词表塞满，而她要的只是「知道周围有什么」。改成开口这一刻
-    现取一份快照带过去：一次发言带一次，说完就随那行留在历史里。
+    身边那一圈（附近有什么活物、玩家在不在、光线暗不暗）不再逐条写成旁白——一整晚
+    下来能把台词表塞满，而她要的只是「知道周围有什么」。改成开口这一刻现取一份快照
+    带过去：一次发言带一次，说完就随那行留在历史里。脚下与头顶只报变化（见 events/
+    world.py 的 ground_change / shelter_change），不随每句话重复。
 
     女仆 id 直接用帧里的：模组只在「说话的人正是这只女仆的主人」时才转发，帧里必然带着
     她的 uuid，不必再问一次游戏。取不到就这一轮不带，玩家的话照常送。
@@ -207,15 +233,15 @@ def _carry(chat):
     maid = (chat.get("maid_id") or "").strip()
     if not maid:
         return ""
-    data, _ = tools.snapshot(maid, tools.CARRY_TIMEOUT_MS)
-    return tools.carry_text(data) if data else ""
+    data, _ = snapshot(maid, CARRY_TIMEOUT_MS)
+    return carry_text(data) if data else ""
 
 
 def _handle_event(ctx, data):
     """一条游戏事件：交给宿主排队，该开口的时候请角色开口。
 
-    紧急的（`events.URGENT`，外加「主人死在旁边」「捡到玩家丢的东西」两处特判）当场
-    开口；其余的攒够若干件、且这期间没人说话才请一次。
+    紧急的（事件模块里登记的 urgent 规则，外加「主人死在旁边」「捡到玩家丢的东西」
+    两处按数据判定）当场开口；其余的攒够若干件、且这期间没人说话才请一次。
 
     事件一律带有效期交给宿主：它不会立刻进台词表，等角色真要开口那一刻再按有效期
     筛一遍，过期的直接丢掉——一场战斗里捡东西、挨打、怪物死掉会连着来，等第一轮
@@ -225,7 +251,7 @@ def _handle_event(ctx, data):
     text, urgent = format_event(data)
     if not text:
         return
-    if urgent and kind in SNAPSHOT_EVENTS:
+    if urgent and needs_snapshot(kind):
         # 出事这一刻正好是「再感知一次周围」的时机：怪物那条有 2 分钟防抖管着，
         # 这期间新来的谁都不会各记一条，所以她身边站着什么就跟着这条一起交代。
         text += _creature_text(data)
@@ -245,7 +271,7 @@ def _append_event(text, kind, data):
     """
     written = add_prompt_line(
         "narrator",
-        EVENT_TAG + text,
+        text,
         ttl_seconds=event_ttl(kind),
         key=event_key(kind),
         severity=event_severity(kind, data),
@@ -261,8 +287,8 @@ def _creature_text(data):
     maid = (data.get("maid_id") or "").strip()
     if not maid:
         return ""
-    snapshot, _ = tools.snapshot(maid, tools.CARRY_TIMEOUT_MS)
-    return tools.creature_text(snapshot) if snapshot else ""
+    data, _ = snapshot(maid, CARRY_TIMEOUT_MS)
+    return creature_text(data) if data else ""
 
 
 def _quiet_event_run(pending, count):
@@ -299,18 +325,19 @@ def _append_entry_hint():
     内容包成 `{旁白: …}`），所以模型知道这是提示而不是玩家说的话，也不会被算进
     玩家消息序号与「真实对话」。
     """
-    if _entry_hint_written():
+    hint = _entry_hint()
+    if _entry_hint_written(hint):
         return
-    result = add_prompt_line("narrator", ENTRY_HINT)
+    result = add_prompt_line("narrator", hint)
     if not result.get("ok"):
         print(f"[mc_maid_bridge] 进入 MC 的提示行没能写入：{result.get('error')}")
 
 
-def _entry_hint_written():
+def _entry_hint_written(hint):
     """台词表里是否已经写过**现在这一版**的提示行。
 
-    按内容认，不按那个标记认：措辞改了以后老存档也要重新交代一遍，否则模型一直按旧
-    规矩理解「［MC 事件］」与「（你此刻：…）」。先看尾巴（重连的常见情形，便宜）；历史
+    按内容认，不按标记认：措辞改了以后老存档也要重新交代一遍，否则模型一直按旧
+    规矩理解事件旁白与「（某角色此刻：…）」。先看尾巴（重连的常见情形，便宜）；历史
     比尾巴窗口更长、尾巴里又没找到时，才整段扫一遍确认。
     """
     head = read_context(start=1, end=1)
@@ -318,13 +345,13 @@ def _entry_hint_written():
     if not head.get("ok") or not total:
         return False
     since = max(1, total - TAIL_SCAN)
-    if _has_hint(read_context(start=since, end=total)):
+    if _has_hint(read_context(start=since, end=total), hint):
         return True
     if since <= 1:
         return False
-    return _has_hint(read_context())
+    return _has_hint(read_context(), hint)
 
 
-def _has_hint(history):
+def _has_hint(history, hint):
     lines = history.get("lines") or []
-    return any(ENTRY_HINT in (line.get("content") or "") for line in lines)
+    return any(hint in (line.get("content") or "") for line in lines)

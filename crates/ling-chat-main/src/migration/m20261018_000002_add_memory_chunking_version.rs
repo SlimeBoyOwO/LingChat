@@ -6,6 +6,7 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
+        // 旧记录默认没有分块版本，下次同步会按当前策略重新分块。
         manager
             .get_connection()
             .execute_unprepared(

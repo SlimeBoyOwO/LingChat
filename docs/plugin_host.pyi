@@ -46,8 +46,17 @@ def capture_screen(*, window: str = ...) -> Dict[str, Any]:
 def switch_character(role_id: int) -> Dict[str, Any]:
     """完整切换当前角色（会清空对话历史）。成功 {ok, role_id, name}。"""
 
+def current_names() -> Dict[str, Any]:
+    """取当前角色名与玩家名（写旁白时用第三人称称呼）。
+    成功 {ok, role_id, ai_name, user_name}；没加载角色时 ai_name 为空串。"""
+
 def set_auto_mode(enabled: bool) -> Dict[str, Any]:
     """切换主界面的「自动模式」（自动逐句推进对话）。不落盘，断开不还原。成功 {ok}。"""
+
+def set_reply_length_mode(mode: str) -> Dict[str, Any]:
+    """切换回复台词数量档位：short（1~2 句）/ normal（3~5 句）/ free（不限制）。
+    要求已经进入对话。档位没变时不写台词，重复调用安全。
+    成功 {ok, mode}；失败 {ok: False, error}。"""
 
 def read_context(
     *,

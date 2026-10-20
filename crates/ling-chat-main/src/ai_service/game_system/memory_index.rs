@@ -1,3 +1,5 @@
+//! 将可见历史与角色笔记同步到索引，只为新增或变化的分块计算向量。
+
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
@@ -16,6 +18,7 @@ use crate::db::managers::memory_index_repo::MemoryIndexRepo;
 
 use super::memory_scope::{MemoryScopeSnapshot, ScopedMemoryLine};
 
+/// 隔离模型调用，让索引与检索共用同一套版本、分词和嵌入规则。
 pub trait MemoryEncoder: Send + Sync {
     fn version(&self) -> EmbeddingVersion;
     fn max_tokens(&self) -> usize;
@@ -92,6 +95,7 @@ impl MemoryIndexer {
         let encoder = self.encoder.clone();
         let token_budget = self.token_budget;
         let working_scope = scope.clone();
+        // 分词和 ONNX 推理是同步计算，放到阻塞线程，不占用异步执行线程。
         let (desired, changed, report) = tokio::task::spawn_blocking(move || {
             prepare_index(
                 &working_scope,
@@ -103,6 +107,7 @@ impl MemoryIndexer {
             )
         })
         .await??;
+        // 计算期间发生编辑或撤回时，旧任务不能覆盖新历史的索引。
         let current =
             MemoryScopeSnapshot::load(db, store, save_id, role_id, role_display_name).await?;
         ensure!(
@@ -179,21 +184,26 @@ fn prepare_index(
         embedding_failures: 0,
         oversized_chunks: 0,
     };
+    // 同一次同步只有普通分块和完整工具事务两种策略，提前计算版本供所有文档复用。
+    let chunking_versions = [
+        memory_version(&("token-chunking-v3", budget, false, model))?,
+        memory_version(&("token-chunking-v3", budget, true, model))?,
+    ];
     for (document, atomic) in documents {
-        let chunking_version = memory_version(&("token-chunking-v3", budget, atomic, model))?;
+        let chunking_version = chunking_versions[usize::from(atomic)].clone();
         let previous = old.get(&document.id);
-        if mode == IndexMode::Incremental
-            && previous.is_some_and(|previous| {
+        if mode == IndexMode::Incremental {
+            // 内容、来源、分块策略和向量都完整时，跳过重复分词与推理。
+            if let Some(previous) = previous.filter(|previous| {
                 previous.document == document
                     && previous.chunking_version == chunking_version
                     && complete_cached_chunks(previous)
-            })
-        {
-            let previous = previous.unwrap().clone();
-            report.chunks += previous.chunks.len();
-            report.reused += previous.chunks.len();
-            desired.push(previous);
-            continue;
+            }) {
+                report.chunks += previous.chunks.len();
+                report.reused += previous.chunks.len();
+                desired.push(previous.clone());
+                continue;
+            }
         }
         let chunks = match chunk_document(&document, budget, atomic, |text| {
             encoder
@@ -201,6 +211,7 @@ fn prepare_index(
                 .map_err(|error| error.to_string())
         }) {
             Ok(chunks) => chunks,
+            // 模型不可用时保留整篇原文，关键词与标签检索仍能使用。
             Err(ChunkingError::Tokenizer(_)) => vec![whole_document_chunk(&document)?],
             Err(error) => return Err(error.into()),
         };
@@ -289,6 +300,7 @@ fn prepare_index(
     Ok((desired, changed, report))
 }
 
+// 必须按顺序无遗漏地还原原文，缺块或缺向量时才会重新补齐。
 fn complete_cached_chunks(indexed: &IndexedMemoryDocument) -> bool {
     if indexed.document.content.trim().is_empty() {
         return indexed.chunks.is_empty();
@@ -312,6 +324,7 @@ fn complete_cached_chunks(indexed: &IndexedMemoryDocument) -> bool {
 fn raw_documents(scope: &MemoryScopeSnapshot) -> Result<Vec<(MemoryDocument, bool)>> {
     let mut groups: Vec<Vec<&ScopedMemoryLine>> = Vec::new();
     let mut has_assistant = false;
+    // 以用户发言开启新一轮，避免每条短台词都成为零散的文档。
     for line in scope.lines() {
         if groups.is_empty() || (line.attribute == LineAttribute::User && has_assistant) {
             groups.push(vec![]);
@@ -353,6 +366,7 @@ fn raw_documents(scope: &MemoryScopeSnapshot) -> Result<Vec<(MemoryDocument, boo
                 })
                 .collect::<Vec<_>>()
                 .join("\n");
+            // 带工具事务的回合整体保留，不能把请求和返回结果拆成孤立记忆。
             let atomic = group.iter().any(|line| line.transaction_sources.len() > 1);
             let mut document = MemoryDocument {
                 id: format!(

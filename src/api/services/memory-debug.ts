@@ -127,6 +127,7 @@ export interface RoleMemorySnapshot {
   context: LlmMessage[];
 }
 
+/** 当前会话最近一次历史检索快照；历史变化后后端返回空值。 */
 export interface MemoryRecallSnapshot {
   status: string;
   save_id: number | null;

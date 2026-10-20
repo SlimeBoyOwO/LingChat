@@ -9,6 +9,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
+use crate::ai_service::memory_injection::{
+    LineFingerprint, RecentMemory, RecentMemoryAnchor, TemporaryMemory, build_recent_line,
+    init_insert_index, recent_insert_index, resolve_recent_index,
+};
 use crate::ai_service::types::{
     GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
 };
@@ -79,6 +83,12 @@ pub struct GameStatus {
     /// 既保住行号，也让「这一轮生成时发生的事」完整地出现在下一轮上下文里。
     /// 不参与存档：换会话时随 `GameStatus` 一起丢弃。
     pending_prompt_lines: Vec<QueuedPromptLine>,
+
+    /// 待落位的近期记忆（好感度这类后台任务产出），不参与存档。
+    pending_recent_memories: Vec<RecentMemory>,
+
+    /// 待注入下一轮请求的临时记忆，取用后即丢，不写台词表、不参与存档。
+    pending_temporary_memories: Vec<TemporaryMemory>,
 }
 
 /// 一条等下一轮开头再写的插件旁白。
@@ -97,6 +107,9 @@ pub struct QueuedPromptLine {
 
 /// 排队上限。战斗里每挨一下都可能攒一条，上限到了丢最早的：最近发生的事更重要。
 const MAX_PENDING_PROMPT_LINES: usize = 200;
+
+/// 待落位的近期记忆上限，只防异常堆积。
+const MAX_PENDING_RECENT_MEMORIES: usize = 64;
 
 /// 排队旁白接成一行的长度上限；再长就另起一行（与插件侧的合并口径各自兜底）。
 const MAX_QUEUED_LINE_CHARS: usize = 600;
@@ -228,6 +241,8 @@ impl GameStatus {
             affection_eval_cursor: 0,
             scene_awareness_enabled: true,
             pending_prompt_lines: Vec::new(),
+            pending_recent_memories: Vec::new(),
+            pending_temporary_memories: Vec::new(),
         }
     }
 
@@ -289,12 +304,156 @@ impl GameStatus {
         written
     }
 
+    /// 用指定下标上的行构造锚点；该行不是 User 行时返回 None。
+    /// 评估时调用，此时玩家行的临时消息段已清理，指纹取到的是最终内容。
+    pub fn recent_anchor_at(&self, index: usize) -> Option<RecentMemoryAnchor> {
+        let line = self.line_list.get(index)?;
+        if !matches!(line.attribute(), LineAttribute::User) {
+            return None;
+        }
+        let mut perceived_role_ids: Vec<i32> = self
+            .present_role_ids
+            .iter()
+            .copied()
+            .filter(|id| *id != 0)
+            .collect();
+        perceived_role_ids.sort_unstable();
+        Some(RecentMemoryAnchor {
+            index,
+            fingerprint: LineFingerprint::of(line),
+            session: self.preview_generation,
+            perceived_role_ids,
+        })
+    }
+
+    /// 末尾最后一条 User 行的下标，供调用方确定本轮锚点。
+    pub fn last_user_line_index(&self) -> Option<usize> {
+        self.line_list
+            .len()
+            .checked_sub(1)
+            .filter(|&index| matches!(self.line_list[index].attribute(), LineAttribute::User))
+    }
+
+    /// 入队一条近期记忆，等本轮结束或下一轮开头落位。
+    pub fn queue_recent_memory(&mut self, memory: RecentMemory) {
+        if self.pending_recent_memories.len() >= MAX_PENDING_RECENT_MEMORIES {
+            self.pending_recent_memories.remove(0);
+        }
+        self.pending_recent_memories.push(memory);
+    }
+
+    /// 清空待落位的近期记忆。换档/清档时调用，避免旧会话的产出延迟写入。
+    pub fn clear_pending_recent_memories(&mut self) {
+        self.pending_recent_memories.clear();
+    }
+
+    /// 入队一条只在下一轮请求出现的临时记忆，文本重复时不再入队。
+    pub fn queue_temporary_memory(&mut self, memory: TemporaryMemory) {
+        if self
+            .pending_temporary_memories
+            .iter()
+            .any(|pending| pending.text == memory.text)
+        {
+            return;
+        }
+        self.pending_temporary_memories.push(memory);
+    }
+
+    /// 取走全部临时记忆，只用于构建一次请求上下文。
+    pub fn take_temporary_memories(&mut self) -> Vec<TemporaryMemory> {
+        std::mem::take(&mut self.pending_temporary_memories)
+    }
+
+    pub fn clear_pending_temporary_memories(&mut self) {
+        self.pending_temporary_memories.clear();
+    }
+
+    /// 把待落位的近期记忆写进台词表：锚点之后连续 User 块的末尾。
+    /// 锚点失效或本轮没有 user 行时丢弃，返回实际写入条数。
+    pub async fn flush_recent_memories(&mut self, db: &DatabaseConnection) -> usize {
+        if self.script_status.is_some() {
+            self.pending_recent_memories.clear();
+            tracing::warn!("[Memory] 剧本模式下丢弃待落位的近期记忆");
+            return 0;
+        }
+
+        let pending: Vec<RecentMemory> = std::mem::take(&mut self.pending_recent_memories)
+            .into_iter()
+            .filter(|memory| {
+                memory
+                    .anchor
+                    .as_ref()
+                    .map_or(true, |anchor| anchor.session == self.preview_generation)
+            })
+            .collect();
+        if pending.is_empty() {
+            return 0;
+        }
+
+        let has_dialogue = self.line_list.iter().any(|line| {
+            matches!(
+                line.attribute(),
+                LineAttribute::User | LineAttribute::Assistant
+            )
+        });
+        let mut current_perceived: Vec<i32> = self
+            .present_role_ids
+            .iter()
+            .copied()
+            .filter(|id| *id != 0)
+            .collect();
+        current_perceived.sort_unstable();
+
+        // 先解析全部插入点，再按下标从大到小插入，避免前一次插入让后一次下标漂移。
+        let mut planned: Vec<(usize, GameLine)> = Vec::new();
+        for memory in pending {
+            let (insert_at, perceived) = match &memory.anchor {
+                Some(anchor) => {
+                    let Some(anchor_index) = resolve_recent_index(&self.line_list, anchor) else {
+                        tracing::warn!("[Memory] 近期记忆锚点已失效，丢弃");
+                        continue;
+                    };
+                    (
+                        recent_insert_index(&self.line_list, anchor_index),
+                        anchor.perceived_role_ids.clone(),
+                    )
+                },
+                None if !has_dialogue => (
+                    init_insert_index(&self.line_list),
+                    current_perceived.clone(),
+                ),
+                None => {
+                    tracing::warn!("[Memory] 本轮没有 user 台词，丢弃近期记忆");
+                    continue;
+                },
+            };
+            planned.push((insert_at, build_recent_line(&memory, perceived)));
+        }
+        if planned.is_empty() {
+            return 0;
+        }
+
+        self.role_manager.invalidate_memory_history();
+        planned.sort_by_key(|(index, _)| *index);
+        let min_index = planned[0].0;
+        let written = planned.len();
+        for (index, line) in planned.into_iter().rev() {
+            let at = index.min(self.line_list.len());
+            self.line_list.insert(at, line);
+        }
+        // 插入点早于持久记忆的压缩指针时回拨，避免摘要区和原文重复。
+        self.role_manager.rewind_memory_pointers(min_index).await;
+        if let Err(e) = self.refresh_memories(db).await {
+            tracing::warn!("[Memory] 近期记忆写入后刷新记忆失败: {e:#}");
+        }
+        written
+    }
+
     pub async fn get_role<'a>(
         &'a mut self,
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<&'a mut GameRole> {
-        // 存档全局变量里的好感度覆盖角色加载时的默认值
         let var = self
             .global_variables
             .get(&crate::ai_service::affection::var_key(role_id))
@@ -310,8 +469,33 @@ impl GameStatus {
         Ok(role)
     }
 
+    /// 已绑档时把内存台词表同步落库一次；失败只告警。
+    pub async fn persist_lines_if_bound(&self, db: &DatabaseConnection) {
+        let Some(save_id) = self.active_save_id else {
+            return;
+        };
+        if let Err(e) = crate::db::managers::save_repo::SaveRepo::sync_lines(
+            db,
+            save_id,
+            &self.line_list,
+            false,
+        )
+        .await
+        {
+            tracing::warn!("同步存档失败: {e}");
+        }
+    }
+
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
-    pub async fn add_line(&mut self, db: &DatabaseConnection, line: LineBase) -> Result<()> {
+    pub async fn add_line(&mut self, db: &DatabaseConnection, mut line: LineBase) -> Result<()> {
+        // 玩家台词行自动归属当前身份；旁白/系统行不归属（换身份后旧行保留原名）。
+        if matches!(line.attribute.inner(), LineAttribute::User)
+            && line.sender_role_id == Some(0)
+            && line.identity_id.is_none()
+            && !matches!(line.display_name.as_deref(), Some("旁白") | Some("系统"))
+        {
+            line.identity_id = self.player.identity_id.clone();
+        }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         let game_line = GameLine::from_base(line, perceived);
         self.line_list.push(game_line);
@@ -319,28 +503,9 @@ impl GameStatus {
         Ok(())
     }
 
-    /// 把台词插入到第 `index` 条之前（下标基于 `line_list`，越界夹到末尾），
-    /// 用于把内容挂到「较近但非最新」的位置
-    pub async fn insert_line(
-        &mut self,
-        db: &DatabaseConnection,
-        index: usize,
-        line: LineBase,
-    ) -> Result<()> {
-        let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
-        let game_line = GameLine::from_base(line, perceived);
-        // 中段插入会平移其后的下标，先让进行中的后台摘要作废，避免过期结果落库
-        //（与工具消息回填、edit_context_lines 的处理一致）。
-        self.role_manager.invalidate_memory_history();
-        self.line_list
-            .insert(index.min(self.line_list.len()), game_line);
-        self.refresh_memories(db).await?;
-        Ok(())
-    }
-
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
         self.role_manager
-            .sync_memories(db, &self.line_list, None, false)
+            .sync_memories(db, &self.line_list, None, false, &self.player)
             .await
     }
 
@@ -351,7 +516,7 @@ impl GameStatus {
         db: &DatabaseConnection,
     ) -> Result<()> {
         self.role_manager
-            .sync_memories(db, &self.line_list, None, true)
+            .sync_memories(db, &self.line_list, None, true, &self.player)
             .await
     }
 
@@ -682,7 +847,6 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
-        // 好感度跟随存档：快照里的全局变量覆盖已加载角色的内存值
         self.role_manager
             .overlay_affections_from_vars(&self.global_variables);
     }

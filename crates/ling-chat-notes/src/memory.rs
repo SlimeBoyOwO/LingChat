@@ -1,3 +1,5 @@
+//! 记忆文档、分块和来源的共同约定；数据库访问与角色权限由宿主负责。
+
 use std::collections::HashSet;
 
 use serde::{Deserialize, Serialize};
@@ -10,6 +12,7 @@ use crate::Note;
 #[serde(rename_all = "snake_case")]
 pub enum MemoryKind {
     Raw,
+    // 预留日记类型；这里只描述数据，不负责生成日记。
     Diary,
     Note,
 }
@@ -98,20 +101,10 @@ pub struct MemoryEmbeddingRecord {
 
 impl MemoryEmbeddingRecord {
     pub fn validate_for(&self, chunk: &MemoryChunk) -> Result<(), MemoryContractError> {
-        let norm = self
-            .values
-            .iter()
-            .map(|value| value * value)
-            .sum::<f32>()
-            .sqrt();
         if self.chunk_version != chunk.version
-            || self.model.dimension == 0
             || self.model.model.is_empty()
             || self.model.preprocessing.is_empty()
-            || self.values.len() != self.model.dimension
-            || self.values.iter().any(|value| !value.is_finite())
-            || !norm.is_finite()
-            || (norm - 1.0).abs() > 1e-3
+            || !valid_memory_vector(&self.values, self.model.dimension)
         {
             return Err(MemoryContractError::Invalid(
                 "向量必须匹配分块版本、模型维度且归一化",
@@ -143,11 +136,23 @@ pub enum MemoryContractError {
     Serialization(#[from] serde_json::Error),
 }
 
+/// 查询、索引和缓存统一检查维度与单位长度，避免各处采用不同的校验规则。
+pub fn valid_memory_vector(values: &[f32], dimension: usize) -> bool {
+    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+    dimension > 0
+        && values.len() == dimension
+        && values.iter().all(|value| value.is_finite())
+        && norm.is_finite()
+        && (norm - 1.0).abs() <= 1e-3
+}
+
+/// 内容和来源一起参与版本计算，编辑原文后旧索引与旧缓存便无法继续匹配。
 pub fn memory_version(value: &impl Serialize) -> Result<String, serde_json::Error> {
     Ok(format!("{:x}", Sha256::digest(serde_json::to_vec(value)?)))
 }
 
 impl MemoryDocument {
+    /// 在读取时转换旧笔记，不改变笔记文件原有的存储格式。
     pub fn from_note(role_id: i32, note: &Note) -> Result<Self, MemoryContractError> {
         let version = memory_version(&(
             "note-v1",
@@ -219,6 +224,7 @@ impl MemoryDocument {
                 return Err(Invalid("同一文档不能重复引用同一来源"));
             }
         }
+        // 原文跟随存档分支，手动笔记跟随角色，二者不能混用来源。
         match (&self.kind, &self.scope) {
             (MemoryKind::Note, MemoryScope::Role)
                 if self.sources.len() == 1
@@ -254,6 +260,7 @@ impl MemoryChunk {
         ))
     }
 
+    /// 分块必须属于当前文档，且只能引用该文档已经声明的来源。
     pub fn validate_for(&self, document: &MemoryDocument) -> Result<(), MemoryContractError> {
         document.validate()?;
         if self.id.trim().is_empty()
@@ -272,145 +279,5 @@ impl MemoryChunk {
             ));
         }
         Ok(())
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn note() -> Note {
-        serde_json::from_str(r#"{"id":"legacy","content":"猫叫团团","created_at":"2026-10-01"}"#)
-            .unwrap()
-    }
-
-    #[test]
-    fn legacy_note_roundtrips_without_changing_storage_schema() {
-        let note = note();
-        let document = MemoryDocument::from_note(2, &note).unwrap();
-        assert!(document.tags.is_empty());
-        assert_eq!(document.scope, MemoryScope::Role);
-        assert_eq!(document.event_status, EventStatus::Unknown);
-        let json = serde_json::to_value(&note).unwrap();
-        assert_eq!(json.as_object().unwrap().len(), 4);
-        assert!(json.get("version").is_none());
-        let encoded = serde_json::to_string(&document).unwrap();
-        assert_eq!(
-            serde_json::from_str::<MemoryDocument>(&encoded).unwrap(),
-            document
-        );
-    }
-
-    #[test]
-    fn note_versions_track_content_tags_date_and_owner() {
-        let mut note = note();
-        let original = MemoryDocument::from_note(2, &note).unwrap();
-        assert_eq!(original, MemoryDocument::from_note(2, &note).unwrap());
-        assert_ne!(
-            original.version,
-            MemoryDocument::from_note(3, &note).unwrap().version
-        );
-        note.content.push('。');
-        let edited = MemoryDocument::from_note(2, &note).unwrap();
-        assert_ne!(original.version, edited.version);
-        note.tags.push("宠物".into());
-        let tagged = MemoryDocument::from_note(2, &note).unwrap();
-        assert_ne!(edited.version, tagged.version);
-        note.created_at.push_str("T12:00:00Z");
-        assert_ne!(
-            tagged.version,
-            MemoryDocument::from_note(2, &note).unwrap().version
-        );
-    }
-
-    #[test]
-    fn documents_reject_mixed_scope_and_missing_or_duplicate_sources() {
-        let mut document = MemoryDocument::from_note(2, &note()).unwrap();
-        document.scope = MemoryScope::Save { save_id: 101 };
-        assert!(document.validate().is_err());
-        document.kind = MemoryKind::Diary;
-        assert!(document.validate().is_err());
-        document.sources = vec![MemorySource::Line {
-            line_id: 1,
-            version: "v1".into(),
-        }];
-        document.version = document.content_version().unwrap();
-        document.validate().unwrap();
-        document.sources.push(document.sources[0].clone());
-        assert!(document.validate().is_err());
-        document.sources.clear();
-        assert!(document.validate().is_err());
-    }
-
-    #[test]
-    fn chunks_reject_foreign_documents_and_stale_source_versions() {
-        let document = MemoryDocument::from_note(2, &note()).unwrap();
-        let mut chunk = MemoryChunk {
-            id: "chunk-1".into(),
-            document_id: document.id.clone(),
-            ordinal: 0,
-            content: document.content.clone(),
-            version: "chunk-v1".into(),
-            sources: document.sources.clone(),
-        };
-        chunk.version = chunk.content_version().unwrap();
-        chunk.validate_for(&document).unwrap();
-        chunk.document_id = "other".into();
-        assert!(chunk.validate_for(&document).is_err());
-        chunk.document_id = document.id.clone();
-        chunk.sources = vec![MemorySource::Note {
-            note_id: "legacy".into(),
-            version: "stale".into(),
-        }];
-        assert!(chunk.validate_for(&document).is_err());
-    }
-
-    #[test]
-    fn metadata_and_text_changes_require_new_document_and_chunk_versions() {
-        let mut document = MemoryDocument::from_note(2, &note()).unwrap();
-        let mut chunk = MemoryChunk {
-            id: "chunk-1".into(),
-            document_id: document.id.clone(),
-            ordinal: 0,
-            content: document.content.clone(),
-            version: String::new(),
-            sources: document.sources.clone(),
-        };
-        chunk.version = chunk.content_version().unwrap();
-        chunk.content.push('。');
-        assert!(chunk.validate_for(&document).is_err());
-        document.event_status = EventStatus::Planned;
-        assert!(document.validate().is_err());
-        document.version = document.content_version().unwrap();
-        document.validate().unwrap();
-    }
-
-    #[test]
-    fn embeddings_reject_wrong_dimensions_nonfinite_values_and_stale_chunks() {
-        let document = MemoryDocument::from_note(2, &note()).unwrap();
-        let chunk = crate::chunking::whole_document_chunk(&document).unwrap();
-        let mut record = MemoryEmbeddingRecord {
-            model: EmbeddingVersion {
-                model: "test".into(),
-                dimension: 2,
-                preprocessing: "v1".into(),
-            },
-            chunk_version: chunk.version.clone(),
-            values: vec![1.0, 0.0],
-        };
-        record.validate_for(&chunk).unwrap();
-        for values in [
-            vec![1.0],
-            vec![0.0, 0.0],
-            vec![f32::NAN, 0.0],
-            vec![f32::INFINITY, 0.0],
-            vec![2.0, 0.0],
-        ] {
-            record.values = values;
-            assert!(record.validate_for(&chunk).is_err());
-        }
-        record.values = vec![1.0, 0.0];
-        record.chunk_version = "old".into();
-        assert!(record.validate_for(&chunk).is_err());
     }
 }

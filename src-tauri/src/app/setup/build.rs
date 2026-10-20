@@ -186,6 +186,7 @@ pub(super) fn build_service_graph(
         ling_chat_main::utils::onnx::onnx_available(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
+    // 与工具和笔记检索共享模型实例，避免重复加载模型及推理会话。
     let memory_recall =
         ai_service::game_system::memory_recall::MemoryRecall::new(embedding.clone());
 

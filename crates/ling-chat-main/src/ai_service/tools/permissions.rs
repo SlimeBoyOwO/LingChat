@@ -252,7 +252,7 @@ impl ToolPermissionConfig {
             return HashSet::new();
         }
 
-        // 3. 交集 / all_tools
+        // 3. 交集 / all_tools；显式空工具集表示没有权限，不能回退到全量。
         if group.all_tools {
             if scene.all_tools {
                 all_names.clone()

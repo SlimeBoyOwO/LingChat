@@ -64,11 +64,18 @@ impl Tool for PluginTool {
         let result = python_backend::run_on_script_thread(move || {
             let manager = app.state::<std::sync::Arc<PluginManager>>().inner().clone();
             let run_env = manager.plugin_run_env(&plugin_id);
-            let script_path = manager
+            let plugin_dir = manager
                 .plugin_dir(&plugin_id)
-                .map(|dir| dir.join(&script_rel))
                 .ok_or_else(|| format!("插件 {plugin_id} 目录不存在"))?;
-            python_backend::run_plugin_script(&script_path, &name, &arguments, run_env, app)
+            let script_path = plugin_dir.join(&script_rel);
+            python_backend::run_plugin_script(
+                &plugin_dir,
+                &script_path,
+                &name,
+                &arguments,
+                run_env,
+                app,
+            )
         })
         .await
         .map_err(ToolError::Execution)?;

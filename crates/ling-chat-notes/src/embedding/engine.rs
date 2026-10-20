@@ -40,7 +40,9 @@ const PREFERRED_OUTPUTS: [&str; 3] = ["last_hidden_state", "sentence_embedding",
 pub struct EmbeddingEngine {
     onnx_path: PathBuf,
     tokenizer: Option<Tokenizer>,
+    // 计数用分词器取消截断，才能发现超过模型长度的文本。
     counting_tokenizer: OnceLock<Tokenizer>,
+    // 模型与分词器的指纹只计算一次，供索引和缓存判断能否复用。
     memory_model: OnceLock<EmbeddingVersion>,
     /// 惰性创建的推理会话；`None` 表示创建失败且不再重试。
     session: OnceLock<Option<Mutex<Session>>>,
@@ -129,6 +131,7 @@ impl EmbeddingEngine {
         MAX_SEQ_LEN
     }
 
+    /// 计算包含特殊 token 的完整长度，原有推理分词器的截断设置保持不变。
     pub fn token_count(&self, text: &str) -> Result<usize> {
         if self.counting_tokenizer.get().is_none() {
             let mut tokenizer = self
@@ -149,6 +152,7 @@ impl EmbeddingEngine {
             .map_err(|error| anyhow!("分词失败: {error}"))
     }
 
+    /// 同名模型被替换或分词规则变化后，旧向量不能继续使用。
     pub fn memory_model_version(&self) -> EmbeddingVersion {
         self.memory_model
             .get_or_init(|| {

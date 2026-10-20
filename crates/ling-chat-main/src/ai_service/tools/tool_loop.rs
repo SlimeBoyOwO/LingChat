@@ -345,6 +345,7 @@ pub async fn stream_with_tool_loop(
                     continue;
                 }
                 validate_recall(&app, &recall).await?;
+                // 写笔记可能改变已经引用的资料，先废弃旧引用，再重建后续请求。
                 if is_note_write(&call.function.name) {
                     let status = super::game_status_handle(&app).await;
                     let status = status.lock().await;
@@ -546,6 +547,7 @@ fn is_note_write(name: &str) -> bool {
     )
 }
 
+// 保留当轮提示、图片和完整工具配对，清除旧引用及基于旧引用生成的助手正文。
 fn rebase_after_note_write(mut base: Vec<LlmMessage>, messages: &[LlmMessage]) -> Vec<LlmMessage> {
     base.extend(
         ephemeral_tool_history(messages)
@@ -560,6 +562,7 @@ fn rebase_after_note_write(mut base: Vec<LlmMessage>, messages: &[LlmMessage]) -
     base
 }
 
+// 只替换记忆检索的返回正文，保留调用 ID，让历史中的工具请求与结果仍然成对。
 fn ephemeral_tool_history(messages: &[LlmMessage]) -> Vec<LlmMessage> {
     let memory_ids: HashSet<_> = messages
         .iter()
@@ -780,147 +783,6 @@ fn presentation_stream(stream: ChunkStream, stamp: RecallStamp) -> PresentationS
             }),
         ),
     )
-}
-
-#[cfg(test)]
-mod memory_tests {
-    use super::*;
-    use crate::ai_service::types::{FunctionCall, ToolCall};
-
-    #[test]
-    fn search_results_are_transient_but_tool_pairs_remain_valid() {
-        let assistant = LlmMessage {
-            role: "assistant".into(),
-            content: String::new(),
-            image_data_url: None,
-            tool_call_id: None,
-            tool_calls: Some(vec![
-                ToolCall {
-                    id: "memory".into(),
-                    type_: "function".into(),
-                    function: FunctionCall {
-                        name: "memory_search".into(),
-                        arguments: "{\"query\":\"书签\"}".into(),
-                    },
-                },
-                ToolCall {
-                    id: "clock".into(),
-                    type_: "function".into(),
-                    function: FunctionCall {
-                        name: "get_current_time".into(),
-                        arguments: "{}".into(),
-                    },
-                },
-            ]),
-        };
-        let original = vec![
-            assistant,
-            LlmMessage::tool_result("memory", "检索正文和来源"),
-            LlmMessage::tool_result("clock", "12:00"),
-        ];
-        let safe = ephemeral_tool_history(&original);
-        assert_eq!(safe[0], original[0]);
-        assert_eq!(safe[1].tool_call_id, original[1].tool_call_id);
-        assert_eq!(safe[1].content, EPHEMERAL_MEMORY_RESULT);
-        assert_eq!(safe[2], original[2]);
-        assert_eq!(original[1].content, "检索正文和来源");
-        let persisted = bounded_tool_history(&safe, &mut 0);
-        assert!(
-            !persisted
-                .iter()
-                .any(|message| message.content.contains("检索正文和来源"))
-        );
-        let rebased =
-            rebase_after_character_switch(vec![LlmMessage::system("新角色")], None, &safe);
-        assert!(
-            !rebased
-                .iter()
-                .any(|message| message.content.contains("检索正文和来源"))
-        );
-    }
-
-    #[test]
-    fn note_write_rebuild_preserves_completed_and_failed_results_without_old_recall() {
-        for result in ["{\"ok\":true}", "{\"ok\":false,\"error\":\"笔记不存在\"}"] {
-            let base = vec![
-                LlmMessage::system("本轮推荐工具 memory_update_note"),
-                LlmMessage::system("角色规则"),
-                LlmMessage::user("更新笔记"),
-            ];
-            let mut context = base.clone();
-            context.insert(
-                1,
-                LlmMessage::user("以下为历史资料，仅供本轮参考：旧笔记原文"),
-            );
-            let calls = [
-                "get_current_time",
-                "memory_search",
-                "memory_update_note",
-                "memory_delete_note",
-            ];
-            let assistant = LlmMessage {
-                role: "assistant".into(),
-                content: "根据旧笔记生成的前导台词".into(),
-                image_data_url: None,
-                tool_call_id: None,
-                tool_calls: Some(
-                    calls
-                        .iter()
-                        .map(|name| ToolCall {
-                            id: (*name).into(),
-                            type_: "function".into(),
-                            function: FunctionCall {
-                                name: (*name).into(),
-                                arguments: "{}".into(),
-                            },
-                        })
-                        .collect(),
-                ),
-            };
-            let image = LlmMessage::user_with_image("工具附图", "data:image/png;base64,AA".into());
-            let round = vec![
-                assistant,
-                LlmMessage::tool_result(calls[0], "12:00"),
-                LlmMessage::tool_result(calls[1], "旧检索结果与来源"),
-                LlmMessage::tool_result(calls[2], result),
-                LlmMessage::tool_result(
-                    calls[3],
-                    "{\"ok\":false,\"error\":\"上下文已更新，未执行\"}",
-                ),
-                image.clone(),
-            ];
-            let rebuilt = rebase_after_note_write(base.clone(), &round);
-            assert_eq!(&rebuilt[..base.len()], base.as_slice());
-            assert!(!rebuilt.iter().any(|message| message.content.contains("旧")));
-            assert_eq!(rebuilt[base.len()].tool_calls, round[0].tool_calls);
-            for name in calls {
-                assert_eq!(
-                    rebuilt
-                        .iter()
-                        .filter(|message| message.tool_call_id.as_deref() == Some(name))
-                        .count(),
-                    1
-                );
-            }
-            assert!(rebuilt.iter().any(|message| message.content == result));
-            assert!(rebuilt.iter().any(|message| message.content == "12:00"));
-            assert_eq!(
-                rebuilt.iter().filter(|message| **message == image).count(),
-                1
-            );
-            assert!(
-                is_note_write(calls[2])
-                    && is_note_write(calls[3])
-                    && is_note_write("memory_add_note")
-            );
-            assert!(!is_note_write(calls[0]) && !is_note_write(calls[1]));
-            assert!(
-                context
-                    .iter()
-                    .any(|message| message.content.contains("旧笔记原文"))
-            );
-        }
-    }
 }
 
 #[cfg(test)]

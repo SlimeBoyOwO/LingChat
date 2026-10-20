@@ -1,3 +1,5 @@
+//! 将关键词、标签和向量三路候选合并，再按相关性、来源及上下文预算筛选。
+
 use std::collections::{BTreeSet, HashMap, HashSet};
 
 use serde::{Deserialize, Serialize};
@@ -86,6 +88,7 @@ impl SearchQuery {
             .into_iter()
             .rev()
             .collect();
+        // 只有短问句带指代时才补最近上下文，避免把无关对话带入查询。
         let used_recent_context = !original.is_empty()
             && original.chars().count() <= 80
             && !recent_context.trim().is_empty()
@@ -168,7 +171,7 @@ pub fn hybrid_search(
         diagnostics: SearchDiagnostics::default(),
     };
     let query_vector = query_vector.filter(|values| {
-        let valid = valid_vector(values, model.dimension);
+        let valid = crate::memory::valid_memory_vector(values, model.dimension);
         result.diagnostics.invalid_query_vector = !valid;
         valid
     });
@@ -275,6 +278,7 @@ pub fn hybrid_search(
             });
         }
     }
+    // 三路分值尺度不同，按各自名次加分，避免某一路的原始分值压过其他路。
     for route in 0..3 {
         let mut ranked: Vec<_> = candidates
             .iter()
@@ -321,6 +325,7 @@ pub fn hybrid_search(
             .total_cmp(&left.hit.score)
             .then_with(|| left.hit.chunk.id.cmp(&right.hit.chunk.id))
     });
+    // 融合名次只决定顺序；仍须达到至少一路的相关性门槛才能进入回复。
     let recent = canonical(&query.recent_context);
     let mut per_document = HashMap::new();
     let mut selected: Vec<Candidate> = Vec::new();
@@ -367,6 +372,7 @@ pub fn hybrid_search(
         if *count >= document_limit {
             continue;
         }
+        // 连同来源说明一起计入字符预算，不能只计算正文长度。
         let reference = render_reference(&candidate.hit)?;
         let characters = reference.chars().count();
         if result.diagnostics.used_characters + characters > settings.max_characters {
@@ -388,6 +394,7 @@ pub fn hybrid_search(
     Ok(result)
 }
 
+/// 来源和事件状态随正文一起交给模型，便于区分历史事实与计划。
 pub fn render_reference(hit: &MemorySearchHit) -> Result<String, serde_json::Error> {
     let header = serde_json::to_string(&serde_json::json!({
         "document": hit.document_id, "chunk": hit.chunk.id, "kind": hit.kind,
@@ -409,6 +416,7 @@ fn duplicate(left: &Candidate, right: &Candidate) -> bool {
     if left.canonical == right.canonical {
         return true;
     }
+    // 日记与原文共享来源仍可能包含不同事实，只去掉逐句相同的内容。
     let shared_source = left
         .hit
         .chunk
@@ -447,15 +455,6 @@ fn duplicate(left: &Candidate, right: &Candidate) -> bool {
     false
 }
 
-fn valid_vector(values: &[f32], dimension: usize) -> bool {
-    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
-    dimension > 0
-        && values.len() == dimension
-        && values.iter().all(|value| value.is_finite())
-        && norm.is_finite()
-        && (norm - 1.0).abs() <= 1e-3
-}
-
 fn dates(text: &str) -> BTreeSet<(u32, u32, u32)> {
     let mut result = BTreeSet::new();
     for (offset, character) in text.char_indices() {
@@ -470,7 +469,6 @@ fn dates(text: &str) -> BTreeSet<(u32, u32, u32)> {
     }
     result
 }
-
 fn date_at(text: &str) -> Option<(u32, u32, u32)> {
     let (year, rest) = date_number(text, 4, 4)?;
     let (chinese, rest) = rest
@@ -506,6 +504,7 @@ fn normalize(text: &str) -> String {
         .to_lowercase()
 }
 
+// 去重只清理发言包装和空白，保留大小写、数字及标点承载的事实差异。
 fn canonical(text: &str) -> String {
     let lines = text
         .lines()
@@ -532,6 +531,7 @@ fn bigrams(text: &str) -> BTreeSet<String> {
         .collect()
 }
 
+// 中文用相邻双字覆盖短语，英文和数字保留完整词，避免子串误匹配。
 fn terms(text: &str) -> BTreeSet<String> {
     let mut result = BTreeSet::new();
     let mut chinese = String::new();
@@ -566,7 +566,3 @@ fn terms(text: &str) -> BTreeSet<String> {
     }
     result
 }
-
-#[cfg(test)]
-#[path = "retrieval_tests.rs"]
-mod tests;

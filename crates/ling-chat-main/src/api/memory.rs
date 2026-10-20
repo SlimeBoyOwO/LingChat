@@ -16,6 +16,7 @@ use crate::AppState;
 use crate::ai_service::game_system::persistent_memory_system::MemorySystemSnapshot;
 use crate::ai_service::types::LlmMessage;
 
+/// 只展示仍属于当前角色、存档和来源版本的检索结果。
 #[tauri::command]
 pub async fn get_memory_recall_snapshot(
     app: tauri::AppHandle,
@@ -46,6 +47,7 @@ pub async fn get_memory_recall_snapshot(
             }
         }
     }
+    // 读取来源期间可能切换会话，返回前再检查一次。
     let current = status.lock().await;
     Ok(snapshot.filter(|snapshot| snapshot.stamp.matches(&current)))
 }

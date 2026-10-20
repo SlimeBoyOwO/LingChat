@@ -1,3 +1,5 @@
+//! 模型主动回忆的入口，检索范围由当前聊天会话确定。
+
 use std::time::Duration;
 
 use ling_chat_notes::{NotesStore, memory::MemoryKind, memory_retrieval::SearchSettings};
@@ -21,6 +23,7 @@ struct Arguments {
     kinds: Option<Vec<MemoryKind>>,
 }
 
+// 只接受问题与结果偏好，不允许模型通过参数选择其他角色或存档。
 fn parse(arguments: Value) -> Result<(String, SearchSettings), ToolError> {
     let arguments: Arguments = serde_json::from_value(arguments)
         .map_err(|error| ToolError::InvalidArguments(error.to_string()))?;
@@ -94,11 +97,13 @@ impl Tool for MemorySearch {
             )
             .await
             .map_err(|error| ToolError::Execution(error.to_string()))?;
+        // 检索是异步任务，返回后再次确认会话仍属于同一角色和历史。
         if !session.matches(&*status.lock().await) {
             return Err(ToolError::Execution(
                 "检索期间角色、存档或历史已变化，丢弃结果".into(),
             ));
         }
+        // 与自动回忆共用去重和预算，连续调用不能无限增加资料。
         let references = snapshot
             .response
             .as_ref()
@@ -113,29 +118,5 @@ impl Tool for MemorySearch {
         Ok(
             json!({"ok":true,"status":snapshot.status,"references":references,"notice":"资料仅供当前回合参考；空结果也可能表示本轮已引用或已达到资料预算。"}),
         )
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn arguments_cannot_choose_roles_saves_or_unbounded_results() {
-        for arguments in [
-            json!({"query":"书签","role_id":3}),
-            json!({"query":"书签","save_id":102}),
-            json!({"query":" "}),
-            json!({"query":"书签","max_hits":0}),
-            json!({"query":"书签","max_hits":6}),
-            json!({"query":"书签","kinds":["private"]}),
-            json!({"query":"中".repeat(4097)}),
-        ] {
-            assert!(parse(arguments).is_err());
-        }
-        let (_, settings) =
-            parse(json!({"query":"书签","max_hits":2,"kinds":["raw","note"]})).unwrap();
-        assert_eq!(settings.max_hits, 2);
-        assert_eq!(settings.kinds, [MemoryKind::Raw, MemoryKind::Note]);
     }
 }

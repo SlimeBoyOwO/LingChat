@@ -1223,6 +1223,7 @@ pub(super) fn tool_call_ids(line: &GameLine) -> Result<Option<HashSet<String>>, 
         .tool_call
         .as_deref()
         .filter(|value| !value.trim().is_empty());
+    // 优先读取独立字段，旧记录才从正文开头识别工具协议，避免误把普通数组当调用。
     let raw = if let Some(raw) = explicit {
         raw
     } else {

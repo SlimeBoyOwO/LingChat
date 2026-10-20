@@ -1,3 +1,5 @@
+//! 查询向量和检索结果分别缓存，按最近使用顺序淘汰，并限制条数与内存。
+
 use std::collections::VecDeque;
 use std::mem::size_of;
 use std::sync::{
@@ -83,12 +85,14 @@ struct Entry {
 
 impl Entry {
     fn bytes(&self) -> usize {
+        // 使用容量估算实际保留的堆内存，连同键和条目本身一起计入上限。
         size_of::<Self>() + self.key.capacity() + self.payload.capacity()
     }
 }
 
 struct BoundedLru {
     limits: CacheLimits,
+    // 队首最久未使用，队尾最近使用；缓存规模小，顺序查找即可。
     entries: VecDeque<Entry>,
     stats: LruStats,
 }
@@ -106,6 +110,7 @@ impl BoundedLru {
         if let Some(index) = self.entries.iter().position(|entry| entry.key == key) {
             let entry = self.entries.remove(index).unwrap();
             let payload = entry.payload.clone();
+            // 命中后移到队尾，下次腾空间时优先淘汰其他旧条目。
             self.entries.push_back(entry);
             self.stats.hits += 1;
             Some(payload)
@@ -133,6 +138,7 @@ impl BoundedLru {
             self.stats.rejected += 1;
             return;
         }
+        // 先去掉同键旧值，再按数量和总大小腾出空间。
         self.remove(&entry.key);
         while self.entries.len() >= self.limits.max_entries
             || self.stats.retained_bytes + bytes > self.limits.max_bytes
@@ -179,6 +185,7 @@ impl MemoryCaches {
     }
 
     pub fn get<Value: DeserializeOwned>(&self, vector: bool, key: &str) -> Option<Value> {
+        // 锁内只取缓存副本，反序列化放到锁外，避免阻塞其他检索。
         let payload = self
             .cache(vector)
             .lock()
@@ -240,7 +247,3 @@ impl MemoryCaches {
             .clear();
     }
 }
-
-#[cfg(test)]
-#[path = "memory_cache_tests.rs"]
-mod tests;

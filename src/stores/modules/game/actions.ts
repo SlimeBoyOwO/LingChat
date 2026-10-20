@@ -1,4 +1,3 @@
-// actions.ts
 import type { GameState, GameMessage, GameRole } from "./state";
 import { getGameInfo } from "../../../api/services/game-info";
 import type { GameLineInit, WebInitData } from "../../../api/services/game-info";
@@ -25,7 +24,6 @@ export const actions = {
     try {
       const gameInfo = await getGameInfo();
       applyWebInitData(this, gameInfo);
-      // 通知后端玩家已入场，触发 AI 问候（不等 LoadingTransition，fire-and-forget）
       invoke("notify_player_entry").catch((err) =>
         console.warn("[Entry] 问候触发失败（非致命）:", err),
       );
@@ -201,7 +199,6 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
     };
   }
 
-  // fallback：若 onstage_roles 中未包含主角（如旧版存档），从 character_settings 补充
   if (!state.gameRoles[charId] && charId !== 0) {
     state.gameRoles[charId] = {
       roleId: charId,
@@ -239,8 +236,13 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
   const uiStore = useUIStore();
   const settingsStore = useSettingsStore();
-  state.userName = characterInfo.user_name;
-  state.userSubtitle = characterInfo.user_subtitle;
+
+  // 「我」的名字来自身份卡；旧后端不返回时回退到 character_settings
+  state.playerIdentityId = gameInfo.player_identity_id ?? null;
+  state.playerPrompt = gameInfo.player_identity?.prompt ?? "";
+  state.userName = gameInfo.player_identity?.name || characterInfo.user_name;
+  state.userSubtitle = gameInfo.player_identity?.subtitle ?? characterInfo.user_subtitle;
+  state.activeSaveId = gameInfo.active_save_id ?? null;
 
   uiStore.showCharacterTitle = characterInfo.ai_name;
   uiStore.showCharacterSubtitle = characterInfo.ai_subtitle;

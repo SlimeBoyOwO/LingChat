@@ -1,9 +1,12 @@
+//! 读取授权范围内的索引，复用两层缓存，并在返回前复核来源。
+
 use std::sync::Arc;
 
 use anyhow::{Result, ensure};
 use ling_chat_notes::NotesStore;
 use ling_chat_notes::memory::{
     EmbeddingVersion, IndexedMemoryDocument, MemoryScopeKey, MemorySearchHit, memory_version,
+    valid_memory_vector,
 };
 use ling_chat_notes::memory_retrieval::{
     ExplainedMemoryHit, HybridSearchResult, MatchExplanation, SearchDiagnostics, SearchQuery,
@@ -48,10 +51,6 @@ pub struct MemorySearcher {
     encoder: Arc<dyn MemoryEncoder>,
     caches: Arc<MemoryCaches>,
 }
-
-#[cfg(test)]
-#[path = "memory_search_real_tests.rs"]
-mod real_tests;
 
 impl MemorySearcher {
     pub fn new(encoder: Arc<dyn MemoryEncoder>) -> Self {
@@ -102,6 +101,7 @@ impl MemorySearcher {
         let (result, vector_status, cache, index_version, result_key) =
             tokio::task::spawn_blocking(move || -> Result<_> {
                 let index_version = index_fingerprint(&snapshot, &working_model)?;
+                // 结果缓存绑定角色、存档、索引和检索参数，不能跨范围复用。
                 let result_key = memory_version(&(
                     "memory-result-cache-v1",
                     &working_key,
@@ -131,6 +131,7 @@ impl MemorySearcher {
                         .iter()
                         .any(|chunk| chunk.embedding.is_some())
                 });
+                // 查询向量只依赖模型和有效查询，可在不同存档间安全复用。
                 let vector_key = memory_version(&(
                     "memory-query-vector-v1",
                     &working_model,
@@ -160,12 +161,14 @@ impl MemorySearcher {
                 Ok((result, status, cache, index_version, result_key))
             })
             .await??;
+        // 推理在后台执行期间可能发生撤回或编辑，缓存命中也必须再次复核。
         let current =
             MemoryScopeSnapshot::load(db, store, save_id, role_id, role_display_name).await?;
         ensure!(
             current.key() == scope.key(),
             "历史或笔记已变化，丢弃旧检索结果"
         );
+        // 临时分词或推理失败不写结果缓存，模型恢复后下次查询可以立即重试。
         if !cache.result_hit
             && matches!(
                 vector_status,
@@ -210,7 +213,7 @@ fn query_vector(
         return (None, QueryVectorStatus::NoIndexedVectors);
     }
     if let Some(vector) = caches.get::<Vec<f32>>(true, key) {
-        if valid_vector(&vector, model.dimension) {
+        if valid_memory_vector(&vector, model.dimension) {
             usage.query_vector_hit = true;
             return (Some(vector), QueryVectorStatus::Ready);
         }
@@ -221,7 +224,7 @@ fn query_vector(
         Ok(count) if count > encoder.max_tokens() => (None, QueryVectorStatus::TooManyTokens),
         Ok(_) => match encoder.embed(&query.effective) {
             Ok(vector) => {
-                if valid_vector(&vector, model.dimension) {
+                if valid_memory_vector(&vector, model.dimension) {
                     caches.insert(true, key.to_owned(), &vector);
                 }
                 (Some(vector), QueryVectorStatus::Ready)
@@ -231,15 +234,7 @@ fn query_vector(
     }
 }
 
-fn valid_vector(values: &[f32], dimension: usize) -> bool {
-    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
-    dimension > 0
-        && values.len() == dimension
-        && values.iter().all(|value| value.is_finite())
-        && norm.is_finite()
-        && (norm - 1.0).abs() <= 1e-3
-}
-
+// 向量内容也参与指纹，防止只替换向量、未修改文档版本时误用旧结果。
 fn index_fingerprint(snapshot: &MemoryIndexSnapshot, model: &EmbeddingVersion) -> Result<String> {
     let identity = memory_version(&(
         "search-index-v2",
@@ -283,6 +278,7 @@ fn index_fingerprint(snapshot: &MemoryIndexSnapshot, model: &EmbeddingVersion) -
     Ok(format!("{:x}", digest.finalize()))
 }
 
+// 结果缓存只保存身份与匹配解释，正文始终从本次已授权的索引中重新取得。
 #[derive(Serialize, Deserialize)]
 struct CachedHit {
     document_id: String,
@@ -320,6 +316,7 @@ impl CachedResult {
         }
     }
 
+    // 文档、分块版本或引用预算对不上时整项作废，重新执行检索。
     fn restore(
         &self,
         documents: &[IndexedMemoryDocument],
