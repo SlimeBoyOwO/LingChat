@@ -13,6 +13,7 @@ use sherpa_onnx::{
     OfflineTtsSupertonicModelConfig, OfflineTtsVitsModelConfig, OfflineTtsZipvoiceModelConfig,
 };
 
+use super::text::is_language;
 use super::{MAX_NUM_SENTENCES, SILENCE_SCALE, SherpaTuning};
 
 /// 按模型类型创建引擎。所有实现都只是「找到文件 → 交给 sherpa」，公共配置见
@@ -658,6 +659,59 @@ fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
         .all(|line| line.split_whitespace().skip(1).all(|p| tokens.contains(p)))
 }
 
+/// kokoro 的说话人下标（`voices.bin` 里的顺序，含义随模型版本变化）。
+///
+/// 以前固定 0：v1.1-zh 的 0 号是英文女声 `af_maple`，中文台词也交给它念——音色本身
+/// 就不是中文的，中文的连读和句读停顿也跟着不对（同一个逗号，实测英文音色停 0.68 秒、
+/// 中文音色 0.35 秒；句内多出来的停顿另由 [`super::audio::cap_inner_silence`] 收口）。
+/// 所以中文/日文台词按设置页的「音色」挑一个中文音色：
+///
+/// - v1.1-zh（103 音色）：0-2 英文、3-57 中文女声（`zf_001`…）、58-102 中文男声
+///   （`zm_009`…）。
+/// - v1.0（53 音色）：0-19 英文、20-27 英式、28-44 其它语言、45-48 中文女声、
+///   49-52 中文男声。
+///
+/// `voice` 直接写成数字时原样采用（收口到有效范围），方便试不同音色。kokoro 没有
+/// 童声/老年声，`child` / `elderly` 与空值一样按女声处理。
+pub(super) fn kokoro_sid(language: &str, voice: &str, num_speakers: i32) -> i32 {
+    let last = num_speakers.saturating_sub(1);
+    if last < 0 {
+        return 0;
+    }
+
+    let voice = voice.trim();
+    if let Ok(sid) = voice.parse::<i32>() {
+        return sid.clamp(0, last);
+    }
+
+    // 英文（及没法确定语言的）保持 0（`af_maple`）：v1.1-zh 里英文也只有女声。
+    let chinese = is_language(language, "zh") || is_language(language, "ja");
+    if !chinese {
+        return 0;
+    }
+
+    let male = voice.eq_ignore_ascii_case("male");
+    let sid = match num_speakers {
+        103 => {
+            if male {
+                58
+            } else {
+                3
+            }
+        },
+        53 => {
+            if male {
+                49
+            } else {
+                45
+            }
+        },
+        // 不认识的 kokoro 版本：宁可保持原来的 0，也不要瞎指一个音色。
+        _ => 0,
+    };
+    sid.min(last)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -689,6 +743,39 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 中文台词用中文音色，英文台词保持 0；数字写法可直接指定音色。
+    #[test]
+    fn picks_kokoro_voice_by_language() {
+        // v1.1-zh：中文女声 3（zf_001）、中文男声 58（zm_009）。
+        assert_eq!(kokoro_sid("zh", "", 103), 3);
+        assert_eq!(kokoro_sid("zh", "female", 103), 3);
+        assert_eq!(kokoro_sid("zh", "male", 103), 58);
+        // 童声/老年声没有对应音色，按女声处理。
+        assert_eq!(kokoro_sid("zh", "child", 103), 3);
+        assert_eq!(kokoro_sid("zh", "elderly", 103), 3);
+        // 日文在这个模型里也只有中文音色可用。
+        assert_eq!(kokoro_sid("ja", "female", 103), 3);
+        // 英文台词不动：仍是 0（af_maple），男声也没有别的英文音色可选。
+        assert_eq!(kokoro_sid("en", "female", 103), 0);
+        assert_eq!(kokoro_sid("en", "male", 103), 0);
+
+        // v1.0：中文女声 45、男声 49。
+        assert_eq!(kokoro_sid("zh", "female", 53), 45);
+        assert_eq!(kokoro_sid("zh", "male", 53), 49);
+        assert_eq!(kokoro_sid("en", "female", 53), 0);
+
+        // 不认识的音色数量 / 没有音色：保持 0。
+        assert_eq!(kokoro_sid("zh", "female", 0), 0);
+        assert_eq!(kokoro_sid("zh", "female", 7), 0);
+
+        // 直接写数字：原样采用（越界收口），大小写不敏感。
+        assert_eq!(kokoro_sid("zh", "45", 103), 45);
+        assert_eq!(kokoro_sid("en", "45", 103), 45);
+        assert_eq!(kokoro_sid("zh", "999", 103), 102);
+        assert_eq!(kokoro_sid("zh", "-3", 103), 0);
+        assert_eq!(kokoro_sid("zh", "MALE", 103), 58);
     }
 
     /// 只带简单规则表的模型目录：有英文词表就认为认得拉丁字母。

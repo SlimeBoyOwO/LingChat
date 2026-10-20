@@ -679,8 +679,9 @@ const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
 
-// sherpa-onnx 的「音色」是随模型走的标签（适配器只把它当元数据，真正的说话人
-// 固定为 0），所以给固定四档；但模型 config.json 可能带出自定义值（选中模型时
+// sherpa-onnx 的「音色」是随模型走的标签：kokoro 拿它挑说话人（中文女声/男声，
+// 其它模型暂时只有一档），其它引擎只当元数据。所以给固定四档；但模型
+// config.json 可能带出自定义值（选中模型时
 // `applySherpaModelDefaults` 会写进字段），下拉框没有匹配项会显示空白并在切换时
 // 丢掉原值，因此把当前值并进选项。空值在后端等同 female，与第一项一致。
 const sherpaVoiceOptions = computed<FieldOption[]>(() => {
