@@ -527,6 +527,12 @@ export default {
       sherpaOnnxVoice: "音声",
       sherpaOnnxUseGpu: "GPU 推論",
       sherpaOnnxSpeed: "話速",
+      sherpaOnnxNumSteps: "推論ステップ数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice の flow-matching サンプリング回数（1〜10）。4 回と 16 回で聴感差はなく、増やすほど遅くなるだけです。",
+      sherpaOnnxGuidanceScale: "ガイダンス強度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice の guidance_scale（1.0〜10.0）。大きいほど参照音声の声質に寄ります。変更するとモデルを再初期化するため、次の合成は少し遅くなります。",
       sherpaOnnxParameters: "パラメータ",
       sherpaOnnxManageModels: "モデル管理",
       sherpaOnnxVoicesMale: "男性",
@@ -1469,6 +1475,10 @@ export default {
       "NNAPI デバイスバックエンドを使用します（Android 8.1 以上が必要）。pnpm android:build で作成したパッケージには NNAPI が含まれます。公式のビルド済みパッケージを使った場合は CPU で動作します。",
     parameters: "パラメータ",
     speed: "話速",
+    numSteps: "推論ステップ数",
+    guidanceScale: "ガイダンス強度",
+    tuningHint:
+      "推論ステップ数とガイダンス強度は ZipVoice（flow-matching）でのみ有効で、他のモデルでは無視されます。ここは試聴用の一時値です。実際の読み上げはキャラクター設定の音声ページで調整してください。",
     zeroShot: "ゼロショット音声クローン",
     zeroShotDesc:
       "一部のモデル（kokoro/kitten 等）は参照音声 + 参照テキストによるゼロショットクローンに対応しています。",

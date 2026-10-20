@@ -22,7 +22,7 @@ use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
-use crate::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, SherpaTuning};
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
@@ -574,6 +574,12 @@ impl VoiceMaker {
                     .unwrap_or_else(|| "female".to_string());
                 let use_gpu = cfg.sherpa_onnx_use_gpu.unwrap_or(false);
 
+                // 推理步数 / 引导强度由角色语音设置里的两个滑动条控制（1–10），
+                // 缺失或越界时由 SherpaTuning::from_options 收敛到默认/合法范围。
+                let tuning = SherpaTuning::from_options(
+                    cfg.sherpa_onnx_num_steps,
+                    cfg.sherpa_onnx_guidance_scale,
+                );
                 match SherpaOnnxAdapter::new(
                     self.tts_config.clone(),
                     models_root.to_string_lossy().into_owned(),
@@ -581,6 +587,7 @@ impl VoiceMaker {
                     language,
                     voice,
                     use_gpu,
+                    tuning,
                 ) {
                     Ok(mut adapter) => {
                         if let Some(speed) = cfg.sherpa_onnx_speed {

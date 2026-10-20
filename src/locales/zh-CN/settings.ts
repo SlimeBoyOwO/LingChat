@@ -794,6 +794,12 @@ export default {
       sherpaOnnxVoice: "音色",
       sherpaOnnxUseGpu: "GPU 推理",
       sherpaOnnxSpeed: "语速",
+      sherpaOnnxNumSteps: "推理步数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice 的 flow-matching 采样步数（1~10）。实测 4 步与 16 步听不出差别，步数越多合成越慢，一般保持 4 即可。",
+      sherpaOnnxGuidanceScale: "引导强度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice 的 guidance_scale（1.0~10.0），越大越贴近参考音频的音色；改完需要重新初始化模型，首次合成会稍慢。",
       sherpaOnnxParameters: "参数",
       sherpaOnnxManageModels: "管理模型",
       sherpaOnnxVoicesMale: "男声",
@@ -1731,6 +1737,10 @@ export default {
       "走 NNAPI 设备后端（需要 Android 8.1+）。pnpm android:build 打出的包已带 NNAPI；用官方预编译包构建的包会按 CPU 运行。",
     parameters: "参数",
     speed: "语速",
+    numSteps: "推理步数",
+    guidanceScale: "引导强度",
+    tuningHint:
+      "推理步数与引导强度只对 ZipVoice（flow-matching）生效，其它模型会忽略。试听用的是这里的临时值，角色实际说话请到角色设置的语音页调整。",
     zeroShot: "零样本声音克隆",
     zeroShotDesc: "部分模型（如 kokoro/kitten 等）支持参考音频 + 参考文本的零样本克隆。",
     refLoaded: "参考音频已加载",
