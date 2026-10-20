@@ -139,6 +139,22 @@ const JOINT_FADE: f32 = 0.02;
 /// 静音判定阈值，与 sherpa 的 `ScaleSilence` 一致（0.01，约 -40 dBFS）。
 const SILENCE_AMP: f32 = 0.01;
 
+/// 模型读得出的文字种类，决定 [`strip_unreadable`] 里哪些字符能原样留下。
+///
+/// 以前只区分「认不认拉丁字母」，假名和谚文跟着拉丁字母走：日语/韩语模型的词表里
+/// 没有英文，于是被判定为不认拉丁字母，假名/谚文跟着一起被剔掉——日语模型只剩
+/// 汉字、韩语模型整句变空。这三个开关互相独立，由目标语言与词表能力共同决定
+/// （见 [`SherpaOnnxAdapter::new`]）。
+#[derive(Clone, Copy, Debug, Default)]
+struct ReadableScripts {
+    /// 拉丁字母（kokoro 多语言版带 `lexicon-us-en.txt`；中文 matcha / zipvoice 没有）。
+    latin: bool,
+    /// 日文假名（目标语言是日文时留着；中文模型会把假名一起剔掉）。
+    kana: bool,
+    /// 韩文谚文（目标语言是韩文时留着）。
+    hangul: bool,
+}
+
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
     sid: i32,
@@ -155,10 +171,9 @@ pub struct SherpaOnnxAdapter {
     reference_text: Option<String>,
     /// 中文模型 + 模型目录里没有规则 FST 时，需要在合成前把阿拉伯数字改写成汉字。
     digit_normalization: bool,
-    /// 模型自己认得拉丁字母 / 日文假名吗。kokoro 多语言版带英文词表（`lexicon-us-en.txt`）
-    /// 所以认得；中文 matcha / zipvoice 的词表里一个拉丁字母都没有。不认得时，汉字句子
-    /// 里夹的英文、罗马音、假名要在合成前剔掉，见 [`strip_unreadable`]。
-    reads_latin: bool,
+    /// 模型读得出哪几种文字（拉丁字母 / 假名 / 谚文）。不认得的那几种要在合成前剔掉，
+    /// 见 [`strip_unreadable`]。
+    scripts: ReadableScripts,
 }
 
 impl SherpaOnnxAdapter {
@@ -221,9 +236,11 @@ impl SherpaOnnxAdapter {
         // 中文模型若模型目录里没带规则 FST（zipvoice/supertonic 的实现不读 rule_fsts，
         // 别的中文模型也可能没随包带），数字得由我们在送进 sherpa 之前改写。
         let digit_normalization = needs_digit_normalization(model_dir);
-        let reads_latin = model_reads_latin(model_dir);
+        // 假名/谚文按目标语言留：用户在角色设置里选的 `sherpa_onnx_lang` 就是模型
+        // 说的语言（见 fields.ts），日文/韩文模型不需要英文词表也能读自己的文字。
+        let scripts = readable_scripts(&language, model_reads_latin(model_dir));
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 认得拉丁字母={reads_latin}",
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}",
             provider.unwrap_or("cpu")
         );
 
@@ -241,7 +258,7 @@ impl SherpaOnnxAdapter {
             reference_sample_rate: None,
             reference_text: None,
             digit_normalization,
-            reads_latin,
+            scripts,
         })
     }
 
@@ -666,37 +683,44 @@ impl TtsAdapter for SherpaOnnxAdapter {
             gen_config.num_steps = self.num_steps; // 见 ZIPVOICE_NUM_STEPS / SherpaTuning
         }
 
+        // 日文/韩文的汉字读法与中文不同（见 reads_han_as_chinese），这两门语言绕开下面
+        // 两步中文改写，数字原样交给模型自己的前端。
+        let chinese_readings = reads_han_as_chinese(&self.language);
+
         // 中文文本里数字之间夹的标点先归置：`9:30` 要念「九点三十」、`1,000` 要念
         // 「一千」、`2026-10-20` 要念「二零二六年十月二十日」。模型自带的规则 FST
         // 只改数字、不懂标点（实测「上午9:30」→「上午九:三十」），冒号/逗号的读法
         // 全靠这里。见 chinese_digits::normalize_number_punct。
         let with_punct;
-        let text: &str = if crate::ai_service::tts::chinese_digits::has_han(text) {
-            with_punct = crate::ai_service::tts::chinese_digits::normalize_number_punct(text);
-            &with_punct
-        } else {
-            text
-        };
+        let text: &str =
+            if chinese_readings && crate::ai_service::tts::chinese_digits::has_han(text) {
+                with_punct = crate::ai_service::tts::chinese_digits::normalize_number_punct(text);
+                &with_punct
+            } else {
+                text
+            };
 
         // 中文文本且模型里没带规则 FST 时，先把阿拉伯数字改写成汉字（见 chinese_digits）：
         // 那些模型下数字读法都不对——CharacterLexicon 会直接丢词，zipvoice 这类会念错
         // （反读实测「第 3 章」听成「对章」）。纯英文台词不改写，数字该按英文念。
         let normalized;
-        let text: &str =
-            if self.digit_normalization && crate::ai_service::tts::chinese_digits::has_han(text) {
-                normalized = crate::ai_service::tts::chinese_digits::normalize(text);
-                &normalized
-            } else {
-                text
-            };
-
-        // 汉字句子按标点自己切句、逐句推理、再拼回去（见 split_clauses）：纯英文台词
-        // 不切，英文的标点交给模型自己处理。
-        let clauses = if crate::ai_service::tts::chinese_digits::has_han(text) {
-            split_clauses(text)
+        let text: &str = if self.digit_normalization
+            && chinese_readings
+            && crate::ai_service::tts::chinese_digits::has_han(text)
+        {
+            normalized = crate::ai_service::tts::chinese_digits::normalize(text);
+            &normalized
         } else {
-            vec![(text.to_owned(), 0.0, None)]
+            text
         };
+
+        // 不分语言，一律按标点自己切句、逐句推理、再拼回去（见 split_clauses）。
+        //
+        // 以前只有含汉字的文本才切，理由是「英文标点交给模型自己处理」：结果是纯英文、
+        // 纯假名、谚文整段一次推理——句间停顿由模型临场发挥（情绪里的停顿倍率也就
+        // 完全失效），接缝没有淡入淡出；而同一段日文有没有汉字还会走两条不同的路径。
+        // 英文的 `Mr.` / `Dr.` / `e.g.` 这类缩写另有保护，见 [`split_clauses`]。
+        let clauses = split_clauses(text);
 
         let mut assembled: Vec<f32> = Vec::new();
         let mut sample_rate = tts.sample_rate();
@@ -704,7 +728,7 @@ impl TtsAdapter for SherpaOnnxAdapter {
         for (clause, pause, _) in clauses {
             // 数字改写可能带出分隔符，这里按小句统一清掉读不出来的字符
             // （见 strip_unreadable）。
-            let piece_text = strip_unreadable(&clause, self.reads_latin);
+            let piece_text = strip_unreadable(&clause, self.scripts);
             // 只剩标点的小句（「……」「~」）没有可念的字，跳过：丢给模型只会得到一段
             // 空音频或一声怪音。
             if !piece_text.chars().any(char::is_alphanumeric) {
@@ -898,6 +922,32 @@ fn model_reads_latin(model_dir: &Path) -> bool {
     })
 }
 
+/// 目标语言是不是某个小写语言代码（设置里的取值是 `zh` / `en` / `ja` / `ko`，
+/// 见 `fields.ts` 的 `sherpa_onnx_lang` 与 [`crate::ai_service::tts::text_language`]）。
+fn is_language(language: &str, code: &str) -> bool {
+    language.trim().eq_ignore_ascii_case(code)
+}
+
+/// 汉字里的数字/日期该按中文的读法改写吗（见 [`crate::ai_service::tts::chinese_digits`]）。
+///
+/// 日文/韩文的汉字读法跟中文不同：「2026年」在日文里念「にせんにじゅうろくねん」，
+/// 套用中文改写会念成「二零二六年」；「9:30」是「9時30分」而不是「九点三十」。所以
+/// 这两门语言把数字原样交给模型自己的前端，其余（中文、未设置、英文模型念中文文本）
+/// 仍按中文改写。
+fn reads_han_as_chinese(language: &str) -> bool {
+    !is_language(language, "ja") && !is_language(language, "ko")
+}
+
+/// 模型读得出哪几种文字：拉丁字母看词表（见 [`model_reads_latin`]），假名/谚文看
+/// 目标语言——日文/韩文模型的词表里通常没有英文，但它们读自己的文字不需要英文词表。
+fn readable_scripts(language: &str, reads_latin: bool) -> ReadableScripts {
+    ReadableScripts {
+        latin: reads_latin,
+        kana: reads_latin || is_language(language, "ja"),
+        hangul: reads_latin || is_language(language, "ko"),
+    }
+}
+
 /// 是不是汉字（范围与 `chinese_digits::has_han` 一致）。
 fn is_han(c: char) -> bool {
     let cp = c as u32;
@@ -905,6 +955,29 @@ fn is_han(c: char) -> bool {
         || (0x4E00..=0x9FFF).contains(&cp)
         || (0xF900..=0xFAFF).contains(&cp)
         || (0x2_0000..=0x3_FFFF).contains(&cp)
+}
+
+/// 是不是日文假名（平假名、片假名、片假名音标扩展、半角片假名）。
+///
+/// 比 [`crate::ai_service::tts::text_language::detect`] 的范围宽：那里要排除「・」「ー」
+/// 免得把中文译名当日语，这里只是判断「这个字日语模型读不读得出来」——长音符「ー」
+/// 是日语拼写的一部分（「コーヒー」），漏掉它就念不完整。
+fn is_kana(c: char) -> bool {
+    let cp = c as u32;
+    (0x3040..=0x309F).contains(&cp)
+        || (0x30A0..=0x30FF).contains(&cp)
+        || (0x31F0..=0x31FF).contains(&cp)
+        || (0xFF65..=0xFF9F).contains(&cp)
+}
+
+/// 是不是韩文谚文（谚文音节、字母、兼容字母，以及扩展区）。
+fn is_hangul(c: char) -> bool {
+    let cp = c as u32;
+    (0xAC00..=0xD7A3).contains(&cp)
+        || (0x1100..=0x11FF).contains(&cp)
+        || (0x3130..=0x318F).contains(&cp)
+        || (0xA960..=0xA97F).contains(&cp)
+        || (0xD7B0..=0xD7FF).contains(&cp)
 }
 
 /// 送给 sherpa 之前，把「读不出来、还会被硬念出来或带跑整句」的字符换成空格。
@@ -919,24 +992,27 @@ fn is_han(c: char) -> bool {
 /// 2. 其余符号（`~`、`～`、`♪`、`♡`、`→`、emoji、孤立括号、引号……）既不在词表里、
 ///    也不是汉字，`MatchaTtsLexicon` 会走 **espeak（en-us）兜底**当英文念出来：ASCII
 ///    `~` 实测被念成 "tilde"（SenseVoice 反读「好~」得到「好挑的」）。
-/// 3. 模型读不了的文字——英文、罗马音、假名——会被同一套 espeak 兜底音素化：中文
-///    matcha 的词表里一个英文词都没有，`hello` 这类要么被丢词、要么按字母念；零样本
-///    的 zipvoice 更糟，夹一句英文会把整句带跑（SenseVoice 反读里冒出参考音频的内容，
-///    听起来就是「换了个人、还念了参考音频里的话」）。所以模型不认得拉丁字母时
-///    （见 [`model_reads_latin`]）连同假名一起整段剔掉——宁可少念一句英文，也不要
-///    整句走样。纯英文台词不走这里（调用处只在含汉字时才动手），英文由模型自己处理。
-fn strip_unreadable(text: &str, keep_latin: bool) -> String {
+/// 3. 模型读不了的文字——英文、罗马音、假名、谚文——会被同一套 espeak 兜底音素化：
+///    中文 matcha 的词表里一个英文词都没有，`hello` 这类要么被丢词、要么按字母念；
+///    零样本的 zipvoice 更糟，夹一句英文会把整句带跑（SenseVoice 反读里冒出参考音频
+///    的内容，听起来就是「换了个人、还念了参考音频里的话」）。所以模型读不出来哪种
+///    文字（见 [`ReadableScripts`]）就整段剔掉——宁可少念一句英文，也不要整句走样。
+fn strip_unreadable(text: &str, scripts: ReadableScripts) -> String {
     let chars: Vec<char> = text.chars().collect();
     let mut out = String::with_capacity(text.len());
     for (i, &c) in chars.iter().enumerate() {
         let speakable = is_han(c)
+            // 假名/谚文看模型读不读得出来：中文模型读不了「こんにちは」，
+            // 交给 espeak 兜底会把整句带跑；日语/韩语模型则必须留着。
+            || (scripts.kana && is_kana(c))
+            || (scripts.hangul && is_hangul(c))
             || c.is_ascii_digit()
             || matches!(c, '０'..='９')
             // 句末标点：切句与停顿由 split_clauses 决定，标点本身留给模型收尾。
-            || matches!(c, '。' | '！' | '？' | '.' | '!' | '?')
+            || SENTENCE_PUNCT.contains(&c)
             // 从句标点：合并短句时放回来的那个（见 Clause），别在这里又抹掉。
             || CLAUSE_PUNCT.contains(&c)
-            || (keep_latin
+            || (scripts.latin
                 && (c.is_alphanumeric()
                     // 英文缩写里的撇号，留在词里，别把 don't 拆成两个词。
                     || (matches!(c, '\'' | '’')
@@ -1017,6 +1093,9 @@ type Clause = (String, f32, Option<char>);
 /// 数字/字母**中间**的标点不算断句：`9:30`、`3.14`、`1,000`、`www.bing.com` 都要整块
 /// 念（模型自带的 rule FST 也认这些写法，见 [`crate::ai_service::tts::chinese_digits`]）。
 /// 判定只看前后是不是紧挨着的 ASCII 字母数字，所以全角的 `1，000` 一样不会在那里切。
+///
+/// 所有语言都走这里（英文/日文/韩文一样），所以英文的缩写要单独保护，见
+/// [`ENGLISH_ABBREVIATIONS`]。
 fn split_clauses(text: &str) -> Vec<Clause> {
     let chars: Vec<char> = text.chars().collect();
     let mut raw: Vec<Clause> = Vec::new();
@@ -1029,7 +1108,12 @@ fn split_clauses(text: &str) -> Vec<Clause> {
 
         if SENTENCE_PUNCT.contains(&c) {
             cur.push(c);
-            if !inside_word {
+            // `Mr.` / `Dr.` / `e.g.` 里的点不是句末；`U.S. now`、`Acme Inc. the` 这种
+            // 后面接小写词的也不是。见 [`ends_with_english_abbreviation`] /
+            // [`next_word_is_lowercase`]。
+            let continuation = c == '.'
+                && (ends_with_english_abbreviation(&chars, i) || next_word_is_lowercase(&chars, i));
+            if !inside_word && !continuation {
                 raw.push((std::mem::take(&mut cur), SENTENCE_PAUSE, None));
             }
         } else if CLAUSE_PUNCT.contains(&c) {
@@ -1053,7 +1137,58 @@ fn split_clauses(text: &str) -> Vec<Clause> {
         last.1 = 0.0;
     }
 
+    // 英文标点后面通常跟一个空格，切出来的小句会带前导空格：统一 trim，合并时按
+    // 语言补回空格（见 [`join_clauses`]），也让模型少一个空词。
+    for (clause, _, _) in raw.iter_mut() {
+        *clause = clause.trim().to_string();
+    }
+
     merge_short_clauses(raw)
+}
+
+/// `.` 前的常见英文缩写：这里的点不是句末，别在那儿切句。
+///
+/// 以前英文整段不切，认不认缩写都无所谓；现在英文也按标点切，不保护的话
+/// 「Mr. Smith」「Dr. Wang」会在中间多出 0.4 秒停顿、前后还各起一段语气，`e.g.` /
+/// `i.e.` 也会被切成两半。只收「后面一定还有下文」的称呼/编号类；`etc.` / `Inc.`
+/// 这类通常就是句末的照常切——宁可多一个停顿，也别把两句黏成一句。
+const ENGLISH_ABBREVIATIONS: &[&str] = &[
+    "mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs", "fig", "no", "e.g", "i.e", "a.m",
+    "p.m",
+];
+
+/// `chars[dot]` 这个句点前面是不是 [`ENGLISH_ABBREVIATIONS`] 里的缩写。
+///
+/// 只往前看字母和点（`e.g` / `a.m` 这种缩写内部还有一个点），遇到空格/汉字/数字就停。
+fn ends_with_english_abbreviation(chars: &[char], dot: usize) -> bool {
+    let mut word: Vec<char> = Vec::new();
+    let mut i = dot;
+    while i > 0 {
+        i -= 1;
+        let c = chars[i];
+        if c.is_ascii_alphabetic() {
+            word.push(c.to_ascii_lowercase());
+        } else if c == '.' && !word.is_empty() {
+            word.push('.');
+        } else {
+            break;
+        }
+    }
+    word.reverse();
+    let word: String = word.iter().collect();
+    ENGLISH_ABBREVIATIONS.contains(&word.as_str())
+}
+
+/// `chars[dot]` 后面（跳过空格）第一个字符是不是小写拉丁字母。
+///
+/// 英文里句号后面跟小写词基本不会是句末：`I live in the U.S. now`、`Acme Inc. the
+/// company`。真断句后面跟的是大写开头或数字，所以这里不切——否则 `U.S. now` 会被
+/// 切成两句、中间多出 0.4 秒停顿。
+fn next_word_is_lowercase(chars: &[char], dot: usize) -> bool {
+    chars[dot + 1..]
+        .iter()
+        .find(|c| !c.is_whitespace())
+        .is_some_and(|c| c.is_ascii_lowercase())
 }
 
 /// 可念的字数（汉字/字母/数字），不算标点与空白。
@@ -1098,11 +1233,21 @@ fn merge_short_clauses(raw: Vec<Clause>) -> Vec<Clause> {
 }
 
 /// 合并两个小句：把前一句被切掉的标点放回去，而不是塞一个空格。
+///
+/// 拉丁文字标点后面本来要空一格：`No, I don't.` 合并成 `No, I don't.` 而不是
+/// `No,I don't.`（挤在一起连 espeak 都容易把 `No,I` 读成一个词）。中文/日文/韩文
+/// 的标点后面不空格，所以只在后一句以 ASCII 字母数字开头时补一个空格。
 fn join_clauses(prev: &str, prev_punct: Option<char>, next: &str) -> String {
-    match prev_punct {
-        Some(punct) => format!("{prev}{punct}{next}"),
-        None => format!("{prev}{next}"),
+    let mut out = String::with_capacity(prev.len() + next.len() + 4);
+    out.push_str(prev);
+    if let Some(punct) = prev_punct {
+        out.push(punct);
     }
+    if next.starts_with(|c: char| c.is_ascii_alphanumeric()) {
+        out.push(' ');
+    }
+    out.push_str(next);
+    out
 }
 
 fn find_file_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
@@ -1588,11 +1733,14 @@ mod tests {
 
     /// 符号换成空格：句末标点保留，从句标点（逗号/顿号/分号/冒号）也保留（短句合并
     /// 之后要靠它给停顿），`~`/`♪`/emoji 不再被 espeak 兜底念成英文（ASCII `~` 会被
-    /// 念成 "tilde"）；模型读不了的英文/假名整段剔掉。
+    /// 念成 "tilde"）；模型读不了的英文/假名/谚文整段剔掉。
     #[test]
     fn strips_unreadable_chars_but_keeps_sentence_ends() {
         // 认得拉丁字母的模型（kokoro 多语言）：英文原样留着，标点都留着。
-        let latin = true;
+        let latin = ReadableScripts {
+            latin: true,
+            ..Default::default()
+        };
         assert_eq!(
             strip_unreadable("他说，你好、今天：很好；真的？", latin),
             "他说，你好、今天：很好；真的？"
@@ -1615,7 +1763,7 @@ mod tests {
 
         // 中文模型（matcha / zipvoice）读不了英文、罗马音、假名：连着符号一起剔掉，
         // 否则要么被丢词，要么被 espeak 按字母念、把整句带跑。
-        let no_latin = false;
+        let no_latin = ReadableScripts::default();
         assert_eq!(strip_unreadable("今天真开心 hello", no_latin), "今天真开心");
         assert_eq!(strip_unreadable("hello 今天真开心", no_latin), "今天真开心");
         assert_eq!(
@@ -1630,6 +1778,72 @@ mod tests {
         // （从句标点是短句合并时放回来的，绝不能在这里又抹掉）。
         assert_eq!(strip_unreadable("第 3 章。", no_latin), "第 3 章。");
         assert_eq!(strip_unreadable("嗯，好的呀", no_latin), "嗯，好的呀");
+    }
+
+    /// 日语/韩语模型的词表里没有英文，但假名/谚文必须留着：以前它们跟着拉丁字母一起被
+    /// 剔掉，日语模型只剩汉字、韩语模型整句变空（「生成的音频为空」）。
+    #[test]
+    fn keeps_kana_and_hangul_for_their_own_models() {
+        let japanese = ReadableScripts {
+            kana: true,
+            ..Default::default()
+        };
+        // 长音符「ー」、片假名中点「・」也得留着（「コーヒー」缺了「ー」就念不全）。
+        assert_eq!(
+            strip_unreadable("おはよう、今日はいい天気ですね。コーヒー・ミルク", japanese),
+            "おはよう、今日はいい天気ですね。コーヒー・ミルク"
+        );
+        // 日文模型同样读不了英文和谚文。
+        assert_eq!(
+            strip_unreadable("hello こんにちは 안녕하세요", japanese),
+            "こんにちは"
+        );
+
+        let korean = ReadableScripts {
+            hangul: true,
+            ..Default::default()
+        };
+        assert_eq!(
+            strip_unreadable("안녕하세요, 오늘 날씨가 좋네요.", korean),
+            "안녕하세요, 오늘 날씨가 좋네요."
+        );
+        assert_eq!(
+            strip_unreadable("hello 안녕하세요 こんにちは", korean),
+            "안녕하세요"
+        );
+
+        // 目标语言是中文时两者都剔掉（中文模型读不了，交给 espeak 会把整句带跑）。
+        let chinese = ReadableScripts::default();
+        assert_eq!(
+            strip_unreadable("好呀 こんにちは 안녕하세요", chinese),
+            "好呀"
+        );
+    }
+
+    /// 目标语言决定假名/谚文留不留、汉字数字按谁读：日文/韩文模型没有英文词表也得保留
+    /// 自己的文字，中文模型则把它们剔掉。
+    #[test]
+    fn decides_readable_scripts_by_language() {
+        // 中文：只留汉字/数字/标点（模型读不了英文、假名、谚文）。
+        let zh = readable_scripts("zh", false);
+        assert!(!zh.latin && !zh.kana && !zh.hangul);
+        // 日文/韩文：自己的文字留着，英文和另一种文字仍剔掉。
+        let ja = readable_scripts("ja", false);
+        assert!(ja.kana && !ja.latin && !ja.hangul);
+        let ko = readable_scripts("ko", false);
+        assert!(ko.hangul && !ko.latin && !ko.kana);
+        // 带英文词表的多语言模型（kokoro）：三种都认得，语言字段不再限制。
+        let multi = readable_scripts("zh", true);
+        assert!(multi.latin && multi.kana && multi.hangul);
+        // 大小写/前后空格不影响判断。
+        assert!(readable_scripts(" JA ", false).kana);
+
+        // 汉字数字/日期：中文（含未设置语言）按中文读，日文/韩文交给模型自己读。
+        assert!(reads_han_as_chinese("zh"));
+        assert!(reads_han_as_chinese(""));
+        assert!(reads_han_as_chinese("en"));
+        assert!(!reads_han_as_chinese("ja"));
+        assert!(!reads_han_as_chinese(" ko "));
     }
 
     /// 按标点切小句时，句末停顿要长于逗号停顿，末尾不留停顿，空片段丢掉；太短的小句
@@ -1710,6 +1924,79 @@ mod tests {
         assert_eq!(
             split_clauses("我打开了 www.bing.com。"),
             vec![("我打开了 www.bing.com。".to_string(), 0.0, None)]
+        );
+    }
+
+    /// 英文/日文/韩文也走同一套切句：句间停顿、逗号停顿、接缝淡入淡出都一致。
+    /// 英文缩写（`Mr.` / `Dr.` / `e.g.`）里的点不算句末；小数、千分位、域名照旧整块念。
+    #[test]
+    fn splits_other_languages_by_punctuation() {
+        // 英文：句号后 0.4 秒、逗号后 0.2 秒，切出来的小句不带前导空格。
+        assert_eq!(
+            split_clauses("Hello there. How are you today? I am fine, thank you."),
+            vec![
+                ("Hello there.".to_string(), SENTENCE_PAUSE, None),
+                ("How are you today?".to_string(), SENTENCE_PAUSE, None),
+                ("I am fine".to_string(), CLAUSE_PAUSE, Some(',')),
+                ("thank you.".to_string(), 0.0, None),
+            ]
+        );
+        // 缩写不切：「Mr. Smith」「Dr. Wang」「e.g.」都在一句里。
+        assert_eq!(
+            split_clauses("Mr. Smith met Dr. Wang at 9 a.m. today."),
+            vec![(
+                "Mr. Smith met Dr. Wang at 9 a.m. today.".to_string(),
+                0.0,
+                None
+            )]
+        );
+        assert_eq!(
+            split_clauses("It looks like e.g. a cat. Then it runs."),
+            vec![
+                (
+                    "It looks like e.g. a cat.".to_string(),
+                    SENTENCE_PAUSE,
+                    None
+                ),
+                ("Then it runs.".to_string(), 0.0, None),
+            ]
+        );
+        // 小数、千分位、域名、`U.S.` 这种带点的词都不在中间切。
+        assert_eq!(
+            split_clauses("It costs 1,234.56 dollars. I live in the U.S. now."),
+            vec![
+                (
+                    "It costs 1,234.56 dollars.".to_string(),
+                    SENTENCE_PAUSE,
+                    None
+                ),
+                ("I live in the U.S. now.".to_string(), 0.0, None),
+            ]
+        );
+        // 太短的小句并到下一句，合并处补一个空格（`No,I` 挤在一起会被读成一个词）。
+        assert_eq!(
+            split_clauses("No, I don't."),
+            vec![("No, I don't.".to_string(), 0.0, None)]
+        );
+
+        // 日文：全角句号/顿号/问号，假名与汉字一样按标点切。
+        assert_eq!(
+            split_clauses("こんにちは、今日はいい天気ですね。散歩でもしましょうか？"),
+            vec![
+                ("こんにちは".to_string(), CLAUSE_PAUSE, Some('、')),
+                ("今日はいい天気ですね。".to_string(), SENTENCE_PAUSE, None),
+                ("散歩でもしましょうか？".to_string(), 0.0, None),
+            ]
+        );
+
+        // 韩文：句末是 ASCII 的句号/问号，逗号后面补空格。
+        assert_eq!(
+            split_clauses("안녕하세요, 오늘 날씨가 좋네요. 같이 산책할까요?"),
+            vec![
+                ("안녕하세요".to_string(), CLAUSE_PAUSE, Some(',')),
+                ("오늘 날씨가 좋네요.".to_string(), SENTENCE_PAUSE, None),
+                ("같이 산책할까요?".to_string(), 0.0, None),
+            ]
         );
     }
 
