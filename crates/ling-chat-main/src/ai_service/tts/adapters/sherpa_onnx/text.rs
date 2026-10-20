@@ -18,7 +18,7 @@ const CLAUSE_PUNCT: &[char] = &['，', '、', '；', '：', ',', ';', ':', '—'
 /// 小句之间插多长静音（秒）。取值沿用先前实测的自然句读：句号后 0.4 秒左右、
 /// 逗号后 0.2 秒左右（见 SILENCE_SCALE 的注释）。
 const SENTENCE_PAUSE: f32 = 0.40;
-const CLAUSE_PAUSE: f32 = 0.20;
+pub(super) const CLAUSE_PAUSE: f32 = 0.20;
 
 /// 模型读得出的文字种类，决定 [`strip_unreadable`] 里哪些字符能原样留下。
 ///
@@ -38,7 +38,7 @@ pub(super) struct ReadableScripts {
 
 /// 目标语言是不是某个小写语言代码（设置里的取值是 `zh` / `en` / `ja` / `ko`，
 /// 见 `fields.ts` 的 `sherpa_onnx_lang` 与 [`crate::ai_service::tts::text_language`]）。
-fn is_language(language: &str, code: &str) -> bool {
+pub(super) fn is_language(language: &str, code: &str) -> bool {
     language.trim().eq_ignore_ascii_case(code)
 }
 
@@ -341,6 +341,23 @@ fn next_word_is_lowercase(chars: &[char], dot: usize) -> bool {
         .iter()
         .find(|c| !c.is_whitespace())
         .is_some_and(|c| c.is_ascii_lowercase())
+}
+
+/// 文本里有没有**内部**的从句标点（标点后面还有字）。
+///
+/// 短句合并会把被切掉的标点放回文本中间（见 [`merge_short_clauses`]），这一段交给模型
+/// 一次推理时，模型会在那个逗号后面自己塞静音——kokoro 实测 0.35 秒（英文音色 0.68 秒），
+/// 比我们自己插的 [`CLAUSE_PAUSE`] 长得多。调用处据此把片内静音压回来。
+pub(super) fn has_inner_clause_punct(text: &str) -> bool {
+    let mut seen_punct = false;
+    for c in text.chars() {
+        if CLAUSE_PUNCT.contains(&c) {
+            seen_punct = true;
+        } else if seen_punct && c.is_alphanumeric() {
+            return true;
+        }
+    }
+    false
 }
 
 /// 可念的字数（汉字/字母/数字），不算标点与空白。
