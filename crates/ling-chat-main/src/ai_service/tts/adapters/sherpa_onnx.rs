@@ -66,6 +66,58 @@ const TRAIL_SILENCE_KEEP: f32 = 0.15;
 /// 对齐上游、顺带省一步推理。
 const ZIPVOICE_NUM_STEPS: i32 = 4;
 
+/// ZipVoice 引导强度 `guidance_scale` 的默认值。
+///
+/// 取上游原生默认（`offline-tts-zipvoice-model-config.h`：`guidance_scale = 1.0`），
+/// 也就是不做额外的 CFG 放大。注意它是**模型配置**而不是逐次生成参数：sherpa 在
+/// `OfflineTts::create` 时读进引擎，之后改只能重建适配器（设置页保存会重建）。
+const ZIPVOICE_GUIDANCE_SCALE: f32 = 1.0;
+
+/// 设置页滑动条的范围。越界/缺失的值在 [`SherpaTuning::from_options`] 里收敛到这里，
+/// 免得手改设置文件把引擎调成非法参数（sherpa 对 `num_steps <= 0` 会直接报错）。
+const NUM_STEPS_MIN: i32 = 1;
+const NUM_STEPS_MAX: i32 = 10;
+const GUIDANCE_SCALE_MIN: f32 = 1.0;
+const GUIDANCE_SCALE_MAX: f32 = 10.0;
+
+/// 用户可调的采样参数（设置页「参数」区的两个滑动条）。
+///
+/// 各模型只读自己认识的那部分：`num_steps` 只有 ZipVoice 这类 flow-matching 模型用，
+/// `guidance_scale` 只有 ZipVoice 用；其余模型拿到它们不会出错，只是不起作用。
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct SherpaTuning {
+    /// flow-matching 推理步数（1–10）。
+    pub num_steps: i32,
+    /// 引导强度（1.0–10.0）。
+    pub guidance_scale: f32,
+}
+
+impl Default for SherpaTuning {
+    fn default() -> Self {
+        Self {
+            num_steps: ZIPVOICE_NUM_STEPS,
+            guidance_scale: ZIPVOICE_GUIDANCE_SCALE,
+        }
+    }
+}
+
+impl SherpaTuning {
+    /// 把设置里的原始值（可能缺失、可能是手改出来的越界值）收敛到可用范围。
+    pub fn from_options(num_steps: Option<i32>, guidance_scale: Option<f32>) -> Self {
+        let default = Self::default();
+        Self {
+            num_steps: num_steps
+                .unwrap_or(default.num_steps)
+                .clamp(NUM_STEPS_MIN, NUM_STEPS_MAX),
+            guidance_scale: match guidance_scale {
+                // NaN 会让 clamp 原样返回 NaN，必须先挡掉。
+                Some(v) if v.is_finite() => v.clamp(GUIDANCE_SCALE_MIN, GUIDANCE_SCALE_MAX),
+                _ => default.guidance_scale,
+            },
+        }
+    }
+}
+
 /// 句末标点：在这里切句，标点本身留在小句里（模型据此收尾），后面停 [`SENTENCE_PAUSE`]。
 const SENTENCE_PUNCT: &[char] = &['。', '！', '？', '.', '!', '?', '…'];
 /// 从句标点（逗号、顿号、分号、冒号）：也切句，后面停 [`CLAUSE_PAUSE`]。
@@ -91,6 +143,8 @@ pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
     sid: i32,
     speed: f32,
+    /// 用户调的 flow-matching 推理步数（见 [`SherpaTuning`]）。
+    num_steps: i32,
     model_path: String,
     model_type: String,
     language: String,
@@ -115,6 +169,7 @@ impl SherpaOnnxAdapter {
         language: String,
         voice: String,
         use_gpu: bool,
+        tuning: SherpaTuning,
     ) -> Result<Self> {
         let model_dir = Path::new(&model_path);
         if !model_dir.exists() {
@@ -138,7 +193,7 @@ impl SherpaOnnxAdapter {
                 "matcha" => Self::create_matcha_tts(model_dir, provider),
                 "kokoro" => Self::create_kokoro_tts(model_dir, &language, provider),
                 "kitten" => Self::create_kitten_tts(model_dir, provider),
-                "zipvoice" => Self::create_zipvoice_tts(model_dir, provider),
+                "zipvoice" => Self::create_zipvoice_tts(model_dir, provider, tuning.guidance_scale),
                 "pocket" => Self::create_pocket_tts(model_dir, provider),
                 "supertonic" => Self::create_supertonic_tts(model_dir, provider),
                 other => Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
@@ -176,6 +231,7 @@ impl SherpaOnnxAdapter {
             tts: Some(tts),
             sid: 0,
             speed: 1.0,
+            num_steps: tuning.num_steps,
             model_path,
             model_type,
             language,
@@ -393,7 +449,11 @@ impl SherpaOnnxAdapter {
             .ok_or_else(|| anyhow!("Sherpa-ONNX Kokoro 模型加载失败，请检查模型文件是否完整"))
     }
 
-    fn create_zipvoice_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
+    fn create_zipvoice_tts(
+        model_dir: &Path,
+        provider: Option<&str>,
+        guidance_scale: f32,
+    ) -> Result<OfflineTts> {
         let encoder = find_file(model_dir, &["text_encoder.onnx"])?;
         let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
         let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
@@ -431,7 +491,8 @@ impl SherpaOnnxAdapter {
             feat_scale: 0.1,
             t_shift: 0.5,
             target_rms: 0.1,
-            guidance_scale: 1.0,
+            // 用户可调（设置页「引导强度」），见 ZIPVOICE_GUIDANCE_SCALE。
+            guidance_scale,
         };
 
         let config = OfflineTtsConfig {
@@ -602,7 +663,7 @@ impl TtsAdapter for SherpaOnnxAdapter {
             ..Default::default()
         };
         if self.model_type == "zipvoice" {
-            gen_config.num_steps = ZIPVOICE_NUM_STEPS; // 见 ZIPVOICE_NUM_STEPS
+            gen_config.num_steps = self.num_steps; // 见 ZIPVOICE_NUM_STEPS / SherpaTuning
         }
 
         // 中文文本里数字之间夹的标点先归置：`9:30` 要念「九点三十」、`1,000` 要念
@@ -1859,6 +1920,40 @@ mod tests {
         dir
     }
 
+    /// 设置页两个滑动条的值：缺失 / 越界 / NaN 都要收敛到可用范围，
+    /// 不能让手改过的设置文件把引擎调成 `num_steps = 0` 这种非法参数。
+    #[test]
+    fn tuning_clamps_out_of_range_values() {
+        assert_eq!(SherpaTuning::default().num_steps, 4);
+        assert_eq!(SherpaTuning::default().guidance_scale, 1.0);
+
+        assert_eq!(SherpaTuning::from_options(Some(0), None).num_steps, 1);
+        assert_eq!(SherpaTuning::from_options(Some(99), None).num_steps, 10);
+        assert_eq!(SherpaTuning::from_options(Some(-3), None).num_steps, 1);
+        assert_eq!(
+            SherpaTuning::from_options(None, None),
+            SherpaTuning::default()
+        );
+
+        assert_eq!(
+            SherpaTuning::from_options(None, Some(0.2)).guidance_scale,
+            1.0
+        );
+        assert_eq!(
+            SherpaTuning::from_options(None, Some(42.0)).guidance_scale,
+            10.0
+        );
+        // NaN 会让 clamp 原样返回 NaN，必须先挡掉。
+        assert_eq!(
+            SherpaTuning::from_options(None, Some(f32::NAN)).guidance_scale,
+            1.0
+        );
+        assert_eq!(
+            SherpaTuning::from_options(None, Some(3.5)).guidance_scale,
+            3.5
+        );
+    }
+
     /// 随包音素表读不到（安装包不完整）时报明确的错，而不是静默地念不出声。
     #[test]
     fn zipvoice_missing_bundled_lexicon_errors() {
@@ -1974,6 +2069,7 @@ mod tests {
             "zh".to_string(),
             "female".to_string(),
             false,
+            SherpaTuning::default(),
         )
         .expect("初始化 Sherpa-ONNX 失败");
 
@@ -2028,6 +2124,7 @@ mod tests {
                 "zh".to_string(),
                 "female".to_string(),
                 use_gpu,
+                SherpaTuning::default(),
             )
             .unwrap_or_else(|e| panic!("use_gpu={use_gpu} 初始化失败: {e}"));
 
