@@ -3,7 +3,8 @@
 //! 这一层完全不碰 sherpa：输入是模型要念的台词，输出是一条条可以直接送进
 //! `generate_with_config` 的小句（以及每句之后该停多久）。
 
-use crate::ai_service::tts::adapters::gsv::gsv_emo_category;
+use crate::ai_service::emotion::{self, EmotionClassifier};
+use crate::ai_service::tts::adapters::gsv::{gsv_emo_category, known_emo_category};
 
 /// 句末标点：在这里切句，标点本身留在小句里（模型据此收尾），后面停 [`SENTENCE_PAUSE`]。
 const SENTENCE_PUNCT: &[char] = &['。', '！', '？', '.', '!', '?', '…'];
@@ -224,6 +225,36 @@ pub(super) fn emotion_prosody(emo: &str) -> (f32, f32) {
     }
 }
 
+/// 把「本次要念的情绪」解析成词典里的情绪词，供 [`emotion_prosody`] 使用。
+///
+/// 对话/剧本主链路上游给的是**情绪模型的输出**（`EmotionSegment.predicted`，见
+/// [`crate::ai_service::tts::voice_maker`]），本身就在词典里，直接沿用；只有
+/// **上游没给**（试听/预览传空串）或**给的不是情绪词**（英文标签、「AI思考」
+/// 之类）时，才把正文交给情绪模型补一次预测——这样试听与对话走的是同一套
+/// 情绪→韵律映射，而不是试听恒等于中立。
+///
+/// `classifier` 就是 [`crate::ai_service::emotion::global_classifier`]（调用方传进来，
+/// 方便单测注入一个真模型）。分类器为 `None`（配置里禁用 / 模型没下载 / 没注册）
+/// 时保留原值，由 [`emotion_prosody`] 归到中立，也就是退回改动前的行为。
+pub(super) fn resolve_emotion(
+    emo: &str,
+    text: &str,
+    classifier: Option<&EmotionClassifier>,
+) -> String {
+    let emo = emo.trim();
+    if !emo.is_empty() && known_emo_category(emo).is_some() {
+        return emo.to_string();
+    }
+    let predicted = classifier.and_then(|clf| emotion::classify_with(clf, text));
+    match predicted {
+        Some(label) => {
+            tracing::debug!("情绪「{emo}」不在词典里，按正文预测为「{label}」");
+            label
+        },
+        None => emo.to_string(),
+    }
+}
+
 /// 切出来的小句：文本、之后停多久（秒）、以及**被切掉的那个从句标点**（没有就是
 /// `None`）。
 ///
@@ -422,6 +453,7 @@ fn join_clauses(prev: &str, prev_punct: Option<char>, next: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::Path;
 
     /// 符号换成空格：句末标点保留，从句标点（逗号/顿号/分号/冒号）也保留（短句合并
     /// 之后要靠它给停顿），`~`/`♪`/emoji 不再被 espeak 兜底念成英文（ASCII `~` 会被
@@ -749,5 +781,61 @@ mod tests {
         assert_eq!(emotion_prosody("害怕"), emotion_prosody("恐惧"));
         assert_eq!(emotion_prosody("惊讶"), emotion_prosody("吃惊"));
         assert_eq!(emotion_prosody("哭泣"), emotion_prosody("难过"));
+    }
+
+    /// 情绪缺失或不在词典里时，用情绪模型对正文补一次预测；拿不到分类器就退回中立。
+    #[test]
+    fn resolves_unknown_emotion_from_text() {
+        // 词典命中的情绪原样沿用，不会去动情绪模型（对话主链路的常态：
+        // 上游给的就是情绪模型的输出）。这里故意传一个「不该被用到」的
+        // 分类器位：命中的词根本不会走到模型。
+        assert_eq!(resolve_emotion("开心", "这只是一句正文", None), "开心");
+        assert_eq!(resolve_emotion(" 平静 ", "这只是一句正文", None), "平静");
+        assert_eq!(resolve_emotion("伤心", "这只是一句正文", None), "伤心");
+
+        // 没有分类器时保留原值 → 韵律归中立，也就是改动前的行为；绝不能 panic。
+        assert_eq!(resolve_emotion("", "今天真开心", None), "");
+        assert_eq!(
+            emotion_prosody(&resolve_emotion("", "今天真开心", None)),
+            (1.0, 1.0)
+        );
+        assert_eq!(resolve_emotion("neutral", "今天真开心", None), "neutral");
+    }
+
+    /// 真模型跑一遍：情绪缺失时按正文预测，且结果是词典里的情绪标签。
+    ///
+    /// 模型文件随包发布（`data/third_party/emotion_model_19emo/`），CI/别人机器上
+    /// 没下载时跳过——这个测试保证的是「接线对了」，不是某个具体预测结果。
+    #[test]
+    fn predicts_emotion_from_text_with_real_model() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/third_party/emotion_model_19emo");
+        if !dir.join("model.onnx").exists() {
+            eprintln!("跳过：{} 里没有情绪模型", dir.display());
+            return;
+        }
+        let classifier = EmotionClassifier::load(&dir).expect("加载情绪模型失败");
+
+        // 上游没给情绪 → 按正文预测，结果必须在词典里（否则韵律又会退回中立）。
+        let label = resolve_emotion(
+            "",
+            "我今天特别开心，终于把这件事做完了！",
+            Some(&classifier),
+        );
+        assert!(
+            known_emo_category(&label).is_some(),
+            "按正文预测出词典外的情绪: {label}"
+        );
+        eprintln!("「我今天特别开心，终于把这件事做完了！」→ {label}");
+
+        // 词典命中的情绪仍然优先，不会被模型改写（对话主链路的行为不变）。
+        assert_eq!(
+            resolve_emotion("难过", "我今天特别开心！", Some(&classifier)),
+            "难过"
+        );
+
+        // 禁用状态（没加载模型）的透传不能被当成情绪：此时应保留原值。
+        let disabled = EmotionClassifier::disabled();
+        assert_eq!(resolve_emotion("", "我今天特别开心！", Some(&disabled)), "");
     }
 }

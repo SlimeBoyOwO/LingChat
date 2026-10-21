@@ -28,7 +28,7 @@ use audio::{
 use engine::{kokoro_sid, model_reads_latin, needs_digit_normalization};
 use text::{
     CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
-    readable_scripts, reads_han_as_chinese, split_clauses, strip_unreadable,
+    readable_scripts, reads_han_as_chinese, resolve_emotion, split_clauses, strip_unreadable,
 };
 
 /// 本次编译链接进来的 sherpa-onnx 把哪个执行提供方编进去了：`dml`（Windows DirectML
@@ -302,8 +302,15 @@ impl TtsAdapter for SherpaOnnxAdapter {
             .as_ref()
             .ok_or_else(|| anyhow!("Sherpa-ONNX 引擎未初始化"))?;
 
-        // 情绪没有模型级入口（见 emotion_prosody），只调语速和标点停顿。
-        let (speed_mul, pause_mul) = emotion_prosody(emo);
+        // 情绪没有模型级入口（见 emotion_prosody），只调语速和标点停顿。上游给的
+        // 通常是情绪模型的输出；为空或不认识时在这里对正文补一次预测（见
+        // resolve_emotion），所以试听这类没有情绪标签的入口也能走情绪。
+        let emotion = resolve_emotion(
+            emo,
+            text,
+            crate::ai_service::emotion::global_classifier().map(|classifier| classifier.as_ref()),
+        );
+        let (speed_mul, pause_mul) = emotion_prosody(&emotion);
 
         let mut gen_config = GenerationConfig {
             sid: self.sid,
