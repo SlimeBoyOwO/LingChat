@@ -148,6 +148,12 @@ pub(super) fn build_service_graph(
     ));
 
     let classifier = load_emotion_classifier(app_config.enable_emotion_classifier, &data_dir);
+    // TTS 适配器（sherpa-onnx）也要用情绪模型：上游没给情绪（试听/预览传空）或给的
+    // 不是情绪词时，按正文补一次预测。适配器是按角色懒加载构造的，拿不到这里的
+    // Arc，所以额外注册一份进程级句柄。
+    if let Some(classifier) = classifier.as_ref() {
+        ling_chat_main::ai_service::emotion::set_global_classifier(classifier.clone());
+    }
     let processor = Arc::new(MessageProcessor::new(
         ProcessorOptions {
             time_sense_enabled: app_config.enable_time_sense,
