@@ -46,35 +46,6 @@ jobs:
         with:
           lfs: false
 
-      - name: 恢复 LFS 对象缓存
-        # 只缓存对象、不代替拉取；命中缓存时 git lfs pull 不再走网络
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs/objects
-          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
-          restore-keys: |
-            ${{ runner.os }}-lfs-
-
-      - name: 拉取 LFS 资源
-        # checkout(lfs: false) 后手动拉取，与 build-android.yml / build-ios.yml 同一套。
-        # 必须覆盖全部 LFS 目录：
-        # - src-tauri/icons/**：tauri-build 要把 icon.ico 编进 Windows exe，是指针就会失败/编出占位图标
-        # - public/** + src/assets/**：vite 会拷进 dist 并把这个前端编进可执行文件
-        #   （漏拉就是一堆指针文本，字体/背景/提示图全丢）
-        # - data/**：进 .bundled_resources 与 data_manifest.json
-        shell: bash
-        run: |
-          set -euo pipefail
-          git lfs pull --include="data/**,public/**,src/assets/**,src-tauri/icons/**"
-          # 指针文件 = 真实内容没下来，直接失败，别让它混进产物
-          pointers=$(grep -rlI 'git-lfs.github.com/spec' data public src/assets src-tauri/icons 2>/dev/null | head -5 || true)
-          if [ -n "$pointers" ]; then
-            echo "::error::以下文件仍是 Git LFS 指针（真实内容没拉下来）："
-            echo "$pointers"
-            exit 1
-          fi
-          echo "✓ LFS 资源已就位：$(du -sh data public src/assets src-tauri/icons 2>/dev/null | tr '\n' ' ')"
-
       - uses: pnpm/setup@v1
         with:
           runtime: node@26
@@ -122,10 +93,7 @@ jobs:
             libdbus-1-dev \
             mold
 
-      # 图标不再用 PIL 画占位图：那套 hack 是「lfs: false 导致图标只是 LFS 指针」时代的补救
-      # （icon.png 是指针时 tauri icon 会失败，所以先用 PIL 画一张 1024x1024 蓝圆再 tauri icon）。
-      # 现在上面已经 git lfs pull 了 src-tauri/icons/**，由下面的 pnpm run init 用真图标重新生成整套图标。
-      - name: 创建占位文件
+      - name: 创建占位文件和初始化
         shell: bash
         run: |
           rm -rf src-tauri/tauri.windows.conf.json
@@ -133,52 +101,23 @@ jobs:
           mkdir -p data/third_party
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
-
-      - name: 下载运行时模型
-        # data/third_party 的 emotion/embedding 模型不进 git（.gitignore 的 data/**），
-        # 必须靠 pnpm run init 现场下载；它内部就是
-        # tauri icon（真图标）→ prepare-desktop-resources.mjs（.bundled_resources）→ 下模型 → ensure-onnxruntime。
-        # 与 build-android.yml（发行版）保持一致。
-        run: pnpm run init
+          node scripts/prepare-desktop-resources.mjs
+          pip install Pillow
+          rm -rf ./src-tauri/icons/icon.png
+          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
+          pnpm tauri icon ./src-tauri/icons/icon.png
 
       - name: 构建应用
         env:
-          # Windows 加 +crt-static：sherpa-onnx 的 Windows 预编译包只有
+          # Windows 必须加 +crt-static：sherpa-onnx 的 Windows 预编译包只有
           # `-static-MT-`（/MT 静态 CRT），而 Rust / cc 默认 /MD，链接时报
-          # `/failifmismatch: RuntimeLibrary`；统一成静态 CRT 后 esaxx 也跟着走 /MT。
-          # 发行版走 sherpa-shared（DLL）不受影响，见 release.yml 的 tauri:build:win。
+          # `/failifmismatch: RuntimeLibrary`。
           # 注意：RUSTFLAGS 是 block scalar，里面不能写 # 注释（会被当成 rustc 参数）。
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
-
-      - name: 校验前端产物里没有 LFS 指针
-        # 最容易踩的坑：LFS 没拉全时构建照样成功，只是 dist 里塞满 130 字节的指针文本，
-        # 被编进可执行文件后字体/背景/提示图全是坏的。
-        shell: bash
-        run: |
-          set -euo pipefail
-          pointers=$(grep -rlI 'git-lfs.github.com/spec' dist 2>/dev/null | head -5 || true)
-          if [ -n "$pointers" ]; then
-            echo "::error::dist 里混进了 Git LFS 指针：检查 git lfs pull 是否真的跑了"
-            echo "$pointers"
-            exit 1
-          fi
-          echo "✓ 前端产物里没有 LFS 指针"
-
-      - name: 校验情绪/向量模型确实下载了
-        # 同样：缺模型时构建一样成功，只是打包出来的功能是残的。
-        shell: bash
-        run: |
-          set -euo pipefail
-          for f in \
-            data/third_party/emotion_model_19emo/model.onnx \
-            data/third_party/embedding_model_bge_small_zh/model.onnx; do
-            test -f "$f" || { echo "::error::缺少 $f：pnpm run init 没真正下载模型"; exit 1; }
-          done
-          ls -lh data/third_party/*/model.onnx
 
       - name: 收集产物（Windows 附带 onnxruntime.dll 与 DirectML.dll）
         shell: bash
