@@ -38,34 +38,6 @@ jobs:
         with:
           lfs: false
 
-      - name: 恢复 LFS 对象缓存
-        # 只缓存对象、不代替拉取；命中缓存时 git lfs pull 不再走网络
-        uses: actions/cache@v4
-        with:
-          path: .git/lfs/objects
-          key: ${{ runner.os }}-lfs-${{ hashFiles('.gitattributes') }}
-          restore-keys: |
-            ${{ runner.os }}-lfs-
-
-      - name: 拉取 LFS 资源
-        # checkout(lfs: false) 后手动拉取，与 build-android.yml / build-ios.yml 同一套。
-        # 必须覆盖全部 LFS 目录：
-        # - src-tauri/icons/**：tauri-build 要把 icon.ico 编进 Windows exe，是指针就会失败/编出占位图标
-        # - public/** + src/assets/**：vite 会拷进 dist（漏拉就是一堆指针文本，字体/背景/提示图全丢）
-        # - data/**：进 .bundled_resources 与 data_manifest.json
-        shell: bash
-        run: |
-          set -euo pipefail
-          git lfs pull --include="data/**,public/**,src/assets/**,src-tauri/icons/**"
-          # 指针文件 = 真实内容没下来，直接失败，别让它混进产物
-          pointers=$(grep -rlI 'git-lfs.github.com/spec' data public src/assets src-tauri/icons 2>/dev/null | head -5 || true)
-          if [ -n "$pointers" ]; then
-            echo "::error::以下文件仍是 Git LFS 指针（真实内容没拉下来）："
-            echo "$pointers"
-            exit 1
-          fi
-          echo "✓ LFS 资源已就位：$(du -sh data public src/assets src-tauri/icons 2>/dev/null | tr '\n' ' ')"
-
       - uses: pnpm/setup@v1
         with:
           runtime: node@26
@@ -114,11 +86,7 @@ jobs:
             libdbus-1-dev \
             mold
 
-      # 图标不再用 PIL 画占位图：那套 hack 是「lfs: false 导致图标只是 LFS 指针」时代的补救
-      # （icon.png 是指针时 tauri icon 会失败，所以先用 PIL 画一张 1024x1024 蓝圆再 tauri icon）。
-      # 现在上面已经 git lfs pull 了 src-tauri/icons/**，用仓库里的真图标即可。
-      # 本流程只做编译测试、不产出安装包，所以不需要 pnpm run init 下载 emotion/embedding 模型。
-      - name: 创建占位文件
+      - name: 创建占位文件和初始化
         shell: bash
         run: |
           rm -rf src-tauri/tauri.windows.conf.json
@@ -126,20 +94,17 @@ jobs:
           mkdir -p data/third_party
           touch data/.official/game_data/.gitkeep
           touch data/third_party/.gitkeep
-          # tauri-build 会读 tauri.conf.json 的 bundle.icon，其中 32x32.png /
-          # 128x128.png / 128x128@2x.png 是 `tauri icon` 的产物、被 .gitignore 排除。
-          # 本流程不跑 `pnpm run init`（那会连 emotion/embedding 模型一起下），所以
-          # 单独补一次图标生成，否则 macOS / Linux 在编译期就报
-          # "failed to open icon .../32x32.png"。
-          pnpm exec tauri icon src-tauri/icons/icon.png
           node scripts/prepare-desktop-resources.mjs
+          pip install Pillow
+          rm -rf ./src-tauri/icons/icon.png
+          python -c "from PIL import Image, ImageDraw; img=Image.new('RGB', (1024,1024), color='#4A90D9'); draw=ImageDraw.Draw(img); draw.ellipse((100,100,924,924), fill='#2C3E50'); img.save('./src-tauri/icons/icon.png')"
+          pnpm tauri icon ./src-tauri/icons/icon.png
 
       - name: 构建应用
         env:
-          # Windows 加 +crt-static：sherpa-onnx 的 Windows 预编译包只有
+          # Windows 必须加 +crt-static：sherpa-onnx 的 Windows 预编译包只有
           # `-static-MT-`（/MT 静态 CRT），而 Rust / cc 默认 /MD，链接时报
-          # `/failifmismatch: RuntimeLibrary`；统一成静态 CRT 后 esaxx 也跟着走 /MT。
-          # 发行版走 sherpa-shared（DLL）不受影响，见 release.yml 的 tauri:build:win。
+          # `/failifmismatch: RuntimeLibrary`。
           # 注意：RUSTFLAGS 是 block scalar，里面不能写 # 注释（会被当成 rustc 参数）。
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}

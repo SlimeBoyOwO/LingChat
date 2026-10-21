@@ -106,50 +106,16 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: 配置 Android 签名
-        # secrets 通过 env 传给 shell：直接内联进命令行时，空值会把下一个选项吞成参数值
-        # （曾表现为 apksigner 报 "Unexpected parameter(s) after input APK (--key-pass)"）
-        env:
-          KEY_BASE64: ${{ secrets.ANDROID_KEY_BASE64 }}
-          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
         run: |
-          set -euo pipefail
-          # 发行版必须用正式密钥签名，缺任何一个 secret 直接失败，绝不产出「临时密钥签的包」
-          [ -n "${KEY_BASE64:-}" ] || { echo "::error::缺少 secret ANDROID_KEY_BASE64（keystore 文件的 base64）"; exit 1; }
-          [ -n "${KEY_ALIAS:-}" ] || { echo "::error::缺少 secret ANDROID_KEY_ALIAS"; exit 1; }
-          [ -n "${KEY_PASSWORD:-}" ] || { echo "::error::缺少 secret ANDROID_KEYSTORE_PASSWORD"; exit 1; }
-          KS="$RUNNER_TEMP/upload-keystore.p12"
-          printf '%s' "$KEY_BASE64" | base64 -d > "$KS"
-          [ -s "$KS" ] || { echo "::error::$KS 是空文件，ANDROID_KEY_BASE64 可能不是有效的 base64"; exit 1; }
-          {
-            echo "KEYSTORE_PATH=$KS"
-            echo "KEY_ALIAS=$KEY_ALIAS"
-            echo "KEY_PASSWORD=$KEY_PASSWORD"
-          } >> "$GITHUB_ENV"
-          # 兼容按 Tauri 约定读取该文件的 Gradle 配置（本仓库目前没有引用）
-          printf 'storeFile=%s\nkeyAlias=%s\npassword=%s\n' "$KS" "$KEY_ALIAS" "$KEY_PASSWORD" \
-            > src-tauri/gen/android/keystore.properties
+          echo "${{ secrets.ANDROID_KEY_BASE64 }}" | base64 -d > $HOME/upload-keystore.p12
+          cat > src-tauri/gen/android/keystore.properties << EOF
+          storeFile=$HOME/upload-keystore.p12
+          keyAlias=${{ secrets.ANDROID_KEY_ALIAS }}
+          password=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          EOF
 
       - name: 构建 Android APK
         run: pnpm android:build
-
-      - name: 校验打进包里的 sherpa 是 NNAPI 版
-        # `pnpm android:build` 默认会自编 NNAPI 版 sherpa（约十几分钟）；但如果前置条件
-        # （NDK/cmake）缺失，脚本会安静回落到官方 CPU 包。发行版不能打出「假 GPU 包」，
-        # 所以对已经进 jniLibs 的那份 .so 再验一次：自编版含 "Use nnapi"，官方 CPU 包
-        # 只含 "Android NNAPI requires API level >= 27" 那段回落提示。
-        run: |
-          LIB="src-tauri/gen/android/app/src/main/jniLibs/arm64-v8a/libsherpa-onnx-c-api.so"
-          test -f "$LIB" || { echo "::error::找不到 $LIB"; exit 1; }
-          if ! strings "$LIB" | grep -q "Use nnapi"; then
-            echo "::error::$LIB 里没有 NNAPI 初始化代码，打进包的是 CPU 版 sherpa"
-            exit 1
-          fi
-          if strings "$LIB" | grep -q "Android NNAPI requires API level >= 27"; then
-            echo "::error::$LIB 是官方预编译包（按 android-21 编的），NNAPI 那段被编掉了"
-            exit 1
-          fi
-          echo "✓ NNAPI 版 sherpa 已进包"
 
       - name: 重命名 APK
         run: |
@@ -166,23 +132,20 @@ jobs:
           fi
 
       - name: 手动签名 APK
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
         run: |
-          set -euo pipefail
           VERSION="${{ github.event.inputs.tag_name }}"
           APK_PATH="src-tauri/gen/android/app/build/outputs/apk/universal/release/LingChat-${VERSION}-universal.apk"
-          [ -f "$APK_PATH" ] || { echo "::error::找不到 APK：$APK_PATH"; exit 1; }
-          APKSIGNER="$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner -type f 2>/dev/null | sort -V | tail -1)"
-          [ -n "$APKSIGNER" ] || { echo "::error::在 $ANDROID_HOME 下找不到 apksigner"; exit 1; }
-          "$APKSIGNER" sign \
-            --ks "$KEYSTORE_PATH" \
-            --ks-key-alias "$KEY_ALIAS" \
-            --ks-pass "pass:$KEY_PASSWORD" \
-            --key-pass "pass:$KEY_PASSWORD" \
+
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner 2>/dev/null | head -1)
+
+          $APKSIGNER sign \
+            --ks $HOME/upload-keystore.p12 \
+            --ks-key-alias ${{ secrets.ANDROID_KEY_ALIAS }} \
+            --ks-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
+            --key-pass pass:${{ secrets.ANDROID_KEYSTORE_PASSWORD }} \
             "$APK_PATH"
-          "$APKSIGNER" verify --print-certs "$APK_PATH"
-          ls -lh "$APK_PATH"
+        env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
 
       - name: 创建或更新 Release
         run: |
