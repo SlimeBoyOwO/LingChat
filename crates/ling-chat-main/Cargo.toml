@@ -144,6 +144,10 @@ sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
 # 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
+# sherpa-onnx 的 sys 包里有 `linux-aarch64-static-lib` 的官方预编译包，之前只在
+# x86_64 / macOS / Android 下声明了依赖，arm64 Linux 构建直接 unresolved import。
+sherpa-onnx = { version = "=1.13.5", default-features = false }
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
