@@ -145,7 +145,11 @@ jobs:
         env:
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
-            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            # sherpa-onnx 的 Windows 预编译包只有 `-static-MT-`（/MT 静态 CRT），
+            # 而 Rust 默认 /MD，链接时报 `/failifmismatch: RuntimeLibrary`。这里统一
+            # 静态 CRT（esaxx 也会跟着 cc 的 crt-static 走 /MT）。发行版走
+            # sherpa-shared（DLL）不受影响，见 release.yml 的 tauri:build:win。
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 
