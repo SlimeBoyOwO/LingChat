@@ -16,21 +16,44 @@ use crate::ai_service::tts::provider::TtsAdapter;
 /// 的配置键。
 pub const GSV_EMO_CATEGORIES: [&str; 6] = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"];
 
-/// 把情绪映射到六分类。映射已与 `utils/prompt.rs` 的提示词情绪清单对齐：
-/// 慌张、担心、尴尬、紧张、高兴、自信、害怕、害羞、认真、生气、无语、
-/// 厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮、平静；并保留前端立绘
-/// 槽位中的 兴奋/心动/无奈/正常 等变体。未识别情绪一律归入中立。
+/// 把情绪映射到六分类；词典里没有的词一律归入中立。
+///
+/// 需要区分「词典命中的中立」和「根本不认识」时用 [`known_emo_category`]。
 pub fn gsv_emo_category(emo: &str) -> &'static str {
-    match emo {
+    known_emo_category(emo).unwrap_or("中立")
+}
+
+/// 情绪词 → 六分类；**不在词典里**时返回 `None`。
+///
+/// 词典 = 六分类名本身（`吃惊/开心/恐惧/难过/生气/中立`，GSV 试听下拉与立绘槽位都会
+/// 直接给分类名，所以这个映射对它们必须幂等）+ 情绪模型 19 类的标签名（见
+/// `emotion_model_19emo/label_mapping.json`：兴奋、厌恶、哭泣、害怕、害羞、平静、
+/// 心动、惊讶、慌张、担心、无奈、生气、疑惑、紧张、自信、认真、调皮、难为情、
+/// 高兴）+ 提示词清单里的同义变体（慌张、担心、尴尬、紧张、高兴、自信、害怕、
+/// 害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮、平静）
+/// + 前端立绘槽位的变体（兴奋/心动/无奈/正常）+ 立绘别名（见
+/// `docs/character-editor.md`：哭泣 ↔ 伤心、难为情 ↔ 羞耻）。
+///
+/// sherpa-onnx 用它判断「上游给的情绪到底认不认识」：不认识就拿正文去问
+/// 情绪模型（见 `sherpa_onnx::text::resolve_emotion`）。
+pub fn known_emo_category(emo: &str) -> Option<&'static str> {
+    for category in GSV_EMO_CATEGORIES {
+        if category == emo {
+            return Some(category);
+        }
+    }
+    Some(match emo {
         "惊讶" | "慌张" => "吃惊",
         // 「情动」为分类器/提示词用名，与前端立绘的「心动」同义
         "高兴" | "兴奋" | "心动" | "情动" | "调皮" | "害羞" | "自信" => "开心",
         "害怕" | "紧张" | "担心" => "恐惧",
-        "哭泣" | "无奈" | "尴尬" | "无语" | "难为情" => "难过",
+        // 伤心/羞耻是立绘别名（哭泣 ↔ 伤心、难为情 ↔ 羞耻），归到同一类
+        "哭泣" | "伤心" | "羞耻" | "无奈" | "尴尬" | "无语" | "难为情" => "难过",
         "生气" | "厌恶" => "生气",
-        // 正常/平静/认真/疑惑 及未识别情绪
-        _ => "中立",
-    }
+        // 明确的中立词：模型标签（平静/认真/疑惑）与提示词/立绘用词（中立/正常）
+        "中立" | "正常" | "平静" | "认真" | "疑惑" => "中立",
+        _ => return None,
+    })
 }
 
 #[derive(Debug, Clone)]
@@ -249,5 +272,75 @@ mod tests {
         // 未知情绪（分类器输出的英文等标签）回退中立
         assert_eq!(gsv_emo_category("AI思考"), "中立");
         assert_eq!(gsv_emo_category("neutral"), "中立");
+    }
+
+    #[test]
+    fn known_emo_category_recognizes_all_model_labels() {
+        // 情绪模型 19 类的标签名（label_mapping.json 的 id2label）。
+        // 这 19 个词必须全部命中词典，否则 sherpa-onnx 会把模型输出当成
+        // 「不认识」再拿正文去猜一遍（见 sherpa_onnx::text::resolve_emotion）。
+        for label in [
+            "兴奋",
+            "厌恶",
+            "哭泣",
+            "害怕",
+            "害羞",
+            "平静",
+            "心动",
+            "惊讶",
+            "慌张",
+            "担心",
+            "无奈",
+            "生气",
+            "疑惑",
+            "紧张",
+            "自信",
+            "认真",
+            "调皮",
+            "难为情",
+            "高兴",
+        ] {
+            assert!(
+                known_emo_category(label).is_some(),
+                "情绪模型标签 {label} 没进词典"
+            );
+        }
+    }
+
+    #[test]
+    fn known_emo_category_recognizes_avatar_slot_emotions() {
+        // 立绘差分槽位的情绪名（api/character/avatars.rs 的 EMOTIONS，去掉「头像」）
+        // 与角色设置页试听下拉（VoicePreview.vue 的 emotions）里的词，都必须命中
+        // 词典——否则用户明确选的情绪会被「按正文重猜」覆盖掉。
+        for label in [
+            "正常", "平静", "厌恶", "高兴", "担心", "生气", "紧张", "害怕", "害羞", "慌张", "认真",
+            "无奈", "兴奋", "疑惑", "伤心", "心动", "调皮", "羞耻", "自信", "惊讶",
+        ] {
+            assert!(
+                known_emo_category(label).is_some(),
+                "立绘/试听里的情绪 {label} 没进词典"
+            );
+        }
+        // 立绘别名（哭泣 ↔ 伤心、难为情 ↔ 羞耻）与本体同类
+        assert_eq!(known_emo_category("伤心"), Some("难过"));
+        assert_eq!(known_emo_category("羞耻"), Some("难过"));
+    }
+
+    #[test]
+    fn known_emo_category_separates_neutral_from_unknown() {
+        // 六分类名 → 幂等（GSV 试听下拉直接给的就是这六个词）
+        for category in GSV_EMO_CATEGORIES {
+            assert_eq!(known_emo_category(category), Some(category), "{category}");
+            assert_eq!(gsv_emo_category(category), category, "{category}");
+        }
+        // 词典里的中立词 → Some("中立")；没见过的词 → None
+        for neutral in ["中立", "正常", "平静", "认真", "疑惑"] {
+            assert_eq!(known_emo_category(neutral), Some("中立"), "{neutral}");
+        }
+        for unknown in ["AI思考", "neutral", "", "快乐"] {
+            assert_eq!(known_emo_category(unknown), None, "{unknown}");
+        }
+        // 未知词的老行为不变：分类仍是中立
+        assert_eq!(gsv_emo_category("快乐"), "中立");
     }
 }
