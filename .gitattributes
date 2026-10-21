@@ -32,9 +32,9 @@
 # 提示词文本：include_str! 编译期逐字节嵌入二进制，换行符必须固定 LF
 crates/ling-chat-main/src/ai_service/skill_agent/prompts/** text eol=lf
 
-# ZipVoice 音素表：同上，CRLF 会让行尾音素带上 \r 而全部查不到
-# （现在随 data/ 打包，不再 include_str!，但写回模型目录的副本仍按字节拷贝）
-data/third_party/zipvoice/lexicon-zh-en.txt text eol=lf
+# ZipVoice 音素表：走 LFS（1.7MB 文本，只有 ZipVoice 用得上）。`-text` 让检出时
+# 不做行尾转换——CRLF 会让行尾音素带上 \r 而全部查不到（写回模型目录的副本按字节拷贝）。
+data/third_party/zipvoice/lexicon-zh-en.txt filter=lfs diff=lfs merge=lfs -text
 
 # MC 桥接模组：Java/Gradle 惯例 LF；gradlew 无扩展名，不显式声明会被 autocrlf 检出成 CRLF
 extension/maid_mod/gradlew text eol=lf

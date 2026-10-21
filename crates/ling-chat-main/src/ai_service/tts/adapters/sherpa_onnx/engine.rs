@@ -577,10 +577,14 @@ fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
 /// 没必要让每个构建产物都背上它。
 const ZIPVOICE_LEXICON_REL_PATH: &str = "third_party/zipvoice/lexicon-zh-en.txt";
 
+/// Git LFS 指针文件的头一行。文件走 LFS 之后，没 `git lfs pull` 的仓库里就是这份
+/// 130 字节的文本——直接当音素表读，每个字都会变成 OOV，报错却只说「不匹配」。
+const LFS_POINTER_HEADER: &str = "version https://git-lfs.github.com/spec/v1";
+
 /// 读取随包的中英音素表，行尾统一成 LF。
 ///
-/// 行尾必须干净：`\r` 会被当成音素的一部分而全部查不到（`.gitattributes` 已固定
-/// 该文件 LF，这里再兜一层——手工拷贝过的副本可能不是）。
+/// 行尾必须干净：`\r` 会被当成音素的一部分而全部查不到（`.gitattributes` 用 LFS 的
+/// `-text` 保证检出时不做行尾转换，这里再兜一层——手工拷贝过的副本可能不是）。
 fn bundled_zipvoice_lexicon(data_dir: &Path) -> Result<String> {
     let path = data_dir.join(ZIPVOICE_LEXICON_REL_PATH);
     let text = std::fs::read_to_string(&path).map_err(|e| {
@@ -589,6 +593,12 @@ fn bundled_zipvoice_lexicon(data_dir: &Path) -> Result<String> {
             path.display()
         )
     })?;
+    if text.starts_with(LFS_POINTER_HEADER) {
+        return Err(anyhow!(
+            "随包 ZipVoice 音素表还是 Git LFS 指针（{}），先执行 `git lfs pull`",
+            path.display()
+        ));
+    }
     Ok(if text.contains('\r') {
         text.replace("\r\n", "\n")
     } else {
@@ -873,6 +883,31 @@ mod tests {
         assert_eq!(
             std::fs::read_to_string(&path).expect("读取 lexicon 失败"),
             "好 h0 ao3\n"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 仓库没跑 `git lfs pull` 时，随包音素表只是 LFS 指针：要报「先 git lfs pull」，
+    /// 而不是一句「音素与 tokens.txt 不匹配」。
+    #[test]
+    fn zipvoice_lfs_pointer_is_reported_as_such() {
+        let dir = std::env::temp_dir().join(format!("lingchat-lfs-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let lex_dir = dir.join("third_party/zipvoice");
+        std::fs::create_dir_all(&lex_dir).expect("建临时 data 目录失败");
+        std::fs::write(
+            lex_dir.join("lexicon-zh-en.txt"),
+            "version https://git-lfs.github.com/spec/v1\n\
+             oid sha256:c94b049d970e971acdc2a7e5e7b23ca594222a9d640e417c711f2ad1e7bb7d46\n\
+             size 1727147\n",
+        )
+        .expect("写 LFS 指针失败");
+
+        let err = bundled_zipvoice_lexicon(&dir).expect_err("指针文件应报错");
+        assert!(
+            err.to_string().contains("git lfs pull"),
+            "错误信息应提示 git lfs pull: {err}"
         );
 
         let _ = std::fs::remove_dir_all(&dir);
