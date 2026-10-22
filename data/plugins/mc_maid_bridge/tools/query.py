@@ -2,9 +2,9 @@
 
 from plugin_host import capture_screen
 
-from bridge import config, ready
+from bridge import ask, config, ready
 from naming import names
-from tools.common import LOOK_TIMEOUT_MS
+from tools.common import LOOK_TIMEOUT_MS, STATE_TIMEOUT_MS
 from tools.context import LOOK_AROUND_TOOL, creature_text, owner_phrase, snapshot
 from wording import (
     BLOCK_NAMES,
@@ -14,6 +14,7 @@ from wording import (
     STRUCTURE_NAMES,
     VEHICLE_NAMES,
     as_int,
+    blocker_phrase,
     item_name,
     name_of,
     nearness_place,
@@ -59,6 +60,12 @@ def _see_screen(ctx):
     只在这一轮生效、不进长期记忆。抓不到就如实说，别让模型照着想象编。
     """
     maid, player = names()
+    # 昏迷或死亡时她看不见玩家的屏幕；问一句模组，问不到（游戏暂停）就照常抓
+    state, error = ask({"type": "maid_state", "data": {}}, STATE_TIMEOUT_MS)
+    if not error and state and state.get("type") == "maid_state_result":
+        data = state.get("data") or {}
+        if data.get("known") and (data.get("dead") or data.get("unconscious")):
+            return {"ok": False, "error": f"{maid}现在不省人事，看不到{player}屏幕上的画面"}
     window = (config(ctx).get("screen_window") or "").strip()
     shot = capture_screen(window=window or DEFAULT_SCREEN_WINDOW)
     if not shot.get("ok"):
@@ -77,7 +84,7 @@ def _see_screen(ctx):
 
 
 def _look_around_text(data):
-    """她身边这一圈，说成几句事实：站位与头顶 → 正前方 → 最近一块的关系
+    """她身边这一圈，说成几句事实：姿势与站位 → 头顶 → 正前方 → 最近一块的关系
     → 成团清单 → 方块清单 → 问路小图 → 背包 → 玩家 → 活物。
 
     活物与正前方仍只说近 / 中 / 远；方块的方位与步数是模组算好的关系，只在被问到
@@ -98,7 +105,7 @@ def _look_around_text(data):
         lines = [f"{seat}，{roof}。" if roof else f"{seat}。"]
     else:
         place = "，".join(one for one in (f"脚下踩着{foot}", roof) if one)
-        lines = [f"{maid}正站在{dimension}，{place}。"]
+        lines = [f"{_posture_subject(data, maid, dimension)}，{place}。"]
     structure = (data.get("structure") or "").strip()
     if structure:
         lines.append(f"这里是一处{name_of(STRUCTURE_NAMES, structure, '结构')}。")
@@ -178,6 +185,18 @@ def _look_around_text(data):
     return "".join(lines)
 
 
+def _posture_subject(data, maid, dimension):
+    """她此刻是什么姿势：坐着、睡着、躺在地上时不能再说「正站在」。"""
+    posture = (data.get("posture") or "").strip()
+    if posture == "lying":
+        return f"{maid}正躺在地上"
+    if posture == "sitting":
+        return f"{maid}正坐着"
+    if posture == "sleeping":
+        return f"{maid}正睡着"
+    return f"{maid}正站在{dimension}"
+
+
 def _pick_relation(relations):
     """最近那一块：优先此刻看见的，没有就退回刚才见过的第一条。"""
     for one in relations:
@@ -211,17 +230,23 @@ def _layer_text(dy):
     return f"高{dy}层" if dy > 0 else f"低{-dy}层"
 
 
-def _blocker_phrase(one):
-    count = as_int(one.get("blockers"), 0)
-    if count <= 0:
-        return ""
-    blocker = name_of(BLOCK_NAMES, one.get("blocker"), "方块")
-    return f"隔着{count}块{blocker}"
-
-
 def _blocker_text(one):
-    phrase = _blocker_phrase(one)
+    phrase = blocker_phrase(one)
     return "中间没有挡着" if not phrase else "中间" + phrase
+
+
+def _at_of(one):
+    """关系里的那一格 → maid_mine 能用的相对地址；老模组没有 at 时按 dx/dy/dz 拼。
+
+    地址相对她脚下那一格，模组据此核对「指的是不是这块」。
+    """
+    at = (one.get("at") or "").strip()
+    if at:
+        return at
+    dx, dy, dz = one.get("dx"), one.get("dy"), one.get("dz")
+    if all(isinstance(value, (int, float)) for value in (dx, dy, dz)):
+        return f"@{int(dx)},{int(dy)},{int(dz)}"
+    return ""
 
 
 def _cluster_of(clusters, block_id):
@@ -252,10 +277,10 @@ def _relation_text(relations, clusters):
     where = _where_text(picked)
     if picked.get("seen") == "before":
         text = f"刚才在{where}见过{name}（{raw}）"
-        blocker = _blocker_phrase(picked)
+        blocker = blocker_phrase(picked)
         if blocker:
             text += f"，现在{blocker}"
-        return text + "。"
+        return text + "。" + _at_sentence(_at_of(picked))
     text = f"{where}、{_layer_text(as_int(picked.get('dy'), 0))}是{name}（{raw}）"
     cluster = _cluster_of(clusters, raw)
     # 数到上限的团多半是石头、泥土这种大片地形，不是「找到一处矿」；不报大小
@@ -267,7 +292,12 @@ def _relation_text(relations, clusters):
         text += "，就在跟前"
     elif walk > 0:
         text += f"，再走{walk}步就到"
-    return text + "。"
+    return text + "。" + _at_sentence(_at_of(picked))
+
+
+def _at_sentence(at):
+    """把地址交给模型：maid_mine 的 at 填这个就指到那一块。"""
+    return f"这一块是 at={at}。" if at else ""
 
 
 def _cluster_text(clusters, relations):
@@ -285,10 +315,12 @@ def _cluster_text(clusters, relations):
             continue
         name = name_of(BLOCK_NAMES, raw, "方块")
         text = f"{_where_text(one)}的{name}团{_cluster_size(one)}"
-        blocker = _blocker_phrase(one)
+        blocker = blocker_phrase(one)
         if blocker:
             text += f"，最近的一块{blocker}"
-        return text + "。"
+        text += "。"
+        at = _at_of(one)
+        return text + (f"最近那块是 at={at}。" if at else "")
     return ""
 
 

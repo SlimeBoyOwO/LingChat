@@ -1,25 +1,27 @@
-"""她身边那一圈：按需快照，以及随发言 / 事件带过去的处境措辞。
+"""她身边那一圈：按需快照，以及事件旁白里的处境措辞。
 
-工具「看一眼周围」与「玩家开口时顺手带一份」共用这一条路：帧、超时口径、老模组
-认不出这个帧时的说法都只有一处。profile 决定模组用哪一档：auto 是开口时顺手带的
+工具「看一眼周围」与「出事那一刻顺手补一份」共用这一条路：帧、超时口径、老模组
+认不出这个帧时的说法都只有一处。profile 决定模组用哪一档：auto 是出事时顺手带的
 近处快照（看得见按工作范围、看不见只听很近的声音），query 是玩家明确问周围有什么
 （看得见放宽到 32 格，并附方块与背包清单）。
+
+处境信息不往玩家那句话后面追加：玩家的发言原样送进对话，感知一律走 `events/` 的旁白入口。
 """
 
 from bridge import ask
 from naming import names, narrate
 from wording import heard_sounds, sighting
 
-# 玩家说话时顺手取快照的超时：给得很短，玩家那句话不能被一次查询拖住（游戏暂停时
-# 模组答不上来，这一轮就不带，照常把话送进对话）。
-CARRY_TIMEOUT_MS = 1500
+# 出事时顺手取快照的超时：给得很短，那条旁白不能被一次查询拖住（游戏暂停时
+# 模组答不上来，这一轮就不带，旁白照常进队列）。
+NEARBY_TIMEOUT_MS = 1500
 
 # 玩家离她这么近才算「在身边」。与模组远近档里「走开了」那条线（16 格）对齐：
 # 两边口径不一样的话，同一个距离上工具说「就在身边」、旁白却说「走远了」。
 OWNER_NEAR = 16.0
 
-# 「某角色此刻：附近有…」里最多念几只活物。模组两档都只给最近 3 个，这里再兜一层。
-CARRY_CREATURE_LIMIT = 3
+# 旁白与工具回执里最多念几只活物。模组两档都只给最近 3 个，这里再兜一层。
+CREATURE_LIMIT = 3
 
 LOOK_AROUND_TOOL = "maid_look_around"
 
@@ -40,40 +42,18 @@ def snapshot(maid_id, timeout_ms, profile="auto", detail="brief"):
     return response.get("data") or {}, ""
 
 
-def carry_text(data):
-    """一份快照 → 一句「角色此刻的处境」，附在玩家的发言后面。
-
-    只挑此刻会变、又会影响她反应的说：附近有什么活物。玩家在不在身边不在这里念——
-    跟随状态下每句都写「玩家就在身边」，模型会把它当成要复述的信息；他走远或回来由模组
-    推的 player_proximity_change 记一条旁白。脚下、头顶与光线同理，只在变化时由
-    ground_change / shelter_change / light_change 写成旁白。正前方那一眼留给工具那句，
-    玩家问起来才需要那么细。
-    帧里没有 owner 字段说明这压根不是快照（多半是别的东西回了信），那就什么都不带。
-    """
-    if "owner" not in data:
-        return ""
-    maid, _ = names()
-    parts = []
-    creatures = creature_phrase(data)
-    if creatures:
-        parts.append(creatures)
-    if not parts:
-        return ""
-    return f"（{maid}此刻：" + "；".join(parts) + "）"
-
-
 def creature_phrase(data):
     """附近有哪些活物，一句话的中间那半截（「附近有近处的僵尸」）。
 
     出事那一刻（她挨打、血量告急）跟着事件旁白一起给她——怪物另记一条有 2 分钟防抖
-    挡着，但「她刚挨了一下，旁边站着谁」是当下最要紧的处境，不该等到玩家下次说话。
+    挡着，但「她刚挨了一下，旁边站着谁」是当下最要紧的处境，不该等到下次采样。
 
     看得见的按距离档报；看不见的不报「被挡着」，只汇总成「听到僵尸和蜘蛛的声音」——
     隔墙知道具体是哪一只、离多远，读起来像透视，也不像她真有的感官。
 
-    只看最近几只：按需查询现在能列十几只，全念出来会把玩家那句话挤成一份清单。
+    只看最近几只：按需查询现在能列十几只，全念出来会把那句旁白挤成一份清单。
     """
-    nearby = (data.get("nearby") or [])[:CARRY_CREATURE_LIMIT]
+    nearby = (data.get("nearby") or [])[:CREATURE_LIMIT]
     if not nearby:
         return ""
     seen = [one for one in nearby if one.get("visible")]
@@ -95,8 +75,8 @@ def creature_text(data):
 def owner_phrase(owner, maid=None, player=None):
     """主人在不在她身边（`OWNER_NEAR` 之内），不带句号。
 
-    只说在不在，不给格数，也不问视线：两条路（工具与开口时携带）共用这一句，
-    说法只有一处。调用方已经取过名字时传进来，省一次宿主往返。
+    只说在不在，不给格数，也不问视线：工具回执共用这一句，说法只有一处。
+    调用方已经取过名字时传进来，省一次宿主往返。
     """
     if maid is None or player is None:
         maid, player = names()

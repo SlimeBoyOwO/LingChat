@@ -55,6 +55,16 @@ public final class BlockProjector {
         return new BlockProjection(relations, clusters, map);
     }
 
+    /** 视线中间隔着的实心方块有几块：格子寻址的失败回执用它说「中间隔了两块」。 */
+    public static int blockerCount(Level level, Vec3 eye, BlockPos target) {
+        return blockers(level, eye, target).count();
+    }
+
+    /** 挡在视线上的第一块方块 id；没有给空串。 */
+    public static String blockerId(Level level, Vec3 eye, BlockPos target) {
+        return blockers(level, eye, target).id();
+    }
+
     private static BlockRelation relation(EntityMaid maid, LocalTerrain terrain, BlockSight sight) {
         BlockPos feet = maid.blockPosition();
         BlockPos pos = sight.pos();

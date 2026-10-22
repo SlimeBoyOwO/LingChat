@@ -59,6 +59,15 @@ public final class MaidActionController {
             return ActionFrames.rejected(action, reject.code(), reject.reason());
         }
 
+        // 就地躺下：不走过去，当场换姿势，然后一直挂着——直到新动作顶掉它或她自己爬起来
+        if (action.isGroundLie()) {
+            String replaced = cancel(server);
+            boolean stoodUp = MaidActuator.standUp(maid);
+            MaidActuator.lieOnGround(maid);
+            current = new Run(maid.getStringUUID(), action, target);
+            return ActionFrames.accepted(action, true, stoodUp, replaced);
+        }
+
         // 当场就完的两件事：先做，失败了还能如实拒绝（这时别去动那个正在跑的动作）
         if (action.kind() == MaidAction.Kind.SIT) {
             if (!MaidActuator.sit(maid)) {
@@ -91,6 +100,19 @@ public final class MaidActionController {
         return run != null && maid != null && run.maidId.equals(maid.getStringUUID());
     }
 
+    /**
+     * 这只女仆是不是正躺在地上。
+     *
+     * <p>给它自己的姿势守护用（见 {@code EntityMaidPoseMixin}）：车万女仆的游泳管理器
+     * 每 tick 会把不在水里的女仆的姿势改回站立，躺姿得在这里挡住。
+     */
+    public static boolean isGroundLying(EntityMaid maid) {
+        Run run = current;
+        return run != null && maid != null
+                && run.action.isGroundLie()
+                && run.maidId.equals(maid.getStringUUID());
+    }
+
     /** 每个服务端 tick 推进一次（主线程）。 */
     public static void tick(MinecraftServer server) {
         Run run = current;
@@ -107,6 +129,30 @@ public final class MaidActionController {
         }
         if (outcome.finished()) {
             finish(run, outcome, maid);
+        }
+    }
+
+    /**
+     * 昏迷打断动作：收干净，并给还在等收尾的插件一个「她昏过去了」的交代。
+     *
+     * <p>不按「被新动作顶掉」说——那不是玩家又下了指令，而是她倒下了。
+     */
+    public static void cancelForUnconscious(MinecraftServer server) {
+        Run run = current;
+        if (run == null) {
+            return;
+        }
+        EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
+        current = null;
+        if (maid != null) {
+            if (run.action.isGroundLie()) {
+                MaidActuator.wakeUp(maid);
+            }
+            MaidActuator.stopWalking(maid);
+            MaidActuator.stopLooking(maid);
+        }
+        if (run.action.hasCompletionEvent()) {
+            broadcast(run, "failed", "unconscious", "她昏过去了");
         }
     }
 
@@ -144,6 +190,7 @@ public final class MaidActionController {
                 }
             }
             case SLEEP -> MaidActuator.sleepIn(maid, run.target.bedHead());
+            case LIE -> MaidActuator.holdLying(maid);
             case HOLD -> {
             }
         }
@@ -152,6 +199,10 @@ public final class MaidActionController {
     private static void finish(Run run, ActionRun.Outcome outcome, EntityMaid maid) {
         current = null;
         if (maid != null) {
+            // 地上躺着收尾时要真的把她扶起来；床上的睡姿不归这里管
+            if (run.action.isGroundLie()) {
+                MaidActuator.wakeUp(maid);
+            }
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
         }

@@ -47,8 +47,7 @@ public final class SurroundingsDiff {
      *
      * <p>报过一次「有东西靠过来了」之后，这两分钟里新出现的、又走近的都不再另记一条——
      * 夜里围上来一群僵尸，玩家要的是知道有危险，不是每一只都来一句。这期间她身边站着谁
-     * 另有交代：玩家开口时随消息带过去（插件侧），出事（挨打、血量告急、动作收尾）那条
-     * 旁白后面也会缀一句眼前的活物。
+     * 另有交代：出事那条旁白（挨打、血量告急、动作收尾）后面会缀一句眼前的活物（插件侧）。
      */
     public static final long THREAT_COOLDOWN_TICKS = 2400L;
     public static final long LIVING_COOLDOWN_TICKS = 1200L;
@@ -160,6 +159,7 @@ public final class SurroundingsDiff {
         addVehicle(frames, prev, next);
         addStructure(frames, prev, next, state, nowTick);
         addGround(frames, prev, next, state, nowTick);
+        addPosture(frames, prev, next);
         return frames;
     }
 
@@ -346,6 +346,27 @@ public final class SurroundingsDiff {
         JsonObject frame = EventFrames.base("ground_change", next.entityId());
         frame.addProperty("block", next.feetBlock());
         frame.addProperty("kind", kind);
+        frames.add(frame);
+    }
+
+    /**
+     * 她换了姿势：坐下、站起、就地躺下、上床睡着、醒过来。
+     *
+     * <p>这是离散动作，不是需要回滞的连续量：变了就报，不设冷静期。首帧仍由外层统一
+     * 建基线，所以重连不会把当前姿势再念一遍。
+     */
+    private static void addPosture(
+            List<JsonObject> frames, Surroundings prev, Surroundings next) {
+        // 昏倒与醒来由专门事件交代；这里不再说成「躺着/睡着」
+        if ("unconscious".equals(prev.posture()) || "unconscious".equals(next.posture())) {
+            return;
+        }
+        if (prev.posture().equals(next.posture())) {
+            return;
+        }
+        JsonObject frame = EventFrames.base("posture_change", next.entityId());
+        frame.addProperty("posture", next.posture());
+        frame.addProperty("from_posture", prev.posture());
         frames.add(frame);
     }
 

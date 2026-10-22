@@ -47,7 +47,9 @@ public record MaidAction(Kind kind, Target target) {
     /** 移动类动作的目标。语义目标：没有坐标可给——感知只推地形与血量，给坐标等于请模型编数字。 */
     public enum Target {
         PLAYER("player"),
-        BED("bed");
+        BED("bed"),
+        /** 就地躺下：不找床，也不走路。 */
+        GROUND("ground");
 
         private final String id;
 
@@ -104,8 +106,12 @@ public record MaidAction(Kind kind, Target target) {
             return null;
         }
         Target target = Target.byId(Envelope.string(data, "target").toLowerCase(Locale.ROOT));
-        // 躺下只认床：player 这种取值对它没有意义
-        if (target == null || (kind == Kind.LIE_DOWN && target != Target.BED)) {
+        // 躺下只认床与地面：player 这种取值对它没有意义
+        if (kind == Kind.LIE_DOWN) {
+            return target == Target.BED || target == Target.GROUND ? target : defaultTarget(kind);
+        }
+        // 地面只对躺下有意义，走到「地面」说不通
+        if (target == null || target == Target.GROUND) {
             return defaultTarget(kind);
         }
         return target;
@@ -122,7 +128,7 @@ public record MaidAction(Kind kind, Target target) {
     /** 曼哈顿距离多少算到位：与原版 {@code MoveToTargetSink} 按 closeEnoughDist 判到位的口径一致。 */
     public int arriveDistance() {
         if (kind == Kind.LIE_DOWN) {
-            return 2;
+            return target == Target.GROUND ? 0 : 2;
         }
         if (kind == Kind.GO_TO) {
             return target == Target.BED ? 2 : 3;
@@ -133,13 +139,13 @@ public record MaidAction(Kind kind, Target target) {
     /**
      * 走过去的超时（tick，20 = 1 秒）。按下最坏情况留够：绕路、开门、爬台阶。
      *
-     * <p>不上场走路的动作（坐下、站起、看向玩家）给 0：它们的时长不归这里管
+     * <p>不上场走路的动作（坐下、站起、就地躺下、看向玩家）给 0：它们的时长不归这里管
      * （看向玩家由 {@link ActionRun#LOOK_TICKS} 收尾）。
      */
     public int timeoutTicks() {
         return switch (kind) {
             case GO_TO -> 600;
-            case LIE_DOWN -> 900;
+            case LIE_DOWN -> isGroundLie() ? 0 : 900;
             default -> 0;
         };
     }
@@ -154,9 +160,14 @@ public record MaidAction(Kind kind, Target target) {
         return kind == Kind.GO_TO || kind == Kind.LIE_DOWN;
     }
 
-    /** 走过去的动作才会碰寻路与居家范围。 */
+    /** 走过去的动作才会碰寻路与居家范围。就地躺下只动姿势。 */
     public boolean walks() {
-        return kind == Kind.GO_TO || kind == Kind.LIE_DOWN;
+        return kind == Kind.GO_TO || (kind == Kind.LIE_DOWN && !isGroundLie());
+    }
+
+    /** 就地躺下：不找床、不走路，一直躺着直到被叫起来或自己爬起来。 */
+    public boolean isGroundLie() {
+        return kind == Kind.LIE_DOWN && target == Target.GROUND;
     }
 
     public String actionId() {

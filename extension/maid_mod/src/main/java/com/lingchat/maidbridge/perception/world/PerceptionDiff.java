@@ -65,6 +65,12 @@ public final class PerceptionDiff {
             return frames;
         }
 
+        // 昏迷时她什么也感知不到：只保留重连时那一份现状，世界变化全部不推。
+        // 挨打、死亡、上床与醒来另有专门事件
+        if ("unconscious".equals(next.posture())) {
+            return frames;
+        }
+
         boolean dimensionChanged = !prev.dimension().equals(next.dimension());
         if (dimensionChanged) {
             // 换维度时群系必然也变，只报维度那一条
@@ -165,6 +171,8 @@ public final class PerceptionDiff {
         frame.addProperty("maid_name", s.maidName());
         frame.addProperty("maid_health", EventFrames.round(s.maidHealth()));
         frame.addProperty("maid_max_health", EventFrames.round(s.maidMaxHealth()));
+        // 姿势是持久状态：接上那一刻她可能已经坐着或躺在地上，接下来的变化另由 posture_change 交代
+        frame.addProperty("posture", s.posture());
         return frame;
     }
 

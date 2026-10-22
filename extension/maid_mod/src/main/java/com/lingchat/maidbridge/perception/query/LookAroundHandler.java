@@ -5,6 +5,7 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -27,10 +28,10 @@ import net.minecraft.world.level.Level;
  * <p>与周期采样的那条路互不打扰：这是「她被问到」，所以不受感知开关与采样间隔影响——
  * 玩家问了就该答得出来。采样那条是「她自发注意」，归 {@code perceptionEnabled} 管。
  *
- * <p>请求里的 {@code profile} 决定用哪一档：{@code auto} 是玩家开口时顺手带的那份
- * （看得见按工作范围、看不见只听很近的声音，不带方块与背包清单）；缺省或 {@code query}
- * 是玩家明确问「你周围有什么」（看得见 32 格，并附附近方块与她背包里的东西）。
- * 两档都只列最近 3 个活物。
+ * <p>请求里的 {@code profile} 决定用哪一档：{@code auto} 是周期采样用的近处那档
+ * （出事那条旁白里顺手补一份也用它；看得见按工作范围、看不见只听很近的声音，不带方块与
+ * 背包清单）；缺省或 {@code query} 是玩家明确问「你周围有什么」（看得见 32 格，并附附近
+ * 方块与她背包里的东西）。两档都只列最近 3 个活物。
  */
 public class LookAroundHandler implements MessageHandler {
     /** 附近方块扫多大：水平 24 格（挖掘找 32，清单只要看得出有哪种方块就够），竖直只从她脚下往上。 */
@@ -56,6 +57,9 @@ public class LookAroundHandler implements MessageHandler {
         EntityMaid maid = MaidQueries.requested(server, request);
         if (maid == null) {
             return Envelope.error(MaidQueries.missingReason(server));
+        }
+        if (MaidCondition.isUnconscious(maid)) {
+            return Envelope.error("她昏迷不醒，感知不到周围");
         }
         JsonObject requestData = Envelope.data(request);
         boolean auto = "auto".equalsIgnoreCase(Envelope.string(requestData, "profile"));

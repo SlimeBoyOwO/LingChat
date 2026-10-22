@@ -27,7 +27,22 @@ public final class ActionRun {
         WALK,
         /** 已经贴到床边睡下了，盯几 tick 看她是不是被日程叫起来了。 */
         SLEEP_CONFIRM,
-        LOOK
+        LOOK,
+        /** 就地躺着，一直保持到被打断。 */
+        LYING
+    }
+
+    /**
+     * 躺在地上时被什么打断了。{@link #NONE} 表示还躺得住。
+     *
+     * <p>打断不是失败：她按环境自己爬起来了，收尾时如实说原因就行。
+     */
+    public record Interrupt(String code, String reason) {
+        public static final Interrupt NONE = new Interrupt("", "");
+
+        public boolean present() {
+            return !code.isEmpty();
+        }
     }
 
     /**
@@ -38,6 +53,7 @@ public final class ActionRun {
      * @param cannotReach brain 里挂着「这个目标走不到」的标记
      * @param targetDistance 到目标的曼哈顿距离，与寻路判到位的口径一致
      * @param distance 到目标的直线距离，只用来报给模型看
+     * @param interrupt 躺在地上时打断她的那件事；其余动作用 {@link Interrupt#NONE}
      */
     public record Observation(
             boolean maidPresent,
@@ -46,7 +62,8 @@ public final class ActionRun {
             boolean targetPresent,
             boolean cannotReach,
             int targetDistance,
-            double distance) {
+            double distance,
+            Interrupt interrupt) {
     }
 
     /** 下一步做什么。收尾时这个值没有意义。 */
@@ -54,6 +71,7 @@ public final class ActionRun {
         WALK,
         LOOK,
         SLEEP,
+        LIE,
         HOLD
     }
 
@@ -71,7 +89,11 @@ public final class ActionRun {
 
     public ActionRun(MaidAction action) {
         this.action = action;
-        this.phase = action.kind() == MaidAction.Kind.LOOK_AT ? Phase.LOOK : Phase.WALK;
+        this.phase = switch (action.kind()) {
+            case LOOK_AT -> Phase.LOOK;
+            case LIE_DOWN -> action.isGroundLie() ? Phase.LYING : Phase.WALK;
+            default -> Phase.WALK;
+        };
     }
 
     public int elapsedTicks() {
@@ -89,6 +111,7 @@ public final class ActionRun {
             case WALK -> walk(observation);
             case LOOK -> look(observation);
             case SLEEP_CONFIRM -> confirmSleep(observation);
+            case LYING -> lying(observation);
         };
     }
 
@@ -140,6 +163,22 @@ public final class ActionRun {
             return done();
         }
         return new Outcome(Command.LOOK, false, "", "", "");
+    }
+
+    /**
+     * 就地躺着：没有时长，没有到位线，一直保持到她被叫起来（新动作会顶掉这次）
+     * 或环境让她躺不住（挨打、泡进液体、身下没地、自己爬上床）。
+     */
+    private Outcome lying(Observation observation) {
+        if (observation.interrupt().present()) {
+            return new Outcome(
+                    Command.HOLD,
+                    true,
+                    "done",
+                    observation.interrupt().code(),
+                    observation.interrupt().reason());
+        }
+        return new Outcome(Command.LIE, false, "", "", "");
     }
 
     private void trackProgress(Observation observation) {

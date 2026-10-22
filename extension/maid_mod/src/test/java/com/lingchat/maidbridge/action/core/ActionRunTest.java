@@ -18,12 +18,19 @@ class ActionRunTest {
     }
 
     private static ActionRun.Observation still(int distance) {
-        return new ActionRun.Observation(true, false, false, true, false, distance, distance);
+        return new ActionRun.Observation(
+                true, false, false, true, false, distance, distance, ActionRun.Interrupt.NONE);
     }
 
     private static ActionRun.Observation observation(
             boolean maidPresent, boolean blocked, boolean sleeping, boolean targetPresent, int distance) {
-        return new ActionRun.Observation(maidPresent, blocked, sleeping, targetPresent, false, distance, distance);
+        return new ActionRun.Observation(
+                maidPresent, blocked, sleeping, targetPresent, false, distance, distance,
+                ActionRun.Interrupt.NONE);
+    }
+
+    private static ActionRun.Observation lying(ActionRun.Interrupt interrupt) {
+        return new ActionRun.Observation(true, false, false, true, false, 0, 0.0, interrupt);
     }
 
     private static ActionRun.Outcome tick(ActionRun run, ActionRun.Observation observation) {
@@ -82,7 +89,8 @@ class ActionRunTest {
         MaidAction goTo = action(MaidAction.Kind.GO_TO, MaidAction.Target.PLAYER);
         ActionRun run = new ActionRun(goTo);
         ActionRun.Observation blockedPath =
-                new ActionRun.Observation(true, false, false, true, true, 10, 10.0);
+                new ActionRun.Observation(
+                        true, false, false, true, true, 10, 10.0, ActionRun.Interrupt.NONE);
 
         ActionRun.Outcome outcome = null;
         for (int i = 0; i < ActionRun.UNREACHABLE_TICKS; i++) {
@@ -98,7 +106,8 @@ class ActionRunTest {
     void aTransientUnreachableFlagIsForgiven() {
         ActionRun run = new ActionRun(action(MaidAction.Kind.GO_TO, MaidAction.Target.PLAYER));
         ActionRun.Observation blockedPath =
-                new ActionRun.Observation(true, false, false, true, true, 10, 10.0);
+                new ActionRun.Observation(
+                        true, false, false, true, true, 10, 10.0, ActionRun.Interrupt.NONE);
 
         for (int i = 0; i < ActionRun.UNREACHABLE_TICKS - 1; i++) {
             tick(run, blockedPath);
@@ -146,7 +155,7 @@ class ActionRunTest {
     void maidGoneWinsOverEverythingElse() {
         ActionRun run = new ActionRun(action(MaidAction.Kind.GO_TO, MaidAction.Target.PLAYER));
 
-        ActionRun.Outcome outcome = tick(run, new ActionRun.Observation(false, true, true, false, true, 99, 99));
+        ActionRun.Outcome outcome = tick(run, new ActionRun.Observation(false, true, true, false, true, 99, 99, ActionRun.Interrupt.NONE));
 
         assertEquals("failed", outcome.status());
         assertEquals("maid_gone", outcome.reasonCode());
@@ -207,5 +216,31 @@ class ActionRunTest {
 
         assertTrue(outcome.finished());
         assertEquals("done", outcome.status());
+    }
+
+    /** 就地躺下没有时长也没有到位线：不被打断就一直躺着。 */
+    @Test
+    void lyingOnTheGroundHoldsUntilSomethingInterrupts() {
+        ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.GROUND));
+
+        for (int i = 0; i < 400; i++) {
+            ActionRun.Outcome outcome = tick(run, lying(ActionRun.Interrupt.NONE));
+            assertFalse(outcome.finished());
+            assertEquals(ActionRun.Command.LIE, outcome.command());
+        }
+    }
+
+    /** 她躺不住时收尾要如实说是哪件事让她起来的，而不是当成失败。 */
+    @Test
+    void gettingUpEndsTheLyingRunWithTheReason() {
+        ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.GROUND));
+        tick(run, lying(ActionRun.Interrupt.NONE));
+
+        ActionRun.Outcome outcome = tick(run, lying(new ActionRun.Interrupt("hurt", "挨了一下")));
+
+        assertTrue(outcome.finished());
+        assertEquals("done", outcome.status());
+        assertEquals("hurt", outcome.reasonCode());
+        assertEquals("挨了一下", outcome.reason());
     }
 }

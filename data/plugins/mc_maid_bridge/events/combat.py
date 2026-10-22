@@ -6,7 +6,9 @@ from wording import (
     DAMAGE_HINTS,
     DEAD_STATE_MARK,
     MOB_NAMES,
+    RECOVERED_STATE_MARK,
     REVIVE_STATE_MARK,
+    UNCONSCIOUS_STATE_MARK,
     as_int,
     name_of,
     nearness_place,
@@ -82,12 +84,48 @@ def owner_death(data):
     )
 
 
+def maid_unconscious(data):
+    """她伤重昏过去了：不是死，但叫不醒；玩家要把她放到床上等一分钟。
+
+    和死亡分开说：死亡是灵魂状态、要靠神龛与胶片；昏迷还有实体，只是动不了。
+    复活办法写在这里，模型才知道该怎么回答玩家。
+    """
+    maid, _ = names()
+    cause = _down_cause(data)
+    if data.get("on_bed"):
+        return (
+            f"{maid}{cause}，昏倒在床上，只剩一口气，身边开始冒出爱心。"
+            f"在床上连续躺满一分钟，{maid}就会醒过来。"
+            f"{maid}{UNCONSCIOUS_STATE_MARK}。"
+        )
+    return (
+        f"{maid}{cause}，倒在地上昏了过去，只剩一口气。"
+        f"把{maid}抱到床上（普通床或女仆床）连续躺一分钟，{maid}就会醒过来。"
+        f"{maid}{UNCONSCIOUS_STATE_MARK}。"
+    )
+
+
+def maid_recovering(data):
+    """她被放到床上，开始计时恢复。"""
+    maid, _ = names()
+    return f"{maid}躺到了床上，呼吸慢慢平稳下来，身边冒起了爱心。"
+
+
+def maid_recovered(data):
+    """一分钟到了，她醒过来。醒来只有一点血，身体还很虚。"""
+    maid, _ = names()
+    return (
+        f"{maid}在床上睁开了眼睛，醒了过来，但只剩一点力气。"
+        f"{maid}{RECOVERED_STATE_MARK}。"
+    )
+
+
 def maid_death(data):
     """她自己死了：怎么死的、遗物在哪儿、玩家要怎么把她换回来。
 
     她倒下之后模组查不到她，所有指令都只会回「找不到女仆」——这一条是插件唯一知道
     发生了什么的地方，所以插件会当场请角色开口。旁白里带上死亡状态标记：之后每一轮
-    都靠它判断她还在不在死亡状态（见 hooks._remind_dead）。
+    都靠它判断她还在不在死亡状态（见 hooks._remind_state）。
 
     复活办法也写在这里：玩家要知道该去哪儿、拿什么换。墓碑里有她的遗物和胶片，
     胶片放进神龛后空手点神龛，会拿玩家的命换她回来（生命值不到一半时复活不了）。
@@ -121,6 +159,24 @@ def threat_near(data):
         # 看不见的只剩声音，而且是模组筛过的近处（默认 6 格）；不说「靠过来了」
         return f"听到{who}的声音，就在{maid}附近。"
     return f"有{who}正朝{maid}这边靠近。"
+
+
+def _down_cause(data):
+    """怎么倒下的：一句动词短语，比死亡那句轻一档。
+
+    摔伤、烧到、饿晕也走这一条，所以不预设「被打倒」；有人动手时才点名。
+    """
+    maid, player = names()
+    if data.get("attacker_maid"):
+        return "被自己弄伤了"
+    if data.get("attacker_owner"):
+        return f"被{player}打倒了"
+    if (data.get("attacker_type") or "").strip():
+        who = name_of(MOB_NAMES, data.get("attacker_type"), "什么东西")
+        return f"被{who}打倒了"
+    if (data.get("attacker") or "").strip():
+        return "被另一个人打倒了"
+    return DAMAGE_HINTS.get((data.get("damage_type") or "").strip()) or "伤得太重"
 
 
 def _death_cause(data):
@@ -198,6 +254,11 @@ SPECS = {
         snapshot=True,
         urgent_when=lambda data: bool(data.get("victim_owner")),
     ),
+    # 昏迷不是死亡：它同样要当场开口，并且一直留到玩家下一次说话。床上开始计时与
+    # 醒来各有一条，避免模型把「昏迷」误当成「已经死了」。
+    "maid_unconscious": EventSpec(maid_unconscious, urgent=True, ttl=3600),
+    "maid_recovering": EventSpec(maid_recovering, ttl=120),
+    "maid_recovered": EventSpec(maid_recovered, urgent=True, ttl=3600),
     # 她自己的死没有可合并的同键，也不该被静默：当场开口。死亡是持久状态，复活办法
     # 也在这条里——主动开口被拒时，这条得一直等玩家下一次说话，别几分钟就过期了。
     "maid_death": EventSpec(maid_death, urgent=True, ttl=3600),

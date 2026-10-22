@@ -65,7 +65,7 @@ Gradle 发行包走的是腾讯云镜像（见 `gradle/wrapper/gradle-wrapper.pr
 | `bridge/` | 本机 WebSocket、信封、路由、协议常量。 |
 | `chat/` | 游戏内聊天双向：玩家打字推给 LingChat，角色回复变成气泡。 |
 | `voice/` | 游戏内语音：把 LingChat 的 TTS（WAV）分片广播给附近玩家，在女仆身上播放。 |
-| `perception/` | 一切「观察世界」。`world` 全局采样、`nearby` 身边采样、`query` 按需查询与投影（关系、相连团、按需小图）、`event` 受伤/死亡/成就、`item` 物品与背包、`carry` 抱放；`spatial` 是在它们底下共用的一层：`LocalTerrain` 按需读一片方块、`SightLine` 判看不看得见、`TerrainMemory` 记半分钟内看见过的方块、`BlockSight` 是清单里的一条。`EventFrames`、`PerceptionProfiles`、`PerceptionSampler` 是这几层共用的帧外形、半径与采样门控。 |
+| `perception/` | 一切「观察世界」。`world` 全局采样、`nearby` 身边采样、`query` 按需查询与投影（关系、相连团、按需小图）、`event` 受伤/死亡/成就、`item` 物品与背包、`carry` 抱放；`spatial` 是在它们底下共用的一层：`LocalTerrain` 按需读一片方块、`SightLine` 判看不看得见、`TerrainMemory` 记半分钟内看见过的方块、`BlockSight` 是清单里的一条，`SpatialReader` / `SpatialDiff` 把「新进眼里的岩浆与火」做成事件。`EventFrames`、`PerceptionProfiles`、`PerceptionSampler` 是这几层共用的帧外形、半径与采样门控。 |
 | `maid/` | 女仆身份、查询、监控目标、状态与背包只读清单。 |
 | `integration/` | 可选模组适配；目前只有 `carry`（Carry On）。 |
 | `mixin/` | NeoForge mixin，包名被 `lingchat_maid_bridge.mixins.json` 固定，不要随意移动。 |
@@ -160,11 +160,12 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 ### `maid_action`：动作
 
 ```json
-{"type":"maid_action","data":{"maid_id":"...","action":"go_to|sit|stand|lie_down|look_at","target":"player|bed"}}
+{"type":"maid_action","data":{"maid_id":"...","action":"go_to|sit|stand|lie_down|look_at","target":"player|bed|ground"}}
 ```
 
 `action` 与 `target` 都过白名单；认不出的 `target` 退回默认（走 = 玩家、躺 = 最近的床），
-认不出的 `action` 直接拒绝。**接口层面没有接受坐标的入口**。
+认不出的 `action` 直接拒绝。`ground` 只对 `lie_down` 有意义，其余动作给了也会退回默认。
+**接口层面没有接受坐标的入口**。
 
 `look_at` 保留在协议里只为兼容：插件已经不再把它注册成工具，她说话时会自动看向主人
 （每来一句气泡转一次头，不占动作槽、不推事件）。
@@ -174,9 +175,15 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `go_to` | `player`（默认） | 每 tick 写 `WALK_TARGET`，由原版寻路走过去 | 否，到位后推 `action_done` |
 | `go_to` | `bed` | 找最近的空床（原版床与车万女仆的女仆床都算），走到床头那格 | 否，到位后推 `action_done` |
 | `sit` | — | 坐下；坐姿下她不会自己走动 | 是 |
-| `stand` | — | 站起来；正睡着会被叫醒，坐在坐垫/椅子/船上会下来 | 是 |
-| `lie_down` | `bed`（唯一取值） | 先走到床边，再按她自己的睡床逻辑睡下 | 否，睡着或被叫醒后推 `action_done` |
+| `stand` | — | 站起来；正睡着会被叫醒，坐在地上躺着会被扶起来，坐在坐垫/椅子/船上会下来 | 是 |
+| `lie_down` | `bed`（默认） | 先走到床边，再按她自己的睡床逻辑睡下 | 否，睡着或被叫醒后推 `action_done` |
+| `lie_down` | `ground` | 就地换躺姿（原版 `Pose.SLEEPING`），每 tick 冻结移动；挨打、泡进液体、身下没地、被抱走或自己爬上床时起来 | 否，她自己起来后推 `action_done` |
 | `look_at` | `player` | 转头看向玩家，保持约 2 秒 | 是（到时静默收尾，不推事件） |
+
+就地躺下不需要床，也不记她的睡觉位置——所以不会触发原版「床没了」与车万女仆「日程不在
+睡觉时段」那两条每 tick 的唤醒。换来的是它只是姿势：车万女仆的游泳管理器每 tick 会把不在
+水里的女仆改回站立，模组用一个 mixin（`EntityMaidPoseMixin`）在躺下期间挡住它。走路、做事
+或 `stand` 都会把这次动作顶掉，她随即被扶起来。
 
 回执：
 
@@ -267,12 +274,13 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 
 ```json
 {"type":"maid_mine","data":{"maid_id":"...","target":"looked","count":1}}
+{"type":"maid_mine","data":{"maid_id":"...","target":"minecraft:iron_ore","count":1,"at":"@4,-2,-3"}}
 ```
 
 `target` 两种写法：`looked`（默认，玩家准星指着的方向）或一个方块注册表 id
 （`minecraft:stone`，插件负责把「石头」这类中文翻成 id）。也接受方块标签
 （`#minecraft:logs`，插件把「木头」这类泛称翻成它）。`count` 是这一次挖几块，
-默认 1，上限 64。
+默认 1，上限 64。可选字段 `at` 是相对地址（见下）。
 
 - **玩家指哪片就在哪片挖**：准星射线放宽到 32 格，落点当作区域中心（不必凑到交互距离内）。
   写了方块名时，先在这一带 8 格内找这种方块，找到就只在这一带挖；`looked` 则先挖落点那块，
@@ -281,6 +289,14 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 - **按族找**：`#minecraft:logs` 这类标签按方块标签匹配（哪片林子都能砍），普通矿石 id
   自动带上深层变体（`iron_ore` 也认 `deepslate_iron_ore`），不会因为地下只剩深层矿而
   报「附近没有」。
+- **可以指到具体一格（2026-10-22）**：`at` 写成 `@dx,dy,dz`（东、上、南，相对她脚下那一格），
+  由 `maid_look_around` 的关系句给出，插件原样转回来。填了就只挖那一格（`count>1` 时以它
+  为中心接着找同类）。受理前核三件事：那一格是不是要挖的方块（标签与深层矿石同一口径）、
+  她此刻看见或半分钟内看见过（`SightLine` + `TerrainMemory`）、挖不挖得动与够不够得着。
+  对不上回 `bad_address` / `not_loaded` / `not_that_block` / `not_seen`，回执带 `scene`
+  （那一格的 id、方位、挡路）与 `nearest`（她看见过的最近同类，含它自己的 `at`），
+  模型照着新地址改一次就行，不用原样重试。`target` 留空或写 `looked` 时按那一格原本的
+  方块挖。
 
 - **自己驱动，不占任务槽**：和攻击一样不走车万女仆的任务/AI，`MaidMineController` 每 tick
   推进——找一块站得下、够得着、看得见、寻路走得到的落脚点，走过去，然后朝方块挖。
@@ -307,9 +323,9 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 回执（`maid_mine_result`）：
 
 ```json
-{"data":{"accepted":true,"async":true,"looked":false,"count":3,"block":"minecraft:stone",
- "name":"Stone","requires_tool":true,"has_tool":true,"tool":"minecraft:iron_pickaxe",
- "replaced_action":"","reason_code":"","reason":""}}
+{"data":{"accepted":true,"async":true,"looked":false,"addressed":false,"at":"","count":3,
+ "block":"minecraft:stone","name":"Stone","requires_tool":true,"has_tool":true,
+ "tool":"minecraft:iron_pickaxe","replaced_action":"","reason_code":"","reason":""}}
 ```
 
 - `accepted=false` 是受理时就能判死的失败：没有这种方块、指着的那片和她附近都没有能挖到的、
@@ -319,10 +335,15 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
   字段是 `status`（`done` / `partial` / `failed`）、`mined`、`wanted`、`block`、
   `reason_code`、`reason`。**插件在那之前不能说她挖到了。**
 - `has_tool=false` 表示她手上和背包里都没有趁手的工具，只能徒手挖（会慢一些）。
-- `scene` 只在已经定到目标的失败里带：`dx`/`dy`/`dz` 相对她脚下那一格，`facing` 同八向方位，
-  `blocked_above` 是正上方有没有实心方块，`stand_room` 是周围五格内有没有能站人的空格
-  （只看空间，不问寻路）。没有目标的失败（如 `no_target`）不带，插件不要据此编方位；
-  受理成功也不带，别把失败现场当成每轮都有的字段。
+- `scene` 只在已经定到目标的失败里带：`id` / `name` 是那一格实际是什么，`dx`/`dy`/`dz`
+  相对她脚下那一格，`at` 是它的相对地址，`facing` 同八向方位，`blockers` / `blocker`
+  是视线中间隔着的实心方块数量与第一种，`blocked_above` 是正上方有没有实心方块，
+  `stand_room` 是周围五格内有没有能站人的空格（只看空间，不问寻路）。没有目标的失败
+  （如 `no_target`）不带，插件不要据此编方位。
+- `nearest` 只在 `not_that_block` 里带：她看见过的最近同类方块，字段与 `scene` 相同，
+  `at` 可以直接拿去做下一次调用的地址；她也一个都没看见过时不带。
+- `addressed=true` 表示这次是按 `at` 指的：回执多带 `at` 与 `scene`（被指的那一格），
+  插件说「朝你指的那块去了」而不是「去挖 N 块」。
 - 与攻击、动作、换工作模式互斥：新的挖掘令会顶掉它们，它们也会顶掉挖掘。
 
 ### `maid_give_item`：把东西交给玩家
@@ -364,14 +385,21 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 
 车万女仆自己只认潜行喂金苹果 / 附魔金苹果，普通食物右击只会打开她的界面。本模组补上另一半：
 
-- **潜行 + 右键任意食物**：吃掉手里这一个、按营养值回一点血、播进食音效，并推一条
-  `item_fed`。这一下在 `InteractMaidEvent` 的 `HIGHEST` 就被取消，切坐姿（车万女仆的
-  `LOWEST`）与别的附属模组的右键逻辑都收不到——拿着食物潜行出手只会喂饭，不会顺带坐下。
+- **潜行 + 右键任意食物**：食物先放进她空着的那只手，她照车万女仆自己吃饭的方式
+  `startUsingItem`，模型把手里那件东西送向嘴边，吃完才真的消耗；随后按营养值回一点血、
+  冒一串爱心（原版女仆吃完东西的样子），并推一条 `item_fed`。两只手都占着时退回当场吃掉、
+  不出动画，不为一口饭把她手里的活计挪走；她正举着盾或已经在吃时这一下先不喂。
+- **两侧都取消**：这个手势在 `InteractMaidEvent` 的 `HIGHEST` 就被取消，客户端与服务端
+  都要拦——车万女仆的切坐姿（`LOWEST`）不判侧别，而右键实体时客户端也会本地跑一遍
+  `mobInteract`；只拦服务端的话，模型会在客户端翻成坐姿，服务端却还当她站着。拦下之后
+  别的附属模组的右键逻辑同样收不到，拿着食物潜行出手只会喂饭。
+- **中途没吃完**：她放下那件东西（换手、动作顶掉）或等不到吃完事件时，这一口会掉回她
+  脚下，不会白扣玩家的东西。
 - **金苹果 / 附魔金苹果**：仍走车万女仆自己的 `ApplyGoldenAppleEvent`（成就照旧），本模组
   只在 `HIGHEST` 留一份副本，等她**真的吃完**（`MaidAfterEatEvent`）才补记一条；交互被
   别的模组取消、她没吃到，就不会误报。
-- **空手与搬运时不碰**：空手右键在 Carry On 那边是抱起/放下；玩家手里抱着任何东西、或者
-  她自己被抱起来（成为玩家的乘客）时也不喂、不取消交互，免得和搬运模组抢同一个手势。
+- **空手与搬运时不碰**：空手右键在 Carry On 那边是抱起/放下；玩家手里抱着任何东西时也不喂、
+  不取消交互，免得和搬运模组抢同一个手势。她骑着别的东西时同样不喂。
 - **创造的玩家**：食物不真的扣，效果与回血照旧。
 - 她睡着时右键不喂；普通右键（不潜行）不受影响，仍然打开界面。
 - **她自己吃**：车万女仆的进食系统（受伤后从背包找东西吃）完成时，模组推一条
@@ -383,9 +411,12 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 只在**变化显著**或**状态未初始化**时推，不是每次采样都推。字段是原始的游戏 id
 与数值，中文措辞由插件那侧决定（游戏语义留在 Java，自然语言理解留在 Python）。
 
+这是感知信息的**唯一出口**：插件把这些帧写成旁白，不往玩家发言后面追加括号之类的
+处境说明（见 `docs/maid_mod/mc-maid-bridge-plan.md` 的「铁律与约定」）。
+
 | `event_type` | 触发 | 主要字段 |
 | --- | --- | --- |
-| `state_snapshot` | 刚接上 / 刚绑定女仆（含重连） | `dimension` `biome` `sky` `phase` `raining` `thundering` 双方血量 |
+| `state_snapshot` | 刚接上 / 刚绑定女仆（含重连） | `dimension` `biome` `sky` `phase` `raining` `thundering` 双方血量 `posture` |
 | `biome_change` | 换了生物群系（30 秒内只报一次） | `from_biome` `biome` |
 | `dimension_change` | 换了维度（同一帧不再报群系） | `from_dimension` `to_dimension` |
 | `time_phase_change` | 昼夜翻转（只推翻转那一次） | `phase` = `day` / `night` |
@@ -407,7 +438,9 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `shelter_change` | 从露天走进遮蔽处，或反过来 | `sheltered`，以及用于同键合并取最后一帧的 `tick` |
 | `light_change` | 光线跨档：很黑（0-3）/ 昏暗（4-7）/ 明亮（8-15） | `band`（`dark` / `dim` / `bright`） |
 | `ground_change` | 脚下换了种值得说的地（水、岩浆、火、雪、沙、耕地、冰）；坐在载具里不报 | `block` `kind` |
+| `hazard_near` | 视野里**新出现**的岩浆、火、灵魂火、岩浆块或细雪（8 格内、露在外面、真能看见；脚下那一列交给 `ground_change`） | `block` `distance` `direction` |
 | `vehicle_change` | 坐进船 / 矿车这类载具，或从上面下来 | `vehicle` `from_vehicle` |
+| `posture_change` | 她换了姿势：坐下、站起、就地躺下、上床睡着、醒过来 | `posture` `from_posture` = `standing` / `sitting` / `sleeping` / `lying` |
 | `structure_change` | 走进或离开村庄、矿井、要塞这类结构（冷静期 30 秒） | `structure` `from_structure` |
 | `item_pickup` | 她真的把地上的物品收进了背包 | `item` `count` `from_owner` `source` `source_id` `source_name` |
 | `item_received` | 她身上多出物品（多半是玩家在女仆界面里放的）：背包、双手、盔甲栏、饰品栏都算 | `items[{item,count,slot}]`（`slot`：`hand` / `armor` / `bauble` / `backpack`） `from_owner` |
@@ -415,7 +448,11 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `maid_ate` | 她自己从背包里找东西吃了（受伤后进食；停口 6 秒才算一顿，合并成一条） | `items[{item,count}]` |
 
 身边这一层 `threat_near` 与踩进岩浆 / 火里的 `ground_change` 算紧急，插件会当场请角色开口；
-其余（含 `shelter_change`、普通地面变化）走「攒够几条」那套。
+`hazard_near` 不紧急（她还没踩进去），同键合并只留最近的一处，走「攒够几条」那套；
+其余（含 `shelter_change`、`posture_change`、普通地面变化）同样走「攒够几条」那套。
+同一批采样里推出去的帧按**危险 > 与主人相关 > 新奇**排好再发：危险是受伤、血量告急、敌对生物、
+边上的岩浆与火；与主人相关是他走远或离开视线；其余换群系、进结构、落脚变化都算新奇。
+事件自身的有效期、合并键与冷静期不变，插件按到达顺序写旁白。
 `creature_death` 里死的是她主人时也当场开口；`maid_death`、`owner_death` 与 `maid_revive`
 一律当场开口——她倒下之后所有指令都只会回「找不到女仆」，这几条是插件唯一的信息来源。
 主人死掉走单独的 `owner_death`：`creature_death` 有距离限制，而她可能被留在家里或另一个
@@ -456,6 +493,10 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
 `action_done` 的 `status` 是 `done` / `failed` / `cancelled`，**三种都会推**：不推的话插件会
 永远等一个不来的收尾。`elapsed_ticks` 是游戏内的 tick 数（Esc 暂停时不计），`distance` 是
 收尾时到目标的直线距离（取一位小数）。
+
+就地躺下的收尾特殊：她自己起来时是 `status=done`，`reason_code` 是打断那件事
+（`hurt` / `in_liquid` / `lost_ground` / `carried` / `in_bed`），`reason` 是中文原因；
+被新动作顶掉时照旧是 `cancelled`。
 
 写请求响应时有两件事必须守住：响应要把 `request_id` 原样带回，而推送帧**绝不能**
 带 `request_id`——LingChat 宿主按 `request_id` 认领响应，误带会让推送帧被当成某个
@@ -499,12 +540,16 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   "backpack":[{"item":"minecraft:rose_bush","count":2},{"item":"minecraft:iron_pickaxe","count":1}],
   "headwear":{"item":"minecraft:oak_planks","count":1},
   "vehicle":"", "structure":"minecraft:village_plains",
+  "posture":"standing",
   "truncated":false
 }}
 ```
 
 - 一律只给注册表 id：专用服务端上 `getName()` 只有英文（甚至裸翻译键），中文只在客户端
   按玩家语言选得出来，所以中文名全在插件那侧定。
+- `posture` 取 `standing` / `sitting` / `sleeping` / `lying`。站着是常态、插件不念；坐着、
+  睡着与躺在地上要说一句，否则模型会当她站着指挥。`lying` 只可能是就地躺下——床上睡着的
+  给 `sleeping`。
 - `looking_at.kind` 取 `block` / `entity` / `none`；方块用 OUTLINE 射线，草丛、火把、
   告示牌这些「看得见但没碰撞」的也算挡着（与视线判定的口径刻意不同：玻璃挡得住这条
   射线，挡不住视线）。
@@ -567,7 +612,8 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   她自己在挖方块时（以及挖完后的几秒）不报：
   那些增量是挖下来的掉落，主人碰巧站在旁边时会被认成「主人放进去的」。
   背包差分把双手一起算进来——她自己吃饭时车万女仆会把整摞食物挪到手上，
-  只看背包会把放回来的那摞当成「刚收到」。
+  只看背包会把放回来的那摞当成「刚收到」。玩家喂的那口同理：食物先摆在她手上、吃完才
+  推 `item_fed`，这一段里模组会预先把它记进差分账，不会说成「刚收到」。
 - 单人游戏按 Esc 暂停时游戏 tick 停止，请求会超时。插件那边会提示「游戏可能处于暂停或
   未响应状态」，不是卡死。反过来，动作的计时走的是游戏 tick，暂停期间**不算超时**。
 - **居家模式（禁足）会直接拒掉走不到的目标**：车万女仆每个 tick 都会清掉落在活动范围之外的
@@ -595,6 +641,10 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   被抱着期间她不在世界里，气泡、动作与「看一眼周围」都用不了。
 - **白天的「躺下」会被她自己叫醒**：车万女仆按日程决定活动，不在睡觉时段时她躺下就会起身。
   这时动作如实报 `not_sleep_time`，不是 bug；档案调成「全天工作」的话更是永远睡不着。
+- **地上躺下不是睡觉**：它只借原版的躺姿，不记睡觉位置，所以日程与「床没了」都不会叫她起来；
+  她自己起来只有挨打、泡进液体、身下没地、被抱走、自己爬上床这几种，或者被新指令顶掉。
+  地上的躺姿沿用原版睡姿的渲染：没有床时方向不会跟着她的朝向走（原版那条兜底在 1.21.1
+  走不到），碰撞箱也只有脚下 0.2 格，右键她不好对准。这两处要改都得碰客户端渲染。
 - 跟随模式、玩家开着女仆 GUI 时，车万女仆自己的逻辑会和我们的目标抢：表现为走不动，
   最后按 `unreachable` / `timeout` 如实认输，不会一直卡着。
 - 床边那一格常常走不进去，所以「贴近了但不再靠近」会当成到了；判定阈值与寻路口径一致

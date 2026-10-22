@@ -4,6 +4,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import java.util.Base64;
 import net.minecraft.server.MinecraftServer;
@@ -34,6 +35,10 @@ public class PlayTtsHandler implements MessageHandler {
         EntityMaid maid = MaidQueries.requested(server, request);
         if (maid == null) {
             return Envelope.error(MaidQueries.NOT_FOUND);
+        }
+        // 昏迷时游戏内保持安静；插件那边会把语音改回本机
+        if (MaidCondition.isUnconscious(maid)) {
+            return null;
         }
         String format = Envelope.string(data, "format");
         if (!format.isEmpty() && !"wav".equalsIgnoreCase(format)) {

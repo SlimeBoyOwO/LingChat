@@ -7,6 +7,7 @@ import com.lingchat.maidbridge.MaidBridgeConfig;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.integration.carry.CarryOnBridge;
 import com.lingchat.maidbridge.integration.carry.CarryOnPresent;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -48,6 +49,12 @@ public final class AchievementReporter {
         }
         String maidId = MonitoredMaidHandler.get();
         if (maidId.isEmpty() || !belongsTo(server, maidId, player)) {
+            return;
+        }
+        // 昏迷时她不知道主人拿到了什么；醒来后状态会重新交代
+        EntityMaid maid = MaidQueries.findMaidById(server, maidId);
+        if ((maid != null && MaidCondition.isUnconscious(maid))
+                || MaidCondition.isUnconscious(maidId)) {
             return;
         }
 

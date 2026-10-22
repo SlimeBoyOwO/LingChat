@@ -12,6 +12,7 @@ import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import java.util.ArrayList;
 import java.util.List;
@@ -63,6 +64,13 @@ public class SendChatHandler implements MessageHandler {
         EntityMaid maid = MaidQueries.requested(server, request);
         if (maid == null) {
             return Envelope.error(MaidQueries.NOT_FOUND);
+        }
+
+        // 昏迷时游戏里保持安静：气泡、聊天栏与转头都停；LingChat 窗口照常显示
+        if (MaidCondition.isUnconscious(maid)) {
+            JsonObject result = new JsonObject();
+            result.addProperty("success", true);
+            return Envelope.response(Protocol.CHAT_RESULT, result);
         }
 
         boolean bubble = MaidBridgeConfig.CHAT_BUBBLE_ENABLED.get();

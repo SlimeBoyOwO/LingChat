@@ -15,6 +15,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
@@ -38,6 +39,28 @@ public final class MaidQueries {
      */
     public static boolean carriedByPlayer(EntityMaid maid) {
         return maid != null && maid.isPassenger() && maid.getVehicle() instanceof Player;
+    }
+
+    /**
+     * 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
+     * / {@code unconscious}。
+     *
+     * <p>昏迷优先于普通睡姿：昏迷时写入睡眠位置是为了闭眼，但对外说的状态是「不省人事」，
+     * 不是「睡着了」。坐姿与睡觉在车万女仆与原版各有自己的标记；地上躺下既没有床也没有
+     * 睡觉位置（{@code isSleeping} 为假），只能从姿势上看出来——所以判断顺序是昏迷、
+     * 床、坐、躺。
+     */
+    public static String posture(EntityMaid maid) {
+        if (MaidCondition.isUnconscious(maid)) {
+            return "unconscious";
+        }
+        if (maid.isSleeping()) {
+            return "sleeping";
+        }
+        if (maid.isMaidInSittingPose()) {
+            return "sitting";
+        }
+        return maid.hasPose(Pose.SLEEPING) ? "lying" : "standing";
     }
 
     /**
@@ -132,6 +155,9 @@ public final class MaidQueries {
         result.addProperty("dimension", maid.level().dimension().location().toString());
         result.addProperty("is_sitting", maid.isMaidInSittingPose());
         result.addProperty("is_following", !maid.isHomeModeEnable());
+        result.addProperty("unconscious", MaidCondition.isUnconscious(maid));
+        result.addProperty(
+                "on_bed", MaidCondition.isUnconscious(maid) && MaidCondition.isOnBed(maid));
 
         IMaidTask task = maid.getTask();
         result.addProperty("task", task == null ? "" : task.getUid().toString());

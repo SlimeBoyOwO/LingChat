@@ -8,6 +8,7 @@ import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -56,6 +57,9 @@ public class MaidAttackHandler implements MessageHandler {
         EntityMaid maid = MaidQueries.findMaidById(server, Envelope.string(Envelope.data(request), "maid_id"));
         if (maid == null) {
             return rejected("maid_not_found", MaidQueries.NOT_FOUND, "");
+        }
+        if (MaidCondition.isUnconscious(maid)) {
+            return rejected("maid_unconscious", "她昏迷不醒，叫不动", "");
         }
         if (MaidQueries.carriedByPlayer(maid)) {
             return rejected("maid_carried", "玩家正抱着她，先放下来再让她动手", "");

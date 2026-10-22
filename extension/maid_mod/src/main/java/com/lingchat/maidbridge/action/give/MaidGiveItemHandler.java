@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import java.util.Locale;
@@ -48,6 +49,9 @@ public class MaidGiveItemHandler implements MessageHandler {
         EntityMaid maid = MaidQueries.findMaidById(server, Envelope.string(data, "maid_id"));
         if (maid == null) {
             return rejected("maid_not_found", MaidQueries.NOT_FOUND, "", 0, 0);
+        }
+        if (MaidCondition.isUnconscious(maid)) {
+            return rejected("maid_unconscious", "她昏迷不醒，拿不了东西", "", 0, 0);
         }
         String itemId = parseId(Envelope.string(data, "item"));
         ResourceLocation id = itemId == null ? null : ResourceLocation.tryParse(itemId);

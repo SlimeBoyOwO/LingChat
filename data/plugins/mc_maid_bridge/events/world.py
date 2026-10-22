@@ -1,5 +1,5 @@
 """世界这一层的事件：接上世界的第一帧、换群系/维度、天气、昼夜、血量告急、
-上下载具、进出结构、玩家远近。"""
+上下载具、进出结构、玩家远近、她的姿势。"""
 
 from events.spec import EventSpec
 from naming import names
@@ -9,9 +9,11 @@ from wording import (
     DIMENSION_NAMES,
     LIGHT_PLACES,
     STRUCTURE_NAMES,
+    UNCONSCIOUS_STATE_MARK,
     VEHICLE_NAMES,
     as_int,
     name_of,
+    nearness_place,
 )
 
 
@@ -33,6 +35,19 @@ def snapshot(data):
     if data.get("sky"):
         clauses.append("现在是白天" if data.get("phase") == "day" else "现在是夜里")
         clauses.append(_weather_phrase(data))
+    # 她可能正坐着、睡着、躺在地上或昏迷：接上的这一刻就得说清，否则模型默认她站着。
+    # 昏迷不是睡着，不能写成「正睡着」。
+    current = (data.get("posture") or "").strip()
+    if current == "unconscious":
+        clauses.append(f"{maid}{UNCONSCIOUS_STATE_MARK}，不省人事，只剩一口气")
+    else:
+        posture = {
+            "sitting": f"{maid}正坐着",
+            "sleeping": f"{maid}正睡着",
+            "lying": f"{maid}正躺在地上",
+        }.get(current)
+        if posture:
+            clauses.append(posture)
     return f"{'，'.join(clauses)}。"
 
 
@@ -145,6 +160,30 @@ def vehicle_change(data):
     return f"{maid}从{name_of(VEHICLE_NAMES, from_vehicle, '载具')}上下来了。"
 
 
+def posture_change(data):
+    """她换了姿势：坐下、站起、就地躺下、上床睡着、醒过来。
+
+    这是她身上最容易被模型搞错的一件事：以为她还站着，就会让她「走过来」而不是「爬起来」。
+    旁白只陈述换了什么姿势，不替她解释为什么。
+    """
+    maid, _ = names()
+    posture = (data.get("posture") or "").strip()
+    before = (data.get("from_posture") or "").strip()
+    if posture == "sitting":
+        return f"{maid}坐了下来。"
+    if posture == "lying":
+        return f"{maid}躺到了地上。"
+    if posture == "sleeping":
+        return f"{maid}躺下睡着了。"
+    if posture == "unconscious":
+        return f"{maid}昏了过去。"
+    if posture == "standing":
+        if before in ("sleeping", "unconscious"):
+            return f"{maid}醒了过来。"
+        return f"{maid}站了起来。"
+    return ""
+
+
 def structure_change(data):
     """她走进或离开一处结构（村庄、矿井、要塞这类）。"""
     maid, _ = names()
@@ -155,6 +194,17 @@ def structure_change(data):
     if not from_structure:
         return ""
     return f"{maid}离开了一处{name_of(STRUCTURE_NAMES, from_structure, '结构')}。"
+
+
+def hazard_near(data):
+    """她视野里新出现了岩浆、火这类危险的东西。
+
+    只说大概多远、是什么，不报方位与格数——模型会照着旁白复述「左前方三格有岩浆」，
+    而这些细节对玩家没用；她该知道的只是那边有危险。脚下的岩浆另走 `ground_change`，
+    同一次不会说两遍。
+    """
+    block = name_of(BLOCK_NAMES, data.get("block"), "危险的东西")
+    return f"{nearness_place(data.get('distance'))}有{block}。"
 
 
 def _weather_phrase(data):
@@ -187,10 +237,20 @@ SPECS = {
     # 上下载具与进出结构都很少见，记一笔就够，让角色自己决定要不要提
     "vehicle_change": EventSpec(vehicle_change, ttl=120),
     "structure_change": EventSpec(structure_change, ttl=300),
+    # 换姿势是离散动作，不紧急；连着坐下又站起来时同键合并，只留最后那一次
+    "posture_change": EventSpec(posture_change, ttl=120, merge_key="posture"),
     # 岩浆和火踩上去就在掉血，值得当场提醒；水、雪、沙这类只记一笔
     "ground_change": EventSpec(
         ground_change,
         ttl=90,
         urgent_when=lambda data: (data.get("kind") or "") in ("lava", "fire"),
+    ),
+    # 边上的岩浆与火：不紧急（她还没踩进去），同键合并时留最近的那一处。
+    # 模组只在「这一种原来不在她眼里」时报，沿着岩浆湖走不会一步一句
+    "hazard_near": EventSpec(
+        hazard_near,
+        ttl=60,
+        merge_key="hazard",
+        severity=lambda data: 100 - as_int(data.get("distance"), 100),
     ),
 }

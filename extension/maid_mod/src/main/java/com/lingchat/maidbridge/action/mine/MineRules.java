@@ -25,8 +25,59 @@ public final class MineRules {
     public static final int TARGET_TIMEOUT_TICKS = 1200;
     /** 为了够到目标最多先挖穿几块挡路的方块：再多就成了她自己在乱挖矿道。 */
     public static final int PATH_LIMIT = 24;
+    /** 相对地址最远指多少格：再远就不像「她看见过的那一块」了。 */
+    public static final int MAX_OFFSET = 48;
 
     private MineRules() {
+    }
+
+    /** 相对地址：相对她脚下那一格的偏移，东、上、南。 */
+    public record Offset(int dx, int dy, int dz) {
+    }
+
+    /**
+     * 解析相对地址：{@code @4,-2,-3} 或 {@code 4,-2,-3}，三个整数依次是东、上、南的偏移。
+     *
+     * <p>地址由「看一眼周围」的关系句给出，插件原样转回来。格式不对、分量超范围给 null，
+     * 由调用方回一句「没看懂这个地址」，不猜一个近似的位置。
+     */
+    public static Offset parseOffset(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String text = raw.trim();
+        // 模型常把整句「at=@4,-2,-3」抄回来，前缀可有可无
+        if (text.regionMatches(true, 0, "at=", 0, 3)) {
+            text = text.substring(3).trim();
+        }
+        if (text.startsWith("@")) {
+            text = text.substring(1);
+        }
+        String[] parts = text.split(",", -1);
+        if (parts.length != 3) {
+            return null;
+        }
+        int[] values = new int[3];
+        for (int i = 0; i < values.length; i++) {
+            String part = parts[i].trim();
+            if (part.isEmpty()) {
+                return null;
+            }
+            try {
+                values[i] = Integer.parseInt(part);
+            } catch (NumberFormatException notANumber) {
+                return null;
+            }
+            if (values[i] < -MAX_OFFSET || values[i] > MAX_OFFSET) {
+                return null;
+            }
+        }
+        return new Offset(values[0], values[1], values[2]);
+    }
+
+    /** 地址 → 协议里的写法，回执与模组内部的现场都走这一处。 */
+    public static String formatOffset(int dx, int dy, int dz) {
+        return "@" + dx + "," + dy + "," + dz;
     }
 
     /** 请求里的块数：小于 1 按 1，超过上限按上限。 */

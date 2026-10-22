@@ -16,8 +16,9 @@
 
 台词表里只留两种桥接写的东西：一类是事件旁白，另一类是进入 MC 时写一次的那条提示。
 旁白一律用第三人称，角色与玩家都叫名字（见 `naming.py`），不写「你」「玩家」。
-她身边那一圈不进台词表——那些事由玩家开口那一刻随消息带过去（见 `_carry`），
-逐条记下来会把历史塞满同类句子。
+**感知信息只有一个入口：模组推事件帧，这里翻成旁白交给 `add_prompt_line`。** 不要在玩家
+那句话后面用括号追加「（她此刻：…）」之类的处境；玩家说的话原样送进对话，她的姿势、周围
+有什么、脚下踩着什么全部由事件旁白交代（见 `events/`）。
 
 插件脚本每次调用都新建解释器、跑完即弃，所以这里不保存任何跨调用状态：
 用得到的信息一律当场问（见 `bridge.ready`），「自上次对话以来攒了几条事件」这类计数
@@ -39,8 +40,14 @@ import bridge
 from bridge import config, player_name, truthy
 from events import event_key, event_severity, event_ttl, format_event, needs_snapshot
 from naming import names
-from tools.context import CARRY_TIMEOUT_MS, carry_text, creature_text, snapshot
-from wording import DEAD_STATE_MARK, REVIVE_STATE_MARK, kaomoji_for
+from tools.context import NEARBY_TIMEOUT_MS, creature_text, snapshot
+from wording import (
+    DEAD_STATE_MARK,
+    RECOVERED_STATE_MARK,
+    REVIVE_STATE_MARK,
+    UNCONSCIOUS_STATE_MARK,
+    kaomoji_for,
+)
 
 
 def _entry_hint():
@@ -54,20 +61,23 @@ def _entry_hint():
         f"{maid}变成了游戏里的小女仆。\n"
         f"- {maid}在 LingChat 回的话会同步显示成游戏内女仆的聊天气泡，照常说话即可。\n"
         f"- {player}在游戏里打出的话会当成{player}自己的发言送过来，和在输入框里发的一句一样。\n"
-        f"- {player}那句话后面若还跟着一句「（{maid}此刻：…）」，那是{maid}当时看到的情形"
-        f"（身边有什么活物），不是{player}说的话。\n"
-        "- 游戏里的变化会写成旁白，直接以第三人称叙事句出现（换地形、天黑、下雨、光线变暗或变亮、受伤、"
+        "- 游戏里的变化会写成旁白，直接以第三人称叙事句出现（换地形、天黑、下雨、光线变暗或变亮、"
+        "附近出现岩浆或火、受伤、她坐下站起或躺下、"
         f"有生物死亡、{maid}自己死了、{maid}捡到东西、{player}喂{maid}东西、"
         f"{player}把{maid}抱起来或放下、"
         f"上下船或矿车、进出村庄这类结构、{player}走远又回来、{player}拿到成就这类），"
         "它不是谁说的话，当背景信息看；"
         "几件事接连发生时可能记在同一行里，用换行隔开。\n"
+        f"- {maid}伤重时会昏过去，不会直接死亡；昏迷时游戏里的气泡和语音都会停，"
+        f"所有指令也叫不动她。{player}把{maid}抱到床上（普通床或女仆床）连续躺一分钟，"
+        f"{maid}才会醒，醒来只有一点血。\n"
         f"- {player}往{maid}身上放东西（背包、手里、盔甲栏、饰品栏）、拿食物潜行右键喂{maid}，"
         "都会记成一条旁白；"
         f"地上掉着的东西本身不算事，只有{maid}真的捡起来才会记，旁白里会说清是谁丢的、"
         "哪只生物掉的还是挖哪种方块崩出来的。\n"
-        f"- {player}让{maid}做动作（过来、坐下、站起来、去床上躺下）时用 maid_ 开头的工具"
-        f"指挥女仆：{maid}不会瞬移，工具回执只说明指令已收到，不代表已经到位。\n"
+        f"- {player}让{maid}做动作（过来、坐下、站起来、去床上躺下、就地躺下）时用 maid_ 开头的工具"
+        f"指挥女仆：{maid}不会瞬移，工具回执只说明指令已收到，不代表已经到位。"
+        f"就地躺着时她自己不会乱走，挨打、泡进液体或身下没地时会自己起来。\n"
         f"- {player}叫{maid}干活（种地、钓鱼、打怪）或者叫{maid}别干了，用 maid_set_task "
         f"换工作模式；{maid}按自己的作息干活，切换成功不等于此刻已经开工，工具结果里会写明。\n"
         f"- {player}叫{maid}打谁（「打那只僵尸」「打我一下」「打他」）用 maid_attack 点名：活物的名字、"
@@ -77,7 +87,8 @@ def _entry_hint():
         "只打一下就收手。追打的回执只代表开始打了；她会自己打到目标倒下，"
         "过程中不要重复调用同一个目标，重复调用只会得到「已经在打」的回执。\n"
         f"- {player}叫{maid}挖方块（「把这块挖了」「挖十块石头」）用 maid_mine：target 填"
-        f"方块名，不给就是{player}正看着的那块；count 填要挖几块。{maid}会自己走过去、"
+        f"方块名，不给就是{player}正看着的那块；count 填要挖几块；想挖她看见过的确切某一格，"
+        f"把「看一眼周围」关系句里的 at 填进去。{maid}会自己走过去、"
         "从背包里换合适的工具；目标埋在其他方块后面时，她会先把挡路的方块挖穿。"
         "挖掘回执只代表开始挖了，方块还没被挖掉。没有趁手的工具时，"
         "回执会说明缺哪种镐子、地上那件能不能用；镐子丢在地上不算给过她，得放进背包。\n"
@@ -144,9 +155,9 @@ def on_line_shown(ctx):
     # 剧本编辑器的预览流不该外发到游戏里。试玩代号可以是 0，必须按「键存在」判断。
     if payload.get("previewGen") is not None or not payload.get("roleId"):
         return
-    # 每轮最后一句之后重念一次死亡状态：死亡是持久的，模型几轮之后就会忘了她已经倒下
+    # 每轮最后一句之后重念一次死亡/昏迷状态：这两种状态是持久的，模型几轮之后就会忘
     if payload.get("isFinal"):
-        _remind_dead()
+        _remind_state()
     cfg = config(ctx)
     message = (payload.get("message") or "").strip()
     audio_file = (payload.get("audioFile") or "").strip()
@@ -256,32 +267,13 @@ def _handle_chat(ctx, chat):
         text = f"{sender}说：{message}"
     else:
         text = message
-    note = _carry(chat)
     # 连接时可能还没进入对话，短档设置被拒；真正要生成回复前再重申一次。幂等，
     # 档位没变时不往台词表写任何行。
     _use_short_replies(quiet=True)
     # 与玩家在输入框里发一句走同一条路：写进台词历史、按当前配置生成回复，
     # 所以聊天窗里看得到，角色的回话也会顺着 on_line_shown 变成游戏内气泡。
-    send_user_message(f"{text}\n{note}" if note else text)
-
-
-def _carry(chat):
-    """随这次发言带一句她此刻的处境。
-
-    身边那一圈（附近有什么活物）不再逐条写成旁白——一整晚
-    下来能把台词表塞满，而她要的只是「知道周围有什么」。改成开口这一刻现取一份快照
-    带过去：一次发言带一次，说完就随那行留在历史里。脚下、头顶与光线只报变化（见 events/
-    world.py 的 ground_change / shelter_change / light_change），玩家走远回来也只报变化
-    （player_proximity_change），不随每句话重复。
-
-    女仆 id 直接用帧里的：模组只在「说话的人正是这只女仆的主人」时才转发，帧里必然带着
-    她的 uuid，不必再问一次游戏。取不到就这一轮不带，玩家的话照常送。
-    """
-    maid = (chat.get("maid_id") or "").strip()
-    if not maid:
-        return ""
-    data, _ = snapshot(maid, CARRY_TIMEOUT_MS)
-    return carry_text(data) if data else ""
+    # 玩家这句话原样送，不在后面追加任何她的状态：感知一律走旁白入口（见模块说明）。
+    send_user_message(text)
 
 
 def _handle_event(ctx, data):
@@ -298,9 +290,9 @@ def _handle_event(ctx, data):
     text, urgent = format_event(data)
     if not text:
         return
-    if kind in ("maid_death", "maid_revive"):
-        # 她倒下之后模组找不到实体，游戏里那句语音播不出来：改由本机放，复活后再交回去。
-        set_game_voice_available(kind == "maid_revive")
+    if kind in ("maid_death", "maid_revive", "maid_unconscious", "maid_recovered"):
+        # 死亡与昏迷时游戏里那句语音不该从她身上出来：改由本机放，醒来/复活后再交回去。
+        set_game_voice_available(kind in ("maid_revive", "maid_recovered"))
     if urgent and needs_snapshot(kind):
         # 出事这一刻正好是「再感知一次周围」的时机：怪物那条有 2 分钟防抖管着，
         # 这期间新来的谁都不会各记一条，所以她身边站着什么就跟着这条一起交代。
@@ -339,7 +331,7 @@ def _creature_text(data):
     maid = (data.get("maid_id") or "").strip()
     if not maid:
         return ""
-    data, _ = snapshot(maid, CARRY_TIMEOUT_MS)
+    data, _ = snapshot(maid, NEARBY_TIMEOUT_MS)
     return creature_text(data) if data else ""
 
 
@@ -351,49 +343,81 @@ MAID_STATE_TIMEOUT_MS = 800
 LIFE_SCAN = 200
 
 
-def _remind_dead():
-    """她死了就每一轮再念一次死亡状态。
+def _remind_state():
+    """她死了或昏迷着，就每一轮再念一次状态。
 
-    死亡是持久状态，模型几轮之后就会把她当成还站在旁边的小女仆。判断先问模组（它记着
-    这一局的死活），问不到才退回台词表里最后一条死亡/复活旁白——历史本身就是状态。
-    带上 key 让同一轮里几句台词只留一条。
+    两种状态都是持久的，模型几轮之后就会把她当成还站在旁边的小女仆。判断先问模组
+    （它记着这一局的死活与昏迷），问不到才退回台词表里最后一条状态旁白——历史本身
+    就是状态。带上 key 让同一轮里几句台词只留一条。
     """
-    if not _dead_now():
-        return
+    state = _state_now()
     maid, _ = names()
+    if state.get("dead"):
+        result = add_prompt_line(
+            "narrator",
+            f"{maid}{DEAD_STATE_MARK}，在复活之前没法行动，也看不到听不到游戏里的事。",
+            ttl_seconds=604800,
+            key="maid_dead_state",
+            severity=1,
+        )
+        if not result.get("ok"):
+            print(f"[mc_maid_bridge] 死亡状态没能进队列：{result.get('error')}")
+        return
+    if not state.get("unconscious"):
+        return
+    if state.get("on_bed"):
+        text = (
+            f"{maid}{UNCONSCIOUS_STATE_MARK}，正躺在床上慢慢恢复，身边冒着爱心，"
+            "还要等一会儿才会醒。"
+        )
+    else:
+        text = (
+            f"{maid}{UNCONSCIOUS_STATE_MARK}，倒在地上叫不醒；"
+            f"把{maid}抱到床上（普通床或女仆床）连续躺一分钟，{maid}才会醒。"
+        )
     result = add_prompt_line(
         "narrator",
-        f"{maid}{DEAD_STATE_MARK}，在复活之前没法行动，也看不到听不到游戏里的事。",
+        text,
         ttl_seconds=604800,
-        key="maid_dead_state",
+        key="maid_unconscious_state",
         severity=1,
     )
     if not result.get("ok"):
-        print(f"[mc_maid_bridge] 死亡状态没能进队列：{result.get('error')}")
+        print(f"[mc_maid_bridge] 昏迷状态没能进队列：{result.get('error')}")
 
 
-def _dead_now():
-    """她现在是不是死的。模组这一局没记录时（刚重启）退回台词表判断。"""
+def _state_now():
+    """她现在是不是死的、是不是昏迷着。模组这一局没记录时退回台词表判断。"""
     response, error = bridge.ask({"type": "maid_state", "data": {}}, MAID_STATE_TIMEOUT_MS)
     if not error and response.get("type") == "maid_state_result":
         data = response.get("data") or {}
         if data.get("known"):
-            return bool(data.get("dead"))
-    return _life_state() == "dead"
+            return {
+                "dead": bool(data.get("dead")),
+                "unconscious": bool(data.get("unconscious")),
+                "on_bed": bool(data.get("on_bed")),
+            }
+    state = _life_state()
+    return {
+        "dead": state == "dead",
+        "unconscious": state == "unconscious",
+        "on_bed": False,
+    }
 
 
 def _sync_game_voice():
-    """连上时对一次账：她若还倒在上一局里，语音就该由本机放。
+    """连上时对一次账：她若还死在上一局或昏迷着，语音就该由本机放。
 
     宿主不知道自己那边有没有女仆，只会按「开关开着 + 连接在」把本机静音；
-    死了的她在游戏里没有实体，语音会变成谁都不出声。之后她死、复活时再各报一次
-    （见 _handle_event）。
+    死了的她在游戏里没有实体，昏迷的她不该从身上发声。之后她死、复活、昏迷、醒来时
+    再各报一次（见 _handle_event）。
     """
-    set_game_voice_available(not _dead_now())
+    state = _state_now()
+    set_game_voice_available(not state.get("dead") and not state.get("unconscious"))
 
 
 def _life_state():
-    """台词表末尾最后一条死亡/复活旁白说的是什么：dead / alive / unknown。"""
+    """台词表末尾最后一条状态旁白说的是什么：dead / unconscious / alive / unknown。"""
     head = read_context(start=1, end=1)
     total = head.get("total") or 0
     if not head.get("ok") or not total:
@@ -406,6 +430,10 @@ def _life_state():
         if DEAD_STATE_MARK in content:
             state = "dead"
         elif REVIVE_STATE_MARK in content:
+            state = "alive"
+        elif UNCONSCIOUS_STATE_MARK in content:
+            state = "unconscious"
+        elif RECOVERED_STATE_MARK in content:
             state = "alive"
     return state
 
@@ -459,7 +487,7 @@ def _entry_hint_written(hint):
     """台词表里是否已经写过**现在这一版**的提示行。
 
     按内容认，不按标记认：措辞改了以后老存档也要重新交代一遍，否则模型一直按旧
-    规矩理解事件旁白与「（某角色此刻：…）」。先看尾巴（重连的常见情形，便宜）；历史
+    规矩理解事件旁白。先看尾巴（重连的常见情形，便宜）；历史
     比尾巴窗口更长、尾巴里又没找到时，才整段扫一遍确认。
     """
     head = read_context(start=1, end=1)

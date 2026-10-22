@@ -776,10 +776,12 @@ ATTACK_STYLES = {
     "打倒": "fight",
 }
 
-# 死亡状态的标记。写在死亡/复活旁白里，插件靠台词表里最后一条这样的旁白判断她还在不在
-# 死亡状态（插件没有跨调用状态，历史本身就是状态）。
+# 死亡与昏迷状态的标记。写在状态旁白里，插件靠台词表里最后一条这样的旁白判断她还在不在
+# 这个状态（插件没有跨调用状态，历史本身就是状态）。昏迷不是死亡，醒来也不等于复活。
 DEAD_STATE_MARK = "现在在MC里处于死亡状态"
 REVIVE_STATE_MARK = "已经在MC里复活了"
+UNCONSCIOUS_STATE_MARK = "现在在MC里处于昏迷状态"
+RECOVERED_STATE_MARK = "已经从昏迷中醒过来了"
 
 # 「近」与「中」的分界（格）。再远一律说「远」。
 NEAR_CLOSE = 5.0
@@ -814,6 +816,15 @@ def name_of(names, raw, default="未知的地方"):
     if not identifier:
         return default
     return names.get(identifier) or identifier.split(":")[-1].replace("_", " ")
+
+
+def blocker_phrase(one):
+    """关系里的「隔着两块石头」：挡路的块数与第一种挡路的方块；没挡着给空串。"""
+    count = as_int(one.get("blockers"), 0)
+    if count <= 0:
+        return ""
+    blocker = name_of(BLOCK_NAMES, one.get("blocker"), "方块")
+    return f"隔着{count}块{blocker}"
 
 
 def item_name(raw):

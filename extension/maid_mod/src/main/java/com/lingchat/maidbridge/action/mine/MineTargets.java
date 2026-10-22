@@ -4,6 +4,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
 import com.lingchat.maidbridge.perception.spatial.SightLine;
+import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -229,6 +230,22 @@ public final class MineTargets {
             return null;
         }
         return hitPos;
+    }
+
+    /**
+     * 她知道这一格是什么吗：此刻看得见，或者半分钟内真的看见过。
+     *
+     * <p>格子寻址的门槛。模型指的那一格若不在她的认知里，那多半是它自己编的坐标，
+     * 直接拒绝比让她照着想象中的坐标动手更像「她只知道自己看见过的」。
+     */
+    public static boolean sheKnows(EntityMaid maid, BlockPos pos, BlockState state) {
+        Level level = maid.level();
+        if (SightLine.sees(level, maid.getEyePosition(), pos, maid)) {
+            return true;
+        }
+        TerrainMemory.Remembered remembered =
+                TerrainMemory.recall(maid, blockId(state), level.getGameTime());
+        return remembered != null && remembered.pos().equals(pos);
     }
 
     /** 她此刻能不能直接挖到这一块：够得着、看得见。 */

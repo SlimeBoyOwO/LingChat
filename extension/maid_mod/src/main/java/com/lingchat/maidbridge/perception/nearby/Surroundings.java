@@ -36,6 +36,8 @@ import java.util.List;
  * @param nearbyTruncated 附近还有没列进来的活物
  * @param vehicle 她正坐在里面的载具（船、矿车这类）的实体 id；没坐载具时为空串
  * @param structure 她所在结构（村庄、矿井这类）的 id；不在结构里时为空串
+ * @param posture 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
+ *                / {@code unconscious}
  */
 public record Surroundings(
         String entityId,
@@ -50,7 +52,8 @@ public record Surroundings(
         List<Nearby> nearby,
         boolean nearbyTruncated,
         String vehicle,
-        String structure) {
+        String structure,
+        String posture) {
 
     /** 一次视线命中的结果：{@code kind} 取 {@code block} / {@code entity} / {@code none}。 */
     public record Gaze(String kind, String id, double distance) {
@@ -90,7 +93,7 @@ public record Surroundings(
     /**
      * 感知档：看得见的看多远、看不见的只算多近、一次最多列几个。
      *
-     * <p>自动感知（周期采样、开口时顺手带的那句）用较小的看得见半径——默认跟车万女仆的
+     * <p>自动感知（周期采样；出事那条旁白里顺手补一份也用它）用较小的看得见半径——默认跟车万女仆的
      * 工作范围走；玩家明确问「你周围有什么」时用较大的 {@code query} 档，好让她答得出
      * 十几格外的目标。两档对看不见的活物都只留 {@code heardRadius} 以内的声音。
      */
@@ -209,6 +212,8 @@ public record Surroundings(
         // 坐在船/矿车里时脚下没有「地」可说，插件改说载具；结构同理
         data.addProperty("vehicle", s.vehicle());
         data.addProperty("structure", s.structure());
+        // 站着是默认，插件不念；坐着、睡着、躺在地上要说一句，否则模型会当她站着
+        data.addProperty("posture", s.posture());
 
         // 附近能挖的方块：只给注册表 id，中文名与「拿它去挖」的判断留给插件和模型
         JsonArray blockList = new JsonArray();

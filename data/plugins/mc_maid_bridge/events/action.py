@@ -16,14 +16,22 @@ def action_done(data):
     """动作收尾。三种结局都要说：被顶掉也要说，否则角色会一直以为还在做。"""
     maid, player = names()
     action = (data.get("action") or "").strip()
+    target = (data.get("target") or "").strip()
     status = (data.get("status") or "").strip()
+    ground_lie = action == "lie_down" and target == "ground"
     if status == "done":
         if action == "go_to":
-            if (data.get("target") or "") == "bed":
+            if target == "bed":
                 return f"{maid}走到了床边。"
             return f"{maid}走到了{player}身边。"
+        if ground_lie:
+            # 就地躺下的收尾不是「办成了」，而是她自己爬了起来：原因里写着是什么打断的
+            reason = narrate(data.get("reason"))
+            return f"{maid}没再躺着：{reason}。" if reason else f"{maid}自己爬了起来。"
         return ACTION_DONE_PHRASES.get(action, "{maid}这件事做完了。").format(maid=maid)
     if status == "cancelled":
+        if ground_lie:
+            return f"{maid}没再躺着，被新的事叫起来了。"
         return f"{maid}手上那件事被新的事顶掉了，没做成。"
     reason = narrate(data.get("reason"))
     return f"{maid}刚才那件事没做成：{reason}" if reason else f"{maid}刚才那件事没做成。"

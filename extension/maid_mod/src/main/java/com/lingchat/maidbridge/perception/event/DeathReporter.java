@@ -6,6 +6,7 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.MaidBridgeConfig;
 import com.lingchat.maidbridge.bridge.BridgeServer;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -95,6 +96,10 @@ public final class DeathReporter {
             // 居家模式的她不会跟过去，插件要说的「会跟着回出生点」就不成立了
             frame.addProperty("home_mode", maid.isHomeModeEnable());
             bridge.broadcastEvent(frame);
+            return;
+        }
+        // 她昏迷时听不到附近谁死了；自己的死与主人的死仍然要报
+        if (MaidCondition.isUnconscious(maid)) {
             return;
         }
         if (maid.level() != dead.level()) {

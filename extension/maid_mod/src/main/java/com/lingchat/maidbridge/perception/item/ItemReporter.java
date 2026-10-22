@@ -6,7 +6,9 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.MaidBridgeConfig;
+import com.lingchat.maidbridge.action.feed.MaidFeeder;
 import com.lingchat.maidbridge.bridge.BridgeServer;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -111,7 +113,7 @@ public final class ItemReporter {
             return;
         }
         EntityMaid maid = event.getMaid();
-        if (!isMonitored(maid)) {
+        if (!isMonitored(maid) || MaidCondition.isUnconscious(maid)) {
             return;
         }
         Entity owner = maid.getOwner();
@@ -130,7 +132,7 @@ public final class ItemReporter {
             return;
         }
         EntityMaid maid = event.getMaid();
-        if (!isMonitored(maid)) {
+        if (!isMonitored(maid) || MaidCondition.isUnconscious(maid)) {
             return;
         }
         ItemStack stack = event.getPickupItem();
@@ -168,14 +170,17 @@ public final class ItemReporter {
      * 她自己吃完了东西（车万女仆的进食系统会先 {@code startUsingItem}，完成时走这个事件）。
      *
      * <p>用「用完了哪件物品」来判定，而不是 {@code MaidAfterEatEvent}：后者只给吃完后剩下的
-     * 那份，普通食物那里是空的，认不出吃的是什么。玩家喂食走的是直接 {@code eat}，不会
-     * 经过这里，两条路不会重复。
+     * 那份，普通食物那里是空的，认不出吃的是什么。玩家喂食也走 {@code startUsingItem} 了，
+     * 所以要先问一句是不是刚喂的那口——喂的那一路已经由 {@link #onFed} 记过账。
      */
     public static void onItemUseFinish(LivingEntityUseItemEvent.Finish event) {
         if (!(event.getEntity() instanceof EntityMaid maid) || maid.level().isClientSide()) {
             return;
         }
-        if (!reportsEnabled() || !isMonitored(maid)) {
+        if (MaidFeeder.atePlayerFood(maid)) {
+            return;
+        }
+        if (!reportsEnabled() || !isMonitored(maid) || MaidCondition.isUnconscious(maid)) {
             return;
         }
         ItemStack used = event.getItem();
@@ -199,6 +204,19 @@ public final class ItemReporter {
             selfFeeds.clear();
             selfFeedMaid = "";
         }
+    }
+
+    /**
+     * 预先记一笔「这件东西本来就该出现在她身上」，背包差分按这个扣账。
+     *
+     * <p>玩家喂的那口会先摆在她手上，等她吃完才记 {@code item_fed}；这段时间里差分
+     * 不能把它当成主人往背包里塞了同样的一件。
+     */
+    public static void suppressHandGain(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        recentPickups.merge(itemId(stack), stack.getCount(), Integer::sum);
     }
 
     /**
@@ -233,7 +251,7 @@ public final class ItemReporter {
             return;
         }
         EntityMaid maid = monitoredMaid(server);
-        if (maid == null || maid.level() != level) {
+        if (maid == null || maid.level() != level || MaidCondition.isUnconscious(maid)) {
             return;
         }
         double reach = MaidBridgeConfig.NOTICE_RADIUS.get() + 8.0;

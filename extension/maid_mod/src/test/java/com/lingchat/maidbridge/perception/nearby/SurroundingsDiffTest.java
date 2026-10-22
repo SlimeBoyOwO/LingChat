@@ -376,6 +376,24 @@ class SurroundingsDiffTest {
         assertEquals("dark", frames.get(0).get("band").getAsString());
     }
 
+    /** 姿势是离散动作，变了就报，不用等两次采样；首帧仍然只建基线。 */
+    @Test
+    void postureChangesAreReportedWithoutConfirming() {
+        SurroundingsDiff.State state = new SurroundingsDiff.State();
+        Surroundings standing = plain();
+        SurroundingsDiff.events(null, standing, state, 100L);
+
+        List<JsonObject> frames = diff(
+                standing, withPosture(standing, "lying"), state, 200L);
+
+        assertEquals(List.of("posture_change"), types(frames));
+        assertEquals("standing", frames.get(0).get("from_posture").getAsString());
+        assertEquals("lying", frames.get(0).get("posture").getAsString());
+        assertTrue(
+                diff(withPosture(standing, "lying"), withPosture(standing, "lying"), state, 300L).isEmpty(),
+                "姿势没变就什么都不说");
+    }
+
     private static List<String> types(List<JsonObject> frames) {
         List<String> out = new ArrayList<>();
         for (JsonObject frame : frames) {
@@ -402,7 +420,8 @@ class SurroundingsDiffTest {
                 nearby,
                 false,
                 "",
-                "");
+                "",
+                "standing");
     }
 
     private static Surroundings.Owner owner(double distance, boolean visible, boolean sameDimension) {
@@ -416,48 +435,54 @@ class SurroundingsDiffTest {
     private static Surroundings withId(Surroundings s, String entityId) {
         return new Surroundings(
                 entityId, s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure());
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withNearby(Surroundings s, Surroundings.Nearby... nearby) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
-                s.light(), s.owner(), List.of(nearby), s.nearbyTruncated(), s.vehicle(), s.structure());
+                s.light(), s.owner(), List.of(nearby), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withFeet(Surroundings s, String block) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), block, s.footing(), s.skyAbove(), s.hasSky(),
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure());
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withSky(Surroundings s, boolean skyAbove) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), skyAbove, s.hasSky(),
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure());
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withHasSky(Surroundings s, boolean hasSky) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), hasSky,
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure());
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withLight(Surroundings s, int light) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
-                light, s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure());
+                light, s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture());
     }
 
     private static Surroundings withVehicle(Surroundings s, String vehicle) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), vehicle, s.structure());
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), vehicle, s.structure(), s.posture());
     }
 
     private static Surroundings withStructure(Surroundings s, String structure) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), structure);
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), structure, s.posture());
+    }
+
+    private static Surroundings withPosture(Surroundings s, String posture) {
+        return new Surroundings(
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), posture);
     }
 }

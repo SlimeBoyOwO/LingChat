@@ -104,6 +104,22 @@ public final class MaidMineController {
         MaidActuator.stopLooking(maid);
     }
 
+    /** 昏迷打断挖掘：收干净并给插件一个明确的收尾，别让它一直等。 */
+    public static void cancelForUnconscious(MinecraftServer server) {
+        Run run = current;
+        if (run == null) {
+            return;
+        }
+        current = null;
+        EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
+        if (maid != null) {
+            clearCracks(run, maid);
+            MaidActuator.stopWalking(maid);
+            MaidActuator.stopLooking(maid);
+        }
+        broadcast(run, run.mined > 0 ? "partial" : "failed", "unconscious", "她昏过去了");
+    }
+
     /** 这只女仆正在被我们带着挖：跟随行为给长任务让路时用。 */
     public static boolean isRunning(EntityMaid maid) {
         Run run = current;

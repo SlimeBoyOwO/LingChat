@@ -18,6 +18,7 @@ import com.lingchat.maidbridge.action.headwear.MaidHeadwearHandler;
 import com.lingchat.maidbridge.maid.MaidStatusHandler;
 import com.lingchat.maidbridge.maid.MaidStateHandler;
 import com.lingchat.maidbridge.action.task.MaidTaskHandler;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.mine.MaidMineHandler;
@@ -85,6 +86,10 @@ public class LingChatMaidBridge {
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerTick);
         NeoForge.EVENT_BUS.addListener(ChatPushListener::onServerChat);
         NeoForge.EVENT_BUS.addListener(HurtReporter::onDamage);
+        // 致命伤改成就地昏迷：普通伤害在昏迷期间取消，/kill 与虚空仍走旧死亡
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, MaidCondition::onDamage);
+        NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, MaidCondition::onIncoming);
+        NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, MaidCondition::onDeath);
         // 附近有东西死了：全世界每次死亡都会发，认位置与静默期在 DeathReporter 里
         NeoForge.EVENT_BUS.addListener(DeathReporter::onDeath);
         // 胶片/神龛把女仆复活：复活出来的是一只新 uuid 的实体，监控目标要跟着换
@@ -97,8 +102,9 @@ public class LingChatMaidBridge {
         NeoForge.EVENT_BUS.addListener(ItemReporter::onPickupPre);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onPickupPost);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onItemUseFinish);
-        // 喂食的优先级有讲究，见 MaidFeeder：普通食物抢在最前面吃掉并取消，
-        // 金苹果只留副本、由车万女仆自己处理，等她真的吃完再补记
+        // 喂食的优先级有讲究，见 MaidFeeder：普通食物抢在最前面递到她手上并取消，
+        // 金苹果只留副本、由车万女仆自己处理，等她真的吃完再补记；两侧都要拦，
+        // 否则客户端会把她的坐姿标记在本地翻过去
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, MaidFeeder::onCapture);
         NeoForge.EVENT_BUS.addListener(MaidFeeder::onAfterEat);
     }
@@ -118,10 +124,11 @@ public class LingChatMaidBridge {
             return;
         }
         MinecraftServer server = event.getServer();
+        MaidCondition.reset();
 
         MessageRouter newRouter = new MessageRouter();
         newRouter.register(Protocol.GET_MAID_STATUS, new MaidStatusHandler(server));
-        newRouter.register(Protocol.MAID_STATE, new MaidStateHandler());
+        newRouter.register(Protocol.MAID_STATE, new MaidStateHandler(server));
         newRouter.register(Protocol.SET_MONITORED_MAID, new MonitoredMaidHandler(server));
         newRouter.register(Protocol.SEND_CHAT, new SendChatHandler(server));
         newRouter.register(Protocol.MAID_ACTION, new MaidActionHandler(server));
@@ -157,6 +164,8 @@ public class LingChatMaidBridge {
         router = null;
         // 换存档后旧的女仆 UUID 就失效了，别留着
         MonitoredMaidHandler.reset();
+        // 昏迷的服务端索引同理；实体 NBT 里的标记不动，下次加载会重新认回来
+        MaidCondition.reset();
         // 感知记着上一个世界的状态，一并清掉
         PerceptionSampler.reset();
         // 附近死亡那条记着静默期，别带到下一个世界
@@ -177,6 +186,8 @@ public class LingChatMaidBridge {
         if (router != null) {
             router.tick();
         }
+        // 昏迷的床上计时先走：醒来后这一轮的感知读到的是站姿
+        MaidCondition.tick(event.getServer());
         // 感知跟着同一个 tick 走：内部自己判有没有客户端、配置开没开
         PerceptionSampler.tick(event.getServer());
         // 动作也按 tick 推进：每 tick 写一次寻路目标，暂停时自然不计时
@@ -185,7 +196,7 @@ public class LingChatMaidBridge {
         MaidAttackController.tick(event.getServer());
         // 挖掘也按 tick 推进：走过去、朝着方块挖、挖穿了捡东西
         MaidMineController.tick(event.getServer());
-        // 金苹果的待补记有寿命：交互没走到吃就作废
-        MaidFeeder.tick();
+        // 喂食的待收尾有寿命：没吃成的那口要还给她，金苹果等不到吃完就作废
+        MaidFeeder.tick(event.getServer());
     }
 }

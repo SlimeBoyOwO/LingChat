@@ -8,22 +8,26 @@ import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.nearby.Surroundings;
+import com.lingchat.maidbridge.perception.query.BlockProjector;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
 /**
  * {@code maid_mine}：让她去挖方块。
  *
- * <p>目标只有两种说法：{@code looked}（玩家准星指着的方向，玩家说「把这块挖了」时用）或
- * 一个方块注册表 id（「挖十块石头」）。插件把中文名翻成 id。
+ * <p>目标有三种说法：{@code looked}（玩家准星指着的方向，玩家说「把这块挖了」时用）、
+ * 一个方块注册表 id（「挖十块石头」），或地址 {@code at}（相对她脚下那一格的偏移，
+ * 「看一眼周围」的关系句给出）。插件把中文名翻成 id。
  *
  * <p>玩家准星指着哪个方向，就先在落点附近那一片找同种方块；准星没指着、或那一片里没有，
  * 才退回以她为中心找。{@code looked} 则直接挖落点那一块，并接着在那一片里补够数量——
@@ -50,14 +54,23 @@ public class MaidMineHandler implements MessageHandler {
         if (maid == null) {
             return rejected("maid_not_found", MaidQueries.NOT_FOUND, "", 0);
         }
+        if (MaidCondition.isUnconscious(maid)) {
+            return rejected("maid_unconscious", "她昏迷不醒，叫不动", "", 0);
+        }
         if (MaidQueries.carriedByPlayer(maid)) {
             return rejected("maid_carried", "玩家正抱着她，先放下来再让她挖", "", 0);
         }
         JsonObject data = Envelope.data(request);
-        return mine(server, maid, Envelope.string(data, "target"), parseCount(data));
+        return mine(
+                server, maid, Envelope.string(data, "target"), parseCount(data),
+                Envelope.string(data, "at"));
     }
 
-    private static JsonObject mine(MinecraftServer server, EntityMaid maid, String rawTarget, int count) {
+    private static JsonObject mine(
+            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt) {
+        if (!rawAt.isEmpty()) {
+            return mineAddressed(server, maid, rawTarget, count, rawAt);
+        }
         String token = rawTarget == null ? "" : rawTarget.trim();
         boolean looked = token.isEmpty() || "looked".equalsIgnoreCase(token);
         ServerPlayer owner = MaidQueries.owner(maid);
@@ -79,14 +92,10 @@ public class MaidMineHandler implements MessageHandler {
             target = gaze;
             anchor = gaze;
         } else {
-            // 「#minecraft:logs」是方块标签（泛称），方括号里的 id 仍按普通方块解析
-            boolean tagged = token.startsWith("#");
-            String bare = tagged ? token.substring(1) : token;
-            ResourceLocation id = ResourceLocation.tryParse(bare.contains(":") ? bare : "minecraft:" + bare);
-            if (id == null) {
+            blockId = blockKind(token);
+            if (blockId == null) {
                 return rejected("bad_target", "没听懂要挖哪种方块", token, count);
             }
-            blockId = tagged ? "#" + id : id.toString();
             // 玩家指着的那片有这种方块就去那片；没指着或那片没有才退回她身边
             if (gaze != null) {
                 target = findTargetNear(maid, blockId, gaze, MineRules.ANCHOR_RANGE);
@@ -136,10 +145,113 @@ public class MaidMineHandler implements MessageHandler {
         MaidActuator.standUp(maid);
         MaidMineController.start(maid, target, blockId, count, anchor);
 
+        return accepted(maid, state, blockId, count, looked, replaced);
+    }
+
+    /**
+     * 按相对地址挖：{@code at} 相对她脚下那一格，由「看一眼周围」的关系句给出。
+     *
+     * <p>三处核对：那一格是不是要挖的方块、她知不知道那一格、够不够得着能挖。对不上就带着
+     * 现场与最近的同类方块回去，让模型改个地址或改个说法，而不是照原样重试。
+     */
+    private static JsonObject mineAddressed(
+            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt) {
+        MineRules.Offset offset = MineRules.parseOffset(rawAt);
+        if (offset == null) {
+            return rejected(
+                    "bad_address",
+                    "没看懂这个地址：" + rawAt + "。它应该像 @4,-2,-3，是相对她脚下那一格的偏移",
+                    rawTarget, count);
+        }
+        Level level = maid.level();
+        BlockPos target = maid.blockPosition().offset(offset.dx(), offset.dy(), offset.dz());
+        if (!level.isLoaded(target)) {
+            return atRejected(
+                    "not_loaded", "那一格还没加载出来", "", count,
+                    scene(maid, target), null, offset);
+        }
+        String token = rawTarget == null ? "" : rawTarget.trim();
+        // 地址已经指到某一格时，target 只用来核对种类；没给就是「那一格原本是什么就挖什么」
+        boolean unkind = token.isEmpty() || "looked".equalsIgnoreCase(token);
+        BlockState state = level.getBlockState(target);
+        boolean voidCell = state.isAir() || state.getBlock() instanceof LiquidBlock;
+        String blockId;
+        if (unkind) {
+            blockId = voidCell ? "" : MineTargets.blockId(state);
+        } else {
+            blockId = blockKind(token);
+            if (blockId == null) {
+                return rejected("bad_target", "没听懂要挖哪种方块", token, count);
+            }
+        }
+        if (voidCell) {
+            return atRejected(
+                    "not_that_block", "那一格现在是空的（水、岩浆也算空）",
+                    blockId, count, scene(maid, target), nearestOf(maid, blockId), offset);
+        }
+        if (!unkind && !MineTargets.targets(blockId).contains(state.getBlock())) {
+            return atRejected(
+                    "not_that_block", "那一格不是要挖的那种方块",
+                    blockId, count, scene(maid, target), nearestOf(maid, blockId), offset);
+        }
+        if (!MineTargets.sheKnows(maid, target, state)) {
+            return atRejected(
+                    "not_seen", "她没看见过那一格",
+                    blockId, count, scene(maid, target), null, offset);
+        }
+        if (!MineRules.mineable(state.getDestroySpeed(level, target))) {
+            return atRejected(
+                    "not_mineable", "这个方块挖不动",
+                    blockId, count, scene(maid, target), null, offset);
+        }
+        if (!maid.canDestroyBlock(target)) {
+            return atRejected(
+                    "protected", "这个方块不让她挖（受保护）",
+                    blockId, count, scene(maid, target), null, offset);
+        }
+        if (!MineTargets.hasCorrectTool(maid, state)) {
+            return atRejected(
+                    "wrong_tool", MineTargets.missingToolReason(maid, state),
+                    blockId, count, scene(maid, target), null, offset);
+        }
+
+        MaidAttackController.cancel();
+        String replaced = MaidActionController.cancelCurrent(server);
+        MaidMineController.cancel(server);
+        MaidActuator.standUp(maid);
+        // 锚点就是她指的那一格：要挖多块时以它为中心接着找同类方块
+        MaidMineController.start(maid, target, blockId, count, target);
+
+        JsonObject frame = accepted(maid, state, blockId, count, false, replaced);
+        JsonObject data = Envelope.data(frame);
+        data.addProperty("addressed", true);
+        data.addProperty("at", MineRules.formatOffset(offset.dx(), offset.dy(), offset.dz()));
+        data.add("scene", scene(maid, target));
+        return frame;
+    }
+
+    /** 目标写法 → 规范写法：标签保留 {@code #}，裸名补 minecraft:；认不出给 null。 */
+    private static String blockKind(String token) {
+        boolean tagged = token.startsWith("#");
+        String bare = tagged ? token.substring(1) : token;
+        ResourceLocation id =
+                ResourceLocation.tryParse(bare.contains(":") ? bare : "minecraft:" + bare);
+        if (id == null) {
+            return null;
+        }
+        return tagged ? "#" + id : id.toString();
+    }
+
+    /** 受理成功：两条路径的字段一样，地址那条再多出 addressed、at 与 scene。 */
+    private static JsonObject accepted(
+            EntityMaid maid, BlockState state, String blockId, int count, boolean looked,
+            String replaced) {
         JsonObject data = base();
         data.addProperty("accepted", true);
         data.addProperty("async", true);
         data.addProperty("looked", looked);
+        data.addProperty("addressed", false);
+        data.addProperty("at", "");
         data.addProperty("count", count);
         data.addProperty("block", blockId);
         data.addProperty("name", state.getBlock().getName().getString());
@@ -150,25 +262,68 @@ public class MaidMineHandler implements MessageHandler {
         return Envelope.response(Protocol.MAID_MINE_RESULT, data);
     }
 
-    /** 目标相对她的位置，以及周围站不站得下、上方压没压着东西。 */
+    /** 目标相对她的位置，以及周围站不站得下、上方压没压着东西、视线隔了几块。 */
     private static JsonObject scene(EntityMaid maid, BlockPos target) {
         JsonObject scene = new JsonObject();
+        Level level = maid.level();
+        BlockState state = level.getBlockState(target);
+        boolean empty = state.isAir();
+        scene.addProperty("id", empty ? "" : MineTargets.blockId(state));
+        scene.addProperty("name", empty ? "" : state.getBlock().getName().getString());
         BlockPos feet = maid.blockPosition();
-        scene.addProperty("dx", target.getX() - feet.getX());
-        scene.addProperty("dy", target.getY() - feet.getY());
-        scene.addProperty("dz", target.getZ() - feet.getZ());
+        int dx = target.getX() - feet.getX();
+        int dy = target.getY() - feet.getY();
+        int dz = target.getZ() - feet.getZ();
+        scene.addProperty("dx", dx);
+        scene.addProperty("dy", dy);
+        scene.addProperty("dz", dz);
+        scene.addProperty("at", MineRules.formatOffset(dx, dy, dz));
         scene.addProperty(
                 "facing",
                 Surroundings.direction(
                         maid.getYRot(), target.getX() - maid.getX(), target.getZ() - maid.getZ()));
+        scene.addProperty(
+                "blockers", BlockProjector.blockerCount(level, maid.getEyePosition(), target));
+        scene.addProperty(
+                "blocker", BlockProjector.blockerId(level, maid.getEyePosition(), target));
         BlockPos above = target.above();
-        BlockState aboveState = maid.level().getBlockState(above);
+        BlockState aboveState = level.getBlockState(above);
         scene.addProperty(
                 "blocked_above",
                 !aboveState.isAir() && !aboveState.canBeReplaced()
-                        && !aboveState.getCollisionShape(maid.level(), above).isEmpty());
+                        && !aboveState.getCollisionShape(level, above).isEmpty());
         scene.addProperty("stand_room", MineTargets.standRoom(maid, target));
         return scene;
+    }
+
+    /**
+     * 指错时最近的同类方块：只挑她看见过的，带上它自己的地址，下次照着指就能挖到。
+     *
+     * <p>全都看不见时给 null——她本来就不知道哪有，不能拿全知扫描替她编一个位置。
+     */
+    private static JsonObject nearestOf(EntityMaid maid, String blockId) {
+        if (blockId == null || blockId.isEmpty()) {
+            return null;
+        }
+        List<BlockPos> candidates = MineTargets.nearest(
+                maid, maid.blockPosition(), blockId, MineRules.FIND_RADIUS, MineRules.FIND_LIMIT);
+        BlockPos fallback = null;
+        for (BlockPos candidate : candidates) {
+            if (!maid.canDestroyBlock(candidate)) {
+                continue;
+            }
+            BlockState state = maid.level().getBlockState(candidate);
+            if (!MineTargets.sheKnows(maid, candidate, state)) {
+                continue;
+            }
+            if (MineTargets.standFor(maid, candidate) != null) {
+                return scene(maid, candidate);
+            }
+            if (fallback == null) {
+                fallback = candidate;
+            }
+        }
+        return fallback == null ? null : scene(maid, fallback);
     }
 
     /**
@@ -218,15 +373,23 @@ public class MaidMineHandler implements MessageHandler {
     }
 
     private static JsonObject rejected(String reasonCode, String reason, String target, int count) {
-        return rejected(reasonCode, reason, target, count, null);
+        return rejected(reasonCode, reason, target, count, null, null);
     }
 
     private static JsonObject rejected(
             String reasonCode, String reason, String target, int count, JsonObject scene) {
+        return rejected(reasonCode, reason, target, count, scene, null);
+    }
+
+    private static JsonObject rejected(
+            String reasonCode, String reason, String target, int count, JsonObject scene,
+            JsonObject nearest) {
         JsonObject data = base();
         data.addProperty("accepted", false);
         data.addProperty("async", false);
         data.addProperty("looked", "looked".equalsIgnoreCase(target) || target.isEmpty());
+        data.addProperty("addressed", false);
+        data.addProperty("at", "");
         data.addProperty("count", count);
         data.addProperty("block", target == null ? "" : target);
         data.addProperty("name", "");
@@ -239,6 +402,21 @@ public class MaidMineHandler implements MessageHandler {
         if (scene != null) {
             data.add("scene", scene);
         }
+        if (nearest != null) {
+            data.add("nearest", nearest);
+        }
         return Envelope.response(Protocol.MAID_MINE_RESULT, data);
+    }
+
+    /** 地址那条路上的拒绝：回执也带上地址，插件据此知道模型指的是哪一块。 */
+    private static JsonObject atRejected(
+            String reasonCode, String reason, String target, int count, JsonObject scene,
+            JsonObject nearest, MineRules.Offset offset) {
+        JsonObject frame = rejected(reasonCode, reason, target, count, scene, nearest);
+        JsonObject data = Envelope.data(frame);
+        data.addProperty("addressed", true);
+        data.addProperty("at",
+                MineRules.formatOffset(offset.dx(), offset.dy(), offset.dz()));
+        return frame;
     }
 }

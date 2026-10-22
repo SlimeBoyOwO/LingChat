@@ -110,7 +110,8 @@ public final class SurroundingsReader {
                 nearby,
                 eligible.size() > nearby.size(),
                 vehicleId,
-                structureAt(maid, level));
+                structureAt(maid, level),
+                MaidQueries.posture(maid));
     }
 
     /**

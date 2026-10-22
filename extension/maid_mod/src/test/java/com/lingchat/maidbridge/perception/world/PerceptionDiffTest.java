@@ -36,7 +36,8 @@ class PerceptionDiffTest {
                 20.0,
                 "小狐",
                 maidHealth,
-                20.0);
+                20.0,
+                "standing");
     }
 
     private List<JsonObject> diff(PerceptionSnapshot prev, PerceptionSnapshot next, long tick) {
@@ -56,6 +57,7 @@ class PerceptionDiffTest {
         assertEquals("state_snapshot", type(frames.get(0)));
         assertEquals("minecraft:desert", frames.get(0).get("biome").getAsString());
         assertEquals("day", frames.get(0).get("phase").getAsString());
+        assertEquals("standing", frames.get(0).get("posture").getAsString(), "现状里要说清她是什么姿势");
     }
 
     /** 换了监控的女仆：哪怕数据看着一样，也得重新交代一次。 */
@@ -63,7 +65,7 @@ class PerceptionDiffTest {
     void switchingMonitoredMaidResyncs() {
         PerceptionSnapshot other = new PerceptionSnapshot(
                 "maid-2", "minecraft:overworld", "minecraft:plains", true, false, false, 1000L,
-                "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0);
+                "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0, "standing");
 
         List<JsonObject> frames = diff(snapshot("minecraft:plains"), other, 100L);
 
@@ -117,10 +119,10 @@ class PerceptionDiffTest {
     void weatherAndTimeAreSkippedWithoutSky() {
         PerceptionSnapshot before = new PerceptionSnapshot(
                 "maid-1", "minecraft:the_nether", "minecraft:nether_wastes", false, false, false,
-                12000L, "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0);
+                12000L, "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0, "standing");
         PerceptionSnapshot after = new PerceptionSnapshot(
                 "maid-1", "minecraft:the_nether", "minecraft:nether_wastes", false, true, true,
-                13000L, "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0);
+                13000L, "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0, "standing");
 
         assertTrue(diff(before, after, 0L).isEmpty());
     }
@@ -157,9 +159,24 @@ class PerceptionDiffTest {
         assertEquals("maid", frames.get(0).get("who").getAsString());
     }
 
+    /** 昏迷时世界变化一律不推；重连仍要交代现状，否则模型不知道她倒下了。 */
+    @Test
+    void unconsciousSkipsWorldChanges() {
+        PerceptionSnapshot down = new PerceptionSnapshot(
+                "maid-1", "minecraft:overworld", "minecraft:desert", true, true, true, 13000L,
+                "史蒂夫", 4.0, 20.0, "小狐", 1.0, 20.0, "unconscious");
+
+        assertTrue(diff(snapshot("minecraft:plains"), down, 0L).isEmpty());
+
+        List<JsonObject> first = diff(null, down, 0L);
+        assertEquals(1, first.size());
+        assertEquals("state_snapshot", type(first.get(0)));
+        assertEquals("unconscious", first.get(0).get("posture").getAsString());
+    }
+
     private static PerceptionSnapshot withDayTime(long dayTime) {
         return new PerceptionSnapshot(
                 "maid-1", "minecraft:overworld", "minecraft:plains", true, false, false, dayTime,
-                "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0);
+                "史蒂夫", 20.0, 20.0, "小狐", 20.0, 20.0, "standing");
     }
 }
