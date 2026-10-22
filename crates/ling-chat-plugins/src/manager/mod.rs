@@ -50,7 +50,7 @@ pub struct PluginManager {
     cancels: Mutex<HashMap<String, CancellationToken>>,
     /// 插件声明的 WS 连接。
     ws: WsHub,
-    /// 报告过「游戏里此刻播不了语音」的插件（女仆死了，模组找不到她）。
+    /// 报告过「此刻播不了语音」的插件（女仆倒下，外部程序找不到播放目标）。
     ///
     /// 缺省视为能播：插件得在自己的脚本里明确报一次，才轮到它影响接管。
     voice_blocked: RwLock<HashSet<String>>,
@@ -156,9 +156,9 @@ impl PluginManager {
         }
     }
 
-    /// 插件报告游戏内语音此刻能不能播。播不了（女仆死了）时 `tts_takeover` 跳过它，
-    /// 前端下一句就改回本机播放。
-    pub fn set_game_voice_available(&self, plugin_id: &str, available: bool) {
+    /// 插件报告外部程序此刻能不能播这句语音。播不了（女仆倒下）时 `voice_playback_owner`
+    /// 跳过它，前端下一句就改回本机播放。
+    pub fn set_voice_playback_available(&self, plugin_id: &str, available: bool) {
         let mut blocked = self
             .voice_blocked
             .write()
@@ -173,24 +173,24 @@ impl PluginManager {
         }
     }
 
-    /// 是否有插件正在接管 TTS 播放。
+    /// 是否有插件正在接管台词语音的播放。
     ///
-    /// 条件：已启用、加载无错、manifest 声明了 `[tts]`、对应的布尔配置为真；
+    /// 条件：已启用、加载无错、manifest 声明了 `[voice_playback]`、对应的布尔配置为真；
     /// 声明了 `ws_conn` 时该连接还必须处于 Connected（断线回落到本机播放）；
     /// 插件自己没报告过「游戏里播不了」（女仆死了）。多个插件声明时先到先得，返回插件 id。
-    pub async fn tts_takeover(&self) -> Option<String> {
+    pub async fn voice_playback_owner(&self) -> Option<String> {
         let records = self.store.lock().await;
         for record in records.values() {
             if !record.state.enabled || record.error.is_some() {
                 continue;
             }
-            let Some(tts) = &record.manifest.tts else {
+            let Some(playback) = &record.manifest.voice_playback else {
                 continue;
             };
             let enabled = record
                 .state
                 .config
-                .get(&tts.config)
+                .get(&playback.config)
                 .and_then(serde_json::Value::as_bool)
                 .unwrap_or(false);
             if !enabled {
@@ -204,7 +204,7 @@ impl PluginManager {
             {
                 continue;
             }
-            if let Some(conn) = &tts.ws_conn {
+            if let Some(conn) = &playback.ws_conn {
                 let connected = self
                     .ws
                     .state_of(&record.manifest.id, conn)

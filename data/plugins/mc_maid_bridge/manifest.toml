@@ -51,7 +51,7 @@ required = false
 default = true
 
 [[config]]
-key = "play_tts_in_game"
+key = "play_voice_in_game"
 label = "游戏内播放 TTS 语音"
 kind = "boolean"
 required = false
@@ -74,10 +74,10 @@ required = false
 default = 3
 hint = "游戏里的变化（换地形、天黑、下雨、受伤这类）会记成旁白；连着攒够这么多条、\n且这期间没人说话，就请角色主动说一句。填 0 = 只记旁白，不主动开口。\n只在设置里开着「主动对话系统」时才有效。"
 
-# 接管宿主的实时台词语音：上面的开关打开且 tlm 连接在线时，本机静音，
+# 接管宿主台词语音的播放：上面的开关打开且 tlm 连接在线时，本机静音，
 # 由插件把音频转发给模组在游戏里播放。
-[tts]
-config = "play_tts_in_game"
+[voice_playback]
+config = "play_voice_in_game"
 ws_conn = "tlm"
 
 [[ws]]

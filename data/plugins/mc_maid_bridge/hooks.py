@@ -31,8 +31,8 @@ from plugin_host import (
     read_data_file,
     send_user_message,
     set_auto_mode,
-    set_game_voice_available,
     set_reply_length_mode,
+    set_voice_playback_available,
     trigger_proactive,
 )
 
@@ -162,7 +162,7 @@ def on_line_shown(ctx):
     message = (payload.get("message") or "").strip()
     audio_file = (payload.get("audioFile") or "").strip()
     want_bubble = bool(message) and truthy(cfg.get("echo_to_game"), True)
-    want_voice = bool(audio_file) and truthy(cfg.get("play_tts_in_game"), False)
+    want_voice = bool(audio_file) and truthy(cfg.get("play_voice_in_game"), False)
     if not want_bubble and not want_voice:
         return
     maid, _ = bridge.ready(ctx)
@@ -292,7 +292,7 @@ def _handle_event(ctx, data):
         return
     if kind in ("maid_death", "maid_revive", "maid_unconscious", "maid_recovered"):
         # 死亡与昏迷时游戏里那句语音不该从她身上出来：改由本机放，醒来/复活后再交回去。
-        set_game_voice_available(kind in ("maid_revive", "maid_recovered"))
+        set_voice_playback_available(kind in ("maid_revive", "maid_recovered"))
     if urgent and needs_snapshot(kind):
         # 出事这一刻正好是「再感知一次周围」的时机：怪物那条有 2 分钟防抖管着，
         # 这期间新来的谁都不会各记一条，所以她身边站着什么就跟着这条一起交代。
@@ -413,7 +413,7 @@ def _sync_game_voice():
     再各报一次（见 _handle_event）。
     """
     state = _state_now()
-    set_game_voice_available(not state.get("dead") and not state.get("unconscious"))
+    set_voice_playback_available(not state.get("dead") and not state.get("unconscious"))
 
 
 def _life_state():

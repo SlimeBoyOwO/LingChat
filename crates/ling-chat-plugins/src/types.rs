@@ -238,13 +238,13 @@ fn default_retry_interval_ms() -> u64 {
     5_000
 }
 
-/// 插件接管宿主 TTS 播放的声明（`[tts]`）。
+/// 插件接管宿主台词语音**播放**的声明（`[voice_playback]`）。
 ///
-/// 声明后，宿主的实时台词语音改由本插件消费：本机静音，音频经插件转发给
-/// 外部程序播放。是否真的接管由 `config` 指向的布尔配置决定，因此玩家可以
-/// 在设置页随时开关。
+/// 语音始终由宿主合成，这个声明只改道播放输出：合成照常，本机以 0 音量播完以维持
+/// 台词推进与 ASR 门控，音频文件交给插件转发到外部程序。是否真的接管由 `config`
+/// 指向的布尔配置决定，因此玩家可以在设置页随时开关。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct TtsDecl {
+pub struct VoicePlaybackDecl {
     /// 布尔配置项 key：为 true 时接管。
     pub config: String,
     /// 可选的 WS 连接 id：该连接未处于 Connected 状态时不接管（回落到本机播放）。
@@ -305,9 +305,9 @@ pub struct PluginManifest {
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
-    /// 接管宿主实时台词语音播放（空 = 不接管）。
+    /// 把台词语音的播放输出交给插件（空 = 不接管，本机正常播放）。
     #[serde(default)]
-    pub tts: Option<TtsDecl>,
+    pub voice_playback: Option<VoicePlaybackDecl>,
     /// 前置插件 id：这些插件必须已安装且已启用，本插件才能启用；
     /// 启动时也会等它们的启动函数执行完再执行自己的。与是否有启动函数无关。
     #[serde(default)]

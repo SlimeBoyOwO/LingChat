@@ -57,10 +57,10 @@ const props = withDefaults(
     castScale?: number;
     /** 投屏全局垂直偏移（像素，正值下移；布局内夹紧，下移触底即止） */
     castOffsetY?: number;
-    /** 是否允许插件接管语音（游戏内播放时本机静音）；剧本试玩层传 false。 */
-    respectGameVoice?: boolean;
+    /** 是否允许插件接管语音播放（本机静音、音频交给插件）；剧本试玩层传 false。 */
+    respectPluginVoicePlayback?: boolean;
   }>(),
-  { castScale: 1, castOffsetY: 0, respectGameVoice: true },
+  { castScale: 1, castOffsetY: 0, respectPluginVoicePlayback: true },
 );
 
 const mainAudio = ref<HTMLAudioElement | null>(null);
@@ -70,7 +70,7 @@ const { voiceDataUrl, onAudioEnded } = useVoicePlayback({
   audioRef: mainAudio,
   onStarted: () => emit("audio-started"),
   onEnded: () => emit("audio-ended"),
-  respectGameVoice: props.respectGameVoice,
+  respectPluginVoicePlayback: props.respectPluginVoicePlayback,
 });
 
 const lightOverlayStyle = computed(() => {

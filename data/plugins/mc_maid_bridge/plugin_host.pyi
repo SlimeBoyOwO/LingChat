@@ -98,9 +98,10 @@ def trigger_proactive(text: str, *, urgent: bool = ...) -> Dict[str, Any]:
     text 为空 = 只开口、不往台词表写提示行。
     urgent = 死亡这类必须马上开口的事：顶掉排队中的普通请求，也不吃冷却与静默期。"""
 
-def set_game_voice_available(available: bool) -> Dict[str, Any]:
-    """报告游戏内语音此刻能不能播。女仆死了模组找不到她，就传 False，
-    宿主下一句改回本机播放；复活或重连时再传 True。返回 {ok}。"""
+def set_voice_playback_available(available: bool) -> Dict[str, Any]:
+    """报告外部程序此刻能不能播这句语音（用于 [voice_playback] 接管期间）。
+    女仆倒下、模组找不到播放目标，就传 False，宿主下一句改回本机播放；
+    复活或重连时再传 True。返回 {ok}。"""
 
 def compress_context() -> Dict[str, Any]:
     """触发并等待一次永久记忆压缩。返回 {ok, triggered}。"""

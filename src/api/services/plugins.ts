@@ -83,9 +83,9 @@ export async function savePluginConfig(id: string, config: Record<string, unknow
   return invoke("plugin_save_config", { id, config });
 }
 
-/** 当前是否有插件接管 TTS 播放（本机静音、由插件转发到外部程序）。 */
-export async function isTtsInGame(): Promise<boolean> {
-  return invoke("plugin_tts_in_game");
+/** 当前是否有插件接管台词语音的播放（本机静音、由插件转发到外部程序）。 */
+export async function isPluginVoicePlaybackActive(): Promise<boolean> {
+  return invoke("plugin_voice_playback_active");
 }
 
 export async function reloadPlugins(): Promise<void> {

@@ -13,7 +13,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         plugins::commands::plugin_list,
         plugins::commands::plugin_set_enabled,
         plugins::commands::plugin_save_config,
-        plugins::commands::plugin_tts_in_game,
+        plugins::commands::plugin_voice_playback_active,
         plugins::commands::plugin_line_shown,
         plugins::commands::plugin_reload,
         plugins::commands::plugin_delete,

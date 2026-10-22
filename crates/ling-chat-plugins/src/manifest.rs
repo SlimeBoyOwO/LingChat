@@ -157,25 +157,28 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             anyhow::bail!("插件 '{}' 不能把自己声明为前置插件", manifest.id);
         }
     }
-    if let Some(tts) = &manifest.tts {
-        let declared = manifest.config.iter().find(|field| field.key == tts.config);
+    if let Some(playback) = &manifest.voice_playback {
+        let declared = manifest
+            .config
+            .iter()
+            .find(|field| field.key == playback.config);
         match declared {
             Some(field) if field.kind == ConfigKind::Boolean => {},
             Some(_) => anyhow::bail!(
-                "插件 '{}' 的 [tts] config '{}' 必须是 boolean 配置项",
+                "插件 '{}' 的 [voice_playback] config '{}' 必须是 boolean 配置项",
                 manifest.id,
-                tts.config
+                playback.config
             ),
             None => anyhow::bail!(
-                "插件 '{}' 的 [tts] config '{}' 不在 [[config]] 声明里",
+                "插件 '{}' 的 [voice_playback] config '{}' 不在 [[config]] 声明里",
                 manifest.id,
-                tts.config
+                playback.config
             ),
         }
-        if let Some(conn) = &tts.ws_conn {
+        if let Some(conn) = &playback.ws_conn {
             if !manifest.ws.iter().any(|decl| decl.id == *conn) {
                 anyhow::bail!(
-                    "插件 '{}' 的 [tts] ws_conn '{conn}' 不在 [[ws]] 声明里",
+                    "插件 '{}' 的 [voice_playback] ws_conn '{conn}' 不在 [[ws]] 声明里",
                     manifest.id
                 );
             }

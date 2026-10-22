@@ -97,6 +97,11 @@ def trigger_proactive(text: str) -> Dict[str, Any]:
     proactive_disabled / system_busy 见指南。
     text 为空 = 只开口、不往台词表写提示行。"""
 
+def set_voice_playback_available(available: bool) -> Dict[str, Any]:
+    """报告外部程序此刻能不能播这句语音（用于 [voice_playback] 接管期间）。
+    播不了（外部程序找不到播放目标、角色倒下）就传 False，宿主下一句改回本机
+    播放；恢复或重连时再传 True。返回 {ok}。"""
+
 def compress_context() -> Dict[str, Any]:
     """触发并等待一次永久记忆压缩。返回 {ok, triggered}。"""
 

@@ -303,16 +303,16 @@ mod plugin_host {
         super::conversation::trigger_proactive(text, kwargs, vm)
     }
 
-    /// 报告游戏内语音此刻能不能播。
+    /// 报告「游戏里此刻能不能播这句语音」，用于 `[voice_playback]` 接管期间。
     ///
-    /// 用法：`set_game_voice_available(False)` —— 女仆死了，模组找不到她就播不出来；
-    /// 复活或重新连上时再报 `True`。宿主据此决定下一句是交给游戏还是本机播放，
-    /// 玩家不用去关「游戏内播放」的开关。
+    /// 用法：`set_voice_playback_available(False)` —— 外部程序找不到播放目标
+    ///（女仆倒下了、模组没连上）就播不出来；恢复或重新连上时再报 `True`。
+    /// 宿主据此决定下一句是交给插件还是本机播放，玩家不用去关设置页的开关。
     ///
     /// 返回 `{ "ok": true }`。
     #[pyfunction]
-    fn set_game_voice_available(available: bool, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
-        super::conversation::set_game_voice_available(available, vm)
+    fn set_voice_playback_available(available: bool, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        super::conversation::set_voice_playback_available(available, vm)
     }
 
     /// 触发并等待一次永久记忆压缩；只压达到阈值的角色。

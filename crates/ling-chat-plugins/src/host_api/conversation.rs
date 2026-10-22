@@ -156,9 +156,9 @@ pub(super) fn trigger_proactive(
     Ok(value_to_pyobject(vm, &result))
 }
 
-/// 插件报告游戏内语音此刻能不能播：女仆死了，模组找不到她就播不出来，
+/// 插件报告外部程序此刻能不能播这句语音：女仆死了，模组找不到她就播不出来，
 /// 宿主下一句改回本机播放，不必玩家去关开关。
-pub(super) fn set_game_voice_available(
+pub(super) fn set_voice_playback_available(
     available: bool,
     vm: &VirtualMachine,
 ) -> PyResult<PyObjectRef> {
@@ -169,6 +169,6 @@ pub(super) fn set_game_voice_available(
         return Ok(err_json(vm, "宿主不知道当前是哪个插件"));
     };
     let manager = app.state::<Arc<PluginManager>>().inner().clone();
-    manager.set_game_voice_available(&plugin, available);
+    manager.set_voice_playback_available(&plugin, available);
     Ok(value_to_pyobject(vm, &serde_json::json!({ "ok": true })))
 }
