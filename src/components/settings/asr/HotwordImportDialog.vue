@@ -107,7 +107,7 @@
             <!-- 保存被拒后才展开的异常明细 -->
             <div
               v-if="showDetails && review.details.length > 0"
-              class="max-h-44 shrink-0 space-y-1 overflow-y-auto rounded-xl border border-red-400/20 bg-red-500/5 p-2"
+              class="max-h-44 shrink-0 space-y-1 overflow-y-auto p-1"
             >
               <div
                 v-for="(detail, index) in visibleDetails"
