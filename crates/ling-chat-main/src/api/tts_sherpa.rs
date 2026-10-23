@@ -12,7 +12,9 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_ref_audio;
-use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, SherpaTuning};
+use crate::ai_service::tts::adapters::sherpa_onnx::{
+    SherpaOnnxAdapter, SherpaSpeaker, SherpaTuning,
+};
 use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxManager, SherpaOnnxModelInfo};
 use crate::ai_service::tts::provider::TtsAdapter;
 
@@ -137,6 +139,49 @@ pub async fn sherpa_list_models(
         records.push(inst);
     }
     Ok(records)
+}
+
+/// 模型里可选的全部音色。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct SherpaSpeakersInfo {
+    pub num_speakers: usize,
+    pub speakers: Vec<SherpaSpeaker>,
+}
+
+/// 列出模型自带的全部说话人（音色）。
+///
+/// 读的是 ONNX metadata（`n_speakers` / `speaker_names`），不加载模型：kokoro
+/// 103 个音色也能毫秒级返回，设置页切模型时随便点。zipvoice / pocket 这类多文件
+/// 模型没有单一主模型，会返回错误，前端保持原来的四个语义档。
+#[tauri::command]
+pub async fn sherpa_list_speakers(model_name: String) -> Result<SherpaSpeakersInfo, String> {
+    let name = model_name.trim().to_string();
+    if name.is_empty() {
+        return Err("未选择 Sherpa 模型".to_string());
+    }
+    // 模型名就是目录名；挡掉 `..` / 路径分隔符，避免拼出模型根目录以外的路径。
+    if name.contains('/') || name.contains('\\') || name.contains("..") {
+        return Err(format!("非法模型名: {name}"));
+    }
+    let dir =
+        crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root().join(&name);
+    if !dir.is_dir() {
+        return Err(format!("模型目录不存在: {}", dir.display()));
+    }
+
+    // 顺序读一遍模型文件（114 MB 量级），别堵住 async 运行时。
+    let speakers = tokio::task::spawn_blocking(move || {
+        crate::ai_service::tts::adapters::sherpa_onnx::list_speakers(&dir)
+    })
+    .await
+    .map_err(|e| format!("读取音色失败: {e}"))?
+    .map_err(|e| e.to_string())?;
+
+    Ok(SherpaSpeakersInfo {
+        num_speakers: speakers.len(),
+        speakers,
+    })
 }
 
 /// 删除一个已安装的 Sherpa 模型（删除整个模型目录）。
