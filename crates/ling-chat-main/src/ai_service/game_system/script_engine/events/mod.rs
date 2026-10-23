@@ -15,8 +15,7 @@ pub mod choice_event;
 pub mod dialog_event;
 pub mod free_dialogue_event;
 pub mod input_event;
-/// 由 scripts/generate-known-effects.mjs 生成，勿手改
-pub mod known_effects;
+pub mod known_effects; // 由 scripts/generate-known-effects.mjs 生成，勿手改
 pub mod modify_character_event;
 pub mod music_event;
 pub mod narration_event;
@@ -25,6 +24,7 @@ pub mod present_pic_event;
 pub mod set_variable_event;
 pub mod sound_event;
 
+use std::any::{Any, TypeId};
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::{Arc, RwLock};
@@ -49,12 +49,20 @@ use crate::ai_service::llm::LlmClient;
 pub struct ScriptChannels {
     pub input_tx: Option<tokio::sync::oneshot::Sender<String>>,
     pub choice_tx: Option<tokio::sync::oneshot::Sender<String>>,
+    /// Typed run-local state owned by registered extensions.
+    pub extension_state: HashMap<TypeId, Box<dyn Any + Send>>,
     /// 当前挂起的 `choices` 事件是否接受自由输入文本。
     ///
     /// 镜像正在执行的 [`choice_event::ChoiceEvent`] 的 `allow_free` 字段。
     /// `script_submit_input` 据此判断：当选项挂起时，输入框里打的字可以转投
     /// `choice_tx` 而不是被拒绝——否则选项永远无法解决，剧本永久阻塞。
     pub choice_allow_free: bool,
+    /// 文件监视（watch_file）：目标 .chr 消失时要跳转的章节。
+    /// 章节循环在事件之间/事件报错时检查它——监视器会同时丢弃挂起的输入通道，
+    /// 让阻塞中的事件立刻以 Err 返回，从而及时让位给目标章节。
+    pub watch_jump: Option<String>,
+    /// 监视任务句柄；新监视/停止/剧本结束时 abort。
+    pub watch_task: Option<tokio::task::JoinHandle<()>>,
 }
 
 impl Default for ScriptChannels {
@@ -64,11 +72,22 @@ impl Default for ScriptChannels {
 }
 
 impl ScriptChannels {
+    pub fn extension_mut<T: Default + Send + 'static>(&mut self) -> &mut T {
+        self.extension_state
+            .entry(TypeId::of::<T>())
+            .or_insert_with(|| Box::new(T::default()))
+            .downcast_mut()
+            .unwrap()
+    }
+
     pub fn new() -> Self {
         Self {
             input_tx: None,
             choice_tx: None,
+            extension_state: HashMap::new(),
             choice_allow_free: false,
+            watch_jump: None,
+            watch_task: None,
         }
     }
 }
@@ -100,6 +119,10 @@ pub struct ScriptContext<'a> {
     /// 标记，前端据此丢弃中止后迟到的流式回复（见 `ReplyResponse.preview_gen`）。
     /// 正式游玩显式置 `false`。
     pub is_preview: bool,
+
+    /// Auxiliary-window epoch captured when this exact script run starts.
+    /// Teardown advances the global epoch, so late events from an old task are rejected.
+    pub glitch_window_generation: u64,
 }
 
 // ============================================================
@@ -178,19 +201,60 @@ pub fn parse_duration(data: &Value) -> Option<f64> {
 /// 未定义变量视为「不持有任何值」，于是对任意 `v`，`x == v` 为假、`x != v` 为真。
 /// 两者相互自洽——不要只改其中一个而不改另一个。
 ///
-/// # 不支持的写法
+/// # 支持的组合
 ///
-/// `>`、`<`、`>=`、`<=`、`&&`、`||`、`!`、括号、算术运算**均未实现**。
-/// `hp >= 5` 不会做任何比较：它会落到裸变量分支，去查一个字面名为 `"hp >= 5"`
-/// 的变量，该变量永远不存在，故条件恒为假。
+/// 支持 `&&`、`||`（`&&` 优先级更高）以及数字的 `>` / `<` / `>=` / `<=`。
+/// 仍不解析括号、任意算术表达式或字符串排序；复杂逻辑应拆成多个章节门。
+pub(crate) fn split_once_unquoted<'a>(
+    input: &'a str,
+    operator: &str,
+) -> Option<(&'a str, &'a str)> {
+    let mut quote = None;
+    let mut escaped = false;
+    for (index, character) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if character == '\\' {
+            escaped = true;
+            continue;
+        }
+        if let Some(active_quote) = quote {
+            if character == active_quote {
+                quote = None;
+            }
+            continue;
+        }
+        if matches!(character, '\'' | '"') {
+            quote = Some(character);
+            continue;
+        }
+        if input[index..].starts_with(operator) {
+            let right = index + operator.len();
+            return Some((&input[..index], &input[right..]));
+        }
+    }
+    None
+}
+
 pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>) -> bool {
     let condition = condition.trim();
     if condition.is_empty() {
         return true;
     }
 
+    // 最低优先级：OR；随后是 AND。逻辑符必须两侧留空格；无空格的
+    // `a||b` / `a&&b` 继续作为旧剧本的普通字符串值参与 == / != 比较。
+    if let Some((left, right)) = split_once_unquoted(condition, " || ") {
+        return evaluate_condition(left, vars) || evaluate_condition(right, vars);
+    }
+    if let Some((left, right)) = split_once_unquoted(condition, " && ") {
+        return evaluate_condition(left, vars) && evaluate_condition(right, vars);
+    }
+
     // 先试 `!=`（更长的模式，优先匹配）
-    if let Some((var, val)) = condition.split_once("!=") {
+    if let Some((var, val)) = split_once_unquoted(condition, "!=") {
         let var = var.trim();
         let val = val.trim().trim_matches('"').trim_matches('\'');
         if let Some(current) = vars.get(var) {
@@ -206,7 +270,7 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
     }
 
     // 再试 `==`
-    if let Some((var, val)) = condition.split_once("==") {
+    if let Some((var, val)) = split_once_unquoted(condition, "==") {
         let var = var.trim();
         let val = val.trim().trim_matches('"').trim_matches('\'');
         if let Some(current) = vars.get(var) {
@@ -217,6 +281,26 @@ pub fn evaluate_condition(condition: &str, vars: &serde_json::Map<String, Value>
             return current_str == val;
         }
         return false;
+    }
+
+    // 数字比较。长操作符必须先于短操作符匹配；放在等值比较之后，
+    // 避免字符串值本身含有 `<` / `>` 时改变旧有 `==` / `!=` 语义。
+    for operator in [">=", "<=", ">", "<"] {
+        if let Some((var, raw_value)) = split_once_unquoted(condition, operator) {
+            let Some(current) = vars.get(var.trim()).and_then(Value::as_f64) else {
+                return false;
+            };
+            let Ok(expected) = raw_value.trim().parse::<f64>() else {
+                return false;
+            };
+            return match operator {
+                ">=" => current >= expected,
+                "<=" => current <= expected,
+                ">" => current > expected,
+                "<" => current < expected,
+                _ => unreachable!(),
+            };
+        }
     }
 
     // 默认：当作布尔变量查找

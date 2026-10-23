@@ -20,6 +20,7 @@ pub struct ModifyCharacterEvent {
     clothes: Option<String>,
     perceive: Option<bool>,
     duration: Option<f64>,
+    extension: serde_json::Map<String, Value>,
 }
 
 impl ModifyCharacterEvent {
@@ -44,6 +45,7 @@ impl ModifyCharacterEvent {
                 .map(|s| s.to_string()),
             perceive: data.get("perceive").and_then(loose_bool),
             duration: parse_duration(data),
+            extension: super::super::extension::event_fields("modify_character", data),
         }
     }
 }
@@ -147,6 +149,7 @@ impl ScriptEvent for ModifyCharacterEvent {
             action: self.action.clone(),
             clothes: self.clothes.clone(),
             duration: self.duration,
+            extension: self.extension.clone(),
         };
         let _ = emit(ctx.app, SCRIPT_MODIFY_CHARACTER, &payload);
 

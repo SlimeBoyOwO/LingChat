@@ -1,3 +1,9 @@
+import type {
+  ExtensionScriptEvent,
+  CharacterPresentation,
+  BackgroundPresentation,
+} from "@lingchat/dlc-ui/types/story";
+export type * from "@lingchat/dlc-ui/types/story";
 export interface ScriptEvent {
   type: string;
   duration: number;
@@ -67,7 +73,7 @@ export interface ScriptPresentPicEvent extends ScriptEvent {
   scale: number;
 }
 
-export interface ScriptBackgroundEffectEvent extends ScriptEvent {
+export interface ScriptBackgroundEffectEvent extends ScriptEvent, BackgroundPresentation {
   type: "background_effect";
   effect: string;
 }
@@ -98,7 +104,7 @@ export interface ScriptAmbientEvent extends ScriptEvent {
   fade?: boolean;
 }
 
-export interface ScriptModifyCharacterEvent extends ScriptEvent {
+export interface ScriptModifyCharacterEvent extends ScriptEvent, CharacterPresentation {
   type: "modify_character";
   characterId: number;
   emotion?: string;
@@ -125,6 +131,8 @@ export interface ScriptEndEvent extends ScriptEvent {
   type: "script_end";
   /** false 表示剧本是因为出错被中止的，不应记为完成 */
   completed?: boolean;
+  /** 剧本声明 main_character 时进剧本前的主角 id：随队列事件到达，前端据此交还角色 */
+  restoredRoleId?: number;
 }
 
 /** 剧本阅读锚点 —— 引擎每执行一个事件前广播，队列播到它时玩家刚好读完之前的台词 */
@@ -166,4 +174,5 @@ export type ScriptEventType =
   | ScriptChoiceEvent
   | ScriptPresentPicEvent
   | ScriptProgressEvent
-  | ScriptFreeDialogueEvent;
+  | ScriptFreeDialogueEvent
+  | ExtensionScriptEvent;

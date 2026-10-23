@@ -199,6 +199,7 @@ import type { AdventureInfo } from "@/api/services/adventure";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { Book } from "@lucide/vue";
+import { eventQueue } from "@/core/events/event-queue";
 
 interface Props {
   characterFolder: string;
@@ -476,12 +477,17 @@ const handleNodeClick = async (adventure: AdventureInfo) => {
   if (displayStatus(adventure) !== "unlocked") return;
   try {
     uiStore.showSettings = false;
-    gameStore.enterStoryMode(adventure.adventure_folder);
+    eventQueue.clear();
+    gameStore.enterStoryMode(adventure.adventure_folder, undefined, adventure.adventure_folder);
+    // 设置层后方的 MainChat 可能已经挂载，清空后需恢复事件队列。
+    eventQueue.resume();
     await adventureStore.startAdventure(adventure.adventure_folder);
   } catch (error) {
     // 后端拒绝（互斥守卫等）时不能留下刚置上的剧情模式标记。
     // 这条提示必须无条件显示，否则角色没配 tips.txt 时玩家会看到「点了没反应」
+    eventQueue.clear();
     gameStore.exitStoryMode();
+    eventQueue.resume();
     console.error("启动冒险失败:", error);
     uiStore.showNotification({
       type: "error",

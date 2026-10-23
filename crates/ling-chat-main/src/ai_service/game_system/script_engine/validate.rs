@@ -2,7 +2,7 @@
 //!
 //! 目标是把引擎里所有**静默失败**变成作者能看见的一条诊断。判定逻辑尽量
 //! 复用引擎自己的函数（`resolve_script_media` 查素材、`parse_variable_action`
-//! 解析表达式、`KNOWN_EFFECTS` 判特效），避免校验器和运行时各说一套。
+//! 解析表达式、共享特效 manifest 判特效），避免校验器和运行时各说一套。
 //!
 //! 诊断分三级：
 //! - `error` —— 一定会出问题（跑不通、跳不过去、素材缺失）
@@ -17,7 +17,8 @@ use std::path::Path;
 use serde::Serialize;
 use serde_json::Value as JsonValue;
 
-use super::events::background_effect_event::KNOWN_EFFECTS;
+use super::events::background_effect_event::all_effects;
+use super::events::split_once_unquoted;
 use super::utils::media::{MediaType, NONE_SENTINEL, resolve_script_media};
 use super::utils::script_function::parse_variable_action;
 
@@ -67,7 +68,7 @@ pub struct Diagnostic {
 }
 
 impl Diagnostic {
-    fn script(severity: Severity, code: &'static str, message: String) -> Self {
+    pub fn script(severity: Severity, code: &'static str, message: String) -> Self {
         Diagnostic {
             severity,
             code,
@@ -77,7 +78,7 @@ impl Diagnostic {
             field: None,
         }
     }
-    fn chapter(severity: Severity, code: &'static str, chapter: &str, message: String) -> Self {
+    pub fn chapter(severity: Severity, code: &'static str, chapter: &str, message: String) -> Self {
         Diagnostic {
             severity,
             code,
@@ -87,7 +88,7 @@ impl Diagnostic {
             field: None,
         }
     }
-    fn event(
+    pub fn event(
         severity: Severity,
         code: &'static str,
         chapter: &str,
@@ -103,7 +104,7 @@ impl Diagnostic {
             field: None,
         }
     }
-    fn with_field(mut self, field: &str) -> Self {
+    pub fn with_field(mut self, field: &str) -> Self {
         self.field = Some(field.to_string());
         self
     }
@@ -270,6 +271,8 @@ pub fn validate(
         ));
     }
 
+    super::extension::validate_config(data_dir, script_dir, &config, &mut diags);
+
     // 剧本内 NPC 目录名，用于校验 character 引用
     let known_characters = collect_script_characters(script_dir);
 
@@ -281,6 +284,14 @@ pub fn validate(
     // ---------- 逐章节 ----------
     let mut edges: Vec<ChapterEdge> = Vec::new();
     let mut vars_written: BTreeSet<String> = BTreeSet::new();
+    // Declared cross-run variables can be supplied by the persistence layer.
+    if let Some(keys) = config
+        .get("script_settings")
+        .and_then(|s| s.get("persistent_vars"))
+        .and_then(|v| v.as_array())
+    {
+        vars_written.extend(keys.iter().filter_map(|v| v.as_str().map(str::to_owned)));
+    }
     let mut vars_read: BTreeSet<String> = BTreeSet::new();
     // 「解锁成就」事件的键名：内置成就集合 + 本剧本已出现的键名（成就键名必须唯一）
     let builtin_achievement_ids = crate::achievements::manager::builtin_achievement_ids();
@@ -484,6 +495,20 @@ pub fn validate(
             }
 
             // 逐类型细查
+            super::extension::validate_event(
+                ty,
+                &mut ExtensionEventContext {
+                    config: &config,
+                    obj,
+                    cid,
+                    i,
+                    chapter_set: &chapter_set,
+                    diags: &mut diags,
+                    vars_written: &mut vars_written,
+                    vars_read: &mut vars_read,
+                    edges: &mut edges,
+                },
+            );
             match ty {
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
                     check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
@@ -510,13 +535,19 @@ pub fn validate(
                 },
                 "background_effect" => {
                     let effect = obj.get("effect").and_then(|v| v.as_str()).unwrap_or("");
-                    let clearing = effect.is_empty() || effect.eq_ignore_ascii_case("none");
-                    if !clearing && !KNOWN_EFFECTS.contains(&effect) {
-                        let hint = KNOWN_EFFECTS
+                    // 运行时允许 `Glitch+BloodDrip` 形式叠加，校验器必须逐段使用
+                    // 同一份生成清单判定，不能把整个组合误报为未知特效。
+                    for part in effect.split('+').map(str::trim) {
+                        let clearing = part.is_empty() || part.eq_ignore_ascii_case("none");
+                        if clearing || all_effects().contains(&part) {
+                            continue;
+                        }
+                        let known_effects = all_effects();
+                        let hint = known_effects
                             .iter()
-                            .find(|k| k.eq_ignore_ascii_case(effect));
+                            .find(|known| known.eq_ignore_ascii_case(part));
                         // 大小写不对 → 打开章节时前端会自动纠错为规范写法，故只给 Info；
-                        // 真未知特效 → 前端无法纠错，给 Warn（上游：纠不能纠错都 warning 即可）
+                        // 真未知特效 → 前端无法纠错，给 Warn。
                         match hint {
                             Some(correct) => diags.push(
                                 Diagnostic::event(
@@ -525,8 +556,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」大小写不对；在编辑器打开本章节时会自动纠正为「{}」",
-                                        effect, correct
+                                        "组合特效中的「{}」大小写不对；应为「{}」",
+                                        part, correct
                                     ),
                                 )
                                 .with_field("effect"),
@@ -538,8 +569,8 @@ pub fn validate(
                                     cid,
                                     i,
                                     format!(
-                                        "特效「{}」不是内置特效，引擎会清空当前特效。可从编辑器的特效下拉里选已支持的项",
-                                        effect
+                                        "组合特效中的「{}」不是内置特效，引擎会清空当前特效",
+                                        part
                                     ),
                                 )
                                 .with_field("effect"),
@@ -571,7 +602,14 @@ pub fn validate(
                 },
                 "chapter_end" => {
                     has_chapter_end = true;
-                    if i != last_index {
+                    if i != last_index
+                        && obj
+                            .get("condition")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("")
+                            .trim()
+                            .is_empty()
+                    {
                         diags.push(Diagnostic::event(
                             Severity::Warn,
                             "chapter_end.not_last",
@@ -994,7 +1032,7 @@ pub fn check_chapter_assets(
     diags
 }
 
-/// 条件语法检查 + 变量收集。
+/// 条件语法检查 + 变量收集。语法与运行时 evaluate_condition 保持一致。
 fn check_condition(
     cond: &str,
     cid: &str,
@@ -1002,64 +1040,91 @@ fn check_condition(
     diags: &mut Vec<Diagnostic>,
     vars_read: &mut BTreeSet<String>,
 ) {
+    fn visit(
+        expression: &str,
+        cid: &str,
+        i: usize,
+        diags: &mut Vec<Diagnostic>,
+        vars_read: &mut BTreeSet<String>,
+    ) {
+        let expression = expression.trim();
+        if expression.is_empty() {
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, " || ") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+        if let Some((left, right)) = split_once_unquoted(expression, " && ") {
+            visit(left, cid, i, diags, vars_read);
+            visit(right, cid, i, diags, vars_read);
+            return;
+        }
+
+        let mut comparison: Option<(&str, &str, &str)> = None;
+        for operator in ["!=", "==", ">=", "<=", ">", "<"] {
+            if let Some((left, right)) = split_once_unquoted(expression, operator) {
+                comparison = Some((left, right, operator));
+                break;
+            }
+        }
+        let (var, value, operator) = match comparison {
+            Some((left, right, operator)) => (left.trim(), Some(right.trim()), Some(operator)),
+            None => (expression, None, None),
+        };
+
+        if var.is_empty() {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.no_variable",
+                    cid,
+                    i,
+                    format!("条件「{}」左侧没有变量名", expression),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+        if var.contains(' ')
+            || ['!', '(', ')', '+', '*', '/']
+                .iter()
+                .any(|bad| var.contains(*bad))
+        {
+            diags.push(
+                Diagnostic::event(
+                    Severity::Error,
+                    "condition.bad_variable",
+                    cid,
+                    i,
+                    format!("条件中的变量名「{}」不合法", var),
+                )
+                .with_field("condition"),
+            );
+            return;
+        }
+
+        if matches!(operator, Some(">=" | "<=" | ">" | "<")) {
+            let numeric = value.and_then(|raw| raw.parse::<f64>().ok());
+            if numeric.is_none() {
+                diags.push(
+                    Diagnostic::event(
+                        Severity::Error,
+                        "condition.bad_number",
+                        cid,
+                        i,
+                        format!("数字比较「{}」右侧必须是有效数字", expression),
+                    )
+                    .with_field("condition"),
+                );
+            }
+        }
+        vars_read.insert(var.to_string());
+    }
+
     let cond = cond.trim();
     if cond.is_empty() {
-        return;
-    }
-
-    // 只扫**运算符左侧**。右值是任意字符串，`bg == city/night` 里的 / 是合法内容，
-    // 早先在整串上找 / + * ( ) 会把它误判成「用了不支持的运算符」并跳过变量收集。
-    let var = if let Some((v, _)) = cond.split_once("!=") {
-        v.trim()
-    } else if let Some((v, _)) = cond.split_once("==") {
-        v.trim()
-    } else {
-        cond
-    };
-
-    // 长运算符放前面，命中即停 —— 否则 `hp >= 5` 会同时报 >= 和 >
-    const BAD_OPS: [&str; 9] = ["&&", "||", ">=", "<=", ">", "<", "!", "(", ")"];
-    if let Some(op) = BAD_OPS.iter().find(|op| var.contains(**op)) {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.unsupported_operator",
-                cid,
-                i,
-                format!(
-                    "条件里用了不支持的运算符「{}」。只支持「变量 == 值」「变量 != 值」或单独一个变量判断真假——写了别的不会按你的意思执行（没赋过值的变量不会正常运作）",
-                    op
-                ),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-
-    if var.is_empty() {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.no_variable",
-                cid,
-                i,
-                format!("条件「{}」左侧没有变量名", cond),
-            )
-            .with_field("condition"),
-        );
-        return;
-    }
-    if var.contains(' ') {
-        diags.push(
-            Diagnostic::event(
-                Severity::Error,
-                "condition.bad_variable",
-                cid,
-                i,
-                format!("变量名「{}」含空格，引擎的变量名不允许空格", var),
-            )
-            .with_field("condition"),
-        );
         return;
     }
     if cond.contains("%player%") {
@@ -1074,7 +1139,7 @@ fn check_condition(
             .with_field("condition"),
         );
     }
-    vars_read.insert(var.to_string());
+    visit(cond, cid, i, diags, vars_read);
 }
 
 fn check_actions(
@@ -1172,7 +1237,7 @@ fn check_actions(
     }
 }
 
-fn check_choices(
+pub fn check_choices(
     obj: &serde_json::Map<String, JsonValue>,
     cid: &str,
     i: usize,
@@ -1345,7 +1410,7 @@ fn check_set_variable(
 /// 刻意写成自由函数而不是闭包：闭包会同时可变借用 `edges` 和 `diags`，
 /// 调用方后面还要直接往 `diags` 里塞诊断，借用检查过不去。
 #[allow(clippy::too_many_arguments)]
-fn push_target(
+pub fn push_target(
     raw: &str,
     // label: 诊断文案里怎么称呼这个跳转（「下一章」/「第 2 个分支」）
     label: &str,
@@ -1729,4 +1794,17 @@ fn check_graph(
             ),
         ));
     }
+}
+
+/// Mutable analysis context shared with optional event validators.
+pub struct ExtensionEventContext<'a, 'b> {
+    pub config: &'a JsonValue,
+    pub obj: &'a serde_json::Map<String, JsonValue>,
+    pub cid: &'a str,
+    pub i: usize,
+    pub chapter_set: &'a HashSet<&'b str>,
+    pub diags: &'a mut Vec<Diagnostic>,
+    pub vars_written: &'a mut BTreeSet<String>,
+    pub vars_read: &'a mut BTreeSet<String>,
+    pub edges: &'a mut Vec<ChapterEdge>,
 }

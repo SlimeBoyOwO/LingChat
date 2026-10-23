@@ -194,6 +194,9 @@ importers:
       7zip-min:
         specifier: ^3.0.1
         version: 3.0.1
+      '@lingchat/dlc-ui':
+        specifier: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.1/lingchat-dlc-ui-0.3.1.tgz
+        version: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.1/lingchat-dlc-ui-0.3.1.tgz(@tauri-apps/api@2.12.4)(@tauri-apps/plugin-dialog@2.8.3)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3)))(vue-i18n@11.4.15(vue@3.5.44(typescript@5.6.3)))(vue-router@5.4.0(@vue/compiler-sfc@3.5.44)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3)))(rolldown@1.2.14)(vite@8.3.4(@types/node@25.9.9)(jiti@2.7.0)(yaml@2.9.1))(vue@3.5.44(typescript@5.6.3)))(vue@3.5.44(typescript@5.6.3))
       '@lucide/vue':
         specifier: ^1.58.0
         version: 1.58.0(vue@3.5.44(typescript@5.6.3))
@@ -665,6 +668,17 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@lingchat/dlc-ui@https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.1/lingchat-dlc-ui-0.3.1.tgz':
+    resolution: {integrity: sha512-nFu8F7Ldy5qElEQTgUyCHbCCZRz9gQvEYtok7iz0fghn49RPABVhI2Gd2ERO5+Ec00m4Dc6+Sd5OWlT/97t/sQ==, tarball: https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.1/lingchat-dlc-ui-0.3.1.tgz}
+    version: 0.3.1
+    peerDependencies:
+      '@tauri-apps/api': ^2.0.0
+      '@tauri-apps/plugin-dialog': ^2.0.0
+      pinia: ^3.0.0
+      vue: ^3.5.0
+      vue-i18n: '>=10 <12'
+      vue-router: '>=4 <6'
 
   '@lucide/vue@1.58.0':
     resolution: {integrity: sha512-HW7yrGw9OUC1TzldLep1d4p1Uc1OCRWLJwzKHm9C3V9Z4/9GADN84NDlyeTzgrcD8yxXs8/SVh8CpKFaA+OPRg==}
@@ -2427,6 +2441,15 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.6.0
+
+  '@lingchat/dlc-ui@https://github.com/sdfsfsk/LingChat-DLC/releases/download/sdk-v0.3.1/lingchat-dlc-ui-0.3.1.tgz(@tauri-apps/api@2.12.4)(@tauri-apps/plugin-dialog@2.8.3)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3)))(vue-i18n@11.4.15(vue@3.5.44(typescript@5.6.3)))(vue-router@5.4.0(@vue/compiler-sfc@3.5.44)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3)))(rolldown@1.2.14)(vite@8.3.4(@types/node@25.9.9)(jiti@2.7.0)(yaml@2.9.1))(vue@3.5.44(typescript@5.6.3)))(vue@3.5.44(typescript@5.6.3))':
+    dependencies:
+      '@tauri-apps/api': 2.12.4
+      '@tauri-apps/plugin-dialog': 2.8.3
+      pinia: 3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3))
+      vue: 3.5.44(typescript@5.6.3)
+      vue-i18n: 11.4.15(vue@3.5.44(typescript@5.6.3))
+      vue-router: 5.4.0(@vue/compiler-sfc@3.5.44)(pinia@3.0.4(typescript@5.6.3)(vue@3.5.44(typescript@5.6.3)))(rolldown@1.2.14)(vite@8.3.4(@types/node@25.9.9)(jiti@2.7.0)(yaml@2.9.1))(vue@3.5.44(typescript@5.6.3))
 
   '@lucide/vue@1.58.0(vue@3.5.44(typescript@5.6.3))':
     dependencies:

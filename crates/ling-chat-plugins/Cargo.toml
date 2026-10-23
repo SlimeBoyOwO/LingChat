@@ -9,6 +9,7 @@ edition = "2021"
 name = "ling_chat_plugins"
 
 [dependencies]
+ling-chat-dlc-contract = { workspace = true }
 ling-chat-main = { path = "../ling-chat-main" }
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset"] }
 serde = { workspace = true }

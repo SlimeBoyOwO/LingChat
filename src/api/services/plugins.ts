@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { GameSpec } from "@lingchat/dlc-ui/api/services/games";
 import type { ArchiveFormat, ArchiveImportResult, PluginConflictPolicy } from "./archive";
 
 export type { ArchiveFormat, PluginConflictPolicy } from "./archive";
@@ -45,6 +46,8 @@ export interface PluginInfo {
   config: Record<string, unknown>;
   env: EnvDecl[];
   tools: string[];
+  games: GameSpec[];
+  story_api_version: number | null;
   /** 插件声明携带的资源类型（characters / scripts / musics / backgrounds / ambients）。 */
   resources: string[];
   /** 插件声明的 WebSocket 连接（含当前运行状态）。 */

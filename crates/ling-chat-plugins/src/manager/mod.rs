@@ -57,6 +57,26 @@ pub struct PluginManager {
 }
 
 impl PluginManager {
+    /// Resolve from registered, enabled state; never accept a frontend-supplied path.
+    pub async fn game(
+        &self,
+        plugin: &str,
+        game: &str,
+    ) -> Result<(PathBuf, super::games::GameSpec), String> {
+        let records = self.store.lock().await;
+        let record = records.get(plugin).ok_or("DLC not installed")?;
+        if !record.state.enabled || record.error.is_some() {
+            return Err("DLC is disabled or invalid".into());
+        }
+        let spec = record
+            .manifest
+            .games
+            .iter()
+            .find(|g| g.id == game)
+            .ok_or("Game not found")?;
+        Ok((record.dir.clone(), spec.clone()))
+    }
+
     /// 创建管理器并扫描目录加载所有插件（含启停状态）。
     /// `data_dir` 是 data 根目录，`root` 是 data/plugins。
     pub fn new(data_dir: PathBuf, registry: Arc<ToolRegistry>) -> Self {

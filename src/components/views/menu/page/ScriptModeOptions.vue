@@ -7,6 +7,12 @@
           <PluginTag v-if="script.source && script.source !== 'game'" :source="script.source" />
         </span>
       </StartItem>
+      <ScriptActions
+        :script="script"
+        :busy="resettingName !== null"
+        :done="resetDoneName === script.script_name"
+        @reset="resetMemory(script)"
+      />
     </StartLine>
 
     <StartLine>
@@ -40,14 +46,16 @@
 import { computed, ref } from "vue";
 import { StartItem, StartLine, StartList } from "../base";
 import PluginTag from "@/components/ui/PluginTag.vue";
-import { useRouter } from "vue-router";
+import type { ScriptSummary } from "@/api/services/script-info";
+import ScriptActions from "@lingchat/dlc-ui/host/ScriptActions.vue";
+import { useStoryEntry } from "@lingchat/dlc-ui/composables/useStoryEntry";
 import { useI18n } from "vue-i18n";
-import { type ScriptSummary, startScript } from "@/api/services/script-info";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 
 const emit = defineEmits<{
   (e: "back"): void;
+  (e: "script-state-reset"): void;
 }>();
 
 const props = defineProps({
@@ -57,13 +65,19 @@ const props = defineProps({
   },
 });
 
-const router = useRouter();
 const { t } = useI18n();
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 
 const currentPage = ref(1);
 const pageSize = 3;
+// 记忆重置和内容警告沿用 DLC SDK；入口互斥由宿主统一检查。
+const {
+  resettingName,
+  resetDoneName,
+  resetMemory,
+  selectScript: selectDlcScript,
+} = useStoryEntry(emit);
 
 const selectScript = async (script: ScriptSummary) => {
   // 剧本互斥：已有剧本在跑时不再起跑新的（后端 start_script 有同款校验兜底）
@@ -77,21 +91,7 @@ const selectScript = async (script: ScriptSummary) => {
     return;
   }
 
-  await router.push("/chat");
-  gameStore.enterStoryMode(script.script_name);
-
-  try {
-    await startScript(script.script_name);
-  } catch (error) {
-    gameStore.exitStoryMode();
-    console.error("启动剧本失败:", error);
-    uiStore.showNotification({
-      type: "error",
-      title: t("settings.adventure.lock.title"),
-      message: typeof error === "string" ? error : t("settings.adventure.lock.running"),
-      skipTipsCheck: true,
-    });
-  }
+  await selectDlcScript(script);
 };
 
 const totalPages = computed(() => {

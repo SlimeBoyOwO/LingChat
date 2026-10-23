@@ -52,7 +52,7 @@ export interface UseRoleAvatarApi {
 
 /**
  * 解析头像文件前的归一化（纯函数，便于核对映射）：
- * 未指定衣服回落 default，表外情绪回落「正常」。
+ * 未指定衣服回落 default；表外情绪按角色素材名查找，缺图再回落「正常」。
  */
 export function avatarFolderParams(role: GameRole): {
   characterFolder: string;
@@ -61,7 +61,7 @@ export function avatarFolderParams(role: GameRole): {
 } {
   return {
     characterFolder: role.character_folder,
-    emotion: EMOTION_CONFIG_EMO[role.emotion] || "正常",
+    emotion: EMOTION_CONFIG_EMO[role.emotion] || role.emotion || "正常",
     clothesName: role.clothesName === "默认" || !role.clothesName ? "default" : role.clothesName,
   };
 }
@@ -150,13 +150,33 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
 
   async function resolveAvatar() {
     const currentId = ++resolveAvatarId;
+    const params = {
+      ...avatarFolderParams(role.value),
+      roleId: role.value.roleId,
+      scriptName: gameStore.runningScript?.scriptName,
+    };
     try {
-      const path = await invoke<string>("get_avatar_file", avatarFolderParams(role.value));
+      const path = await invoke<string>("get_avatar_file", params);
       if (currentId === resolveAvatarId) {
         targetAvatarUrl.value =
           convertFileSrc(path) + (avatarRevision ? `?v=${avatarRevision}` : "");
       }
     } catch {
+      // 未提供对应情绪素材时回退到「正常」。
+      if (params.emotion !== "正常") {
+        try {
+          const fallback = await invoke<string>("get_avatar_file", {
+            ...params,
+            emotion: "正常",
+          });
+          if (currentId === resolveAvatarId) {
+            targetAvatarUrl.value = convertFileSrc(fallback);
+          }
+          return;
+        } catch {
+          // 继续走置空兜底
+        }
+      }
       if (currentId === resolveAvatarId) {
         targetAvatarUrl.value = "";
       }
@@ -217,7 +237,12 @@ export function useRoleAvatar(options: UseRoleAvatarOptions): UseRoleAvatarApi {
 
   // 角色与衣服变化直接解析；情绪变化由下方演出流程统一解析。
   watch(
-    () => [role.value.roleId, role.value.clothesName, role.value.character_folder],
+    () => [
+      role.value.roleId,
+      role.value.clothesName,
+      role.value.character_folder,
+      gameStore.runningScript?.scriptName,
+    ],
     () => resolveAvatar(),
     { immediate: true },
   );

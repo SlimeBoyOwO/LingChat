@@ -166,6 +166,26 @@ impl AutoSaveManager {
 
     /// Perform a save only when there is real dialogue whose content changed since last save.
     async fn perform_save(&mut self) -> Result<(), String> {
+        // A story with its own cross-run state owns temporary dialogue/roles.
+        // Never overwrite the free-chat auto-save with that staging session.
+        {
+            let service = self.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            if let Some(story) = gs.script_status.as_ref() {
+                if story
+                    .settings
+                    .get("persistent_vars")
+                    .and_then(serde_json::Value::as_array)
+                    .is_some_and(|keys| !keys.is_empty())
+                {
+                    if gs.script_start_line_len.is_some() {
+                        super::script_engine::extension::persist(story, &service.data_dir)
+                            .map_err(|error| format!("保存剧本周目失败: {error:#}"))?;
+                    }
+                    return Ok(());
+                }
+            }
+        }
         // 0. 开关：关闭时定时与退出存档都跳过
         let cfg = AppConfig::load(&self.app).unwrap_or_default();
         if !cfg.auto_save_enabled {

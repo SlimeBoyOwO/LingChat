@@ -354,6 +354,14 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 1. 从 DB 加载角色设定
     let state = app.state::<AppState>();
 
+    // 必须先拒绝运行中的剧本，不能先中止引擎再检查已经清空的状态。
+    {
+        let service = state.ai_service.lock().await;
+        if service.game_status.lock().await.script_status.is_some() {
+            return Err("剧本运行中，角色已锁定，无法切换角色".to_string());
+        }
+    }
+
     // 1b. 换角色是会话边界：旧剧本必须真正停掉。否则它会一直阻塞在输入通道上，
     super::script::abort_running_script(&app).await;
 
@@ -364,6 +372,10 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 3. 更新 AIService 状态
     {
         let mut service = state.ai_service.lock().await;
+        // Keep the script guard and role switch under the same service lock.
+        if service.game_status.lock().await.script_status.is_some() {
+            return Err("剧本运行中，角色已锁定，无法切换角色".to_string());
+        }
         service
             .init_game_status(Some(character_id), prompt_options)
             .await

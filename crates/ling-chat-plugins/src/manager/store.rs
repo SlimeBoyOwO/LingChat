@@ -98,6 +98,12 @@ impl PluginStore {
             return record;
         }
         record.manifest = parsed;
+        if let Err(error) = crate::games::validate_files(dir, &record.manifest.games)
+            .and_then(|_| crate::games::validate_story_files(dir, &record.manifest))
+        {
+            record.error = Some(error.to_string());
+            return record;
+        }
         record.state = states.get(id).cloned().unwrap_or_default();
         record
     }
@@ -133,6 +139,7 @@ impl PluginStore {
     /// 的 state.json 若已启用则迁移保留），删除已不存在的插件记录，并清理
     /// 各插件目录下的旧 state.json。
     pub(super) fn sync_state_file(&self) {
+        crate::games::catalog::recover_installs(&self.root);
         let existing: HashSet<String> = std::fs::read_dir(&self.root)
             .map(|entries| {
                 entries

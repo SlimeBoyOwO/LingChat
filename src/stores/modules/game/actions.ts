@@ -7,6 +7,7 @@ import { useSettingsStore } from "../settings";
 import type { SceneInfo } from "@/api/services/scene";
 import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
+import { enterExtensionStory, exitExtensionStory } from "@lingchat/dlc-ui/host/lifecycle";
 
 export const actions = {
   appendGameMessage(this: GameState, message: GameMessage) {
@@ -23,10 +24,17 @@ export const actions = {
   async initializeGame(this: GameState) {
     try {
       const gameInfo = await getGameInfo();
-      applyWebInitData(this, gameInfo);
-      invoke("notify_player_entry").catch((err) =>
-        console.warn("[Entry] 问候触发失败（非致命）:", err),
-      );
+      applyWebInitData(this, gameInfo, true);
+      // 剧本入口会先标记 runningScript 再挂载聊天页。initializeGame 的
+      // backend snapshot 仍可能带回自由对话角色，所以必须在事件队列 resume
+      // 之前再次清台；随后 authored show_character 事件会按顺序重建舞台。
+      if (this.runningScript) {
+        this.presentRoleIds = [];
+      } else {
+        invoke("notify_player_entry").catch((err) =>
+          console.warn("[Entry] 问候触发失败（非致命）:", err),
+        );
+      }
       return gameInfo;
     } catch (error) {
       console.error("初始化游戏信息失败:", error);
@@ -73,9 +81,15 @@ export const actions = {
   },
 
   /** 标记进入剧情模式（用于控制UI显示：隐藏番茄钟/日程等） */
-  enterStoryMode(this: GameState, scriptName: string = "unknown") {
+  enterStoryMode(
+    this: GameState,
+    scriptName: string = "unknown",
+    contentWarning?: string,
+    folderKey?: string,
+  ) {
     this.runningScript = {
       scriptName,
+      folderKey,
       currentChapterName: "",
       choices: [],
       isRunning: true,
@@ -85,14 +99,14 @@ export const actions = {
         currentRound: 0,
         endLine: "",
       },
+      contentWarning,
     };
     const uiStore = useUIStore();
-    uiStore.bgMusicMode = "loop-single";
+    enterExtensionStory(this, uiStore);
   },
 
-  /** 标记退出剧情模式，回到自由对话模式 */
-  exitStoryMode(this: GameState) {
-    this.runningScript = null;
+  exitStoryMode(this: GameState, notifyBackend = true) {
+    exitExtensionStory(this, notifyBackend);
   },
 
   // 设置当前场景（仅更新 store，不调用 API）
@@ -161,7 +175,11 @@ export const actions = {
 };
 
 /** 将 WebInitData 写入 GameState（init / 角色切换共用） */
-export function applyWebInitData(state: GameState, gameInfo: WebInitData): void {
+export function applyWebInitData(
+  state: GameState,
+  gameInfo: WebInitData,
+  preserveStoryMode = false,
+): void {
   const characterInfo = gameInfo.character_settings;
   const charId = characterInfo.character_id ?? 0;
 
@@ -297,7 +315,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   // 后端此刻已把旧剧本停掉，前端的章节名与选项按钮也必须一起清掉，
   // 否则会挂在新角色界面上继续可点（issue #698）。读档与清空对话
   // 本来就在本函数之后显式 enterStoryMode / exitStoryMode，不受影响。
-  state.runningScript = null;
+  if (!preserveStoryMode) state.runningScript = null;
 
   state.initialized = true;
 }

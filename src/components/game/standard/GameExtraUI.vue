@@ -16,6 +16,8 @@
     <!-- 5. 自由对话动画与提示区域 -->
     <ScriptFreeDialogueDisplay />
 
+    <GameOverlay />
+
     <!-- 6. 声效控制面板 -->
     <SoundEffectPanel />
 
@@ -28,6 +30,7 @@
 </template>
 
 <script setup lang="ts">
+import GameOverlay from "@lingchat/dlc-ui/host/GameOverlay.vue";
 import ChapterNameDisplay from "./extra/ChapterNameDisplay.vue";
 import GameChoices from "./extra/GameChoices.vue";
 import ScriptCompleteDisplay from "./extra/ScriptCompleteDisplay.vue";

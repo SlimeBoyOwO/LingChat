@@ -1,6 +1,27 @@
 <template>
-  <MenuPage>
-    <MenuItem :title="$t('settings.plugins.title')">
+  <MenuPage class="content-start">
+    <div class="flex w-full gap-2" role="group" :aria-label="$t('nav.plugins')">
+      <button
+        v-for="panel in panels"
+        :key="panel"
+        type="button"
+        class="rounded-md px-4 py-2 text-sm font-medium transition-colors"
+        :class="
+          activePanel === panel
+            ? 'bg-brand text-white'
+            : 'bg-white/10 text-white/70 hover:bg-white/15'
+        "
+        :aria-pressed="activePanel === panel"
+        @click="activePanel = panel"
+      >
+        {{ $t(`settings.plugins.tabs.${panel}`) }}
+      </button>
+    </div>
+    <MenuItem v-if="activePanel === 'dlc'" :title="$t('views.dlc.title')">
+      <template #header><Icon icon="package" :size="20" /></template>
+      <DlcLibrary @changed="load" />
+    </MenuItem>
+    <MenuItem v-show="activePanel === 'plugins'" :title="$t('settings.plugins.title')">
       <template #header>
         <Icon icon="package" :size="20" />
       </template>
@@ -256,7 +277,11 @@
 
     <PluginArchiveProgress />
 
-    <MenuItem :title="$t('settings.plugins.import.title')" size="small">
+    <MenuItem
+      v-show="activePanel === 'plugins'"
+      :title="$t('settings.plugins.import.title')"
+      size="small"
+    >
       <template #header>
         <PackageOpen :size="20" />
       </template>
@@ -293,6 +318,7 @@ import { Toggle } from "@/components/base";
 import { i18n } from "@/locales";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import PluginArchiveProgress from "@/components/ui/PluginArchiveProgress.vue";
+import DlcLibrary from "@lingchat/dlc-ui/components/views/dlc/DlcLibrary.vue";
 import { usePluginImport } from "@/composables/usePluginImport";
 import type { PluginConflictPolicy } from "@/api/services/plugins";
 import {
@@ -311,6 +337,8 @@ import {
 } from "@/api/services/plugins";
 
 const plugins = ref<PluginInfo[]>([]);
+const panels = ["plugins", "dlc"] as const;
+const activePanel = ref<(typeof panels)[number]>("plugins");
 const error = ref("");
 const saving = ref(false);
 const formState = reactive<Record<string, Record<string, unknown>>>({});
@@ -430,7 +458,9 @@ const initFormState = (plugin: PluginInfo) => {
 
 const load = async () => {
   try {
-    plugins.value = await listPlugins();
+    plugins.value = (await listPlugins()).filter(
+      (plugin) => !plugin.games.length && !plugin.story_api_version,
+    );
     for (const plugin of plugins.value) {
       if (!formState[plugin.id]) {
         formState[plugin.id] = initFormState(plugin);

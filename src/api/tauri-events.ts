@@ -1,3 +1,4 @@
+import { registerExtensionListeners } from "@lingchat/dlc-ui/host/listeners";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -51,6 +52,7 @@ function isStalePreviewReply(payload: Record<string, unknown>): boolean {
 }
 
 export function initializeTauriEventListeners() {
+  registerExtensionListeners(asEvent);
   const currentWindow = getCurrentWindow();
   const mainWindow = currentWindow.label === "main" ? currentWindow : null;
 

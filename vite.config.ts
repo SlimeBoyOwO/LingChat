@@ -1,3 +1,4 @@
+import { extensionAssets } from "@lingchat/dlc-ui/build";
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
 import VueDevTools from "vite-plugin-vue-devtools";
@@ -8,11 +9,12 @@ const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue(), VueDevTools(), tailwindcss()],
+  plugins: [vue(), VueDevTools(), tailwindcss(), extensionAssets()],
 
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      "@lingchat/host": path.resolve(import.meta.dirname, "./src"),
     },
   },
 

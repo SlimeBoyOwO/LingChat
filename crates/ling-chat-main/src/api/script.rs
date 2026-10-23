@@ -22,10 +22,23 @@ pub struct ScriptSummary {
     pub description: String,
     pub folder_key: String,
     pub intro_chapter: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_warning: Option<String>,
+    /// 剧本是否声明了 persistent_vars（跨局记忆变量）。前端据此显示
+    /// 「重置记忆」按钮——按能力声明而不是按剧本名/警告类型硬编码。
+    pub has_persistent_vars: bool,
     /// 来源："game" 或提供该剧本的插件 id。
     pub source: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plugin_id: Option<String>,
+}
+
+/// 从剧本 settings（story_config 的 script_settings 段）读 persistent_vars 声明。
+fn has_persistent_vars(s: &crate::ai_service::types::ScriptStatus) -> bool {
+    s.settings
+        .get("persistent_vars")
+        .and_then(|v| v.as_array())
+        .is_some_and(|a| !a.is_empty())
 }
 
 fn summary_of(s: &crate::ai_service::types::ScriptStatus) -> ScriptSummary {
@@ -34,6 +47,8 @@ fn summary_of(s: &crate::ai_service::types::ScriptStatus) -> ScriptSummary {
         description: s.description.clone(),
         folder_key: s.folder_key.clone(),
         intro_chapter: s.intro_chapter.clone(),
+        content_warning: s.content_warning.clone(),
+        has_persistent_vars: has_persistent_vars(s),
         source: s.plugin_id.clone().unwrap_or_else(|| "game".to_string()),
         plugin_id: s.plugin_id.clone(),
     }
@@ -93,11 +108,18 @@ async fn stop_script_engine(app: &AppHandle) {
     let mut ch = state.script_channels.lock().await;
     let _ = ch.input_tx.take();
     let _ = ch.choice_tx.take();
+    ch.extension_state.clear();
     ch.choice_allow_free = false;
+    if let Some(task) = ch.watch_task.take() {
+        task.abort();
+    }
+    ch.watch_jump = None;
 }
 
 /// 结束当前剧本会话：停引擎，并把 `script_status` 与 `is_running` 一起归零。
 pub(crate) async fn abort_running_script(app: &AppHandle) {
+    close_script_glitch_windows(app.clone());
+    crate::ai_service::game_system::script_engine::extension::restore_title(app);
     stop_script_engine(app).await;
 
     let state = app.state::<AppState>();
@@ -114,10 +136,8 @@ pub(crate) async fn abort_running_script(app: &AppHandle) {
 pub(crate) async fn spawn_script_execution(
     app: AppHandle,
     script: crate::ai_service::types::ScriptStatus,
-) {
+) -> Result<(), String> {
     let state = app.state::<AppState>();
-
-    stop_script_engine(&app).await;
 
     // Clone shared handles for the background task
     let ai_service = state.ai_service.clone();
@@ -127,15 +147,39 @@ pub(crate) async fn spawn_script_execution(
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm).await;
     let achievement_manager = state.achievement_manager.clone();
 
-    // Lock AIService briefly to extract needed data
+    // Lock AIService briefly to extract needed data and reserve the run.
+    // DLC 导入/删除与编辑器试玩对同一个 flag 做 compare_exchange 互斥，
+    // 必须先成功预留再动旧任务——否则会把正在运行的剧本杀掉却又拒绝起跑。
     let (game_status, config, is_running) = {
         let service = ai_service.lock().await;
-        (
-            service.game_status.clone(),
-            service.config.clone(),
-            service.script_manager.is_running.clone(),
-        )
+        let game_status = service.game_status.clone();
+        let config = service.config.clone();
+        let is_running = service.script_manager.is_running.clone();
+        is_running
+            .compare_exchange(
+                false,
+                true,
+                std::sync::atomic::Ordering::SeqCst,
+                std::sync::atomic::Ordering::SeqCst,
+            )
+            .map_err(|_| "已有剧本正在运行或 DLC 管理操作尚未完成".to_string())?;
+        (game_status, config, is_running)
     };
+
+    // 预留成功后再等待旧任务退出，避免拒绝重复起跑时破坏当前剧本。
+    stop_script_engine(&app).await;
+
+    // A previous frontend may have been closed before consuming script:end.
+    // Bind every auxiliary/system-window ticket to this exact formal run.
+    let glitch_window_generation =
+        crate::ai_service::game_system::script_engine::extension::begin(&app);
+
+    // 切入正式剧本即推进生成代号：自由对话/入场问候若仍在后台流式生成，
+    // publisher 与最终写入守卫都会丢弃旧代号，禁止迟到寒暄混进剧本队列。
+    {
+        let mut status = game_status.lock().await;
+        status.preview_generation = status.preview_generation.wrapping_add(1);
+    }
 
     // `app` 仍需被 `state` 借用（登记任务句柄要用），后台任务持有一份克隆
     let task_app = app.clone();
@@ -149,6 +193,7 @@ pub(crate) async fn spawn_script_execution(
             llm: llm.as_ref(),
             channels,
             is_preview: false,
+            glitch_window_generation,
         };
 
         match ScriptManager::execute_script(&script, &mut ctx, &is_running).await {
@@ -173,6 +218,7 @@ pub(crate) async fn spawn_script_execution(
     });
 
     *state.script_task.lock().await = Some(handle);
+    Ok(())
 }
 
 #[tauri::command]
@@ -181,24 +227,77 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
         let state = app.state::<AppState>();
         let service = state.ai_service.lock().await;
         ensure_no_script_running(&service)?;
-        service
+        let script = service
             .script_manager
             .all_scripts
             .get(&script_name)
             .ok_or_else(|| format!("剧本不存在: '{}'", script_name))?
-            .clone()
+            .clone();
+        // Enforce again for direct IPC callers and state changes after preflight.
+        // Reject before reserving a run, switching characters or opening windows.
+        if let Some(error) = crate::ai_service::game_system::script_engine::extension::entry_error(
+            &service.data_dir,
+            &script.path_key(),
+            &script.settings,
+        )
+        .map_err(|error| format!("无法读取剧本运行状态: {error}"))?
+        {
+            return Err(error);
+        }
+        script
     };
 
-    spawn_script_execution(app, script).await;
-
-    Ok(())
+    spawn_script_execution(app, script).await
 }
 
-/// 结束当前正在运行的剧本（放弃本次进度，不记为完成）。
+/// Stop a running script mid-way (user picked 自由对话 from the menu, cleared
+/// the conversation, etc.). There is no shutdown channel: the script task is
+/// typically blocked on a oneshot input/choice receiver, so dropping the
+/// senders makes it error out and run its normal teardown (`on_script_end`
+/// with completed=false → `script:end` → frontend cleanup + history rollback).
+/// Waits briefly for `is_running` to flip so an immediate re-entry does not
+/// race the old run's teardown; on timeout the old task still finishes its
+/// teardown later (e.g. it may be mid-LLM-roundtrip), the frontend has
+/// already cleaned up its own state by then.
 #[tauri::command]
 pub async fn stop_script(app: AppHandle) -> Result<(), String> {
-    abort_running_script(&app).await;
-    tracing::info!("[ScriptAPI] 当前剧本已中止");
+    // Invalidate the run-owned native-window epoch before waiting for the task.
+    // This is authoritative even if the frontend's separate close invoke races/fails.
+    close_script_glitch_windows(app.clone());
+    // 乱码窗口标题同样是运行期演出，停止剧本时立刻还原
+    crate::ai_service::game_system::script_engine::extension::restore_title(&app);
+    let state = app.state::<AppState>();
+    let is_running = {
+        let service = state.ai_service.lock().await;
+        service.script_manager.is_running.clone()
+    };
+    if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
+        return Ok(());
+    }
+    {
+        let mut channels = state.script_channels.lock().await;
+        // 发送端一掉，阻塞中的 input/choices/free_dialogue 事件立刻收 Err
+        channels.input_tx = None;
+        channels.choice_tx = None;
+        channels.extension_state.clear();
+        channels.choice_allow_free = false;
+
+        // 文件监视器一并停掉并丢弃未消费的跳转
+        if let Some(task) = channels.watch_task.take() {
+            task.abort();
+        }
+        channels.watch_jump = None;
+    }
+    // 等旧任务走完 on_script_end（含台词表截断），最多约 3 秒
+    for _ in 0..30 {
+        if !is_running.load(std::sync::atomic::Ordering::SeqCst) {
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    if is_running.load(std::sync::atomic::Ordering::SeqCst) {
+        tracing::warn!("[ScriptAPI] stop_script 等待超时，旧任务将在 IO 返回后自行收尾");
+    }
     Ok(())
 }
 
@@ -245,14 +344,30 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
 }
 
 #[tauri::command]
-pub async fn script_submit_choice(app: AppHandle, choice: String) -> Result<(), String> {
+pub async fn script_submit_choice(
+    app: AppHandle,
+    choice: String,
+    request_id: Option<String>,
+) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
+    crate::ai_service::game_system::script_engine::extension::validate_choice(
+        &mut channels,
+        &choice,
+        request_id.as_deref(),
+    )?;
     if let Some(tx) = channels.choice_tx.take() {
         channels.choice_allow_free = false;
+
+        channels.extension_state.clear();
         let _ = tx.send(choice);
         Ok(())
     } else {
         Err("当前没有等待选择的脚本事件".to_string())
     }
+}
+
+#[tauri::command]
+pub fn close_script_glitch_windows(app: AppHandle) {
+    crate::ai_service::game_system::script_engine::extension::close(&app);
 }
