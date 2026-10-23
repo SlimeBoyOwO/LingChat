@@ -1466,6 +1466,9 @@ export default {
     modelType: "モデル種別",
     language: "言語",
     voice: "音声",
+    voiceAll: "すべての音色",
+    voiceCount: "全 {n} 音色",
+    voiceLoading: "読み込み中…",
     useGpu: "GPU 推論",
     useGpuLinuxHint:
       "Linux では sherpa-onnx は CPU のみです。GPU には公式 CUDA パッケージ（インストーラ +235 MB）が必要なため、サイズの都合で削除しました。",

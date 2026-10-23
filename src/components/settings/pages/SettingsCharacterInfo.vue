@@ -770,9 +770,50 @@ const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
 
-// sherpa-onnx 的「音色」是随模型走的标签：kokoro 拿它挑说话人（中文女声/男声，
-// 其它模型暂时只有一档），其它引擎只当元数据。所以给固定四档；但模型
-// config.json 可能带出自定义值（选中模型时
+/**
+ * 当前模型自带的全部音色（读 ONNX metadata，不加载模型）。
+ *
+ * zipvoice / pocket 这类多文件模型没有单一主模型，命令会失败，此时退回四个语义档。
+ */
+const sherpaSpeakers = ref<TtsLocal.SherpaSpeakersInfo | null>(null);
+let sherpaSpeakersRequest = 0;
+
+async function loadSherpaSpeakers(modelId: unknown) {
+  const id = String(modelId ?? "").trim();
+  const request = ++sherpaSpeakersRequest;
+  if (!id) {
+    sherpaSpeakers.value = null;
+    return;
+  }
+  // 旧模型的 sid 列表对新模型没有意义（数量/顺序都可能不同），先清掉。
+  sherpaSpeakers.value = null;
+  try {
+    const info = await TtsLocal.listSherpaSpeakers(id);
+    if (request === sherpaSpeakersRequest) sherpaSpeakers.value = info;
+  } catch (error) {
+    console.warn("[SettingsCharacterInfo] 读取模型音色失败:", error);
+    if (request === sherpaSpeakersRequest) sherpaSpeakers.value = null;
+  }
+}
+
+/** 当前角色选中的 Sherpa 模型目录名（字段可能存在 voice_models 或顶层）。 */
+function currentSherpaModelId(): string {
+  const voiceModels = localSettings.value?.voice_models;
+  const nested =
+    voiceModels && typeof voiceModels === "object" ? voiceModels.sherpa_onnx_model_name : undefined;
+  return String(nested ?? localSettings.value?.sherpa_onnx_model_name ?? "").trim();
+}
+
+// 模型名一变就换音色列表：选中新模型、切换角色、草稿回填都能覆盖到。
+watch(
+  () => currentSherpaModelId(),
+  (id) => void loadSherpaSpeakers(id),
+  { immediate: true },
+);
+
+// sherpa-onnx 的「音色」：四个语义档（kokoro 按语言自动挑女声/男声，其它模型只当
+// 元数据）+ 模型自带的全部 sid（多说话人 VITS/Kitten 靠它选具体音色，kokoro 的
+// 103 个音色带名字）。模型 config.json 可能带出自定义值（选中模型时
 // `applySherpaModelDefaults` 会写进字段），下拉框没有匹配项会显示空白并在切换时
 // 丢掉原值，因此把当前值并进选项。空值在后端等同 female，与第一项一致。
 const sherpaVoiceOptions = computed<FieldOption[]>(() => {
@@ -783,6 +824,12 @@ const sherpaVoiceOptions = computed<FieldOption[]>(() => {
     { label: t("settings.characterInfo.fields.sherpaOnnxVoicesChild"), value: "child" },
     { label: t("settings.characterInfo.fields.sherpaOnnxVoicesElderly"), value: "elderly" },
   ];
+  for (const speaker of sherpaSpeakers.value?.speakers ?? []) {
+    options.push({
+      label: speaker.name ? `${speaker.sid} · ${speaker.name}` : String(speaker.sid),
+      value: String(speaker.sid),
+    });
+  }
   if (current && !options.some((option) => option.value === current)) {
     options.unshift({ label: current, value: current });
   }

@@ -1646,6 +1646,9 @@ export default {
     modelType: "模型類型",
     language: "語言",
     voice: "音色",
+    voiceAll: "全部音色",
+    voiceCount: "共 {n} 個",
+    voiceLoading: "讀取中…",
     useGpu: "GPU 推理",
     useGpuLinuxHint:
       "Linux 上 sherpa-onnx 只能用 CPU：GPU 只能走官方 CUDA 包（安裝包 +235 MB），已按體積取捨移除。",
