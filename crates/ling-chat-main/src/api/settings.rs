@@ -20,8 +20,9 @@ use crate::ai_service::llm::provider_config::{
     save_role_assignment,
 };
 use crate::config::app_config::{
-    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
-    MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
+    MAX_AUTO_SAVE_INTERVAL_SECS, MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW,
+    MAX_MEMORY_SECTION_CHARS, MAX_MEMORY_UPDATE_INTERVAL, MIN_AUTO_SAVE_INTERVAL_SECS,
+    MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
 use crate::config::proactive::{MAX_EXPECTED_INTERVAL_MINUTES, MIN_EXPECTED_INTERVAL_MINUTES};
 use crate::config::{self, ConfigSetting, ConfigTree, keys};
@@ -88,6 +89,13 @@ pub fn save_settings(
         "记忆压缩触发条数",
         MIN_MEMORY_UPDATE_INTERVAL,
         MAX_MEMORY_UPDATE_INTERVAL,
+    )?;
+    validate_u32_setting(
+        &values,
+        keys::AUTO_SAVE_INTERVAL_SECS,
+        "自动存档间隔",
+        MIN_AUTO_SAVE_INTERVAL_SECS,
+        MAX_AUTO_SAVE_INTERVAL_SECS,
     )?;
     validate_u32_setting(
         &values,

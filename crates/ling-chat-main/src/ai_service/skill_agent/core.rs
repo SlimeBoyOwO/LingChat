@@ -568,6 +568,7 @@ impl TurnUsage {
 }
 
 /// 跑一项任务的工具轮：流式生成 → 执行工具 → 直到模型不再调工具；返回这一项的最终回复文本。
+#[allow(clippy::too_many_arguments)]
 async fn run_item_tools(
     ctx: &SkillAgentRunContext,
     llm: &LlmClient,

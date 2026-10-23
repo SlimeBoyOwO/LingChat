@@ -23,6 +23,7 @@ impl Tool for CurrentTimeTool {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples(["今天几号", "今天是星期几", "这会儿几点了", "现在时间是多少"])
     }
 
     /// 返回设备本地 RFC3339 时间与 Unix 秒级时间戳。

@@ -171,6 +171,28 @@ export default {
     toolRagTitle: "工具按需检索",
     toolRagHint:
       "每次请求只下发常用工具，模型需要时先用一句话检索出合适的工具再调用，省下全部工具说明占用的上下文。关闭后每次请求都下发全部已授权工具。",
+    toolCacheCapacityTitle: "工具缓存容量",
+    toolCacheCapacityHint:
+      "同时记住多少个检索到的工具（不含检索入口与联网搜索），范围 {min}–{max}。推荐 10 个以下。",
+    toolCacheCapacityUnit: "个",
+    toolRecommendTitle: "工具推荐",
+    toolRecommendHint:
+      "模型常常想不起来调用工具。这里选择每轮发言前怎么给它提个醒：推荐只是临时提示，不写进台词表；推荐的工具会随这一轮请求一起下发。",
+    toolRecommendModes: {
+      off: {
+        label: "不推荐",
+        description: "不做任何推荐，模型完全靠自己判断要不要检索或调用工具。",
+      },
+      agent: {
+        label: "Agent 推荐",
+        description: "由一个小的决策代理看一遍最近的对话来挑工具，每轮多一次小模型调用。",
+      },
+      rag: {
+        label: "检索推荐",
+        description:
+          "拿你这句话静默检索一次工具，只有分数超过阈值的才会被推荐；不额外调用模型，只花一点本地算力。",
+      },
+    },
     accessModes: {
       manual: { label: "逐次确认", description: "写入、编辑、删除文件和执行命令前都需要你确认。" },
       auto_approve: {
@@ -250,14 +272,12 @@ export default {
     codexHint: "复用「大模型管理」中已登录的 Codex 订阅凭据联网搜索，无需填写 API Key",
     kimiHint:
       "API Key 可留空：当前对话模型为官方 Kimi Code 时，会安全复用它的凭据；其他情况请单独填写",
-    providerDeepSeek: "DeepSeek Responses",
+    providerDeepSeek: "DeepSeek 网页搜索",
     customHint: "自定义端点需兼容 Kimi /search 协议（POST JSON，字段名为 text_query）",
     apiKeyPlaceholder: "填入自定义端点 API Key",
     kimiApiKeyPlaceholder: "可留空复用当前 Kimi Code 凭据",
     dsApiKeyPlaceholder: "填入 DeepSeek API Key",
-    dsModel: "DeepSeek 模型",
-    dsHint:
-      "通过 DeepSeek Responses API 的服务端 web_search 联网；需要单独填写 DeepSeek API Key，结果由服务端生成综合回答",
+    dsHint: "通过 DeepSeek /v1/tools/search 端点联网搜索；需要单独填写 DeepSeek API Key",
     baseUrl: "搜索服务地址",
     proxyEnable: "通过代理访问搜索服务（如 v2rayN）",
     maxResults: "返回结果条数",
@@ -317,8 +337,8 @@ export default {
       schedule: "日程与待办（查日程、加/改/删待办）",
       memory: "笔记与记忆（ta 自己的小本本）",
       character: "角色切换（列出/切换在场角色）",
-      scene: "场景切换（列出/切换场景）",
-      status: "状态查询（当前状态/场景状态）",
+      scene: "场景切换（列出/切换场景、切换背景特效）",
+      status: "状态查询（当前状态/场景状态/天气）",
       clock: "当前时间（查询设备本地时间）",
       skills: "技能库（让ta读取技能指令，学会新技能）",
       media: "媒体识别（用视觉模型读取图片和视频）",

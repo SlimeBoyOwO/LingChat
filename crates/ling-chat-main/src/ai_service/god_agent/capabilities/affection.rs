@@ -4,12 +4,16 @@
 //! `tools::god_agent::UpdateAffection` 在执行时完成。
 
 use anyhow::Result;
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::memory_injection::{RecentMemory, RecentMemoryAnchor};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
+use crate::ai_service::tools::game_status_handle;
 use crate::ai_service::tools::god_agent::UPDATE_AFFECTION;
 use crate::ai_service::types::{AffectionVector, GameLine, NegativeVector};
+use crate::utils::prompt::PromptRole;
 
 use crate::ai_service::god_agent::core::{GodAgentCore, tail_lines};
 
@@ -65,12 +69,13 @@ impl NpcAffectionView {
 
 /// 评估最近对话对在场 NPC 好感度的影响。
 ///
-/// 调整、落档、广播与旁白台词均由 `update_affection` 工具在评估过程中就地完成，
-/// 这里只负责组装请求并记录结果。
+/// 调整、落档与广播由 `update_affection` 工具完成；工具返回的旁白文本交给近期
+/// 记忆队列，锚定到 `anchor` 指向的那一轮。
 pub async fn evaluate_affection(
     core: &GodAgentCore,
     npcs: &[NpcAffectionView],
     lines: &[GameLine],
+    anchor: Option<RecentMemoryAnchor>,
     app: &AppHandle,
 ) -> Result<()> {
     if npcs.is_empty() {
@@ -79,8 +84,54 @@ pub async fn evaluate_affection(
 
     let task = build_task(npcs, lines);
     let output = core.run_task(&task, app).await?;
+    queue_recent_memories(&output, anchor, app).await;
     log_output(&output);
     Ok(())
+}
+
+/// 把评估产出的好感度旁白交给近期记忆队列，等生成锁空闲再落位。
+async fn queue_recent_memories(
+    output: &AgentOutput,
+    anchor: Option<RecentMemoryAnchor>,
+    app: &AppHandle,
+) {
+    let memories: Vec<RecentMemory> = output
+        .calls
+        .iter()
+        .filter(|call| call.name == UPDATE_AFFECTION && call.ok)
+        .filter_map(|call| {
+            let line_text = serde_json::from_str::<serde_json::Value>(&call.result)
+                .ok()?
+                .get("line_text")
+                .and_then(|text| text.as_str())
+                .map(str::to_string)?;
+            Some(RecentMemory {
+                text: line_text,
+                role: PromptRole::Narrator,
+                anchor: anchor.clone(),
+            })
+        })
+        .collect();
+    if memories.is_empty() {
+        return;
+    }
+
+    {
+        let game_status = game_status_handle(app).await;
+        let mut gs = game_status.lock().await;
+        for memory in memories {
+            gs.queue_recent_memory(memory);
+        }
+    }
+
+    // 锁被占时（下一轮正在生成）等这一轮结束再落位，位置仍是上一轮 user 块。
+    let state = app.state::<AppState>();
+    let gen_lock = state.generation_lock.clone();
+    let _guard = gen_lock.lock().await;
+    let db = state.db.clone();
+    let game_status = game_status_handle(app).await;
+    let mut gs = game_status.lock().await;
+    gs.flush_recent_memories(&db).await;
 }
 
 // ============================================================

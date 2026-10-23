@@ -70,16 +70,7 @@
         <Text :speed="textSpeedSample">{{ $t("settings.text.sample.demo") }}</Text>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.inlineMotion.title')" size="small">
-        <template #header>
-          <AlignJustify :size="20" />
-        </template>
-        <Toggle :checked="settingsStore.text.inlineMotionText" @change="toggleInlineMotionText">
-          {{ $t("settings.text.inlineMotion.desc") }}
-        </Toggle>
-      </MenuItem>
-
-      <!-- 台词合并阈值：同角色连续短句自动合并续打（仅内联动作文本模式生效）；0=关闭 -->
+      <!-- 台词合并阈值：同角色连续短句自动合并续打；0=关闭 -->
       <MenuItem :title="$t('settings.text.mergeLine.title')" size="small">
         <template #header>
           <AlignJustify :size="20" />
@@ -534,7 +525,8 @@ import {
   Type,
   Wifi,
   Zap,
-} from "lucide-vue-next";
+} from "@lucide/vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -562,6 +554,10 @@ const ttsOrphanFiles = ref(0);
 const ttsOrphanSize = ref("0 B");
 const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null);
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null;
+/** 「对话长度」档位变化事件监听句柄，卸载时解绑 */
+let unlistenReplyLength: UnlistenFn | null = null;
+/** 读取档位期间若收到变化事件，旧响应不能把新档位盖回去 */
+let replyLengthSeq = 0;
 
 // ─── Codex 额度 ────────────────────────────────────────────────
 // 只有「对话模型」选择了 Codex 提供商时才显示额度卡片并轮询；
@@ -818,10 +814,15 @@ const handleClearHistory = async () => {
   const confirmed = await dialogStore.confirm(t("settings.text.clearHistory.confirm"));
   if (!confirmed) return;
 
+  // 清空对话会连带停掉正在跑的剧本，它没播完的事件就成了旧会话残留：
+  // 先清空队列（会暂停），待状态落地后再 resume，避免它们播进清空后的对话
+  eventQueue.clear();
+
   try {
     // 调用后端重置对话（复用 init_game_status 逻辑）
     const data = await invoke<WebInitData>("clear_conversation");
     applyWebInitData(gameStore.$state, data);
+    eventQueue.resume();
 
     // 重置前端输入状态
     gameStore.currentStatus = "input";
@@ -847,6 +848,7 @@ const handleClearHistory = async () => {
       skipTipsCheck: true,
     });
   } catch (error: any) {
+    eventQueue.resume();
     uiStore.showNotification({
       type: "error",
       title: t("settings.text.clearHistory.errorTitle"),
@@ -858,6 +860,15 @@ const handleClearHistory = async () => {
 };
 
 onMounted(async () => {
+  // 先挂档位事件：本页被 KeepAlive 缓存，插件连上 MC 改档位时 onMounted 不会再跑，
+  // 只能靠后端广播把显示同步过来。
+  unlistenReplyLength = await listen<{ mode: ReplyLengthMode }>("reply-length:changed", (event) => {
+    const mode = event.payload?.mode;
+    if (mode === "short" || mode === "normal" || mode === "free") {
+      replyLengthSeq += 1;
+      replyLengthMode.value = mode;
+    }
+  });
   loadConfig();
   checkTtsCache();
   loadLastTtsCleanup();
@@ -910,6 +921,8 @@ onUnmounted(() => {
     ttsCacheRefreshTimer = null;
   }
   stopCodexQuotaPolling();
+  unlistenReplyLength?.();
+  unlistenReplyLength = null;
 });
 
 function loadLastTtsCleanup() {
@@ -985,11 +998,14 @@ const replyLengthMode = ref<ReplyLengthMode | null>(null);
 const replyLengthSaving = ref(false);
 
 async function loadReplyLengthMode() {
+  const seq = replyLengthSeq;
   try {
-    replyLengthMode.value = await invoke<ReplyLengthMode | null>("get_reply_length_mode");
+    const mode = await invoke<ReplyLengthMode | null>("get_reply_length_mode");
+    // 读取期间若收到过档位变化事件，以事件为准，别让旧快照盖回去
+    if (seq === replyLengthSeq) replyLengthMode.value = mode;
   } catch (e) {
     console.warn("读取回复台词数量档位失败:", e);
-    replyLengthMode.value = null;
+    if (seq === replyLengthSeq) replyLengthMode.value = null;
   }
 }
 
@@ -1107,10 +1123,6 @@ const textSpeedChange = (data: number) => {
 
 const voiceSound = (data: boolean) => {
   settingsStore.update("audio.chatEffectSound", data);
-};
-
-const toggleInlineMotionText = (data: boolean) => {
-  settingsStore.update("text.inlineMotionText", data);
 };
 
 const toggleSedentaryReminder = (data: boolean) => {

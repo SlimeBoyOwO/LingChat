@@ -33,7 +33,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { CheckCircle2, CircleAlert, LoaderCircle } from "lucide-vue-next";
+import { CheckCircle2, CircleAlert, LoaderCircle } from "@lucide/vue";
 import { useI18n } from "vue-i18n";
 import { currentToolActivity, toolCallPreparing } from "@/api/services/tool-settings";
 import { useUIStore } from "@/stores/modules/ui/ui";

@@ -139,7 +139,7 @@ import { invoke } from "@tauri-apps/api/core";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { isAndroid } from "@/utils/platform";
-import { Pause, Play, Trash2, ArrowDown, PictureInPicture2, Rocket } from "lucide-vue-next";
+import { Pause, Play, Trash2, ArrowDown, PictureInPicture2, Rocket } from "@lucide/vue";
 
 // standalone=true 时渲染在独立日志窗口里（隐藏“弹出独立窗口”按钮）
 const props = withDefaults(defineProps<{ standalone?: boolean }>(), { standalone: false });

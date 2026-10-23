@@ -1,0 +1,12 @@
+{
+  "lingchat_maid_bridge.configuration.title": "LingChat 女仆桥接",
+  "lingchat_maid_bridge.configuration.bridge": "桥接",
+  "lingchat_maid_bridge.configuration.bridge.enabled": "启用桥接",
+  "lingchat_maid_bridge.configuration.bridge.enabled.tooltip": "关掉后不再监听端口，用于判断问题出在模组还是插件。",
+  "lingchat_maid_bridge.configuration.bridge.port": "WebSocket 端口",
+  "lingchat_maid_bridge.configuration.bridge.port.tooltip": "只监听 127.0.0.1，需与 LingChat 插件里填的地址一致。",
+  "lingchat_maid_bridge.configuration.bridge.chatBubbleEnabled": "女仆头顶气泡",
+  "lingchat_maid_bridge.configuration.bridge.chatBubbleEnabled.tooltip": "把角色的回复显示成女仆头顶的聊天气泡。",
+  "lingchat_maid_bridge.configuration.bridge.chatBoxEnabled": "聊天栏消息",
+  "lingchat_maid_bridge.configuration.bridge.chatBoxEnabled.tooltip": "把角色的回复同时写进聊天栏，只有女仆的主人看得到。"
+}

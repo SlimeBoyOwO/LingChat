@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use ling_chat_main::AppState;
-use ling_chat_main::{ai_service, api, cast, config};
+use ling_chat_main::{ai_service, cast, config};
 use ling_chat_plugins as plugins;
 use tauri::Manager;
 
@@ -50,7 +50,7 @@ pub(super) fn run(
     }
 
     // 插件携带资源收敛：把启用插件的人物/剧本/背景图同步进 DB / 剧本引擎 / 场景表。
-    rt.block_on(plugins::commands::refresh_plugin_content(app.handle()));
+    rt.block_on(plugins::content_sync::refresh_plugin_content(app.handle()));
 
     // 插件启动入口：每个启用插件跑一次自己的启动函数（先后由 depends_on 决定）。
     // 必须 spawn 而非同步等待——插件脚本跑在 spawn_blocking 上，一个慢插件
@@ -94,7 +94,7 @@ pub(super) fn run(
     // 桌宠点击穿透轮询与 pet:cursor 鼠标广播——具体实现在 api::pet，
     // 入口文件不堆业务逻辑。
     #[cfg(desktop)]
-    api::pet::spawn_hit_test_poll(window.clone());
+    ling_chat_main::api::pet::spawn_hit_test_poll(window.clone());
 
     Ok(())
 }

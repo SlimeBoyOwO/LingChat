@@ -11,11 +11,7 @@ import { isWeatherEffect } from "@/components/game/standard/particles";
 // 通知类型
 export type NotificationType = "error" | "success" | "info" | "warning";
 export type ScheduleViewType =
-  | "schedule_groups"
-  | "schedule_details"
-  | "todo_groups"
-  | "todo_detail"
-  | "calendar";
+  "schedule_groups" | "schedule_details" | "todo_groups" | "todo_detail" | "calendar";
 
 // 通知状态接口
 interface NotificationState {

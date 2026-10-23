@@ -99,7 +99,7 @@ import { MenuPage, MenuItem } from "../../ui";
 import { useAchievementStore } from "@/stores/modules/ui/achievement";
 import { achievementTitle, achievementDescription } from "@/utils/achievement-i18n";
 import Icon from "@/components/base/widget/Icon.vue";
-import { Award } from "lucide-vue-next";
+import { Award } from "@lucide/vue";
 
 const achievementStore = useAchievementStore();
 

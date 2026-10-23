@@ -1,2 +1,8 @@
 allowBuilds:
   esbuild: true
+minimumReleaseAgeExclude:
+  - '@intlify/core-base@11.4.15'
+  - '@intlify/devtools-types@11.4.15'
+  - '@intlify/message-compiler@11.4.15'
+  - '@intlify/shared@11.4.15'
+  - vue-i18n@11.4.15

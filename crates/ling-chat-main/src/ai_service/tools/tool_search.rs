@@ -78,6 +78,8 @@ impl Tool for ToolSearch {
                 &query,
                 &candidates,
                 SEARCH_TOP_K,
+                // 检索是模型主动要求的：哪怕分数都不高也要给回候选，让它自己判断。
+                f32::NEG_INFINITY,
             )
             .await
             .map_err(|e| ToolError::Execution(e.to_string()))?;

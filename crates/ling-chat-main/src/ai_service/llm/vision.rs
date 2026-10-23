@@ -14,7 +14,9 @@ use base64::Engine as _;
 use genai::Client as GenaiClient;
 use genai::ServiceTarget;
 use genai::adapter::AdapterKind;
-use genai::chat::{ChatMessage, ChatOptions, ChatRequest, ContentPart, MessageContent};
+use genai::chat::{
+    ChatMessage, ChatOptions, ChatRequest, ChatResponse, ContentPart, MessageContent,
+};
 use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
 use serde_json::Value;
@@ -115,7 +117,7 @@ pub async fn analyze_image(
             t.endpoint = Endpoint::from_owned(base);
             Ok(t)
         })
-        .build();
+        .build()?;
 
     let opts = ChatOptions::default().with_max_tokens(max_tokens);
 
@@ -124,10 +126,39 @@ pub async fn analyze_image(
         .await
         .map_err(|e| anyhow!("视觉模型请求失败: {e}"))?;
 
-    let text = response
-        .first_text()
-        .map(|s| s.to_string())
-        .ok_or_else(|| anyhow!("视觉模型响应中没有可用的文本识别结果"))?;
+    // 部分推理模型把输出全放在 reasoning_content 里、content 留空：没被上限截断时用
+    // 思考文本兜底；被截断时思考本身也是断的，只能把原因报出去——只写「无文本」的话，
+    // 「模型看不见图」和「正文被思考挤掉」这两种情况在日志里长得一模一样。
+    let truncated = response
+        .stop_reason
+        .as_ref()
+        .is_some_and(|r| r.is_max_tokens());
+    let text = match response.first_text() {
+        Some(text) => text.to_string(),
+        None if !truncated => match response
+            .reasoning_content
+            .as_deref()
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+        {
+            Some(reasoning) => {
+                tracing::warn!("[Vision] 视觉模型未返回正文、只有思考内容，改用思考文本。");
+                reasoning.to_string()
+            },
+            None => {
+                return Err(anyhow!(
+                    "视觉模型响应中没有可用的文本识别结果（finish_reason={}）",
+                    stop_reason_text(&response)
+                ));
+            },
+        },
+        None => {
+            return Err(anyhow!(
+                "视觉模型响应中没有可用的文本识别结果（finish_reason={}）：输出被上限截断。推理模型的思考 token 与正文共用输出上限，思考过长会把正文挤没，建议换用非推理的视觉模型",
+                stop_reason_text(&response)
+            ));
+        },
+    };
 
     Ok(VisionResult {
         text,
@@ -195,6 +226,15 @@ pub async fn analyze_video(
             .as_u64()
             .map(|n| n as u32),
     })
+}
+
+/// 取原始 stop reason 字串，用于「响应无文本」时的报错（endpoint 原样返回，比枚举更贴日志）。
+fn stop_reason_text(response: &ChatResponse) -> String {
+    response
+        .stop_reason
+        .as_ref()
+        .map(|r| r.raw().to_string())
+        .unwrap_or_else(|| "未知".to_string())
 }
 
 /// 从 OpenAI 兼容响应中提取文本（`content` 可能是字符串或多模态块数组）。

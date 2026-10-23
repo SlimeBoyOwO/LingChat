@@ -7,7 +7,7 @@
 
 <script setup lang="ts">
 import { computed } from "vue";
-import { Puzzle } from "lucide-vue-next";
+import { Puzzle } from "@lucide/vue";
 
 const props = defineProps<{
   /** 列表项的 source 字段："game" 或插件 id。仅当非 game 时显示。 */

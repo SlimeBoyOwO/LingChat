@@ -12,6 +12,6 @@
 
 <script setup lang="ts">
 import { MenuPage, MenuItem } from "../../ui";
-import { ScrollText } from "lucide-vue-next";
+import { ScrollText } from "@lucide/vue";
 import LogConsole from "./LogConsole.vue";
 </script>

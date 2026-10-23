@@ -7,6 +7,66 @@ export default {
     pageOf: "Page {current} / {total}",
     pageOfTotal: "Page {current} of {total}",
   },
+  identity: {
+    title: "My Identity",
+    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. You can switch identity at any time; the conversation history is kept (except while a scenario is running).',
+    lockedHint:
+      "This playthrough is bound to a save (auto-saves included), so the identity cannot be changed in place — start a new conversation instead.",
+    scriptBlocked:
+      "A scenario is running, so the identity cannot be changed. Finish the scenario first.",
+    newGame: "New chat with this identity",
+    newGameConfirm:
+      'Start a new conversation as "{name}"? The current conversation\'s memory will be cleared and the game restarts with the new identity (existing saves are unaffected). Save the current playthrough first if you want to keep it.',
+    newGameDoneTitle: "New conversation started",
+    newGameDoneMsg: 'You are now "{name}"',
+    newGameFailTitle: "Failed to switch identity",
+    switch: "Switch",
+    switchConfirm:
+      'Set "{name}" as your current identity? The dialogue history is kept; onstage characters will get a switch narration.',
+    switchDoneTitle: "Identity switched",
+    switchDoneMsg: 'Now continuing as "{name}".',
+    switchFailTitle: "Failed to switch identity",
+    transition: {
+      title: 'Switch to "{name}"',
+      hint: "Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard \"left / joined the conversation\" lines and the departure notes are always added, and they only affect the current save.",
+      exitLabel: "Exit style (optional)",
+      exitPlaceholder: "e.g. walked away in the rain without looking back",
+      enterLabel: "Entrance style (optional)",
+      enterPlaceholder: 'e.g. kicked the door open shouting "I\'m back"',
+      cancel: "Cancel",
+      skip: "Skip (use default)",
+      confirm: "Confirm switch",
+    },
+    saveConfirm:
+      'This save updates the identity card: if you edited the identity currently in use (name / subtitle / identity prompt / relationships), the current save "{save}" will change accordingly; editing other identities does not affect the current save. Save now?',
+    saveConfirmNoSave:
+      "This save updates the identity card: there is no ongoing save, so only the card itself will be updated. Save now?",
+    empty: "No identity cards yet. Create one below — or just keep using the default identity.",
+    current: "In use",
+    edit: "Edit",
+    delete: "Delete",
+    create: "New identity",
+    cancel: "Cancel",
+    save: "Save",
+    addRelation: "+ Add relationship",
+    fieldName: "Name",
+    fieldSubtitle: "Subtitle",
+    fieldPrompt: 'Identity prompt (injected into chat; describes who "I" am)',
+    fieldRelations: "Relationships",
+    relationsHint:
+      'Describe how I relate to a character or to another of my identities. If left empty, the other side\'s card is used as "what you already know about them" rather than as an established relationship.',
+    targetAi: "AI character",
+    targetMe: "My identity",
+    relationCount: "{n} relationship(s)",
+    msg: {
+      nameRequired: "Please enter a name first",
+      savedTitle: "Identity saved",
+      savedMsg: "The identity card has been updated",
+      saveFailTitle: "Failed to save identity",
+      deleteConfirm: 'Delete identity "{name}"? Identities in use by a save cannot be deleted.',
+      deleteFailTitle: "Failed to delete identity",
+    },
+  },
   history: {
     title: "Chat History",
     empty: "No chat history yet — go say hi! (*^▽^*)",
@@ -46,6 +106,10 @@ export default {
     },
   },
   adventure: {
+    lock: {
+      title: "Cannot Start Scenario",
+      running: "Another scenario is already running. Please finish it first.",
+    },
     standalone: {
       title: "Standalone Scenarios",
       empty: "No standalone scenarios yet",
@@ -118,6 +182,10 @@ export default {
       placeholder: "Enter a save name",
       creating: "Creating...",
       button: "Create",
+      identityLabel: "Identity of this playthrough",
+      identityUnknown: "Unnamed identity",
+      identityHint:
+        'A save records the current identity and restores it on load. To change identity, use "New chat with this identity" under Character → My Identity.',
     },
     list: {
       title: "Save List",
@@ -127,6 +195,7 @@ export default {
       editTitleTip: "Double-click to edit the save title",
       untitled: "Untitled Save",
       noMessage: "No dialogue recorded yet",
+      identityLabel: "Identity: {name}",
       current: "Current",
     },
     action: {
@@ -380,12 +449,19 @@ export default {
       prereqAdventure: "Complete the prerequisite adventure",
       achievement: "Unlock a specific achievement",
     },
+    lock: {
+      scriptRunning: "A scenario is currently running",
+    },
   },
   characterInfo: {
     header: {
       title: "{title} - Edit Config",
       subtitle: "Edit the character's detailed settings",
     },
+    saveConfirm:
+      'This save updates the character card: if your edits include "persona & address terms", "relationships", or "initial affection", the corresponding content in the current save "{save}" will change as well; edits to visuals, voice, title, bio, etc. only update the card itself. Save now?',
+    saveConfirmNoSave:
+      "This save updates the character card: there is no ongoing save, so only the card itself will be updated. Save now?",
     tabs: {
       basic: "Basic Info",
       prompts: "Prompts",
@@ -396,11 +472,25 @@ export default {
       pet: "Desktop Pet",
       voice: "Voice Settings",
     },
+    relations: {
+      title: "Relationships",
+      hint: "Describe how this character sees the others (e.g. childhood friend, rival). Stored in relations.yml inside the character folder, so it survives overwriting the character settings.",
+      save: "Save relationships",
+      missing: "Target no longer exists ({key})",
+      msg: {
+        savedTitle: "Relationships saved",
+        savedMsg: "This character's relationships have been updated",
+        saveFailTitle: "Failed to save relationships",
+        loadFailTitle: "Failed to load relationships",
+      },
+    },
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
+      userName: 'How this character addresses "me"',
+      userNameHint: "Falls back to the identity card's name (Settings → Character → My Identity)",
+      userSubtitle: 'Subtitle this character uses for "me"',
+      userSubtitleHint: "Falls back to the identity card's subtitle",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",
@@ -487,6 +577,17 @@ export default {
       add: "Add Outfit",
       item: "Outfit #{index}",
       empty: 'No outfits configured yet. Click "Add Outfit" to create one',
+    },
+    gsvEmo: {
+      title: "GSV Emotion Reference Voice",
+      description:
+        "When enabled, the reference audio and text switch by emotion category (surprised / happy / fearful / sad / angry / neutral). Only categories with both an audio path and text take effect; the rest keep using the gsv_voice_filename / gsv_voice_text above.",
+      enable: "Enabled",
+      disable: "Disabled",
+      voiceFile: "Reference voice file",
+      voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
+      text: "Reference text",
+      textPlaceholder: "Text spoken in the reference audio",
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
@@ -575,8 +676,8 @@ export default {
       aiNamePlaceholder: "Name used in conversations",
       aiSubtitle: "AI Subtitle",
       aiSubtitlePlaceholder: "e.g. Night Watcher / School Idol",
-      userName: "User Name",
-      userSubtitle: "User Subtitle",
+      userName: 'How this character addresses "me"',
+      userSubtitle: 'Subtitle this character uses for "me"',
       info: "Character Bio",
       infoPlaceholder: "Optional: shown in the character introduction",
     },
@@ -861,10 +962,6 @@ export default {
     sample: {
       title: "Display Text Sample",
       demo: "Ling Chat: Testing text display speed",
-    },
-    inlineMotion: {
-      title: "Inline Action Text",
-      desc: "When on, action text displays together with the dialogue — no extra click needed",
     },
     mergeLine: {
       title: "Merge Line Threshold",

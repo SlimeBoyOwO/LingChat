@@ -254,7 +254,7 @@
 import { ref, computed, watch, onMounted } from "vue";
 import { useI18n } from "vue-i18n";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { ChevronRight, ChevronLeft } from "lucide-vue-next";
+import { ChevronRight, ChevronLeft } from "@lucide/vue";
 import { getSchedules, saveSchedules } from "@/api/services/schedule";
 
 const { t } = useI18n();

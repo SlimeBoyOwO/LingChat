@@ -47,7 +47,7 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import { useChatInput } from "@/composables/chat/useChatInput";
 import { useDialogStatus } from "@/composables/chat/useDialogStatus";
 import { useScreenshot } from "@/composables/useScreenshot";
-import { Forward } from "lucide-vue-next";
+import { Forward } from "@lucide/vue";
 
 const { t } = useI18n();
 const uiStore = useUIStore();

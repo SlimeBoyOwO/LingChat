@@ -41,6 +41,12 @@ impl Tool for SetBackgroundEffect {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "加点下雨的效果",
+            "换一个氛围特效",
+            "来点樱花飘落的感觉",
+            "把背景特效关掉",
+        ])
     }
 
     async fn execute(

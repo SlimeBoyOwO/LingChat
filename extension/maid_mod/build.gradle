@@ -1,0 +1,107 @@
+plugins {
+    id 'net.neoforged.moddev' version '2.0.95'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+repositories {
+    maven {
+        url = "https://api.modrinth.com/maven"
+        content {
+            includeGroup "maven.modrinth"
+        }
+    }
+    maven {
+        url = "https://maven.neoforged.net/releases"
+        content {
+            includeGroupByRegex "net\\.neoforged.*"
+        }
+    }
+}
+
+neoForge {
+    version = project.neo_version
+
+    runs {
+        client {
+            client()
+        }
+        server {
+            server()
+            programArgument '--nogui'
+        }
+        configureEach {
+            // dev 运行时 jarJar 的库不会解包，只能单独挂到运行期 classpath 上。
+            // 注意不要改成从 runtimeClasspath 扩展：那会把车万女仆的 jar 当普通
+            // classpath 加载、绕过 mod 发现机制，它内部依赖 Minecraft 的类会加载错模块。
+            additionalRuntimeClasspathConfiguration.dependencies.add(
+                    project.dependencies.create("org.java-websocket:Java-WebSocket:${java_websocket_version}"))
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet sourceSets.main
+        }
+    }
+
+    // 让 src/test 能拿到 Minecraft/NeoForge 的类，同时不把测试代码当成运行期的模组内容
+    unitTest {
+        enable()
+        testedMod = mods."${mod_id}"
+    }
+}
+
+dependencies {
+    implementation "maven.modrinth:touhou-little-maid:${tlm_version}"
+    // 可选依赖：只在编译期认 Carry On 的类，运行期没装它照样跑（见 carry/CarryOnPresent）。
+    // 版本号用 Modrinth 的 version id，NeoForge 那个文件与 Forge 同名版本，按版本号取会拿错。
+    compileOnly "maven.modrinth:carry-on:${carryon_version}"
+    implementation "org.java-websocket:Java-WebSocket:${java_websocket_version}"
+    jarJar "org.java-websocket:Java-WebSocket:${java_websocket_version}"
+
+    testImplementation platform("org.junit:junit-bom:5.11.4")
+    testImplementation "org.junit.jupiter:junit-jupiter"
+}
+
+tasks.named('test', Test).configure {
+    useJUnitPlatform()
+}
+
+tasks.withType(ProcessResources).configureEach {
+    // 资源模板里有中文，必须按 UTF-8 读
+    filteringCharset = 'UTF-8'
+    var replaceProperties = [
+            minecraft_version      : minecraft_version,
+            minecraft_version_range: minecraft_version_range,
+            neo_version            : neo_version,
+            neo_version_range      : neo_version_range,
+            loader_version_range   : loader_version_range,
+            tlm_version_range      : tlm_version_range,
+            mod_id                 : mod_id,
+            mod_name               : mod_name,
+            mod_license            : mod_license,
+            mod_version            : mod_version,
+            mod_authors            : mod_authors,
+            mod_description        : mod_description
+    ]
+    inputs.properties replaceProperties
+    filesMatching(['META-INF/neoforge.mods.toml']) {
+        expand replaceProperties
+    }
+}
+
+// 中文字符串必须显式声明 UTF-8，否则 Windows 默认编码会乱码
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}

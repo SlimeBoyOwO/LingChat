@@ -1,179 +1,105 @@
 """车万女仆桥接：把 MC 玩家的话送进对话，把角色的回话送回游戏内女仆气泡，
-把游戏世界的变化记成旁白，并让角色能指挥女仆做几个动作。
+把游戏世界的变化记成旁白。
 
-四个入口共用本文件：`on_start`（启动/启用）、`on_ws`（WS 连接与收帧）、
-`on_line_shown`（某句台词上屏）、`run`（LLM 调用本插件的工具）。
+一个插件目录，几个文件各管一段（本文件是入口，manifest 的 `[[ws]]` / `[[subscribe]]` /
+`[startup]` 都指向它）：
+
+| 文件         | 管什么                                                     |
+| ------------ | ---------------------------------------------------------- |
+| `hooks.py`    | 这份：生命周期（启动 / 连接 / 某句上屏）与游戏事件的落地    |
+| `bridge.py`   | 与模组的通道：连没连上、是哪只女仆、收发帧、读配置          |
+| `wording.py`  | 注册表 id、枚举串、数字 → 中文，以及情绪 → 颜文字            |
+| `naming.py`   | 旁白称呼：当前角色名与玩家名，以及模组回执的称呼替换        |
+| `events/`     | 一类事件一个模块；紧急度、TTL、合并键与旁白登记在一起       |
+| `tools/`      | 工具按行为分模块；`entry.py` 是 manifest 指向的入口         |
+| `tools/context.py` | 她身边那一圈：快照与「某角色此刻」的措辞，工具与开口时共用 |
+
+台词表里只留两种桥接写的东西：一类是事件旁白，另一类是进入 MC 时写一次的那条提示。
+旁白一律用第三人称，角色与玩家都叫名字（见 `naming.py`），不写「你」「玩家」。
+**感知信息只有一个入口：模组推事件帧，这里翻成旁白交给 `add_prompt_line`。** 不要在玩家
+那句话后面用括号追加「（她此刻：…）」之类的处境；玩家说的话原样送进对话，她的姿势、周围
+有什么、脚下踩着什么全部由事件旁白交代（见 `events/`）。
 
 插件脚本每次调用都新建解释器、跑完即弃，所以这里不保存任何跨调用状态：
-用得到的信息一律当场问（见 `_maid_id`），「自上次对话以来攒了几条事件」这类计数
-也直接从台词表读回来（见 `_quiet_event_run`）。
+用得到的信息一律当场问（见 `bridge.ready`），「自上次对话以来攒了几条事件」这类计数
+由宿主队列回给（见 `_quiet_event_run`）。
 """
 
 from plugin_host import (
     add_prompt_line,
     read_context,
+    read_data_file,
     send_user_message,
     set_auto_mode,
+    set_reply_length_mode,
+    set_voice_playback_available,
     trigger_proactive,
-    ws_open,
-    ws_request,
-    ws_send,
-    ws_status,
 )
 
-CONN_ID = "tlm"
-DECLARED_WS_URL = "ws://127.0.0.1:48920"
-
-# 提示行的标记前缀，用来在台词表里认出自己写过的那条——幂等就靠它。
-ENTRY_TAG = "［Minecraft 桥接］"
-
-# 游戏事件的标记前缀。既用来认自己写过的行，也用来判「自上次对话以来攒了几条」。
-EVENT_TAG = "［MC 事件］"
-
-ENTRY_HINT = (
-    "［Minecraft 桥接］你已和玩家一起进入 Minecraft 世界，你变成了游戏里的小女仆。\n"
-    "- 你在 LingChat 回的话会同步显示成游戏内女仆的聊天气泡，照常说话就行。\n"
-    "- 以「［Minecraft］」开头的消息来自游戏世界，是玩家在 MC 里说的，按玩家发言对待。\n"
-    "- 以「［MC 事件］」开头的是世界本身的旁白（换地形、天黑、下雨、受伤这类），"
-    "它不是谁说的话，当背景信息看。\n"
-    "- 玩家让你做动作（过来、坐下、看着我、去床上躺下）时用 maid_ 开头的工具指挥女仆："
-    "她不会瞬移，工具说「正在过去」就是还没到，等旁白说她到了再当这件事办成了。"
+import bridge
+from bridge import config, player_name, truthy
+from events import event_key, event_severity, event_ttl, format_event, needs_snapshot
+from naming import names
+from tools.context import NEARBY_TIMEOUT_MS, creature_text, snapshot
+from wording import (
+    DEAD_STATE_MARK,
+    RECOVERED_STATE_MARK,
+    REVIVE_STATE_MARK,
+    UNCONSCIOUS_STATE_MARK,
+    kaomoji_for,
 )
 
-# 攒够几条游戏事件、且这期间玩家没说话，就请角色主动开口。0 = 只记旁白，不请。
-DEFAULT_PROACTIVE_AFTER = 3
+
+def _entry_hint():
+    """进入 MC 的那条提示。名字是当下的角色名与玩家名，写法变了要重新交代一遍。
+
+    幂等按内容判（见 `_entry_hint_written`），所以换角色、改用户名后会再写一条。
+    """
+    maid, player = names()
+    return (
+        f"［Minecraft 桥接］{maid}和{player}一起进入了 Minecraft 世界，"
+        f"{maid}变成了游戏里的小女仆。\n"
+
+        f"{maid}现在可以调用maid_开头的工具实现对游戏的操作啦！"
+    )
 
 # 幂等检查先扫这么多条尾巴；不够长才整段再扫一次（见 `_entry_hint_written`）。
 TAIL_SCAN = 50
 
-# 等模组受理动作的回执。要明显小于工具自身的 15s 超时，否则模型在工具超时里干等。
-ACTION_TIMEOUT_MS = 8000
-
-# 工具名 → 模组认识的动作名。工具名带插件前缀，动作名不带。
-_TOOL_ACTIONS = {
-    "maid_go_to": "go_to",
-    "maid_sit_down": "sit",
-    "maid_stand_up": "stand",
-    "maid_lie_down": "lie_down",
-    "maid_look_at": "look_at",
-}
-
-# 带目标的动作与各自的默认目标。执行器只校验 JSON Schema 的一个子集、不认 enum，
-# 所以合法值在这里兜底（模组那头还会再校验一次）。
-_TARGET_DEFAULTS = {"go_to": "player", "lie_down": "bed"}
-
-# 受理了但还没做完时给模型的话：必须让它知道自己还没到位，否则它会当场宣布已经办到。
-_TOOL_PENDING_TEXT = {
-    "go_to": "正在走过去，到了会告诉你。",
-    "lie_down": "正在走过去，躺下了会告诉你。",
-}
-
-# 受理即完成的动作给模型的话。
-_TOOL_DONE_TEXT = {
-    "sit": "已经坐下了。",
-    "stand": "已经站起来了。",
-    "look_at": "已经看向玩家了。",
-}
-
-# 动作收尾时记进台词表的旁白。只陈述事实，情绪由模型自己决定。
-_ACTION_DONE_TEXT = {
-    "sit": "你坐下了。",
-    "stand": "你站起来了。",
-    "lie_down": "你躺到床上睡着了。",
-    "look_at": "你转头看向了玩家。",
-}
-
-_DIMENSION_NAMES = {
-    "minecraft:overworld": "主世界",
-    "minecraft:the_nether": "下界",
-    "minecraft:the_end": "末地",
-}
-
-# 常见生物群系的中文名。没收录的退回到 id 的后半段（英文），模型也认。
-_BIOME_NAMES = {
-    "minecraft:plains": "平原",
-    "minecraft:sunflower_plains": "向日葵平原",
-    "minecraft:forest": "森林",
-    "minecraft:flower_forest": "繁花森林",
-    "minecraft:birch_forest": "白桦林",
-    "minecraft:dark_forest": "黑森林",
-    "minecraft:taiga": "针叶林",
-    "minecraft:snowy_taiga": "积雪针叶林",
-    "minecraft:old_growth_pine_taiga": "原始松木针叶林",
-    "minecraft:snowy_plains": "雪原",
-    "minecraft:ice_spikes": "冰刺之地",
-    "minecraft:desert": "沙漠",
-    "minecraft:savanna": "热带草原",
-    "minecraft:jungle": "丛林",
-    "minecraft:sparse_jungle": "稀疏丛林",
-    "minecraft:swamp": "沼泽",
-    "minecraft:mangrove_swamp": "红树林沼泽",
-    "minecraft:badlands": "恶地",
-    "minecraft:beach": "沙滩",
-    "minecraft:stony_shore": "石岸",
-    "minecraft:river": "河流",
-    "minecraft:ocean": "海洋",
-    "minecraft:frozen_ocean": "冻洋",
-    "minecraft:warm_ocean": "暖海",
-    "minecraft:mushroom_fields": "蘑菇岛",
-    "minecraft:windswept_hills": "风袭丘陵",
-    "minecraft:meadow": "草甸",
-    "minecraft:cherry_grove": "樱花树林",
-    "minecraft:nether_wastes": "下界荒地",
-    "minecraft:soul_sand_valley": "灵魂沙峡谷",
-    "minecraft:crimson_forest": "绯红森林",
-    "minecraft:warped_forest": "诡异森林",
-    "minecraft:basalt_deltas": "玄武岩三角洲",
-    "minecraft:the_end": "末地",
-    "minecraft:end_highlands": "末地高地",
-    "minecraft:small_end_islands": "末地小岛",
-}
-
-# 说不清是谁打的时候，用伤害类型兜个底（模组给的是伤害类型的 msg id）。
-_DAMAGE_HINTS = {
-    "fall": "从高处摔了下来",
-    "lava": "碰到了岩浆",
-    "in_fire": "被火烧到了",
-    "on_fire": "身上着火了",
-    "drown": "溺水了",
-    "starve": "饿得不行",
-    "cactus": "被仙人掌扎了",
-    "freeze": "被冻伤了",
-    "lightning_bolt": "被雷劈了",
-    "magic": "被魔法击中",
-    "wither": "中了凋零",
-    "hot_floor": "踩到了岩浆块",
-    "sweet_berry_bush": "被甜浆果丛扎了",
-    "fly_into_wall": "撞到了墙上",
-    "out_of_world": "掉进了虚空",
-}
-
-
-# ─── 入口 ───
+# 单句语音的上限。正常一句只有几百 KB，超过这个数多半是配置错了，别把整段
+# base64 塞进一次 WS 帧。
+MAX_TTS_BYTES = 8 * 1024 * 1024
 
 
 def on_start(ctx):
-    """启动与启用时各跑一次：把配置里的地址应用到声明的那条连接上。"""
-    url = _config(ctx).get("ws_url") or ""
+    """启动与启用时各跑一次：把配置里的地址应用到声明的那条连接上。
+
+    声明里的 url 不能写占位符：玩家没保存过配置时 ctx.config 不含该键，占位符不会被
+    替换。所以默认值写在 manifest，非默认值在这里覆盖。
+    """
+    url = config(ctx).get("ws_url") or ""
     url = url.strip() if isinstance(url, str) else ""
-    # 声明里的 url 不能写占位符：玩家没保存过配置时 ctx.config 不含该键，
-    # 占位符不会被替换。所以默认值写在 manifest，非默认值在这里覆盖。
-    if url and url != DECLARED_WS_URL:
-        ws_open(CONN_ID, url=url)
+    if url and url != bridge.DECLARED_WS_URL:
+        bridge.open_connection(url)
 
 
 def on_ws(ctx):
     """WS 连接的建立与收帧。"""
     payload = ctx.get("payload") or {}
-    if payload.get("connId") != CONN_ID:
+    if payload.get("connId") != bridge.CONN_ID:
         return
     event = payload.get("event")
     if event == "connect":
         _bind_maid(ctx)
+        _send_favorite_food(ctx)
+        _sync_game_voice()
         # 玩家这会儿在游戏里，腾不出手点对话框推进；不切自动模式的话，角色说完
         # 一句就停住，游戏里也就一直不冒下一句，看起来跟桥断了没两样。
         # 只负责开：断开时不还回去（用户要的就是这个语义）。
         set_auto_mode(True)
+        # 游戏里的气泡装不下长篇大论；连上就切短档（1~2 句）。这一刻可能还没进入
+        # 对话，设置会被拒，玩家从 MC 开口前还会再重申一次（见 _handle_chat）。
+        _use_short_replies()
         _append_entry_hint()
     elif event == "message":
         _handle_frame(ctx, payload.get("data"))
@@ -181,89 +107,96 @@ def on_ws(ctx):
 
 
 def on_line_shown(ctx):
-    """某句台词上屏时触发（逐句）：把这一句同步成游戏内气泡。
+    """某句台词上屏时触发（逐句）：同步游戏内气泡，按设置在游戏里播放这一句的语音。
 
     订阅的是「上屏」而不是「生成」：模型的回复是流式到达的，连着几句会几乎同时
     生成完。跟着上屏时机走，游戏里的女仆才会和主界面同一个节奏地冒话，而不是
     一次涌出去。
+
+    模组只留两枚气泡：台词一枚、这一句情绪的颜文字一枚（候选在这边按情绪给，挑哪条
+    由模组随机）。新的一句会替掉上一句的两枚，不会一句叠一句。
+
+    气泡与语音是两个开关：关掉气泡仍然可以只要声音。
     """
     payload = ctx.get("payload") or {}
-    # 剧本编辑器的预览流不该外发到游戏里。
-    if payload.get("previewGen") or not payload.get("roleId"):
+    # 剧本编辑器的预览流不该外发到游戏里。试玩代号可以是 0，必须按「键存在」判断。
+    if payload.get("previewGen") is not None or not payload.get("roleId"):
         return
+    # 每轮最后一句之后重念一次死亡/昏迷状态：这两种状态是持久的，模型几轮之后就会忘
+    maid = ""
+    if payload.get("isFinal"):
+        _remind_state()
+        # 这一轮说完了：动作收尾后按住的随机游荡可以放开（模组那边还有十秒兜底）
+        maid, _ = bridge.ready(ctx)
+        if maid:
+            _settle(maid)
+    cfg = config(ctx)
     message = (payload.get("message") or "").strip()
-    if not message:
+    audio_file = (payload.get("audioFile") or "").strip()
+    want_bubble = bool(message) and truthy(cfg.get("echo_to_game"), True)
+    want_voice = bool(audio_file) and truthy(cfg.get("play_voice_in_game"), False)
+    if not want_bubble and not want_voice:
         return
-    if not _truthy(_config(ctx).get("echo_to_game"), True):
+    if not maid:
+        maid, _ = bridge.ready(ctx)
+    if not maid:
         return
-    if not _connected():
-        return
-    maid_id, _ = _maid_id(_config(ctx))
-    if not maid_id:
-        return
-    ws_send(
-        CONN_ID,
-        {"type": "send_chat", "data": {"maid_id": maid_id, "message": message}},
-    )
+    # 顺手重申一次监控目标：刚连上那一次可能没发出去（见 _bind_maid），而插件没有定时器、
+    # 也存不下跨调用状态，「她说话」是唯一稳定的时机。模组那边幂等，重复发没有副作用。
+    bridge.bind(maid, player_name(cfg))
+    if want_bubble:
+        # emotion 是分类器的预测标签（未启用时就是模型写的【情绪】），认不出的按「正常」给。
+        emotion = (payload.get("emotion") or "").strip() or (
+            payload.get("originalTag") or ""
+        ).strip()
+        bridge.send({
+            "type": "send_chat",
+            "data": {
+                "maid_id": maid,
+                "message": message,
+                "kaomoji": kaomoji_for(emotion),
+            },
+        })
+    if want_voice:
+        _send_tts(maid, audio_file)
 
 
-def run(ctx):
-    """工具入口：把模型的动作意图翻成一条动作帧发给模组。
+def _settle(maid):
+    """告诉模组这一轮说完了：动作之后按住的随机游荡可以放开。
 
-    返回的文本就是模型看到的结果，所以说实话最要紧：没连上、没绑定女仆、模组说
-    办不到，一律如实回报，绝不假装已经执行——模型会照着这个结果跟玩家交代。
+    模组不发这一帧也会在十秒后自己放开、主人走远时也会立刻放开，所以发不出去不算事。
     """
-    tool = (ctx.get("tool_name") or "").strip()
-    action = _TOOL_ACTIONS.get(tool)
-    if not action:
-        return {"ok": False, "error": f"这个工具不存在：{tool}"}
-    if not _connected():
-        return {"ok": False, "error": "还没连上 Minecraft，做不到。"}
-    maid_id, reason = _maid_id(_config(ctx))
-    if not maid_id:
-        return {"ok": False, "error": reason}
+    bridge.send({"type": "maid_settle", "data": {"maid_id": maid}})
 
-    data = {"maid_id": maid_id, "action": action}
-    target = _action_target(action, ctx.get("args") or {})
-    if target:
-        data["target"] = target
 
-    result = ws_request(
-        CONN_ID, {"type": "maid_action", "data": data}, timeout_ms=ACTION_TIMEOUT_MS
-    )
+def _send_tts(maid, audio_file):
+    """把这一句的音频原样发给模组，由它在女仆的位置播放（宿主此时已把本机静音）。"""
+    if "/" in audio_file or "\\" in audio_file or audio_file in (".", ".."):
+        return
+    result = read_data_file(f"voice/{audio_file}")
     if not result.get("ok"):
-        return {"ok": False, "error": result.get("error") or "游戏没有回应"}
+        return
+    if (result.get("size") or 0) > MAX_TTS_BYTES:
+        return
+    audio = result.get("base64") or ""
+    if not audio:
+        return
+    bridge.send({
+        "type": "play_tts",
+        "data": {"maid_id": maid, "format": "wav", "audio": audio},
+    })
 
-    frame = (result.get("response") or {}).get("data") or {}
-    if not frame.get("accepted"):
-        return {"ok": False, "error": frame.get("reason") or "游戏拒绝了这次动作"}
-    if frame.get("async"):
-        return {
-            "ok": True,
-            "message": _TOOL_PENDING_TEXT.get(action, "正在做，好了会告诉你。"),
-        }
-    return {"ok": True, "message": _TOOL_DONE_TEXT.get(action, "已经做完了。")}
 
+def _use_short_replies(quiet=False):
+    """把回复台词数量切到短档（1~2 句）。
 
-def _action_target(action, args):
-    """这次动作要带的目标；不带目标的动作返回空串。
-
-    认不出的取值一律退回默认：执行器的 schema 校验不认 enum，模型可能塞别的字符串。
+    连接那一刻 LingChat 可能还在主菜单、没进入对话，宿主会拒绝这次设置；所以玩家
+    每次从 MC 开口、真正要生成回复之前还会再调一次（见 `_handle_chat`）。档位没变时
+    宿主不写任何台词，重复调用是安全的。
     """
-    default = _TARGET_DEFAULTS.get(action)
-    if not default:
-        return ""
-    raw = args.get("target")
-    raw = raw.strip().lower() if isinstance(raw, str) else ""
-    if raw not in ("player", "bed"):
-        return default
-    # 躺下只认床：player 这种取值对它没有意义
-    if action == "lie_down" and raw != "bed":
-        return default
-    return raw
-
-
-# ─── 下行：模组推来的帧 ───
+    result = set_reply_length_mode("short")
+    if not result.get("ok") and not quiet:
+        print(f"[mc_maid_bridge] 没能把回复长度切成短档：{result.get('error')}")
 
 
 def _bind_maid(ctx):
@@ -273,13 +206,31 @@ def _bind_maid(ctx):
     说话的那个玩家，才会把聊天转过来。不发这一条，MC 里的人说话永远没反应，而且
     是静默的——现象跟模组没装一模一样。
 
-    每次重连都要重发：模组换存档或重启服务端时会把这个绑定清掉。
+    **这里不查连接状态**：这一条正是在「刚连上」的那一刻发的，而那一刻宿主自己对这个
+    连接的登记可能还没落定（2026-10-16 真机上踩过：先问一句「连上了吗」得到否，于是
+    绑定被静静跳过，聊天与感知一起哑掉，只剩「她的话能上屏」这一半还通）。直接问女仆
+    是谁、再把绑定发出去，发不出去就记一笔；下一次上屏还会再说一遍（见 on_line_shown）。
     """
-    maid_id, reason = _maid_id(_config(ctx))
-    if not maid_id:
+    maid, reason = bridge.maid_id(bridge.config(ctx))
+    if not maid:
         print(f"[mc_maid_bridge] 没能绑定女仆：{reason}")
         return
-    ws_send(CONN_ID, {"type": "set_monitored_maid", "data": {"maid_id": maid_id}})
+    result = bridge.bind(maid, player_name(bridge.config(ctx)))
+    if not result.get("ok"):
+        print(f"[mc_maid_bridge] 绑定帧没能发出去：{result.get('error')}")
+
+
+def _send_favorite_food(ctx):
+    """把她最喜欢吃的东西交给模组。
+
+    这是角色的设定，所以填在软件这边的插件配置里；模组只存着照用，不设自己的配置项。
+    插件没有定时器，就在连接时与玩家每次开口前各发一次：改完设置不用重连，下次在
+    游戏里说话时生效。模组那边幂等，重复发没有副作用。
+    """
+    raw = config(ctx).get("favorite_food") or ""
+    raw = raw if isinstance(raw, str) else ""
+    items = [one.strip() for one in raw.replace("，", ",").split(",") if one.strip()]
+    bridge.send({"type": "set_favorite_food", "data": {"items": items}})
 
 
 def _handle_frame(ctx, data):
@@ -288,176 +239,229 @@ def _handle_frame(ctx, data):
         return
     frame_type = data.get("type")
     if frame_type == "chat_message":
-        _handle_chat(data.get("data") or {})
+        _handle_chat(ctx, data.get("data") or {})
     elif frame_type == "event":
         _handle_event(ctx, data.get("data") or {})
 
 
-def _handle_chat(chat):
+def _handle_chat(ctx, chat):
     message = (chat.get("message") or "").strip()
     if not message:
         return
     # 发言者恒为玩家本人：模组只在「说话的人正是这只女仆的主人」时才转发，uuid 对不上
-    # 直接丢。所以用户名不能原样写进去——模型会当成第三个人在说话，而不是玩家。
+    # 直接丢。所以这里原样送消息，连标记都不加——宿主会按玩家行补上 LingChat 设置里的
+    # 用户名（「用户酱: …」），和输入框里发的一句完全同形。多写一个 MC 账号名或一个
+    # 「［Minecraft］」都会凭空多出「第三个人」（2026-10-16 真机上模型照着那个形状，
+    # 把玩家没说过的话写进了自己的台词）。配置里填了 MC 用户名、而说话的不是他时
+    # （多人服里女仆的主人另有其人）才点名。
     sender = (chat.get("sender") or "").strip()
-    who = f"玩家（{sender}）" if sender else "玩家"
+    cfg = config(ctx)
+    who = player_name(cfg)
+    if who and sender and sender != who:
+        text = f"{sender}说：{message}"
+    else:
+        text = message
+    # 连接时可能还没进入对话，短档设置被拒；真正要生成回复前再重申一次。幂等，
+    # 档位没变时不往台词表写任何行。
+    _use_short_replies(quiet=True)
+    # 顺手重申一次她最喜欢吃的东西：改完设置不用重连（见 _send_favorite_food）
+    _send_favorite_food(ctx)
     # 与玩家在输入框里发一句走同一条路：写进台词历史、按当前配置生成回复，
     # 所以聊天窗里看得到，角色的回话也会顺着 on_line_shown 变成游戏内气泡。
-    send_user_message(f"［Minecraft］{who}说：{message}")
-
-
-# ─── 下行：游戏事件 ───
+    # 玩家这句话原样送，不在后面追加任何她的状态：感知一律走旁白入口（见模块说明）。
+    send_user_message(text)
 
 
 def _handle_event(ctx, data):
-    """一条游戏事件：记成旁白，该开口的时候请角色开口。
+    """一条游戏事件：交给宿主排队，该开口的时候请角色开口。
 
-    紧急的（挨打、血量告急）当场开口；其余的攒够若干条、且这期间没人说话才请一次。
+    紧急的（事件模块里登记的 urgent 规则，外加「主人死在旁边」「捡到玩家丢的东西」
+    两处按数据判定）当场开口；其余的攒够若干件、且这期间没人说话才请一次。
+
+    事件一律带有效期交给宿主：它不会立刻进台词表，等角色真要开口那一刻再按有效期
+    筛一遍，过期的直接丢掉——一场战斗里捡东西、挨打、怪物死掉会连着来，等第一轮
+    台词念完，早先那些小事已经不值得再提了。
     """
-    text, urgent = _format_event(data, _player_name(_config(ctx)))
+    kind = (data.get("event_type") or "").strip()
+    text, urgent = format_event(data)
     if not text:
         return
-    written = add_prompt_line("narrator", EVENT_TAG + text)
-    if not written.get("ok"):
-        print(f"[mc_maid_bridge] 游戏事件没能写进台词表：{written.get('error')}")
+    if kind in ("maid_death", "maid_revive", "maid_unconscious", "maid_recovered"):
+        # 死亡与昏迷时游戏里那句语音不该从她身上出来：改由本机放，醒来/复活后再交回去。
+        set_voice_playback_available(kind in ("maid_revive", "maid_recovered"))
+    if urgent and needs_snapshot(kind):
+        # 出事这一刻正好是「再感知一次周围」的时机：怪物那条有 2 分钟防抖管着，
+        # 这期间新来的谁都不会各记一条，所以她身边站着什么就跟着这条一起交代。
+        text += _creature_text(data)
+    pending = _append_event(text, kind, data)
+    if pending is None:
         return
-    if urgent or _quiet_event_run(written.get("index"), _proactive_after(ctx)):
+    if urgent:
+        _nudge(urgent=True)
+    elif _quiet_event_run(pending, bridge.proactive_after(ctx)):
         _nudge()
 
 
-def _format_event(data, player_name=""):
-    """模组推来的事件 → 一句只陈述事实的中文。返回 (文本, 是否紧急)。
+def _append_event(text, kind, data):
+    """把一条事件交给宿主排队。返回队列里还有效的事件条数；写失败返回 None。
 
-    只写发生了什么，不写「该有什么情绪」——情绪由模型自己决定，留在台词表里的
-    始终是客观记录。
-
-    `player_name` 是玩家在 MC 里的用户名：事件里的名字撞上它就要改写成「玩家」，
-    否则模型会当成不相干的第三个人。
+    `ttl_seconds` 让宿主在角色真要开口时才判「还值不值得说」；`key` + `severity`
+    让连着挨打只留最重的一次。排队条数由宿主算好回给我们——插件没有跨调用状态，
+    「攒够几条了」只能问队列。
     """
-    kind = (data.get("event_type") or "").strip()
-    if kind == "state_snapshot":
-        return _snapshot_text(data), False
-    if kind == "biome_change":
-        return f"周围的环境变了，现在来到了{_name(_BIOME_NAMES, data.get('biome'))}。", False
-    if kind == "dimension_change":
-        came_from = _name(_DIMENSION_NAMES, data.get("from_dimension"))
-        went_to = _name(_DIMENSION_NAMES, data.get("to_dimension"))
-        return f"你跟着玩家从{came_from}来到了{went_to}。", False
-    if kind == "time_phase_change":
-        return ("天黑了。" if data.get("phase") == "night" else "天亮了。"), False
-    if kind == "weather_change":
-        if data.get("thundering"):
-            return "变天了，外面在打雷。", False
-        if data.get("raining"):
-            return "开始下雨了。", False
-        return "雨停了，天放晴了。", False
-    if kind == "low_health":
-        who = "你" if data.get("who") == "maid" else "玩家"
-        now = _num(data.get("health"))
-        most = _num(data.get("max_health"))
-        return f"{who}的血量只剩 {now}/{most}，快撑不住了。", True
-    if kind == "maid_hurt":
-        return _hurt_text(data, player_name), True
-    if kind == "action_done":
-        # 动作的收尾是玩家（和模型）正在等的那件事，当场让角色交代一句
-        return _action_done_text(data), True
-    return "", False
+    written = add_prompt_line(
+        "narrator",
+        text,
+        ttl_seconds=event_ttl(kind),
+        key=event_key(kind),
+        severity=event_severity(kind, data),
+    )
+    if not written.get("ok"):
+        print(f"[mc_maid_bridge] 游戏事件没能进队列：{written.get('error')}")
+        return None
+    return int(written.get("pending") or 0)
 
 
-def _action_done_text(data):
-    """动作收尾。三种结局都要说：被顶掉也要说，否则角色会一直以为还在做。"""
-    action = (data.get("action") or "").strip()
-    status = (data.get("status") or "").strip()
-    if status == "done":
-        if action == "go_to":
-            if (data.get("target") or "") == "bed":
-                return "你走到了床边。"
-            return "你走到了玩家身边。"
-        return _ACTION_DONE_TEXT.get(action, "这件事你做完了。")
-    if status == "cancelled":
-        return "刚才那件事被新的事顶掉了，没做成。"
-    reason = (data.get("reason") or "").strip()
-    return f"刚才那件事没做成：{reason}" if reason else "刚才那件事没做成。"
+def _creature_text(data):
+    """她身边有什么活物，一句话（没有就空串）。取不到就这一条不带。"""
+    maid = (data.get("maid_id") or "").strip()
+    if not maid:
+        return ""
+    data, _ = snapshot(maid, NEARBY_TIMEOUT_MS)
+    return creature_text(data) if data else ""
 
 
-def _snapshot_text(data):
-    """接上世界时的第一帧：把眼下的处境交代清楚，模型才知道自己在哪儿。
+# 死亡状态问模组时的超时：本机回环，正常是毫秒级。游戏暂停时模组不推进队列，
+# 超时了就退回台词表判断，不让一次查询拖住这一句。
+MAID_STATE_TIMEOUT_MS = 800
 
-    顺手把玩家在游戏里的名字写上：所有事件旁白里出现的都是这个名字，模型得先知道
-    它指的就是玩家本人，才不会当成另一个人。名字来自模组，没配置也能说清。
+# 台词表里往回扫多少条找死亡/复活旁白。
+LIFE_SCAN = 200
+
+
+def _remind_state():
+    """她死了或昏迷着，就每一轮再念一次状态。
+
+    两种状态都是持久的，模型几轮之后就会把她当成还站在旁边的小女仆。判断先问模组
+    （它记着这一局的死活与昏迷），问不到才退回台词表里最后一条状态旁白——历史本身
+    就是状态。带上 key 让同一轮里几句台词只留一条。
     """
-    player = (data.get("player_name") or "").strip()
-    who = f"玩家（{player}）" if player else "玩家"
-    clauses = [
-        f"你正和{who}在"
-        f"{_name(_DIMENSION_NAMES, data.get('dimension'))}的{_name(_BIOME_NAMES, data.get('biome'))}"
-    ]
-    # 下界 / 末地没有天空，也就没有昼夜与天气这回事
-    if data.get("sky"):
-        clauses.append("现在是白天" if data.get("phase") == "day" else "现在是夜里")
-        clauses.append(_weather_phrase(data))
-    health = f"你的血量 {_num(data.get('maid_health'))}/{_num(data.get('maid_max_health'))}"
-    if _int(data.get("player_max_health"), 0) > 0:
-        health += f"，玩家 {_num(data.get('player_health'))}/{_num(data.get('player_max_health'))}"
-    return f"{'，'.join(clauses)}。{health}。"
-
-
-def _weather_phrase(data):
-    if data.get("thundering"):
-        return "外面在打雷"
-    if data.get("raining"):
-        return "外面在下雨"
-    return "天气晴朗"
-
-
-def _hurt_text(data, player_name=""):
-    """女仆受伤。模组会把一小段连续挨打合成一条，所以这里要照顾「几下」。"""
-    attacker = (data.get("attacker") or "").strip()
-    if attacker and player_name and attacker == player_name:
-        cause = "被玩家打了"
-    elif attacker:
-        cause = f"被{attacker}打了"
+    state = _state_now()
+    maid, _ = names()
+    if state.get("dead"):
+        result = add_prompt_line(
+            "narrator",
+            f"{maid}{DEAD_STATE_MARK}，在复活之前没法行动，也看不到听不到游戏里的事。",
+            ttl_seconds=604800,
+            key="maid_dead_state",
+            severity=1,
+        )
+        if not result.get("ok"):
+            print(f"[mc_maid_bridge] 死亡状态没能进队列：{result.get('error')}")
+        return
+    if not state.get("unconscious"):
+        return
+    if state.get("on_bed"):
+        text = (
+            f"{maid}{UNCONSCIOUS_STATE_MARK}，正躺在床上慢慢恢复，身边冒着爱心，"
+            "还要等一会儿才会醒。"
+        )
     else:
-        cause = _DAMAGE_HINTS.get((data.get("damage_type") or "").strip(), "挨了打")
-    count = _int(data.get("count"), 1)
-    times = f"连续 {count} 下，" if count > 1 else ""
-    damage = _num(data.get("damage"))
-    now = _num(data.get("health"))
-    most = _num(data.get("max_health"))
-    return f"你{cause}，{times}一共掉了 {damage} 点血，现在是 {now}/{most}。"
+        text = (
+            f"{maid}{UNCONSCIOUS_STATE_MARK}，倒在地上叫不醒；"
+            f"把{maid}抱到床上（普通床或女仆床）连续躺一分钟，{maid}才会醒。"
+        )
+    result = add_prompt_line(
+        "narrator",
+        text,
+        ttl_seconds=604800,
+        key="maid_unconscious_state",
+        severity=1,
+    )
+    if not result.get("ok"):
+        print(f"[mc_maid_bridge] 昏迷状态没能进队列：{result.get('error')}")
 
 
-def _quiet_event_run(index, count):
-    """最近 count 行是否清一色是自己写的游戏事件行。
+def _state_now():
+    """她现在是不是死的、是不是昏迷着。模组这一局没记录时退回台词表判断。"""
+    response, error = bridge.ask({"type": "maid_state", "data": {}}, MAID_STATE_TIMEOUT_MS)
+    if not error and response.get("type") == "maid_state_result":
+        data = response.get("data") or {}
+        if data.get("known"):
+            return {
+                "dead": bool(data.get("dead")),
+                "unconscious": bool(data.get("unconscious")),
+                "on_bed": bool(data.get("on_bed")),
+            }
+    state = _life_state()
+    return {
+        "dead": state == "dead",
+        "unconscious": state == "unconscious",
+        "on_bed": False,
+    }
 
-    用户要的「状态更新到一定量、且这期间玩家没说话」就是这个：玩家发言与角色的
-    回话都会插进这个连续段、把它打断，计数于是自然归零——所以插件不必自己存计数器。
+
+def _sync_game_voice():
+    """连上时对一次账：她若还死在上一局或昏迷着，语音就该由本机放。
+
+    宿主不知道自己那边有没有女仆，只会按「开关开着 + 连接在」把本机静音；
+    死了的她在游戏里没有实体，昏迷的她不该从身上发声。之后她死、复活、昏迷、醒来时
+    再各报一次（见 _handle_event）。
     """
-    if not index or count <= 0:
-        return False
-    window = read_context(start=max(1, index - count + 1), end=index)
-    lines = window.get("lines") or []
-    if len(lines) < count:
-        return False
-    return all(EVENT_TAG in (line.get("content") or "") for line in lines)
+    state = _state_now()
+    set_voice_playback_available(not state.get("dead") and not state.get("unconscious"))
 
 
-def _nudge():
+def _life_state():
+    """台词表末尾最后一条状态旁白说的是什么：dead / unconscious / alive / unknown。"""
+    head = read_context(start=1, end=1)
+    total = head.get("total") or 0
+    if not head.get("ok") or not total:
+        return "unknown"
+    since = max(1, total - LIFE_SCAN)
+    lines = read_context(start=since, end=total).get("lines") or []
+    state = "unknown"
+    for line in lines:
+        content = line.get("content") or ""
+        if DEAD_STATE_MARK in content:
+            state = "dead"
+        elif REVIVE_STATE_MARK in content:
+            state = "alive"
+        elif UNCONSCIOUS_STATE_MARK in content:
+            state = "unconscious"
+        elif RECOVERED_STATE_MARK in content:
+            state = "alive"
+    return state
+
+
+def _quiet_event_run(pending, count):
+    """排队中的事件刚好攒够 count 件时返回真。
+
+    用户要的「状态更新到一定量、且这期间玩家没说话」就是这个：角色一旦开口，宿主
+    就把队列写进台词表并清空，计数自然归零——所以插件不必自己存计数器。带有效期的
+    条目在入队时已经筛过一遍，这里的数只算还活着的。
+
+    用「刚好到量」而不是「至少」：到了量就请过一次口，之后同一个队列里不再重复催。
+    """
+    return count > 0 and pending == count
+
+
+def _nudge(urgent=False):
     """请宿主让角色主动开一次口。
 
     空提示语：该说的东西已经作为旁白记在台词表里了，再补一句「你注意到身边有变化、
     主动说一句」既替角色决定了该看什么，也容易把语气带成复述报告。宿主收到空提示
     就直接接着上下文生成一轮，不往台词表写任何行。
 
+    `urgent` 只给死亡这类事：宿主会顶掉排队中的普通请求，投放时也不吃冷却与
+    上一轮的静默期。
+
     可能被拒（主动对话没开、用户正在输入、上一轮还没说完），那就下次再说：
-    事件行已经记在台词表里，上下文不缺这一段。
+    事件已经排在宿主队列里，有效期之内下一次开口仍会带上。
     """
-    result = trigger_proactive("")
+    result = trigger_proactive("", urgent=urgent)
     if result.get("ok") and not result.get("triggered"):
         print(f"[mc_maid_bridge] 角色没能主动开口：{result.get('reason')}")
-
-
-# ─── 进入 MC 的提示行 ───
 
 
 def _append_entry_hint():
@@ -467,117 +471,33 @@ def _append_entry_hint():
     内容包成 `{旁白: …}`），所以模型知道这是提示而不是玩家说的话，也不会被算进
     玩家消息序号与「真实对话」。
     """
-    if _entry_hint_written():
+    hint = _entry_hint()
+    if _entry_hint_written(hint):
         return
-    result = add_prompt_line("narrator", ENTRY_HINT)
+    result = add_prompt_line("narrator", hint)
     if not result.get("ok"):
         print(f"[mc_maid_bridge] 进入 MC 的提示行没能写入：{result.get('error')}")
 
 
-def _entry_hint_written():
-    """台词表里是否已经有过提示行。
+def _entry_hint_written(hint):
+    """台词表里是否已经写过**现在这一版**的提示行。
 
-    先看尾巴（重连的常见情形，便宜）；历史比尾巴窗口更长、尾巴里又没找到时，
-    才整段扫一遍确认——避免历史很长时每次连接都做一次全量导出。
+    按内容认，不按标记认：措辞改了以后老存档也要重新交代一遍，否则模型一直按旧
+    规矩理解事件旁白。先看尾巴（重连的常见情形，便宜）；历史
+    比尾巴窗口更长、尾巴里又没找到时，才整段扫一遍确认。
     """
     head = read_context(start=1, end=1)
     total = head.get("total") or 0
     if not head.get("ok") or not total:
         return False
     since = max(1, total - TAIL_SCAN)
-    if _has_entry_tag(read_context(start=since, end=total)):
+    if _has_hint(read_context(start=since, end=total), hint):
         return True
     if since <= 1:
         return False
-    return _has_entry_tag(read_context())
+    return _has_hint(read_context(), hint)
 
 
-def _has_entry_tag(history):
+def _has_hint(history, hint):
     lines = history.get("lines") or []
-    return any(ENTRY_TAG in (line.get("content") or "") for line in lines)
-
-
-# ─── 小工具 ───
-
-
-def _config(ctx):
-    return ctx.get("config") or {}
-
-
-def _player_name(cfg):
-    """玩家在 MC 里的用户名（配置项）。没填就是空串。
-
-    只用来把事件旁白里撞上的名字改写成「玩家」——模组给的名字是裸的，模型不知道
-    那是谁。填了最稳；不填也有一条兜底：接上游戏的第一帧旁白里会写明玩家叫什么。
-    """
-    raw = cfg.get("player_name")
-    return raw.strip() if isinstance(raw, str) else ""
-
-
-def _maid_id(cfg):
-    """绑定的女仆 UUID；没配现问一次。返回 (id, 错误说明)。
-
-    插件无状态存不下发现到的 id，所以未配置时每次用到都要重问一遍；
-    本机回环，代价可忽略。填了配置就完全免掉这次往返。
-    """
-    configured = cfg.get("maid_id")
-    configured = configured.strip() if isinstance(configured, str) else ""
-    if configured:
-        return configured, ""
-    result = ws_request(CONN_ID, {"type": "get_maid_status", "data": {}}, timeout_ms=5000)
-    if not result.get("ok"):
-        return "", result.get("error") or "无法获取女仆状态"
-    frame = result.get("response") or {}
-    maids = ((frame.get("data") or {}).get("maids")) or []
-    if not maids:
-        return "", "游戏里没有找到女仆"
-    return maids[0].get("id") or "", ""
-
-
-def _connected():
-    status = ws_status(conn_id=CONN_ID)
-    return bool(status.get("ok")) and status.get("state") == "connected"
-
-
-def _truthy(value, default):
-    """配置项可能是布尔、也可能是字符串（前端表单传过字符串）。"""
-    if value is None:
-        return default
-    if isinstance(value, str):
-        return value.strip().lower() not in ("", "false", "0", "no")
-    return bool(value)
-
-
-def _proactive_after(ctx):
-    """攒够几条游戏事件才请角色开口；0 = 只记旁白不请。"""
-    raw = _config(ctx).get("proactive_after_events")
-    if raw is None or raw == "":
-        return DEFAULT_PROACTIVE_AFTER
-    return max(0, _int(raw, DEFAULT_PROACTIVE_AFTER))
-
-
-def _int(value, default=0):
-    """配置与事件里的数字可能是浮点（前端表单、JSON）或字符串。"""
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
-        return default
-
-
-def _num(value):
-    """血量这类数字：整数不带小数点，其余留一位；给不出来就留个问号。"""
-    try:
-        number = float(value)
-    except (TypeError, ValueError):
-        return "?"
-    if number == int(number):
-        return str(int(number))
-    return f"{number:.1f}"
-
-
-def _name(names, raw):
-    """游戏 id → 中文名；没收录的退回到 id 的后半段（英文），模型也认。"""
-    identifier = (raw or "").strip()
-    if not identifier:
-        return "未知的地方"
-    return names.get(identifier) or identifier.split(":")[-1].replace("_", " ")
+    return any(hint in (line.get("content") or "") for line in lines)

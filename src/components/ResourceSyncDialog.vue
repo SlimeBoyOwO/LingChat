@@ -3,10 +3,10 @@
     <Transition name="modal">
       <div
         v-if="visible && phase !== 'idle'"
-        class="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
+        class="fixed inset-0 z-10000 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm"
       >
         <div
-          class="flex max-h-[80dvh] w-[520px] flex-col overflow-hidden rounded-3xl bg-slate-800/90 shadow-2xl"
+          class="flex max-h-[80dvh] w-130 flex-col overflow-hidden rounded-3xl bg-slate-800/90 shadow-2xl"
         >
           <!-- 头部 -->
           <div class="px-6 pt-6 pb-4">
@@ -153,7 +153,7 @@ import { ref, computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
 const { t } = useI18n();
-import { Folder, Minus, Plus, RefreshCw, CheckCircle, XCircle } from "lucide-vue-next";
+import { Folder, Minus, Plus, RefreshCw, CheckCircle, XCircle } from "@lucide/vue";
 import type { ResourceSyncInfo, SyncFileEntry } from "@/composables/useUpdater";
 
 // ─── Props & Emits ───────────────────────────────────────────

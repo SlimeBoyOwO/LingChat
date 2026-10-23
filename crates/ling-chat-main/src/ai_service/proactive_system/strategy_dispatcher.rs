@@ -1,11 +1,10 @@
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::llm::provider_config::resolve_chat_provider;
 use crate::ai_service::proactive_system::config::ProactiveConfig;
 use crate::ai_service::proactive_system::types::{
     IntentType, PerceptionResult, ProactivePrompt, UserScheduleSettings, UserState,
 };
 use crate::ai_service::screen_analyzer::{
-    ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg, image_bytes_to_native_data_url,
+    ImageIntent, ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg, deliver_image,
 };
 use chrono::Local;
 use rand::Rng;
@@ -230,8 +229,6 @@ impl StrategyDispatcher {
         app: &tauri::AppHandle,
         game_status: &GameStatus,
     ) -> Option<ProactivePrompt> {
-        let analyze_prompt = "你是一个图像信息转述者，你将需要把你看到的画面描述给另一个AI让他理解用户的图片内容。用户开放了那个AI的自主窥屏功能，请获取桌面画面中的重点内容，用200字描述主体部分即可。如果你看到一个聊天窗口，有角色的立绘和对话框，不要描述这部分，只描述桌面上的其他内容。因为那部分是玩家与AI的聊天窗口。";
-
         let user_name = &game_status.player.user_name;
         let ai_name = game_status
             .current_role_id
@@ -239,53 +236,27 @@ impl StrategyDispatcher {
             .and_then(|role| role.display_name.clone())
             .unwrap_or_else(|| "你".to_string());
 
-        // 对话模型是否启用原生多模态识图：是则直接把桌面截图当轮直发（不转述），
-        // 否则回退到「旁白转述」路径（VLM 先把画面转成文本）。
-        let native_vision = resolve_chat_provider(app)
-            .map(|p| p.support_vision && p.is_genai_multimodal_capable())
-            .unwrap_or(false);
-        let native_compress = resolve_chat_provider(app)
-            .map(|p| p.native_image_compress())
-            .unwrap_or_default();
-        // 全局：图片超过端点大小限制时是否自动压缩（关闭则超限截图按原样直发）
-        let auto_compress = crate::config::app_config::AppConfig::load(app)
-            .map(|c| c.auto_compress_image)
-            .unwrap_or(true);
-
-        // ─── 原生识图路径：截屏 → 压缩/原图 → 当轮直发图片 ───
-        if native_vision {
-            let jpeg_bytes = capture_screen_as_jpeg()?;
-            let transient_image =
-                image_bytes_to_native_data_url(&jpeg_bytes, native_compress, auto_compress)?;
-            let raw_prompt = format!(
-                "{{ {} 偷看了一眼 {} 的电脑桌面，请你结合桌面截图内容与 {} 自然地聊两句。 }}",
-                ai_name, user_name, user_name
-            );
-            tracing::info!(
-                "[StrategyDispatcher] 主动偷看走原生识图: 截图当轮直发对话模型（不写记忆）。"
-            );
-            return Some(ProactivePrompt {
-                raw_prompt,
-                intent_type: IntentType::Screen,
-                transient_image: Some(transient_image),
-            });
-        }
-
-        // ─── 旁白转述路径（未启用原生识图）：VLM 先把截图转成文本描述 ───
-        let analysis = self
-            .screen_analyzer
-            .lock()
+        // 桌面截图交给识图投递决定：原生生图当轮直发（不写记忆），否则转述成一段画面描述。
+        // 两种方式都由投递给出本轮要用的那句 prompt，转述失败时没有 prompt，本轮窥屏作罢。
+        let jpeg_bytes = capture_screen_as_jpeg()?;
+        let delivery = {
+            let mut analyzer = self.screen_analyzer.lock().await;
+            deliver_image(
+                app,
+                &mut analyzer,
+                &jpeg_bytes,
+                ImageIntent::PeekDesktop {
+                    ai_name: &ai_name,
+                    user_name,
+                },
+            )
             .await
-            .analyze_screen(analyze_prompt)
-            .await?;
+        };
 
         Some(ProactivePrompt {
-            raw_prompt: format!(
-                "{{ {} 偷看了一眼 {} 的电脑桌面: {} }}",
-                ai_name, user_name, analysis
-            ),
+            raw_prompt: delivery.text?,
             intent_type: IntentType::Screen,
-            transient_image: None,
+            transient_image: delivery.attach,
         })
     }
 
@@ -297,6 +268,7 @@ impl StrategyDispatcher {
             .unwrap_or_else(|| "你".to_string());
 
         // 天气由首聊台词与 query_weather 工具按需提供。
-        format!("{{ {} 想继续说话了}}", ai_name)
+        // 措辞避开「继续」：模型看到这两个字容易顺势把自己上一轮的话往下续写。
+        format!("{{ {} 想找点话题聊聊}}", ai_name)
     }
 }

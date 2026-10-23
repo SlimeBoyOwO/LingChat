@@ -91,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { Sun, Moon, Minus, Square, Copy, X } from "lucide-vue-next";
+import { Sun, Moon, Minus, Square, Copy, X } from "@lucide/vue";
 
 defineProps<{
   isDarkMode: boolean;

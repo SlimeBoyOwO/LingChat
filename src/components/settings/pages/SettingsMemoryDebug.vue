@@ -164,8 +164,7 @@
               </div>
               <pre
                 class="max-h-40 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all whitespace-pre-wrap text-white/80"
-                >{{ sectionText(sec.key) }}</pre
-              >
+                >{{ sectionText(sec.key) }}</pre>
             </div>
             <p class="text-xs text-white/45">
               {{
@@ -207,8 +206,7 @@
               </p>
               <pre
                 class="max-h-60 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all whitespace-pre-wrap text-white/80"
-                >{{ runtime.injectedSystemText }}</pre
-              >
+                >{{ runtime.injectedSystemText }}</pre>
             </div>
             <div>
               <p class="mb-1 text-xs text-white/50">
@@ -218,8 +216,7 @@
                 class="max-h-40 overflow-y-auto rounded bg-black/30 p-2 text-xs break-all whitespace-pre-wrap text-white/80"
                 >{{
                   runtime.injectedShortTermText || $t("settings.memoryDebug.injectedShortTermEmpty")
-                }}</pre
-              >
+                }}</pre>
             </div>
           </div>
         </div>
@@ -265,14 +262,12 @@
                 <pre
                   v-if="msg.content"
                   class="max-h-60 overflow-y-auto break-all whitespace-pre-wrap text-white/80"
-                  >{{ msg.content }}</pre
-                >
+                  >{{ msg.content }}</pre>
                 <div v-if="msg.tool_calls?.length" class="mt-1">
                   <p class="mb-1 text-white/50">{{ $t("settings.memoryDebug.toolCalls") }}</p>
                   <pre
                     class="max-h-40 overflow-y-auto rounded bg-black/30 p-2 break-all whitespace-pre-wrap text-white/70"
-                    >{{ prettyJson(JSON.stringify(msg.tool_calls)) }}</pre
-                  >
+                    >{{ prettyJson(JSON.stringify(msg.tool_calls)) }}</pre>
                 </div>
               </li>
             </ul>
@@ -286,7 +281,7 @@
 <script setup lang="ts">
 import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { Button } from "../../base";
-import { ChevronDown, RefreshCw } from "lucide-vue-next";
+import { ChevronDown, RefreshCw } from "@lucide/vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { i18n } from "@/locales";
 import {

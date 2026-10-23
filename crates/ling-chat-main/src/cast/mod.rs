@@ -158,13 +158,13 @@ pub fn open_cast_window(app: &AppHandle) -> Result<(), String> {
         let _ = app.emit("cast-window:state", true);
 
         tracing::info!("[Cast] 投屏窗口已创建");
+        Ok(())
     }
     #[cfg(not(desktop))]
     {
         let _ = app;
-        return Err("投屏窗口仅支持桌面端".to_string());
+        Err("投屏窗口仅支持桌面端".to_string())
     }
-    Ok(())
 }
 
 /// 启动投屏服务：确保投屏窗口打开 + 启动 MJPEG 服务。返回实际端口。

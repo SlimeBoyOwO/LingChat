@@ -1,8 +1,16 @@
-//! LingChat 手动笔记存储库。
+//! LingChat 手动笔记存储库与语义检索基础。
 //!
-//! 存储布局：`<data_dir>/game_data/notes/<角色名>.json`，每个角色一个文件，
-//! 内容为 `Note` 数组。本 crate 不依赖 tauri / 数据库，只做文件层读写，
+//! 笔记存储布局：`<data_dir>/game_data/notes/<角色名>.json`，每个角色一个文件，
+//! 内容为 `Note` 数组。本 crate 不依赖 tauri，只做文件层读写，
 //! 角色名到文件的映射与路径安全由本 crate 负责。
+//!
+//! [`embedding`] 提供 ONNX 句向量引擎，供笔记 / 记忆检索与 Tool RAG 复用。
+//! [`retrieval`] 维护按角色隔离的笔记向量索引并提供 Top-K 检索。
+//! [`vector`] 基于 sqlite-vec 提供本地向量存储，检索能力由调用方按需组合。
+
+pub mod embedding;
+pub mod retrieval;
+pub mod vector;
 
 use std::fs;
 use std::io::{self, Write};

@@ -308,6 +308,8 @@ async fn notify_model(
         generation: expected_generation,
         is_preview: false,
         transient_image: None,
+        // 工具完成通知不是玩家发言，不承担近期记忆的锚点。
+        round_anchor_hint: None,
     });
     generator.process_notification(notification).await?;
     Ok(())

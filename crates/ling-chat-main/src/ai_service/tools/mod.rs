@@ -103,6 +103,7 @@ pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
     tool_settings: SharedToolSettings,
 ) -> Result<ToolRegistry> {
+    let data_dir = crate::api::data_dir();
     let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
@@ -114,7 +115,7 @@ pub fn built_in_registry(
     registry.register(Arc::new(UpdateTodo))?;
     registry.register(Arc::new(DeleteTodo))?;
     registry.register(Arc::new(GetCurrentMemory))?;
-    registry.register(Arc::new(GetNotes))?;
+    registry.register(Arc::new(GetNotes::new(&data_dir)))?;
     registry.register(Arc::new(AddNote))?;
     registry.register(Arc::new(UpdateNote))?;
     registry.register(Arc::new(DeleteNote))?;
@@ -144,7 +145,6 @@ pub fn built_in_registry(
     // 避免模型选中 execute_command 后才得到系统级执行失败。
     #[cfg(desktop)]
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
-    let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(
         &data_dir,
         registry

@@ -35,8 +35,6 @@ function asEvent(
   defaults: { type: string; defaultDuration: number; isFinal?: boolean },
 ): ScriptEventType {
   const p = payload as Record<string, unknown>;
-  // 优先用引擎从 YAML 读到的 duration；没写才用各事件类型的默认值。
-  // 默认值语义：-1 = 等玩家点击继续；0 = 立即继续（不等待）。
   const duration = typeof p.duration === "number" ? p.duration : defaults.defaultDuration;
   return {
     ...p,
@@ -46,16 +44,6 @@ function asEvent(
   } as unknown as ScriptEventType;
 }
 
-/**
- * 试玩事件的迟到丢弃。
- *
- * 试玩中止后，后端游离的流式任务（publisher/consumer）可能还会 emit 几条
- * ai:reply（如 TTS 仍在生成时的句子），它们经 IPC 到达前端时试玩可能已结束、
- * 甚至新一轮试玩已开始。这类事件必须丢弃，否则会串进自由对话历史或新一轮试玩。
- *
- * 判定规则：事件带 previewGen（试玩专用字段）时，仅当「当前在试玩 且 代号与
- * 本轮一致」才收；不带该字段的是自由对话/正式剧本回复，永远放行。
- */
 function isStalePreviewReply(payload: Record<string, unknown>): boolean {
   const gen = payload.previewGen;
   if (typeof gen !== "number") return false;
@@ -153,8 +141,6 @@ export function initializeTauriEventListeners() {
     }
   });
 
-  // 审批框只在主窗口挂载；独立日志窗口等不能消费审批事件。
-  // 主聊天 execute_command 审批：弹确认框，把用户决定回传给等待中的工具
   mainWindow?.listen("chat:command_approval", async (event) => {
     const payload = event.payload as {
       request_id: string;
@@ -305,11 +291,6 @@ export function initializeTauriEventListeners() {
   );
 
   // === ASR events ===
-  // 注意：useAsrStore() 必须在回调内调用 —— initializeTauriEventListeners
-  // 在 app.use(pinia) 之前被 main.ts 调用，顶层调用 store 会抛
-  // "getActivePinia was called with no active Pinia"，导致 app.mount 不执行。
-  // 仅保留后端确实 emit 的事件：asr://result / asr://error 不存在（走 invoke 返回），
-  // useAsrInput 通过 store.vadEvent 订阅 turn 事件做业务处理（不重复 listen）。
 
   listen<VadEvent>("asr://speech_started", () => {
     useAsrStore().onSpeechStarted();
@@ -353,6 +334,10 @@ export function initializeTauriEventListeners() {
 
     // Capture screenshot for auto-save slot
     const gameStore = useGameStore();
+    // 自动存档会绑定 active_save_id，前端需同步以锁定身份切换
+    if (typeof payload?.save_id === "number") {
+      gameStore.activeSaveId = payload.save_id;
+    }
     const screenshotPath = await gameStore.captureScreenshot();
     if (screenshotPath) {
       try {
@@ -376,9 +361,7 @@ export function initializeTauriEventListeners() {
 
   // === Affection events ===
 
-  // 六维好感度评估结果（几分钟一次、仅实际变化时发）：写回角色数据，
-  // 并记录 lastAffectionChange 供面板展示最近一次评估的变化维度与理由
-
+  // 好感度评估结果（仅实际变化时发）：写回角色并记录最近一次变化
   listen("affection:changed", (event) => {
     const payload = event.payload as AffectionChangedPayload;
     console.log("[Tauri] 收到 affection:changed", payload);
@@ -475,16 +458,12 @@ export function initializeTauriEventListeners() {
     // 先确保角色数据已加载（立绘/名字都从这里取）
     const role = await gameStore.getOrCreateGameRole(payload.roleId);
     gameStore.currentInteractRoleId = payload.roleId;
-    // 新角色不在场时才替换舞台（多人场景下 God Agent 只会选在场角色，不进这分支）；
-    // 用替换而非 push，避免标准模式舞台出现两个角色、桌宠不生效
     if (!gameStore.presentRoleIds.includes(payload.roleId)) {
       gameStore.presentRoleIds = [payload.roleId];
     }
     // 同步主界面/桌宠标题（对话中名字由 currentInteractRole 驱动，已覆盖）
     uiStore.showCharacterTitle = role.roleName;
     uiStore.showCharacterSubtitle = role.roleSubTitle;
-    // 好感度跟随角色：get_role_info 不携带 affection，切到尚未建档的角色时
-    // 好感度面板会短暂沿用旧角色数值（跨角色显示污染），这里全量兜底刷新
     try {
       const all = await getAffection();
       for (const [roleId, values] of Object.entries(all)) {
@@ -550,9 +529,6 @@ export function initializeTauriEventListeners() {
     uiStore.setCurrentBackground(payload.scene.background ?? "");
   });
 
-  // 工具换装：后端状态已经改完，这里只把前端 store 的立绘状态对齐——
-  // 立绘（useRoleAvatar）与 Live2D（Live2DStage）都 watch 了 role.clothesName。
-  // 角色不在 store 里说明它没被展示，不必为它凭空创建角色对象。
   listen("character:clothes-changed", (event) => {
     const payload = event.payload as { roleId: number; clothesName: string };
     console.log("[Tauri] 收到 character:clothes-changed", payload);
@@ -560,10 +536,6 @@ export function initializeTauriEventListeners() {
     if (role) role.clothesName = payload.clothesName;
   });
 
-  // 插件完整切换角色（plugin_host.switch_character）：后端已清空上下文并重建角色，
-  // 这里整体替换前端状态。与菜单里切换角色（CharacterCard.vue）同一套动作——
-  // 应用 init data 后必须丢弃旧角色残留的事件队列，否则未说完的回复会串进新角色
-  // （issue #796）。载荷就是 select_character 的返回值，前端不再回查一次。
   listen("character:full-switch", (event) => {
     console.log("[Tauri] 收到 character:full-switch", event.payload);
     applyWebInitData(useGameStore().$state, event.payload as WebInitData);
@@ -583,18 +555,6 @@ export function initializeTauriEventListeners() {
   );
 }
 
-/**
- * 投屏窗口专用的精简事件监听。
- *
- * 投屏窗口是独立的 webview，事件队列与主窗口各自独立。台词/标题/情绪
- * 完全由主窗口的镜像事件（cast:mirror，见 App.vue）驱动——若这里也注册
- * ai:reply 等会驱动队列的监听，投屏就会「按消息到达时间显示」而与主界面
- * 脱节。这里只注册投屏需要的即时状态事件：
- * - scene:switch / character:switch：背景、场景光照、立绘即时同步
- * - character:clothes-changed：换装即时同步（投屏镜像 cast:mirror 与 2s 快照都不带
- *   服装，不在这里接一次，投屏会一直停在旧服装）
- * （其余场景状态由 CastWindow 的 2s 快照对账兜底）。
- */
 export function initializeCastWindowListeners() {
   listen("character:switch", async (event) => {
     const payload = event.payload as { type: string; roleId: number; characterName: string };

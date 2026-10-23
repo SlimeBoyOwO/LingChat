@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::runtime_relations;
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
@@ -19,9 +20,18 @@ use crate::ai_service::types::{
 use crate::config::{self, AppConfig};
 use crate::db::entities::line;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings};
+use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_settings_with_player};
 
 // ========== 响应类型 ==========
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerIdentityInit {
+    pub id: Option<String>,
+    pub name: String,
+    pub subtitle: String,
+    pub prompt: String,
+}
 
 /// 对应前端 `WebInitData`（`src/api/services/game-info.ts`）
 #[derive(Debug, Clone, Serialize)]
@@ -49,6 +59,10 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
+    pub player_identity_id: Option<String>,
+    pub player_identity: PlayerIdentityInit,
+    /// 本局绑定的存档 id（`None` = 还没开存档），前端据此锁定身份切换 UI。
+    pub active_save_id: Option<i32>,
     /// 当前活跃剧本名（读档/进入剧本模式时非空），供前端还原剧本模式 UI
     pub active_script: Option<String>,
 }
@@ -78,8 +92,6 @@ pub struct CharacterSettingsInit {
     pub live2d: Option<Live2dSettings>,
     pub avatar_mode_p: Option<String>,
     /// 桌宠无框模式，语义见 `CharacterSettings::pet_frameless`。
-    /// 本结构体逐字段列举、没有 `#[serde(flatten)]` 兜底，漏掉这个字段
-    /// 会让每次 init / 切角色 / 读档都把用户的选择静默清成 null。
     pub pet_frameless: Option<bool>,
     pub character_folder: String,
     /// 该角色对玩家的六维好感度（存档全局变量里的当前值）。
@@ -342,12 +354,20 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 1. 从 DB 加载角色设定
     let state = app.state::<AppState>();
 
+    // 必须先拒绝运行中的剧本，不能先中止引擎再检查已经清空的状态。
+    {
+        let service = state.ai_service.lock().await;
+        if service.game_status.lock().await.script_status.is_some() {
+            return Err("剧本运行中，角色已锁定，无法切换角色".to_string());
+        }
+    }
+
+    // 1b. 换角色是会话边界：旧剧本必须真正停掉。否则它会一直阻塞在输入通道上，
+    super::script::abort_running_script(&app).await;
+
     // 2. 读取 AppConfig 构建 PromptOptions
     let app_config = AppConfig::load(&app).unwrap_or_default();
-    let prompt_options = PromptOptions {
-        output_sec_lang: app_config.llm_output_sec_lang,
-        no_emotion_limit: app_config.no_emotion_limit_prompt,
-    };
+    let prompt_options = PromptOptions::from_config(&app_config);
 
     // 3. 更新 AIService 状态
     {
@@ -362,6 +382,9 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
             .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
     }
 
+    // 3b. 换角色等于开新一局：起算自动存档冷却（此刻不持 ai_service 锁）
+    state.auto_save_manager.lock().await.arm_grace();
+
     // 4. 持久化上次游玩的角色 ID
     if let Ok(store) = app.store(config::STORE_FILE) {
         store.set(
@@ -373,8 +396,6 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 
     tracing::info!("切换角色成功: id={}", character_id,);
 
-    // 5. 返回最新游戏状态（复用 init_game 逻辑）
-    //    drop 后再拿锁，避免同一个锁两次借用
     let init = {
         let service = state.ai_service.lock().await;
         build_web_init_data(&service, &app).await?
@@ -384,11 +405,12 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
 
 // ========== 清除对话 ==========
 
-/// 清除当前角色的全部对话历史。
-/// 保留角色设定、场景、背景音乐等配置。
 #[tauri::command]
 pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
+
+    // 清空对话同样是会话边界，先真正停掉在跑的剧本（与切换角色同款收尾）
+    super::script::abort_running_script(&app).await;
 
     // 串行化：等待正在进行的消息生成完成再重置
     let gen_lock = state.generation_lock.clone();
@@ -402,6 +424,9 @@ pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
             .map_err(|e| format!("重置对话失败: {}", e))?;
     }
 
+    // 清空对话等于开新一局：起算自动存档冷却（此刻不持 ai_service 锁）
+    state.auto_save_manager.lock().await.arm_grace();
+
     let init = {
         let service = state.ai_service.lock().await;
         build_web_init_data(&service, &app).await?
@@ -410,7 +435,6 @@ pub async fn clear_conversation(app: AppHandle) -> Result<WebInitData, String> {
 }
 
 /// 为台词列表计算玩家消息序号（1-indexed）。
-/// 玩家消息由 `sender_role_id == Some(0) && attribute == User` 标识。
 pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
     let mut count = 0u32;
     line_list
@@ -458,6 +482,9 @@ pub(crate) async fn build_web_init_data(
         background_effect,
         background_music,
         scene_awareness_enabled,
+        player_identity_id,
+        player_identity,
+        active_save_id,
         active_script,
     ) = {
         let mut gs = service.game_status.lock().await;
@@ -550,6 +577,13 @@ pub(crate) async fn build_web_init_data(
             })
             .collect();
 
+        let player_identity_id = gs.player.identity_id.clone();
+        let player_identity = PlayerIdentityInit {
+            id: gs.player.identity_id.clone(),
+            name: gs.player.user_name.clone(),
+            subtitle: gs.player.user_subtitle.clone(),
+            prompt: gs.player.user_prompt.clone(),
+        };
         // 剧本模式名（启动时 script_status 恒为 None，不影响 init_game 路径）
         let active_script = gs.script_status.as_ref().map(|s| s.name.clone());
 
@@ -564,6 +598,9 @@ pub(crate) async fn build_web_init_data(
             gs.background_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
+            player_identity_id,
+            player_identity,
+            gs.active_save_id,
             active_script,
         )
     };
@@ -607,6 +644,9 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
+        player_identity_id,
+        player_identity,
+        active_save_id,
         active_script,
     };
     Ok(result)
@@ -627,10 +667,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
 
     // 提前加载配置（PromptOptions 在 Phase 1 和 Phase 2 之间共享）
     let app_config = AppConfig::load(&app).unwrap_or_default();
-    let prompt_options = PromptOptions {
-        output_sec_lang: app_config.llm_output_sec_lang,
-        no_emotion_limit: app_config.no_emotion_limit_prompt,
-    };
+    let prompt_options = PromptOptions::from_config(&app_config);
 
     // Phase 1: 加载角色 → 注入 System prompt（在 onstage_role 之前） → 上台 → 刷新记忆
     let role_name = {
@@ -652,21 +689,40 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
             .await
             .map_err(|e| format!("加载角色失败: {}", e))?;
 
-        // 获取角色信息用于 System prompt 和 display_name
-        let role = gs
-            .role_manager
-            .get_loaded(role_id)
-            .ok_or_else(|| "角色未加载".to_string())?;
-        let name = role
-            .display_name
-            .clone()
-            .unwrap_or_else(|| format!("角色{}", role_id));
+        let (name, system_prompt) = {
+            let role = gs
+                .role_manager
+                .get_loaded(role_id)
+                .ok_or_else(|| "角色未加载".to_string())?;
+            let name = role
+                .display_name
+                .clone()
+                .unwrap_or_else(|| format!("角色{}", role_id));
 
-        // 构建角色的 system prompt
-        let system_prompt = sys_prompt_builder_by_settings(&role.settings, prompt_options);
+            let speaker_relations = runtime_relations::load_effective(
+                &crate::api::data_dir(),
+                &role.settings.character_folder,
+                &gs,
+            );
+            let alias = gs.player.user_name.clone();
+            let player_block =
+                crate::ai_service::game_system::player_identity::persona::player_block_for(
+                    &gs,
+                    &role.settings,
+                    &alias,
+                    &speaker_relations,
+                );
 
-        // ★ 注入 System 行必须在 onstage_role 之前。
-        //    仅当台词表中不存在本角色的 System 行时才添加（避免退出后重入时重复）。
+            let system_prompt = sys_prompt_builder_by_settings_with_player(
+                &role.settings,
+                &alias,
+                &player_block,
+                prompt_options,
+            );
+            (name, system_prompt)
+        };
+
+        // 注入 System 行必须在 onstage_role 之前；已有本角色 System 行时不重复添加。
         let already_has_system = gs.line_list.iter().any(|l| {
             matches!(l.attribute(), LineAttribute::System) && l.base.sender_role_id == Some(role_id)
         });
@@ -689,9 +745,16 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
 
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
-        gs.refresh_memories(db)
-            .await
-            .map_err(|e| format!("刷新记忆失败: {}", e))?;
+
+        // 阵容变了 → 在场角色人设行里的「你眼里的其他角色」全部过期，重建后刷新记忆。
+        crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
+            &mut gs,
+            db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| format!("重建在场角色人设行失败: {}", e))?;
 
         tracing::info!("角色 {} ({}) 加入场景", role_id, name);
         name
@@ -821,19 +884,12 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
 // 玩家入场问候
 // ============================================================
 
-/// 玩家进入主界面时调用（仅会话内首次有效）。
-///
-/// 根据 `active_save_id` 判断是首次见面还是回归：
-/// - 无存档 → 旁白："{AI名称}看到{玩家名称}过来了"
-/// - 有存档 → 旁白："{玩家名称}回来了"
-///
-/// 添加台词后自动触发一轮 AI 生成（无需用户输入），
-/// 且不 emit `ai:thinking` 事件（入场问候为后台触发）。
 #[tauri::command]
 pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
 
     // Phase 1: 去重 & 添加旁白台词
+    let greeting_anchor_hint;
     {
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
@@ -863,7 +919,11 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
             gs.player.user_name.clone()
         };
 
-        let greeting = if gs.active_save_id.is_some() {
+        let has_history = gs
+            .line_list
+            .iter()
+            .any(crate::ai_service::game_system::auto_save::is_real_dialogue);
+        let greeting = if has_history {
             format!("{}回来了", player_name)
         } else {
             format!("{}看到{}过来了", ai_name, player_name)
@@ -887,9 +947,15 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         )
         .await
         .map_err(|e| format!("添加入场问候台词失败: {}", e))?;
+        // 本轮 user 块就是刚写的问候行，之后的评估结果挂回它。
+        greeting_anchor_hint = gs.line_list.len().checked_sub(1);
 
         tracing::info!("[Entry] 已添加问候台词: {}", greeting);
     } // 释放锁
+
+    // 进入游戏等于开一局：起算自动存档冷却，让玩家有机会先读回上一局的自动存档，
+    // 而不是刚进门就被这轮问候的自动存档盖掉（此刻不持 ai_service 锁）
+    state.auto_save_manager.lock().await.arm_grace();
 
     // Phase 2: 触发 AI 响应（suppress_thinking=true，不显示思考指示器）
     let llm = crate::ai_service::llm::slot_snapshot(&state.chat.llm)
@@ -921,6 +987,7 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
         generation: preview_generation,
         is_preview: false,
         transient_image: None,
+        round_anchor_hint: greeting_anchor_hint,
     };
 
     let generator = MessageGenerator::new(deps);

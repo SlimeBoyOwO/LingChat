@@ -10,7 +10,9 @@ use crate::AppState;
 use crate::ai_service::game_system::scene_store::{
     LightingParams, LocationType, Scene, SceneStore,
 };
-use crate::ai_service::screen_analyzer::{ScreenAnalyzer, ScreenAnalyzerConfig};
+use crate::ai_service::screen_analyzer::{
+    ImageDelivery, ImageIntent, ScreenAnalyzer, ScreenAnalyzerConfig, deliver_image,
+};
 use crate::api::data_dir;
 use crate::utils::path::{validate_directory_name, validate_path_in_base};
 
@@ -425,19 +427,30 @@ async fn annotate_scene_location(app: &AppHandle, scene_id: &str) {
         return;
     };
 
-    let prompt = format!(
-        "你是场景分类助手。根据场景名称、描述和背景图判断该地点是室内还是室外。\
-         只输出三个词之一：室内、室外、不确定\n场景名：{}\n描述：{}",
-        scene.name, scene.description
-    );
-
-    // 优先视觉模型：与截图分析共用同一份「视觉模型」配置与请求链路
+    // 优先视觉模型：与截图分析共用同一份「视觉模型」配置与识图投递链路。
+    // 标注结果必须是文本，所以这个意图不走原生识图（见 ImageIntent::SceneStill）。
     let image_path = super::backgrounds_dir().join(&scene.background);
     let mut analyzer = ScreenAnalyzer::new(ScreenAnalyzerConfig::resolve(app));
-    if let Some(answer) = analyzer
-        .analyze_image_file(&image_path.to_string_lossy(), &prompt)
-        .await
-    {
+    let delivery = match std::fs::read(&image_path) {
+        Ok(image_bytes) => {
+            deliver_image(
+                app,
+                &mut analyzer,
+                &image_bytes,
+                ImageIntent::SceneStill {
+                    name: &scene.name,
+                    desc: &scene.description,
+                },
+            )
+            .await
+        },
+        Err(e) => {
+            tracing::warn!("[SceneLocation] 读取背景图失败: {e}");
+            ImageDelivery::default()
+        },
+    };
+
+    if let Some(answer) = delivery.text {
         if let Some(location) = parse_location_answer(&answer) {
             store_annotation(app, scene_id, location, &scene.name);
             return;
@@ -942,12 +955,6 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
         };
         store.set(crate::config::session::LAST_SCENE_ID.to_string(), val);
         let _ = store.save();
-    }
-
-    // 手动优先：用户手动选场景后，关闭 AI 自动切景（设置页可重新打开）。
-    // 取消选中（scene_id 为空，背景转透明）不算选景，不动这个开关。
-    if scene_id.is_some() {
-        crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_SCENE);
     }
 
     Ok(())

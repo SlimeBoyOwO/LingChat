@@ -284,6 +284,23 @@ pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
     None
 }
 
+/// 本轮识图是否走「原生多模态」：把图片直接附在对话请求里，跳过旁白转述。
+///
+/// 除对话模型所在 provider 自己开启「支持识图」外，「视觉模型」角色解析后就是同一个
+/// provider 时同样算开启——让同一个模型先转述再回给自己没有意义。视觉角色留空时
+/// 解析结果即对话模型，所以「视觉模型跟随对话模型」也命中；只有显式指定了另一个
+/// provider 时才保留旁白转述。
+pub fn native_vision_enabled(app: &AppHandle) -> bool {
+    let Some(chat) = resolve_chat_provider(app) else {
+        return false;
+    };
+    // 对话请求本身要能承载图片内容（kimi_code / codex 是独立协议，暂不支持）
+    if !chat.is_genai_multimodal_capable() {
+        return false;
+    }
+    chat.support_vision || resolve_vision_provider(app).is_some_and(|v| v.id == chat.id)
+}
+
 pub fn build_llm_client_from_provider(
     app: &AppHandle,
     cfg: &LlmProviderConfig,

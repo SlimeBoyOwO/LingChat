@@ -215,16 +215,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::AI_AUTO_SCENE.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::AI_AUTO_SCENE,
-                            &app_defaults.ai_auto_scene.to_string(),
-                        ),
-                        description: "允许 AI 自动切换场景（在设置中手动选过场景后自动关闭；关闭后 AI 的切景请求一律不执行，恢复需重新打开此开关）".to_string(),
-                        setting_type: "bool".to_string(),
-                    },
-                    ConfigSetting {
                         key: keys::AI_AUTO_EFFECT.to_string(),
                         value: read_setting(
                             app,

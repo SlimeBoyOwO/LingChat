@@ -1,11 +1,4 @@
-//! 数据层引导。
-//!
-//! 原 `init/mod.rs::initialize()` 的前半段：播种数据目录 → 应用 LAN 同步暂存 →
-//! 打开数据库 → 导入 LAN 暂存记录 → 同步角色 → 建表迁移 → 加载 `AppConfig`。
-//! 后半段（构建 AIService 与服务图）已并入 [`super::build`]。
-//!
-//! 分界线是 `db`：本函数产出 `db` 后交回编排层，编排层要先用 `&db` 跑一次
-//! 孤儿语音清理，再把 `db` 交给建图（见 [`super::setup`]）。
+//! 数据层引导：播种数据目录、打开数据库、同步角色与身份、执行迁移并加载配置。
 
 use anyhow::Result;
 use sea_orm::DatabaseConnection;
@@ -19,10 +12,6 @@ use ling_chat_main::db::managers::role_repo::RoleRepo;
 
 /// 引导数据层，返回 `(db, app_config)`。
 pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnection, AppConfig)> {
-    // init_data_dir 已经在 Tauri 设置闭包中提前调用过了
-    // （参见 lib.rs），因此在此函数运行之前，缓存的数据目录就已经对
-    // LocalTtsPaths::resolve 可用了。如果在这里再次调用它，会导致
-    // OnceLock 发生 panic。
     ling_chat_main::data_dir::seed_data_dir(app.handle())?;
     let data_dir = ling_chat_main::data_dir::get_data_dir().clone();
 
@@ -41,6 +30,11 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
 
     ling_chat_main::db::role_sync::sync_roles_from_folder(&db, &data_dir).await?;
     ling_chat_main::api::character::editor::cleanup_stale_editor_data(&db).await;
+
+    // 身份卡同步进 player_identity 索引表（文件是真源，本表只做索引）。
+    ling_chat_main::db::role_sync::sync_player_identities(&db, &data_dir)
+        .await
+        .map_err(|e| anyhow::anyhow!("身份索引同步失败: {e}"))?;
 
     // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
     RoleRepo::ensure_user_role(&db).await?;

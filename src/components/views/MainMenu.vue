@@ -48,7 +48,6 @@
     <Transition name="menu-page">
       <StartPage
         v-if="currentPage === 'mainMenu'"
-        ref="containerRef"
         class="select-none"
         @mousemove="handleMouseMove"
         @mouseleave="handleMouseLeave"
@@ -175,7 +174,6 @@ const visualMeteorsEnabled = computed(
 const parallaxEnabled = computed(() => !transientSuspend.value);
 
 // DOM Refs
-const containerRef = ref<HTMLElement | null>(null);
 const bgRef = ref<HTMLElement | null>(null);
 const charRef = ref<HTMLElement | null>(null);
 const starsLayerRef = ref<HTMLElement | null>(null);

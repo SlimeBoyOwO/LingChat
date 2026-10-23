@@ -1,6 +1,6 @@
 <template>
   <!-- 背景图 + 背景光照滤镜 -->
-  <div v-if="backgroundSrc" class="absolute inset-0" :style="bgLightingFilter">
+  <div v-if="backgroundSrc" class="fixed inset-0" :style="bgLightingFilter">
     <ImageAcrossFade
       ref="imageFadeRef"
       class="game-background"

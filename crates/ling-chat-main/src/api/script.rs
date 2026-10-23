@@ -3,6 +3,8 @@
 //! Replaces Python's WebSocket-based script communication.
 //! Frontend calls these via `invoke()` instead of `/v1/chat/script/*` HTTP endpoints.
 
+use std::sync::atomic::Ordering;
+
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::ScriptManager;
 use crate::ai_service::game_system::script_engine::events::ScriptContext;
@@ -91,9 +93,46 @@ pub async fn list_standalone_scripts(app: AppHandle) -> Result<ScriptListRespons
     Ok(ScriptListResponse { scripts })
 }
 
+/// 中止剧本引擎任务，并断开它挂起的输入通道。
+async fn stop_script_engine(app: &AppHandle) {
+    let state = app.state::<AppState>();
+
+    // 先把句柄取出来并放掉 script_task 的锁，再等任务真正退出：
+    // 否则旧引擎可能在复位之后才落下最后一笔。
+    let handle = state.script_task.lock().await.take();
+    if let Some(handle) = handle {
+        handle.abort();
+        let _ = handle.await;
+    }
+
+    let mut ch = state.script_channels.lock().await;
+    let _ = ch.input_tx.take();
+    let _ = ch.choice_tx.take();
+    ch.extension_state.clear();
+    ch.choice_allow_free = false;
+    if let Some(task) = ch.watch_task.take() {
+        task.abort();
+    }
+    ch.watch_jump = None;
+}
+
+/// 结束当前剧本会话：停引擎，并把 `script_status` 与 `is_running` 一起归零。
+pub(crate) async fn abort_running_script(app: &AppHandle) {
+    close_script_glitch_windows(app.clone());
+    crate::ai_service::game_system::script_engine::extension::restore_title(app);
+    stop_script_engine(app).await;
+
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    service
+        .script_manager
+        .is_running
+        .store(false, Ordering::SeqCst);
+    service.game_status.lock().await.script_status = None;
+}
+
 /// 在后台任务中执行剧本（含羁绊完成处理），并把任务句柄登记到 AppState。
-/// 新引擎起跑前先中止上一个登记的引擎任务并清理其输入通道——
-/// 阻塞中的旧引擎靠 oneshot 挂起，不中止就会往新会话的共享 GameStatus 里写台词。
+/// 新引擎起跑前先中止上一个登记的引擎并清理其输入通道。
 pub(crate) async fn spawn_script_execution(
     app: AppHandle,
     script: crate::ai_service::types::ScriptStatus,
@@ -127,19 +166,8 @@ pub(crate) async fn spawn_script_execution(
         (game_status, config, is_running)
     };
 
-    // 中止上一个登记的引擎任务并清理其输入通道——阻塞中的旧引擎靠 oneshot
-    // 挂起，不中止就会往新会话的共享 GameStatus 里写台词。CAS 已保证此刻
-    // 没有真正运行中的剧本，这里的 abort 只命中已收尾但句柄未摘除的旧任务。
-    if let Some(handle) = state.script_task.lock().await.take() {
-        handle.abort();
-    }
-    {
-        let mut ch = state.script_channels.lock().await;
-        let _ = ch.input_tx.take();
-        let _ = ch.choice_tx.take();
-        ch.extension_state.clear();
-        ch.choice_allow_free = false;
-    }
+    // 预留成功后再等待旧任务退出，避免拒绝重复起跑时破坏当前剧本。
+    stop_script_engine(&app).await;
 
     // A previous frontend may have been closed before consuming script:end.
     // Bind every auxiliary/system-window ticket to this exact formal run.
@@ -198,6 +226,7 @@ pub async fn start_script(app: AppHandle, script_name: String) -> Result<(), Str
     let script = {
         let state = app.state::<AppState>();
         let service = state.ai_service.lock().await;
+        ensure_no_script_running(&service)?;
         let script = service
             .script_manager
             .all_scripts
@@ -268,6 +297,17 @@ pub async fn stop_script(app: AppHandle) -> Result<(), String> {
     }
     if is_running.load(std::sync::atomic::Ordering::SeqCst) {
         tracing::warn!("[ScriptAPI] stop_script 等待超时，旧任务将在 IO 返回后自行收尾");
+    }
+    Ok(())
+}
+
+/// 剧本互斥：同一时间只允许一个剧本在跑。羁绊剧情与独立剧本共用这把锁。
+/// `is_running` 也覆盖剧本编辑器的试玩，试玩期间同样不该起跑正式剧本。
+pub(crate) fn ensure_no_script_running(
+    service: &crate::ai_service::service::AIService,
+) -> Result<(), String> {
+    if service.script_manager.is_running.load(Ordering::SeqCst) {
+        return Err("已有剧本正在运行，请先结束当前剧本".to_string());
     }
     Ok(())
 }

@@ -85,7 +85,7 @@ const PET_SCALE_MIN = 0.7;
 import { useGameStore } from "../../../stores/modules/game";
 
 // 引入 Lucide 图标
-import { Ruler, Book, Cat, CheckCircle2 } from "lucide-vue-next";
+import { Ruler, Book, Cat, CheckCircle2 } from "@lucide/vue";
 
 // 引入自定义组件
 import SettingsHeader from "../components/SettingsHeader.vue";

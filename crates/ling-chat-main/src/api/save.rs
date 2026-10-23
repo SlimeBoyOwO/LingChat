@@ -4,6 +4,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
+use crate::ai_service::game_system::player_identity::IdentityStore;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
@@ -21,6 +22,7 @@ pub struct SaveListItem {
     pub update_date: String,
     pub last_message: Option<String>,
     pub screenshot: Option<String>,
+    pub identity_name: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,13 +54,6 @@ async fn save_screenshot_file(save_id: i32, source_path: &str) -> Result<(), Str
     Ok(())
 }
 
-/// 解析待写入 running_script 的剧本进度。
-///
-/// 前端阅读锚点四要素齐全（章节 + 事件下标 + 台词条数 + 变量 JSON）且变量可解析时
-/// 以锚点为准：引擎会一口气跑到下一个阻塞事件，用引擎当前下标会存到玩家尚未读到的
-/// 预生成内容之后。锚点缺失则回退引擎当前值。返回
-/// `(script_folder, chapter, event_index, vars_json)`，`script_folder` 取 `path_key()`
-/// 并统一分隔符，读档时按同一规则回匹配。
 fn resolve_script_progress(
     script_status: &crate::ai_service::types::ScriptStatus,
     player_chapter: Option<&str>,
@@ -82,10 +77,7 @@ fn resolve_script_progress(
 
     let (chapter, event_index, vars) = match anchor {
         Some((chapter, event_index, line_count, mut vars)) => {
-            // 记录存档时玩家已读到的台词条数（内部键）：读档侧据此截断台词，
-            // 锚点之后的内容由续跑引擎重新生成；加载时会剔除该键，不污染剧本变量。
-            // 该键必须与锚点同源——锚点失效走引擎回退时若仍记录它，
-            // 读档会把台词截到阅读位置却从阻塞点续跑，中间内容既被截掉又不重播。
+            // 记录玩家已读到的台词条数（内部键），读档侧据此截断台词，加载时会剔除。
             vars.insert("__line_count".to_string(), serde_json::json!(line_count));
             (chapter, event_index, vars)
         },
@@ -145,6 +137,28 @@ pub async fn list_saves(
     let data_dir = super::data_dir();
     let screenshots_dir = data_dir.join("screenshots");
 
+    // 身份名解析：一次查索引表 + 一次查绑定表（替代逐档查询的 N+1）。
+    use crate::db::entities::{player_identity, save_identity};
+    use sea_orm::entity::prelude::*;
+    let identity_names: std::collections::HashMap<String, String> = player_identity::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| format!("读取身份索引失败: {}", e))?
+        .into_iter()
+        .map(|m| (m.identity_id, m.name))
+        .collect();
+    let save_identity_names: std::collections::HashMap<i32, String> = save_identity::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| format!("读取存档身份绑定失败: {}", e))?
+        .into_iter()
+        .filter_map(|m| {
+            identity_names
+                .get(&m.identity_id)
+                .map(|name| (m.save_id, name.clone()))
+        })
+        .collect();
+
     let items: Vec<SaveListItem> = saves
         .into_iter()
         .map(|s| {
@@ -155,6 +169,7 @@ pub async fn list_saves(
             } else {
                 None
             };
+            let identity_name = save_identity_names.get(&s.id).cloned();
 
             SaveListItem {
                 id: s.id,
@@ -163,6 +178,7 @@ pub async fn list_saves(
                 update_date: format_datetime(&s.update_date),
                 last_message,
                 screenshot,
+                identity_name,
             }
         })
         .collect();
@@ -195,6 +211,17 @@ pub async fn create_save(
         .map_err(|e| format!("创建存档失败: {}", e))?;
     let save_id = save_model.id;
 
+    {
+        let identity_id = service.game_status.lock().await.player.identity_id.clone();
+        if let Some(ref id) = identity_id {
+            if !id.trim().is_empty() {
+                SaveRepo::upsert_save_identity(db, save_id, id)
+                    .await
+                    .map_err(|e| format!("记录身份失败: {}", e))?;
+            }
+        }
+    }
+
     // 复制截图到 screenshots 目录
     if let Some(ref path) = screenshot_path {
         let _ = save_screenshot_file(save_id, path).await;
@@ -202,7 +229,7 @@ pub async fn create_save(
 
     // 2. 同步台词
     if !lines.is_empty() {
-        SaveRepo::sync_lines(db, save_id, &lines)
+        SaveRepo::sync_lines(db, save_id, &lines, false)
             .await
             .map_err(|e| format!("同步台词失败: {}", e))?;
     }
@@ -222,8 +249,13 @@ pub async fn create_save(
         .await
         .map_err(|e| format!("保存状态失败: {}", e))?;
 
-    // 5. 标记当前活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
+    {
+        let mut gs = service.game_status.lock().await;
+        gs.active_save_id = Some(save_id);
+        if let Err(e) = SaveRepo::bind_line_ids(db, save_id, &mut gs.line_list).await {
+            tracing::warn!("回填台词行 id 失败: {e}");
+        }
+    }
 
     // 6. 持久化 MemoryBank
     service
@@ -261,7 +293,6 @@ pub async fn create_save(
         },
     }
 
-    // 8. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
     let baseline_hash = auto_save::hash_of_real_lines(&lines);
     drop(service);
     state
@@ -291,8 +322,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     // 旧引擎是独立 tokio 任务，读档前必须中止它并清掉其挂起的输入通道：
     // 否则它会继续往恢复后的共享 GameStatus 写台词，污染本次读档的状态。
-    let aborted_script_engine = if let Some(handle) = state.script_task.lock().await.take() {
+    let handle = state.script_task.lock().await.take();
+    let aborted_script_engine = if let Some(handle) = handle {
         handle.abort();
+        let _ = handle.await;
         true
     } else {
         false
@@ -303,6 +336,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         let _ = ch.choice_tx.take();
         ch.extension_state.clear();
         ch.choice_allow_free = false;
+        if let Some(task) = ch.watch_task.take() {
+            task.abort();
+        }
+        ch.watch_jump = None;
     }
 
     // 被中止的引擎走不到 on_script_end 收尾，is_running 会残留 true——
@@ -349,8 +386,6 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
                                 serde_json::Map<String, serde_json::Value>,
                             >(&rs.variable_info)
                             .unwrap_or_default();
-                            // __line_count 是存档侧记录「玩家已读到第几条台词」的内部键，
-                            // 不属于剧本变量：调出来供截断台词用，并从变量表剔除
                             if let Some(v) = vars.remove("__line_count") {
                                 resume_line_count = v.as_u64().map(|n| n as usize);
                             }
@@ -383,8 +418,6 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("读取台词失败: {}", e))?;
 
-    // 锚点之后的台词是引擎跑快进时预先生成的，玩家尚未读到；截掉后由续跑引擎重新生成，
-    // 保证恢复后不重复播放、也不漏掉未读内容。
     if let Some(n) = resume_line_count {
         let keep = n.min(line_list.len());
         line_list.truncate(keep);
@@ -397,25 +430,36 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
 
     // 5. 构建 PromptOptions
     let app_config = AppConfig::load(&app).unwrap_or_default();
-    let prompt_options = PromptOptions {
-        output_sec_lang: app_config.llm_output_sec_lang,
-        no_emotion_limit: app_config.no_emotion_limit_prompt,
-    };
+    let prompt_options = PromptOptions::from_config(&app_config);
+
+    // 6b. 恢复本存档使用的「我的身份」；必须放在 `init_game_status` 之前。
+    {
+        let identity_store = IdentityStore::new(&crate::api::data_dir());
+        match SaveRepo::get_save_identity(db, save_id).await {
+            Ok(Some(id)) => {
+                if identity_store.find_by_id(&id).is_some() {
+                    if let Err(e) = identity_store.set_current_id(&id) {
+                        tracing::warn!("恢复存档身份失败: {e}");
+                    }
+                } else {
+                    tracing::warn!("存档引用的身份 {id} 不存在，沿用当前身份");
+                }
+            },
+            Ok(None) => {},
+            Err(e) => tracing::warn!("读取存档身份失败: {e}"),
+        }
+    }
 
     service
         .init_game_status(Some(main_role_id), prompt_options)
         .await
         .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
 
-    // 6. 先恢复 MemoryBank：若在 load_lines（内部 sync_memories 会触发压缩检查）之后再恢复，
-    //    后台全量重压会用旧库/旧指针把 DB 恢复的记忆库覆盖掉。
     let _ = service
         .restore_memory_banks(save_id)
         .await
         .map_err(|e| eprintln!("[SAVE_WARN] 恢复记忆库失败: {}", e));
 
-    // 7. 载入台词（sync_memories 用恢复后的正确指针，只压缩存档点之后的增量）
-    // 先记下载入内容的真实对话指纹，稍后同步自动存档基线，避免下个 tick 把刚载入内容当新变化重存覆盖旧档
     let baseline_hash = auto_save::hash_of_real_lines(&line_list);
     service
         .load_lines(line_list, main_role_id, Some(save_id))
@@ -426,12 +470,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
     service.game_status.lock().await.apply_snapshot(&snapshot);
 
-    // 9. 恢复剧本状态：覆盖掉被中止旧引擎可能残留的 script_status（含 None 的情况）
     service.game_status.lock().await.script_status = resume_script.clone();
 
     // 10. 返回前端初始化数据
     let result = build_web_init_data(&service, &app).await?;
-    // 释放 ai_service 锁后再取 manager，避免与定时循环（manager→ai_service）反向取锁死锁
     drop(service);
     // 续跑引擎必须在释放 ai_service 锁之后启动（spawn 内部会再锁 ai_service）
     if let Some(script) = resume_script {
@@ -477,12 +519,17 @@ pub async fn update_save(
     let lines = service.game_status.lock().await.line_list.clone();
 
     // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines)
+    SaveRepo::sync_lines(db, save_id, &lines, false)
         .await
         .map_err(|e| format!("同步台词失败: {}", e))?;
 
-    // 3. 标记活跃存档
-    service.game_status.lock().await.active_save_id = Some(save_id);
+    {
+        let mut gs = service.game_status.lock().await;
+        gs.active_save_id = Some(save_id);
+        if let Err(e) = SaveRepo::bind_line_ids(db, save_id, &mut gs.line_list).await {
+            tracing::warn!("回填台词行 id 失败: {e}");
+        }
+    }
 
     // 4. 更新 GameStatus 快照
     let snapshot = service.game_status.lock().await.to_snapshot();
@@ -528,7 +575,6 @@ pub async fn update_save(
         },
     }
 
-    // 7. 同步自动存档基线（内容刚落盘，避免下个 tick 重存；与定时循环 manager→ai_service 反向，需先 drop service）
     let baseline_hash = auto_save::hash_of_real_lines(&lines);
     drop(service);
     state
@@ -599,10 +645,6 @@ pub async fn save_screenshot(save_id: i32, screenshot_path: String) -> Result<()
     save_screenshot_file(save_id, &screenshot_path).await
 }
 
-/// 直接通过 HWND 截图主窗口（Windows）。
-///
-/// 跳过所有窗口枚举（`EnumWindows` / `Window::all()`），
-/// 用 Tauri 拿到的原生 HWND 直接 GDI 截图 → 写入临时 PNG → 返回路径。
 #[cfg(target_os = "windows")]
 #[tauri::command]
 pub async fn capture_main_window_screenshot(app: AppHandle) -> Result<String, String> {

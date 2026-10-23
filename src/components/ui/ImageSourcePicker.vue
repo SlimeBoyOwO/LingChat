@@ -13,7 +13,7 @@
         v-if="isOpen"
         ref="dialogRef"
         tabindex="-1"
-        class="fixed inset-0 z-[9999] flex items-end justify-center outline-none"
+        class="fixed inset-0 z-9999 flex items-end justify-center outline-none"
         @click.self="onBackdropClick"
         @keydown.esc="onEsc"
       >
@@ -70,7 +70,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onBeforeUnmount, onUnmounted, watch, nextTick } from "vue";
-import { Camera, Image } from "lucide-vue-next";
+import { Camera, Image } from "@lucide/vue";
 import { useImageSourcePicker } from "@/composables/useImageSourcePicker";
 
 const { isOpen, init, destroy, pickFromCamera, pickFromGallery, cancel } = useImageSourcePicker();

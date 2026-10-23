@@ -5,20 +5,23 @@ use std::time::{Duration, Instant};
 #[cfg(target_os = "windows")]
 use windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
 #[cfg(target_os = "windows")]
+use windows::Win32::System::Threading::GetCurrentThreadId;
+#[cfg(target_os = "windows")]
 use windows::Win32::UI::WindowsAndMessaging::{
-    CallNextHookEx, GetMessageW, HHOOK, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, SetWindowsHookExW,
-    UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_LBUTTONDOWN, WM_MBUTTONDOWN,
-    WM_MOUSEMOVE, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
+    CallNextHookEx, GetMessageW, KBDLLHOOKSTRUCT, MSG, MSLLHOOKSTRUCT, PostThreadMessageW,
+    SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
+    WM_LBUTTONDOWN, WM_MBUTTONDOWN, WM_MOUSEMOVE, WM_QUIT, WM_RBUTTONDOWN, WM_SYSKEYDOWN,
 };
 
+/// 低级钩子的宿主线程：安装与消息循环都在它身上，句柄也由它自己持有。
 #[cfg(target_os = "windows")]
-#[derive(Clone, Copy, Debug)]
-pub struct SendHhook(pub HHOOK);
+struct HookHost {
+    /// 宿主线程 id，收尾时用 PostThreadMessageW(WM_QUIT) 让它退出消息循环
+    thread_id: u32,
+}
 
 #[cfg(target_os = "windows")]
-unsafe impl Send for SendHhook {}
-#[cfg(target_os = "windows")]
-unsafe impl Sync for SendHhook {}
+static HOOK_HOST: OnceLock<HookHost> = OnceLock::new();
 
 // 非 Windows 平台没有 Win32 钩子，这些变体只在 Windows 回调里构造，其余平台视为死代码。
 #[cfg_attr(not(target_os = "windows"), allow(dead_code))]
@@ -38,12 +41,68 @@ struct ActivityEvent {
 struct MonitorInner {
     events: Vec<ActivityEvent>,
     last_mouse_pos: Option<(i32, i32)>,
-    // Win32 钩子句柄存进内部状态（而非监控器结构体字段）：
-    // 钩子改为按需安装，需要内部可变性，且 Drop 时要从锁内取出卸载
-    #[cfg(target_os = "windows")]
-    kbd_hook: Option<SendHhook>,
-    #[cfg(target_os = "windows")]
-    ms_hook: Option<SendHhook>,
+}
+
+/// 拉起钩子宿主线程，并等它把钩子装完。
+///
+/// 安装与消息循环必须落在同一条线程上，所以这里只负责起线程、等握手，不碰钩子句柄
+/// ——句柄由线程自己持有，收到 WM_QUIT 后自行卸载。
+#[cfg(target_os = "windows")]
+fn spawn_hook_host() -> HookHost {
+    let (ready_tx, ready_rx) = std::sync::mpsc::channel::<(u32, bool, bool)>();
+
+    let spawned = std::thread::Builder::new()
+        .name("lingchat-input-hook".to_string())
+        .spawn(move || {
+            let kbd_hook = unsafe {
+                SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0).ok()
+            };
+            let ms_hook =
+                unsafe { SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_callback), None, 0).ok() };
+
+            if kbd_hook.is_some() && ms_hook.is_some() {
+                tracing::info!("[ActivityMonitor] Win32 hooks installed (on-demand).");
+            } else {
+                tracing::error!(
+                    "[ActivityMonitor] Failed to install Win32 hooks: kbd={:?}, ms={:?}",
+                    kbd_hook.is_some(),
+                    ms_hook.is_some()
+                );
+            }
+
+            let _ = ready_tx.send((
+                unsafe { GetCurrentThreadId() },
+                kbd_hook.is_some(),
+                ms_hook.is_some(),
+            ));
+
+            // 消息循环：钩子回调作为消息投递到这里，没有它回调不会被执行
+            let mut msg = MSG::default();
+            while unsafe { GetMessageW(&mut msg, None, 0, 0) }.as_bool() {}
+
+            // 收到 WM_QUIT：卸载后线程自然结束（卸载不要求与安装同线程）
+            unsafe {
+                if let Some(hook) = kbd_hook {
+                    let _ = UnhookWindowsHookEx(hook);
+                }
+                if let Some(hook) = ms_hook {
+                    let _ = UnhookWindowsHookEx(hook);
+                }
+            }
+        });
+
+    if let Err(e) = spawned {
+        tracing::error!("[ActivityMonitor] 钩子宿主线程创建失败: {e}");
+        return HookHost { thread_id: 0 };
+    }
+
+    match ready_rx.recv_timeout(Duration::from_millis(500)) {
+        Ok((thread_id, _, _)) => HookHost { thread_id },
+        Err(e) => {
+            tracing::error!("[ActivityMonitor] 等待钩子安装握手失败: {e}");
+            HookHost { thread_id: 0 }
+        },
+    }
 }
 
 /// 事件缓冲软上限：超过后批量裁掉前半。普通鼠标（~125Hz）20 秒窗口约 2500 条，
@@ -69,10 +128,6 @@ impl UserActivityMonitor {
         let inner = Arc::new(Mutex::new(MonitorInner {
             events: Vec::new(),
             last_mouse_pos: None,
-            #[cfg(target_os = "windows")]
-            kbd_hook: None,
-            #[cfg(target_os = "windows")]
-            ms_hook: None,
         }));
 
         GLOBAL_MONITOR_INNER.get_or_init(|| inner.clone());
@@ -89,53 +144,11 @@ impl UserActivityMonitor {
     /// 一旦开启，首次感知周期会走到这里补装。非 Windows 平台为空操作。
     #[cfg(target_os = "windows")]
     fn ensure_hooks_installed(&self) {
-        // 先 try_lock 快查：绝大多数调用发生在钩子已装好的状态
-        if let Ok(inner) = self.inner.try_lock() {
-            if inner.kbd_hook.is_some() {
-                return;
-            }
-        }
-        let Ok(mut inner) = self.inner.lock() else {
-            return;
-        };
-        if inner.kbd_hook.is_some() {
+        if HOOK_HOST.get().is_some() {
             return;
         }
-
-        let kbd_hook = unsafe {
-            SetWindowsHookExW(WH_KEYBOARD_LL, Some(keyboard_hook_callback), None, 0)
-                .ok()
-                .map(SendHhook)
-        };
-
-        let ms_hook = unsafe {
-            SetWindowsHookExW(WH_MOUSE_LL, Some(mouse_hook_callback), None, 0)
-                .ok()
-                .map(SendHhook)
-        };
-
-        if kbd_hook.is_some() && ms_hook.is_some() {
-            tracing::info!("[ActivityMonitor] Win32 hooks installed (on-demand).");
-        } else {
-            tracing::error!(
-                "[ActivityMonitor] Failed to install Win32 hooks: kbd={:?}, ms={:?}",
-                kbd_hook.is_some(),
-                ms_hook.is_some()
-            );
-        }
-
-        inner.kbd_hook = kbd_hook;
-        inner.ms_hook = ms_hook;
-
-        // 钩子回调要求线程有消息循环，安装时一并拉起消息泵线程
-        std::thread::spawn(|| {
-            unsafe {
-                let mut msg = MSG::default();
-                while GetMessageW(&mut msg, None, 0, 0).as_bool() {
-                    // Just pump messages
-                }
-            }
-        });
+        // get_or_init 保证只拉起一条宿主线程：并发调用在这里串行等首次安装完成
+        HOOK_HOST.get_or_init(spawn_hook_host);
     }
 
     /// 清理 20 秒之前的旧事件并计算统计信息。
@@ -179,6 +192,8 @@ impl UserActivityMonitor {
             }
         }
         inner.last_mouse_pos = running_last_pos;
+        // 钩子回调会抢这把锁，而下面的日志要写文件——别把锁一起占着
+        drop(inner);
 
         let game_ratio = if keystrokes > 0 {
             game_keys as f64 / keystrokes as f64
@@ -299,7 +314,10 @@ unsafe extern "system" fn mouse_hook_callback(
                         timestamp: Instant::now(),
                         input_type: InputType::Click,
                     });
-                } else if msg == WM_MOUSEMOVE {
+                } else if msg == WM_MOUSEMOVE && inner.last_mouse_pos != Some((pt.x, pt.y)) {
+                    // 位置没变的事件对位移统计没有贡献（位移恒为 0），高回报率鼠标
+                    // 每秒能报上千次，全推进事件表只是白占锁与内存
+                    inner.last_mouse_pos = Some((pt.x, pt.y));
                     inner.events.push(ActivityEvent {
                         timestamp: Instant::now(),
                         input_type: InputType::Move { x: pt.x, y: pt.y },
@@ -319,24 +337,16 @@ unsafe extern "system" fn mouse_hook_callback(
 #[cfg(target_os = "windows")]
 impl Drop for UserActivityMonitor {
     fn drop(&mut self) {
-        // 钩子句柄现在存于内部状态（按需安装），从锁内取出卸载
-        let (kbd_hook, ms_hook) = {
-            let Ok(mut inner) = self.inner.lock() else {
-                return;
-            };
-            (inner.kbd_hook.take(), inner.ms_hook.take())
+        let Some(host) = HOOK_HOST.get() else {
+            return;
         };
-        if kbd_hook.is_none() && ms_hook.is_none() {
+        if host.thread_id == 0 {
             return;
         }
         tracing::info!("[ActivityMonitor] Cleaning up Win32 hooks...");
+        // WM_QUIT 让宿主线程的消息循环返回 0，钩子由那条线程自己卸载
         unsafe {
-            if let Some(hook) = kbd_hook {
-                let _ = UnhookWindowsHookEx(hook.0);
-            }
-            if let Some(hook) = ms_hook {
-                let _ = UnhookWindowsHookEx(hook.0);
-            }
+            let _ = PostThreadMessageW(host.thread_id, WM_QUIT, WPARAM(0), LPARAM(0));
         }
     }
 }

@@ -9,6 +9,10 @@ export default {
       title: "自動存檔",
       message: "已經喺 {time} 自動存咗檔",
     },
+    autoSaveFailed: {
+      title: "自動存檔失敗",
+      message: "自動存檔寫唔入（{time}），今局進度可能未保存。",
+    },
   },
   ambient: {
     uploadFailed: "環境音上載失敗",

@@ -698,7 +698,7 @@ import {
   Trash2,
   Volume2,
   Wand2,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { MenuItem } from "@/components/ui";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useUIStore } from "@/stores/modules/ui/ui";
