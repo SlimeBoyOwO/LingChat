@@ -13,7 +13,7 @@ use tauri::{AppHandle, Manager};
 use ling_chat_main::AppState;
 
 use super::{PluginInfo, PluginManager, PluginResourceEntry, ResourceKind};
-pub use crate::content_sync::refresh_plugin_content;
+use crate::content_sync::refresh_plugin_content;
 use crate::signal::SIGNAL_LINE_SHOWN;
 
 fn manager(app: &AppHandle) -> Arc<PluginManager> {

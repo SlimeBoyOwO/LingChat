@@ -4313,7 +4313,7 @@ dependencies = [
 [[package]]
 name = "ling-chat-dlc-contract"
 version = "0.2.0"
-source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=3ab33a9d74d650bfa9663f3b2dea6db8fb292b61#3ab33a9d74d650bfa9663f3b2dea6db8fb292b61"
+source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=b32640536d025556f06e394d44f1be0375959b1c#b32640536d025556f06e394d44f1be0375959b1c"
 dependencies = [
  "anyhow",
  "ling-chat-main",
@@ -4328,8 +4328,8 @@ dependencies = [
 
 [[package]]
 name = "ling-chat-dlc-runtime"
-version = "0.3.0"
-source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=3ab33a9d74d650bfa9663f3b2dea6db8fb292b61#3ab33a9d74d650bfa9663f3b2dea6db8fb292b61"
+version = "0.3.1"
+source = "git+https://github.com/sdfsfsk/LingChat-DLC?rev=b32640536d025556f06e394d44f1be0375959b1c#b32640536d025556f06e394d44f1be0375959b1c"
 dependencies = [
  "anyhow",
  "async-trait",

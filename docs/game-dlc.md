@@ -11,5 +11,5 @@ from host IPC. Content packages reuse existing plugin manifests and save locatio
 
 See the SDK's `docs/` for per-package release discovery, package format and native story capabilities.
 
-The [SDK 0.3 integration API](https://github.com/sdfsfsk/LingChat-DLC/blob/3ab33a9d74d650bfa9663f3b2dea6db8fb292b61/extensions/docs/extension-api.md)
+The [SDK 0.3 integration API](https://github.com/sdfsfsk/LingChat-DLC/blob/b32640536d025556f06e394d44f1be0375959b1c/extensions/docs/extension-api.md)
 keeps menu items, presentation, translations and native command implementations in the SDK.

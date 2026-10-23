@@ -12,8 +12,8 @@ resolver = "2"
 version = "0.5.2"
 
 [workspace.dependencies]
-ling-chat-dlc-contract = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "3ab33a9d74d650bfa9663f3b2dea6db8fb292b61" }
-ling-chat-dlc-runtime = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "3ab33a9d74d650bfa9663f3b2dea6db8fb292b61" }
+ling-chat-dlc-contract = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "b32640536d025556f06e394d44f1be0375959b1c" }
+ling-chat-dlc-runtime = { git = "https://github.com/sdfsfsk/LingChat-DLC", rev = "b32640536d025556f06e394d44f1be0375959b1c" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"

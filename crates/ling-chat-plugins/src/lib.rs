@@ -37,6 +37,8 @@ use tauri::AppHandle;
 
 pub use ling_chat_main::plugin_contract::{PluginResourceEntry, ResourceKind};
 pub use manager::PluginManager;
+pub use manifest::parse as parse_manifest;
+pub use resources::script_package_dirs;
 pub use types::PluginInfo;
 
 /// 宿主 `AppHandle` 的全局副本。
