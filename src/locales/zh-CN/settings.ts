@@ -1612,6 +1612,8 @@ export default {
         clear: "清空",
         existing: "已存在",
         selected: "已选 {count} 条",
+        remaining: "剩余 {count} 条",
+        limitReached: "已达上限，取消勾选后可继续添加",
         add: "添加",
         cancel: "取消",
         empty: "词库还没有词条，先到「管理热词库」里添加吧",

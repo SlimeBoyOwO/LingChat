@@ -1444,6 +1444,8 @@ export default {
         clear: "クリア",
         existing: "追加済み",
         selected: "{count} 件選択中",
+        remaining: "残り {count} 件",
+        limitReached: "上限に達しました。選択を外すと追加できます",
         add: "追加",
         cancel: "キャンセル",
         empty:

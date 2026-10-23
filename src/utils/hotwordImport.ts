@@ -111,6 +111,22 @@ export function parseHotwordImport(
 
     const label = normalizeDigits(match[1]);
     const content = match[2].trim();
+
+    // 空白正文也能匹配行格式（如 `1. (5)`）；必须在进入容量计算前拦掉，
+    // 否则会生成一条后端保存时被丢弃的空词条，还白白占掉一个新增额度。
+    if (content === "") {
+      invalidCount += 1;
+      details.push({
+        kind: "invalid",
+        line: lineNo,
+        label,
+        text: line,
+        weight: "",
+        reason: "badFormat",
+      });
+      return;
+    }
+
     const rawWeight = normalizeDigits(match[3]);
     const weight = parseWeightToken(rawWeight);
 

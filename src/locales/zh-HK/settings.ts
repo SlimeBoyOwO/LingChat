@@ -1410,6 +1410,8 @@ export default {
         clear: "清空",
         existing: "已經有",
         selected: "已揀 {count} 條",
+        remaining: "淨返 {count} 條",
+        limitReached: "已達上限，取消揀選後可以繼續加入",
         add: "加入",
         cancel: "取消",
         empty: "詞庫未有詞條，去「管理熱詞庫」加返先啦",

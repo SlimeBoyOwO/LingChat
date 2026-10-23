@@ -1459,6 +1459,8 @@ export default {
         clear: "Clear",
         existing: "Already added",
         selected: "{count} selected",
+        remaining: "{count} slots left",
+        limitReached: "Limit reached — deselect to add more",
         add: "Add",
         cancel: "Cancel",
         empty: "The library is empty — add words in “Manage hotword library” first",

@@ -1,7 +1,7 @@
 # ASR 热词批量导入 · 设计
 
 - 日期：2026-10-20
-- 状态：已按设计评审修订，待用户复核
+- 状态：已被 2026-10-23 的严格格式实现取代；当前格式以 docs/asr/README.md 与 src/utils/hotwordImport.ts 为准，本文保留作历史设计记录
 - 范围：前端解析、审查与三处接入；不改后端命令、表结构与保存链路
 
 ## 1. 背景与目标
@@ -538,22 +538,19 @@ defineEmits<{
 
 ### 11.1 可复跑的解析 fixture
 
-沿用仓库既有的 `tsc + 打桩` 方式，不引入测试框架：
+脚本自行用 tsc 编译并打桩，不引入测试框架：
 
 ```
-npx tsc src/utils/hotwordImport.ts --outDir <临时目录> --rootDir src --module commonjs \
-  --target es2022 --skipLibCheck --esModuleInterop
-node scripts/verify-hotword-import.cjs <临时目录>/utils/hotwordImport.js
+node scripts/verify-hotword-import.cjs
 ```
 
-`hotwordImport.ts` 使用相对路径导入 `../api/services/hotword`，并在 Node 侧打桩 `@tauri-apps/api/core`。脚本覆盖：
+`hotwordImport.ts` 使用相对路径导入 `../api/services/hotword`，并在 Node 侧打桩 `@tauri-apps/api/core`。脚本覆盖当前严格格式的解析与回归项：
 
-- 格式：纯词、ASCII/全角/中文序号、四种项目符号、`-40℃`、`*NSYNC`、`3.5mm`、`2026.10.20`。
-- 权重：中英文/混用括号、全角数字与符号、`权重5`、`权重：5`、多组括号、`权重说明`、未闭合中英文括号、`0/6/49/51/abc/空`。
-- Markdown：加粗、反引号、`__`、引用块、围栏、标题、分割线。
+- 格式：`序号.词条(权重)`、全角数字与括号、格式错误与空词条。
+- 权重：仅接受 `1/2/3/4/5/50`，`0/6/49/51` 拒绝。
 - 长度：非 ASCII 15/16 字符、纯 ASCII 7/8 片段、emoji 码点。
-- 去重：输入内重复、与草稿重复、权重高低、首现位置。
-- 容量：199+3、200+合并、200+新增、容量 0 + 重复。
+- 去重：输入内重复、与草稿重复、词库目标分类判重。
+- 容量：新增与合并、额度耗尽。
 - 换行：CRLF、BOM、全角空格。
 - 统计：`importableCount = newCount + mergeCount`，异常计数与超限计数。
 

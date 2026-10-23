@@ -159,6 +159,7 @@
     <HotwordLibraryPicker
       :visible="showPicker"
       :existing="draft.hotwords"
+      :capacity="MAX_HOTWORDS_PER_ROLE"
       @close="showPicker = false"
       @add="appendFromLibrary"
     />
