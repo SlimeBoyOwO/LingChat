@@ -89,6 +89,11 @@ pub struct GameStatus {
 
     /// 待注入下一轮请求的临时记忆，取用后即丢，不写台词表、不参与存档。
     pending_temporary_memories: Vec<TemporaryMemory>,
+
+    /// 回复后工具推荐的暂存：下一轮请求取走并渲染成临时提示，取用后即丢。
+    /// 每轮用户发言前若又算出了新的推荐，它会被覆盖——同一时刻只保留最后一份，
+    /// 避免两份推荐提示同时出现在请求里。
+    pending_tool_hint: Option<Vec<String>>,
 }
 
 /// 一条等下一轮开头再写的插件旁白。
@@ -243,6 +248,7 @@ impl GameStatus {
             pending_prompt_lines: Vec::new(),
             pending_recent_memories: Vec::new(),
             pending_temporary_memories: Vec::new(),
+            pending_tool_hint: None,
         }
     }
 
@@ -366,6 +372,25 @@ impl GameStatus {
 
     pub fn clear_pending_temporary_memories(&mut self) {
         self.pending_temporary_memories.clear();
+    }
+
+    /// 暂存回复后推荐的工具名，覆盖上一份。
+    pub fn set_pending_tool_hint(&mut self, names: Vec<String>) {
+        self.pending_tool_hint = (!names.is_empty()).then_some(names);
+    }
+
+    /// 取走暂存的推荐工具名，只用于构建一次请求上下文。
+    pub fn take_pending_tool_hint(&mut self) -> Option<Vec<String>> {
+        self.pending_tool_hint.take()
+    }
+
+    /// 查看暂存的推荐工具名（调试指令用，不取走）。
+    pub fn pending_tool_hint(&self) -> Option<&[String]> {
+        self.pending_tool_hint.as_deref()
+    }
+
+    pub fn clear_pending_tool_hint(&mut self) {
+        self.pending_tool_hint = None;
     }
 
     /// 把待落位的近期记忆写进台词表：锚点之后连续 User 块的末尾。

@@ -62,6 +62,9 @@ pub struct ToolSpec {
     /// 单次执行超时（毫秒），默认 30s。
     #[serde(default = "default_timeout_ms")]
     pub timeout_ms: u64,
+    /// Tool RAG 的示例问句（“可能的提问方式”）。缺省时 RAG 回退到描述。
+    #[serde(default)]
+    pub examples: Vec<String>,
 }
 
 fn default_timeout_ms() -> u64 {

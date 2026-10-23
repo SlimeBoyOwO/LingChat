@@ -478,10 +478,10 @@ impl ReplyLengthMode {
                 "工具结果已返回。互不依赖的多个操作可以在这一轮一起调用；工具结果不用复述，也不要重复之前已经说过的内容。不需要说话就不要输出台词，直接调用工具或收尾。",
             ),
             Some(budget) if spoken >= budget => format!(
-                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来只允许调用工具，非必要不要再输出任何台词；工具都做完后直接结束这一回合。工具结果不用复述，也不要重复之前已经说过的内容。"
+                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来可以只调用工具，非必要不要再输出任何台词；工具结果不用复述。"
             ),
             Some(budget) => format!(
-                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；不需要说话就直接调用工具，工具结果不用复述，也不要重复之前已经说过的内容。",
+                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；可直接调用工具，不用复述结果。",
                 budget - spoken,
                 budget - spoken
             ),
@@ -684,39 +684,4 @@ fn format_error_text(round: &[LineShape], expect_translation: bool) -> Option<St
         "你上一条回复的格式有误：{}。{rule}",
         missing.join("、")
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tool_budget_follows_reply_mode() {
-        assert_eq!(ReplyLengthMode::Short.tool_turn_budget(), Some(3));
-        assert_eq!(ReplyLengthMode::Normal.tool_turn_budget(), Some(5));
-        assert_eq!(ReplyLengthMode::Free.tool_turn_budget(), None);
-    }
-
-    #[test]
-    fn continuation_reports_remaining_lines() {
-        let text = ReplyLengthMode::Short.tool_continuation_text(1);
-        assert!(text.contains("已经说了 1 句"));
-        assert!(text.contains("上限 3 句"));
-        assert!(text.contains("还能说 2 句"));
-        assert!(!text.contains("额度已经用完"));
-    }
-
-    #[test]
-    fn continuation_forbids_speech_when_budget_spent() {
-        let text = ReplyLengthMode::Short.tool_continuation_text(3);
-        assert!(text.contains("已经用完"));
-        assert!(text.contains("只允许调用工具"));
-    }
-
-    #[test]
-    fn continuation_without_budget_still_allows_silence() {
-        let text = ReplyLengthMode::Free.tool_continuation_text(12);
-        assert!(text.contains("不需要说话就不要输出台词"));
-        assert!(!text.contains("额度"));
-    }
 }

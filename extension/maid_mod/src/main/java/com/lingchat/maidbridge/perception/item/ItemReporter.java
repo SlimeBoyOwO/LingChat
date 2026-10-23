@@ -57,6 +57,11 @@ public final class ItemReporter {
     private static final int SOURCE_LIMIT = 32;
     /** 来源位置与捡到的物品相距这么近才算同一件事（格）。 */
     private static final double SOURCE_RADIUS = 3.0;
+    /**
+     * 她自己破坏方块之后的记性（tick）。车万女仆的干活（农场、甘蔗、清雪……）与我们的挖矿
+     * 都把掉落直接塞进她的背包，不走拾取事件；这之后的一小段时间里背包增量都是她自己挣的。
+     */
+    private static final int SELF_GATHER_TICKS = 120;
 
     /** 最近一次死亡或方块被破坏的位置：用来认地上那件东西是哪来的。 */
     private record Source(Level level, Vec3 pos, String kind, String id, long tick) {
@@ -80,8 +85,34 @@ public final class ItemReporter {
     /** 这一次捡的东西是哪来的（Pre 与 Post 在同一次拾取调用里前后脚触发）。 */
     private static ItemEntity pendingItem;
     private static boolean pendingFromOwner;
+    /** 她自己破坏方块的最近一次：掉落被车万女仆直接塞进背包，背包增量要算成她自己的。 */
+    private static String selfGatherMaid = "";
+    private static long selfGatherTick;
 
     private ItemReporter() {
+    }
+
+    /** 她自己破坏了一块方块（掉落直接进背包）：这之后的背包增量不算「谁给她的」。 */
+    public static void markSelfGather(EntityMaid maid) {
+        if (maid == null) {
+            return;
+        }
+        selfGatherMaid = maid.getStringUUID();
+        selfGatherTick = maid.level().getGameTime();
+    }
+
+    /**
+     * 她刚刚自己破坏过方块：背包差分不该把这些增量说成「玩家放进来的」。
+     *
+     * <p>车万女仆干活的掉落直接进背包（不走拾取事件），主人在旁边时原来每一份收成都被
+     * 说成「主人往背包里放了小麦」。与挖矿那条是同一类：那段时间的增量归她自己，不需要
+     * 另报一条。
+     */
+    public static boolean gatheredRecently(EntityMaid maid) {
+        if (maid == null || selfGatherMaid.isEmpty() || !selfGatherMaid.equals(maid.getStringUUID())) {
+            return false;
+        }
+        return maid.level().getGameTime() - selfGatherTick <= SELF_GATHER_TICKS;
     }
 
     /** 有东西死了：记下位置与种类，之后她捡起附近的掉落物时就能说出「谁掉的」。 */
@@ -242,6 +273,8 @@ public final class ItemReporter {
         recentPickups.clear();
         pendingItem = null;
         pendingFromOwner = false;
+        selfGatherMaid = "";
+        selfGatherTick = 0;
     }
 
     /** 记一次「附近的死亡/方块破坏」。离她太远的不用记：她不会跑过去捡。 */

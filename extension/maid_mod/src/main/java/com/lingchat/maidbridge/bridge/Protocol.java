@@ -28,6 +28,8 @@ public final class Protocol {
     public static final String MAID_HEADWEAR = "maid_headwear";
     /** 在女仆的位置播放一句 TTS 语音（WAV 的 base64）。 */
     public static final String PLAY_TTS = "play_tts";
+    /** 这一轮已经说完话了：动作后的游荡冷却可以收了。 */
+    public static final String MAID_SETTLE = "maid_settle";
 
     /** 下行：模组 → 插件 */
     public static final String PONG = "pong";
@@ -50,6 +52,8 @@ public final class Protocol {
     public static final String MAID_GIVE_ITEM_RESULT = "maid_give_item_result";
     /** 戴/摘头饰的回执。 */
     public static final String MAID_HEADWEAR_RESULT = "maid_headwear_result";
+    /** 游荡冷却收掉的回执。 */
+    public static final String MAID_SETTLE_RESULT = "maid_settle_result";
     /** 游戏世界的事件（换地形、天黑、下雨、受伤这类）。 */
     public static final String EVENT = "event";
     public static final String ERROR = "error";

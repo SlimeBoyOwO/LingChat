@@ -145,7 +145,7 @@ def ground_change(data):
     if kind in phrases:
         return phrases[kind]
     block = name_of(BLOCK_NAMES, data.get("block"), "另一种地面")
-    return f"{maid}脚下换成了{block}。"
+    return f"{maid}脚下现在是{block}。"
 
 
 def vehicle_change(data):

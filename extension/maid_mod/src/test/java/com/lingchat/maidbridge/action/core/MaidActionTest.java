@@ -56,6 +56,7 @@ class MaidActionTest {
         assertNull(parse("sit", "bed").target());
         assertNull(parse("stand", "player").target());
         assertNull(parse("look_at", "bed").target());
+        assertNull(parse("scout", "bed").target());
         assertEquals("", parse("sit", "bed").targetId());
     }
 
@@ -82,6 +83,7 @@ class MaidActionTest {
         assertFalse(parse("sit", null).hasCompletionEvent());
         assertFalse(parse("stand", null).hasCompletionEvent());
         assertFalse(parse("look_at", null).hasCompletionEvent());
+        assertTrue(parse("scout", null).hasCompletionEvent(), "探路收尾时要说清她怎么停下的");
     }
 
     @Test
@@ -99,6 +101,7 @@ class MaidActionTest {
         assertFalse(parse("lie_down", "ground").walks());
         assertFalse(parse("sit", null).walks());
         assertFalse(parse("look_at", null).walks());
+        assertTrue(parse("scout", null).walks(), "探路要走路，居家模式的范围也得跟着查");
     }
 
     /** 就地躺下也是耗时动作：她躺着的时候要用收尾事件说清她怎么起来的。 */

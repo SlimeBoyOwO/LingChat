@@ -171,6 +171,10 @@ export default {
     toolRagTitle: "工具按需检索",
     toolRagHint:
       "每次请求只下发常用工具，模型需要时先用一句话检索出合适的工具再调用，省下全部工具说明占用的上下文。关闭后每次请求都下发全部已授权工具。",
+    toolCacheCapacityTitle: "工具缓存容量",
+    toolCacheCapacityHint:
+      "同时记住多少个检索到的工具（不含检索入口与联网搜索），范围 {min}–{max}。推荐 10 个以下。",
+    toolCacheCapacityUnit: "个",
     toolRecommendTitle: "工具推荐",
     toolRecommendHint:
       "模型常常想不起来调用工具。这里选择每轮发言前怎么给它提个醒：推荐只是临时提示，不写进台词表；推荐的工具会随这一轮请求一起下发。",
@@ -333,8 +337,8 @@ export default {
       schedule: "日程与待办（查日程、加/改/删待办）",
       memory: "笔记与记忆（ta 自己的小本本）",
       character: "角色切换（列出/切换在场角色）",
-      scene: "场景切换（列出/切换场景）",
-      status: "状态查询（当前状态/场景状态）",
+      scene: "场景切换（列出/切换场景、切换背景特效）",
+      status: "状态查询（当前状态/场景状态/天气）",
       clock: "当前时间（查询设备本地时间）",
       skills: "技能库（让ta读取技能指令，学会新技能）",
       media: "媒体识别（用视觉模型读取图片和视频）",

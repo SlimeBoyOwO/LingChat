@@ -76,11 +76,13 @@ public final class BackpackWatcher {
         if (gains.isEmpty()) {
             return;
         }
-        // 她自己挖下来的东西直接进背包（车万女仆的 destroyBlock 把掉落塞进她的库存），
-        // 不走拾取事件。挖着和刚挖完的这一小段里，增量都是挖出来的，不是谁放进来的：
-        // 主人在旁边看她砍树时，原来每一块木头都被说成「主人往背包里放了木头」。
-        // 挖掘收尾那条（maid_mine_done）会自己交代挖到了几块。
-        if (MaidMineController.isRunning(maid) || MaidMineController.minedRecently(maid)) {
+        // 她自己破坏方块之后的增量归她自己，不是谁放进来的：我们的挖矿与车万女仆的干活
+        // （农场、甘蔗、清雪……）都把掉落直接塞进她的库存，不走拾取事件。主人在旁边看她
+        // 砍树、收菜时，原来每一份收成都被说成「主人往背包里放了木头 / 小麦」。
+        // 挖矿由 maid_mine_done 自己交代挖到了几块，干活的那一路不必另说。
+        if (MaidMineController.isRunning(maid)
+                || MaidMineController.minedRecently(maid)
+                || ItemReporter.gatheredRecently(maid)) {
             return;
         }
         JsonObject frame = EventFrames.base("item_received", maidId);

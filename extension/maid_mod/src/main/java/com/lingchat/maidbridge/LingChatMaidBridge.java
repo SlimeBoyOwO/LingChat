@@ -2,6 +2,7 @@ package com.lingchat.maidbridge;
 
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActionHandler;
+import com.lingchat.maidbridge.action.core.MaidSettleHandler;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.attack.MaidAttackHandler;
 import com.lingchat.maidbridge.bridge.BridgeServer;
@@ -24,6 +25,7 @@ import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.mine.MaidMineHandler;
 import com.lingchat.maidbridge.perception.event.AchievementReporter;
 import com.lingchat.maidbridge.perception.event.DeathReporter;
+import com.lingchat.maidbridge.perception.event.FavoriteFoodReporter;
 import com.lingchat.maidbridge.perception.event.HurtReporter;
 import com.lingchat.maidbridge.perception.PerceptionSampler;
 import com.lingchat.maidbridge.perception.query.LookAroundHandler;
@@ -139,6 +141,7 @@ public class LingChatMaidBridge {
         newRouter.register(Protocol.MAID_GIVE_ITEM, new MaidGiveItemHandler(server));
         newRouter.register(Protocol.MAID_HEADWEAR, new MaidHeadwearHandler(server));
         newRouter.register(Protocol.PLAY_TTS, new PlayTtsHandler(server));
+        newRouter.register(Protocol.MAID_SETTLE, new MaidSettleHandler());
         router = newRouter;
 
         try {
@@ -172,6 +175,7 @@ public class LingChatMaidBridge {
         DeathReporter.clear();
         // 物品的去抖与背包基线同理
         ItemReporter.clear();
+        FavoriteFoodReporter.clear();
         MaidFeeder.clear();
         BackpackWatcher.clear();
         // 动作记着上一个世界的女仆与目标
@@ -198,5 +202,7 @@ public class LingChatMaidBridge {
         MaidMineController.tick(event.getServer());
         // 喂食的待收尾有寿命：没吃成的那口要还给她，金苹果等不到吃完就作废
         MaidFeeder.tick(event.getServer());
+        // 主人举着她最爱吃的东西、她凑过来讨食的那一刻
+        FavoriteFoodReporter.tick(event.getServer());
     }
 }

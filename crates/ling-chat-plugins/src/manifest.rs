@@ -16,6 +16,13 @@ pub fn parse(text: &str) -> Result<PluginManifest> {
 /// 避免插件声明超大超时导致阻塞线程被长期占用。
 const MAX_TIMEOUT_MS: u64 = 120_000;
 
+/// 单个工具可声明的示例问句上限：示例会进 Tool RAG 的本地向量索引，
+/// 放太多只会放大首次嵌入耗时，不会提升命中。
+const MAX_TOOL_EXAMPLES: usize = 8;
+
+/// 单条示例问句的长度上限（字符）。
+const MAX_TOOL_EXAMPLE_CHARS: usize = 120;
+
 /// 校验脚本路径是插件目录内的相对路径。
 ///
 /// 允许 `tools/entry.py` 这种分层写法；目录段必须是合法的 Python 标识符（包名），
@@ -234,6 +241,23 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
                 tool.name
             );
         }
+        if tool.examples.len() > MAX_TOOL_EXAMPLES {
+            anyhow::bail!(
+                "插件 '{}' 工具 '{}' 的 examples 最多 {MAX_TOOL_EXAMPLES} 条",
+                manifest.id,
+                tool.name
+            );
+        }
+        for example in &tool.examples {
+            let length = example.trim().chars().count();
+            if length > MAX_TOOL_EXAMPLE_CHARS {
+                anyhow::bail!(
+                    "插件 '{}' 工具 '{}' 的 examples 单条不能超过 {MAX_TOOL_EXAMPLE_CHARS} 字符",
+                    manifest.id,
+                    tool.name
+                );
+            }
+        }
     }
     for sub in &manifest.subscribe {
         let owner = format!("信号订阅 '{}'", sub.signal);
@@ -326,4 +350,59 @@ fn validate_ws_allow_entry(plugin_id: &str, entry: &str) -> Result<()> {
         anyhow::bail!("插件 '{plugin_id}' 的 ws_allow 项 '{entry}' 缺少主机名");
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse;
+
+    /// 最小可用 manifest，`extra` 会追加到工具声明里。
+    fn manifest_with_tool(extra: &str) -> String {
+        format!(
+            r#"
+id = "demo"
+name = "Demo"
+description = "demo"
+version = "1.0.0"
+
+[[tools]]
+name = "demo_tool"
+description = "示例工具"
+parameters = '{{ "type":"object" }}'
+script = "tools/entry.py"
+{extra}
+"#
+        )
+    }
+
+    #[test]
+    fn tool_examples_parse_and_default_to_empty() {
+        let parsed = parse(&manifest_with_tool(
+            r#"examples = ["现在几点了", "今天几号"]"#,
+        ))
+        .expect("应通过校验");
+        assert_eq!(parsed.tools[0].examples, vec!["现在几点了", "今天几号"]);
+
+        let parsed = parse(&manifest_with_tool("")).expect("应通过校验");
+        assert!(parsed.tools[0].examples.is_empty(), "缺省应为空数组");
+    }
+
+    #[test]
+    fn tool_examples_reject_too_many_items() {
+        let items: Vec<String> = (0..=8).map(|i| format!("\"问题{i}\"")).collect();
+        let error = parse(&manifest_with_tool(&format!(
+            "examples = [{}]",
+            items.join(", ")
+        )))
+        .expect_err("超过上限应失败");
+        assert!(error.to_string().contains("examples 最多 8 条"));
+    }
+
+    #[test]
+    fn tool_examples_reject_overlong_item() {
+        let long = "问".repeat(121);
+        let error = parse(&manifest_with_tool(&format!("examples = [\"{long}\"]")))
+            .expect_err("超长示例应失败");
+        assert!(error.to_string().contains("单条不能超过"));
+    }
 }

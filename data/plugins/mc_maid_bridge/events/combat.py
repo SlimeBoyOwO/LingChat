@@ -94,13 +94,13 @@ def maid_unconscious(data):
     cause = _down_cause(data)
     if data.get("on_bed"):
         return (
-            f"{maid}{cause}，昏倒在床上，只剩一口气，身边开始冒出爱心。"
+            f"{maid}{cause}，昏倒在床上，只剩一口气。"
             f"在床上连续躺满一分钟，{maid}就会醒过来。"
             f"{maid}{UNCONSCIOUS_STATE_MARK}。"
         )
     return (
-        f"{maid}{cause}，倒在地上昏了过去，只剩一口气。"
-        f"把{maid}抱到床上（普通床或女仆床）连续躺一分钟，{maid}就会醒过来。"
+        f"{maid}{cause}，撑不住了，开始晕倒失去意识..."
+        f"把{maid}抱到床上（普通床或女仆床）休息一会，{maid}就会醒过来。"
         f"{maid}{UNCONSCIOUS_STATE_MARK}。"
     )
 
@@ -108,7 +108,7 @@ def maid_unconscious(data):
 def maid_recovering(data):
     """她被放到床上，开始计时恢复。"""
     maid, _ = names()
-    return f"{maid}躺到了床上，呼吸慢慢平稳下来，身边冒起了爱心。"
+    return f"{maid}躺到了床上，身体开始慢慢恢复。"
 
 
 def maid_recovered(data):

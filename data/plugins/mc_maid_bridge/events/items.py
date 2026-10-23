@@ -1,4 +1,4 @@
-"""物品的来去：她捡起来的东西、背包里多出来、喂她吃、她自己吃。"""
+"""物品的来去：她捡起来的东西、背包里多出来、喂她吃、她自己吃，以及主人拿出她最爱吃的。"""
 
 from events.spec import EventSpec
 from naming import names
@@ -87,6 +87,19 @@ def maid_ate(data):
     return f"{maid}自己吃了{_item_list(data.get('items'))}。"
 
 
+def favorite_food(data):
+    """主人手里拿着她最爱吃的东西，她凑过去讨。
+
+    模组只在她真的讨起来（车万女仆的讨食姿态已经翻过去）时推，所以不用再判距离：
+    这条说的就是她看得见、也走得到跟前的那一刻。
+    """
+    maid, player = names()
+    return (
+        f"{player}手里拿着{maid}最爱吃的{item_name(data.get('item'))}，"
+        f"{maid}凑到跟前眼巴巴地看着。"
+    )
+
+
 def _item_list(items):
     """[{item,count}, ...] → 「熟牛肉 ×2、面包」。不认识的 id 退回英文后半段，模型也认。"""
     parts = []
@@ -108,4 +121,6 @@ SPECS = {
     "item_received": EventSpec(item_received, urgent=True, ttl=30),
     "item_fed": EventSpec(item_fed, urgent=True, ttl=30),
     "maid_ate": EventSpec(maid_ate, ttl=60),
+    # 和挨打一档：主人把她最爱吃的拿出来了，她这会儿正凑上去讨
+    "favorite_food": EventSpec(favorite_food, urgent=True, ttl=60, snapshot=True),
 }

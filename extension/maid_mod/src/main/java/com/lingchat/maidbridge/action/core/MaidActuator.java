@@ -59,6 +59,12 @@ public final class MaidActuator {
     private static final int BED_SEARCH_RADIUS = 32;
     /** 与车万女仆睡自己的女仆床时一致：躺进床的中心。 */
     private static final double SLEEP_OFFSET_Y = 0.8;
+    /** 探路时她停在主人正前方多远（格）。 */
+    private static final int SCOUT_DISTANCE = 8;
+    /** 探路点新算出来的差这么几格以内就不换：主人挪一小步、转个身时别让她原地打转。 */
+    private static final int SCOUT_DRIFT = 2;
+    /** 探路时离主人超过这么远就算走散了：她跟不上，再追也没意义。 */
+    private static final float SCOUT_LEASH = 24.0F;
 
     /** 受理时就能判定的失败。 */
     public record Reject(String code, String reason) {
@@ -114,8 +120,10 @@ public final class MaidActuator {
         if (maid.isLeashed()) {
             return new Reject("maid_leashed", "她被拴住了，走不开");
         }
-        // 站起是唯一会叫醒她的动作：别的动作在她睡着时做不了
-        if (maid.isSleeping() && action.kind() != MaidAction.Kind.STAND) {
+        // 站起是唯一会叫醒她的动作：别的动作在她睡着时做不了。
+        // 桥接自己按着的躺姿不算：那时玩家喊一声「过来」就该把她叫起来带走
+        if (maid.isSleeping() && action.kind() != MaidAction.Kind.STAND
+                && !MaidActionController.isHoldingLie(maid)) {
             return new Reject("maid_sleeping", "她正在睡觉，先让她站起来才叫得动");
         }
         if (action.walks() && maid.hasRestriction()) {
@@ -214,6 +222,54 @@ public final class MaidActuator {
                         new WalkTarget(Vec3.atBottomCenterOf(pos), WALK_SPEED, closeEnough));
     }
 
+    /**
+     * 探路要去的那一格：主人面朝的方向前面约 8 格、站得下她的地方。
+     *
+     * <p>沿朝向逐格往回试，先远后近：前面的路抬高一层、往下掉一层都认，脚下是水或岩浆
+     * 的不算落脚点。一路都是墙时退到最近能站的那一格；连一格都站不下就给 null，由调用方
+     * 退回「跟住主人」。居家模式下只认活动范围里的格子，否则车万女仆的等待行为会当场把
+     * 写进去的寻路目标清掉。
+     *
+     * @param previous 上一次的落点：新算出来的没挪出 {@link #SCOUT_DRIFT} 格就接着用它，
+     *     免得主人站着晃视角时她来回走
+     */
+    public static BlockPos scoutPoint(EntityMaid maid, ServerPlayer player, BlockPos previous) {
+        BlockPos fresh = scoutCandidate(maid, player);
+        if (previous != null && (fresh == null || fresh.distManhattan(previous) <= SCOUT_DRIFT)) {
+            return previous;
+        }
+        return fresh;
+    }
+
+    private static BlockPos scoutCandidate(EntityMaid maid, ServerPlayer player) {
+        Level level = player.level();
+        double yaw = Math.toRadians(player.getYRot());
+        double dx = -Math.sin(yaw);
+        double dz = Math.cos(yaw);
+        BlockPos base = player.blockPosition();
+        for (int step = SCOUT_DISTANCE; step >= 2; step--) {
+            int x = (int) Math.floor(base.getX() + 0.5 + dx * step);
+            int z = (int) Math.floor(base.getZ() + 0.5 + dz * step);
+            for (int dy = 1; dy >= -3; dy--) {
+                BlockPos feet = new BlockPos(x, base.getY() + dy, z);
+                if (maid.isWithinRestriction(feet) && standingRoom(level, feet)) {
+                    return feet;
+                }
+            }
+        }
+        return null;
+    }
+
+    /** 那一格能不能站人：脚下有实地，脚与头这两格都是空的。 */
+    private static boolean standingRoom(Level level, BlockPos feet) {
+        BlockPos below = feet.below();
+        if (!level.getBlockState(below).isFaceSturdy(level, below, Direction.UP)) {
+            return false;
+        }
+        return level.getBlockState(feet).getCollisionShape(level, feet).isEmpty()
+                && level.getBlockState(feet.above()).getCollisionShape(level, feet.above()).isEmpty();
+    }
+
     /** 转头盯着一只活物：攻击时每 tick 写一次，免得她背对着砍。 */
     public static void lookAtEntity(EntityMaid maid, LivingEntity target) {
         maid.getBrain().setMemory(MemoryModuleType.LOOK_TARGET, new EntityTracker(target, true));
@@ -266,59 +322,73 @@ public final class MaidActuator {
     }
 
     /**
-     * 躺到床上。照车万女仆自己睡女仆床的做法：先停下来，再睡到床头那格的中心。
+     * 就地躺下：换姿势、记一个脚下的睡位，不碰床、也不占用任何床位。
      *
-     * <p>她的 {@code startSleeping} 被覆写过：回满血、涨好感——这是玩家想要的语义，
-     * 所以这里不另写一套。
-     */
-    public static void sleepIn(EntityMaid maid, BlockPos bedHead) {
-        stopWalking(maid);
-        stopLooking(maid);
-        MaidCondition.clearGroundLift(maid);
-        maid.startSleeping(bedHead);
-        maid.setPos(bedHead.getX() + 0.5, bedHead.getY() + SLEEP_OFFSET_Y, bedHead.getZ() + 0.5);
-    }
-
-    /**
-     * 就地躺下：只换姿势，不碰床、不碰她的睡觉标记。
-     *
-     * <p>刻意不用 {@code startSleeping}：那会把睡觉位置记在 nbt 里，原版随后的「床没了」
-     * 与车万女仆的「日程不在睡觉时段」都会每 tick 把她叫起来；地上躺着也不是真的在睡。
-     * 躺姿渲染是原版 {@code LivingEntityRenderer} 给的，不需要客户端代码。
+     * <p>睡位不是为了真睡，而是给「她躺着」一个所有模组都认得的说法：YSM 的闭眼与躺姿、
+     * 车万女仆的别乱走都只看 {@code isSleeping()}。原版「睡位不是床就叫起来」与车万女仆
+     * 的日程清理由 {@code LivingEntityStopSleepingMixin} 在这个动作期间拦掉。
      */
     public static void lieOnGround(EntityMaid maid) {
         stopWalking(maid);
         stopLooking(maid);
         maid.setDeltaMovement(Vec3.ZERO);
         maid.setPose(Pose.SLEEPING);
+        maid.setSleepingPos(maid.blockPosition());
+        maid.refreshDimensions();
         MaidCondition.holdGroundLift(maid);
     }
 
-    /** 躺着时每 tick 按住：清掉别人写进来的寻路目标，别让她带着躺姿滑出去。 */
-    public static void holdLying(EntityMaid maid) {
+    /**
+     * 躺着时每 tick 按住：清掉别人写进来的寻路目标，别让她带着躺姿滑出去。
+     *
+     * <p>睡位与姿势一起按：YSM 的闭眼与躺姿、车万女仆的「别乱走」看的都是
+     * {@code isSleeping()}，光有姿势没有睡位在游戏里等于没躺下。床上的睡位被人清掉
+     * （原版「床没了」、别的模组叫醒）就当场补回去；人还在床下时也摆到床头中心，
+     * 剩下的床位吸附交给车万女仆自己的 {@code onMaidSleep}。
+     */
+    public static void holdLying(EntityMaid maid, BlockPos bedHead) {
         stopWalking(maid);
         maid.setDeltaMovement(Vec3.ZERO);
         if (!maid.hasPose(Pose.SLEEPING)) {
             maid.setPose(Pose.SLEEPING);
         }
+        if (bedHead != null) {
+            if (!bedHead.equals(maid.getSleepingPos().orElse(null))) {
+                maid.setSleepingPos(bedHead);
+            }
+            if (MaidCondition.bedAt(maid) == null) {
+                // 只是走到了床边、人还在床下：直接摆到床头中心，与车万女仆自己上床一致
+                maid.setPos(bedHead.getX() + 0.5, bedHead.getY() + SLEEP_OFFSET_Y, bedHead.getZ() + 0.5);
+            }
+            return;
+        }
         MaidCondition.holdGroundLift(maid);
+        if (!maid.blockPosition().equals(maid.getSleepingPos().orElse(null))) {
+            maid.setSleepingPos(maid.blockPosition());
+        }
     }
 
     /**
-     * 从地上爬起来。床上睡觉不归这里管。
+     * 从躺姿里起来：床上走原版起身，地上把位置放回原来那一格。
      *
-     * <p>躺姿的碰撞箱只有 0.2 格高，原版换姿势时会「保持盒子中心」把人往下挪半截；
-     * 所以先记下原坐标，站直后再放回去——原版 {@code stopSleeping} 也是这么写的。
+     * <p>躺姿的碰撞箱只有 0.2 格高，换姿势时原版会「保持盒子中心」把人往下挪半截；所以先
+     * 记下原坐标或先落回地面，站直后再放回去——原版 {@code stopSleeping} 也是这么写的。
      *
      * <p>被搬运模组抱在手里时也把睡姿收掉，否则公主抱会套着躺姿；位置交给搬运，不在这里动。
      */
     public static void wakeUp(EntityMaid maid) {
-        // 床上睡着的有人家自己的叫醒流程
-        if (maid.isSleeping() || !maid.hasPose(Pose.SLEEPING)) {
+        if (maid.isSleeping() && MaidCondition.isSleepingOnBed(maid)) {
+            // 真在床上的交给原版：它会把她挪到床边站好，并放开床位
+            maid.stopSleeping();
+            return;
+        }
+        if (!maid.isSleeping() && !maid.hasPose(Pose.SLEEPING)) {
             return;
         }
         MaidCondition.settleGroundLift(maid);
         Vec3 pos = maid.position();
+        // 睡位在脚下那一格：原版这条路不认床，起身与清睡位都自己来
+        maid.stopSleeping();
         maid.setPose(Pose.STANDING);
         maid.setPos(pos.x, pos.y, pos.z);
         maid.refreshDimensions();
@@ -326,28 +396,49 @@ public final class MaidActuator {
 
     // ─── 观察 ───
 
-    /** 把这一刻的游戏事实拍成状态机认识的样子。女仆不在了也照样给一份，让状态机收尾。 */
-    public static ActionRun.Observation observe(EntityMaid maid, MaidAction action, Target target) {
+    /**
+     * 把这一刻的游戏事实拍成状态机认识的样子。女仆不在了也照样给一份，让状态机收尾。
+     *
+     * @param keepLying 状态机已经在躺着了：这时才去查「什么让她躺不住了」，
+     *     还在走路的阶段把这些当成打断会让一次正常赶路半途而废
+     */
+    public static ActionRun.Observation observe(
+            EntityMaid maid, MaidAction action, Target target, boolean keepLying) {
         if (maid == null || !maid.isAlive()) {
             return new ActionRun.Observation(
                     false, true, false, false, false, 0, 0, ActionRun.Interrupt.NONE);
         }
         if (action.isGroundLie()) {
             return new ActionRun.Observation(
-                    true, false, false, true, false, 0, 0.0, groundInterrupt(maid));
+                    true, false, maid.isSleeping(), true, false, 0, 0.0,
+                    keepLying ? groundInterrupt(maid) : ActionRun.Interrupt.NONE);
         }
-        boolean cannotReach = maid.getBrain().hasMemoryValue(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
-        if (target.isBed()) {
-            BlockPos head = target.bedHead();
+        if (action.isScout()) {
+            ServerPlayer owner = MaidQueries.owner(maid);
             return new ActionRun.Observation(
                     true,
                     !maid.canBrainMoving(),
                     maid.isSleeping(),
-                    isUsableBed(maid.level(), head),
+                    true,
+                    false,
+                    0,
+                    owner == null ? 0.0 : Math.sqrt(maid.distanceToSqr(owner)),
+                    scoutInterrupt(maid, owner));
+        }
+        boolean cannotReach = maid.getBrain().hasMemoryValue(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
+        if (target.isBed()) {
+            BlockPos head = target.bedHead();
+            // 已经躺在这张床上了：这时只关心床还在不在，床位被登记成占用不算目标不见了
+            boolean present = isUsableBed(maid.level(), head) || (keepLying && isBedHead(maid.level(), head));
+            return new ActionRun.Observation(
+                    true,
+                    !maid.canBrainMoving(),
+                    maid.isSleeping(),
+                    present,
                     cannotReach,
                     head.distManhattan(maid.blockPosition()),
                     Math.sqrt(maid.distanceToSqr(Vec3.atBottomCenterOf(head))),
-                    ActionRun.Interrupt.NONE);
+                    keepLying ? bedInterrupt(maid, head) : ActionRun.Interrupt.NONE);
         }
         ServerPlayer player = MaidQueries.owner(maid);
         if (player == null || player.hasDisconnected() || player.level() != maid.level()) {
@@ -367,16 +458,14 @@ public final class MaidActuator {
     }
 
     /**
-     * 地上躺不住的那几件事：被抱走、自己爬上床、挨打、泡进液体、身下没地。
+     * 地上躺不住的那几件事：被抱走、挨打、泡进液体、身下没地。
      *
-     * <p>只有她真的躺不住时才起来；玩家站在旁边、天黑下雨都不算。
+     * <p>只有她真的躺不住时才起来；玩家站在旁边、天黑下雨都不算。睡位是我们自己按在
+     * 脚下的，不能拿 {@code isSleeping()} 判断「她爬上床了」。
      */
     private static ActionRun.Interrupt groundInterrupt(EntityMaid maid) {
         if (MaidQueries.carriedByPlayer(maid)) {
             return new ActionRun.Interrupt("carried", "被抱起来了");
-        }
-        if (maid.isSleeping()) {
-            return new ActionRun.Interrupt("in_bed", "自己爬上床睡了");
         }
         if (maid.hurtTime > 0) {
             return new ActionRun.Interrupt("hurt", "挨了一下");
@@ -386,6 +475,48 @@ public final class MaidActuator {
         }
         if (!maid.onGround() && !MaidCondition.isGroundLifted(maid)) {
             return new ActionRun.Interrupt("lost_ground", "身下没有实地了");
+        }
+        return ActionRun.Interrupt.NONE;
+    }
+
+    /**
+     * 探路走不下去的那几件事：血不多了、被抱走、动不了、主人走了或走散了。
+     *
+     * <p>血线按最大血量算，不到四分之一就让她退下来——挡在前面的是她，血量见底时
+     * 再往前送就是白白挨刀。
+     */
+    private static ActionRun.Interrupt scoutInterrupt(EntityMaid maid, ServerPlayer player) {
+        if (MaidQueries.carriedByPlayer(maid)) {
+            return new ActionRun.Interrupt("carried", "被抱起来了");
+        }
+        if (maid.getMaxHealth() > 0 && maid.getHealth() < maid.getMaxHealth() * 0.25F) {
+            return new ActionRun.Interrupt("low_health", "血不多了");
+        }
+        if (!maid.canBrainMoving()) {
+            return new ActionRun.Interrupt("maid_busy", "她现在动不了");
+        }
+        if (player == null || player.hasDisconnected() || player.level() != maid.level()) {
+            return new ActionRun.Interrupt("player_away", "主人不在这个世界里了");
+        }
+        if (maid.distanceTo(player) > SCOUT_LEASH) {
+            return new ActionRun.Interrupt("too_far", "跟主人走散了");
+        }
+        return ActionRun.Interrupt.NONE;
+    }
+
+    /** 床上躺不住的那几件事：被抱走、挨打、床没了、睡位被人清掉。 */
+    private static ActionRun.Interrupt bedInterrupt(EntityMaid maid, BlockPos head) {
+        if (MaidQueries.carriedByPlayer(maid)) {
+            return new ActionRun.Interrupt("carried", "被抱起来了");
+        }
+        if (maid.hurtTime > 0) {
+            return new ActionRun.Interrupt("hurt", "挨了一下");
+        }
+        if (!isBedHead(maid.level(), head)) {
+            return new ActionRun.Interrupt("bed_gone", "床没了");
+        }
+        if (!maid.isSleeping()) {
+            return new ActionRun.Interrupt("woken", "自己爬了起来");
         }
         return ActionRun.Interrupt.NONE;
     }
@@ -447,5 +578,11 @@ public final class MaidActuator {
     private static boolean isUsableBed(Level level, BlockPos pos) {
         BedChoice.Candidate candidate = candidate(level, pos);
         return candidate.bedBlock() && candidate.head() && !candidate.occupied();
+    }
+
+    /** 那一格还是床头：躺着的时候只关心床还在不在，占用是自己占的。 */
+    private static boolean isBedHead(Level level, BlockPos pos) {
+        BedChoice.Candidate candidate = candidate(level, pos);
+        return candidate.bedBlock() && candidate.head();
     }
 }

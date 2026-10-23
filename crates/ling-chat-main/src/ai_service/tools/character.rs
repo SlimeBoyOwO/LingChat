@@ -30,6 +30,12 @@ impl Tool for CharacterList {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "现在有哪些角色",
+            "还有别的角色吗",
+            "列出所有角色",
+            "角色列表给我看看",
+        ])
     }
 
     async fn execute(
@@ -75,6 +81,12 @@ impl Tool for CharacterSwitch {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "让另一个角色来",
+            "我要跟别的角色说话",
+            "我想找其他角色",
+            "现在让谁来陪我",
+        ])
     }
 
     async fn execute(
@@ -295,6 +307,12 @@ impl Tool for CharacterGetClothes {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "你现在穿的哪一身",
+            "都有哪些衣服可以换",
+            "看看你的衣柜",
+            "今天穿的是什么装扮",
+        ])
     }
 
     async fn execute(
@@ -340,6 +358,12 @@ impl Tool for CharacterSetClothes {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "换一身衣服",
+            "穿上那套校服",
+            "换成另一套衣服",
+            "把衣服换一下",
+        ])
     }
 
     async fn execute(

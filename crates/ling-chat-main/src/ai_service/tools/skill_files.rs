@@ -155,6 +155,12 @@ impl Tool for ListSkills {
             "列出所有可用技能的名称、描述与位置。",
             json!({"type": "object", "properties": {}, "additionalProperties": false}),
         )
+        .with_rag_examples([
+            "你都会什么技能",
+            "有哪些技能能用",
+            "列一下你的本事",
+            "你现在会哪些本领",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
@@ -199,6 +205,12 @@ impl Tool for ReadSkill {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "把这个技能的说明读一下",
+            "看看这个技能怎么用",
+            "加载这个技能的步骤",
+            "这个技能具体怎么操作",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
@@ -232,7 +244,7 @@ impl Tool for ReadSkill {
 
 /// 文件类工具共用：持有工具配置句柄（沙箱外开关热更新）。
 macro_rules! file_tool {
-    ($name:ident, $tool_name:literal, $desc:literal, $schema:expr, $body:expr) => {
+    ($name:ident, $tool_name:literal, $desc:literal, $examples:expr, $schema:expr, $body:expr) => {
         pub struct $name {
             settings: SharedToolSettings,
         }
@@ -246,7 +258,7 @@ macro_rules! file_tool {
         #[async_trait]
         impl Tool for $name {
             fn definition(&self) -> ToolDefinition {
-                ToolDefinition::new($tool_name, $desc, $schema)
+                ToolDefinition::new($tool_name, $desc, $schema).with_rag_examples($examples)
             }
 
             fn timeout_hint(&self) -> Option<Duration> {
@@ -269,7 +281,7 @@ macro_rules! file_tool {
 
 /// 带副作用的文件工具：逐次确认模式下先展示规范化目标路径，再执行修改。
 macro_rules! mutating_file_tool {
-    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $schema:expr, $body:expr) => {
+    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $examples:expr, $schema:expr, $body:expr) => {
         pub struct $name {
             settings: SharedToolSettings,
         }
@@ -283,7 +295,7 @@ macro_rules! mutating_file_tool {
         #[async_trait]
         impl Tool for $name {
             fn definition(&self) -> ToolDefinition {
-                ToolDefinition::new($tool_name, $desc, $schema)
+                ToolDefinition::new($tool_name, $desc, $schema).with_rag_examples($examples)
             }
 
             fn timeout_hint(&self) -> Option<Duration> {
@@ -326,6 +338,12 @@ file_tool!(
     ListFiles,
     "list_files",
     "列出指定目录下的文件与子目录。",
+    [
+        "看看这个文件夹里有什么",
+        "列出目录内容",
+        "这个目录下有哪些文件",
+        "帮我找找这个文件夹里的东西",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -354,6 +372,12 @@ file_tool!(
     ReadFile,
     "read_file",
     "读取文本文件的内容。",
+    [
+        "打开这个文件看看",
+        "读一下这个文档",
+        "把文件内容念给我听",
+        "看看里面写了什么",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -391,6 +415,12 @@ mutating_file_tool!(
     "write_file",
     "向文件写入内容，自动创建父目录。逐次确认模式会在写入前询问；默认覆盖整个文件，append=true 时追加。",
     "write",
+    [
+        "把这段话写进文件",
+        "新建一个文件保存这些内容",
+        "帮我把结果写到文档里",
+        "在这个文件后面追加一段",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -446,6 +476,12 @@ impl Tool for DeleteFile {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "把这个文件删掉",
+            "删除这个文件",
+            "不要这个文件了",
+            "清理掉这个文件",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
@@ -507,6 +543,12 @@ mutating_file_tool!(
     "edit_file",
     "精确替换文件中的文本。逐次确认模式会在编辑前询问；old_string 必须唯一匹配（除非 replace_all=true）。",
     "edit",
+    [
+        "把文件里的这句话改掉",
+        "修改一下这个文件的内容",
+        "把里面的错字改正",
+        "替换文件中的一段文字",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -547,6 +589,12 @@ file_tool!(
     SearchFiles,
     "search_files",
     "按文件名通配符（* 匹配任意序列、? 匹配单字符，大小写不敏感）在目录中递归查找文件，返回路径列表。",
+    [
+        "帮我找找这个文件",
+        "按名字搜一下文件",
+        "电脑里有没有这个文件",
+        "找一下相关的文件",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -573,6 +621,12 @@ file_tool!(
     GrepFiles,
     "grep_files",
     "用正则表达式在目录的文本文件中搜索内容，返回 文件:行号: 内容 列表（大文件与二进制自动跳过）。",
+    [
+        "在文件里搜这个词",
+        "看看哪些文件提到了这个",
+        "全文搜索一下这句话",
+        "帮我找找包含这个关键词的文件",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -602,6 +656,12 @@ file_tool!(
     Glob,
     "glob",
     "按 glob 模式递归查找文件。支持 *、? 和 **（例如 **/*.py）；只读工具，无需审批。",
+    [
+        "按通配符找出所有文件",
+        "列出所有同类型的文件",
+        "看看有哪些文件匹配这个模式",
+        "把所有相关文件都找出来",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -636,6 +696,12 @@ file_tool!(
     Grep,
     "grep",
     "用正则表达式递归搜索文本内容，支持 glob 文件过滤、忽略大小写及内容/文件名/计数输出；只读工具，无需审批。",
+    [
+        "在所有文件里搜这个内容",
+        "全局搜索这个关键词",
+        "看看哪些地方提到了它",
+        "用正则搜一下这段文本",
+    ],
     json!({
         "type": "object",
         "properties": {
@@ -779,6 +845,12 @@ impl Tool for ExecuteCommand {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "帮我运行这条命令",
+            "在终端执行一下",
+            "跑一下这个脚本",
+            "执行这条指令",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {

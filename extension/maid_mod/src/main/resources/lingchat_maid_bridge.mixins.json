@@ -5,11 +5,14 @@
   "compatibilityLevel": "JAVA_21",
   "mixins": [
     "EntityMaidDataMixin",
+    "EntityMaidGatherMixin",
     "EntityMaidPoseMixin",
     "EntityMaidSleepMixin",
+    "EntityMaidTemptationMixin",
     "LivingEntityLyingDimensionsMixin",
     "LivingEntityStopSleepingMixin",
-    "MaidFollowOwnerTaskMixin"
+    "MaidFollowOwnerTaskMixin",
+    "MaidRunOneMixin"
   ],
   "injectors": {
     "defaultRequire": 1

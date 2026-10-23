@@ -5,6 +5,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import java.util.ArrayList;
 import java.util.List;
@@ -46,13 +47,15 @@ public final class MaidQueries {
      * / {@code unconscious}。
      *
      * <p>昏迷优先于普通睡姿：昏迷时写入睡眠位置是为了闭眼，但对外说的状态是「不省人事」，
-     * 不是「睡着了」。坐姿与睡觉在车万女仆与原版各有自己的标记；地上躺下既没有床也没有
-     * 睡觉位置（{@code isSleeping} 为假），只能从姿势上看出来——所以判断顺序是昏迷、
-     * 床、坐、躺。
+     * 不是「睡着了」。地上躺下与昏迷一样按了一个脚下的睡位（语义是闭眼与躺姿），所以
+     * 判断顺序是昏迷、桥接的躺地动作、床、坐、躺。
      */
     public static String posture(EntityMaid maid) {
         if (MaidCondition.isUnconscious(maid)) {
             return "unconscious";
+        }
+        if (MaidActionController.isGroundLying(maid)) {
+            return "lying";
         }
         if (maid.isSleeping()) {
             return "sleeping";

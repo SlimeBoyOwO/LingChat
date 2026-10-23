@@ -194,6 +194,7 @@ impl AIService {
         gs.affection_eval_cursor = 0;
         gs.clear_pending_recent_memories();
         gs.clear_pending_temporary_memories();
+        gs.clear_pending_tool_hint();
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
     }
@@ -214,6 +215,7 @@ impl AIService {
             gs.role_manager.invalidate_memory_history();
             gs.clear_pending_recent_memories();
             gs.clear_pending_temporary_memories();
+            gs.clear_pending_tool_hint();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);

@@ -1,14 +1,18 @@
-//! 生成后的收尾：临时消息清理、上帝 Agent 后选、好感度评估、近期记忆落位与回复纠偏。
+//! 生成后的收尾：临时消息清理、上帝 Agent 后选、好感度评估、近期记忆落位、
+//! 回复纠偏与回复后工具推荐。
 
 use std::sync::Arc;
 
 use anyhow::Result;
+use tauri::Manager;
 
 use crate::ai_service::god_agent::capabilities::{
     affection::{self as god_affection, NpcAffectionView},
     speaker::{self as god_speaker, SpeakerView},
+    tool_hint as god_tool_hint,
 };
 use crate::ai_service::memory_injection::{TemporaryMemory, TemporaryPlacement};
+use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
@@ -215,6 +219,83 @@ impl MessageGenerator {
             });
         }
     }
+
+    /// 回复后推荐：拿本轮落地的助手台词（正文 + 动作）静默检索一次工具。
+    pub(super) async fn maybe_recommend_tools_after_reply(&self, turn_start: usize) {
+        if self.deps.is_preview
+            || !matches!(
+                self.deps.source,
+                GeneratorSource::UserChat | GeneratorSource::Proactive
+            )
+        {
+            return;
+        }
+        let settings = self.deps.app.state::<crate::AppState>().tool_settings.get();
+        // Tool RAG 关闭时全量下发，推荐在工具集上没有意义。
+        if !settings.tool_rag || settings.tool_recommend_mode == ToolRecommendMode::Off {
+            return;
+        }
+
+        let (query, tool_called) = {
+            let gs = self.deps.game_status.lock().await;
+            let turn = gs.line_list.iter().skip(turn_start);
+            // 本轮已经调用过工具的，说明模型想做的事已经做了；再推一遍容易让它
+            // 下一轮把同一件事又做一次。
+            let tool_called = turn
+                .clone()
+                .any(|line| matches!(line.attribute(), LineAttribute::Tool));
+            (reply_query(turn), tool_called)
+        };
+        if tool_called || query.is_empty() {
+            return;
+        }
+        let Some((role_name, candidates)) = self.tool_hint_context().await else {
+            return;
+        };
+        if candidates.is_empty() {
+            return;
+        }
+        let rag = self.deps.app.state::<crate::AppState>().tool_rag.clone();
+        if !rag.is_enabled() {
+            return;
+        }
+        match god_tool_hint::recommend_by_rag(&rag, role_name.as_deref(), &query, &candidates).await
+        {
+            Ok(Some(hint)) => {
+                tracing::info!("[ToolRAG] 回复后推荐工具: {:?}", hint.names);
+                self.deps
+                    .game_status
+                    .lock()
+                    .await
+                    .set_pending_tool_hint(hint.names);
+            },
+            Ok(None) => {},
+            Err(error) => tracing::warn!("[ToolRAG] 回复后推荐失败: {error:#}"),
+        }
+    }
+}
+
+/// 本轮落地的助手台词拼成检索查询：正文在前、动作在后。
+///
+/// 只认有发送者的 assistant 行：工具结果与空内容载体行不是「AI 说过的话」。
+fn reply_query<'a>(lines: impl Iterator<Item = &'a GameLine>) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for line in lines {
+        if !matches!(line.attribute(), LineAttribute::Assistant) || line.sender_role_id().is_none()
+        {
+            continue;
+        }
+        let content = line.base.content.trim();
+        if !content.is_empty() {
+            parts.push(content);
+        }
+        if let Some(action) = line.base.action_content.as_deref().map(str::trim) {
+            if !action.is_empty() {
+                parts.push(action);
+            }
+        }
+    }
+    parts.join("\n")
 }
 
 // ============================================================

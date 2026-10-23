@@ -14,8 +14,6 @@ package com.lingchat.maidbridge.action.core;
 public final class ActionRun {
     /** 看向玩家保持多久（tick，20 = 1 秒）。 */
     public static final int LOOK_TICKS = 40;
-    /** 躺下之后盯这么久才算真睡着：日程不在睡觉时段时，女仆下一 tick 就会把自己叫起来。 */
-    static final int SLEEP_CONFIRM_TICKS = 10;
     /** 多久没更靠近就算卡住。 */
     static final int STALL_TICKS = 80;
     /** 卡住时只要已经贴近到这个距离就当到了：床边那一格常常走不进去。 */
@@ -25,11 +23,11 @@ public final class ActionRun {
 
     private enum Phase {
         WALK,
-        /** 已经贴到床边睡下了，盯几 tick 看她是不是被日程叫起来了。 */
-        SLEEP_CONFIRM,
         LOOK,
-        /** 就地躺着，一直保持到被打断。 */
-        LYING
+        /** 躺着（床上或地上），一直保持到被打断。 */
+        LYING,
+        /** 在主人前面探路，一直跟着走，直到被打断。 */
+        SCOUT
     }
 
     /**
@@ -53,7 +51,7 @@ public final class ActionRun {
      * @param cannotReach brain 里挂着「这个目标走不到」的标记
      * @param targetDistance 到目标的曼哈顿距离，与寻路判到位的口径一致
      * @param distance 到目标的直线距离，只用来报给模型看
-     * @param interrupt 躺在地上时打断她的那件事；其余动作用 {@link Interrupt#NONE}
+     * @param interrupt 躺着与探路时打断她的那件事；其余动作用 {@link Interrupt#NONE}
      */
     public record Observation(
             boolean maidPresent,
@@ -70,8 +68,8 @@ public final class ActionRun {
     public enum Command {
         WALK,
         LOOK,
-        SLEEP,
         LIE,
+        SCOUT,
         HOLD
     }
 
@@ -82,7 +80,6 @@ public final class ActionRun {
     private final MaidAction action;
     private Phase phase;
     private int elapsed;
-    private int confirmTicks;
     private int bestDistance = Integer.MAX_VALUE;
     private int stallTicks;
     private int unreachableTicks;
@@ -92,12 +89,18 @@ public final class ActionRun {
         this.phase = switch (action.kind()) {
             case LOOK_AT -> Phase.LOOK;
             case LIE_DOWN -> action.isGroundLie() ? Phase.LYING : Phase.WALK;
+            case SCOUT -> Phase.SCOUT;
             default -> Phase.WALK;
         };
     }
 
     public int elapsedTicks() {
         return elapsed;
+    }
+
+    /** 已经躺下了：游戏侧据此决定要不要按住睡姿。 */
+    public boolean lying() {
+        return phase == Phase.LYING;
     }
 
     /** 推进一 tick。 */
@@ -110,8 +113,8 @@ public final class ActionRun {
         return switch (phase) {
             case WALK -> walk(observation);
             case LOOK -> look(observation);
-            case SLEEP_CONFIRM -> confirmSleep(observation);
             case LYING -> lying(observation);
+            case SCOUT -> scout(observation);
         };
     }
 
@@ -123,19 +126,13 @@ public final class ActionRun {
             return failed("target_gone", "目标不见了");
         }
         if (observation.targetDistance() <= action.arriveDistance()) {
-            if (action.kind() == MaidAction.Kind.LIE_DOWN) {
-                // 贴到床边了：这一 tick 就让她睡下，接下来盯她睡不睡得着
-                phase = Phase.SLEEP_CONFIRM;
-                confirmTicks = SLEEP_CONFIRM_TICKS;
-                return new Outcome(Command.SLEEP, false, "", "", "");
-            }
-            return done();
+            return arrived();
         }
 
         trackProgress(observation);
         if (stallTicks >= STALL_TICKS && observation.targetDistance() <= NEAR_ENOUGH) {
             // 床边那一格常常进不去，贴近了就不再靠近就当到了，免得白等
-            return done();
+            return arrived();
         }
         if (unreachableTicks >= UNREACHABLE_TICKS) {
             return failed("unreachable", "她走不过去（路被挡住了）");
@@ -146,15 +143,17 @@ public final class ActionRun {
         return new Outcome(Command.WALK, false, "", "", "");
     }
 
-    /** 睡得着就报成功，被日程叫起来就如实说是「现在不困」。 */
-    private Outcome confirmSleep(Observation observation) {
-        if (!observation.sleeping()) {
-            return failed("not_sleep_time", "她按自己的作息睡，现在不困，躺下也会自己起来");
+    /**
+     * 到位了：躺下的动作换成躺姿并一直保持，其余动作当场收尾。
+     *
+     * <p>躺下不再盯「她睡不睡得着」：床上的睡姿由桥接按住的睡位维持，日程叫不醒她。
+     */
+    private Outcome arrived() {
+        if (action.kind() == MaidAction.Kind.LIE_DOWN) {
+            phase = Phase.LYING;
+            return new Outcome(Command.LIE, false, "", "", "");
         }
-        if (--confirmTicks <= 0) {
-            return done();
-        }
-        return new Outcome(Command.HOLD, false, "", "", "");
+        return done();
     }
 
     /** 看向玩家：只是转个头，保持一小会儿就结束，不需要完成事件。 */
@@ -166,8 +165,8 @@ public final class ActionRun {
     }
 
     /**
-     * 就地躺着：没有时长，没有到位线，一直保持到她被叫起来（新动作会顶掉这次）
-     * 或环境让她躺不住（挨打、泡进液体、身下没地、自己爬上床）。
+     * 躺着：没有时长，没有到位线，一直保持到她被叫起来（新动作会顶掉这次）
+     * 或环境让她躺不住（挨打、被抱走、泡进液体、身下没地、床没了）。
      */
     private Outcome lying(Observation observation) {
         if (observation.interrupt().present()) {
@@ -179,6 +178,24 @@ public final class ActionRun {
                     observation.interrupt().reason());
         }
         return new Outcome(Command.LIE, false, "", "", "");
+    }
+
+    /**
+     * 探路：没有时长也没有到位线，主人一边走她一边换点。
+     *
+     * <p>结束只有两种：主人让她做别的事（新动作顶掉这次），或者她撑不住（血不多了、
+     * 被抱走、动不了、主人走了或走散了）。后几种收尾时如实说是哪件事。
+     */
+    private Outcome scout(Observation observation) {
+        if (observation.interrupt().present()) {
+            return new Outcome(
+                    Command.HOLD,
+                    true,
+                    "done",
+                    observation.interrupt().code(),
+                    observation.interrupt().reason());
+        }
+        return new Outcome(Command.SCOUT, false, "", "", "");
     }
 
     private void trackProgress(Observation observation) {

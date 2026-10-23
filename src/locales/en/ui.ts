@@ -167,6 +167,10 @@ export default {
     toolRagTitle: "Search Tools on Demand",
     toolRagHint:
       "Sends only the common tools with each request; when the model needs one, it searches in a sentence first and then calls it, saving the context that every tool description would otherwise occupy. Turn off to send all authorized tools on every request.",
+    toolCacheCapacityTitle: "Tool Cache Size",
+    toolCacheCapacityHint:
+      "How many searched tools stay active per character. The search entry point and web search are always sent and do not count. Range {min}–{max}; 10 or fewer is recommended.",
+    toolCacheCapacityUnit: "tools",
     toolRecommendTitle: "Tool Suggestions",
     toolRecommendHint:
       "Models often forget to use their tools. Choose how to nudge the model before each turn. Suggestions are a temporary hint, never written to the transcript, and the suggested tools are sent with that turn's request.",
@@ -355,8 +359,8 @@ export default {
       schedule: "Schedule & To-dos (view, add, update, delete)",
       memory: "Notes & Memory (their own little notebook)",
       character: "Character Switching (list/switch present characters)",
-      scene: "Scene Switching (list/switch scenes)",
-      status: "Status Queries (current/scene status)",
+      scene: "Scene Switching (list/switch scenes, background effects)",
+      status: "Status Queries (current/scene status, weather)",
       clock: "Current Time (device local time)",
       skills: "Skills (let them read skill instructions)",
       media: "Media Recognition (read images and videos with the vision model)",

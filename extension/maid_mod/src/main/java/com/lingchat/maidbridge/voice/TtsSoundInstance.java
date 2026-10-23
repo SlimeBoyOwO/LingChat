@@ -35,4 +35,16 @@ public final class TtsSoundInstance extends EntityBoundSoundInstance {
             SoundBufferLibrary library, Sound sound, boolean looping) {
         return CompletableFuture.completedFuture(new WavAudioStream(this.wav));
     }
+
+    /**
+     * 睡着时也要能出声。
+     *
+     * <p>车万女仆的 {@code onMaidSleep} 一睡着就把女仆设成静音，而实体绑定的声音默认在
+     * 静音实体上不播放（{@code EntityBoundSoundInstance.canPlaySound}）——躺在床上说话时
+     * 语音会被一起掐掉。那个静音管的是她自己的叫声，桥接的 TTS 该照常播。
+     */
+    @Override
+    public boolean canPlaySound() {
+        return true;
+    }
 }

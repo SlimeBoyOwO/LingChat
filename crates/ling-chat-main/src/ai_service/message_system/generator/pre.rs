@@ -208,18 +208,60 @@ impl MessageGenerator {
             .tool_settings
             .get()
             .tool_recommend_mode;
-        match mode {
-            ToolRecommendMode::Off => None,
+        if mode == ToolRecommendMode::Off {
+            // 关掉推荐后，上一轮回复后暂存的那份也不再呈现。
+            self.deps.game_status.lock().await.clear_pending_tool_hint();
+            return None;
+        }
+        let hint = match mode {
             ToolRecommendMode::Agent => self.agent_tool_hint().await,
             ToolRecommendMode::Rag => self.rag_tool_hint(user_text).await,
+            ToolRecommendMode::Off => None,
+        };
+        if hint.is_some() {
+            // 本轮又算出了推荐，它比上一轮回复后的那份更新：同一时刻只留一份，
+            // 不然两条推荐提示会一起进请求。
+            self.deps.game_status.lock().await.clear_pending_tool_hint();
+            return hint;
         }
+        self.pending_tool_hint().await
+    }
+
+    /// 取上一轮回复后暂存的推荐（没有本轮新推荐时用它）。
+    pub(super) async fn pending_tool_hint(&self) -> Option<god_tool_hint::ToolHint> {
+        if self.deps.is_preview
+            || !matches!(
+                self.deps.source,
+                GeneratorSource::UserChat | GeneratorSource::Proactive
+            )
+        {
+            return None;
+        }
+        // 主动对话没有玩家发言，直接走到这里：设置关闭时同样不呈现。
+        let mode = self
+            .deps
+            .app
+            .state::<crate::AppState>()
+            .tool_settings
+            .get()
+            .tool_recommend_mode;
+        if mode == ToolRecommendMode::Off {
+            self.deps.game_status.lock().await.clear_pending_tool_hint();
+            return None;
+        }
+        let names = {
+            let mut gs = self.deps.game_status.lock().await;
+            gs.take_pending_tool_hint()?
+        };
+        let (_, candidates) = self.tool_hint_context().await?;
+        god_tool_hint::hint_for_names(&candidates, &names)
     }
 
     /// 推荐用的公共前置：当前角色的显示名与它可调用的全部工具定义。
     ///
     /// 剧本模式的工具列表是冻结快照，推荐没有意义；元工具（`tool_search`）也不在
     /// 候选里——推荐检索入口等于让模型再绕一圈。
-    async fn tool_hint_context(&self) -> Option<(Option<String>, Vec<ToolDefinition>)> {
+    pub(super) async fn tool_hint_context(&self) -> Option<(Option<String>, Vec<ToolDefinition>)> {
         let role_name = {
             let mut gs = self.deps.game_status.lock().await;
             if gs.script_status.is_some() {

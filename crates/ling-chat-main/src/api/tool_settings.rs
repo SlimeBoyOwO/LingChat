@@ -108,6 +108,8 @@ pub async fn save_tool_settings(
     settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
+    // 激活缓存容量随设置热更新；缩小时会立即裁掉旧条目。
+    state.tool_rag.set_capacity(settings.cache_capacity());
 
     // 同步权限矩阵：启用的工具组/web_search 放开给 default 角色组，关闭的收回
     state.tool_registry.update_permissions(|permissions| {

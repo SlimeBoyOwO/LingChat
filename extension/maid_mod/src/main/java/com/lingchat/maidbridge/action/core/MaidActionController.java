@@ -3,11 +3,13 @@ package com.lingchat.maidbridge.action.core;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
+import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
@@ -33,6 +35,8 @@ public final class MaidActionController {
         final MaidActuator.Target target;
         final ActionRun machine;
         double distance;
+        /** 探路的落点：主人一边走一边换，差得不多就不换（见 MaidActuator.scoutPoint）。 */
+        BlockPos scoutPoint;
 
         Run(String maidId, MaidAction action, MaidActuator.Target target) {
             this.maidId = maidId;
@@ -65,6 +69,7 @@ public final class MaidActionController {
             boolean stoodUp = MaidActuator.standUp(maid);
             MaidActuator.lieOnGround(maid);
             current = new Run(maid.getStringUUID(), action, target);
+            WanderGuard.begin(maid);
             return ActionFrames.accepted(action, true, stoodUp, replaced);
         }
 
@@ -77,8 +82,9 @@ public final class MaidActionController {
             return ActionFrames.accepted(action, false, false, replaced);
         }
         if (action.kind() == MaidAction.Kind.STAND) {
-            boolean stoodUp = MaidActuator.standUp(maid);
+            // 先收掉躺着的动作：躺着期间原版的叫醒被拦着，不收她根本起不来
             String replaced = cancel(server);
+            boolean stoodUp = MaidActuator.standUp(maid);
             return ActionFrames.accepted(action, false, stoodUp, replaced);
         }
 
@@ -90,6 +96,7 @@ public final class MaidActionController {
             MaidActuator.beginWalk(maid);
         }
         current = new Run(maid.getStringUUID(), action, target);
+        WanderGuard.begin(maid);
         // 耗时动作的结果稍后由 action_done 给出，插件据此知道自己还没到位
         return ActionFrames.accepted(action, action.hasCompletionEvent(), stoodUp, replaced);
     }
@@ -104,7 +111,8 @@ public final class MaidActionController {
      * 这只女仆是不是正躺在地上。
      *
      * <p>给它自己的姿势守护用（见 {@code EntityMaidPoseMixin}）：车万女仆的游泳管理器
-     * 每 tick 会把不在水里的女仆的姿势改回站立，躺姿得在这里挡住。
+     * 每 tick 会把不在水里的女仆的姿势改回站立，躺姿得在这里挡住。也用来把「躺在地上」
+     * 与「在床上睡着」在感知里分开说。
      */
     public static boolean isGroundLying(EntityMaid maid) {
         Run run = current;
@@ -113,14 +121,30 @@ public final class MaidActionController {
                 && run.maidId.equals(maid.getStringUUID());
     }
 
+    /**
+     * 这只女仆是不是正被桥接按着躺姿（床上或地上）。
+     *
+     * <p>躺着期间原版与车万女仆每 tick 的「睡位不是床就起来」「日程不在睡觉时段就叫醒」
+     * 都得拦掉，否则姿势下一 tick 就没了。见 {@code LivingEntityStopSleepingMixin}。
+     */
+    public static boolean isHoldingLie(EntityMaid maid) {
+        Run run = current;
+        return run != null && maid != null
+                && run.action.isLie()
+                && run.maidId.equals(maid.getStringUUID());
+    }
+
     /** 每个服务端 tick 推进一次（主线程）。 */
     public static void tick(MinecraftServer server) {
+        // 游荡冷却自己走倒数：没有动作在跑时也要收尾
+        WanderGuard.tick(server);
         Run run = current;
         if (run == null) {
             return;
         }
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
-        ActionRun.Observation observation = MaidActuator.observe(maid, run.action, run.target);
+        ActionRun.Observation observation =
+                MaidActuator.observe(maid, run.action, run.target, run.machine.lying());
         ActionRun.Outcome outcome = run.machine.tick(observation);
         run.distance = observation.distance();
 
@@ -144,8 +168,9 @@ public final class MaidActionController {
         }
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         current = null;
+        WanderGuard.clear();
         if (maid != null) {
-            if (run.action.isGroundLie()) {
+            if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
             }
             MaidActuator.stopWalking(maid);
@@ -159,6 +184,7 @@ public final class MaidActionController {
     /** 停服或换存档时清干净。 */
     public static void reset() {
         current = null;
+        WanderGuard.clear();
     }
 
     /**
@@ -189,8 +215,15 @@ public final class MaidActionController {
                     MaidActuator.lookAtPlayer(maid, player);
                 }
             }
-            case SLEEP -> MaidActuator.sleepIn(maid, run.target.bedHead());
-            case LIE -> MaidActuator.holdLying(maid);
+            case LIE -> MaidActuator.holdLying(maid, run.target.isBed() ? run.target.bedHead() : null);
+            case SCOUT -> {
+                ServerPlayer player = MaidQueries.owner(maid);
+                if (player != null) {
+                    run.scoutPoint = MaidActuator.scoutPoint(maid, player, run.scoutPoint);
+                    BlockPos point = run.scoutPoint != null ? run.scoutPoint : player.blockPosition();
+                    MaidActuator.walkToPos(maid, point, 2);
+                }
+            }
             case HOLD -> {
             }
         }
@@ -198,9 +231,11 @@ public final class MaidActionController {
 
     private static void finish(Run run, ActionRun.Outcome outcome, EntityMaid maid) {
         current = null;
+        // 动作完了她还站在那儿：再按一小会儿她的随机游荡，等这一轮的话说完
+        WanderGuard.end(run.maidId);
         if (maid != null) {
-            // 地上躺着收尾时要真的把她扶起来；床上的睡姿不归这里管
-            if (run.action.isGroundLie()) {
+            // 躺着收尾时要真的把她扶起来（床上的也要放开床位）
+            if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
             }
             MaidActuator.stopWalking(maid);

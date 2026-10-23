@@ -21,7 +21,9 @@ public record MaidAction(Kind kind, Target target) {
         SIT("sit"),
         STAND("stand"),
         LIE_DOWN("lie_down"),
-        LOOK_AT("look_at");
+        LOOK_AT("look_at"),
+        /** 到主人面朝的正前方去替他开路，一直跟着换点，直到被叫回来或自己撑不住。 */
+        SCOUT("scout");
 
         private final String id;
 
@@ -140,7 +142,7 @@ public record MaidAction(Kind kind, Target target) {
      * 走过去的超时（tick，20 = 1 秒）。按下最坏情况留够：绕路、开门、爬台阶。
      *
      * <p>不上场走路的动作（坐下、站起、就地躺下、看向玩家）给 0：它们的时长不归这里管
-     * （看向玩家由 {@link ActionRun#LOOK_TICKS} 收尾）。
+     * （看向玩家由 {@link ActionRun#LOOK_TICKS} 收尾）。探路也没有时长，它靠打断收尾。
      */
     public int timeoutTicks() {
         return switch (kind) {
@@ -157,17 +159,32 @@ public record MaidAction(Kind kind, Target target) {
      * 不来的收尾——所以这个判断写反了，插件那边就会永远差一句旁白。
      */
     public boolean hasCompletionEvent() {
-        return kind == Kind.GO_TO || kind == Kind.LIE_DOWN;
+        return kind == Kind.GO_TO || kind == Kind.LIE_DOWN || kind == Kind.SCOUT;
     }
 
     /** 走过去的动作才会碰寻路与居家范围。就地躺下只动姿势。 */
     public boolean walks() {
-        return kind == Kind.GO_TO || (kind == Kind.LIE_DOWN && !isGroundLie());
+        return kind == Kind.GO_TO || kind == Kind.SCOUT || (kind == Kind.LIE_DOWN && !isGroundLie());
+    }
+
+    /** 到主人前面探路：一个持续的状态，没有自己的时长。 */
+    public boolean isScout() {
+        return kind == Kind.SCOUT;
     }
 
     /** 就地躺下：不找床、不走路，一直躺着直到被叫起来或自己爬起来。 */
     public boolean isGroundLie() {
         return kind == Kind.LIE_DOWN && target == Target.GROUND;
+    }
+
+    /** 躺到床上：走过去之后按住的睡姿与按脚的躺姿走同一套保持逻辑。 */
+    public boolean isBedLie() {
+        return kind == Kind.LIE_DOWN && target == Target.BED;
+    }
+
+    /** 不论床上还是地上，这个动作就是在躺着。 */
+    public boolean isLie() {
+        return kind == Kind.LIE_DOWN;
     }
 
     public String actionId() {

@@ -95,13 +95,16 @@ label = "Tavily API Key（来自进程环境）"
 [[tools]]
 name = "tavily_search"     # 注册进 ToolRegistry，需全局唯一，建议带插件前缀
 description = "联网搜索，返回相关网页摘要与链接"   # 不用说了吧，介绍
+examples = ["联网搜一下今天的新闻", "帮我查查最近的 AI 进展"]  # 可选：Tool RAG 的示例问句
 timeout_ms = 30000         # 单次执行超时（毫秒），默认 30000，上限 120000
 script = "tavily.py"
 # JSON Schema，必须是合法的 JSON 字符串，描述 LLM 需要的参数
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）以及接管台词语音的播放输出（`[voice_playback]`），见后文对应章节。
+`examples` 是「可能的提问方式」：Tool RAG 优先用它做检索语料，模型/玩家的自然语言更容易命中这个工具。建议写 3~5 条玩家口吻的中文短句，最多 8 条、单条不超过 120 字符；不配置时回退到 `description`。示例只在本机做向量索引，不会随请求下发给模型，也不会出现在 `tool_search` 的清单里。
+
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）以及接管实时台词语音（`[voice_play_back]`），见后文对应章节。
 
 **工具的下发与权限**：插件启用时，宿主会把它声明的工具一并授权给默认角色组（与工具设置页里打开开关同义），工具才会随主聊天下发给 LLM、也才能进 Tool RAG 的候选池；同时也会写进「主动对话」映射到的场景组，让游戏事件触发的那一轮也搜得到、调得动（场景组是一份早先写死的工具快照，不补进去的话插件工具只在玩家开口的那一轮可用）。禁用插件时两处授权一起收回。
 

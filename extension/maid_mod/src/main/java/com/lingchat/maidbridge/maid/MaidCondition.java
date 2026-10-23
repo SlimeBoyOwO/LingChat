@@ -114,6 +114,15 @@ public final class MaidCondition {
         return state.isBed(level, pos, maid);
     }
 
+    /** 她的睡位指着的是一张床：起身要走原版流程，还是我们自己把睡位按在脚下。 */
+    public static boolean isSleepingOnBed(EntityMaid maid) {
+        if (maid == null) {
+            return false;
+        }
+        BlockPos pos = maid.getSleepingPos().orElse(null);
+        return pos != null && maid.level().getBlockState(pos).isBed(maid.level(), pos, maid);
+    }
+
     /**
      * 这一 tick 不要按旧睡位吸附。
      *

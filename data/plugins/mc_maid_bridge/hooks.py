@@ -57,44 +57,10 @@ def _entry_hint():
     """
     maid, player = names()
     return (
-        f"［Minecraft 桥接］{maid}已和{player}一起进入 Minecraft 世界，"
+        f"［Minecraft 桥接］{maid}和{player}一起进入了 Minecraft 世界，"
         f"{maid}变成了游戏里的小女仆。\n"
-        f"- {maid}在 LingChat 回的话会同步显示成游戏内女仆的聊天气泡，照常说话即可。\n"
-        f"- {player}在游戏里打出的话会当成{player}自己的发言送过来，和在输入框里发的一句一样。\n"
-        "- 游戏里的变化会写成旁白，直接以第三人称叙事句出现（换地形、天黑、下雨、光线变暗或变亮、"
-        "附近出现岩浆或火、受伤、她坐下站起或躺下、"
-        f"有生物死亡、{maid}自己死了、{maid}捡到东西、{player}喂{maid}东西、"
-        f"{player}把{maid}抱起来或放下、"
-        f"上下船或矿车、进出村庄这类结构、{player}走远又回来、{player}拿到成就这类），"
-        "它不是谁说的话，当背景信息看；"
-        "几件事接连发生时可能记在同一行里，用换行隔开。\n"
-        f"- {maid}伤重时会昏过去，不会直接死亡；昏迷时游戏里的气泡和语音都会停，"
-        f"所有指令也叫不动她。{player}把{maid}抱到床上（普通床或女仆床）连续躺一分钟，"
-        f"{maid}才会醒，醒来只有一点血。\n"
-        f"- {player}往{maid}身上放东西（背包、手里、盔甲栏、饰品栏）、拿食物潜行右键喂{maid}，"
-        "都会记成一条旁白；"
-        f"地上掉着的东西本身不算事，只有{maid}真的捡起来才会记，旁白里会说清是谁丢的、"
-        "哪只生物掉的还是挖哪种方块崩出来的。\n"
-        f"- {player}让{maid}做动作（过来、坐下、站起来、去床上躺下、就地躺下）时用 maid_ 开头的工具"
-        f"指挥女仆：{maid}不会瞬移，工具回执只说明指令已收到，不代表已经到位。"
-        f"就地躺着时她自己不会乱走，挨打、泡进液体或身下没地时会自己起来。\n"
-        f"- {player}叫{maid}干活（种地、钓鱼、打怪）或者叫{maid}别干了，用 maid_set_task "
-        f"换工作模式；{maid}按自己的作息干活，切换成功不等于此刻已经开工，工具结果里会写明。\n"
-        f"- {player}叫{maid}打谁（「打那只僵尸」「打我一下」「打他」）用 maid_attack 点名：活物的名字、"
-        f"另一个玩家的名字（照「看一眼周围」里看到的那个名字），hostile / animal / other_player，"
-        f"或者 owner（主人自己，也就是{player}）。追着打是默认，会把目标"
-        f"往死里打；只是逗{maid}抬手（「打我一下」「轻轻碰我一下」）要加 style=light，"
-        "只打一下就收手。追打的回执只代表开始打了；她会自己打到目标倒下，"
-        "过程中不要重复调用同一个目标，重复调用只会得到「已经在打」的回执。\n"
-        f"- {player}叫{maid}挖方块（「把这块挖了」「挖十块石头」）用 maid_mine：target 填"
-        f"方块名，不给就是{player}正看着的那块；count 填要挖几块；想挖她看见过的确切某一格，"
-        f"把「看一眼周围」关系句里的 at 填进去。{maid}会自己走过去、"
-        "从背包里换合适的工具；目标埋在其他方块后面时，她会先把挡路的方块挖穿。"
-        "挖掘回执只代表开始挖了，方块还没被挖掉。没有趁手的工具时，"
-        "回执会说明缺哪种镐子、地上那件能不能用；镐子丢在地上不算给过她，得放进背包。\n"
-        f"- {player}想让{maid}头上顶着什么（顶一块方块、戴个南瓜）用 maid_headwear：item 填"
-        f"她背包里的东西，留空或写 take_off 就把头上的摘下来。她背包最后一格是头饰栏，"
-        "那一格里的东西顶在头上显示，不算背包存货。"
+
+        f"{maid}现在可以调用maid_开头的工具实现对游戏的操作啦！"
     )
 
 # 幂等检查先扫这么多条尾巴；不够长才整段再扫一次（见 `_entry_hint_written`）。
@@ -156,8 +122,13 @@ def on_line_shown(ctx):
     if payload.get("previewGen") is not None or not payload.get("roleId"):
         return
     # 每轮最后一句之后重念一次死亡/昏迷状态：这两种状态是持久的，模型几轮之后就会忘
+    maid = ""
     if payload.get("isFinal"):
         _remind_state()
+        # 这一轮说完了：动作收尾后按住的随机游荡可以放开（模组那边还有十秒兜底）
+        maid, _ = bridge.ready(ctx)
+        if maid:
+            _settle(maid)
     cfg = config(ctx)
     message = (payload.get("message") or "").strip()
     audio_file = (payload.get("audioFile") or "").strip()
@@ -165,7 +136,8 @@ def on_line_shown(ctx):
     want_voice = bool(audio_file) and truthy(cfg.get("play_voice_in_game"), False)
     if not want_bubble and not want_voice:
         return
-    maid, _ = bridge.ready(ctx)
+    if not maid:
+        maid, _ = bridge.ready(ctx)
     if not maid:
         return
     # 顺手重申一次监控目标：刚连上那一次可能没发出去（见 _bind_maid），而插件没有定时器、
@@ -186,6 +158,14 @@ def on_line_shown(ctx):
         })
     if want_voice:
         _send_tts(maid, audio_file)
+
+
+def _settle(maid):
+    """告诉模组这一轮说完了：动作之后按住的随机游荡可以放开。
+
+    模组不发这一帧也会在十秒后自己放开、主人走远时也会立刻放开，所以发不出去不算事。
+    """
+    bridge.send({"type": "maid_settle", "data": {"maid_id": maid}})
 
 
 def _send_tts(maid, audio_file):

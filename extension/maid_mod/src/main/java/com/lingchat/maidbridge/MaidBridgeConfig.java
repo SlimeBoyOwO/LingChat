@@ -1,5 +1,6 @@
 package com.lingchat.maidbridge;
 
+import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /** 模组配置。默认值与社区桥接模组保持一致，插件端不用改。 */
@@ -15,6 +16,7 @@ public final class MaidBridgeConfig {
     public static final ModConfigSpec.BooleanValue NOTICE_ENABLED;
     public static final ModConfigSpec.IntValue NOTICE_RADIUS;
     public static final ModConfigSpec.IntValue HEARD_RADIUS;
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> FAVORITE_FOODS;
 
     static {
         ModConfigSpec.Builder builder = new ModConfigSpec.Builder();
@@ -52,6 +54,11 @@ public final class MaidBridgeConfig {
         HEARD_RADIUS = builder
                 .comment("看不见的活物只在这个距离内按声音感知（格）。看得见的另按工作范围算。")
                 .defineInRange("heardRadius", 6, 0, 16);
+        FAVORITE_FOODS = builder
+                .comment("她最喜欢吃的东西，填物品 id，命名空间可以省略（cake 就是 minecraft:cake）。"
+                        + "主人拿在手上时她会像见到蛋糕一样凑过来讨。"
+                        + "毒马铃薯、河豚这类带负面效果的食物填了也不算。")
+                .defineListAllowEmpty("favoriteFoods", List.<String>of(), () -> "", o -> o instanceof String);
 
         builder.pop();
         SPEC = builder.build();
