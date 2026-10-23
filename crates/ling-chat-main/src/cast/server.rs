@@ -282,21 +282,26 @@ async fn handle_ws(app: AppHandle, mut socket: WebSocket) {
                         tracing::debug!("[Cast][ws] 读错误: {e}");
                         break;
                     }
+                    // 对端断开：流已结束，继续轮询只会立即返回 None 造成空转
+                    None => break,
                     _ => {}
                 }
             }
+            // 发送支路关闭后禁用该分支，否则 async 块每轮立即完成，select! 会空转占满 CPU
             broadcast = async {
                 match broadcast_rx.as_mut() {
-                    Some(rx) => Some(rx.recv().await),
-                    None => None,
+                    Some(rx) => rx.recv().await,
+                    None => std::future::pending().await,
                 }
-            } => {
+            }, if broadcast_rx.is_some() => {
                 match broadcast {
-                    Some(Ok(text)) => {
+                    Ok(text) => {
                         let _ = socket.send(Message::Text(text)).await;
                     }
-                    // 服务停止（通道关闭）或未运行：停掉发送支路，连接仅保留 mic 上行
-                    _ => broadcast_rx = None,
+                    // 消费过慢丢了几条广播：跳过即可，不必停掉发送支路
+                    Err(broadcast::error::RecvError::Lagged(_)) => {}
+                    // 服务停止（通道关闭）：停掉发送支路，连接仅保留 mic 上行
+                    Err(broadcast::error::RecvError::Closed) => broadcast_rx = None,
                 }
             }
         }
@@ -468,6 +473,10 @@ fn normalize_voice_wav(bytes: &[u8]) -> Option<Vec<u8>> {
     let (data_off, data_len) = data?;
     // 非 16-bit PCM 透传（不引入解码依赖）
     if audio_format != 1 || bits != 16 || data_len % 2 != 0 {
+        return None;
+    }
+    // 声道数或采样率为 0 的异常头无法换算，透传避免下方除零 panic
+    if channels == 0 || rate == 0 {
         return None;
     }
     if rate == 16_000 && channels == 1 {
