@@ -99,7 +99,7 @@ pub fn delete_voice(paths: &LocalTtsPaths, voice_id: &str) -> std::result::Resul
     std::fs::remove_dir_all(&p).map_err(|e| format!("remove_dir_all: {e}"))
 }
 
-fn validate_voice_id(id: &str) -> std::result::Result<(), String> {
+pub(crate) fn validate_voice_id(id: &str) -> std::result::Result<(), String> {
     if id.is_empty() || id.len() > 64 {
         return Err("voice id length out of range".into());
     }
