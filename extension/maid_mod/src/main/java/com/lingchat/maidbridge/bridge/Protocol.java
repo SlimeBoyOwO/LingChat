@@ -30,6 +30,8 @@ public final class Protocol {
     public static final String PLAY_TTS = "play_tts";
     /** 这一轮已经说完话了：动作后的游荡冷却可以收了。 */
     public static final String MAID_SETTLE = "maid_settle";
+    /** 她最喜欢吃的东西（角色设定在 LingChat 那边），主人拿在手上时她会凑过来讨。 */
+    public static final String SET_FAVORITE_FOOD = "set_favorite_food";
 
     /** 下行：模组 → 插件 */
     public static final String PONG = "pong";

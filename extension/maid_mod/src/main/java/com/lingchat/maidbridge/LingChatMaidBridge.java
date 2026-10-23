@@ -6,6 +6,7 @@ import com.lingchat.maidbridge.action.core.MaidSettleHandler;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.attack.MaidAttackHandler;
 import com.lingchat.maidbridge.bridge.BridgeServer;
+import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.integration.carry.CarryOnPresent;
@@ -16,6 +17,7 @@ import com.lingchat.maidbridge.perception.item.ItemReporter;
 import com.lingchat.maidbridge.action.feed.MaidFeeder;
 import com.lingchat.maidbridge.action.give.MaidGiveItemHandler;
 import com.lingchat.maidbridge.action.headwear.MaidHeadwearHandler;
+import com.lingchat.maidbridge.maid.FavoriteFood;
 import com.lingchat.maidbridge.maid.MaidStatusHandler;
 import com.lingchat.maidbridge.maid.MaidStateHandler;
 import com.lingchat.maidbridge.action.task.MaidTaskHandler;
@@ -101,6 +103,10 @@ public class LingChatMaidBridge {
         // 物品的来去：她捡起来的（连同来源）、喂给她吃的、她自己吃的
         NeoForge.EVENT_BUS.addListener(ItemReporter::onDeath);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onBlockBreak);
+        // 掉落一出生就盖来源戳：玩家丢的、方块崩的、生物掉的各归各位，不看主人站得多近
+        NeoForge.EVENT_BUS.addListener(ItemReporter::onToss);
+        NeoForge.EVENT_BUS.addListener(ItemReporter::onBlockDrops);
+        NeoForge.EVENT_BUS.addListener(ItemReporter::onLivingDrops);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onPickupPre);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onPickupPost);
         NeoForge.EVENT_BUS.addListener(ItemReporter::onItemUseFinish);
@@ -142,6 +148,11 @@ public class LingChatMaidBridge {
         newRouter.register(Protocol.MAID_HEADWEAR, new MaidHeadwearHandler(server));
         newRouter.register(Protocol.PLAY_TTS, new PlayTtsHandler(server));
         newRouter.register(Protocol.MAID_SETTLE, new MaidSettleHandler());
+        // 她最喜欢吃的东西由插件发过来：这是角色设定，不是模组的全局配置
+        newRouter.register(Protocol.SET_FAVORITE_FOOD, request -> {
+            FavoriteFood.set(Envelope.strings(Envelope.data(request), "items"));
+            return null;
+        });
         router = newRouter;
 
         try {
@@ -176,6 +187,7 @@ public class LingChatMaidBridge {
         // 物品的去抖与背包基线同理
         ItemReporter.clear();
         FavoriteFoodReporter.clear();
+        FavoriteFood.clear();
         MaidFeeder.clear();
         BackpackWatcher.clear();
         // 动作记着上一个世界的女仆与目标

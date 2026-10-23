@@ -91,6 +91,7 @@ def on_ws(ctx):
     event = payload.get("event")
     if event == "connect":
         _bind_maid(ctx)
+        _send_favorite_food(ctx)
         _sync_game_voice()
         # 玩家这会儿在游戏里，腾不出手点对话框推进；不切自动模式的话，角色说完
         # 一句就停住，游戏里也就一直不冒下一句，看起来跟桥断了没两样。
@@ -219,6 +220,19 @@ def _bind_maid(ctx):
         print(f"[mc_maid_bridge] 绑定帧没能发出去：{result.get('error')}")
 
 
+def _send_favorite_food(ctx):
+    """把她最喜欢吃的东西交给模组。
+
+    这是角色的设定，所以填在软件这边的插件配置里；模组只存着照用，不设自己的配置项。
+    插件没有定时器，就在连接时与玩家每次开口前各发一次：改完设置不用重连，下次在
+    游戏里说话时生效。模组那边幂等，重复发没有副作用。
+    """
+    raw = config(ctx).get("favorite_food") or ""
+    raw = raw if isinstance(raw, str) else ""
+    items = [one.strip() for one in raw.replace("，", ",").split(",") if one.strip()]
+    bridge.send({"type": "set_favorite_food", "data": {"items": items}})
+
+
 def _handle_frame(ctx, data):
     """模组推来的一帧。目前两类：玩家说的话、游戏世界的事件。"""
     if not isinstance(data, dict):
@@ -250,6 +264,8 @@ def _handle_chat(ctx, chat):
     # 连接时可能还没进入对话，短档设置被拒；真正要生成回复前再重申一次。幂等，
     # 档位没变时不往台词表写任何行。
     _use_short_replies(quiet=True)
+    # 顺手重申一次她最喜欢吃的东西：改完设置不用重连（见 _send_favorite_food）
+    _send_favorite_food(ctx)
     # 与玩家在输入框里发一句走同一条路：写进台词历史、按当前配置生成回复，
     # 所以聊天窗里看得到，角色的回话也会顺着 on_line_shown 变成游戏内气泡。
     # 玩家这句话原样送，不在后面追加任何她的状态：感知一律走旁白入口（见模块说明）。

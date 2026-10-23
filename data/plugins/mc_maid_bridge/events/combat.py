@@ -243,7 +243,7 @@ SPECS = {
     "maid_hurt": EventSpec(
         maid_hurt,
         urgent=True,
-        ttl=60,
+        ttl=20,
         snapshot=True,
         merge_key="hurt",
         severity=_hurt_severity,

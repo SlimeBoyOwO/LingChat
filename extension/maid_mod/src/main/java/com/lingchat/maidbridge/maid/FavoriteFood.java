@@ -1,8 +1,8 @@
 package com.lingchat.maidbridge.maid;
 
-import com.lingchat.maidbridge.MaidBridgeConfig;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import net.minecraft.core.component.DataComponents;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -12,20 +12,32 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 
 /**
- * 她最喜欢吃的东西：配置里那几件物品。
+ * 她最喜欢吃的东西，由 LingChat 那一侧发过来。
  *
- * <p>配置只写物品 id，命名的前缀可以省（{@code cake} 就是 {@code minecraft:cake}）。
- * 主人把它拿在主手上时，车万女仆自己的讨食任务就会像见到蛋糕一样跑起来，见
- * {@code EntityMaidTemptationMixin}。
+ * <p>这是角色的设定，跟着插件里的配置走，所以模组这边不设配置项：连上时与玩家每次
+ * 开口前各收一份（见 {@code set_favorite_food}），只存着照用。
  *
- * <p>带负面效果的食物不算：毒马铃薯、河豚这类填进来也当没填——讨来是要吃的，
- * 不能让一口吃的把自己毒着。菜名解析失败、注册表里没有的 id 同样跳过。
+ * <p>填法：写完整的物品 id 就按那个命名空间认；只写后半段（{@code cooked_rice}）时
+ * 原版优先，其余模组里同名的也算上。带负面效果的食物（毒马铃薯、河豚这类）一律不算——
+ * 讨来是要吃的，不能让一口吃的把自己毒着。认不出是不是食物的（有些模组食物不带原版
+ * 的食物组件）照常算数，不替玩家拒绝。
  */
 public final class FavoriteFood {
+    private static List<? extends String> received = List.of();
     private static List<? extends String> cachedRaw;
     private static Set<Item> cachedItems = Set.of();
 
     private FavoriteFood() {
+    }
+
+    /** 收到一份新的清单。 */
+    public static void set(List<? extends String> items) {
+        received = List.copyOf(items);
+    }
+
+    /** 停服、换存档时清掉：下一次连上会重新发一遍。 */
+    public static void clear() {
+        received = List.of();
     }
 
     /** 这一件是不是她最爱吃的。 */
@@ -39,38 +51,47 @@ public final class FavoriteFood {
     }
 
     private static Set<Item> items() {
-        List<? extends String> raw = MaidBridgeConfig.FAVORITE_FOODS.get();
-        if (raw.equals(cachedRaw)) {
+        if (received.equals(cachedRaw)) {
             return cachedItems;
         }
         Set<Item> items = new LinkedHashSet<>();
-        for (String one : raw) {
-            Item item = resolve(one);
-            if (item != null) {
-                items.add(item);
-            }
+        for (String one : received) {
+            resolve(one, items);
         }
-        cachedRaw = raw;
+        cachedRaw = received;
         cachedItems = items;
         return items;
     }
 
-    /** 配置里的一行 → 物品；不是食物、或带负面效果的给 null。 */
-    private static Item resolve(String raw) {
-        String id = raw == null ? "" : raw.trim();
+    /** 把配置里的一行加进清单：写了前缀按前缀认，没写就原版优先、再按路径找同名。 */
+    private static void resolve(String raw, Set<Item> out) {
+        String id = raw == null ? "" : raw.trim().toLowerCase(Locale.ROOT);
         if (id.isEmpty()) {
-            return null;
+            return;
         }
-        ResourceLocation key = ResourceLocation.tryParse(id.contains(":") ? id : "minecraft:" + id);
-        Item item = key == null ? null : BuiltInRegistries.ITEM.getOptional(key).orElse(null);
-        return item != null && edible(item) ? item : null;
+        if (id.contains(":")) {
+            add(out, BuiltInRegistries.ITEM.getOptional(ResourceLocation.tryParse(id)).orElse(null));
+            return;
+        }
+        add(out, BuiltInRegistries.ITEM.getOptional(ResourceLocation.tryParse("minecraft:" + id)).orElse(null));
+        for (Item item : BuiltInRegistries.ITEM) {
+            if (BuiltInRegistries.ITEM.getKey(item).getPath().equals(id)) {
+                add(out, item);
+            }
+        }
     }
 
-    /** 能吃，而且吃完不会中毒、反胃或挨饿。 */
-    private static boolean edible(Item item) {
+    private static void add(Set<Item> out, Item item) {
+        if (item != null && safe(item)) {
+            out.add(item);
+        }
+    }
+
+    /** 吃完不会中毒、反胃或挨饿。认不出食物组件的当作可以讨。 */
+    private static boolean safe(Item item) {
         FoodProperties food = item.getDefaultInstance().get(DataComponents.FOOD);
         if (food == null) {
-            return false;
+            return true;
         }
         for (FoodProperties.PossibleEffect effect : food.effects()) {
             if (!effect.effect().getEffect().value().isBeneficial()) {

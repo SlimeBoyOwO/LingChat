@@ -44,6 +44,13 @@ required = false
 hint = "比如 NoiQing_Ling。填上之后：你在 MC 里说的话不会再带上这个账号名（模型只该认得设置里那个用户名）；女仆的主人另有其人时，聊天里才会点名。\n留空也能用：事件旁白只用 LingChat 里的角色名与用户名，不再出现 MC 账号名。"
 
 [[config]]
+key = "favorite_food"
+label = "她最喜欢吃的东西"
+kind = "string"
+required = false
+hint = "填物品 id，多个用逗号隔开；命名空间可以省略（cake 就是 minecraft:cake），写了模组前缀（如 farmersdelight:cooked_rice）就按那个认。\n主人把它拿在主手上时她会像见到蛋糕一样凑过来讨。毒马铃薯、河豚这类带负面效果的食物不算。\n改完在下一次游戏里说话（或重连）时生效。"
+
+[[config]]
 key = "echo_to_game"
 label = "把角色的话同步成游戏内气泡"
 kind = "boolean"

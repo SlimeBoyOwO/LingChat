@@ -2,7 +2,7 @@
 
 from events.spec import EventSpec
 from naming import names
-from wording import BLOCK_NAMES, MOB_NAMES, as_int, item_name, name_of
+from wording import BLOCK_NAMES, ITEM_NAMES, MOB_NAMES, as_int, item_name, name_of
 
 
 def item_pickup(data):
@@ -76,28 +76,42 @@ def _by_slot(items):
 
 
 def item_fed(data):
-    """玩家喂她吃了东西（潜行右键食物）。连喂几口由模组合成一条。"""
+    """玩家喂她吃了东西（潜行右键食物）。连喂几口由模组合成一条。
+
+    带汤带碗的食物吃完会剩下容器，模组把那一份也放在 `leftover` 里；碗是车万女仆
+    自己收进她背包的，旁白里顺带说一句，免得模型对背包里的碗来路不明。
+    """
     maid, player = names()
-    return f"{player}喂{maid}吃了{_item_list(data.get('items'))}。"
+    return f"{player}喂{maid}吃了{_item_list(data.get('items'))}{_leftover(data)}。"
 
 
 def maid_ate(data):
     """她自己从背包里找东西吃了（车万女仆的进食系统）。"""
     maid, _ = names()
-    return f"{maid}自己吃了{_item_list(data.get('items'))}。"
+    return f"{maid}自己吃了{_item_list(data.get('items'))}{_leftover(data)}。"
 
 
 def favorite_food(data):
     """主人手里拿着她最爱吃的东西，她凑过去讨。
 
     模组只在她真的讨起来（车万女仆的讨食姿态已经翻过去）时推，所以不用再判距离：
-    这条说的就是她看得见、也走得到跟前的那一刻。
+    这条说的就是她看得见、也走得到跟前的那一刻。模组食物多半没有中文名，认不出时
+    只说「最爱吃的东西」——绝不能把 id 或英文名塞进旁白，模型会照着原样念出来。
     """
     maid, player = names()
-    return (
-        f"{player}手里拿着{maid}最爱吃的{item_name(data.get('item'))}，"
-        f"{maid}凑到跟前眼巴巴地看着。"
-    )
+    raw = (data.get("item") or "").strip()
+    name = ITEM_NAMES.get(raw) or BLOCK_NAMES.get(raw) or ""
+    if name:
+        return f"{player}手里拿着{maid}最爱吃的{name}，{maid}凑到跟前眼巴巴地看着。"
+    return f"{player}手里拿着{maid}最爱吃的东西{raw}（物品id，不要照着念），{maid}凑到跟前眼巴巴地看着。"
+
+
+def _leftover(data):
+    """吃完剩下的容器：有就补一句，没有就空串。"""
+    leftover = data.get("leftover") or []
+    if not leftover:
+        return ""
+    return f"，吃完剩下{_item_list(leftover)}"
 
 
 def _item_list(items):

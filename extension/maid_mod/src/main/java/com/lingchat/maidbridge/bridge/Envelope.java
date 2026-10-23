@@ -2,6 +2,8 @@ package com.lingchat.maidbridge.bridge;
 
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 消息信封的读写。所有帧都是 {@code {"type":..,"request_id":..,"data":{..}}}，
@@ -26,6 +28,24 @@ public final class Envelope {
             return "";
         }
         return element.getAsString().trim();
+    }
+
+    /** 取一个字符串数组；缺字段、类型不对、非字符串的元素一律跳过。 */
+    public static List<String> strings(JsonObject obj, String key) {
+        List<String> result = new ArrayList<>();
+        if (obj == null) {
+            return result;
+        }
+        JsonElement element = obj.get(key);
+        if (element == null || !element.isJsonArray()) {
+            return result;
+        }
+        for (JsonElement one : element.getAsJsonArray()) {
+            if (one.isJsonPrimitive()) {
+                result.add(one.getAsString());
+            }
+        }
+        return result;
     }
 
     public static String type(JsonObject frame) {
