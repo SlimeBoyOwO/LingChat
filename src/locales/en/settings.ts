@@ -1474,6 +1474,9 @@ export default {
     modelType: "Model Type",
     language: "Language",
     voice: "Voice",
+    voiceAll: "All voices",
+    voiceCount: "{n} available",
+    voiceLoading: "Loading…",
     useGpu: "GPU inference",
     useGpuLinuxHint:
       "sherpa-onnx is CPU-only on Linux: the GPU path needs the official CUDA package (+235 MB installer), which was dropped for size.",

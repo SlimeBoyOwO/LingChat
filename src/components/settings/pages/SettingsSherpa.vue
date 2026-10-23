@@ -96,12 +96,43 @@
               </select>
             </div>
             <div class="config-item">
-              <label class="config-label">{{ t("settings.sherpa.voice") }}</label>
+              <label class="config-label">
+                {{ t("settings.sherpa.voice") }}
+                <span v-if="speakersLoading" class="voice-count">
+                  {{ t("settings.sherpa.voiceLoading") }}
+                </span>
+                <span v-else-if="speakers" class="voice-count">
+                  {{ t("settings.sherpa.voiceCount", { n: speakers.num_speakers }) }}
+                </span>
+              </label>
               <select v-model="config.voice" class="config-select">
-                <option value="female">女声</option>
-                <option value="male">男声</option>
-                <option value="child">童声</option>
-                <option value="elderly">老人</option>
+                <option value="female">
+                  {{ t("settings.characterInfo.fields.sherpaOnnxVoicesFemale") }}
+                </option>
+                <option value="male">
+                  {{ t("settings.characterInfo.fields.sherpaOnnxVoicesMale") }}
+                </option>
+                <option value="child">
+                  {{ t("settings.characterInfo.fields.sherpaOnnxVoicesChild") }}
+                </option>
+                <option value="elderly">
+                  {{ t("settings.characterInfo.fields.sherpaOnnxVoicesElderly") }}
+                </option>
+                <option v-if="voiceNotInList" :value="config.voice">
+                  {{ config.voice }}
+                </option>
+                <optgroup
+                  v-if="speakers && speakers.speakers.length > 0"
+                  :label="t('settings.sherpa.voiceAll')"
+                >
+                  <option
+                    v-for="speaker in speakers.speakers"
+                    :key="speaker.sid"
+                    :value="String(speaker.sid)"
+                  >
+                    {{ speakerLabel(speaker) }}
+                  </option>
+                </optgroup>
               </select>
             </div>
             <div class="config-item">
@@ -304,11 +335,13 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { MenuItem, MenuPage } from "../../ui";
 import {
   listSherpaModels,
+  listSherpaSpeakers,
   downloadSherpaModel,
   deleteSherpaModel,
   importSherpaRefAudio,
   onSherpaDownloadProgress,
   type SherpaOnnxModelRecord,
+  type SherpaSpeakersInfo,
 } from "@/api/services/tts/tts-local";
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { decodePathFileName } from "@/utils/path";
@@ -325,6 +358,11 @@ const downloading = ref<string | null>(null);
 const deleting = ref<string | null>(null);
 const progressByModel = ref<Record<string, number>>({});
 const testing = ref(false);
+/** 当前模型自带的音色列表（读 ONNX metadata，不加载模型）。 */
+const speakers = ref<SherpaSpeakersInfo | null>(null);
+const speakersLoading = ref(false);
+/** 并发切模型时只认最后一次请求的结果。 */
+let speakersRequest = 0;
 const importingRefAudio = ref(false);
 const refAudioPlaying = ref(false);
 const playlist = ref<HTMLAudioElement | null>(null);
@@ -396,6 +434,41 @@ function selectModel(model: SherpaOnnxModelRecord) {
   config.value.model_type = model.model_type;
   config.value.lang = model.language;
   config.value.voice = model.voice;
+  void loadSpeakers(model.id);
+}
+
+/**
+ * 拉取模型的全部音色。读 metadata 是毫秒级的，但仍异步做：模型文件在慢盘/安卓上
+ * 也要几百毫秒，不能卡住切模型。失败（如 zipvoice 没有单一主模型）就退回四个语义档。
+ */
+async function loadSpeakers(modelId: string) {
+  const request = ++speakersRequest;
+  speakersLoading.value = true;
+  // 旧模型的 sid 列表对新模型没有意义（数量/顺序都可能不同），先清掉。
+  speakers.value = null;
+  try {
+    const info = await listSherpaSpeakers(modelId);
+    if (request === speakersRequest) speakers.value = info;
+  } catch (error) {
+    console.warn("读取模型音色失败:", error);
+    if (request === speakersRequest) speakers.value = null;
+  } finally {
+    if (request === speakersRequest) speakersLoading.value = false;
+  }
+}
+
+/** 四个语义档（kokoro 按语言自动挑音色，其它模型只当元数据）。 */
+const VOICE_PRESETS = ["female", "male", "child", "elderly"] as const;
+
+/** 当前值不在任何选项里（手填的数字 / 旧配置）时补一项，避免下拉框显示空白。 */
+const voiceNotInList = computed(() => {
+  const value = config.value.voice;
+  if (!value || (VOICE_PRESETS as readonly string[]).includes(value)) return false;
+  return !speakers.value?.speakers.some((speaker) => String(speaker.sid) === value);
+});
+
+function speakerLabel(speaker: { sid: number; name: string }): string {
+  return speaker.name ? `${speaker.sid} · ${speaker.name}` : String(speaker.sid);
 }
 
 async function downloadModel(modelId: string) {
@@ -697,6 +770,13 @@ const formatSize = (bytes: number): string => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.voice-count {
+  margin-left: 6px;
+  color: rgba(255, 255, 255, 0.45);
+  font-size: 11px;
+  font-weight: 400;
 }
 
 .config-label {

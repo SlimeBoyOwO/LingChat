@@ -283,6 +283,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         ai_service::tts::local::tts_local_set_device,
         // Sherpa-ONNX 本地 TTS 模型管理相关命令
         api::tts_sherpa::sherpa_list_models,
+        api::tts_sherpa::sherpa_list_speakers,
         api::tts_sherpa::sherpa_download_model,
         api::tts_sherpa::sherpa_delete_model,
         api::tts_sherpa::test_sherpa_onnx_voice,
