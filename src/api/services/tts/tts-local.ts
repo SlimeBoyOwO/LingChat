@@ -240,6 +240,28 @@ export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
   return invoke<SherpaOnnxModelRecord[]>("sherpa_list_models");
 }
 
+/** 模型自带的一个说话人（sid 就是合成时传给模型的下标）。 */
+export interface SherpaSpeaker {
+  sid: number;
+  /** 模型 metadata 里的名字（kokoro 是 `zf_001` 这类），没有名字时为空串。 */
+  name: string;
+}
+
+export interface SherpaSpeakersInfo {
+  num_speakers: number;
+  speakers: SherpaSpeaker[];
+}
+
+/**
+ * 列出模型自带的全部音色。
+ *
+ * 后端直接读 ONNX metadata，不加载模型，所以切模型时可以随手调用；多文件模型
+ * （zipvoice / pocket）没有单一主模型，会抛错，调用方保持原来的四个语义档即可。
+ */
+export function listSherpaSpeakers(modelId: string): Promise<SherpaSpeakersInfo> {
+  return invoke<SherpaSpeakersInfo>("sherpa_list_speakers", { modelName: modelId });
+}
+
 export function downloadSherpaModel(modelId: string): Promise<void> {
   return invoke<void>("sherpa_download_model", { modelId });
 }

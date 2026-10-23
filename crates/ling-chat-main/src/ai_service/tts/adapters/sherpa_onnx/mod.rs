@@ -2,6 +2,7 @@
 //!
 //! - [`SherpaOnnxAdapter`]：模型生命周期（创建 / 参数 / 合成入口）；
 //! - `engine`：按模型类型定位文件、构造推理引擎；
+//! - `meta`：读 ONNX metadata（说话人数量/名字），不加载模型；
 //! - `text`：可读字符过滤、空格处理、按标点切句、情绪 → 韵律；
 //! - `audio`：WAV 编解码、参考音频、静音裁剪、接缝淡入淡出。
 
@@ -10,6 +11,7 @@ use std::path::Path;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
+use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
 use sherpa_onnx::{GenerationConfig, OfflineTts};
 
@@ -18,6 +20,7 @@ use crate::config::tts::TtsConfig;
 
 mod audio;
 mod engine;
+mod meta;
 mod text;
 
 pub use audio::load_reference_audio;
@@ -25,7 +28,7 @@ use audio::{
     LEAD_SILENCE_KEEP, TRAIL_SILENCE_KEEP, apply_edge_fades, cap_inner_silence, f32_to_wav,
     strip_edge_silence,
 };
-use engine::{kokoro_sid, model_reads_latin, needs_digit_normalization};
+use engine::{model_reads_latin, needs_digit_normalization, pick_sid};
 use text::{
     CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
     readable_scripts, reads_han_as_chinese, resolve_emotion, split_clauses, strip_unreadable,
@@ -128,9 +131,36 @@ impl SherpaTuning {
     }
 }
 
+/// 模型自带的一个说话人（`sid` 就是合成时传给 sherpa 的下标）。
+#[derive(Debug, Clone, Serialize)]
+pub struct SherpaSpeaker {
+    pub sid: i32,
+    /// 模型 metadata 里的名字（kokoro 是 `zf_001` 这类），没有名字时为空串。
+    pub name: String,
+}
+
+/// 读出模型目录里的全部说话人，**不加载模型**。
+///
+/// 数量与名字都来自 ONNX metadata（sherpa 加载模型时读的同一份数据，见
+/// `meta` 模块）。kokoro v1.1-zh 是 103 个带名字的音色；普通 VITS/Matcha 只有
+/// sid 0；zipvoice / pocket 这类多文件模型找不到主模型文件，返回错误，由调用方
+/// 回退到「只有四个语义档」。
+pub fn list_speakers(model_dir: &Path) -> Result<Vec<SherpaSpeaker>> {
+    let model_file = engine::find_model_file(model_dir)?;
+    let metadata = meta::read_onnx_metadata(&model_file)?;
+    let (num_speakers, names) = meta::speakers_from_metadata(&metadata);
+    Ok((0..num_speakers as i32)
+        .map(|sid| SherpaSpeaker {
+            sid,
+            name: names.get(sid as usize).cloned().unwrap_or_default(),
+        })
+        .collect())
+}
+
 pub struct SherpaOnnxAdapter {
     tts: Option<OfflineTts>,
-    /// 传给模型的说话人下标（kokoro 由 [`kokoro_sid`] 按语言/音色挑，其余模型为 0）。
+    /// 传给模型的说话人下标（kokoro 由 `kokoro_sid` 按语言/音色挑，其它模型支持
+    /// 用数字 `voice` 直接指定，见 `pick_sid`）。
     sid: i32,
     speed: f32,
     /// 用户调的 flow-matching 推理步数（见 [`SherpaTuning`]）。
@@ -204,13 +234,10 @@ impl SherpaOnnxAdapter {
         // 假名/谚文按目标语言留：用户在角色设置里选的 `sherpa_onnx_lang` 就是模型
         // 说的语言（见 fields.ts），日文/韩文模型不需要英文词表也能读自己的文字。
         let scripts = readable_scripts(&language, model_reads_latin(model_dir));
-        // kokoro 的 sid 是模型自带的音色下标（见 [`kokoro_sid`]）；其余模型的 sid 只有
-        // 多说话人 VITS / Kitten 用得上，保持 0。
-        let sid = if model_type == "kokoro" {
-            kokoro_sid(&language, &voice, tts.num_speakers())
-        } else {
-            0
-        };
+        // 模型的说话人数量是模型自带的（metadata 里的 `n_speakers`）：kokoro 是
+        // 103 个音色，多说话人 VITS / Kitten 也可能有多个，其余模型是 1。
+        // 具体选哪个见 `pick_sid`。
+        let sid = pick_sid(&model_type, &language, &voice, tts.num_speakers());
         tracing::info!(
             "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, voice={voice}, sid={sid}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}",
             provider.unwrap_or("cpu")
@@ -467,6 +494,40 @@ mod tests {
 
     fn test_model_dir() -> String {
         std::env::var("SHERPA_TEST_MODEL_DIR").unwrap_or_default()
+    }
+
+    /// 音色列表来自模型 metadata：数量、名字、单说话人缺省值，都不需要加载模型。
+    #[test]
+    fn lists_speakers_from_model_metadata() {
+        let dir = std::env::temp_dir().join(format!("lingchat-speakers-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建临时目录失败");
+        std::fs::write(
+            dir.join("model.onnx"),
+            meta::fake_onnx(&[
+                ("n_speakers", "3"),
+                ("speaker_names", "af_maple,zf_001,zm_009"),
+            ]),
+        )
+        .expect("写假模型失败");
+
+        let speakers = list_speakers(&dir).expect("读取音色失败");
+        assert_eq!(speakers.len(), 3);
+        assert_eq!(speakers[2].sid, 2);
+        assert_eq!(speakers[2].name, "zm_009");
+
+        // 没有 metadata 的普通模型：单说话人，没有名字。
+        std::fs::write(dir.join("model.onnx"), meta::fake_onnx(&[])).expect("写假模型失败");
+        let speakers = list_speakers(&dir).expect("读取音色失败");
+        assert_eq!(speakers.len(), 1);
+        assert_eq!(speakers[0].sid, 0);
+        assert!(speakers[0].name.is_empty());
+
+        // 目录里没有主模型文件（zipvoice / pocket 这类多文件模型）：报错，由调用方回退。
+        std::fs::remove_file(dir.join("model.onnx")).expect("删除假模型失败");
+        assert!(list_speakers(&dir).is_err());
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     /// 设置页两个滑动条的值：缺失 / 越界 / NaN 都要收敛到可用范围，
