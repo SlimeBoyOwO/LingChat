@@ -383,6 +383,24 @@ fn find_file(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
     ))
 }
 
+/// 能拿来读 metadata 的主模型文件，按优先级排列。
+///
+/// zipvoice / pocket 这类「多文件模型」没有单一主模型（text_encoder + fm_decoder …），
+/// 查询音色时会走 `find_model_file` 的报错分支，由调用方回退到只有语义档。
+const MODEL_FILE_CANDIDATES: &[&str] = &[
+    "model.onnx",
+    "model.int8.onnx",
+    "tts-model.onnx",
+    "sherpa-onnx-tts.onnx",
+    "model-steps-3.onnx",
+    "model-steps-6.onnx",
+];
+
+/// 找到模型目录里的主模型文件（用于读 `n_speakers` / `speaker_names`）。
+pub(super) fn find_model_file(dir: &Path) -> Result<PathBuf> {
+    find_file(dir, MODEL_FILE_CANDIDATES)
+}
+
 /// 模型目录里可能出现的文本规则 FST，按应用顺序排列。
 ///
 /// 中文模型把规则 FST 放在模型目录里，sherpa 会在分词前依次改写文本（实测
@@ -722,6 +740,23 @@ pub(super) fn kokoro_sid(language: &str, voice: &str, num_speakers: i32) -> i32 
     sid.min(last)
 }
 
+/// 选传给模型的说话人下标。
+///
+/// kokoro 的 `voice` 是语义标签（female/male/…），交给 `kokoro_sid` 按语言挑；
+/// 其它模型只认纯数字 `voice`（多说话人 VITS/Kitten 靠它选音色），标签一律 0。
+/// 数字统一收口到 `0..num_speakers-1`，用户手填/旧配置越界都不会让 sherpa 报错。
+pub(super) fn pick_sid(model_type: &str, language: &str, voice: &str, num_speakers: i32) -> i32 {
+    if model_type == "kokoro" {
+        return kokoro_sid(language, voice, num_speakers);
+    }
+    let last = num_speakers.saturating_sub(1).max(0);
+    voice
+        .trim()
+        .parse::<i32>()
+        .map(|sid| sid.clamp(0, last))
+        .unwrap_or(0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -786,6 +821,24 @@ mod tests {
         assert_eq!(kokoro_sid("zh", "999", 103), 102);
         assert_eq!(kokoro_sid("zh", "-3", 103), 0);
         assert_eq!(kokoro_sid("zh", "MALE", 103), 58);
+    }
+
+    /// 非 kokoro 模型：数字 voice 直接选 sid（多说话人 VITS/Kitten），标签保持 0。
+    #[test]
+    fn picks_numeric_sid_for_other_models() {
+        assert_eq!(pick_sid("vits", "zh", "2", 4), 2);
+        assert_eq!(pick_sid("kitten", "zh", "1", 2), 1);
+        // 越界收口，负数落到 0。
+        assert_eq!(pick_sid("vits", "zh", "99", 4), 3);
+        assert_eq!(pick_sid("vits", "zh", "-3", 4), 0);
+        // 语义标签 / 空值：单说话人路径，保持 0。
+        assert_eq!(pick_sid("vits", "zh", "male", 4), 0);
+        assert_eq!(pick_sid("vits", "zh", "", 4), 0);
+        // 单说话人模型，填任何数字都收口到 0。
+        assert_eq!(pick_sid("matcha", "zh", "5", 1), 0);
+        assert_eq!(pick_sid("vits", "zh", "5", 0), 0);
+        // kokoro 仍走语义映射。
+        assert_eq!(pick_sid("kokoro", "zh", "male", 103), 58);
     }
 
     /// 只带简单规则表的模型目录：有英文词表就认为认得拉丁字母。
