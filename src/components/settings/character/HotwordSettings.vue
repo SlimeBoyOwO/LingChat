@@ -24,34 +24,58 @@
       }}
     </p>
 
-    <div class="flex items-center justify-between">
-      <h3 class="text-sm font-bold text-white/70">
-        {{ $t("settings.characterInfo.hotword.listTitle") }}
-      </h3>
+    <div class="flex flex-wrap items-start justify-between gap-3">
+      <div class="min-w-0">
+        <div class="flex flex-wrap items-center gap-2">
+          <h3 v-if="scope === 'role'" class="text-lg font-semibold text-white">
+            {{ $t("settings.characterInfo.tabs.hotword") }}
+          </h3>
+          <span
+            class="rounded-full border border-white/10 bg-white/5 px-2.5 py-0.5 text-[12px] text-white/50"
+          >
+            {{
+              $t("settings.characterInfo.hotword.count", {
+                count: draft.hotwords.length,
+                max: MAX_HOTWORDS_PER_ROLE,
+              })
+            }}
+          </span>
+        </div>
+        <p v-if="scope === 'role'" class="mt-1 text-[13px] leading-relaxed text-white/50">
+          {{ $t("settings.characterInfo.hotword.roleHint") }}
+        </p>
+      </div>
       <div class="flex items-center gap-2">
         <button
-          class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3 py-1.5 text-xs text-white transition-colors hover:bg-white/20"
+          class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
           @click="showPicker = true"
         >
           {{ $t("settings.asr.hotwordLibrary.pickButton") }}
         </button>
         <button
-          class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
-          @click="addHotword"
+          class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+          @click="showImport = true"
         >
-          + {{ $t("settings.characterInfo.hotword.add") }}
+          {{ $t("settings.hotwordImport.entry") }}
         </button>
       </div>
     </div>
 
     <!-- 紧凑列：词条占满剩余宽度，权重是固定宽的小控件 -->
-    <div v-if="draft.hotwords.length > 0" class="flex items-center gap-2 text-[13px] text-white/40">
+    <div
+      v-if="draft.hotwords.length > 0"
+      class="flex items-center gap-2 px-2 text-[13px] text-white/40"
+    >
       <span class="flex-1">{{ $t("settings.characterInfo.hotword.colText") }}</span>
       <span class="w-24 shrink-0">{{ $t("settings.characterInfo.hotword.colWeight") }}</span>
       <span class="w-6 shrink-0"></span>
     </div>
 
-    <div v-for="(item, idx) in draft.hotwords" :key="idx">
+    <div
+      v-for="(item, idx) in draft.hotwords"
+      :key="idx"
+      class="rounded-xl border border-white/10 bg-white/5 p-2"
+    >
       <div class="flex items-center gap-2">
         <input
           v-model="item.text"
@@ -104,6 +128,33 @@
       {{ $t("settings.characterInfo.hotword.empty") }}
     </div>
 
+    <!-- 列表末尾的添加入口：热词条数多时用户不需要回到顶部 -->
+    <button
+      type="button"
+      class="hover:border-brand/50 w-full cursor-pointer rounded-xl border border-dashed border-white/20 bg-white/5 px-3 py-2.5 text-sm text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+      @click="addHotword"
+    >
+      + {{ $t("settings.characterInfo.hotword.add") }}
+    </button>
+
+    <p
+      class="rounded-xl border border-white/10 bg-white/5 px-3 py-2 text-[13px] leading-relaxed text-white/50"
+    >
+      {{
+        scope === "global"
+          ? $t("settings.asr.globalHotword.dialog.weightHint")
+          : $t("settings.characterInfo.hotword.roleAppendHint")
+      }}
+    </p>
+
+    <HotwordImportDialog
+      :visible="showImport"
+      :existing="draft.hotwords"
+      :capacity="MAX_HOTWORDS_PER_ROLE"
+      :on-save="handleImportSave"
+      @close="showImport = false"
+    />
+
     <!-- 选择器嵌在宿主弹窗之上：宿主可能是角色设置弹窗（z-50）或全局弹窗（z-[10000]） -->
     <HotwordLibraryPicker
       :visible="showPicker"
@@ -130,7 +181,9 @@ import {
   type RoleHotword,
   type RoleHotwordDraft,
 } from "@/api/services/hotword";
+import HotwordImportDialog from "@/components/settings/asr/HotwordImportDialog.vue";
 import HotwordLibraryPicker from "@/components/settings/asr/HotwordLibraryPicker.vue";
+import { useUIStore } from "@/stores/modules/ui/ui";
 import {
   HOTWORD_DEFAULT_WEIGHT,
   HOTWORD_WEIGHT_OPTIONS,
@@ -139,6 +192,7 @@ import {
   // 整表去重：与 Task 6 抽出的共享实现同源（本文件不再自带单条版 dedupe）
   dedupeRows,
 } from "@/utils/hotwordRows";
+import type { ImportRow } from "@/utils/hotwordImport";
 
 const props = defineProps<{
   /** 弹窗正在编辑的角色：新建热词行的 `role_id` 取此值（角色侧是真实 roleId，全局侧是 0 占位）。 */
@@ -150,6 +204,10 @@ const props = defineProps<{
   modelCapability: { modelId: string; supportsHotwords: boolean } | null;
   /** 草稿：编辑只进这里，提交由父组件负责。 */
   modelValue: RoleHotwordDraft;
+  /** 角色/全局共用本组件，但保存命令不同，由宿主注入。 */
+  saveHotwords: (rows: RoleHotword[]) => Promise<void>;
+  /** 控制标题与底部提示的文案；全局弹窗的标题在宿主头部。 */
+  scope: "role" | "global";
 }>();
 
 // v-model 的草稿**就地编辑**（与 clothes 那段的 `v-model="item.name"` 同款）：父组件
@@ -157,6 +215,7 @@ const props = defineProps<{
 const draft = computed(() => props.modelValue);
 
 const { t } = useI18n();
+const uiStore = useUIStore();
 
 const addHotword = () => {
   props.modelValue.hotwords.push({
@@ -179,6 +238,7 @@ const weightLabel = (w: number) =>
   w === 50 ? t("settings.characterInfo.hotword.weight.super") : String(w);
 
 const showPicker = ref(false);
+const showImport = ref(false);
 
 /** 从词库添加：追加到列表尾部，`role_id` 沿用宿主给的值（角色侧是真实 roleId，
  *  全局侧是 0 占位——绝不能在角色侧用 0，那是 User 的真实 role_id）。 */
@@ -193,6 +253,29 @@ const appendFromLibrary = (words: LibraryWord[]) => {
   // 并入后可能与草稿里已有的撞键（选择器挡的是**打开那一刻**的状态，词条期间可能被改）。
   // 复用共享的整表去重（泛型签名同时吃 `RoleHotword` 与 `LibraryWord`）。
   dedupeRows(props.modelValue.hotwords);
+};
+
+/** 批量导入：先在副本上追加并去重，保存成功后才写回草稿；失败时宿主草稿不变。 */
+const handleImportSave = async (rows: ImportRow[]) => {
+  const next = props.modelValue.hotwords.map((row) => ({ ...row }));
+  for (const row of rows) {
+    next.push({ text: row.text, weight: row.weight, role_id: props.roleId });
+  }
+  dedupeRows(next);
+
+  await props.saveHotwords(next);
+  props.modelValue.hotwords.splice(0, props.modelValue.hotwords.length, ...next);
+
+  uiStore.showNotification({
+    type: "success",
+    title: t("settings.hotwordImport.notification.title", { count: rows.length }),
+    message: t(
+      props.scope === "global"
+        ? "settings.hotwordImport.notification.scopeGlobal"
+        : "settings.hotwordImport.notification.scopeRole",
+    ),
+    skipTipsCheck: true,
+  });
 };
 </script>
 
