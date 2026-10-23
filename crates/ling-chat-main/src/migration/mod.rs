@@ -19,6 +19,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261010_000001_drop_hotword_lang::Migration),
             Box::new(m20261011_000001_remove_asr_language::Migration),
             Box::new(m20261012_000001_normalize_hotword_weight::Migration),
+            Box::new(m20261023_000001_library_hotword_unique_per_category::Migration),
         ]
     }
 }
@@ -36,3 +37,4 @@ pub mod m20261009_000001_create_hotword_library;
 pub mod m20261010_000001_drop_hotword_lang;
 pub mod m20261011_000001_remove_asr_language;
 pub mod m20261012_000001_normalize_hotword_weight;
+pub mod m20261023_000001_library_hotword_unique_per_category;

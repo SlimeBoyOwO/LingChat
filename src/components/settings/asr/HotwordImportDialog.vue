@@ -70,15 +70,6 @@
 
           <!-- Body -->
           <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto p-4 sm:p-6">
-            <div
-              class="shrink-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-xs leading-relaxed text-white/70 sm:text-sm"
-            >
-              <p class="m-0">{{ $t("settings.hotwordImport.dialog.guide") }}</p>
-              <p class="m-0 mt-1 text-white/45">
-                {{ $t("settings.hotwordImport.dialog.example") }}
-              </p>
-            </div>
-
             <textarea
               v-model="text"
               class="min-h-[140px] flex-1 resize-none rounded-xl border border-white/10 bg-black/20 p-3 font-sans text-[13px] leading-relaxed text-white transition-all duration-200 outline-none placeholder:text-white/25 focus:border-[#79d9ff]/60 focus:bg-black/30 focus:ring-2 focus:ring-[#79d9ff]/10 disabled:cursor-not-allowed disabled:opacity-60"
@@ -141,29 +132,9 @@
 
             <p v-if="saveError" class="m-0 shrink-0 text-xs text-red-300">{{ saveError }}</p>
 
-            <!-- 字段行：角色/全局没有目标分类，只留默认权重 -->
-            <div class="flex shrink-0 flex-wrap items-end gap-3">
-              <label class="w-40 shrink-0">
-                <span class="mb-1 block text-xs text-white/55">
-                  {{ $t("settings.hotwordImport.dialog.defaultWeight") }}
-                </span>
-                <select
-                  v-model.number="defaultWeight"
-                  class="w-full rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none focus:border-[#79d9ff]/60 focus:ring-2 focus:ring-[#79d9ff]/10 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="saving"
-                >
-                  <option
-                    v-for="w in HOTWORD_WEIGHT_OPTIONS"
-                    :key="w"
-                    :value="w"
-                    class="bg-[#333] text-white"
-                  >
-                    {{ weightLabel(w) }}
-                  </option>
-                </select>
-              </label>
-
-              <label v-if="showCategory" class="min-w-0 flex-1">
+            <!-- 字段行：角色/全局没有目标分类，整行隐藏 -->
+            <div v-if="showCategory" class="flex shrink-0 flex-wrap items-end gap-3">
+              <label class="min-w-0 flex-1">
                 <span class="mb-1 flex items-center gap-1.5 text-xs text-white/55">
                   {{ $t("settings.hotwordImport.dialog.targetCategory") }}
                   <span class="rounded bg-white/10 px-1.5 py-0.5 text-[10px] text-white/40">
@@ -245,12 +216,11 @@ import {
   hotwordSegmentCount,
 } from "@/api/services/hotword";
 import { CATEGORY_NONE } from "@/utils/hotwordLibrary";
-import { HOTWORD_DEFAULT_WEIGHT, HOTWORD_WEIGHT_OPTIONS } from "@/utils/hotwordRows";
 import { parseHotwordImport, type ImportDetail, type ImportRow } from "@/utils/hotwordImport";
 
 const props = defineProps<{
   visible: boolean;
-  existing: { text: string }[];
+  existing: { text: string; category_index?: number | null }[];
   capacity: number;
   /** 仅词库上下文传入；角色/全局不传，目标分类控件隐藏。 */
   categories?: string[];
@@ -264,14 +234,18 @@ const emit = defineEmits<{ close: [] }>();
 const { t } = useI18n();
 
 const text = ref("");
-const defaultWeight = ref(HOTWORD_DEFAULT_WEIGHT);
 const categoryIndex = ref<number | null>(null);
 const showDetails = ref(false);
 const saving = ref(false);
 const saveError = ref("");
 
 const review = computed(() =>
-  parseHotwordImport(text.value, defaultWeight.value, props.existing, props.capacity),
+  parseHotwordImport(
+    text.value,
+    props.existing,
+    props.capacity,
+    props.categories === undefined ? undefined : categoryIndex.value,
+  ),
 );
 
 /** 当前草稿本身已超容量：连只导入重复词也不允许保存。 */
@@ -300,26 +274,15 @@ const categoryValue = computed({
 const visibleDetails = computed(() => review.value.details.slice(0, 20));
 const extraDetailCount = computed(() => Math.max(0, review.value.details.length - 20));
 
-const weightLabel = (weight: number) =>
-  weight === 50 ? t("settings.characterInfo.hotword.weight.super") : String(weight);
-
-/** 异常明细里的权重原文可能是 `权重 ：`，先去掉前缀再剥分隔符，避免出现“（当前 ：）”。 */
-const detailWeightValue = (detail: ImportDetail) => {
-  let raw = String(detail.weight);
-  if (raw.startsWith("权重")) raw = raw.slice(2);
-  return raw
-    .trim()
-    .replace(/^[：:／/＝=]/, "")
-    .trim();
-};
+const detailWeightValue = (detail: ImportDetail) => String(detail.weight).trim();
 
 const detailWeightText = (detail: ImportDetail) =>
   `${t("settings.hotwordImport.dialog.weight")} ${detailWeightValue(detail)}`;
 
 const detailReason = (detail: ImportDetail) => {
   switch (detail.reason) {
-    case "empty":
-      return t("settings.hotwordImport.dialog.reason.empty");
+    case "badFormat":
+      return t("settings.hotwordImport.dialog.reason.badFormat");
     case "tooLongChars":
       return t("settings.hotwordImport.dialog.reason.tooLongChars", {
         count: hotwordCharCount(detail.text),
@@ -334,8 +297,6 @@ const detailReason = (detail: ImportDetail) => {
       return t("settings.hotwordImport.dialog.reason.badWeight", {
         weight: detailWeightValue(detail),
       });
-    case "unclosedWeight":
-      return t("settings.hotwordImport.dialog.reason.unclosedWeight");
     case "overCapacity":
       return t("settings.hotwordImport.dialog.reason.overCapacity");
     default:

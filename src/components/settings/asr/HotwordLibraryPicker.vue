@@ -180,7 +180,7 @@ const search = ref("");
 const categoryFilter = ref<string>("all");
 const picked = ref(new Set<LibraryWord>());
 
-/** 防重键与共享的 `dedupeRows` / DB 的 UNIQUE 同口径：trim 后的原样字符串。 */
+/** 这里比较的是库词条与角色热词：角色热词按 trim 后的 `text` 唯一，不带分类维度。 */
 const existingKeys = computed(() => new Set(props.existing.map((w) => w.text.trim())));
 
 const filtered = computed(() => {

@@ -357,6 +357,7 @@ import {
   filterToIndex,
   indexToFilter,
   isCategoryNameValid,
+  libraryRowKey,
   removeCategory,
   type CategoryFilter,
   type LibraryDraft,
@@ -486,7 +487,7 @@ const removeWord = (word: LibraryWord) => {
 };
 
 // 共享实现的薄包装：模板里的 @change 调用点保持这些名字
-const commitWordText = (word: LibraryWord) => commitRowText(draft.value.words, word);
+const commitWordText = (word: LibraryWord) => commitRowText(draft.value.words, word, libraryRowKey);
 const clampWordWeight = (word: LibraryWord) => clampRowWeight(word);
 
 /** 档位标签：50 是「超级热词」（厂商口径），其余显示数字。 */
@@ -519,7 +520,7 @@ const saveImportedWords = async (rows: ImportRow[], categoryIndex: number | null
       weight: row.weight,
     });
   }
-  dedupeRows(next);
+  dedupeRows(next, libraryRowKey);
 
   await saveHotwordLibrary(draft.value.categories, next);
   draft.value.words = next;

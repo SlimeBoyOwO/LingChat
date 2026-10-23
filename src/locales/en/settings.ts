@@ -1504,10 +1504,7 @@ export default {
     dialog: {
       title: "Batch Import Hotwords",
       subtitle: "Paste a word list; save after validation",
-      guide:
-        "One word per line with an optional number. A number in trailing parentheses becomes the weight.",
-      example: "Example: 1. 钦灵（5）",
-      placeholder: "Paste a word list…",
+      placeholder: "One entry per line: index.term(weight)\n1.钦灵(5)\n2.deepseek(2)",
       invalidCount: "{count} invalid lines",
       noInvalid: "No invalid lines",
       overCapacityCount: "{count} over capacity",
@@ -1516,14 +1513,12 @@ export default {
       weight: "Weight",
       more: "{count} more issues",
       reason: {
-        empty: "Empty entry",
+        badFormat: "Format must be index.term(weight)",
         tooLongChars: "Exceeds {max} characters (currently {count})",
         tooLongSegments: "Exceeds {max} segments (currently {count})",
         badWeight: "Weight must be 1, 2, 3, 4, 5, or 50 (currently {weight})",
-        unclosedWeight: "Weight parenthesis is not closed",
         overCapacity: "Exceeds capacity and was not imported",
       },
-      defaultWeight: "Default weight",
       targetCategory: "Target category",
       libraryOnly: "Library only",
       uncategorized: "Uncategorized",
