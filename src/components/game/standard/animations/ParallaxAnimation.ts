@@ -124,7 +124,7 @@ export function useParallaxAnimation(
     const transform3D = PARALLAX_CONFIG.USE_TRANSFORM_3D ? " translateZ(0)" : "";
 
     if (elements.charRef.value) {
-      elements.charRef.value.style.transform = `translate(-50%, -50%) translateX(${charShift}px)${transform3D}`;
+      elements.charRef.value.style.transform = `translate(-50%, 0) translateX(${charShift}px)${transform3D}`;
     }
     if (elements.bgRef.value) {
       elements.bgRef.value.style.transform = `translateX(${bgShift}px)${transform3D}`;
