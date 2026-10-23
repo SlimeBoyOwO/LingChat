@@ -168,3 +168,174 @@ export function synthesizePreview(params: {
 }): Promise<Uint8Array> {
   return invoke<Uint8Array>("tts_local_synthesize_preview", params);
 }
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 本地模型管理
+// ---------------------------------------------------------------------------
+
+export interface SherpaOnnxModelRecord {
+  id: string;
+  display_name: string;
+  model_type: string;
+  language: string;
+  voice: string;
+  size_bytes: number;
+  installed: boolean;
+  path: string;
+}
+
+interface SherpaDownloadProgressPayload {
+  asset_id: string;
+  percent: number;
+  bytes_done?: number;
+  total_bytes?: number;
+}
+
+const sherpaProgressBus = createProgressBus();
+let sherpaProgressUnlisten: UnlistenFn | null = null;
+let sherpaProgressSubscription: Promise<void> | null = null;
+
+async function ensureSherpaProgressSubscription(): Promise<void> {
+  if (sherpaProgressUnlisten) return;
+  if (!sherpaProgressSubscription) {
+    sherpaProgressSubscription = listen<SherpaDownloadProgressPayload>(
+      "tts://sherpa-download-progress",
+      (event) => {
+        sherpaProgressBus.dispatch({
+          asset_id: event.payload.asset_id,
+          percent: event.payload.percent,
+          bytes_done: 0,
+          total_bytes: 0,
+        });
+      },
+    )
+      .then((unlisten) => {
+        sherpaProgressUnlisten = unlisten;
+        if (sherpaProgressBus.listenerCount === 0) {
+          sherpaProgressUnlisten();
+          sherpaProgressUnlisten = null;
+        }
+      })
+      .finally(() => {
+        sherpaProgressSubscription = null;
+      });
+  }
+  await sherpaProgressSubscription;
+}
+
+/** 订阅 Sherpa 模型下载进度；返回取消订阅函数。 */
+export function onSherpaDownloadProgress(listener: ProgressListener): () => void {
+  void ensureSherpaProgressSubscription();
+  const unsubscribe = sherpaProgressBus.subscribe(listener);
+  return () => {
+    unsubscribe();
+    if (sherpaProgressBus.listenerCount === 0 && sherpaProgressUnlisten) {
+      sherpaProgressUnlisten();
+      sherpaProgressUnlisten = null;
+    }
+  };
+}
+
+export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
+  return invoke<SherpaOnnxModelRecord[]>("sherpa_list_models");
+}
+
+/** 模型自带的一个说话人（sid 就是合成时传给模型的下标）。 */
+export interface SherpaSpeaker {
+  sid: number;
+  /** 模型 metadata 里的名字（kokoro 是 `zf_001` 这类），没有名字时为空串。 */
+  name: string;
+}
+
+export interface SherpaSpeakersInfo {
+  num_speakers: number;
+  speakers: SherpaSpeaker[];
+}
+
+/**
+ * 列出模型自带的全部音色。
+ *
+ * 后端直接读 ONNX metadata，不加载模型，所以切模型时可以随手调用；多文件模型
+ * （zipvoice / pocket）没有单一主模型，会抛错，调用方保持原来的四个语义档即可。
+ */
+export function listSherpaSpeakers(modelId: string): Promise<SherpaSpeakersInfo> {
+  return invoke<SherpaSpeakersInfo>("sherpa_list_speakers", { modelName: modelId });
+}
+
+export function downloadSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_download_model", { modelId });
+}
+
+export function deleteSherpaModel(modelId: string): Promise<void> {
+  return invoke<void>("sherpa_delete_model", { modelId });
+}
+
+/** 参考音频导入结果。 */
+export interface SherpaRefAudioImport {
+  /** 落盘后的本地路径（写回 `sherpa_onnx_ref_audio_path`）。 */
+  path: string;
+  /** 展示用文件名。 */
+  file_name: string;
+}
+
+/**
+ * 导入零样本克隆的参考音频。
+ *
+ * 后端会把文件复制进应用数据目录并统一转成 16-bit PCM WAV（sherpa 只吃这种格式，
+ * Android 上 dialog 给的 `content://` URI 也无法直接读）；失败时可能抛出
+ * `SHERPA_REF_AUDIO_UNSUPPORTED` / `SHERPA_REF_AUDIO_TOO_LONG` 两个错误码，
+ * 由调用方翻译成提示。
+ */
+export function importSherpaRefAudio(path: string): Promise<SherpaRefAudioImport> {
+  return invoke<SherpaRefAudioImport>("import_sherpa_ref_audio", { path });
+}
+
+/** 本次会话里已迁移过的 `content://` 参考音频（同一个 URI 只导入一次，别重复落盘）。 */
+const migratedRefAudio = new Map<string, SherpaRefAudioImport>();
+
+/**
+ * 迁移历史遗留的 `content://` 参考音频路径（Android）。
+ *
+ * 早期版本把 dialog 给的路径原样写进角色设置，Android 上那是 `content://` URI：
+ * Rust 的 `std::fs` 读不了，试听直接报错、聊天时的零样本克隆会静默退化。
+ * 这里借已有的导入命令把它落到应用数据目录——Rust 侧经 SAF（ContentResolver）
+ * 拿到真实文件名，并统一转码成 16-bit PCM WAV。
+ *
+ * 不是 `content://`、或迁移失败（URI 授权已失效等）时返回 `null`，调用方保留原值。
+ */
+export async function migrateSherpaRefAudio(path: string): Promise<SherpaRefAudioImport | null> {
+  if (!path.startsWith("content://")) return null;
+  const cached = migratedRefAudio.get(path);
+  if (cached) return cached;
+  try {
+    const imported = await importSherpaRefAudio(path);
+    migratedRefAudio.set(path, imported);
+    console.log("[tts-local] 已迁移 content:// 参考音频:", path, "->", imported.path);
+    return imported;
+  } catch (error) {
+    console.error("[tts-local] 迁移 content:// 参考音频失败:", error);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
+// 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）
+// ---------------------------------------------------------------------------
+
+export interface SherpaStorageStatus {
+  /** 是否可访问模型目录。目录位于应用数据目录，恒为 true。 */
+  granted: boolean;
+  /** 模型根目录（用于向用户展示模型存放位置）。 */
+  model_root: string;
+}
+
+/** 查询 Sherpa-ONNX 模型目录状态（granted + 模型根目录路径）。 */
+export function checkSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("check_sherpa_storage_permission");
+}
+
+/** 兼容保留：模型目录无需权限，恒返回已授权。 */
+export function requestSherpaStoragePermission(): Promise<SherpaStorageStatus> {
+  return invoke<SherpaStorageStatus>("request_sherpa_storage_permission");
+}

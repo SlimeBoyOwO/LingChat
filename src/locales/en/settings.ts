@@ -28,7 +28,7 @@ export default {
     switchFailTitle: "Failed to switch identity",
     transition: {
       title: 'Switch to "{name}"',
-      hint: "Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard \"left / joined the conversation\" lines and the departure notes are always added, and they only affect the current save.",
+      hint: 'Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard "left / joined the conversation" lines and the departure notes are always added, and they only affect the current save.',
       exitLabel: "Exit style (optional)",
       exitPlaceholder: "e.g. walked away in the rain without looking back",
       enterLabel: "Entrance style (optional)",
@@ -532,6 +532,30 @@ export default {
       voiceDialect: "Chinese Dialect",
 
       openttsVoice: "OpenTTS Voice ID",
+      sherpaOnnx: "Sherpa-ONNX Local Voice",
+      sherpaOnnxModelName: "Sherpa-ONNX Model",
+      sherpaOnnxModelType: "Model Type",
+      sherpaOnnxLanguage: "Language",
+      sherpaOnnxVoice: "Voice",
+      sherpaOnnxUseGpu: "GPU inference",
+      sherpaOnnxSpeed: "Speed",
+      sherpaOnnxNumSteps: "Inference steps",
+      sherpaOnnxNumStepsHint:
+        "Flow-matching sampling steps for ZipVoice (1–10). 4 steps already sounds the same as 16; more steps only make synthesis slower.",
+      sherpaOnnxGuidanceScale: "Guidance scale",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice guidance_scale (1.0–10.0). Higher values follow the reference voice more closely; changing it reloads the model, so the next synthesis is slower.",
+      sherpaOnnxParameters: "Parameters",
+      sherpaOnnxManageModels: "Manage Models",
+      sherpaOnnxVoicesMale: "Male",
+      sherpaOnnxVoicesFemale: "Female",
+      sherpaOnnxVoicesChild: "Child",
+      sherpaOnnxVoicesElderly: "Elderly",
+      sherpaOnnxModelDir: "Model Directory",
+      sherpaOnnxStoragePermHint:
+        "Models are stored in the app data directory (data/sherpa_onnx_models); no extra storage permission needed",
+      sherpaOnnxGrantPermission: "Grant Access",
+      noSherpaModel: "No Sherpa-ONNX model installed (download one in TTS settings first)",
     },
     placeholders: {
       openttsVoice: "Leave empty to use the global voice ID from Advanced Settings",
@@ -1439,6 +1463,60 @@ export default {
       deviceSwitched: "Inference device switched to: {name}",
       deviceSwitchFailed: "Failed to switch inference device: {error}",
     },
+  },
+
+  sherpa: {
+    title: "Sherpa-ONNX Local Voice",
+    models: "Models",
+    noModels: "No models available. Download one first",
+    manageModels: "Open model folder",
+    modelConfig: "Model Configuration",
+    modelType: "Model Type",
+    language: "Language",
+    voice: "Voice",
+    voiceAll: "All voices",
+    voiceCount: "{n} available",
+    voiceLoading: "Loading…",
+    useGpu: "GPU inference",
+    useGpuLinuxHint:
+      "sherpa-onnx is CPU-only on Linux: the GPU path needs the official CUDA package (+235 MB installer), which was dropped for size.",
+    useGpuWindowsHint:
+      "Requires a DirectML build (pnpm tauri:build:win) to actually use the GPU; otherwise it runs on CPU.",
+    useGpuAndroidHint:
+      "Uses the NNAPI device backend (Android 8.1+). Builds made by pnpm android:build already include NNAPI; builds using the official prebuilt package run on CPU.",
+    parameters: "Parameters",
+    speed: "Speed",
+    numSteps: "Inference steps",
+    guidanceScale: "Guidance scale",
+    tuningHint:
+      "Inference steps and guidance scale only affect ZipVoice (flow-matching); other models ignore them. This page uses temporary values for preview — adjust the character's own voice page for actual speech.",
+    zeroShot: "Zero-shot Voice Cloning",
+    zeroShotDesc:
+      "Some models (e.g. kokoro/kitten) support zero-shot cloning via a reference audio + reference text.",
+    refLoaded: "Reference audio loaded",
+    refNone: "No reference audio selected",
+    refChange: "Change audio",
+    refPick: "Pick audio",
+    refClear: "Clear",
+    refImporting: "Importing...",
+    refListen: "Listen",
+    refStop: "Stop",
+    refPlayFailed: "Failed to preview the reference audio",
+    refImportUnsupported:
+      "Unrecognized audio format (mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and more are supported; WebM is not)",
+    refImportOpus:
+      "Multichannel Opus (e.g. 5.1) is not supported yet. Please convert it to mono or stereo first",
+    refImportTooLong: "The reference audio is too long. Please trim it and import a shorter clip",
+    refImportFailed: "Failed to import reference audio",
+    refImportHint:
+      "mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and other common audio are supported (except WebM). The file is converted to WAV and copied into the app data directory",
+    refText: "Reference text",
+    refTextPlaceholder: "Transcription of the reference audio...",
+    test: "Test",
+    testPlaceholder: "Enter text to synthesize (kana/hangul switches the language)...",
+    synthesizing: "Synthesizing...",
+    listen: "Listen",
+    noModelHint: "Select an installed model first",
   },
 
   asr: {

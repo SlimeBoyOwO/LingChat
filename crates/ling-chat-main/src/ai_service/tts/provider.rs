@@ -17,6 +17,7 @@ use super::adapters::indextts::IndexTtsAdapter;
 use super::adapters::opentts::OpenTtsAdapter;
 use super::adapters::sbv2::Sbv2Adapter;
 use super::adapters::sbv2api::Sbv2ApiAdapter;
+use super::adapters::sherpa_onnx::SherpaOnnxAdapter;
 use super::adapters::vits::VitsAdapter;
 
 /// TTS 一次合成返回原始音频字节。
@@ -64,6 +65,7 @@ pub struct TtsProvider {
     pub opentts: Option<Arc<OpenTtsAdapter>>,
     pub fish_s2: Option<Arc<FishS2Adapter>>,
     pub cosyvoice: Option<Arc<CosyvoiceAdapter>>,
+    pub sherpa: Option<Arc<SherpaOnnxAdapter>>,
 }
 
 impl Default for TtsProvider {
@@ -84,6 +86,7 @@ impl Default for TtsProvider {
             opentts: None,
             fish_s2: None,
             cosyvoice: None,
+            sherpa: None,
         }
     }
 }
@@ -106,6 +109,7 @@ impl std::fmt::Debug for TtsProvider {
             .field("opentts", &self.opentts.is_some())
             .field("fish_s2", &self.fish_s2.is_some())
             .field("cosyvoice", &self.cosyvoice.is_some())
+            .field("sherpa", &self.sherpa.is_some())
             .finish()
     }
 }
@@ -212,6 +216,10 @@ impl TtsProvider {
                 .cosyvoice
                 .clone()
                 .ok_or_else(|| anyhow!("CosyVoice 适配器未初始化"))?,
+            "sherpa" | "sherpa-onnx" => self
+                .sherpa
+                .clone()
+                .ok_or_else(|| anyhow!("Sherpa-ONNX 适配器未初始化"))?,
             "" => {
                 // 旧版：未指定时优先 sbv2
                 if let Some(a) = self.sbv2.clone() {

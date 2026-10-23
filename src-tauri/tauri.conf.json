@@ -7,6 +7,7 @@
     "beforeDevCommand": "pnpm dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "node scripts/prepare-desktop-resources.mjs && pnpm build",
+    "beforeBundleCommand": "node scripts/stage-desktop-runtime-libs.mjs",
     "frontendDist": "../dist"
   },
   "app": {
@@ -49,6 +50,23 @@
       "icons/icon.png"
     ],
     "createUpdaterArtifacts": true,
+    "linux": {
+      "deb": {
+        "files": {
+          "/usr/lib": ".runtime-libs/"
+        }
+      },
+      "rpm": {
+        "files": {
+          "/usr/lib": ".runtime-libs/"
+        }
+      },
+      "appimage": {
+        "files": {
+          "/usr/lib": ".runtime-libs/"
+        }
+      }
+    },
     "resources": {
       ".bundled_resources/game_data/": "data/.official/game_data/",
       ".bundled_resources/third_party/": "data/third_party/",

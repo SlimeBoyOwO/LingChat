@@ -3,6 +3,13 @@
 本文档记录了 LingChat 从 Windows 桌面端移植到 Android (Tauri v2) 的过程，
 重点说明资源打包方案的来龙去脉、当前实现细节，以及未来改进方向。
 
+> **现状（2026-10 合入 `upstream/dev` 后）**：上游已把移动端资源方案改成
+> `data.7z`（7z 打包 + `sevenz_rust2` 进程内解压，代码见
+> `crates/ling-chat-main/src/data_dir.rs`），安装目录也改为应用专属外部存储
+> `/storage/emulated/0/Android/data/com.noiq.lingchat/files`。
+> 本文档下面关于 `data.zip` / `static_copy.rs` / `ling_chat` 包名的描述属于**合入前**的
+> 历史实现，只作背景参考；与当前实现相关的坑见文末「已知问题（Android 侧）」。
+
 ## 整体架构
 
 ```
@@ -221,6 +228,22 @@ pnpm tauri android dev --target aarch64
 #   (release 需用 apksigner 签名后才能安装)
 ```
 
+### 构建依赖
+
+| 依赖                   | 用途                                                                 |
+| ---------------------- | -------------------------------------------------------------------- |
+| Android NDK            | `pnpm android:*` 会自动解析并导出 `ANDROID_NDK_HOME`（见下）         |
+| cmake（+ ninja，可选） | 编译 libopus（参考音频的 Opus 解码，`opus` crate 的 bundled 静态库） |
+
+`ANDROID_NDK_HOME` 由 `scripts/resolve-android-ndk.mjs` 解析：优先用已设置的值，其次是
+`NDK_HOME`、`$ANDROID_HOME/ndk`、`$ANDROID_SDK_ROOT/ndk` 和默认安装位置里版本最高的一个。
+之所以要显式导出，是因为 libopus 的 `build.rs` 只认 `ANDROID_NDK_HOME`，而 Tauri CLI
+只处理 `ANDROID_HOME` / `NDK_HOME`；缺了它 libopus 会用宿主编译器编出 x86_64 的目标文件，
+链接阶段直接失败。桌面端构建只需要 cmake 在 PATH 上。
+
+构建完 `libopus.a` 会被静态链进 `libling_chat_lib.so`，**不需要**往 `jniLibs` 里加新的 `.so`
+（`jniLibs` 里仍然只有 sherpa-onnx / onnxruntime）。
+
 ## 关键配置文件
 
 | 文件                                    | 作用                                          |
@@ -232,6 +255,71 @@ pnpm tauri android dev --target aarch64
 | `src-tauri/capabilities/default.json`   | fs:default + $RESOURCE/\*\* scope             |
 | `src-tauri/Cargo.toml`                  | tauri-plugin-fs、zip = "2"                    |
 | `.gitignore`                            | src-tauri/gen/ 已忽略                         |
+
+## 已知问题（Android 侧）
+
+- **sherpa-onnx 的 kokoro int8 模型在 arm64 Android 上不可用**：会输出纯静音或钉死的
+  垃圾样本（上游 [k2-fsa/sherpa-onnx#3754](https://github.com/k2-fsa/sherpa-onnx/issues/3754)，
+  未量化版本不受影响）。实机对比（同一段代码、同一台设备）：
+
+  | 模型                      | 输出                                |
+  | ------------------------- | ----------------------------------- |
+  | `kokoro-int8-...`         | 4.350s 全静音（峰值 0）             |
+  | `kokoro-...`（fp32）      | 中文 2.648s / 英文 2.815s，音量正常 |
+  | `matcha-icefall-zh-baker` | 2.357s 正常                         |
+
+  因此内置模型清单在 Android 上提供未量化版本（HuggingFace `csukuangfj/kokoro-multi-lang-v1_1`，
+  下载走 `hf-mirror.com`），桌面端保留体积更小的 int8；适配器对 Android 上的 int8
+  kokoro 直接报错并提示换模型，已安装的 int8 版本在设置页会被标注「当前平台不可用」。
+
+- **NNAPI 需要自编才会生效**：预编译的 `sherpa-onnx-v1.13.5-android.tar.bz2` 基于 API
+  level 21 构建，即使把 provider 设为 `nnapi`，C 库也会打印
+  `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`，
+  实际后端等于 CPU。现在 `pnpm android:build`（经
+  `scripts/package-android-sherpa-libs.mjs`）默认会**构建时自编**一份
+  `-DANDROID_PLATFORM=android-27` 的 sherpa，NNAPI 才真的编进二进制；要退回官方 CPU 包
+  用 `SHERPA_ANDROID_CPU=1 pnpm android:build`。见 `docs/inference-devices.md` §9.2。
+
+- **APK 内的 `data.7z` 必须以 `Stored`（不压缩）方式存放**：aapt2 默认会对
+  `assets/data/data.7z` 做 DEFLATE，而 `tauri-plugin-fs` 读 APK 内资源的方式是
+  「先 `AssetManager.openFd()`（压缩资源拿不到 fd）→ 退化成正把整个文件
+  `assets.open(path, ACCESS_BUFFER)` 拷进 `cacheDir`」。这条路在 Android ≤ 15 上能过
+  （首次启动多花 ~25s 拷 84MB），但 **Android 16（SDK 36）会直接抛异常**：表现为「启动即崩、
+  `setup: 数据层 bootstrap 失败: failed to read data.7z`」，而同一个 APK 在 Android 15
+  手机上正常（实测平板 TB710FU / Android 16 + 手机 2201123C / Android 15）。
+  修法是在 `src-tauri/gen/android/app/build.gradle.kts` 的 `android {}` 里加：
+
+  ```kotlin
+  androidResources {
+      noCompress += "7z"   // data.7z 本身已压缩，再 DEFLATE 毫无收益
+  }
+  ```
+
+  注意 `src-tauri/gen/android/**` 是**被 git 跟踪**的，`tauri android init` 不带 `--force`
+  时不会覆盖它，所以这个改动能留下来（`pnpm android:devbuild` 也不会重新 init）。
+
+- **`tauri-plugin-fs` 必须 ≥ 2.7.1**：2.5.1 的 Android 实现在 `openFd()` 成功时只把裸 fd 交给
+  Rust，**丢掉了 `AssetFileDescriptor.startOffset`**，于是 Rust 从 APK 文件偏移 0 开始读，
+  读到的是 ZIP 头 → `failed to extract data.7z: BadSignature([80, 75, 3, 4, 0, 0])`。
+  上游 2.7.x 已改为「APK 内资源一律先拷到 `cacheDir` 再给 fd」（其 Kotlin 注释里写明原因）。
+  所以两个条件必须**同时**满足：
+
+  | `data.7z` 存放方式     | `tauri-plugin-fs` | 结果                                                                              |
+  | ---------------------- | ----------------- | --------------------------------------------------------------------------------- |
+  | DEFLATE（aapt2 默认）  | 2.5.1             | Android ≤ 15 可启动（首次启动拷 84MB 到 cacheDir，~25s）；**Android 16 启动即崩** |
+  | Stored（`noCompress`） | 2.5.1             | 读到 APK 自身的 ZIP 头 → `BadSignature` 崩溃                                      |
+  | Stored（`noCompress`） | 2.7.1             | 正常                                                                              |
+
+  升级方式（Rust crate 与 NPM 包的 major/minor **必须一致**，
+  否则 `tauri android build` 直接报 `Found version mismatched Tauri packages`）：
+
+  ```bash
+  cargo update -p tauri-plugin-fs --precise 2.7.1    # 连带 tauri 2.11.1 → 2.12.4
+  pnpm update @tauri-apps/api @tauri-apps/plugin-fs  # JS 侧跟上（package.json 范围无需改）
+  ```
+
+  自己重新签名 APK 时也要注意：用 `zipalign` + `apksigner` 这类**只签名、不重新打包**的工具，
+  别用会重新压缩资源的工具，否则 `data.7z` 可能被重新 DEFLATE，又回到 Android 16 崩的那一档。
 
 ## 相关 PR
 

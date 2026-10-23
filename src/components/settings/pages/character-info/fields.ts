@@ -1,6 +1,15 @@
 import type { ComposerTranslation } from "vue-i18n";
 
-export type FieldType = "text" | "number" | "textarea" | "examples" | "select" | "switch";
+export type FieldType =
+  | "text"
+  | "number"
+  | "textarea"
+  | "examples"
+  | "select"
+  | "switch"
+  | "audio"
+  /** 滑动条：范围有限、适合「边拖边听」的数值（如推理步数、引导强度） */
+  | "range";
 
 export interface FieldOption {
   label: string;
@@ -19,11 +28,17 @@ export interface FieldSchema {
   placeholder?: string;
   /** 字段下方的小字说明，渲染在控件下方 */
   hint?: string;
+  /** 置灰不可改（如 Linux 桌面上 sherpa-onnx 只能用 CPU）。 */
+  disabled?: boolean;
   /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
   nullable?: boolean;
+  /** `range` 滑块在设置里还没有值时的显示值（否则会贴在 min 上看不出真实默认） */
+  defaultValue?: number;
   options?: FieldOption[];
   // Dynamic options computed from refs/state; overrides options when set.
   dynamicOptions?: () => { label: string; value: string }[];
+  /** 值变后的副作用（如选中模型后带出类型/语言/音色）；v-model 已先写入值。 */
+  onChange?: (value: string, settings: any) => void;
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
   // When set, the field reads/writes into localSettings.value[parent][key].
@@ -36,11 +51,29 @@ export interface SchemaContext {
   avatarModeOptions: FieldOption[];
   cloudVoices: any[];
   installedVoices: any[];
+  installedSherpaModels: any[];
+  /** 选中 Sherpa 模型后带出它的类型/语言/音色（由页面提供，写草稿）。 */
+  applySherpaModelDefaults?: (modelId: string) => void;
+  /** Sherpa 音色下拉（固定四档 + 当前值，由页面构造）。 */
+  sherpaVoiceOptions?: FieldOption[];
+  /** 平台没有 GPU 后端时把 sherpa 的「GPU 推理」开关置灰并给提示。 */
+  gpuUnsupported?: boolean;
+  gpuSwitchHint?: string;
 }
 
 /** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
 export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> {
-  const { t, avatarModeOptions, cloudVoices, installedVoices } = ctx;
+  const {
+    t,
+    avatarModeOptions,
+    cloudVoices,
+    installedVoices,
+    installedSherpaModels,
+    applySherpaModelDefaults,
+    sherpaVoiceOptions = [],
+    gpuUnsupported = false,
+    gpuSwitchHint = "",
+  } = ctx;
   return {
     basic: [
       { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
@@ -153,6 +186,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
           { label: t("settings.characterInfo.fields.localSbv2Api"), value: "localsbv2api" },
           { label: "indextts2", value: "indextts2" },
           { label: t("settings.characterInfo.fields.voiceCloneTts"), value: "cosyvoice" },
+          { label: t("settings.characterInfo.fields.sherpaOnnx"), value: "sherpa-onnx" },
         ],
       },
 
@@ -426,6 +460,116 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         isVoiceModel: true,
         placeholder: t("settings.characterInfo.fields.openttsVoicePlaceholder"),
         visibleIf: (s) => s.tts_type === "opentts",
+      },
+
+      // --- Sherpa-ONNX 本地模型 ---
+      {
+        key: "sherpa_onnx_model_name",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelName"),
+        type: "select",
+        isVoiceModel: true,
+        onChange: (value) => applySherpaModelDefaults?.(value),
+        dynamicOptions: () =>
+          installedSherpaModels.length === 0
+            ? [{ label: t("settings.characterInfo.fields.noSherpaModel"), value: "" }]
+            : installedSherpaModels.map((model) => ({
+                label: model.display_name || model.id,
+                value: model.id,
+              })),
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_model_type",
+        label: t("settings.characterInfo.fields.sherpaOnnxModelType"),
+        type: "select",
+        isVoiceModel: true,
+        options: [
+          { label: "vits", value: "vits" },
+          { label: "fastspeech2", value: "fastspeech2" },
+          { label: "matcha", value: "matcha" },
+          { label: "kokoro", value: "kokoro" },
+          { label: "kitten", value: "kitten" },
+          { label: "zipvoice", value: "zipvoice" },
+          { label: "pocket", value: "pocket" },
+          { label: "supertonic", value: "supertonic" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_lang",
+        label: t("settings.characterInfo.fields.sherpaOnnxLanguage"),
+        type: "select",
+        isVoiceModel: true,
+        options: [
+          { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
+          { label: t("settings.characterInfo.voiceLangOptions.en"), value: "en" },
+          { label: t("settings.characterInfo.voiceLangOptions.ja"), value: "ja" },
+        ],
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_voice",
+        label: t("settings.characterInfo.fields.sherpaOnnxVoice"),
+        type: "select",
+        isVoiceModel: true,
+        dynamicOptions: () => sherpaVoiceOptions,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_use_gpu",
+        label: t("settings.characterInfo.fields.sherpaOnnxUseGpu"),
+        type: "switch",
+        isVoiceModel: true,
+        disabled: gpuUnsupported,
+        hint: gpuSwitchHint || undefined,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_speed",
+        label: t("settings.characterInfo.fields.sherpaOnnxSpeed"),
+        type: "number",
+        step: "0.05",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_num_steps",
+        label: t("settings.characterInfo.fields.sherpaOnnxNumSteps"),
+        type: "range",
+        min: 1,
+        max: 10,
+        step: "1",
+        defaultValue: 4,
+        hint: t("settings.characterInfo.fields.sherpaOnnxNumStepsHint"),
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_guidance_scale",
+        label: t("settings.characterInfo.fields.sherpaOnnxGuidanceScale"),
+        type: "range",
+        min: 1,
+        max: 10,
+        step: "0.1",
+        defaultValue: 1,
+        hint: t("settings.characterInfo.fields.sherpaOnnxGuidanceScaleHint"),
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_audio_path",
+        label: t("settings.sherpa.refPick"),
+        type: "audio",
+        isVoiceModel: true,
+        hint: t("settings.sherpa.refImportHint"),
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
+      },
+      {
+        key: "sherpa_onnx_ref_text",
+        label: t("settings.sherpa.refText"),
+        type: "text",
+        isVoiceModel: true,
+        visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
     ],
   };

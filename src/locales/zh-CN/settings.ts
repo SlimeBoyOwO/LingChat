@@ -68,11 +68,12 @@ export default {
     audioInfo: "音频大小 {size} · 时长 {duration}",
     unplayable: "当前设备无法播放此音频，请检查文件内容或音频格式",
     text: "试听文本",
-    textPlaceholder: "输入一段与所选语音语言一致的文本…",
+    textPlaceholder: "输入试听文本（中文、英文、日文等，按文字自动判断语言）…",
     emotion: "试听情绪",
     generate: "生成试听",
     generating: "正在合成…",
-    languageHint: "试听直接朗读输入文本，不进行翻译；情绪仅对支持它的语音服务生效。",
+    languageHint:
+      "试听直接朗读输入文本，不进行翻译；输入日文假名或韩文谚文时自动按对应语言合成（能否出声取决于所选模型/服务）；情绪仅对支持它的语音服务生效。",
     stale: "配置或文本已修改，下方为上一次的试听结果，请重新生成。",
     selectService: "请先在上方选择语音服务。",
   },
@@ -167,8 +168,10 @@ export default {
       skip: "跳过，用默认",
       confirm: "确认切换",
     },
-    saveConfirm: "本次保存会更新身份卡：若修改的是当前使用中的身份（名字 / 副标题 / 身份设定 / 关系），当前存档《{save}》会同步改变；修改其他身份不影响当前存档。确定保存吗？",
-    saveConfirmNoSave: "本次保存会更新身份卡：当前没有进行中的存档，本次保存只更新身份卡本身。确定保存吗？",
+    saveConfirm:
+      "本次保存会更新身份卡：若修改的是当前使用中的身份（名字 / 副标题 / 身份设定 / 关系），当前存档《{save}》会同步改变；修改其他身份不影响当前存档。确定保存吗？",
+    saveConfirmNoSave:
+      "本次保存会更新身份卡：当前没有进行中的存档，本次保存只更新身份卡本身。确定保存吗？",
     empty: "还没有身份卡。点下面的按钮新建一张；不新建也能用默认身份。",
     current: "当前使用",
     edit: "编辑",
@@ -613,8 +616,10 @@ export default {
       title: "{title} - 配置编辑",
       subtitle: "修改角色的详细设置",
     },
-    saveConfirm: "本次保存会更新角色卡：若修改包含「人设与称呼」「关系」或「初始好感度」，当前存档《{save}》的对应内容会同步改变；只改立绘、语音、称号、简介等则只更新卡片本身。确定保存吗？",
-    saveConfirmNoSave: "本次保存会更新角色卡：当前没有进行中的存档，本次保存只更新卡片本身。确定保存吗？",
+    saveConfirm:
+      "本次保存会更新角色卡：若修改包含「人设与称呼」「关系」或「初始好感度」，当前存档《{save}》的对应内容会同步改变；只改立绘、语音、称号、简介等则只更新卡片本身。确定保存吗？",
+    saveConfirmNoSave:
+      "本次保存会更新角色卡：当前没有进行中的存档，本次保存只更新卡片本身。确定保存吗？",
     tabs: {
       basic: "基本信息",
       prompts: "提示词",
@@ -707,6 +712,30 @@ export default {
       voiceDialect: "中文方言",
 
       openttsVoice: "OpenTTS 音色标识",
+      sherpaOnnx: "Sherpa-ONNX 本地语音",
+      sherpaOnnxModelName: "Sherpa-ONNX 模型",
+      sherpaOnnxModelType: "模型类型",
+      sherpaOnnxLanguage: "语言",
+      sherpaOnnxVoice: "音色",
+      sherpaOnnxUseGpu: "GPU 推理",
+      sherpaOnnxSpeed: "语速",
+      sherpaOnnxNumSteps: "推理步数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice 的 flow-matching 采样步数（1~10）。实测 4 步与 16 步听不出差别，步数越多合成越慢，一般保持 4 即可。",
+      sherpaOnnxGuidanceScale: "引导强度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice 的 guidance_scale（1.0~10.0），越大越贴近参考音频的音色；改完需要重新初始化模型，首次合成会稍慢。",
+      sherpaOnnxParameters: "参数",
+      sherpaOnnxManageModels: "管理模型",
+      sherpaOnnxVoicesMale: "男声",
+      sherpaOnnxVoicesFemale: "女声",
+      sherpaOnnxVoicesChild: "童声",
+      sherpaOnnxVoicesElderly: "老年声",
+      sherpaOnnxModelDir: "模型存放目录",
+      sherpaOnnxStoragePermHint:
+        "模型存放于应用数据目录（data/sherpa_onnx_models），无需额外存储权限",
+      sherpaOnnxGrantPermission: "立即授权",
+      noSherpaModel: "未安装 Sherpa-ONNX 模型（请先在 TTS 设置中下载）",
     },
     placeholders: {
       openttsVoice: "留空则使用高级设置中的全局音色标识",
@@ -1613,6 +1642,58 @@ export default {
       deviceSwitched: "推理设备已切换: {name}",
       deviceSwitchFailed: "切换推理设备失败: {error}",
     },
+  },
+
+  sherpa: {
+    title: "Sherpa-ONNX 本地语音",
+    models: "模型",
+    noModels: "暂无可用模型，请先下载",
+    manageModels: "打开模型文件夹",
+    modelConfig: "模型配置",
+    modelType: "模型类型",
+    language: "语言",
+    voice: "音色",
+    voiceAll: "全部音色",
+    voiceCount: "共 {n} 个",
+    voiceLoading: "读取中…",
+    useGpu: "GPU 推理",
+    useGpuLinuxHint:
+      "Linux 上 sherpa-onnx 只能用 CPU：GPU 只能走官方 CUDA 包（安装包 +235 MB），已按体积取舍移除。",
+    useGpuWindowsHint:
+      "需要 DirectML 版构建（pnpm tauri:build:win）才会真正走 GPU，否则自动按 CPU 运行。",
+    useGpuAndroidHint:
+      "走 NNAPI 设备后端（需要 Android 8.1+）。pnpm android:build 打出的包已带 NNAPI；用官方预编译包构建的包会按 CPU 运行。",
+    parameters: "参数",
+    speed: "语速",
+    numSteps: "推理步数",
+    guidanceScale: "引导强度",
+    tuningHint:
+      "推理步数与引导强度只对 ZipVoice（flow-matching）生效，其它模型会忽略。试听用的是这里的临时值，角色实际说话请到角色设置的语音页调整。",
+    zeroShot: "零样本声音克隆",
+    zeroShotDesc: "部分模型（如 kokoro/kitten 等）支持参考音频 + 参考文本的零样本克隆。",
+    refLoaded: "参考音频已加载",
+    refNone: "未选择参考音频",
+    refChange: "更换音频",
+    refPick: "选择音频",
+    refClear: "清除",
+    refImporting: "导入中…",
+    refListen: "试听",
+    refStop: "停止",
+    refPlayFailed: "试听参考音频失败",
+    refImportUnsupported:
+      "无法识别的音频格式（支持 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常见格式；WebM 暂不支持）",
+    refImportOpus: "暂不支持多声道 Opus（如 5.1），请先转成单声道或立体声再导入",
+    refImportTooLong: "参考音频过长，请截取其中较短的一段再导入",
+    refImportFailed: "导入参考音频失败",
+    refImportHint:
+      "支持 mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）等常见音频（WebM 除外）；导入后自动转成 WAV 并复制到应用数据目录",
+    refText: "参考文本",
+    refTextPlaceholder: "与参考音频对应的文本……",
+    test: "试听",
+    testPlaceholder: "输入要试听的文字（假名/谚文会按对应语言合成）……",
+    synthesizing: "合成中…",
+    listen: "试听",
+    noModelHint: "请先选择一个已安装的模型",
   },
 
   asr: {

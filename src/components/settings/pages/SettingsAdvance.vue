@@ -94,9 +94,37 @@
         <SettingsLlmProviders />
       </div>
 
-      <!-- ====== 本地 TTS ====== -->
-      <div v-else-if="advanceTab === 'tts'" class="min-h-0 flex-1">
-        <SettingsTts />
+      <!-- ====== 本地 TTS / Sherpa-ONNX ====== -->
+      <div v-else-if="advanceTab === 'tts'" class="flex min-h-0 flex-1 flex-col">
+        <!-- 子区块切换：本地 TTS / Sherpa-ONNX -->
+        <div class="mb-4 flex shrink-0 items-center gap-2">
+          <button
+            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+            :class="
+              ttsSection === 'tts'
+                ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                : 'text-white/60 hover:text-white/80'
+            "
+            @click="ttsSection = 'tts'"
+          >
+            {{ $t("advance.tabs.tts") }}
+          </button>
+          <button
+            class="rounded-md px-4 py-1.5 text-sm font-medium transition-all duration-200"
+            :class="
+              ttsSection === 'sherpa'
+                ? 'bg-brand text-white shadow-[0_2px_8px_rgba(0,0,0,0.3)]'
+                : 'text-white/60 hover:text-white/80'
+            "
+            @click="ttsSection = 'sherpa'"
+          >
+            {{ $t("settings.sherpa.title") }}
+          </button>
+        </div>
+        <div class="min-h-0 flex-1">
+          <SettingsTts v-show="ttsSection === 'tts'" />
+          <SettingsSherpa v-show="ttsSection === 'sherpa'" />
+        </div>
       </div>
 
       <!-- ====== 语音识别 ====== -->
@@ -136,6 +164,7 @@ import { MenuPage } from "../../ui";
 import SettingsLlmProviders from "./SettingsLlmProviders.vue";
 import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
 import SettingsTts from "./SettingsTts.vue";
+import SettingsSherpa from "./SettingsSherpa.vue";
 import SettingsAsr from "./SettingsAsr.vue";
 import SettingsMemoryDebug from "./SettingsMemoryDebug.vue";
 import SettingsTools from "./SettingsTools.vue";
@@ -152,6 +181,9 @@ const advanceTab = computed({
     uiStore.advanceTab = tab;
   },
 });
+
+// TTS 子区块：本地 TTS / Sherpa-ONNX
+const ttsSection = ref<"tts" | "sherpa">("tts");
 
 const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null);
 

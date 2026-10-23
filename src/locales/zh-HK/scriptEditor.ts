@@ -83,7 +83,6 @@ export default {
       "支持的類型：累計聊天條數 / 處於時間段內 / 已完成某個羈絆冒險 / 已解鎖某個成就。",
     save: "儲存劇本設定",
   },
-
   schema: {
     event: {
       narration: "旁白",
@@ -247,7 +246,7 @@ export default {
     noLocalAvatar: "本劇本沒複製立繪，但全局角色庫裡有；引擎會自動用全局那份",
     clothes: " · {count} 套服裝",
     intro:
-      '這裡管理<b class=\"font-semibold text-white/85\">只有這個劇本用得上的角色</b>。劇本裡用 <code>character: &lt;引用名&gt;</code> 指代；寫 <code>MAIN</code> 表示當前主角（羈絆劇本裡就是綁定的那位，不需要匯入，引擎直接從全局角色庫讀取）。<br />想用全局角色庫裡已有的人設，點下方「從全局角色庫匯入」複製一份到本劇本；立繪仍讀全局那份，不會讓劇本目錄白白變大。',
+      '這裡管理<b class="font-semibold text-white/85">只有這個劇本用得上的角色</b>。劇本裡用 <code>character: &lt;引用名&gt;</code> 指代；寫 <code>MAIN</code> 表示當前主角（羈絆劇本裡就是綁定的那位，不需要匯入，引擎直接從全局角色庫讀取）。<br />想用全局角色庫裡已有的人設，點下方「從全局角色庫匯入」複製一份到本劇本；立繪仍讀全局那份，不會讓劇本目錄白白變大。',
     noPortrait: "無立繪",
     usesGlobalAvatar: "立繪讀自全局",
     emotions: "{count} 個表情",
@@ -350,7 +349,6 @@ export default {
   },
   flowTab: {
     chapterName: "章節顯示名（留空則用文件名）",
-
     foldHint:
       "官方劇本裡反覆出現兩組固定寫法：「角色退場 → 背景 → 角色出場」的轉場，和「AI 說 → 等玩家輸入 → AI 說」的一輪互動。打開後它們各折成一行，長章節能少掉近一半行數；折起來的那行會寫明這段切到哪個背景、用的什麼提示。",
     newChapter: "＋ 新建章節",
@@ -594,6 +592,7 @@ export default {
   },
   agentThinking: {
     label: "思考/規劃…",
+    thinking: "思考中…",
   },
   scriptEditor: {
     playtestBlocked: "試玩會卡住",

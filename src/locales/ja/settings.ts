@@ -35,8 +35,10 @@ export default {
       skip: "スキップ（デフォルト）",
       confirm: "切り替えを確定",
     },
-    saveConfirm: "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
-    saveConfirmNoSave: "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
+    saveConfirmNoSave:
+      "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     empty:
       "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
     current: "使用中",
@@ -437,8 +439,10 @@ export default {
       title: "{title} - 設定編集",
       subtitle: "キャラクターの詳細設定を変更します",
     },
-    saveConfirm: "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
-    saveConfirmNoSave: "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
+    saveConfirmNoSave:
+      "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     tabs: {
       basic: "基本情報",
       prompts: "プロンプト",
@@ -509,6 +513,31 @@ export default {
       voiceDialect: "中国語方言",
 
       openttsVoice: "OpenTTS 音色識別子",
+      sherpaOnnx: "Sherpa-ONNX ローカル音声",
+      sherpaOnnxModelName: "Sherpa-ONNX モデル",
+      sherpaOnnxModelType: "モデル種別",
+      sherpaOnnxLanguage: "言語",
+      sherpaOnnxVoice: "音声",
+      sherpaOnnxUseGpu: "GPU 推論",
+      sherpaOnnxSpeed: "話速",
+      sherpaOnnxNumSteps: "推論ステップ数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice の flow-matching サンプリング回数（1〜10）。4 回と 16 回で聴感差はなく、増やすほど遅くなるだけです。",
+      sherpaOnnxGuidanceScale: "ガイダンス強度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice の guidance_scale（1.0〜10.0）。大きいほど参照音声の声質に寄ります。変更するとモデルを再初期化するため、次の合成は少し遅くなります。",
+      sherpaOnnxParameters: "パラメータ",
+      sherpaOnnxManageModels: "モデル管理",
+      sherpaOnnxVoicesMale: "男性",
+      sherpaOnnxVoicesFemale: "女性",
+      sherpaOnnxVoicesChild: "子供",
+      sherpaOnnxVoicesElderly: "年配",
+      sherpaOnnxModelDir: "モデル保存先",
+      sherpaOnnxStoragePermHint:
+        "モデルはアプリのデータディレクトリ（data/sherpa_onnx_models）に保存されます。追加のストレージ権限は不要です",
+      sherpaOnnxGrantPermission: "権限を付与",
+      noSherpaModel:
+        "Sherpa-ONNX モデルがインストールされていません（TTS 設定からダウンロードしてください）",
     },
     placeholders: {
       openttsVoice: "空欄の場合は詳細設定のグローバル音色識別子を使用します",
@@ -1419,6 +1448,60 @@ export default {
       deviceSwitched: "推論デバイスを切り替えました: {name}",
       deviceSwitchFailed: "推論デバイスの切り替えに失敗: {error}",
     },
+  },
+
+  sherpa: {
+    title: "Sherpa-ONNX ローカル音声",
+    models: "モデル",
+    noModels: "利用可能なモデルがありません。先にダウンロードしてください",
+    manageModels: "モデルフォルダを開く",
+    modelConfig: "モデル設定",
+    modelType: "モデル種別",
+    language: "言語",
+    voice: "音声",
+    voiceAll: "すべての音色",
+    voiceCount: "全 {n} 音色",
+    voiceLoading: "読み込み中…",
+    useGpu: "GPU 推論",
+    useGpuLinuxHint:
+      "Linux では sherpa-onnx は CPU のみです。GPU には公式 CUDA パッケージ（インストーラ +235 MB）が必要なため、サイズの都合で削除しました。",
+    useGpuWindowsHint:
+      "DirectML ビルド（pnpm tauri:build:win）でのみ GPU を使用します。それ以外は CPU で動作します。",
+    useGpuAndroidHint:
+      "NNAPI デバイスバックエンドを使用します（Android 8.1 以上が必要）。pnpm android:build で作成したパッケージには NNAPI が含まれます。公式のビルド済みパッケージを使った場合は CPU で動作します。",
+    parameters: "パラメータ",
+    speed: "話速",
+    numSteps: "推論ステップ数",
+    guidanceScale: "ガイダンス強度",
+    tuningHint:
+      "推論ステップ数とガイダンス強度は ZipVoice（flow-matching）でのみ有効で、他のモデルでは無視されます。ここは試聴用の一時値です。実際の読み上げはキャラクター設定の音声ページで調整してください。",
+    zeroShot: "ゼロショット音声クローン",
+    zeroShotDesc:
+      "一部のモデル（kokoro/kitten 等）は参照音声 + 参照テキストによるゼロショットクローンに対応しています。",
+    refLoaded: "参照音声を読み込みました",
+    refNone: "参照音声が選択されていません",
+    refChange: "音声を変更",
+    refPick: "音声を選択",
+    refClear: "クリア",
+    refImporting: "インポート中…",
+    refListen: "試聴",
+    refStop: "停止",
+    refPlayFailed: "参照音声の試聴に失敗しました",
+    refImportUnsupported:
+      "認識できない音声形式です（mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な形式に対応。WebM は未対応）",
+    refImportOpus:
+      "マルチチャンネルの Opus（5.1 など）には未対応です。モノラルまたはステレオに変換してからインポートしてください",
+    refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",
+    refImportFailed: "参照音声のインポートに失敗しました",
+    refImportHint:
+      "mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な音声に対応（WebM を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
+    refText: "参照テキスト",
+    refTextPlaceholder: "参照音声に対応するテキスト……",
+    test: "試聴",
+    testPlaceholder: "試聴するテキストを入力（仮名・ハングルは自動で言語判定）……",
+    synthesizing: "合成中…",
+    listen: "試聴",
+    noModelHint: "インストール済みのモデルを選択してください",
   },
 
   asr: {
