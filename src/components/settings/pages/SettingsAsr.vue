@@ -142,6 +142,32 @@
       </div>
     </section>
 
+    <!-- 全局热词：与场景角色热词取并集参与识别（同词取较高权重） -->
+    <section class="mb-6">
+      <div class="text-brand mb-3 font-medium">{{ t("settings.asr.globalHotword.title") }}</div>
+      <button
+        type="button"
+        class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-left text-sm text-white transition-all duration-200 hover:border-[#5e72e4]/40 hover:bg-white/15"
+        @click="showGlobalHotword = true"
+      >
+        {{ t("settings.asr.globalHotword.open") }}
+      </button>
+      <p class="mt-1.5 text-sm text-gray-300">{{ t("settings.asr.globalHotword.hint") }}</p>
+    </section>
+
+    <!-- 热词库：素材库，供角色热词与全局热词挑选（拷贝式，不参与识别） -->
+    <section class="mb-6">
+      <div class="text-brand mb-3 font-medium">{{ t("settings.asr.hotwordLibrary.title") }}</div>
+      <button
+        type="button"
+        class="w-full cursor-pointer rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-left text-sm text-white transition-all duration-200 hover:border-[#5e72e4]/40 hover:bg-white/15"
+        @click="showHotwordLibrary = true"
+      >
+        {{ t("settings.asr.hotwordLibrary.open") }}
+      </button>
+      <p class="mt-1.5 text-sm text-gray-300">{{ t("settings.asr.hotwordLibrary.hint") }}</p>
+    </section>
+
     <!-- 识别服务 -->
     <section class="mb-6">
       <div class="text-brand mb-3 font-medium">{{ t("settings.asr.provider.title") }}</div>
@@ -166,6 +192,26 @@
           </option>
         </optgroup>
       </select>
+
+      <!-- 热词容量：**能力展示**，不是容量报警。
+           判据走能力位，不硬编码模型清单；llama-asr 的 prompt 偏置没有条数上限，
+           给它显示「能装 N 条」是错的，故该档只提示能力、不显示数字。
+           ⚠️ 位置在「识别服务」选择器下方而不是表单里的模型下拉下方：qwen 的
+           config_fields 没有 model 字段（模型就在这里选），挂在 field.key === 'model'
+           上对 qwen 永不渲染。 -->
+      <p v-if="activeModel" class="mt-1.5 text-sm text-gray-300">
+        {{
+          activeModel.supports_inline_vocabulary && activeModel.max_hotword_count
+            ? t("settings.asr.provider.inlineHotwordLimit", {
+                count: activeModel.max_hotword_count,
+              })
+            : activeModel.supports_prompt_bias
+              ? t("settings.asr.provider.promptBiasNoLimit")
+              : t("settings.characterInfo.hotword.modelUnsupported", {
+                  model: activeModel.id,
+                })
+        }}
+      </p>
 
       <div v-if="activeProviderInfo" class="space-y-3">
         <div v-for="field in activeProviderInfo.config_fields" :key="field.key">
@@ -311,6 +357,9 @@
         <span :class="vadStateClass">{{ vadStateText }}</span>
       </div>
     </section>
+
+    <GlobalHotwordDialog :visible="showGlobalHotword" @close="showGlobalHotword = false" />
+    <HotwordLibraryDialog :visible="showHotwordLibrary" @close="showHotwordLibrary = false" />
   </div>
 </template>
 
@@ -328,6 +377,8 @@ import { listen } from "@tauri-apps/api/event";
 import { isAndroid } from "@/utils/platform";
 
 import { Toggle } from "../../base";
+import GlobalHotwordDialog from "@/components/settings/asr/GlobalHotwordDialog.vue";
+import HotwordLibraryDialog from "@/components/settings/asr/HotwordLibraryDialog.vue";
 import { useAsrStore } from "@/stores/modules/settings/asr";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { asrRecognizeWav, asrGetStatus } from "@/api/services/asr";
@@ -350,6 +401,9 @@ const uiStore = useUIStore();
 // DataCloneError，导致 setup 崩溃整页空白；JSON 序列化无此问题）
 const localSettings = ref<AsrSettings>(JSON.parse(JSON.stringify(asrStore.settings)));
 const lastTestResult = ref<{ ok: boolean; text: string } | null>(null);
+/** 全局热词与词库弹窗都走自己的命令，不写 AsrSettings，与本页自动保存无交互。 */
+const showGlobalHotword = ref(false);
+const showHotwordLibrary = ref(false);
 
 /** 当前生效的快捷键绑定：解析策略统一走 parsePttBinding（与 useAsrInput
  *  运行判定同款；Enter / 非法 JSON 回退裸 F8，显示与实际行为一致） */
@@ -874,7 +928,6 @@ async function finishTestRecording() {
     const result = await asrRecognizeWav({
       providerId: localSettings.value.active_provider,
       wavBytes: Array.from(wav),
-      languageHint: null,
     });
     lastTestResult.value = {
       ok: true,
