@@ -83,7 +83,8 @@
                   :placeholder="$t('settings.asr.hotwordLibrary.picker.searchPlaceholder')"
                 />
                 <button
-                  class="shrink-0 cursor-pointer rounded-lg border-none bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/20"
+                  class="shrink-0 cursor-pointer rounded-lg border-none bg-white/10 px-3 py-2 text-xs text-white hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                  :disabled="!canToggleAll"
                   @click="toggleAll"
                 >
                   {{
@@ -104,7 +105,7 @@
                   <input
                     type="checkbox"
                     class="shrink-0"
-                    :disabled="row.existing"
+                    :disabled="row.existing || (!picked.has(row.word) && availableSlots === 0)"
                     :checked="picked.has(row.word)"
                     @change="toggle(row.word)"
                   />
@@ -127,8 +128,16 @@
           <div
             class="flex items-center justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
           >
-            <span class="text-sm text-white/60">
-              {{ $t("settings.asr.hotwordLibrary.picker.selected", { count: picked.size }) }}
+            <span class="flex flex-wrap items-center gap-x-2 text-sm text-white/60">
+              <span>
+                {{ $t("settings.asr.hotwordLibrary.picker.selected", { count: picked.size }) }}
+              </span>
+              <span v-if="availableSlots === 0" class="text-amber-300">
+                {{ $t("settings.asr.hotwordLibrary.picker.limitReached") }}
+              </span>
+              <span v-else class="text-white/40">
+                {{ $t("settings.asr.hotwordLibrary.picker.remaining", { count: availableSlots }) }}
+              </span>
             </span>
             <div class="flex gap-3">
               <button
@@ -139,7 +148,7 @@
               </button>
               <button
                 class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] disabled:cursor-not-allowed disabled:opacity-60"
-                :disabled="picked.size === 0 || loading"
+                :disabled="picked.size === 0 || loading || overCapacity"
                 @click="confirm"
               >
                 {{ $t("settings.asr.hotwordLibrary.picker.add") }}
@@ -165,6 +174,8 @@ const props = defineProps<{
   visible: boolean;
   /** 宿主当前草稿里的词条：与其 trim 后 text 相同的库词条标「已存在」且不可勾选。 */
   existing: RoleHotword[];
+  /** 宿主当前列表的条数上限：选择器按剩余额度拦截超额添加。 */
+  capacity: number;
 }>();
 const emit = defineEmits<{ close: []; add: [words: LibraryWord[]] }>();
 
@@ -178,7 +189,7 @@ const search = ref("");
 const categoryFilter = ref<string>("all");
 const picked = ref(new Set<LibraryWord>());
 
-/** 防重键与共享的 `dedupeRows` / DB 的 UNIQUE 同口径：trim 后的原样字符串。 */
+/** 这里比较的是库词条与角色热词：角色热词按 trim 后的 `text` 唯一，不带分类维度。 */
 const existingKeys = computed(() => new Set(props.existing.map((w) => w.text.trim())));
 
 const filtered = computed(() => {
@@ -204,15 +215,29 @@ const allSelected = computed(
   () => selectable.value.length > 0 && selectable.value.every((row) => picked.value.has(row.word)),
 );
 
+/** 草稿还能容纳的条数（不含当前已勾选，与批量导入的容量基数一致）。 */
+const remaining = computed(() => Math.max(0, props.capacity - props.existing.length));
+const availableSlots = computed(() => Math.max(0, remaining.value - picked.value.size));
+const overCapacity = computed(() => picked.value.size > remaining.value);
+/** 全选只在「当前过滤结果里尚未勾选的那些能全部装下」时可用；已全选时始终允许清空。 */
+const canToggleAll = computed(() => {
+  if (selectable.value.length === 0) return false;
+  if (allSelected.value) return true;
+  const unpicked = selectable.value.filter((row) => !picked.value.has(row.word)).length;
+  return unpicked <= availableSlots.value;
+});
+
 const toggle = (word: LibraryWord) => {
   const next = new Set(picked.value);
   if (next.has(word)) next.delete(word);
-  else next.add(word);
+  else if (availableSlots.value > 0) next.add(word);
+  else return;
   picked.value = next;
 };
 
 /** 全选 / 清空只作用于当前过滤结果里可勾选的词条。 */
 const toggleAll = () => {
+  if (!canToggleAll.value) return;
   const next = new Set(picked.value);
   for (const row of selectable.value) {
     if (allSelected.value) next.delete(row.word);
@@ -248,6 +273,7 @@ const handleClose = () => emit("close");
 
 /** 确认：拷贝一份交给宿主，库中后续改动不回传。 */
 const confirm = () => {
+  if (picked.value.size === 0 || overCapacity.value) return;
   emit(
     "add",
     [...picked.value].map((w) => ({ ...w })),

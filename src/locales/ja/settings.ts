@@ -591,6 +591,11 @@ export default {
       modelUnsupported:
         "現在のモデル {model} は即時ホットワードに対応していないため、設定しても反映されません",
       listTitle: "ホットワード一覧",
+      count: "全 {count} 件 · 上限 {max}",
+      roleHint:
+        "このキャラクターにのみ適用され、キャラクターを切り替えると単語表も切り替わります。キャラクター名は自動で追加されます。",
+      roleAppendHint:
+        "キャラクター名は自動で追加されます。主人公と登場中のキャラクター名が認識時に重み 5 で先頭に追加されるため、手動で管理する必要はありません。複数キャラクターの場面でも脇役の名前を正しく認識できます。",
       add: "ホットワードを追加",
       empty: "ホットワードがまだありません。「ホットワードを追加」から作成してください",
       colText: "語句",
@@ -1486,9 +1491,12 @@ export default {
       hint: "毎回の認識で送信され、シーンのキャラクターホットワードと統合されます（同じ語は高い重みを採用）",
       dialog: {
         title: "グローバルホットワード",
-        subtitle: "すべてのキャラクターに適用",
+        subtitle: "すべてのキャラクターで共用し、認識時に単語表の末尾へ追加されます",
         loadFailed: "グローバルホットワードの読み込みに失敗しました",
         saveFailed: "グローバルホットワードの保存に失敗しました",
+        weightHint:
+          "重み 1–5 は通常のホットワードで、値が大きいほど優先されます。50 はスーパーホットワードで再現率が高い一方、1 回のリクエストで最大 50 件までです。超過分は自動的に通常枠へ降格され、破棄されません。",
+        footerHint: "保存後すぐに認識へ反映されます",
         footer: { cancel: "キャンセル", save: "保存", saving: "保存中…" },
       },
     },
@@ -1501,7 +1509,12 @@ export default {
         subtitle: "単語を分類して、キャラクターと全体のホットワードに提供します",
         loadFailed: "ホットワードライブラリの読み込みに失敗しました",
         saveFailed: "ホットワードライブラリの保存に失敗しました",
-        footer: { cancel: "キャンセル", save: "保存", saving: "保存中…" },
+        footer: {
+          cancel: "キャンセル",
+          save: "保存",
+          saving: "保存中…",
+          count: "全 {count} 件 · 分類 {categories} · 上限 {max}",
+        },
         categories: {
           all: "すべて",
           uncategorized: "未分類",
@@ -1517,6 +1530,7 @@ export default {
           searchPlaceholder: "単語を検索",
           empty: "単語がありません",
           colCategory: "分類",
+          hint: "左の分類または検索で絞り込めます。単語はその場で編集できます。",
         },
         validation: {
           checkForm: "赤く表示された分類名を修正してください",
@@ -1537,6 +1551,8 @@ export default {
         clear: "クリア",
         existing: "追加済み",
         selected: "{count} 件選択中",
+        remaining: "残り {count} 件",
+        limitReached: "上限に達しました。選択を外すと追加できます",
         add: "追加",
         cancel: "キャンセル",
         empty:
@@ -1578,6 +1594,55 @@ export default {
       ASR_MISSING_CREDENTIALS: "このプロバイダの API Key を入力してください",
       ASR_STREAMING_UNSUPPORTED: "現在のモデルはストリーミング認識に対応していません",
     },
+  },
+  hotwordImport: {
+    entry: "一括インポート",
+    dialog: {
+      title: "ホットワードを一括インポート",
+      subtitle: "単語表を貼り付け、検証後に保存します",
+      placeholder: "1 行に 1 語：番号.単語(重み)\n1.钦灵(5)\n2.deepseek(2)",
+      invalidCount: "異常 {count} 行",
+      noInvalid: "異常なし",
+      overCapacityCount: "上限超過 {count} 行",
+      listOverLimit: "現在のリストが上限を超えています。先に削減してからインポートしてください。",
+      line: "{line} 行目",
+      weight: "重み",
+      more: "他 {count} 件の異常",
+      reason: {
+        badFormat: "形式は 番号.単語(重み) で入力してください",
+        tooLongChars: "{max} 文字を超えています（現在 {count}）",
+        tooLongSegments: "{max} 個を超えています（現在 {count}）",
+        badWeight: "重みは 1、2、3、4、5、50 のいずれかです（現在 {weight}）",
+        overCapacity: "容量上限を超えたためインポートされません",
+      },
+      targetCategory: "対象分類",
+      libraryOnly: "ライブラリのみ",
+      uncategorized: "未分類",
+      unnamed: "（名称未設定）",
+      cancel: "キャンセル",
+      save: "保存",
+      saving: "保存中…",
+      noRows: "インポートできる語句がありません",
+      appendHint:
+        "新しい語句はリストの末尾に追加されます。容量が厳しいときは前の語句が優先されます。",
+      duplicateCategoryHint:
+        "重複した語句は元の分類を保持し、重みだけを更新します。対象分類は新規の語句にのみ適用されます。",
+      saveScopeHint: "保存すると現在のホットワード一覧の既存の編集と削除も同時に書き込まれます。",
+    },
+    notification: {
+      title: "{count} 件のホットワードを保存しました",
+      libraryTitle: "{count} 件の単語を保存しました",
+      scopeRole: "キャラクターホットワード",
+      scopeGlobal: "グローバルホットワード",
+      scopeLibrary: "ホットワードライブラリ",
+    },
+  },
+  hotwordBatch: {
+    entry: "一括削除",
+    exit: "一括モード終了",
+    selectAll: "すべて選択",
+    clearSelection: "選択を解除",
+    deleteSelected: "選択した {count} 件を削除",
   },
   memoryDebug: {
     title: "永続記憶デバッグ",

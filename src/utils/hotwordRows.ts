@@ -1,4 +1,5 @@
-/** 热词行的共享编辑语义：角色/全局热词与词库共用，trim / 去重须与后端 UNIQUE 口径一致。 */
+/** 热词行的共享编辑语义：`RoleHotword` 与 `LibraryWord` 都满足 `HotwordRow`，
+ *  去重键由调用方传入，须与后端唯一键同形，否则整表保存失败。 */
 
 /** 权重默认值，与后端 hotword_weight.rs 对齐。
  *  权重不是连续区间：只允许 [1, 5] 或 50（6..=49 无效）。 */
@@ -16,12 +17,16 @@ export interface HotwordRow {
   weight: number;
 }
 
-/** 同 text 合并取 max weight、保留首现者；原地重建数组，调用方引用不失效。 */
-export function dedupeRows<T extends HotwordRow>(rows: T[]): void {
+/** 同 key 合并取 max weight、保留首现者；默认 key 为 trim 后的 text，
+ *  末尾原地重建数组，调用方持有的引用不失效。 */
+export function dedupeRows<T extends HotwordRow>(
+  rows: T[],
+  keyOf: (row: T) => string = (row) => row.text.trim(),
+): void {
   const first = new Map<string, T>();
   const kept: T[] = [];
   for (const row of rows) {
-    const key = row.text.trim();
+    const key = keyOf(row);
     const seen = first.get(key);
     if (seen) {
       seen.weight = Math.max(seen.weight, row.weight);
@@ -33,14 +38,19 @@ export function dedupeRows<T extends HotwordRow>(rows: T[]): void {
   rows.splice(0, rows.length, ...kept);
 }
 
-/** 词条失焦：trim 后并入同键的首现者（与 DB 的 BINARY 比较口径一致）。 */
-export function commitRowText<T extends HotwordRow>(rows: T[], item: T): void {
+/** 词条失焦：trim 后并入同 key 的首现者（与 DB 的 BINARY 比较口径一致）。 */
+export function commitRowText<T extends HotwordRow>(
+  rows: T[],
+  item: T,
+  keyOf: (row: T) => string = (row) => row.text.trim(),
+): void {
   item.text = item.text.trim();
   // 空行不归并，否则用户还在编辑的行会静默消失
   if (item.text === "") return;
   const index = rows.indexOf(item);
   if (index === -1) return;
-  const first = rows.findIndex((other, i) => i < index && other.text === item.text);
+  const key = keyOf(item);
+  const first = rows.findIndex((other, i) => i < index && keyOf(other) === key);
   if (first === -1) return;
   rows[first].weight = Math.max(rows[first].weight, item.weight);
   rows.splice(index, 1);

@@ -346,6 +346,8 @@
                 v-model="hotwordDraft"
                 :role-id="props.roleId"
                 :model-capability="modelCapability"
+                scope="role"
+                :save-hotwords="saveHotwordRows"
               />
             </fieldset>
           </div>
@@ -448,6 +450,7 @@ import {
 import {
   getRoleHotwords,
   saveRoleHotwords,
+  type RoleHotword,
   type RoleHotwordDraft,
 } from "../../../api/services/hotword";
 import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services/player-identity";
@@ -523,7 +526,8 @@ const hasChanges = computed(
   () =>
     worldbookChanged.value ||
     resourceRevision.value > 0 ||
-    JSON.stringify(localSettings.value) !== baseline.value,
+    JSON.stringify(localSettings.value) !== baseline.value ||
+    JSON.stringify(hotwordDraft.value.hotwords) !== hotwordBaseline.value,
 );
 async function refreshDraftClothes() {
   const id = editId.value;
@@ -580,8 +584,8 @@ const {
 
 /** 热词草稿：随底部保存一次提交，取消即丢弃。 */
 const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
+const hotwordBaseline = ref("[]");
 
-/** 传给热词 tab 的模型能力（与全局热词弹窗共用同一判定）。 */
 const modelCapability = useAsrModelCapability();
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
@@ -868,8 +872,11 @@ watch(
         baseline.value = JSON.stringify(localSettings.value);
         draftClothes.value = [...(props.clothes ?? [])];
         // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
-        const roleHotwords = await getRoleHotwords(props.roleId);
+        const roleHotwords = await getRoleHotwords(roleId);
+        // 读取期间可能已关闭弹窗或切到别的角色，不能把结果写进当前草稿
+        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) return;
         hotwordDraft.value = { hotwords: roleHotwords };
+        hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
@@ -956,6 +963,17 @@ function applySettingsToRuntime() {
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
+/** 批量导入保存：只保存热词表，不提交角色设置；失败由导入面板显示错误。 */
+async function saveHotwordRows(rows: RoleHotword[]) {
+  if (!props.roleId) return;
+  await saveRoleHotwords(
+    props.roleId,
+    rows.map(({ text, weight }) => ({ text, weight })),
+  );
+  hotwordBaseline.value = JSON.stringify(rows);
+  void refreshSceneHotwords();
+}
+
 /** 校验实际加载的 variant 模型文件是否还在（按 editId 解析草稿模型） */
 async function isLive2dModelAvailable(): Promise<boolean> {
   const live2d = localSettings.value.live2d;
@@ -978,12 +996,26 @@ async function persistSettings(): Promise<boolean> {
     t("settings.characterInfo.saveConfirmNoSave"),
   );
   if (!confirmed) return false;
+  // 保存期间弹窗可能被关闭或切到别的角色：先捕获本次提交对象，await 回来再校验
+  const currentRoleId = props.roleId;
+  const currentEditId = editId.value;
   saving.value = true;
   try {
     if (worldbookChanged.value && !(await worldbookEditor.value?.validate())) {
       activeTab.value = "worldbook";
       return false;
     }
+    // 热词先保存：它失败时角色设置不提交，editId 保留，用户可以直接重试。
+    // 热词保存是整表替换，重试幂等。
+    await saveRoleHotwords(
+      currentRoleId,
+      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
+    );
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
+    hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
+    // 第一次刷新：热词已单独落盘，让新词不必等设置提交就生效
+    void refreshSceneHotwords();
     // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
     await relationsEditor.value?.submit(true);
     // Live2D 模型文件取不到时改回静态立绘，避免运行时先建 WebGL 上下文再失败
@@ -991,22 +1023,19 @@ async function persistSettings(): Promise<boolean> {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
     }
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
     await commitCharacterEdit(
-      props.roleId,
-      editId.value,
+      currentRoleId,
+      currentEditId,
       localSettings.value,
       worldbookChanged.value ? { book: worldbook.value } : undefined,
     );
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();
-    // 热词：后端全量覆盖写热词表。失败与角色设置同样处理：提示且不关窗，重试幂等
-    await saveRoleHotwords(
-      props.roleId,
-      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
-    );
-    // 必须排在 applySettingsToRuntime 的角色名热更之后，
-    // refreshSceneHotwords 会同步派生角色名热词，放在前面会派生出旧名字
+    // 第二次刷新：提交后角色名可能已改，重新派生角色名热词
+    // 刷新有 generation 守卫，重复调用的旧结果会被丢弃
     void refreshSceneHotwords();
     return true;
   } catch (e) {

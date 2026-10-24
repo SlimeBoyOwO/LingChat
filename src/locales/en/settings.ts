@@ -610,6 +610,11 @@ export default {
       modelUnsupported:
         "The current model {model} does not support inline hotwords, so they will be ignored",
       listTitle: "Hotword List",
+      count: "{count} entries · limit {max}",
+      roleHint:
+        "Only applies to this character. The word list changes with the character; character names are added automatically.",
+      roleAppendHint:
+        "Character names are injected automatically: the main character and present characters are added at recognition time with weight 5, at the front of the list. Supporting characters are recognized correctly in multi-character scenes.",
       add: "Add Hotword",
       empty: 'No hotwords yet. Click "Add Hotword" to create one',
       colText: "Word",
@@ -1501,9 +1506,12 @@ export default {
       hint: "Sent with every recognition and merged with scene role hotwords (higher weight wins)",
       dialog: {
         title: "Global Hotwords",
-        subtitle: "Applies to all roles",
+        subtitle: "Shared by all roles and appended to the end of the word list",
         loadFailed: "Failed to load global hotwords",
         saveFailed: "Failed to save global hotwords",
+        weightHint:
+          "Weights 1–5 are normal hotwords; higher values mean stronger preference. 50 is a super hotword with higher recall, but at most 50 are sent per request; the remainder is downgraded automatically, not dropped.",
+        footerHint: "Takes effect immediately after saving",
         footer: { cancel: "Cancel", save: "Save", saving: "Saving…" },
       },
     },
@@ -1516,7 +1524,12 @@ export default {
         subtitle: "Organize words by category for roles and the global list",
         loadFailed: "Failed to load the hotword library",
         saveFailed: "Failed to save the hotword library",
-        footer: { cancel: "Cancel", save: "Save", saving: "Saving…" },
+        footer: {
+          cancel: "Cancel",
+          save: "Save",
+          saving: "Saving…",
+          count: "{count} entries · {categories} categories · limit {max}",
+        },
         categories: {
           all: "All",
           uncategorized: "Uncategorized",
@@ -1532,6 +1545,7 @@ export default {
           searchPlaceholder: "Search words",
           empty: "No words yet",
           colCategory: "Category",
+          hint: "Filter with a category on the left or the search box; words can be edited inline.",
         },
         validation: {
           checkForm: "Fix the highlighted category names first",
@@ -1552,6 +1566,8 @@ export default {
         clear: "Clear",
         existing: "Already added",
         selected: "{count} selected",
+        remaining: "{count} slots left",
+        limitReached: "Limit reached — deselect to add more",
         add: "Add",
         cancel: "Cancel",
         empty: "The library is empty — add words in “Manage hotword library” first",
@@ -1591,6 +1607,55 @@ export default {
       ASR_MISSING_CREDENTIALS: "Please fill in the API Key for this provider",
       ASR_STREAMING_UNSUPPORTED: "Streaming recognition is not supported by this model",
     },
+  },
+  hotwordImport: {
+    entry: "Batch Import",
+    dialog: {
+      title: "Batch Import Hotwords",
+      subtitle: "Paste a word list; save after validation",
+      placeholder: "One entry per line: index.term(weight)\n1.钦灵(5)\n2.deepseek(2)",
+      invalidCount: "{count} invalid lines",
+      noInvalid: "No invalid lines",
+      overCapacityCount: "{count} over capacity",
+      listOverLimit: "The current list exceeds its limit. Remove some entries before importing.",
+      line: "Line {line}",
+      weight: "Weight",
+      more: "{count} more issues",
+      reason: {
+        badFormat: "Format must be index.term(weight)",
+        tooLongChars: "Exceeds {max} characters (currently {count})",
+        tooLongSegments: "Exceeds {max} segments (currently {count})",
+        badWeight: "Weight must be 1, 2, 3, 4, 5, or 50 (currently {weight})",
+        overCapacity: "Exceeds capacity and was not imported",
+      },
+      targetCategory: "Target category",
+      libraryOnly: "Library only",
+      uncategorized: "Uncategorized",
+      unnamed: "(unnamed)",
+      cancel: "Cancel",
+      save: "Save",
+      saving: "Saving…",
+      noRows: "No importable entries",
+      appendHint:
+        "New words are appended to the end of the list; earlier words are kept first when capacity is tight.",
+      duplicateCategoryHint:
+        "Duplicate words keep their original category and only update weight; the target category applies to new words only.",
+      saveScopeHint: "Saving also writes existing edits and deletions in the current hotword list.",
+    },
+    notification: {
+      title: "Saved {count} hotwords",
+      libraryTitle: "Saved {count} entries",
+      scopeRole: "Role hotwords",
+      scopeGlobal: "Global hotwords",
+      scopeLibrary: "Hotword library",
+    },
+  },
+  hotwordBatch: {
+    entry: "Batch Delete",
+    exit: "Exit Batch",
+    selectAll: "Select All",
+    clearSelection: "Clear Selection",
+    deleteSelected: "Delete Selected ({count})",
   },
   memoryDebug: {
     title: "Permanent Memory Debug",
