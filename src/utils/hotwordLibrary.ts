@@ -24,6 +24,10 @@ export const countWords = (draft: LibraryDraft, filter: CategoryFilter): number 
     ? draft.words.length
     : draft.words.filter((w) => w.category_index === (filter === "none" ? null : filter)).length;
 
+/** 词库去重键：分类 + trim 后的 text。跨分类允许同词，同分类内仍唯一。 */
+export const libraryRowKey = (row: LibraryWord): string =>
+  `${row.category_index ?? "none"}\u0000${row.text.trim()}`;
+
 /**
  * 删除分类。
  *
@@ -31,8 +35,8 @@ export const countWords = (draft: LibraryDraft, filter: CategoryFilter): number 
  *   ① 丢弃挂在该分类下的词条；② 把 `> index` 的下标各减 1；③ 从数组里移掉分类。
  * 漏掉 ② 会让后面的词静默挂到别的分类下——不报错、不崩溃，只有用户看得出来。
  *
- * 重排后可能撞键（两条被删分类之外的词条归并到同一 text），
- * 再跑一次去重兜底：否则后端 `UNIQUE(text)` 会让整个保存失败。
+ * 重排后同一分类内可能撞键，再跑一次去重兜底：否则后端唯一索引会让整个保存失败。
+ * 去重键必须带分类，不能把其它分类里的同名词一并合并掉。
  */
 export function removeCategory(draft: LibraryDraft, index: number): void {
   draft.words = draft.words.filter((w) => w.category_index !== index);
@@ -42,7 +46,7 @@ export function removeCategory(draft: LibraryDraft, index: number): void {
     }
   }
   draft.categories.splice(index, 1);
-  dedupeRows(draft.words);
+  dedupeRows(draft.words, libraryRowKey);
 }
 
 /** 分类名保存前校验。`duplicate` 按 trim 后精确比较，与 DB 的 `UNIQUE(name)` 一致。 */

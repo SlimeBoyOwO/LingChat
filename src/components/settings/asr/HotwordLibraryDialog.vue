@@ -7,7 +7,7 @@
         @click="handleClose"
       >
         <div
-          class="flex h-[85dvh] w-full max-w-3xl flex-col overflow-hidden rounded-3xl border border-white/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] text-white shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] backdrop-blur-[30px] backdrop-saturate-180"
+          class="flex h-[85dvh] w-full max-w-[1040px] flex-col overflow-hidden rounded-3xl border border-white/20 bg-[linear-gradient(135deg,rgba(255,255,255,0.15)_0%,rgba(255,255,255,0.05)_100%)] text-white shadow-[0_20px_60px_rgba(0,0,0,0.4),inset_0_0_1px_rgba(255,255,255,0.3)] backdrop-blur-[30px] backdrop-saturate-180"
           @click.stop
         >
           <div
@@ -56,11 +56,11 @@
               ></div>
             </div>
 
-            <div v-else class="flex h-full min-h-0 gap-4">
+            <div v-else class="flex h-full min-h-0 flex-col gap-4 md:flex-row">
               <aside
-                class="flex w-56 shrink-0 flex-col rounded-2xl border border-white/10 bg-black/20"
+                class="flex max-h-[38dvh] w-full shrink-0 flex-col rounded-2xl border border-white/10 bg-black/20 md:max-h-none md:w-56"
               >
-                <ul class="flex-1 overflow-y-auto p-2">
+                <ul class="min-h-0 flex-1 overflow-y-auto p-2">
                   <li>
                     <button
                       class="w-full cursor-pointer rounded-lg border-none bg-transparent px-3 py-2 text-left text-sm"
@@ -135,19 +135,60 @@
               </aside>
 
               <div class="flex min-w-0 flex-1 flex-col">
-                <div class="mb-3 flex items-center gap-2">
+                <div class="mb-3 flex flex-wrap items-center gap-2">
                   <input
                     v-model="search"
                     type="text"
-                    class="hotword-control min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white"
+                    class="hotword-control w-full min-w-0 flex-none rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white md:w-auto md:flex-1"
                     :placeholder="$t('settings.asr.hotwordLibrary.dialog.words.searchPlaceholder')"
                   />
-                  <button
-                    class="shrink-0 cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-2 text-xs text-white hover:bg-[#4a5acf]"
-                    @click="addWord"
-                  >
-                    ＋ {{ $t("settings.asr.hotwordLibrary.dialog.words.add") }}
-                  </button>
+                  <template v-if="batchMode">
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      :disabled="visibleWords.length === 0"
+                      @click="toggleAll"
+                    >
+                      {{
+                        allSelected
+                          ? $t("settings.hotwordBatch.clearSelection")
+                          : $t("settings.hotwordBatch.selectAll")
+                      }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-red-400/40 bg-red-500/20 px-3.5 py-2 text-sm text-red-200 transition-colors hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      :disabled="selectedCount === 0"
+                      @click="deleteSelected"
+                    >
+                      {{ $t("settings.hotwordBatch.deleteSelected", { count: selectedCount }) }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="toggleBatchMode"
+                    >
+                      {{ $t("settings.hotwordBatch.exit") }}
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="showImport = true"
+                    >
+                      {{ $t("settings.hotwordImport.entry") }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3.5 py-2 text-sm text-white hover:bg-[#4a5acf]"
+                      @click="addWord"
+                    >
+                      ＋ {{ $t("settings.asr.hotwordLibrary.dialog.words.add") }}
+                    </button>
+                    <button
+                      v-if="draft.words.length > 0"
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="toggleBatchMode"
+                    >
+                      {{ $t("settings.hotwordBatch.entry") }}
+                    </button>
+                  </template>
                 </div>
 
                 <p
@@ -164,8 +205,9 @@
 
                 <div
                   v-if="visibleWords.length > 0"
-                  class="mb-1 flex items-center gap-2 text-[13px] text-white/40"
+                  class="mb-1 hidden items-center gap-2 text-[13px] text-white/40 md:flex"
                 >
+                  <span v-if="batchMode" class="size-4 shrink-0"></span>
                   <span class="flex-1">{{ $t("settings.characterInfo.hotword.colText") }}</span>
                   <span class="w-32 shrink-0">
                     {{ $t("settings.asr.hotwordLibrary.dialog.words.colCategory") }}
@@ -178,11 +220,18 @@
 
                 <div class="min-h-0 flex-1 overflow-y-auto">
                   <div v-for="word in visibleWords" :key="draft.words.indexOf(word)" class="mb-1">
-                    <div class="flex items-center gap-2">
+                    <div class="flex flex-wrap items-center gap-2">
+                      <input
+                        v-if="batchMode"
+                        type="checkbox"
+                        class="size-4 shrink-0 cursor-pointer accent-[#5e72e4]"
+                        :checked="checkedWords.has(word)"
+                        @change="toggleRow(word)"
+                      />
                       <input
                         v-model="word.text"
                         type="text"
-                        class="hotword-control min-w-0 flex-1 rounded-xl border bg-black/20 px-3 py-2 text-sm text-white"
+                        class="hotword-control w-full min-w-0 flex-none rounded-xl border bg-black/20 px-3 py-2 text-sm text-white md:w-auto md:flex-1"
                         :class="
                           isHotwordTextOverlong(word.text) ? 'border-red-400/60' : 'border-white/10'
                         "
@@ -190,7 +239,7 @@
                       />
                       <select
                         :value="indexToFilter(word.category_index)"
-                        class="hotword-control w-32 shrink-0 rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-sm text-white"
+                        class="hotword-control min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-sm text-white md:w-32 md:flex-none"
                         @change="
                           word.category_index = filterToIndex(
                             ($event.target as HTMLSelectElement).value,
@@ -208,7 +257,7 @@
                       </select>
                       <select
                         v-model.number="word.weight"
-                        class="hotword-control w-24 shrink-0 rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-sm text-white"
+                        class="hotword-control min-w-0 flex-1 rounded-xl border border-white/10 bg-black/20 px-2 py-2 text-sm text-white md:w-24 md:flex-none"
                         @change="clampWordWeight(word)"
                       >
                         <option
@@ -254,43 +303,70 @@
                     {{ $t("settings.asr.hotwordLibrary.dialog.words.empty") }}
                   </div>
                 </div>
+
+                <p class="mt-2 shrink-0 text-[12px] leading-relaxed text-white/40">
+                  {{ $t("settings.asr.hotwordLibrary.dialog.words.hint") }}
+                </p>
               </div>
             </div>
           </div>
 
           <div
-            class="flex justify-end gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
+            class="flex flex-wrap items-center justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
           >
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
-              @click="handleClose"
-            >
-              {{ $t("settings.asr.hotwordLibrary.dialog.footer.cancel") }}
-            </button>
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving || loading"
-              @click="save"
-            >
-              <span
-                v-if="saving"
-                class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
-              ></span>
+            <span class="min-w-0 truncate text-sm text-white/40">
               {{
-                saving
-                  ? $t("settings.asr.hotwordLibrary.dialog.footer.saving")
-                  : $t("settings.asr.hotwordLibrary.dialog.footer.save")
+                $t("settings.asr.hotwordLibrary.dialog.footer.count", {
+                  count: draft.words.length,
+                  categories: draft.categories.length,
+                  max: MAX_LIBRARY_ROWS,
+                })
               }}
-            </button>
+            </span>
+            <div class="flex gap-3">
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
+                @click="handleClose"
+              >
+                {{ $t("settings.asr.hotwordLibrary.dialog.footer.cancel") }}
+              </button>
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="saving || loading"
+                @click="save"
+              >
+                <span
+                  v-if="saving"
+                  class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                ></span>
+                {{
+                  saving
+                    ? $t("settings.asr.hotwordLibrary.dialog.footer.saving")
+                    : $t("settings.asr.hotwordLibrary.dialog.footer.save")
+                }}
+              </button>
+            </div>
           </div>
         </div>
+
+        <!-- 导入面板放在宿主 visible 容器内：关闭词库时随宿主卸载并被重置；
+             取消导入只是 showImport 置 false，宿主打开期间粘贴内容保留 -->
+        <HotwordImportDialog
+          :visible="showImport"
+          :existing="draft.words"
+          :capacity="MAX_LIBRARY_ROWS"
+          :categories="draft.categories"
+          :default-category-index="importDefaultCategory"
+          :on-save="saveImportedWords"
+          @close="showImport = false"
+        />
       </div>
     </Transition>
   </Teleport>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
 import {
@@ -307,13 +383,16 @@ import {
   type LibraryWord,
 } from "@/api/services/hotword";
 import { Icon } from "@/components/base";
+import HotwordImportDialog from "@/components/settings/asr/HotwordImportDialog.vue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { useUIStore } from "@/stores/modules/ui/ui";
 import {
   CATEGORY_NONE,
   countWords,
   filterToIndex,
   indexToFilter,
   isCategoryNameValid,
+  libraryRowKey,
   removeCategory,
   type CategoryFilter,
   type LibraryDraft,
@@ -323,27 +402,40 @@ import {
   HOTWORD_WEIGHT_OPTIONS,
   clampRowWeight,
   commitRowText,
+  dedupeRows,
 } from "@/utils/hotwordRows";
+import type { ImportRow } from "@/utils/hotwordImport";
 
 const props = defineProps<{ visible: boolean }>();
 const emit = defineEmits<{ close: [] }>();
 
 const { t } = useI18n();
 const dialogStore = useDialogStore();
+const uiStore = useUIStore();
 
 const loading = ref(false);
 const saving = ref(false);
 const draft = ref<LibraryDraft>({ categories: [], words: [] });
-/** 左栏选中项。`"all"` = 全部（默认），`"none"` = 未分类，数字 = 分类下标。 */
 const selected = ref<CategoryFilter>("all");
 const search = ref("");
 /** 保存前校验失败时高亮的分类下标（就地标红并定位）。 */
 const invalidCategory = ref<number | null>(null);
+const showImport = ref(false);
+
+/** 导入时的目标分类默认跟随左栏当前选中项；“全部”和“未分类”都映射为未分类。 */
+const importDefaultCategory = computed(() =>
+  typeof selected.value === "number" ? selected.value : null,
+);
 
 watch(
   () => props.visible,
   async (visible) => {
-    if (!visible) return;
+    if (!visible) {
+      showImport.value = false;
+      batchMode.value = false;
+      checkedWords.clear();
+      return;
+    }
     loading.value = true;
     invalidCategory.value = null;
     selected.value = "all";
@@ -362,7 +454,7 @@ watch(
   },
 );
 
-/** 右侧词条表：按左栏选中 + 搜索过滤（行内编辑作用于原数组元素，故持有引用）。 */
+/** 持有原数组引用，行内编辑才写回草稿。 */
 const visibleWords = computed(() => {
   const keyword = search.value.trim().toLowerCase();
   return draft.value.words.filter((w) => {
@@ -374,6 +466,44 @@ const visibleWords = computed(() => {
     return byCategory && bySearch;
   });
 });
+
+/** 批量删除模式（删除只作用于草稿）。 */
+const batchMode = ref(false);
+const checkedWords = reactive(new Set<LibraryWord>());
+
+/** 计数按整个词库算：被筛选隐藏的已选词条也会一起删除，按钮上的数字才不会误导。 */
+const selectedCount = computed(() =>
+  draft.value.words.reduce((count, word) => (checkedWords.has(word) ? count + 1 : count), 0),
+);
+/** 全选只作用于当前筛选结果（与选择器同口径）。 */
+const allSelected = computed(
+  () => visibleWords.value.length > 0 && visibleWords.value.every((word) => checkedWords.has(word)),
+);
+
+const toggleRow = (word: LibraryWord) => {
+  if (checkedWords.has(word)) checkedWords.delete(word);
+  else checkedWords.add(word);
+};
+
+const toggleAll = () => {
+  if (allSelected.value) {
+    for (const word of visibleWords.value) checkedWords.delete(word);
+  } else {
+    for (const word of visibleWords.value) checkedWords.add(word);
+  }
+};
+
+const toggleBatchMode = () => {
+  batchMode.value = !batchMode.value;
+  if (!batchMode.value) checkedWords.clear();
+};
+
+const deleteSelected = () => {
+  if (selectedCount.value === 0) return;
+  draft.value.words = draft.value.words.filter((word) => !checkedWords.has(word));
+  checkedWords.clear();
+  batchMode.value = false;
+};
 
 const tooManyWords = computed(() => draft.value.words.length > MAX_LIBRARY_ROWS);
 const tooManyCategories = computed(() => draft.value.categories.length > MAX_LIBRARY_CATEGORIES);
@@ -430,7 +560,7 @@ const removeWord = (word: LibraryWord) => {
   if (index !== -1) draft.value.words.splice(index, 1);
 };
 
-const commitWordText = (word: LibraryWord) => commitRowText(draft.value.words, word);
+const commitWordText = (word: LibraryWord) => commitRowText(draft.value.words, word, libraryRowKey);
 const clampWordWeight = (word: LibraryWord) => clampRowWeight(word);
 
 /** 档位标签：50 是「超级热词」（厂商口径），其余显示数字。 */
@@ -442,6 +572,39 @@ const categoryNameErrorKeys: Record<string, string> = {
   empty: "settings.asr.hotwordLibrary.dialog.validation.emptyName",
   tooLong: "settings.asr.hotwordLibrary.dialog.validation.nameTooLong",
   duplicate: "settings.asr.hotwordLibrary.dialog.validation.duplicateName",
+};
+
+/** 批量导入保存：整库落盘成功后才写回草稿；失败时宿主草稿不变。 */
+const saveImportedWords = async (rows: ImportRow[], categoryIndex: number | null) => {
+  for (let i = 0; i < draft.value.categories.length; i += 1) {
+    const reason = isCategoryNameValid(draft.value, i);
+    if (reason === "ok") continue;
+    invalidCategory.value = i;
+    const key =
+      categoryNameErrorKeys[reason] ?? "settings.asr.hotwordLibrary.dialog.validation.checkForm";
+    throw new Error(t(key));
+  }
+
+  const next = draft.value.words.map((word) => ({ ...word }));
+  for (const row of rows) {
+    next.push({
+      category_index: categoryIndex,
+      text: row.text,
+      weight: row.weight,
+    });
+  }
+  dedupeRows(next, libraryRowKey);
+
+  await saveHotwordLibrary(draft.value.categories, next);
+  draft.value.words = next;
+  search.value = "";
+  selected.value = categoryIndex === null ? "none" : categoryIndex;
+  uiStore.showNotification({
+    type: "success",
+    title: t("settings.hotwordImport.notification.libraryTitle", { count: rows.length }),
+    message: t("settings.hotwordImport.notification.scopeLibrary"),
+    skipTipsCheck: true,
+  });
 };
 
 const save = async () => {

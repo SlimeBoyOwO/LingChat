@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::hash::Hash;
+
 use anyhow::anyhow;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
@@ -20,8 +23,9 @@ const MAX_TEXT_SEGMENTS: usize = 7;
 /// 调用方侧的长度判据：先 `trim`、再判空、最后校验，校验的是 `trim` 后的值，
 /// 未通过则返回原因（供调用方记日志并丢弃该行）。
 ///
-/// 必须在调用方（而不是塞进 [`validate_text_len`]）做，因为 `text` 是归并/唯一键，
-/// 未 `trim` 就入库会让同一个词出现两个 key（镜像路径尤其需要）。
+/// 必须在调用方（而不是塞进 [`validate_text_len`]）做，因为 `text` 参与归并/唯一键
+///（角色/全局按 `text`，词库按「分类 + text」），未 `trim` 就入库会让同一个词出现两个 key
+/// （镜像路径尤其需要）。
 pub(crate) fn validate_and_trim(text: &mut String) -> Result<(), anyhow::Error> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -74,19 +78,23 @@ pub struct MergedRow {
     pub weight: i32,
 }
 
-/// 校验 + 归并内核：trim、丢空、查超限/超长，按 `text` 归并取 max、保留首现位置。
-/// 角色 / 全局 / 词库三处共用，只差 `max_rows`（200 vs 2000）。
-///
-/// 归并键是 `text`（不含语言）：与发送层 `build_options` 同口径，两处终于一致。
-fn validate_and_merge(
+/// 校验 + 归并内核：trim、丢空、查超限/超长，按 `key_of` 归并取 max、保留首现位置。
+/// 角色 / 全局 / 词库三处共用，只差 `max_rows`（200 vs 2000）与归并键。
+fn validate_and_merge_by<K, F>(
     rows: &[(String, i32)],
     max_rows: usize,
-) -> Result<Vec<MergedRow>, anyhow::Error> {
+    key_of: F,
+) -> Result<Vec<MergedRow>, anyhow::Error>
+where
+    K: Eq + Hash,
+    F: Fn(usize, &str) -> K,
+{
     if rows.len() > max_rows {
         return Err(anyhow!("热词条数超限：{} > {max_rows}", rows.len()));
     }
 
     let mut merged: Vec<MergedRow> = Vec::new();
+    let mut positions: HashMap<K, usize> = HashMap::new();
     for (index, (text, weight)) in rows.iter().enumerate() {
         let text = text.trim();
         if text.is_empty() {
@@ -95,16 +103,27 @@ fn validate_and_merge(
         validate_text_len(text)?;
         let weight = normalize_weight(*weight);
         // 归并键与唯一键同形：避免入参自撞唯一键让整个事务失败。
-        match merged.iter_mut().find(|r| r.text == text) {
-            Some(exist) => exist.weight = exist.weight.max(weight),
-            None => merged.push(MergedRow {
+        let key = key_of(index, text);
+        if let Some(&position) = positions.get(&key) {
+            merged[position].weight = merged[position].weight.max(weight);
+        } else {
+            positions.insert(key, merged.len());
+            merged.push(MergedRow {
                 first_index: index,
                 text: text.to_string(),
                 weight,
-            }),
+            });
         }
     }
     Ok(merged)
+}
+
+/// 角色 / 全局的归并键：同一作用域内 `text` 唯一。
+fn validate_and_merge(
+    rows: &[(String, i32)],
+    max_rows: usize,
+) -> Result<Vec<MergedRow>, anyhow::Error> {
+    validate_and_merge_by(rows, max_rows, |_, text| text.to_string())
 }
 
 pub struct HotwordRepo;
@@ -266,7 +285,10 @@ impl HotwordRepo {
             .iter()
             .map(|(_, text, weight)| (text.clone(), *weight))
             .collect();
-        let merged = validate_and_merge(&projection, MAX_ROWS_PER_LIBRARY)?;
+        // 词库按 (分类, text) 归并：同词可同时存在于不同分类，同分类内仍唯一。
+        let merged = validate_and_merge_by(&projection, MAX_ROWS_PER_LIBRARY, |index, text| {
+            (words[index].0, text.to_string())
+        })?;
 
         // ── 写入 ──────────────────────────────────────────────
         library_hotword::Entity::delete_many()
@@ -305,5 +327,76 @@ impl HotwordRepo {
             .map_err(|e| anyhow!(e))?;
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    async fn test_db() -> (tempfile::TempDir, sea_orm::DatabaseConnection) {
+        let dir = tempfile::tempdir().expect("创建临时目录失败");
+        let db = crate::db::init_db(dir.path())
+            .await
+            .expect("初始化数据库失败");
+        (dir, db)
+    }
+
+    /// 同名热词分属不同分类时必须各存一行，不能被 `text` 归并掉。
+    #[tokio::test]
+    async fn library_keeps_same_text_in_different_categories() {
+        let (_dir, db) = test_db().await;
+        HotwordRepo::replace_library(
+            &db,
+            &["人物".to_string(), "产品".to_string()],
+            &[
+                (Some(0), "钦灵".to_string(), 4),
+                (Some(1), "钦灵".to_string(), 5),
+            ],
+        )
+        .await
+        .expect("保存失败");
+
+        let (categories, words) = HotwordRepo::list_library(&db).await.expect("读取失败");
+        assert_eq!(words.len(), 2, "不同分类的同名词条应各存一行");
+        assert_eq!(words[0].category_id, Some(categories[0].id));
+        assert_eq!(words[1].category_id, Some(categories[1].id));
+    }
+
+    /// 同一分类内的同名词仍按原语义归并取最大权重。
+    #[tokio::test]
+    async fn library_merges_same_text_within_one_category() {
+        let (_dir, db) = test_db().await;
+        HotwordRepo::replace_library(
+            &db,
+            &["人物".to_string()],
+            &[
+                (Some(0), "钦灵".to_string(), 4),
+                (Some(0), "钦灵".to_string(), 5),
+            ],
+        )
+        .await
+        .expect("保存失败");
+
+        let (_, words) = HotwordRepo::list_library(&db).await.expect("读取失败");
+        assert_eq!(words.len(), 1);
+        assert_eq!(words[0].weight, 5);
+    }
+
+    /// 未分类之间同样保持唯一；SQLite 的复合唯一索引对 NULL 不做约束，需单独保证。
+    #[tokio::test]
+    async fn library_merges_same_text_when_uncategorized() {
+        let (_dir, db) = test_db().await;
+        HotwordRepo::replace_library(
+            &db,
+            &[],
+            &[(None, "通用".to_string(), 4), (None, "通用".to_string(), 5)],
+        )
+        .await
+        .expect("保存失败");
+
+        let (_, words) = HotwordRepo::list_library(&db).await.expect("读取失败");
+        assert_eq!(words.len(), 1);
+        assert_eq!(words[0].weight, 5);
     }
 }

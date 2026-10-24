@@ -1,7 +1,7 @@
 /**
  * 热词行的共享编辑语义。`RoleHotword`（角色/全局热词）与 `LibraryWord`（词库）都满足
- * `HotwordRow`，故泛型复用、无需转换——两边的 trim / 去重 / clamp 口径必须完全一致，
- * 否则前端去重键与后端 `UNIQUE` 的 BINARY 比较一旦不一致，保存会整表失败。
+ * `HotwordRow`，故泛型复用、无需转换——两边的 trim / clamp 口径一致；去重键由调用方传入
+ * （角色/全局只有 text，词库还要带上分类），必须与后端唯一键保持同形，否则保存整表失败。
  */
 
 /** 权重默认值与口径，与后端 `db/entities/hotword_weight.rs` 对齐。
@@ -20,13 +20,17 @@ export interface HotwordRow {
   weight: number;
 }
 
-/** 同 `text` 合并取 max weight、保留首现者（对象与位置都不动）。
+/** 同 key 合并取 max weight、保留首现者（对象与位置都不动）。
+ *  默认 key 是 trim 后的 `text`；词库传入带分类的 key。
  *  用 Map 而非 findIndex 是 O(n) 而非 O(n²)；末尾原地重建数组，调用方持有的引用不失效。 */
-export function dedupeRows<T extends HotwordRow>(rows: T[]): void {
+export function dedupeRows<T extends HotwordRow>(
+  rows: T[],
+  keyOf: (row: T) => string = (row) => row.text.trim(),
+): void {
   const first = new Map<string, T>();
   const kept: T[] = [];
   for (const row of rows) {
-    const key = row.text.trim();
+    const key = keyOf(row);
     const seen = first.get(key);
     if (seen) {
       seen.weight = Math.max(seen.weight, row.weight);
@@ -38,14 +42,19 @@ export function dedupeRows<T extends HotwordRow>(rows: T[]): void {
   rows.splice(0, rows.length, ...kept);
 }
 
-/** 词条失焦：trim 后并入同键的首现者（与 DB 的 BINARY 比较口径一致）。 */
-export function commitRowText<T extends HotwordRow>(rows: T[], item: T): void {
+/** 词条失焦：trim 后并入同 key 的首现者（与 DB 的 BINARY 比较口径一致）。 */
+export function commitRowText<T extends HotwordRow>(
+  rows: T[],
+  item: T,
+  keyOf: (row: T) => string = (row) => row.text.trim(),
+): void {
   item.text = item.text.trim();
   // 空行不归并：后端保存时本就丢弃纯空白条目，合并只会让用户还在编辑的行静默消失。
   if (item.text === "") return;
   const index = rows.indexOf(item);
   if (index === -1) return;
-  const first = rows.findIndex((other, i) => i < index && other.text === item.text);
+  const key = keyOf(item);
+  const first = rows.findIndex((other, i) => i < index && keyOf(other) === key);
   if (first === -1) return;
   rows[first].weight = Math.max(rows[first].weight, item.weight);
   rows.splice(index, 1);
