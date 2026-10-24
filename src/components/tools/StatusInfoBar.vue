@@ -33,7 +33,7 @@ import {
   CloudRain,
   CloudSnow,
   Snowflake,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 

@@ -33,9 +33,14 @@ pub struct Model {
     pub attribute: LineAttribute,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
+    #[sea_orm(column_type = "Text", nullable)]
+    pub identity_id: Option<String>,
     pub save_id: i32,
     #[sea_orm(column_type = "Text", nullable)]
     pub tool_call: Option<String>,
+    /// 工具轮标识：同一轮的前导台词、载体与工具结果共享。
+    #[serde(default)]
+    pub round_id: Option<String>,
     pub parent_line_id: Option<i32>,
 }
 

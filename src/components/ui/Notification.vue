@@ -2,7 +2,7 @@
   <Transition name="notify-fade">
     <div
       v-if="uiStore.notification.isVisible"
-      class="fixed top-[calc(20px+var(--safe-area-inset-top))] left-[calc(16px+var(--safe-area-inset-left))] z-[10000] flex max-w-[320px] min-w-[220px] flex-col gap-0.5 rounded-xl border border-l-4 border-white/10 bg-neutral-950/75 p-2.5 px-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-200 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]"
+      class="fixed top-[calc(20px+var(--safe-area-inset-top))] left-[calc(16px+var(--safe-area-inset-left))] z-10000 flex max-w-[320px] min-w-55 flex-col gap-0.5 rounded-xl border border-l-4 border-white/10 bg-neutral-950/75 p-2.5 px-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-200 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]"
       :class="typeBorderClass"
     >
       <div class="truncate text-sm leading-snug font-semibold" :class="typeTitleClass">

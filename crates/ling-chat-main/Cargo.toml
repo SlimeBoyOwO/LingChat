@@ -39,7 +39,7 @@ futures-executor = "0.3"
 async-stream = "0.3"
 bytes = "1"
 regex = "1"
-genai = "0.6"
+genai = "0.7.0-rc.8"
 uuid = { workspace = true }
 async-trait = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -48,9 +48,6 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
     "ndarray",
 ] }
 ndarray = "0.17"
-# 文本嵌入分词（Tool RAG / 记忆检索）。0.22 已由 sbv2_core 引入依赖图，
-# 同一版本可被 Cargo 统一，不新增编译成本。
-tokenizers = "0.22"
 
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "std",
@@ -69,7 +66,7 @@ infer = "0.19"
 sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
-zip = { version = "2", default-features = false, features = ["deflate"] }
+zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # LAN Sync
 axum = { workspace = true }

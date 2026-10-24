@@ -1,16 +1,21 @@
 //! Tool RAG：把下发给模型的工具定义从「权限全集」收窄为「常驻工具 + 检索激活的工具」。
 //!
-//! 语料是注册表里各工具的「名字 + 描述」，用 [`EmbeddingEngine`] 算句向量做余弦检索。
+//! 语料优先取工具配置的「可能的提问方式」（示例问句），没有配置时回退到描述；
+//! 每个问句单独算向量，查询与工具的相关度取所有问句中的最大余弦。
 //! 检索结果进入按角色划分的激活缓存，后续轮次直接下发，避免模型每次都要先搜一遍。
 //!
 //! 不变量：本模块只负责「缩小」工具集，权限矩阵放行的集合是所有判断的前提，
 //! 激活缓存读取时始终与它求交，因此不可能带来权限提升。
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use anyhow::{Result, anyhow};
 
+use super::settings::{
+    DEFAULT_TOOL_CACHE_CAPACITY, MAX_TOOL_CACHE_CAPACITY, MIN_TOOL_CACHE_CAPACITY,
+};
 use crate::ai_service::embedding::{EmbeddingEngine, cosine_similarity};
 use crate::ai_service::types::ToolDefinition;
 
@@ -23,8 +28,19 @@ pub const WEB_SEARCH_NAME: &str = "web_search";
 /// 每次检索取回的候选数。
 pub const SEARCH_TOP_K: usize = 5;
 
-/// 单个角色同时激活的工具上限，超出按激活时间淘汰最久未激活的。
-pub const ACTIVATION_CAPACITY: usize = 10;
+/// 单个角色同时激活的普通工具上限，超出按激活时间淘汰最久未激活的。
+/// 实际值来自工具设置（默认 5，可调 1~20）；常驻工具不占这个额度。
+
+/// 静默推荐（玩家每说一句话就自动检索一次）最多推荐几件。
+pub const AUTO_RECOMMEND_TOP_K: usize = 3;
+
+/// 静默推荐的分数下限。没有下限的话每句寒暄都会「推荐」几个不相干的工具。
+///
+/// 实测口径见 `god_agent::capabilities::tool_hint` 的 `threshold_smoke`：
+/// 改用示例问句做语料后，明确的工具意图 top-1 落在 0.65~0.86（「帮我加个日程」
+/// 0.654、「今天天气怎么样」0.691、「换个场景吧」0.708），寒暄与闲聊 top-1
+/// 都在 0.64 以下（「晚上好呀」0.594、「我今天心情不太好」0.633）；0.65 是切口。
+pub const AUTO_RECOMMEND_MIN_SCORE: f32 = 0.65;
 
 /// 角色名缺失时的激活缓存键（正常流程下角色名总存在，这只是兜底）。
 const DEFAULT_ROLE_KEY: &str = "";
@@ -34,13 +50,21 @@ pub fn is_resident(name: &str) -> bool {
     name == TOOL_SEARCH_NAME || name == WEB_SEARCH_NAME
 }
 
+/// 工具名 → (语料指纹, 每个语料文本一条归一化向量)。
+type EmbeddingEntry = (u64, Vec<Arc<[f32]>>);
+
 pub struct ToolRag {
     engine: Arc<EmbeddingEngine>,
     /// 工具名 -> (语料指纹, 归一化向量)。指纹变化或工具消失时自动失效，
     /// 因此插件热重载/卸载不需要任何主动通知。
-    embeddings: RwLock<HashMap<String, (u64, Arc<[f32]>)>>,
+    embeddings: RwLock<HashMap<String, EmbeddingEntry>>,
     /// 角色名 -> 激活工具。下标 0 为最近激活，用于 LRU 淘汰。
     activated: Mutex<HashMap<String, Vec<String>>>,
+    /// 最近一次静默检索的诊断快照：查询与过滤前的前三名。
+    /// 只给「查看推荐工具」解释「为什么没推荐」，不参与任何判断。
+    last_probe: Mutex<Option<(String, Vec<(String, f32)>)>>,
+    /// 每个角色同时保留的普通工具数量，随工具设置热更新。
+    capacity: AtomicUsize,
 }
 
 impl ToolRag {
@@ -49,7 +73,25 @@ impl ToolRag {
             engine,
             embeddings: RwLock::new(HashMap::new()),
             activated: Mutex::new(HashMap::new()),
+            last_probe: Mutex::new(None),
+            capacity: AtomicUsize::new(DEFAULT_TOOL_CACHE_CAPACITY),
         }
+    }
+
+    /// 更新每个角色保留的普通工具数量，并把已有缓存裁到新容量。
+    pub fn set_capacity(&self, capacity: usize) {
+        let capacity = capacity.clamp(MIN_TOOL_CACHE_CAPACITY, MAX_TOOL_CACHE_CAPACITY);
+        self.capacity.store(capacity, Ordering::Relaxed);
+        if let Ok(mut guard) = self.activated.lock() {
+            for list in guard.values_mut() {
+                list.truncate(capacity);
+            }
+        }
+    }
+
+    /// 当前激活缓存容量（不含常驻工具）。
+    pub fn capacity(&self) -> usize {
+        self.capacity.load(Ordering::Relaxed)
     }
 
     /// 嵌入引擎是否可用。不可用时调用方应回退到全量工具下发。
@@ -86,24 +128,32 @@ impl ToolRag {
         let list = guard.entry(key).or_default();
         // 逆序插入，使 names[0] 最终位于队首。
         for name in names.iter().rev() {
+            // 常驻工具一直随请求下发，不占激活额度。
+            if is_resident(name) {
+                continue;
+            }
             if let Some(pos) = list.iter().position(|existing| existing == name) {
                 list.remove(pos);
             }
             list.insert(0, name.clone());
         }
-        list.truncate(ACTIVATION_CAPACITY);
+        list.truncate(self.capacity());
     }
 
     /// 检索最匹配的 top_k 个工具，并把它们加入该角色的激活缓存。
     ///
     /// 常驻工具（[`TOOL_SEARCH_NAME`]、[`WEB_SEARCH_NAME`]）不进语料：它们本来就
     /// 一直下发，占用候选位只会挤掉真正需要被发现的工具。
+    ///
+    /// `min_score` 以下的命中直接不要，也不进激活缓存：`tool_search` 传负无穷（检索
+    /// 是模型主动要求的，总得给点东西），静默推荐传 [`AUTO_RECOMMEND_MIN_SCORE`]。
     pub async fn search_and_activate(
         &self,
         role: Option<&str>,
         query: &str,
         candidates: &[ToolDefinition],
         top_k: usize,
+        min_score: f32,
     ) -> Result<Vec<(String, f32)>> {
         if !self.is_enabled() {
             return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
@@ -118,63 +168,94 @@ impl ToolRag {
             return Ok(Vec::new());
         }
 
-        // 1) 找出需要计算向量的语料（缺失或描述变了）。锁只在这一步与写回时持有，
+        // 1) 找出需要计算向量的语料（缺失或语料变了）。锁只在这一步与写回时持有，
         //    绝不跨 await/阻塞计算持有。
-        let pending: Vec<(String, String)> = {
+        let pending: Vec<(String, Vec<String>)> = {
             let guard = self
                 .embeddings
                 .read()
                 .map_err(|e| anyhow!("嵌入缓存锁中毒: {e}"))?;
             corpus
                 .iter()
-                .filter(|(name, _, fingerprint)| {
+                .filter(|entry| {
                     guard
-                        .get(name)
-                        .map(|(cached, _)| cached != fingerprint)
+                        .get(&entry.name)
+                        .map(|(cached, _)| *cached != entry.fingerprint)
                         .unwrap_or(true)
                 })
-                .map(|(name, text, _)| (name.clone(), text.clone()))
+                .map(|entry| (entry.name.clone(), entry.texts.clone()))
                 .collect()
         };
 
         // 2) 一次性把查询与缺失语料丢进阻塞线程池（ort 推理是同步阻塞的）。
+        //    首次检索会一次算完全部示例问句，之后按指纹直接命中缓存。
         let engine = self.engine.clone();
         let query_owned = query.to_string();
         let (query_vec, computed) = tokio::task::spawn_blocking(move || {
+            let started = std::time::Instant::now();
             let query_vec = engine.embed(&query_owned)?;
-            let mut computed = Vec::with_capacity(pending.len());
-            for (name, text) in pending {
-                let fingerprint = fingerprint_of(&text);
-                let vector = engine.embed(&text)?;
-                computed.push((name, fingerprint, vector));
+            let texts: Vec<String> = pending
+                .iter()
+                .flat_map(|(_, texts)| texts.iter().cloned())
+                .collect();
+            let vectors = engine.embed_batch(&texts)?;
+            let mut computed: Vec<(String, u64, Vec<Arc<[f32]>>)> =
+                Vec::with_capacity(pending.len());
+            let mut offset = 0usize;
+            for (name, texts) in pending {
+                let end = offset + texts.len();
+                let entry_vectors: Vec<Arc<[f32]>> = vectors[offset..end]
+                    .iter()
+                    .cloned()
+                    .map(Arc::from)
+                    .collect();
+                computed.push((name, fingerprint_of_texts(&texts), entry_vectors));
+                offset = end;
+            }
+            if !computed.is_empty() {
+                tracing::info!(
+                    tools = computed.len(),
+                    texts = offset,
+                    elapsed_ms = started.elapsed().as_millis() as u64,
+                    "Tool RAG 语料嵌入完成"
+                );
             }
             Ok::<_, anyhow::Error>((query_vec, computed))
         })
         .await
         .map_err(|e| anyhow!("嵌入计算任务失败: {e}"))??;
 
-        // 3) 写回缓存并修剪已消失的工具。
-        let live: HashSet<&str> = corpus.iter().map(|(name, _, _)| name.as_str()).collect();
+        // 3) 写回缓存。不按本轮候选集修剪：不同调用来源的权限集不同，按候选修剪会让
+        //    用户聊天与主动对话之间来回切换时反复重算全部向量；插件卸载留下的旧条目
+        //    只占几个向量，进程重启自然清空。
         let mut guard = self
             .embeddings
             .write()
             .map_err(|e| anyhow!("嵌入缓存锁中毒: {e}"))?;
-        for (name, fingerprint, vector) in computed {
-            guard.insert(name, (fingerprint, Arc::from(vector)));
+        for (name, fingerprint, vectors) in computed {
+            guard.insert(name, (fingerprint, vectors));
         }
-        guard.retain(|name, _| live.contains(name.as_str()));
 
-        // 4) 打分排序取 top_k。
+        // 4) 打分排序取 top_k。一个工具有多条示例问句时取最高分。
         let mut scored: Vec<(String, f32)> = corpus
             .iter()
-            .filter_map(|(name, _, _)| {
-                let (_, vector) = guard.get(name)?;
-                Some((name.clone(), cosine_similarity(&query_vec, vector)))
+            .filter_map(|entry| {
+                let (_, vectors) = guard.get(&entry.name)?;
+                Some((entry.name.clone(), best_cosine(&query_vec, vectors)))
             })
             .collect();
-        scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
-        scored.truncate(top_k);
         drop(guard);
+        // 静默推荐的诊断快照：留下过滤前的前三名，调试指令据此解释「为什么没推荐」。
+        // tool_search 传负无穷阈值，不参与记录。
+        if min_score > f32::NEG_INFINITY {
+            let mut probe = scored.clone();
+            probe.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            probe.truncate(3);
+            if let Ok(mut slot) = self.last_probe.lock() {
+                *slot = Some((query.to_string(), probe));
+            }
+        }
+        select_hits(&mut scored, top_k, min_score);
 
         // 5) 命中的工具进入该角色的激活缓存，下一轮即可作为工具定义下发。
         let hit_names: Vec<String> = scored.iter().map(|(name, _)| name.clone()).collect();
@@ -182,33 +263,90 @@ impl ToolRag {
 
         Ok(scored)
     }
+
+    /// 最近一次静默检索的查询与过滤前的前三名（调试指令用）。
+    pub fn last_probe(&self) -> Option<(String, Vec<(String, f32)>)> {
+        self.last_probe.lock().ok().and_then(|guard| guard.clone())
+    }
 }
 
-/// 构建检索语料：`(工具名, 语料文本, 文本指纹)`。
+/// 从打分结果里挑出要激活的：按分数降序，低于阈值的一律不要，再取前 `top_k`。
+///
+/// 单独拆出来是为了能不起模型、直接单测阈值过滤与截断的边界。
+fn select_hits(scored: &mut Vec<(String, f32)>, top_k: usize, min_score: f32) {
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+    scored.retain(|(_, score)| *score >= min_score);
+    scored.truncate(top_k);
+}
+
+/// 一条工具的检索语料。
+struct CorpusEntry {
+    name: String,
+    /// 每条语料单独算一个向量。
+    texts: Vec<String>,
+    fingerprint: u64,
+}
+
+/// 构建检索语料。
 ///
 /// 常驻工具被排除：它们本来就一直下发，占用候选位只会挤掉真正需要被发现的工具。
-fn build_corpus(candidates: &[ToolDefinition]) -> Vec<(String, String, u64)> {
+fn build_corpus(candidates: &[ToolDefinition]) -> Vec<CorpusEntry> {
     candidates
         .iter()
         .filter(|def| !is_resident(&def.function.name))
-        .map(|def| {
-            let text = corpus_text(def);
-            let fingerprint = fingerprint_of(&text);
-            (def.function.name.clone(), text, fingerprint)
+        .filter_map(|def| {
+            let texts = corpus_texts(def);
+            if texts.is_empty() {
+                return None;
+            }
+            Some(CorpusEntry {
+                name: def.function.name.clone(),
+                fingerprint: fingerprint_of_texts(&texts),
+                texts,
+            })
         })
         .collect()
 }
 
-/// 语料文本：英文工具名 + 中文描述一起编码，兼顾两种表述。
-fn corpus_text(def: &ToolDefinition) -> String {
-    format!("{}\n{}", def.function.name, def.function.description.trim())
+/// 语料文本：优先用工具配置的示例问句；没配置时回退到描述。
+///
+/// 回退只用描述、不拼英文工具名：`schedule_add_todo` 这类纯英文 token 对中文短句
+/// 只是噪声，实测拼进去会拖低命中（见 `tool_hint` 的 `threshold_smoke`）。
+fn corpus_texts(def: &ToolDefinition) -> Vec<String> {
+    let mut texts: Vec<String> = Vec::new();
+    for example in &def.rag_examples {
+        let text = example.trim();
+        if !text.is_empty() && !texts.iter().any(|existing| existing.as_str() == text) {
+            texts.push(text.to_string());
+        }
+    }
+    if texts.is_empty() {
+        let description = def.function.description.trim();
+        if !description.is_empty() {
+            texts.push(description.to_string());
+        }
+    }
+    texts
 }
 
-fn fingerprint_of(text: &str) -> u64 {
+/// 语料指纹：条数、每条长度与内容按顺序入哈希，避免拼接歧义。
+fn fingerprint_of_texts(texts: &[String]) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut hasher = std::collections::hash_map::DefaultHasher::new();
-    text.hash(&mut hasher);
+    texts.len().hash(&mut hasher);
+    for text in texts {
+        text.len().hash(&mut hasher);
+        text.hash(&mut hasher);
+    }
     hasher.finish()
+}
+
+/// 查询与一组语料向量的最高余弦；没有向量时返回负无穷，交给阈值过滤。
+fn best_cosine(query: &[f32], vectors: &[Arc<[f32]>]) -> f32 {
+    vectors
+        .iter()
+        .map(|vector| cosine_similarity(query, vector))
+        .fold(f32::NEG_INFINITY, f32::max)
 }
 
 /// 本轮实际下发给模型的工具名集合。
@@ -330,235 +468,5 @@ fn short_purpose(description: &str) -> String {
             truncated.push('…');
             truncated
         },
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::collections::HashSet;
-    use std::path::PathBuf;
-
-    use serde_json::json;
-
-    use super::{
-        ACTIVATION_CAPACITY, TOOL_SEARCH_NAME, ToolRag, WEB_SEARCH_NAME, effective_allowed,
-        is_resident,
-    };
-    use crate::ai_service::embedding::EmbeddingEngine;
-    use crate::ai_service::types::ToolDefinition;
-
-    /// 禁用态引擎：LRU 与权限求交的逻辑不依赖真实模型。
-    fn disabled_rag() -> ToolRag {
-        let engine = EmbeddingEngine::load(&PathBuf::from("__不存在的模型目录__"));
-        assert!(!engine.is_enabled(), "该路径不应被识别为可用模型");
-        ToolRag::new(engine)
-    }
-
-    fn names(list: &[&str]) -> Vec<String> {
-        list.iter().map(|s| (*s).to_string()).collect()
-    }
-
-    fn definition(name: &str, description: &str) -> ToolDefinition {
-        ToolDefinition::new(name, description, json!({"type": "object"}))
-    }
-
-    #[test]
-    fn resident_tools_are_recognised() {
-        assert!(is_resident(TOOL_SEARCH_NAME));
-        assert!(is_resident(WEB_SEARCH_NAME));
-        assert!(!is_resident("scene_switch"));
-    }
-
-    #[test]
-    fn activation_keeps_most_recent_first() {
-        let rag = disabled_rag();
-        rag.touch(Some("雪之下"), &names(&["a", "b"]));
-        rag.touch(Some("雪之下"), &["c".to_string()]);
-        assert_eq!(rag.activated_tools(Some("雪之下")), names(&["c", "a", "b"]));
-    }
-
-    #[test]
-    fn activation_dedupes_and_promotes_on_reuse() {
-        let rag = disabled_rag();
-        rag.touch(Some("r"), &names(&["a", "b", "c"]));
-        rag.touch(Some("r"), &["c".to_string()]);
-        assert_eq!(rag.activated_tools(Some("r")), names(&["c", "a", "b"]));
-    }
-
-    #[test]
-    fn activation_evicts_least_recently_activated() {
-        let rag = disabled_rag();
-        // 按 t0..t9 的优先级依次激活：队首最不易淘汰，队尾 t9 最先出局。
-        let filled: Vec<String> = (0..ACTIVATION_CAPACITY).map(|i| format!("t{i}")).collect();
-        rag.touch(Some("r"), &filled);
-        assert_eq!(rag.activated_tools(Some("r")).len(), ACTIVATION_CAPACITY);
-
-        rag.touch(Some("r"), &["new".to_string()]);
-        let after = rag.activated_tools(Some("r"));
-        assert_eq!(after.len(), ACTIVATION_CAPACITY);
-        assert_eq!(after[0], "new");
-        assert!(!after.contains(&"t9".to_string()), "队尾应被淘汰");
-        assert!(after.contains(&"t0".to_string()), "队首应保留");
-    }
-
-    #[test]
-    fn activation_is_scoped_per_role() {
-        let rag = disabled_rag();
-        rag.touch(Some("甲"), &names(&["a"]));
-        rag.touch(Some("乙"), &names(&["b"]));
-        assert_eq!(rag.activated_tools(Some("甲")), names(&["a"]));
-        assert_eq!(rag.activated_tools(Some("乙")), names(&["b"]));
-        assert!(rag.activated_tools(Some("丙")).is_empty());
-    }
-
-    #[test]
-    fn rag_off_returns_permission_set_unchanged() {
-        let rag = disabled_rag();
-        rag.touch(Some("r"), &names(&["scene_switch"]));
-        let base: HashSet<String> = names(&["scene_switch", "current_status"])
-            .into_iter()
-            .collect();
-        let effective = effective_allowed(&base, &rag, Some("r"), false);
-        assert_eq!(effective, base);
-    }
-
-    #[test]
-    fn empty_permission_set_gets_no_search_entry() {
-        let rag = disabled_rag();
-        let effective = effective_allowed(&HashSet::new(), &rag, Some("r"), true);
-        assert!(effective.is_empty(), "无工具权限不该拿到检索入口");
-    }
-
-    #[test]
-    fn effective_set_stays_within_permissions() {
-        let rag = disabled_rag();
-        rag.touch(Some("r"), &names(&["scene_switch", "越权工具"]));
-        let base: HashSet<String> = names(&["scene_switch", "current_status"])
-            .into_iter()
-            .collect();
-        let effective = effective_allowed(&base, &rag, Some("r"), true);
-
-        // 检索入口被注入，但激活集里的越权项必须被剔除。
-        assert!(effective.contains(TOOL_SEARCH_NAME));
-        assert!(effective.contains("scene_switch"));
-        assert!(!effective.contains("越权工具"), "激活集不得越过权限矩阵");
-        for name in &effective {
-            assert!(
-                base.contains(name) || name == TOOL_SEARCH_NAME,
-                "越权项: {name}"
-            );
-        }
-    }
-
-    #[test]
-    fn web_search_only_resident_when_permitted() {
-        let rag = disabled_rag();
-        let with: HashSet<String> = names(&[WEB_SEARCH_NAME]).into_iter().collect();
-        assert!(effective_allowed(&with, &rag, Some("r"), true).contains(WEB_SEARCH_NAME));
-
-        let without: HashSet<String> = names(&["current_status"]).into_iter().collect();
-        assert!(
-            !effective_allowed(&without, &rag, Some("r"), true).contains(WEB_SEARCH_NAME),
-            "用户关掉网页搜索时不该被常驻强行放行"
-        );
-    }
-
-    #[test]
-    fn corpus_excludes_resident_tools() {
-        let candidates = vec![
-            definition(TOOL_SEARCH_NAME, "检索工具"),
-            definition(WEB_SEARCH_NAME, "联网搜索"),
-            definition("scene_switch", "切换场景"),
-        ];
-        let corpus = super::build_corpus(&candidates);
-        let names: Vec<&str> = corpus.iter().map(|(name, _, _)| name.as_str()).collect();
-        assert_eq!(names, vec!["scene_switch"]);
-        assert_eq!(corpus[0].1, "scene_switch\n切换场景");
-    }
-
-    #[test]
-    fn search_description_lists_names_with_short_purpose() {
-        let available = vec![
-            definition(TOOL_SEARCH_NAME, "检索工具"),
-            definition(WEB_SEARCH_NAME, "联网搜索网页，获取实时信息。"),
-            definition("scene_switch", "切换到指定场景，改变当前所处的环境。"),
-            definition("get_current_time", "获取当前的日期与时间。"),
-        ];
-        let text = super::search_description(&available);
-
-        // 常驻工具不必再列一遍；其余工具要出现名字与用途。
-        assert!(!text.contains(WEB_SEARCH_NAME), "常驻工具不该出现在清单里");
-        assert!(!text.contains(TOOL_SEARCH_NAME));
-        assert!(text.contains("- scene_switch：切换到指定场景，改变当前所处的环境"));
-        assert!(text.contains("get_current_time：获取当前的日期与时间"));
-        assert!(text.contains("共 2 个"), "应给出清单数量作为能力线索");
-        // 具体参数不在清单里，留给检索结果。
-        assert!(text.contains("完整参数需要检索后取得"));
-    }
-
-    #[test]
-    fn search_description_cuts_long_purpose_at_clause_boundary() {
-        let available = vec![definition(
-            "query_weather",
-            "查询指定城市的实时天气情况，包含温度湿度风力等多项指标，后面这句应当被丢弃。",
-        )];
-        let text = super::search_description(&available);
-        assert!(
-            text.contains(
-                "- query_weather：查询指定城市的实时天气情况，包含温度湿度风力等多项指标"
-            ),
-            "应切在逗号处: {text}"
-        );
-        assert!(!text.contains("后面这句应当被丢弃"));
-        assert!(!text.contains('…'), "切在子句边界时不该再补省略号");
-    }
-
-    #[test]
-    fn search_description_marks_hard_cut_without_clause_break() {
-        // 整句没有逗号可切，只能硬截断并补省略号。
-        let available = vec![definition(
-            "search_files",
-            "按文件名通配符匹配在目录中递归查找文件并返回匹配到的相对路径列表信息内容详情说明尾巴",
-        )];
-        let text = super::search_description(&available);
-        assert!(text.contains('…'), "无子句边界时应硬截断: {text}");
-        assert!(!text.contains("详情说明尾巴"));
-    }
-
-    #[test]
-    fn search_description_skips_later_lines() {
-        let available = vec![definition(
-            "x",
-            "第一行用途。\n\n⚠ 第二行是注意事项，不该进清单。",
-        )];
-        let text = super::search_description(&available);
-        assert!(text.contains("- x：第一行用途"));
-        assert!(!text.contains("注意事项"));
-    }
-
-    #[test]
-    fn search_description_without_searchable_tools_says_so() {
-        let available = vec![definition(TOOL_SEARCH_NAME, "检索工具")];
-        let text = super::search_description(&available);
-        assert!(text.contains("没有可检索的工具"), "实际: {text}");
-    }
-
-    #[test]
-    fn apply_dynamic_search_description_only_touches_tool_search() {
-        let mut definitions = vec![
-            definition(TOOL_SEARCH_NAME, "原始描述"),
-            definition("scene_switch", "切换场景"),
-        ];
-        let available = vec![
-            definition(TOOL_SEARCH_NAME, "原始描述"),
-            definition("scene_switch", "切换到指定场景，改变当前所处的环境。"),
-        ];
-        super::apply_dynamic_search_description(&mut definitions, &available);
-
-        assert!(definitions[0].function.description.contains("scene_switch"));
-        assert_eq!(
-            definitions[1].function.description, "切换场景",
-            "其他工具不应被改动"
-        );
     }
 }

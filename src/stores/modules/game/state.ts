@@ -1,5 +1,5 @@
 import type { AvatarDisplayMode, Live2dSettings } from "@/types/live2d";
-import type { SceneInfo } from "@/api/services/scene"; // 导入场景类型
+import type { SceneInfo } from "@/api/services/scene";
 import type { ScriptChoiceItem } from "@/types/script";
 
 export interface GameMessage {
@@ -64,6 +64,8 @@ export interface GameRole {
   thinkMessage: string;
   emotion: string;
   originalEmotion: string;
+  /** 情绪演出版号：新回复、情绪变化或连续第三次同情绪时递增。 */
+  emotionRevision?: number;
   scale: number;
   offsetY: number;
   offsetX: number;
@@ -100,13 +102,17 @@ export interface GameState {
 
   userName: string;
   userSubtitle: string;
+  playerIdentityId: string | null;
+  playerPrompt: string;
+  /** 本局绑定的存档 id（null = 还没开存档） */
+  activeSaveId: number | null;
 
   currentLine: string;
   currentStatus: "input" | "thinking" | "responding" | "presenting";
   /** 当前思考链累计字数（用于实时显示“已深度思考 N 字”） */
   thinkingLength: number;
   dialogHistory: GameMessage[];
-  currentScene: SceneInfo | null; // 当前加载的场景
+  currentScene: SceneInfo | null;
   command: string | null;
 
   /** 最近一次好感度变化（面板「最近变化」展示；deltas/reason 直接来自事件负载） */
@@ -149,6 +155,9 @@ export const state: GameState = {
 
   userName: "",
   userSubtitle: "",
+  playerIdentityId: null,
+  playerPrompt: "",
+  activeSaveId: null,
 
   currentLine: "",
   currentStatus: "input",

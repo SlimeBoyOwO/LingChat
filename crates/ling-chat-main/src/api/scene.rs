@@ -957,12 +957,6 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
         let _ = store.save();
     }
 
-    // 手动优先：用户手动选场景后，关闭 AI 自动切景（设置页可重新打开）。
-    // 取消选中（scene_id 为空，背景转透明）不算选景，不动这个开关。
-    if scene_id.is_some() {
-        crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_SCENE);
-    }
-
     Ok(())
 }
 

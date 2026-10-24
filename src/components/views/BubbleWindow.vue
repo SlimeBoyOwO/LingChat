@@ -30,6 +30,7 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { useGameStore } from "@/stores/modules/game";
 import DialogueBox from "../pet/DialogueBox.vue";
 import {
+  PET_BUBBLE_CLEAR,
   PET_BUBBLE_EVENT,
   PET_BUBBLE_REQUEST,
   PET_FINISH_TYPING_EVENT,
@@ -126,6 +127,34 @@ const applyMirror = (m: BubbleMirror) => {
 };
 
 /**
+ * 清空气泡内容。
+ *
+ * 退出桌宠时气泡窗只是被藏起来而不是销毁，下次进桌宠直接复用同一个 webview——
+ * 藏起来再显示不会重新挂载，不在这里把状态归零就会看到上一次的台词。
+ */
+const clearBubble = () => {
+  lineId.value = 0;
+  firstLineSeen = false;
+  instant.value = true;
+  swapping.value = false;
+  gameStore.currentStatus = "input";
+  uiStore.showCharacterLine = "";
+  uiStore.showCharacterTitle = "";
+  uiStore.showCharacterSubtitle = "";
+  uiStore.showCharacterEmotion = "";
+  uiStore.showCharacterMotionText = "";
+  uiStore.currentAvatarAudio = "None";
+  uiStore.notification = {
+    isVisible: false,
+    type: "info",
+    title: "",
+    message: "",
+    avatarUrl: "",
+    duration: 3000,
+  };
+};
+
+/**
  * 「本句已完整显示」上报给宠物窗：自动推进调度器在那边（事件队列、语音、AUTO 开关
  * 都在宠物窗）。只报这一句的序号，不报任何「在不在打字」的状态。
  */
@@ -135,6 +164,7 @@ const onLineDrained = (drainedLineId: number) => {
 
 let unlisten: (() => void) | null = null;
 let unlistenFinish: (() => void) | null = null;
+let unlistenClear: (() => void) | null = null;
 const pingTimers: number[] = [];
 
 onMounted(async () => {
@@ -148,6 +178,7 @@ onMounted(async () => {
   unlistenFinish = await appWindow.listen(PET_FINISH_TYPING_EVENT, () =>
     dialogRef.value?.finishTyping(),
   );
+  unlistenClear = await appWindow.listen(PET_BUBBLE_CLEAR, clearBubble);
 
   const ping = () => void appWindow.emit(PET_BUBBLE_REQUEST);
   ping();
@@ -163,6 +194,8 @@ onUnmounted(() => {
   unlisten = null;
   unlistenFinish?.();
   unlistenFinish = null;
+  unlistenClear?.();
+  unlistenClear = null;
   pingTimers.forEach((t) => window.clearTimeout(t));
 });
 </script>

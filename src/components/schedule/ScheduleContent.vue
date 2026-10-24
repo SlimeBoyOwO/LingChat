@@ -170,7 +170,7 @@ import {
   ChevronLeft,
   Sparkles,
   Wrench,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import Toggle from "@/components/base/widget/Toggle.vue";
 import {

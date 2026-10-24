@@ -14,7 +14,7 @@ use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{
     AffectionVector, CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage,
-    NegativeVector,
+    NegativeVector, Player,
 };
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -346,6 +346,7 @@ impl GameRoleManager {
         lines: &[GameLine],
         recent_n: Option<usize>,
         completed_turn: bool,
+        player: &Player,
     ) -> Result<()> {
         let source_lines: &[GameLine] = match recent_n {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
@@ -430,8 +431,15 @@ impl GameRoleManager {
                 }
             }
 
+            let alias = self
+                .loaded_roles
+                .get(&rid)
+                .filter(|_| !player.user_name.trim().is_empty())
+                .map(|_| player.user_name.clone());
             let built = MemoryBuilder::new(rid)
                 .with_continue_user(self.memory_inject_continue_user)
+                .with_player_alias(alias)
+                .with_player_identity(player.identity_id.clone())
                 .build(&final_sliced);
 
             // 阶段 4: 写入角色记忆

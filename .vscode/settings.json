@@ -41,6 +41,10 @@
   "[scss]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+
+  // 让内置 CSS 语言服务认识 Tailwind v4 的 @reference / @apply / @theme 等 at-rule，
+  // 只消除未知 at-rule 误报，其余 CSS 检查保持开启
+  "css.customData": [".vscode/tailwind-css-data.json"],
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },

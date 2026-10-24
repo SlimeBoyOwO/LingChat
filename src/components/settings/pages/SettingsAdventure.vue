@@ -154,7 +154,7 @@ import AdventurePanel from "./Adeventure/AdventurePanel.vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { getAvatarFile } from "@/api/services/character";
-import { Birdhouse, Book, FileText, UserPlus } from "lucide-vue-next";
+import { Birdhouse, Book, FileText, UserPlus } from "@lucide/vue";
 import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
 import type { ScriptSummary } from "@/api/services/script-info";
 

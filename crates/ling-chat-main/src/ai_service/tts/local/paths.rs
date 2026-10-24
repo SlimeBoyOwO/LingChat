@@ -75,11 +75,10 @@ fn resolve_models_root(
     #[cfg(target_os = "android")]
     {
         use tauri_plugin_android_fs::{AndroidFsExt, AppDir};
-        return _app
-            .android_fs()
+        _app.android_fs()
             .app_storage()
             .resolve_path(None, AppDir::Data)
-            .map_err(|e| format!("android external files dir: {e}"));
+            .map_err(|e| format!("android external files dir: {e}"))
     }
 
     #[cfg(not(target_os = "android"))]

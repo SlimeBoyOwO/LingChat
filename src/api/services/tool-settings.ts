@@ -7,8 +7,6 @@ export interface WebSearchSettings {
   enabled: boolean;
   /** 搜索服务提供商："kimi" | "bocha" | "deepseek" | "tavily" | "codex" | "custom"（仅 custom 用 base_url） */
   provider: string;
-  /** DeepSeek Responses API 使用的模型（仅 provider = "deepseek" 时生效） */
-  model: string;
   api_key: string;
   base_url: string;
   proxy_enabled: boolean;
@@ -31,6 +29,9 @@ export interface MediaFileSettings {
 
 export type ToolAccessMode = "manual" | "auto_approve" | "full_access";
 
+/** 每轮发言前的工具推荐方式：不推荐 / 上帝 Agent 挑 / 静默检索。 */
+export type ToolRecommendMode = "off" | "agent" | "rag";
+
 export interface ToolSettings {
   web_search: WebSearchSettings;
   media_file: MediaFileSettings;
@@ -42,6 +43,10 @@ export interface ToolSettings {
   max_tool_rounds: number;
   /** 工具按需检索（Tool RAG）：只下发常驻工具 + 检索激活的工具，而不是全部已授权工具。 */
   tool_rag: boolean;
+  /** 工具推荐方式；两种推荐都只是临时提示，不写台词表也不进记忆。 */
+  tool_recommend_mode: ToolRecommendMode;
+  /** 每个角色同时保留多少个检索激活的工具（不含 tool_search 与 web_search）。 */
+  tool_cache_capacity: number;
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */

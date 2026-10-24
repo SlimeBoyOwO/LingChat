@@ -110,7 +110,7 @@
 <script setup lang="ts">
 import { ref, computed, reactive, watch, onMounted } from "vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { ArrowRight, Trash2, FolderKanban, Inbox } from "lucide-vue-next";
+import { ArrowRight, Trash2, FolderKanban, Inbox } from "@lucide/vue";
 import { getSchedules, saveSchedules } from "@/api/services/schedule";
 import { useI18n } from "vue-i18n";
 

@@ -3,7 +3,7 @@
     <!-- notice 卡片与 import/export 进度条独立，不进入同一个 <Transition>。 -->
     <div
       v-if="props.source !== 'plugin' && roleStore.corrected.phase === 'active'"
-      class="notice fixed top-8 right-8 z-[10000] flex max-w-[420px] min-w-[320px] items-start gap-3 rounded-xl p-4 backdrop-blur-[20px]"
+      class="notice fixed top-8 right-8 z-10000 flex max-w-105 min-w-[320px] items-start gap-3 rounded-xl p-4 backdrop-blur-[20px]"
     >
       <div class="flex h-6 w-6 shrink-0 items-center justify-center text-amber-400">
         <svg
@@ -25,7 +25,7 @@
       </div>
       <div class="min-w-0 flex-1">
         <div class="text-sm font-bold text-amber-400">{{ roleStore.corrected.title }}</div>
-        <div class="mt-1 text-xs break-words whitespace-pre-line text-gray-200">
+        <div class="mt-1 text-xs wrap-break-word whitespace-pre-line text-gray-200">
           {{ roleStore.corrected.message }}
         </div>
       </div>
@@ -41,7 +41,7 @@
       <div
         v-if="visible"
         :data-phase="state.phase"
-        class="bar fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-[9999] flex max-w-[440px] min-w-[340px] items-center gap-4 overflow-hidden rounded-xl p-4 backdrop-blur-[20px]"
+        class="bar fixed right-8 bottom-[calc(32px+var(--safe-area-inset-bottom))] z-9999 flex max-w-110 min-w-85 items-center gap-4 overflow-hidden rounded-xl p-4 backdrop-blur-[20px]"
       >
         <div
           v-if="state.phase !== 'cancelled'"

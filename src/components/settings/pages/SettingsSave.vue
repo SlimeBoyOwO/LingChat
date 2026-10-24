@@ -23,6 +23,19 @@
           }}
         </button>
       </div>
+
+      <!-- 本局身份：只读展示 -->
+      <div class="mt-3 flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-white/60">
+          {{ $t("settings.save.create.identityLabel") }}
+        </label>
+        <div class="text-sm text-white/85">
+          {{ gameStore.userName || $t("settings.save.create.identityUnknown") }}
+        </div>
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.save.create.identityHint") }}
+        </p>
+      </div>
     </MenuItem>
     <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
@@ -122,6 +135,14 @@
                   >
                     {{ save.last_message || $t("settings.save.list.noMessage") }}
                   </div>
+
+                  <!-- Line 4: Bound identity -->
+                  <div
+                    v-if="save.identity_name"
+                    class="mt-1 truncate text-[11px] text-[#79d9ff]/70"
+                  >
+                    {{ $t("settings.save.list.identityLabel", { name: save.identity_name }) }}
+                  </div>
                 </div>
               </div>
 
@@ -186,14 +207,14 @@ import { MenuPage, MenuItem } from "../../ui";
 import { Input } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
 import { applyWebInitData } from "../../../stores/modules/game/actions";
-import { eventQueue } from "../../../core/events/event-queue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { eventQueue } from "../../../core/events/event-queue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";
-import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "lucide-vue-next";
+import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "@lucide/vue";
 
 interface SaveListResponse {
   saves: SaveInfo[];
@@ -306,12 +327,16 @@ const handleCreateSave = async () => {
   }
   actionLoading.value = -1;
   try {
-    const result = await invoke<CreateSaveResponse>("create_save", {
+    const created = await invoke<CreateSaveResponse>("create_save", {
       title: newSaveTitle.value.trim(),
       ...(await gameStore.collectSaveProgress()),
     });
+    // 建档后本局就绑定到这个存档了 → 身份锁定，UI 立刻反映
+    if (typeof created?.save_id === "number") {
+      gameStore.activeSaveId = created.save_id;
+    }
     // 新建的档即本局当前存档，之后快速存档就落在它身上
-    gameStore.currentSaveId = result.save_id;
+    gameStore.currentSaveId = created.save_id;
     newSaveTitle.value = "";
     uiStore.showSuccess({
       title: t("settings.save.msg.createSuccessTitle"),
@@ -333,9 +358,6 @@ const handleLoadSave = async (saveId: number) => {
   const confirmed = await dialogStore.confirm(t("settings.save.msg.loadConfirm"));
   if (!confirmed) return;
   actionLoading.value = saveId;
-  // 读档会整体替换游戏状态：先清空事件队列，旧会话积压的剧本事件不得播进新会话。
-  // clear 会暂停队列，invoke 期间到达的新事件（读档续跑的引擎已经在跑）只排队不播放，
-  // 待状态落地后统一 resume，保证它们被消费时剧情模式标记已就位。
   eventQueue.clear();
   try {
     const gameInfo = await invoke<WebInitData>("load_save", { saveId });
@@ -343,7 +365,6 @@ const handleLoadSave = async (saveId: number) => {
     // 读进来的档成为本局当前存档
     gameStore.currentSaveId = saveId;
 
-    // 此处解决了 剧本状态持久化和自动事件clear，注意之后出问题了可以看这里的代码
     gameStore.scriptReadCursor = null;
     // 存档带剧本进度时后端已从存档点续跑引擎，前端同步回到剧情模式；否则回到自由对话
     if (gameInfo.active_script) {
@@ -351,7 +372,6 @@ const handleLoadSave = async (saveId: number) => {
     } else {
       gameStore.exitStoryMode();
     }
-    // 读档后丢弃旧会话残留事件队列（防止旧角色未说完的回复串进新存档对话，issue #796）
     eventQueue.clear();
     eventQueue.resume();
     uiStore.showSuccess({
@@ -409,6 +429,10 @@ const handleDeleteSave = async (saveId: number) => {
   actionLoading.value = saveId;
   try {
     await invoke("delete_save", { saveId });
+    // 删掉的正好是本局绑定的存档 → 本局解除绑定，身份重新可切换
+    if (gameStore.activeSaveId === saveId) {
+      gameStore.activeSaveId = null;
+    }
     // 删掉的是本局当前存档：解绑，下次快速存档重新引导建档
     if (isCurrentSave(saveId)) gameStore.currentSaveId = null;
     uiStore.showSuccess({

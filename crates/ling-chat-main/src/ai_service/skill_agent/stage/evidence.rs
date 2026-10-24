@@ -63,9 +63,9 @@ pub(super) fn entry_evidence(dir: &Path, entry: &QueueEntry) -> Evidence {
         TaskKind::ReviseChapter => {
             let file = chapter_file(dir, &entry.target);
             let here = file.as_deref().is_some_and(Path::is_file);
-            if here && file.as_deref().is_some_and(|p| changed_after(p, at)) {
-                Evidence::Done
-            } else if !here && entry.existed_at_register {
+            if (here && file.as_deref().is_some_and(|p| changed_after(p, at)))
+                || (!here && entry.existed_at_register)
+            {
                 Evidence::Done
             } else {
                 Evidence::Open

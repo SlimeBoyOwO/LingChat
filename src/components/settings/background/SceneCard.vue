@@ -81,7 +81,7 @@
 <script setup lang="ts">
 import { computed, type Component } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { CircleHelp, Home, Image, Star, TreePine, Wrench } from "lucide-vue-next";
+import { CircleHelp, Home, Image, Star, TreePine, Wrench } from "@lucide/vue";
 import PluginTag from "@/components/ui/PluginTag.vue";
 import { setSceneLocationType, type SceneInfo, type SceneLocationType } from "@/api/services/scene";
 

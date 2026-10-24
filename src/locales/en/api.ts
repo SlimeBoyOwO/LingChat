@@ -9,6 +9,10 @@ export default {
       title: "Auto Save",
       message: "Auto-saved at {time}",
     },
+    autoSaveFailed: {
+      title: "Auto-save failed",
+      message: "Auto-save could not be written ({time}); recent progress may not be saved.",
+    },
   },
   ambient: {
     uploadFailed: "Failed to upload ambient sound",

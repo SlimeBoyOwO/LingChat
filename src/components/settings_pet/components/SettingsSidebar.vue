@@ -104,7 +104,7 @@
 </template>
 
 <script setup lang="ts">
-import { Heart } from "lucide-vue-next";
+import { Heart } from "@lucide/vue";
 
 type TabItem = {
   key: "pet" | "interaction" | "window" | "todo";

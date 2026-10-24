@@ -46,6 +46,10 @@ impl Tool for MyTool {
                 "additionalProperties": false        // 拒绝多余参数
             }),
         )
+        .with_rag_examples([
+            "帮我查一下某个关键词",
+            "我想找跟这个有关的东西",
+        ])
     }
 
     /// 执行：入参是解析好的 JSON object，返回 JSON 结果
@@ -85,6 +89,7 @@ pub trait Tool: Send + Sync {
 
 - 必须 `Send + Sync`：注册后放进 `Arc<dyn Tool>`，被多个并发生成任务共享；
 - `definition()` 同步返回，每次下发前都会被调用（所以描述要稳定，不要依赖可变状态）；
+- `with_rag_examples([...])` 给 Tool RAG 挂「可能的提问方式」：每句单独算向量，检索取最高分。建议 3~5 条玩家口吻的中文短句；不配则回退到描述。示例只在本机做索引，不会下发给模型；
 - `execute()` 是异步的，可以自由 `await` 任何东西（HTTP、DB、文件），但**有 2 秒超时** —— 慢操作要么自己分页/截断，要么用 `timeout_hint()` 放宽（God Agent 的 `update_affection` 因为要写库而放宽到 30 秒）；
 - `lenient_arguments()` 默认 `false`（严格：参数必须是合法 JSON object 且通过 schema 校验）。**除非你的工具需要容忍模型把整数写成 `"6"` 这类畸形输出，否则不要覆写**——放宽后 schema 不再兜住类型错误，得自己在 `execute()` 里容错。
 

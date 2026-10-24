@@ -447,9 +447,6 @@ const setShowChatInput = (insideWindow: boolean) => {
   showChatInput.value = insideWindow || (ChatInputRef.value?.isTyping() ?? false);
 };
 
-const handleMouseEnter = () => setShowChatInput(true);
-const handleMouseLeave = () => setShowChatInput(false);
-
 const requestFinishTyping = () => {
   void appWindow.emitTo("pet_bubble", PET_FINISH_TYPING_EVENT);
 };

@@ -24,7 +24,7 @@
                另写一套预览解释器的兑现点：这四个组件读的是同一份 store，
                引擎 emit 的事件经 eventQueue 进来后，表现与正式游玩逐帧一致。 -->
           <GameBackground />
-          <GameRolesStage />
+          <GameRolesStage :respect-plugin-voice-playback="false" />
           <GameExtraUI />
           <GameDialog />
         </div>

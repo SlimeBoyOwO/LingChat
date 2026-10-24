@@ -25,7 +25,7 @@ const ENTER_GRACE_SECS: u64 = 60;
 /// 已知边角：试玩会话（`preview_generation`）期间若正好 tick，预览台词会被计为真实对话写进主槽，本次不处理。
 pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
-        // 角色回复：assistant 且归属某角色（工具调用回填的前缀行 sender 为空，排除）
+        // 角色回复：assistant 且归属某角色（工具调用的空内容载体行 sender 为空，排除）
         LineAttribute::Assistant => line.base.sender_role_id.is_some(),
         // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
         LineAttribute::User => {
@@ -224,6 +224,18 @@ impl AutoSaveManager {
 
         // 4c. Set active save
         service.game_status.lock().await.active_save_id = Some(save_id);
+
+        // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
+        {
+            let identity_id = service.game_status.lock().await.player.identity_id.clone();
+            if let Some(ref id) = identity_id {
+                if !id.trim().is_empty() {
+                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
+                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
+                    }
+                }
+            }
+        }
 
         // 4d. Write GameStatus snapshot
         let snapshot = service.game_status.lock().await.to_snapshot();

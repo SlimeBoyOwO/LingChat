@@ -198,7 +198,7 @@ import { useAdventureStore } from "@/stores/modules/adventure";
 import type { AdventureInfo } from "@/api/services/adventure";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { Book } from "lucide-vue-next";
+import { Book } from "@lucide/vue";
 
 interface Props {
   characterFolder: string;

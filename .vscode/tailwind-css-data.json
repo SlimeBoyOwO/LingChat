@@ -1,0 +1,41 @@
+{
+  "version": 1.1,
+  "atDirectives": [
+    {
+      "name": "@apply",
+      "description": "内联 Tailwind 工具类到自定义 CSS 规则中"
+    },
+    {
+      "name": "@reference",
+      "description": "在 scoped style 块中引入 Tailwind 主题与工具类"
+    },
+    {
+      "name": "@theme",
+      "description": "定义 Tailwind 设计令牌"
+    },
+    {
+      "name": "@custom-variant",
+      "description": "注册自定义变体"
+    },
+    {
+      "name": "@variant",
+      "description": "在自定义 CSS 中应用变体"
+    },
+    {
+      "name": "@utility",
+      "description": "注册自定义工具类"
+    },
+    {
+      "name": "@source",
+      "description": "添加用于类名扫描的源路径"
+    },
+    {
+      "name": "@config",
+      "description": "加载旧版 JavaScript 配置"
+    },
+    {
+      "name": "@plugin",
+      "description": "加载旧版 JavaScript 插件"
+    }
+  ]
+}

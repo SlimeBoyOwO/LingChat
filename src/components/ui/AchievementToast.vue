@@ -104,10 +104,10 @@ watch(
 @reference "tailwindcss";
 
 .achievement-toast {
-  @apply fixed right-8 z-[9999];
+  @apply fixed right-8 z-9999;
   @apply flex items-center gap-4;
   bottom: calc(32px + var(--safe-area-inset-bottom));
-  @apply max-w-[400px] min-w-[320px] p-4;
+  @apply max-w-100 min-w-[320px] p-4;
   @apply overflow-hidden;
   @apply rounded-xl;
 
@@ -229,7 +229,7 @@ watch(
 
 /* 进度条容器 */
 .progress-bar-container {
-  @apply absolute bottom-0 left-0 h-[2px] w-full bg-gray-800/50;
+  @apply absolute bottom-0 left-0 h-0.5 w-full bg-gray-800/50;
 }
 
 .progress-bar {

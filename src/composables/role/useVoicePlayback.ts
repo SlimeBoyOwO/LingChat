@@ -11,6 +11,7 @@
 import { onUnmounted, ref, watch, type Ref } from "vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { getVoiceAudio } from "@/api/services/game-info";
+import { isPluginVoicePlaybackActive } from "@/api/services/plugins";
 import { setVoicePlaying } from "@/composables/asr";
 
 export interface UseVoicePlaybackOptions {
@@ -24,6 +25,11 @@ export interface UseVoicePlaybackOptions {
    * 否则下游（自动推进调度器）会永久卡住。
    */
   onEnded?: () => void;
+  /**
+   * 是否允许插件接管播放（本机静音、由插件把音频送到外部程序）。默认 true；
+   * 剧本编辑器的试玩层要传 false —— 试玩流不会发到游戏里，静音就没人播了。
+   */
+  respectPluginVoicePlayback?: boolean;
 }
 
 export interface UseVoicePlaybackApi {
@@ -35,9 +41,12 @@ export interface UseVoicePlaybackApi {
 
 export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlaybackApi {
   const { audioRef, onStarted, onEnded } = options;
+  const respectPluginVoicePlayback = options.respectPluginVoicePlayback ?? true;
   const uiStore = useUIStore();
 
   const voiceDataUrl = ref("");
+  /** 当前这句是否由插件接管播放：照常播以维持时序，只是音量压到 0。 */
+  const mutedForPlugin = ref(false);
 
   /**
    * 是否处于「已经开始播、还没结束」。ended 只在自然播完时触发（pause、换 src、
@@ -72,6 +81,7 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
       // 'None' 表示停止当前播放
       if (newAudio === "None" || !newAudio) {
         voiceDataUrl.value = "";
+        mutedForPlugin.value = false;
         stopAudio();
         return;
       }
@@ -83,11 +93,19 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
       // 换源会打断上一条但它是终态；这里只清标志不补报，新的一条马上就要 started
       playing = false;
       try {
-        const dataUrl = await getVoiceAudio(newAudio);
+        // 与取音频并行问一次：插件接管播放时本机仍照常播放，只把音量置 0，
+        // 这样 audio-started/ended、自动推进与 ASR 门控都与平时一致。
+        const [dataUrl, takenOver] = await Promise.all([
+          getVoiceAudio(newAudio),
+          respectPluginVoicePlayback
+            ? isPluginVoicePlaybackActive().catch(() => false)
+            : Promise.resolve(false),
+        ]);
+        mutedForPlugin.value = takenOver;
         voiceDataUrl.value = dataUrl;
         audioRef.value.src = dataUrl;
         audioRef.value.load();
-        audioRef.value.volume = uiStore.characterVolume / 100;
+        audioRef.value.volume = takenOver ? 0 : uiStore.characterVolume / 100;
         // TTS 播放中 ASR 禁用（外放 TTS 进麦克风会误识别 AI 自己的话）
         audioRef.value
           .play()
@@ -104,17 +122,18 @@ export function useVoicePlayback(options: UseVoicePlaybackOptions): UseVoicePlay
       } catch (e) {
         console.error("获取语音文件失败:", e);
         // 获取失败：播放不会发生 → 解除前置锁，否则 ASR 门控永久卡死
+        mutedForPlugin.value = false;
         setVoicePlaying(false);
         emitEndedOnce();
       }
     },
   );
 
-  // 音量设置变化时，对正在播放的语音实时生效
+  // 音量设置变化时，对正在播放的语音实时生效；插件接管播放期间保持静音
   watch(
     () => uiStore.characterVolume,
     (v) => {
-      if (audioRef.value) audioRef.value.volume = v / 100;
+      if (audioRef.value && !mutedForPlugin.value) audioRef.value.volume = v / 100;
     },
   );
 

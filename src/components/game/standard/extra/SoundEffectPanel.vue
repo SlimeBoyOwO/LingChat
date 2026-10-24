@@ -353,7 +353,7 @@ import {
   Volume2,
   Wind,
   X,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { computed, onMounted, onUnmounted, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import SpectrumPaletteChips from "./SpectrumPaletteChips.vue";

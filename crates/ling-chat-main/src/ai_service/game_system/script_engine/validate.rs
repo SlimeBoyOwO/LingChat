@@ -856,6 +856,7 @@ fn check_modify_character_action(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_asset(
     data_dir: &Path,
     script_dir: &Path,

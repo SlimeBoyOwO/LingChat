@@ -20,7 +20,7 @@ pub async fn start_screenshot(app: AppHandle) -> Result<(), String> {
         app.emit("screenshot:request-source", ())
             .map_err(|e| format!("emit screenshot:request-source failed: {}", e))?;
         tracing::info!("[Screenshot] Android picker requested.");
-        return Ok(());
+        Ok(())
     }
 
     #[cfg(desktop)]
