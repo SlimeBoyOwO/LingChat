@@ -1,16 +1,4 @@
 //! 插件压缩包导入：解压 → 严格定位 → manifest 校验 → 落位 → 重扫注册。
-//!
-//! 与角色导入（`api::role_archive::import_pipeline`）共用 `utils::archive` 的解压、
-//! 冲突解析与目录搬运实现，两处刻意不同：
-//!
-//! 1. **校验在落位之前**。角色流程是「先 rename 进目标位、再查 `settings.yml`、
-//!    失败删目标位」；插件在 `Overwrite` 下照抄会先把用户的好插件删掉，才发现新包
-//!    是坏的。这里所有内容根、manifest、脚本存在性的判定都发生在 staging 内。
-//! 2. **目标目录名取 `manifest.id`**，不取压缩包文件名。`manager.rs` 强制
-//!    `manifest.id == 目录名`，因此冲突策略只接受 `Overwrite` / `Skip`（放弃），
-//!    没有 `Rename` 的容身之处。
-//! 3. **落位后默认禁用**。覆盖时走 `delete_plugin` 清掉旧记录与集中状态条目，
-//!    新插件以「未启用」的全新姿态出现，由用户在插件页手动开启。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -212,7 +200,7 @@ pub async fn do_import_plugin(
     tokio::task::spawn_blocking(move || manager.reload())
         .await
         .map_err(|e| format!("插件重载线程异常: {e}"))?;
-    crate::commands::refresh_plugin_content(app).await;
+    crate::content_sync::refresh_plugin_content(app).await;
 
     tracing::info!(
         "[PluginImport] 完成: id={plugin_id}, action={}, files={}, bytes={}",
@@ -247,7 +235,6 @@ pub fn plugin_root_dir() -> PathBuf {
 /// - **A**：`manifest.toml` 直接位于暂存目录根部（压缩包内平铺文件与资源）。
 /// - **B**：`manifest.toml` 位于唯一一层子目录内（压缩包外套了一个文件夹）。
 ///   沿用角色导入的判定条件：子目录唯一且根部没有任何散落文件，
-///   因此 `README.md + my-plugin/manifest.toml` 这类混合形态会被拒绝。
 async fn locate_plugin_root(staging: &Path) -> Result<PathBuf, LayoutError> {
     if staging.join("manifest.toml").is_file() {
         return Ok(staging.to_path_buf());
@@ -286,7 +273,7 @@ async fn find_missing_script(dir: &Path, manifest: &PluginManifest) -> Option<St
         .chain(manifest.subscribe.iter().map(|sub| &sub.script))
         .chain(manifest.startup.iter().map(|startup| &startup.script))
         .chain(manifest.ws.iter().filter_map(|ws| ws.script.as_ref()))
-        // manifest::validate 已保证 script 是单个文件名，这里只判存在性。
+        // manifest::validate 已保证 script 是插件目录内的相对路径，这里只判存在性。
         .find(|script| !dir.join(script).is_file())
         .cloned()
 }

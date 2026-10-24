@@ -145,6 +145,7 @@
 <script setup lang="ts">
 import { computed, ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
+import { useI18n } from "vue-i18n";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { MenuPage, MenuItem } from "../../ui";
@@ -153,13 +154,14 @@ import AdventurePanel from "./Adeventure/AdventurePanel.vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { getAvatarFile } from "@/api/services/character";
-import { Birdhouse, Book, FileText, UserPlus } from "lucide-vue-next";
+import { Birdhouse, Book, FileText, UserPlus } from "@lucide/vue";
 import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
 import type { ScriptSummary } from "@/api/services/script-info";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 const router = useRouter();
+const { t } = useI18n();
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([]);
 const standaloneScriptsLoading = ref(true);
@@ -193,14 +195,31 @@ const goToCharacterTab = () => {
   uiStore.setSettingsTab("character");
 };
 
-// 开始游玩独立剧本
+// 开始游玩独立剧本。
 const startStandaloneScript = async (script: ScriptSummary) => {
+  if (gameStore.runningScript) {
+    uiStore.showNotification({
+      type: "warning",
+      title: t("settings.adventure.lock.title"),
+      message: t("settings.adventure.lock.running"),
+      skipTipsCheck: true,
+    });
+    return;
+  }
   try {
+    await router.push("/chat");
+    gameStore.enterStoryMode(script.script_name);
     await startScriptApi(script.script_name);
-    // 可选：关闭设置面板，开始剧本
     uiStore.showSettings = false;
   } catch (error) {
+    gameStore.exitStoryMode();
     console.error("启动独立剧本失败:", error);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.adventure.lock.title"),
+      message: typeof error === "string" ? error : t("settings.adventure.lock.running"),
+      skipTipsCheck: true,
+    });
   }
 };
 

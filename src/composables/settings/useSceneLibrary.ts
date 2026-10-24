@@ -64,6 +64,8 @@ export function useSceneLibrary() {
       gameStore.clearCurrentScene();
       uiStore.setCurrentBackground("");
       unlockAchievement("see_through").catch(console.error);
+      // 后端也要知道「没有场景了」：否则下次初始化会按它记着的场景把背景放回来
+      await selectScene(null).catch((e) => console.error("取消选中场景失败", e));
       await fetchScenes();
       return;
     }
@@ -80,9 +82,8 @@ export function useSceneLibrary() {
     try {
       await selectScene(scene.id);
       gameStore.setCurrentScene(scene);
-      if (scene.background) {
-        uiStore.setCurrentBackground(scene.background);
-      }
+      // 场景没绑背景时同样要落到空背景，否则上一张图会一直留着
+      uiStore.setCurrentBackground(scene.background ?? "");
       await fetchScenes();
     } catch (error) {
       console.error("选择场景失败", error);
@@ -158,6 +159,8 @@ export function useSceneLibrary() {
     try {
       await deleteScene(scene.id);
       gameStore.clearCurrentScene();
+      // 背景文件常随场景一起删掉，前端不留着已失效的路径
+      uiStore.setCurrentBackground("");
       await fetchScenes();
     } catch (error) {
       console.error("删除场景失败", error);

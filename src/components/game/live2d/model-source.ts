@@ -20,6 +20,19 @@ export interface Live2dModelSource {
 
 export const RUNTIME_IDLE_GROUP = "__LingChatConfiguredIdle";
 
+/**
+ * 模型文件本身取不到（未导入、被删、或资源协议返回 404）。
+ *
+ * 与引擎解析失败区分开：只有这种情况才值得把角色回退成静态立绘并落盘。
+ * 引擎/渲染故障是临时性的，不该改写用户的形象设置。
+ */
+export class Live2dModelMissingError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "Live2dModelMissingError";
+  }
+}
+
 export function configureRuntimeIdle(
   source: Live2dModelSource,
   idle: Live2dMotionBinding | null | undefined,

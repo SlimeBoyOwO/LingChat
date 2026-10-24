@@ -67,7 +67,7 @@
 <script setup lang="ts">
 import { ref, watch, nextTick, onMounted, onUnmounted } from "vue";
 import { useDialogStore } from "../../stores/modules/ui/dialog";
-import { Info, TriangleAlert, PawPrint } from "lucide-vue-next";
+import { Info, TriangleAlert, PawPrint } from "@lucide/vue";
 
 const dialogStore = useDialogStore();
 const okBtn = ref<HTMLElement | null>(null);

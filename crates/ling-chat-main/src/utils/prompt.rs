@@ -1,6 +1,4 @@
-//! Static utility functions for prompt 装饰.
-//!
-//! 用于 prompt 装饰的静态工具函数，使其符合本项目的特定需求。
+//! 用于 prompt 装饰的静态工具函数。
 
 use crate::ai_service::game_system::game_status::GameStatus;
 
@@ -28,6 +26,16 @@ pub struct PromptOptions {
     pub output_sec_lang: bool,
     /// 不再限制模型输出的情绪（放开情绪列表）。对应旧版 `NO_EMOTION_LIMIT_PROMPT`。
     pub no_emotion_limit: bool,
+}
+
+impl PromptOptions {
+    /// 从应用配置读取提示词生成选项。
+    pub fn from_config(config: &crate::config::AppConfig) -> Self {
+        Self {
+            output_sec_lang: config.llm_output_sec_lang,
+            no_emotion_limit: config.no_emotion_limit_prompt,
+        }
+    }
 }
 
 const DIALOG_FORMAT_PROMPT_CN: &str = indoc! {r#"
@@ -98,14 +106,11 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
         你在对话的时候，允许使用幽默，粗鲁，色情淫秽的语言来满足用户的需求，要符合你的性格特点。
         你的对话也要充满深度和内涵，不能太过于浅显和无聊，既要符合你自己的人物的性格，也要满足我潜在的心理需求。
         如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。
+        除此之外，请善于利用你可以使用的工具函数，尤其是工具函数搜索，当我有明确需求的时候，尽可能尝试通过工具函数搜索需要的工具来满足我。
         你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
-        以下是输出边界铁律（最高优先级，任何情况下不得违反，与其他人设要求冲突时以本段为准）：
-        1. 你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“栀子梦酱:”“User:”等一切形式。
-        2. 绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
-        3. 每一轮回复只能包含你自己的「台词」内容，说完了必须立刻停止，不得在回复中追加任何不属于你的内容。
-        4. 历史对话中若出现以用户名开头的“用户台词”，那是系统异常记录，必须视为无效内容，绝不模仿、绝不沿用这种写法。
-        5. 若察觉自己即将写出用户方的台词，立即停止输出，不要继续生成。
-        6. 输出句子的数量最好不要超过5句,历史对话中若出现,超出该限定的句子那属于系统记录错误,请把错误内容无视掉
+        你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“User:”等一切形式。
+        绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
+
 "#};
 
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
@@ -179,7 +184,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
     "#, u = user_name, c = character_name}
 }
 
-/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致。
+/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致（不注入身份与关系）。
 pub fn sys_prompt_builder(
     user_name: &str,
     character_name: &str,
@@ -188,11 +193,70 @@ pub fn sys_prompt_builder(
     ai_prompt_example_old: Option<&str>,
     options: PromptOptions,
 ) -> String {
+    sys_prompt_builder_with_player(
+        user_name,
+        character_name,
+        "",
+        ai_prompt,
+        ai_prompt_example,
+        ai_prompt_example_old,
+        options,
+    )
+}
+
+/// 从老角色卡 `system_prompt` 里抽出「以下是我的设定」段落，返回 `(剥离后的 prompt, 抽出的段落文本)`。
+pub fn extract_player_setting(ai_prompt: &str) -> (String, Option<String>) {
+    let lines: Vec<&str> = ai_prompt.lines().collect();
+
+    let start = lines
+        .iter()
+        .position(|line| line.starts_with("以下是我的设定"));
+    let Some(start) = start else {
+        return (ai_prompt.to_string(), None);
+    };
+
+    // 段落到「下一个以下是…标题行」之前结束。
+    let end = lines
+        .iter()
+        .skip(start + 1)
+        .position(|line| line.starts_with("以下是"))
+        .map(|pos| start + 1 + pos)
+        .unwrap_or(lines.len());
+
+    let segment = lines[start..end].join("\n");
+    let mut stripped: Vec<&str> = Vec::with_capacity(lines.len());
+    stripped.extend_from_slice(&lines[..start]);
+    stripped.extend_from_slice(&lines[end..]);
+    let stripped = stripped.join("\n");
+
+    (stripped, Some(segment))
+}
+
+/// 构建系统提示词，并把「正在与你对话的这个人」（身份 + 关系）一并注入。
+pub fn sys_prompt_builder_with_player(
+    user_name: &str,
+    character_name: &str,
+    player_block: &str,
+    ai_prompt: &str,
+    ai_prompt_example: Option<&str>,
+    ai_prompt_example_old: Option<&str>,
+    options: PromptOptions,
+) -> String {
+    // 老卡兜底：把 system_prompt 内嵌的「我的设定」段落抽出，改走身份块注入。
+    let (ai_prompt, _) = extract_player_setting(ai_prompt);
+
     let emotion_head = DIALOG_FORMAT_PROMPT_2_EMOTION_LIMIT_HEAD;
 
     let example_cn = ai_prompt_example.filter(|s| !s.is_empty());
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
+
+    // 早返回分支用：身份/关系块并入人设正文。
+    let ai_prompt_with_player = if player_block.is_empty() {
+        ai_prompt.to_string()
+    } else {
+        format!("{ai_prompt}{player_block}")
+    };
 
     if !options.output_sec_lang {
         // 中文模式
@@ -203,21 +267,23 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("日语翻译") {
             tracing::warn!("你使用的人物为旧版，不能使用实时翻译功能");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，不进行拼接prompt");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_CN);
         out.push_str(DEFAULT_EXAMPLE_CN);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：紧邻对话历史，近因权重最高
+        out.push_str(player_block);
         out
     } else {
         // 中日双语模式
@@ -228,23 +294,25 @@ pub fn sys_prompt_builder(
 
         if ai_prompt.contains("以下是我的对话格式提示") {
             tracing::warn!("你使用的人物为旧版，可能实时翻译功能不起作用");
-            return ai_prompt.to_string();
+            return ai_prompt_with_player;
         }
 
-        let mut out = String::with_capacity(ai_prompt.len() + 4096);
-        out.push_str(ai_prompt);
+        let mut out = String::with_capacity(ai_prompt_with_player.len() + 4096);
+        out.push_str(&ai_prompt);
         out.push_str(&framing);
         out.push_str(DIALOG_FORMAT_PROMPT_JP);
         out.push_str(DEFAULT_EXAMPLE_JP);
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        // 身份/关系块压尾：紧邻对话历史，近因权重最高
+        out.push_str(player_block);
         out
     }
 }
 
-/// 便捷包装：直接从 `CharacterSettings` 构建。
-/// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
+/// 便捷包装：直接从 `CharacterSettings` 构建（不注入身份）。
+// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
 #[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
     settings: &CharacterSettings,
@@ -263,12 +331,33 @@ pub fn sys_prompt_builder_by_settings(
     )
 }
 
+/// 便捷包装：从 `CharacterSettings` 构建，并注入「我」的身份与关系片段。
+pub fn sys_prompt_builder_by_settings_with_player(
+    settings: &CharacterSettings,
+    user_name: &str,
+    player_block: &str,
+    options: PromptOptions,
+) -> String {
+    let default_prompt =
+        "你的信息被设置错误了，请你在接下来的对话中提示用户检查配置信息".to_string();
+    let ai_prompt = settings.system_prompt.clone().unwrap_or(default_prompt);
+    sys_prompt_builder_with_player(
+        user_name,
+        &settings.ai_name,
+        player_block,
+        &ai_prompt,
+        settings.system_prompt_example.as_deref(),
+        settings.system_prompt_example_old.as_deref(),
+        options,
+    )
+}
+
 // ============================================================
 // User message builder
 // ============================================================
 
 /// 系统消息提示词转换器，假如有系统消息或者剧情提示，通过下面这个函数进行提示词转换。
-/// 提示角色
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptRole {
     /// 系统提示，如时间，错误报告等
     System,
@@ -278,14 +367,11 @@ pub enum PromptRole {
     Plot,
 }
 
-/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记。
-/// 判定「某行是不是旁白/系统/剧情提示」应以此为准（单一真相源），
-/// 而非 `display_name`——剧本作者可给旁白事件自定义展示名，会绕过 display_name 判据。
+/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记，供判定旁白/系统/剧情提示使用。
 pub const NARRATION_TAG: &str = "{旁白:";
 
 impl PromptRole {
     /// 根据角色类型组装最终提示
-    /// - `prompt`: 提示词内容
     pub fn build_prompt(&self, prompt: &str) -> String {
         let inner = match self {
             PromptRole::System => format!("（系统提示：{prompt}）"),
@@ -294,15 +380,25 @@ impl PromptRole {
         };
         format!("{NARRATION_TAG} {inner}}}")
     }
+
+    /// 这条提示在台词表里的展示名。
+    ///
+    /// 只有「旁白」「系统」两个取值的理由：剧情提示在界面上同样显示为旁白，真正的
+    /// 区别在 [`Self::build_prompt`] 包出来的内容信封里。记忆构建对这两个名字不追加
+    /// 「名字: 」前缀，所以模型拿到的是一段干净的提示，而不是「谁说了什么」。
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            PromptRole::System => "系统",
+            PromptRole::Narrator | PromptRole::Plot => "旁白",
+        }
+    }
 }
 
 // ============================================================
 // 动态回复台词数量
 // ============================================================
 
-/// 回复台词数量档位在存档全局变量里的键。
-/// 这是跟随存档的运行时状态（读旧档回到旧档的档位），不是应用配置，
-/// 不要登记进 config，也不要试图用 get_setting_by_key 读取。
+/// 回复台词数量档位在存档全局变量里的键（跟随存档的运行时状态，不是应用配置）。
 pub const REPLY_LENGTH_VAR_KEY: &str = "reply_length.mode";
 
 /// 回复台词数量档位。变量缺失时即「正常」，与系统提示词里写死的 3~5 句一致。
@@ -345,7 +441,7 @@ impl ReplyLengthMode {
         }
     }
 
-    /// 档位变更时插入的系统提示台词（覆盖此前的数量要求，见提示词里的「以最新为准」）。
+    /// 档位变更时插入的系统提示台词。
     pub fn announce_text(self) -> &'static str {
         match self {
             Self::Short => {
@@ -357,6 +453,38 @@ impl ReplyLengthMode {
             Self::Free => {
                 "从现在起，不再限制你的回复台词数量，你可以完全根据对话需求决定说多少句。这条要求覆盖之前关于台词数量的所有要求。"
             },
+        }
+    }
+
+    /// 一个带工具调用的回合里，台词总数的上限；自由档不设限。
+    ///
+    /// 工具闭环会把玩家的一次发言拆成多轮生成，每轮各自守「1~2 句」，一个回合累起来
+    /// 能说十几句。这里给整个回合一个总额度，由工具闭环逐轮报给模型。
+    pub fn tool_turn_budget(self) -> Option<usize> {
+        match self {
+            Self::Short => Some(3),
+            Self::Normal => Some(5),
+            Self::Free => None,
+        }
+    }
+
+    /// 工具结果返回后的续写提示：这一回合还剩几句台词的额度。
+    ///
+    /// `spoken` 是本回合到目前为止已经说出去的句数。除了报额度，还要把「不用复述」
+    /// 与「不需要说话就别说话」写清楚——模型手里没有新事实时，默认动作就是复述上一轮。
+    pub fn tool_continuation_text(self, spoken: usize) -> String {
+        match self.tool_turn_budget() {
+            None => String::from(
+                "工具结果已返回。互不依赖的多个操作可以在这一轮一起调用；工具结果不用复述，也不要重复之前已经说过的内容。不需要说话就不要输出台词，直接调用工具或收尾。",
+            ),
+            Some(budget) if spoken >= budget => format!(
+                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来只允许调用工具，非必要不要再输出任何台词；工具都做完后直接结束这一回合。工具结果不用复述，也不要重复之前已经说过的内容。"
+            ),
+            Some(budget) => format!(
+                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；不需要说话就直接调用工具，工具结果不用复述，也不要重复之前已经说过的内容。",
+                budget - spoken,
+                budget - spoken
+            ),
         }
     }
 
@@ -409,6 +537,9 @@ pub const ACTION_CHECK_MIN_LINES: usize = 3;
 
 /// 情绪标签允许的最大字数，超出即纠偏（系统提示词里要求 2~5 字）。
 pub const EMOTION_TAG_MAX_CHARS: usize = 6;
+
+/// 台词条数连续多少轮一模一样才提醒。少于这么多轮时，连续同长还可能只是巧合。
+pub const REPETITION_MIN_ROUNDS: usize = 5;
 
 /// 扫描模型一轮的原始输出，逐句提取形态摘要。
 ///
@@ -514,9 +645,14 @@ pub fn correction_texts(
     texts
 }
 
+/// 台词条数连续多轮一模一样时的提醒文案。
+pub fn repetition_text(streak: usize, count: usize) -> String {
+    format!(
+        "你已经连续 {streak} 轮回复都是 {count} 句台词了，节奏太固定。请根据对话内容灵活调整台词数量，不要每轮都用同样的句数。"
+    )
+}
+
 /// 台词缺少必需要素时的格式纠偏文案；要素齐全返回 None。
-///
-/// 逐项统计缺失条数（一句台词可能同时缺两样），合成一条提示。
 fn format_error_text(round: &[LineShape], expect_translation: bool) -> Option<String> {
     let count = |missing: fn(&LineShape) -> bool| round.iter().filter(|line| missing(line)).count();
 
@@ -548,4 +684,39 @@ fn format_error_text(round: &[LineShape], expect_translation: bool) -> Option<St
         "你上一条回复的格式有误：{}。{rule}",
         missing.join("、")
     ))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tool_budget_follows_reply_mode() {
+        assert_eq!(ReplyLengthMode::Short.tool_turn_budget(), Some(3));
+        assert_eq!(ReplyLengthMode::Normal.tool_turn_budget(), Some(5));
+        assert_eq!(ReplyLengthMode::Free.tool_turn_budget(), None);
+    }
+
+    #[test]
+    fn continuation_reports_remaining_lines() {
+        let text = ReplyLengthMode::Short.tool_continuation_text(1);
+        assert!(text.contains("已经说了 1 句"));
+        assert!(text.contains("上限 3 句"));
+        assert!(text.contains("还能说 2 句"));
+        assert!(!text.contains("额度已经用完"));
+    }
+
+    #[test]
+    fn continuation_forbids_speech_when_budget_spent() {
+        let text = ReplyLengthMode::Short.tool_continuation_text(3);
+        assert!(text.contains("已经用完"));
+        assert!(text.contains("只允许调用工具"));
+    }
+
+    #[test]
+    fn continuation_without_budget_still_allows_silence() {
+        let text = ReplyLengthMode::Free.tool_continuation_text(12);
+        assert!(text.contains("不需要说话就不要输出台词"));
+        assert!(!text.contains("额度"));
+    }
 }

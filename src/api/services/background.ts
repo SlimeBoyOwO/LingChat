@@ -27,10 +27,6 @@ export const uploadBackgroundImage = async (
   return invoke("upload_background_image", { fileName, fileData, category });
 };
 
-export const setCurrentBackground = async (background: string): Promise<void> => {
-  await http.post("/v1/chat/background/select", { background });
-};
-
 export const setCurrentBackgroundEffect = async (effect: string): Promise<void> => {
   await http.post("/v1/chat/background/effect", { effect });
 };

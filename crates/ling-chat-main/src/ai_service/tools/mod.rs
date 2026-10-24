@@ -15,6 +15,8 @@ pub mod settings;
 pub mod skill_files;
 pub mod status;
 pub mod tool_loop;
+pub mod tool_rag;
+pub mod tool_search;
 pub mod weather;
 pub mod web_search;
 
@@ -101,15 +103,19 @@ pub fn built_in_registry(
     role_names: impl IntoIterator<Item = (String, String)>,
     tool_settings: SharedToolSettings,
 ) -> Result<ToolRegistry> {
+    let data_dir = crate::api::data_dir();
     let registry = ToolRegistry::new();
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
+    // Tool RAG 的检索入口：常驻下发（且不归任何设置分组，语义就是「总是可用」），
+    // 让它在注册顺序里紧随网页搜索，两者都是常驻工具。
+    registry.register(Arc::new(tool_search::ToolSearch))?;
     registry.register(Arc::new(GetAllSchedule))?;
     registry.register(Arc::new(AddTodo))?;
     registry.register(Arc::new(UpdateTodo))?;
     registry.register(Arc::new(DeleteTodo))?;
     registry.register(Arc::new(GetCurrentMemory))?;
-    registry.register(Arc::new(GetNotes))?;
+    registry.register(Arc::new(GetNotes::new(&data_dir)))?;
     registry.register(Arc::new(AddNote))?;
     registry.register(Arc::new(UpdateNote))?;
     registry.register(Arc::new(DeleteNote))?;
@@ -139,7 +145,6 @@ pub fn built_in_registry(
     // 避免模型选中 execute_command 后才得到系统级执行失败。
     #[cfg(desktop)]
     registry.register(Arc::new(ExecuteCommand::new(tool_settings.clone())))?;
-    let data_dir = crate::api::data_dir();
     let mut permissions = ToolPermissionConfig::load_or_create(
         &data_dir,
         registry

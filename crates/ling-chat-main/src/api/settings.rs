@@ -20,9 +20,11 @@ use crate::ai_service::llm::provider_config::{
     save_role_assignment,
 };
 use crate::config::app_config::{
-    MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW, MAX_MEMORY_SECTION_CHARS,
-    MAX_MEMORY_UPDATE_INTERVAL, MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
+    MAX_AUTO_SAVE_INTERVAL_SECS, MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW,
+    MAX_MEMORY_SECTION_CHARS, MAX_MEMORY_UPDATE_INTERVAL, MIN_AUTO_SAVE_INTERVAL_SECS,
+    MIN_LLM_TIMEOUT_SECS, MIN_MEMORY_UPDATE_INTERVAL,
 };
+use crate::config::proactive::{MAX_EXPECTED_INTERVAL_MINUTES, MIN_EXPECTED_INTERVAL_MINUTES};
 use crate::config::{self, ConfigSetting, ConfigTree, keys};
 
 // ========== Settings CRUD ==========
@@ -70,12 +72,30 @@ pub fn save_settings(
         }
     }
 
+    if let Some(raw) = values.get(keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES) {
+        let minutes = raw
+            .parse::<f64>()
+            .map_err(|_| "主动对话期望间隔必须是数字".to_string())?;
+        if !(MIN_EXPECTED_INTERVAL_MINUTES..=MAX_EXPECTED_INTERVAL_MINUTES).contains(&minutes) {
+            return Err(format!(
+                "主动对话期望间隔必须在 {MIN_EXPECTED_INTERVAL_MINUTES}–{MAX_EXPECTED_INTERVAL_MINUTES} 分钟之间"
+            ));
+        }
+    }
+
     validate_u32_setting(
         &values,
         keys::MEMORY_UPDATE_INTERVAL,
         "记忆压缩触发条数",
         MIN_MEMORY_UPDATE_INTERVAL,
         MAX_MEMORY_UPDATE_INTERVAL,
+    )?;
+    validate_u32_setting(
+        &values,
+        keys::AUTO_SAVE_INTERVAL_SECS,
+        "自动存档间隔",
+        MIN_AUTO_SAVE_INTERVAL_SECS,
+        MAX_AUTO_SAVE_INTERVAL_SECS,
     )?;
     validate_u32_setting(
         &values,

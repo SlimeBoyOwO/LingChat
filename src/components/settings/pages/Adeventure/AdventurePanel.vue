@@ -150,7 +150,7 @@
               <!-- Icon -->
               <div
                 class="flex h-14 w-14 shrink-0 items-center justify-center rounded-full"
-                :class="getIconClass(adventure.status)"
+                :class="getIconClass(displayStatus(adventure))"
               >
                 <Book></Book>
               </div>
@@ -160,11 +160,11 @@
                 <div class="mb-1 text-base font-semibold text-white">{{ adventure.name }}</div>
                 <div class="line-clamp-2 text-sm text-gray-400">{{ adventure.description }}</div>
                 <div
-                  v-if="adventure.status === 'locked'"
+                  v-if="displayStatus(adventure) === 'locked'"
                   class="mt-2 flex items-center gap-1 text-xs text-gray-500"
                 >
                   <span>🔒</span>
-                  <span>{{ getUnlockHint(adventure) }}</span>
+                  <span>{{ getNodeHint(adventure) }}</span>
                 </div>
                 <div v-else class="mt-2 flex items-center gap-1 text-xs text-gray-500">
                   <div v-if="adventure.recommand_start">
@@ -178,9 +178,9 @@
               <div class="shrink-0">
                 <span
                   class="rounded-full px-3 py-1.5 text-xs font-medium"
-                  :class="getBadgeClass(adventure.status)"
+                  :class="getBadgeClass(displayStatus(adventure))"
                 >
-                  {{ getStatusText(adventure.status) }}
+                  {{ getStatusText(displayStatus(adventure)) }}
                 </span>
               </div>
             </div>
@@ -198,7 +198,7 @@ import { useAdventureStore } from "@/stores/modules/adventure";
 import type { AdventureInfo } from "@/api/services/adventure";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import { Book } from "lucide-vue-next";
+import { Book } from "@lucide/vue";
 
 interface Props {
   characterFolder: string;
@@ -351,10 +351,10 @@ const connections = computed<Connection[]>(() => {
       let lineClass = "stroke-gray-600 stroke-2 fill-none stroke-dasharray-5";
       let markerEnd = "url(#arrow-locked)";
 
-      if (toAdv.status === "completed") {
+      if (displayStatus(toAdv) === "completed") {
         lineClass = "stroke-green-400 stroke-[2.5] fill-none";
         markerEnd = "url(#arrow-completed)";
-      } else if (toAdv.status !== "locked") {
+      } else if (displayStatus(toAdv) !== "locked") {
         lineClass = "stroke-brand stroke-[2.5] fill-none";
         markerEnd = "url(#arrow-unlocked)";
       }
@@ -393,10 +393,19 @@ async function fetchAdventures() {
   }
 }
 
-// CSS 和逻辑处理保持你的原始逻辑
+/**
+ * 剧本互斥：已经有剧本在跑时，除「正在进行」的那一个之外，其余节点一律按锁定渲染。
+ * 后端 start_adventure 有同款校验兜底，这里只是让玩家点不下去。
+ */
+const lockedByRunningScript = (adventure: AdventureInfo) =>
+  !!gameStore.runningScript && adventure.status !== "in_progress";
+
+const displayStatus = (adventure: AdventureInfo) =>
+  lockedByRunningScript(adventure) ? "locked" : adventure.status;
+
 const getNodeClass = (adventure: AdventureInfo) => {
   const baseClass = "bg-gray-800/50 border-gray-700 hover:bg-gray-800/80";
-  switch (adventure.status) {
+  switch (displayStatus(adventure)) {
     case "completed":
       return `${baseClass} border-green-500/50 bg-green-900/20 hover:bg-green-900/30 hover:shadow-lg hover:shadow-green-500/20`;
     case "unlocked":
@@ -446,7 +455,8 @@ const getStatusText = (status: string) => {
   }
 };
 
-const getUnlockHint = (adventure: AdventureInfo): string => {
+const getNodeHint = (adventure: AdventureInfo): string => {
+  if (lockedByRunningScript(adventure)) return t("settings.adventurePanel.lock.scriptRunning");
   if (!adventure.unlock_conditions || adventure.unlock_conditions.length === 0)
     return t("settings.adventurePanel.unlock.autoUnlock");
   const hints: string[] = [];
@@ -463,15 +473,22 @@ const getUnlockHint = (adventure: AdventureInfo): string => {
 };
 
 const handleNodeClick = async (adventure: AdventureInfo) => {
-  if (adventure.status === "locked" || adventure.status === "completed") return;
-  if (adventure.status === "unlocked") {
-    try {
-      uiStore.showSettings = false;
-      gameStore.enterStoryMode(adventure.adventure_folder);
-      await adventureStore.startAdventure(adventure.adventure_folder);
-    } catch (error) {
-      console.error("启动冒险失败:", error);
-    }
+  if (displayStatus(adventure) !== "unlocked") return;
+  try {
+    uiStore.showSettings = false;
+    gameStore.enterStoryMode(adventure.adventure_folder);
+    await adventureStore.startAdventure(adventure.adventure_folder);
+  } catch (error) {
+    // 后端拒绝（互斥守卫等）时不能留下刚置上的剧情模式标记。
+    // 这条提示必须无条件显示，否则角色没配 tips.txt 时玩家会看到「点了没反应」
+    gameStore.exitStoryMode();
+    console.error("启动冒险失败:", error);
+    uiStore.showNotification({
+      type: "error",
+      title: t("settings.adventure.lock.title"),
+      message: typeof error === "string" ? error : t("settings.adventure.lock.running"),
+      skipTipsCheck: true,
+    });
   }
 };
 </script>

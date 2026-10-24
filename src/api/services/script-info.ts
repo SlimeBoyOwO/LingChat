@@ -71,3 +71,13 @@ export const startScript = async (scriptName: string): Promise<void> => {
     throw error;
   }
 };
+
+/** 中止当前正在运行的剧本（放弃本次进度，不记为完成） */
+export const stopScript = async (): Promise<void> => {
+  try {
+    await invoke("stop_script");
+  } catch (error: any) {
+    console.error("中止剧本错误:", error);
+    throw error;
+  }
+};

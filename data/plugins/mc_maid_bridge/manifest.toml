@@ -1,0 +1,186 @@
+id = "mc_maid_bridge"
+name = "车万女仆桥接"
+description = "把《车万女仆》桥接模组接进对话：MC 里主人说的话进对话，角色回的话变成游戏内女仆气泡，还能指挥女仆走过去、坐下、躺下、换工作模式（种菜、钓鱼、打怪）、打指定的活物（包括另一个玩家）、挖方块、在头上顶东西，并让她知道自己身边有什么、捡到了什么、上下船与进了什么结构、被 Carry On 抱起来、她自己死了还是复活了，以及主人拿到了什么成就"
+version = "0.1.0"
+author = "LingChat"
+
+# 顶层键必须写在第一个表之前，否则会被解析成那个表的字段。
+# MC 里玩家说的话要当成玩家发言送进对话。
+send_user_message = true
+
+# 游戏里的变化攒够了，要请角色主动开口（会花掉一轮生成）。
+trigger_proactive = true
+
+# 玩家在游戏里说话时，让角色可以「看一眼玩家的屏幕」（maid_see_screen 工具）——
+# 她要知道你搭的爱心是什么形状，光靠文字说不出来。屏幕上是玩家的隐私，所以单独声明。
+capture_screen = true
+
+# 桥接模组只在本机回环上监听，白名单也只放行回环，避免这个插件被指向任意外部地址。
+ws_allow = ["ws://127.0.0.1:", "ws://localhost:"]
+
+# 游戏内播放 TTS 时要读 data/voice 下宿主生成的音频文件。
+read = ["voice"]
+
+[[config]]
+key = "ws_url"
+label = "桥接模组地址"
+kind = "string"
+required = false
+default = "ws://127.0.0.1:48920"
+hint = "与模组默认一致，一般不用改；模组改过端口才需要动。"
+
+[[config]]
+key = "maid_id"
+label = "女仆 UUID"
+kind = "string"
+required = false
+hint = "留空则每次用到都现问一遍游戏（每句话多一次往返，游戏暂停时最长等满 5 秒）。建议从模组面板复制填上。"
+
+[[config]]
+key = "player_name"
+label = "你在 MC 里的用户名"
+kind = "string"
+required = false
+hint = "比如 NoiQing_Ling。填上之后：你在 MC 里说的话不会再带上这个账号名（模型只该认得设置里那个用户名）；女仆的主人另有其人时，聊天里才会点名。\n留空也能用：事件旁白只用 LingChat 里的角色名与用户名，不再出现 MC 账号名。"
+
+[[config]]
+key = "echo_to_game"
+label = "把角色的话同步成游戏内气泡"
+kind = "boolean"
+required = false
+default = true
+
+[[config]]
+key = "play_voice_in_game"
+label = "游戏内播放 TTS 语音"
+kind = "boolean"
+required = false
+default = false
+hint = "开启后，连上 MC 时这句话的语音改由女仆在游戏里的位置播放，LingChat 本机静音；\nMC 没连上或断开时自动回到本机播放。"
+
+[[config]]
+key = "screen_window"
+label = "游戏窗口标题关键词"
+kind = "string"
+required = false
+default = "Minecraft"
+hint = "「看一眼玩家屏幕」时按窗口标题（或进程名）找游戏窗口，找不到就抓整个屏幕。\n只有窗口标题被改过、或者非原版启动器时才需要动这一项。"
+
+[[config]]
+key = "proactive_after_events"
+label = "攒够几条游戏事件让角色先开口"
+kind = "number"
+required = false
+default = 3
+hint = "游戏里的变化（换地形、天黑、下雨、受伤这类）会记成旁白；连着攒够这么多条、\n且这期间没人说话，就请角色主动说一句。填 0 = 只记旁白，不主动开口。\n只在设置里开着「主动对话系统」时才有效。"
+
+# 接管宿主台词语音的播放：上面的开关打开且 tlm 连接在线时，本机静音，
+# 由插件把音频转发给模组在游戏里播放。
+[voice_playback]
+config = "play_voice_in_game"
+ws_conn = "tlm"
+
+[[ws]]
+id = "tlm"
+mode = "client"
+url = "ws://127.0.0.1:48920"
+auto_reconnect = true
+script = "hooks.py"
+handler = "on_ws"
+
+# 订阅「这一句上屏了」而不是「这一句生成好了」：模型的回复是流式到达的，几条会
+# 挤在一起生成完；跟着上屏时机走，游戏里的女仆才会跟着主界面一句一句地冒话。
+[[subscribe]]
+signal = "line_shown"
+script = "hooks.py"
+handler = "on_line_shown"
+
+# 动作、工作模式、攻击、挖掘与查询：让 LLM 指挥游戏里的女仆走过去、坐下、躺床、
+# 换工作、打指定的活物、挖方块，或问一句她周围有什么。
+# 十个工具都指向 tools/entry.py（一个脚本可挂多个入口，按行为分模块在 tools/ 下）。
+# 描述的第一句会进 tool_search 的清单，也会进 Tool RAG 的检索语料，所以要一句话说清能力。
+# 「看向玩家」不在这里：她说话时由模组自己转头，不需要模型下指令。
+[[tools]]
+name = "maid_go_to"
+description = "让自己走到主人身边或最近的床边。target 可选 player（主人，默认）或 bed（最近的床）。走路要花点时间，工具返回时角色通常还在路上，不代表已经到位。"
+parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "enum":["player","bed"], "description":"player = 走到主人身边（默认）；bed = 走到最近的床边" } } }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_sit_down"
+description = "让自己坐下。坐下之后自己不会自己走动，要恢复行动用 maid_stand_up。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_stand_up"
+description = "让自己站起来。自己坐着、躺着、睡着了，或者坐在坐垫/椅子上时用这个恢复行动——下不来座位也算。和 maid_sit_down 相对。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_lie_down"
+description = "让自己躺下。target 选 bed：走到最近的床上睡下，她按自己的作息睡，不在睡觉时段会自己起来，附近没有床会失败；选 ground：就地躺在地上，不找床也不走开，挨打、泡进液体、身下没地或者自己爬上床时会自己起来，主人让她做别的事也会起来。躺下之后用 maid_stand_up 叫她起来。"
+parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "enum":["bed","ground"], "description":"bed = 走到最近的床上（默认）；ground = 就地躺下" } } }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_set_task"
+description = "切换自己的工作模式，也就是接下来自己会自己去干什么活。主人说「去种地」「去钓鱼」「别干活了」「去打怪吧」这类话时用它。task 填下面之一（中文名或括号里的英文短名都行）：农场 farm、钓鱼 fishing、攻击 attack、弓兵 ranged_attack、弩兵 crossbow_attack、弹幕攻击 danmaku_attack、三叉戟攻击 trident_attack、甘蔗 sugar_cane、瓜类 melon、可可 cocoa、采蜜 honey、花草 grass、清雪 snow、喂食 feed、剪刀 shears、牛奶 milk、火把 torch、繁殖动物 feed_animal、灭火 extinguishing、游戏 board_games、空闲 idle。自己按自己的作息干活，不是切完立刻就到；结果里会写明现在是不是工作时段。"
+parameters = '{ "type":"object", "properties":{ "task":{ "type":"string", "description":"工作模式：中文名或英文短名，例如 种菜、farm" } }, "required":["task"] }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_attack"
+description = "让自己去攻击身边的一个活物。target 写要打谁：活物的中文名或英文短名（僵尸、zombie、羊、sheep）、另一个玩家的名字（照 maid_look_around 里看到的那个名字），或 hostile（最近的敌对生物）、animal（最近的动物）、other_player（另一个玩家）、owner（主人自己）。style 选力度：fight（默认，追着一直打到对方倒下；一次调用就够了，战斗中不要重复调用，重复调用只会得到「已经在打」的回执）或 light（只轻轻打一下，打完就收手、伤害很小）。主人说「去打那只僵尸」「揍它」用默认；说「打我一下」「轻轻碰我一下」「拍我一下」时用 light，不然自己会追着主人一直打到倒下。这个工具只负责攻击，不保证目标已经倒下：结果只说明自己开始打了，目标还在。目标离自己太远会失败，先走近再让自己打。"
+parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "description":"要打谁：活物名字、英文短名、实体 id、另一个玩家的名字，或 hostile / animal / other_player / owner" }, "style":{ "type":"string", "description":"fight = 追着打倒（默认）；light = 只轻轻打一下" } }, "required":["target"] }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_mine"
+description = "让自己去挖方块。target 写方块的中文名或英文 id（石头、圆石、泥土、沙子、木头（任意原木）、铁矿、钻石矿……），或者写 looked（主人准星指着的方向；主人说「把这块挖了」时用它，省略 target 也按 looked 处理）。写「木头」会按附近实际是哪片林子砍对应原木，写铁矿、煤矿这类会把深层变体一起算。主人准星指着某个地方时（可以是远处的林子或矿壁，不必凑近），自己就在指着的那一片找：looked 先挖落点那块再接着挖那一片的同种方块，写了方块名就在那一片里找这种方块。主人没指着、或者指着的那片没有这种方块时，才在自己自己附近找。count 是要挖几块，默认 1，最多 64。自己会自己走过去、从背包里换合适的工具、一块一块地挖，方块会按硬度和工具慢慢裂开，掉落进自己的背包。要挖的那块埋在其他方块后面时（矿脉、树心），她会先把挡在路上的方块挖穿再挖目标，所以「看一眼周围」里列出的矿石一般都能挖到。这个工具只负责开始挖：结果只说明自己动身了，方块还没被挖掉。方块受保护、挖不动、或者没有能挖它的工具时会失败并说明原因：会写清缺哪种镐子、她手上现在拿的是什么、地上有没有现成的工具（地上那把得先放进她的背包才算给过她）。要挖她看见过的确切某一格时，把 maid_look_around 关系句里给出的 at 填进来（形如 @4,-2,-3，相对她脚下那一格）：模组会核对那一格是不是这种方块、她有没有看见过；对不上会说明那里实际是什么、最近的同类方块在哪、它的 at 是多少，照新地址再说一次即可。主人只说「去挖矿」而没说挖哪种方块时，先问清楚。"
+parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "description":"方块中文名、英文 id，或 looked（主人准星指着的方向；省略也是它）" }, "count":{ "type":"integer", "minimum":1, "maximum":64, "description":"要挖几块（默认 1，最多 64）" }, "at":{ "type":"string", "description":"maid_look_around 给出的相对地址，形如 @4,-2,-3（相对自己脚下那一格）；填了就挖那一格，target 只用来核对种类" } } }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_give_item"
+description = "让自己把背包里的东西交给主人。item 写物品的中文名、英文 id 或从「看一眼周围」里拿到的 id（苹ilei果、面包、熟牛肉、铁镐、钻石剑、火把……），count 写数量，默认 1，最多 64。主人说「把铁镐给我」「给我点吃的」时用它。自己会从背包里拿出来直接放进主人背包，装不下的掉在主人脚下；自己身上没有这件东西、主人不在身边或离得太远时会失败并说明原因。只交自己背包里的东西，自己手上正在用的工具不算。不知道自己背包里有什么时，先用 maid_look_around 看一眼；认不出物品时失败结果里也会列出自己背包里的东西（带 id），照 id 再说一次即可。这个工具只负责把东西交出去，不保证主人拿去做什么。"
+parameters = '{ "type":"object", "properties":{ "item":{ "type":"string", "description":"物品中文名或英文 id（如 铁镐、minecraft:iron_pickaxe）" }, "count":{ "type":"integer", "minimum":1, "maximum":64, "description":"要交几件（默认 1，最多 64）" } }, "required":["item"] }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_headwear"
+description = "把自己背包里的一件东西戴到她头上，或者把头上的摘下来。她背包最后一格是头饰栏，那一格里的东西顶在头上显示——放一块方块就是顶着一块方块，放南瓜就是顶个南瓜。item 写物品的中文名、英文 id 或从 maid_look_around 里拿到的 id，东西必须已经在她背包里；留空或写 take_off 就把头上的摘下来。摘下来的东西会放回背包，背包满了会失败并说明原因。主人说「把这块石头顶在头上」「戴个南瓜」「摘下来」时用它。"
+parameters = '{ "type":"object", "properties":{ "item":{ "type":"string", "description":"要戴的东西（物品中文名或英文 id，必须在她背包里）；留空或 take_off = 摘下来" } } }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_look_around"
+description = "看一眼自己身边现在有什么。返回自己此刻的姿势（站着、坐着、睡着或躺在地上）、正前方挡着的方块或生物、脚下踩着哪（坐在船或矿车里时改说载具）、头顶有没有遮挡、她在不在村庄这类结构里、附近一圈的活物（另一个玩家会带名字）、附近看得见、挖得动的方块，最近一块带方位、层高、挡路与走过去的大概步数（并给出那一格的相对地址 at，可以直接当 maid_mine 的 at），同种方块相连成团的还会给出团的大小，以及自己背包里有什么（物品名、id 与数量；最后一格是头饰栏，单独说）、主人在不在自己身边。主人问自己周围有什么，或者让自己挖某种方块但说不准是哪种时，先用它看一眼：返回的方块 id 可以直接当 maid_mine 的 target。玩家问「怎么过去」「带我去」时把 detail 填 map，会多一张近细远粗的小图；平时用 brief，别每轮都要图。不要凭印象编。活物与正前方只说近/中/远。"
+parameters = '{ "type":"object", "properties":{ "detail":{ "type":"string", "enum":["brief","map"], "description":"brief = 只说关系（默认）；map = 另给一张近细远粗的小图，玩家问怎么过去时用" } } }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_see_screen"
+description = "看一眼主人此刻屏幕上的画面，也就是自己眼前看到的样子。主人让自己看他搭的东西、建的房子或爱心、手里的物品、面前的风景，或者问「看得到我这里的什么吗」时用它；返回里会附上那张画面，照着画面说，不要凭印象编。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+# 连不上 MC 不该把整个插件自动禁用，只记原因。
+[startup]
+script = "hooks.py"
+handler = "on_start"
+required = false
+retries = 2
+retry_interval_ms = 5000

@@ -6,6 +6,66 @@ export default {
     pageOf: "{current} / {total} ページ",
     pageOfTotal: "{current} ページ / 全 {total} ページ",
   },
+  identity: {
+    title: "わたしの身分",
+    hint: "「わたし」が誰かを決めます：名前・サブタイトル・チャットに注入される身分プロンプト・各キャラとの関係。いつでも途中で切り替えでき、会話履歴は保持されます（シナリオ進行中を除く）。",
+    lockedHint:
+      "このプレイはセーブ（自動セーブを含む）に紐づいているため、途中では身分を変更できません。新しい会話を始めてください。",
+    scriptBlocked: "シナリオ進行中は身分を変更できません。先にシナリオを終了してください。",
+    newGame: "この身分で新しい会話",
+    newGameConfirm:
+      "「{name}」で新しい会話を始めますか？現在の会話の記憶は消去され、新しい身分で最初からやり直しになります（保存済みのセーブは影響を受けません）。今のプレイを残したい場合は、先にセーブページで保存してください。",
+    newGameDoneTitle: "新しい会話を開始しました",
+    newGameDoneMsg: "これから「わたし」は「{name}」です",
+    newGameFailTitle: "身分の変更に失敗しました",
+    switch: "身分を切り替え",
+    switchConfirm:
+      "「{name}」を現在の身分にしますか？ 会話履歴は保持され、その場のキャラに切り替えのナレーションが届きます。",
+    switchDoneTitle: "身分を切り替えました",
+    switchDoneMsg: "これから「{name}」の身分で会話を続けます。",
+    switchFailTitle: "身分の切り替えに失敗しました",
+    transition: {
+      title: "「{name}」に切り替え",
+      hint: "今回の退場・登場の様子を任意で描写できます（どちらも空欄可。空欄の項目は描写ナレーションを生成しません）。「会話から去った / 会話に加わった」のナレーションと離場注記は常に生成され、現在のセーブにのみ影響します。",
+      exitLabel: "退場の様子（空欄可）",
+      exitPlaceholder: "例：雨の中を振り返らずに去っていった",
+      enterLabel: "登場の様子（空欄可）",
+      enterPlaceholder: "例：ドアを蹴って「ただいま」と叫びながら入ってきた",
+      cancel: "キャンセル",
+      skip: "スキップ（デフォルト）",
+      confirm: "切り替えを確定",
+    },
+    saveConfirm:
+      "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
+    saveConfirmNoSave:
+      "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    empty:
+      "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
+    current: "使用中",
+    edit: "編集",
+    delete: "削除",
+    create: "身分を作成",
+    cancel: "キャンセル",
+    save: "保存",
+    addRelation: "+ 関係を追加",
+    fieldName: "名前",
+    fieldSubtitle: "サブタイトル",
+    fieldPrompt: "身分プロンプト（チャットに注入され、「わたし」の設定を説明します）",
+    fieldRelations: "関係",
+    relationsHint:
+      "「わたしと各キャラ / わたしの他の身分」との関係を書けます。空の場合は相手のカード情報を「あなたが知っている情報」として扱い、既定の関係としては扱いません。",
+    targetAi: "AI キャラ",
+    targetMe: "わたしの身分",
+    relationCount: "{n} 件の関係",
+    msg: {
+      nameRequired: "名前を入力してください",
+      savedTitle: "身分を保存しました",
+      savedMsg: "身分カードを更新しました",
+      saveFailTitle: "身分の保存に失敗しました",
+      deleteConfirm: "身分「{name}」を削除しますか？ 使用中のセーブがあると削除できません。",
+      deleteFailTitle: "身分の削除に失敗しました",
+    },
+  },
   history: {
     title: "会話履歴",
     empty: "会話履歴はまだありません。あの子とおしゃべりしてみよう(*^▽^*)",
@@ -35,6 +95,10 @@ export default {
     },
   },
   adventure: {
+    lock: {
+      title: "シナリオを開始できません",
+      running: "すでにシナリオが実行中です。先に現在のシナリオを終了してください",
+    },
     standalone: {
       title: "独立シナリオ",
       empty: "独立シナリオはまだありません",
@@ -107,6 +171,10 @@ export default {
       placeholder: "セーブ名を入力",
       creating: "作成中...",
       button: "作成",
+      identityLabel: "このプレイの身分",
+      identityUnknown: "名前のない身分",
+      identityHint:
+        "セーブには現在の身分が記録され、ロード時に身分も一緒に復元されます。身分を変えたい場合は「キャラクター → わたしの身分」で「この身分で新しい会話」を選んでください。",
     },
     list: {
       title: "セーブ一覧",
@@ -116,12 +184,15 @@ export default {
       editTitleTip: "ダブルクリックでセーブのタイトルを変更",
       untitled: "無題のセーブ",
       noMessage: "会話セリフの記録なし",
+      identityLabel: "身分：{name}",
+      current: "今回のセーブ",
     },
     action: {
       reading: "読み込み中...",
       load: "セーブを読み込む",
       saving: "保存中...",
       overwrite: "セーブを上書き",
+      update: "セーブを更新",
       deleting: "削除中...",
       delete: "セーブを削除",
     },
@@ -143,6 +214,8 @@ export default {
       overwriteConfirm: "セーブを上書きすると以前の進行が失われます。上書きしますか？",
       overwriteSuccessTitle: "保存しました",
       overwriteSuccessMsg: "セーブを上書きしました",
+      updateSuccessTitle: "更新しました",
+      updateSuccessMsg: "セーブを更新しました",
       overwriteFailTitle: "保存に失敗しました",
       deleteConfirm: "このセーブを削除しますか？この操作は元に戻せません。",
       deleteSuccessTitle: "削除しました",
@@ -264,6 +337,8 @@ export default {
       },
       ENABLE_PROACTIVE_SYSTEM: "自動会話システムを有効にするか",
       MAX_PROACTIVE_TIMES: "ユーザーが応答するまでの自動会話の最大回数",
+      PROACTIVE_EXPECTED_INTERVAL_MINUTES:
+        "自発的な会話の期待間隔（分、1–60）。小さいほど頻繁になり、1 サイクルあたりの興味増加の範囲はここから逆算されます",
       ENABLE_VISUAL_PRECEPTION: "デスクトップ画面の自動視覚認識を許可（画面をのぞき見）",
       SCREEN_WEIGHT: "視覚モード発動の重み（大きいほど画面を見て話しかけやすい、デフォルト 30）",
       ENABLE_TOPIC_CREATER: "新しい話題を自律的に探して開始することを許可",
@@ -355,12 +430,19 @@ export default {
       prereqAdventure: "前置アドベンチャーを完了",
       achievement: "特定の実績を解放",
     },
+    lock: {
+      scriptRunning: "現在シナリオが進行中です",
+    },
   },
   characterInfo: {
     header: {
       title: "{title} - 設定編集",
       subtitle: "キャラクターの詳細設定を変更します",
     },
+    saveConfirm:
+      "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
+    saveConfirmNoSave:
+      "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     tabs: {
       basic: "基本情報",
       prompts: "プロンプト",
@@ -372,11 +454,25 @@ export default {
       voice: "音声設定",
       hotword: "音声認識ホットワード",
     },
+    relations: {
+      title: "関係",
+      hint: "ここにはこのキャラが相手をどう見ているか（例：幼なじみ、ライバル）を書きます。キャラクターフォルダーの relations.yml に保存されるので、キャラ設定を上書きしても消えません。",
+      save: "関係を保存",
+      missing: "対象は既に存在しません（{key}）",
+      msg: {
+        savedTitle: "関係を保存しました",
+        savedMsg: "このキャラの関係を更新しました",
+        saveFailTitle: "関係の保存に失敗しました",
+        loadFailTitle: "関係の読み込みに失敗しました",
+      },
+    },
     fields: {
       aiName: "AI 名",
       aiSubtitle: "AI サブタイトル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
+      userName: "このキャラが「わたし」を呼ぶ名前",
+      userNameHint: "空欄の場合は身分カードの名前を使用します",
+      userSubtitle: "このキャラが「わたし」に使うサブタイトル",
+      userSubtitleHint: "空欄の場合は身分カードのサブタイトルを使用します",
       title: "キャラクタータイトル",
       info: "キャラクター紹介",
       systemPrompt: "システムプロンプト",
@@ -463,6 +559,17 @@ export default {
       add: "衣装を追加",
       item: "衣装 #{index}",
       empty: "衣装設定がまだありません。「衣装を追加」をクリックして作成してください",
+    },
+    gsvEmo: {
+      title: "GSV 感情参照音声",
+      description:
+        "オンにすると感情分類（驚き/喜び/恐怖/悲しみ/怒り/中立）ごとに参照音声とテキストを切り替えます。音声パスとテキストの両方を入力した分類のみ有効で、残りの分類は上の gsv_voice_filename / gsv_voice_text を使用します。",
+      enable: "オン",
+      disable: "オフ",
+      voiceFile: "参照音声ファイル",
+      voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
+      text: "参照テキスト",
+      textPlaceholder: "参照音声に対応するテキスト",
     },
     touch: {
       hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
@@ -573,8 +680,8 @@ export default {
       aiNamePlaceholder: "キャラクターの会話名",
       aiSubtitle: "AI サブタイトル",
       aiSubtitlePlaceholder: "例: 夜の番人 / スクールアイドル",
-      userName: "ユーザー名",
-      userSubtitle: "ユーザーサブタイトル",
+      userName: "このキャラが「わたし」を呼ぶ名前",
+      userSubtitle: "このキャラが「わたし」に使うサブタイトル",
       info: "キャラクター紹介",
       infoPlaceholder: "任意：キャラクター紹介の表示に使用",
     },
@@ -712,6 +819,12 @@ export default {
       delete: "削除",
       edit: "シーンを編集",
       noDescription: "説明なし（選択してもナレーションは発生しません）",
+      location: {
+        indoor: "屋内",
+        outdoor: "屋外",
+        unknown: "不明",
+        editTitle: "クリックで屋内外タグを切り替え",
+      },
       tip: "ヒント",
       noDescriptionTip:
         "シーン「{name}」には説明がありません。選択してもシーンナレーションは発生しません",
@@ -783,6 +896,9 @@ export default {
       snow: "雪",
       blizzard: "吹雪",
       fog: "霧",
+      city: "都市",
+      cityPlaceholder: "例：成都",
+      autoSync: "天気同期",
     },
     animation: {
       switchTitle: "アニメーション切替",
@@ -852,10 +968,6 @@ export default {
     sample: {
       title: "テキストサンプル",
       demo: "Ling Chat: テキスト表示速度のテスト",
-    },
-    inlineMotion: {
-      title: "インライン動作テキスト",
-      desc: "有効にすると、動作テキストがセリフと同時に表示され、再クリックは不要です",
     },
     mergeLine: {
       title: "セリフ結合閾値",

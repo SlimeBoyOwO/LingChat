@@ -44,12 +44,12 @@ pub const WEATHER_CITY: &str = "features.weather_city";
 /// 今日首次对话时是否注入天气提醒（剧本模式/编辑器试玩从不注入）。
 /// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
 pub const WEATHER_FIRST_TALK: &str = "features.weather_first_talk";
+/// 自动同步现实天气到天气特效层（需配合 WEATHER_CITY；手动或 AI 切换天气特效时自动关闭）。
+pub const WEATHER_AUTO_SYNC: &str = "features.weather_auto_sync";
 
 // ========== AI 自动切换（手动优先锁） ==========
 /// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）
 pub const AI_AUTO_CLOTHES: &str = "features.ai_auto_clothes";
-/// 是否允许 AI 自动切换场景（用户手动选场景后自动关闭，设置页可重新打开）
-pub const AI_AUTO_SCENE: &str = "features.ai_auto_scene";
 /// 是否允许 AI 自动切换粒子特效（用户手动选特效后自动关闭，设置页可重新打开）
 pub const AI_AUTO_EFFECT: &str = "features.ai_auto_effect";
 
@@ -106,6 +106,8 @@ pub const COSYVOICE_VOICES: &str = "tts.cosyvoice_voices";
 // ========== 主动对话系统 ==========
 pub const ENABLE_PROACTIVE_SYSTEM: &str = "ENABLE_PROACTIVE_SYSTEM";
 pub const MAX_PROACTIVE_TIMES: &str = "MAX_PROACTIVE_TIMES";
+/// 两次主动对话之间的期望间隔（分钟），用于反推兴趣值的增长随机范围。
+pub const PROACTIVE_EXPECTED_INTERVAL_MINUTES: &str = "PROACTIVE_EXPECTED_INTERVAL_MINUTES";
 // 旧的视觉模型独立配置键已废弃，视觉模型统一到大模型管理中配置；
 // 这些常量仅保留给迁移逻辑读取旧配置使用。
 pub const VD_API_KEY: &str = "VD_API_KEY";

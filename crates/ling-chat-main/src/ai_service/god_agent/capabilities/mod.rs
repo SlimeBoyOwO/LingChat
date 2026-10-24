@@ -9,3 +9,4 @@
 
 pub mod affection;
 pub mod speaker;
+pub mod tool_hint;

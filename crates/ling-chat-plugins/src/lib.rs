@@ -7,23 +7,28 @@
 //!
 //! # 公开 API
 //!
-//! - [`PluginManager`](manager::PluginManager)：扫描、启停、配置持久化
-//! - [`PluginInfo`](types::PluginInfo)：暴露给前端的插件信息
-//! - [`manifest::parse`](manifest::parse)：解析并校验 manifest.toml
-//! - [`importer::do_import_plugin`](importer::do_import_plugin)：从 zip/7z 压缩包安装插件
-//! - [`signal::SignalRegistry`](signal::SignalRegistry)：宿主信号登记与插件订阅派发
+//! - [`PluginManager`]：扫描、启停、配置持久化
+//! - [`PluginInfo`]：暴露给前端的插件信息
+//! - [`commands`]：插件页使用的 Tauri 命令
+//! - [`importer`]：从 zip/7z 压缩包安装插件
+//! - [`content_sync`]：插件资源变更后的派生状态收敛
+//! - [`signal::SignalRegistry`]：宿主信号登记与插件订阅派发
+//!
+//! 内部模块（`manager`、`host_api`、`ws` 等）按职责拆分，仅在 crate 内可见。
 
 pub mod commands;
-pub mod host_api;
+pub mod content_sync;
 pub mod importer;
-pub mod manager;
-pub mod manifest;
-pub mod python_backend;
-pub mod resources;
 pub mod signal;
-pub mod tool;
 pub mod types;
-pub mod ws;
+
+pub(crate) mod host_api;
+pub(crate) mod manager;
+pub(crate) mod manifest;
+pub(crate) mod python_backend;
+pub(crate) mod resources;
+pub(crate) mod tool;
+pub(crate) mod ws;
 
 use std::sync::OnceLock;
 
@@ -35,9 +40,9 @@ pub use types::PluginInfo;
 
 /// 宿主 `AppHandle` 的全局副本。
 ///
-/// 插件脚本在 `spawn_blocking` 线程里执行，那条路径上没有调用方的 `AppHandle`，
+/// 插件脚本在独立的插件脚本线程里执行，那条路径上没有调用方的 `AppHandle`，
 /// 而少数宿主能力（如 `plugin_host.switch_character`）必须经它访问 `AppState`。
-/// 启动时登记一次；未登记时相关能力返回错误，而不是 panic。
+/// 启动时登记一次；未登记时相关能力返回错误。
 static APP_HANDLE: OnceLock<AppHandle> = OnceLock::new();
 
 /// 启动时登记宿主句柄（与 `utils::log_bridge::set_app_handle` 同一时机）。

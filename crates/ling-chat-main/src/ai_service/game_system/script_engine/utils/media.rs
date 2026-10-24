@@ -5,6 +5,9 @@
 
 use std::path::Path;
 
+/// 引擎的「清空该轨」写法（`musicPath: none` 停音乐、`imagePath: none` 关掉插图），
+pub const NONE_SENTINEL: &str = "none";
+
 /// Media type determines which subdirectories and fallback to search.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MediaType {
@@ -34,12 +37,11 @@ impl MediaType {
         match self {
             MediaType::Background | MediaType::Pic => "backgrounds",
             MediaType::Music | MediaType::Sound => "musics",
-            MediaType::Ambient => "ambient",
+            MediaType::Ambient => "ambients",
         }
     }
 
-    /// 该类素材允许的扩展名（小写、不含点）：编辑器列举素材与「是不是写错了扩展名」的探测共用这一份。
-    /// 解析器按完整文件名精确匹配，扩展名表只在这里维护一次。
+    /// 该类素材允许的扩展名（小写、不含点）：编辑器列举素材与「换扩展名找同一个素材」
     pub fn allowed_extensions(self) -> &'static [&'static str] {
         match self {
             MediaType::Background | MediaType::Pic => &["png", "jpg", "jpeg", "webp", "bmp", "gif"],
@@ -57,8 +59,32 @@ impl MediaType {
 /// 2. Fallback: search `{data_dir}/game_data/{fallback_dir}/{file_path}`
 /// 3. 以上都失败时，剥掉引用里多余的类型目录前缀（如 `backgrounds/夜晚.webp`）重试
 ///
+/// 每一轮都是「先按完整文件名精确匹配，再换成同主干的其它扩展名」：引用写 `药店.png`
+/// 而磁盘上只有 `药店.jpg` / `药店.webp` 时照样命中，见 [`resolve_with_extensions`]。
+///
 /// Returns the canonical absolute path if found, `None` otherwise.
 pub fn resolve_script_media(
+    data_dir: &Path,
+    script_path: Option<&Path>,
+    file_path: &str,
+    media_type: MediaType,
+) -> Option<String> {
+    // 哨兵值按「没有素材」处理，不能被扩展名兜底当成同名文件（磁盘上有个 `none.png`
+    // 就会把「停音乐」变成「放 none.png」）
+    if file_path.eq_ignore_ascii_case(NONE_SENTINEL) {
+        return None;
+    }
+    if let Some(found) = resolve_with_extensions(data_dir, script_path, file_path, media_type) {
+        return Some(found);
+    }
+    // AI 生成/修改剧本时容易把类型目录写进引用（背景写成 backgrounds/夜晚.webp），
+    // 解析器本来就会按类型拼目录，这种写法会变成双重目录而找不到；剥掉前缀兜底一次。
+    let stripped = strip_type_dir_prefix(file_path, media_type)?;
+    resolve_with_extensions(data_dir, script_path, stripped, media_type)
+}
+
+/// 精确匹配优先，不中再逐个换扩展名 —— 引用里写了正确扩展名时，行为与从前完全一致。
+fn resolve_with_extensions(
     data_dir: &Path,
     script_path: Option<&Path>,
     file_path: &str,
@@ -67,10 +93,31 @@ pub fn resolve_script_media(
     if let Some(found) = resolve_exact(data_dir, script_path, file_path, media_type) {
         return Some(found);
     }
-    // AI 生成/修改剧本时容易把类型目录写进引用（背景写成 backgrounds/夜晚.webp），
-    // 解析器本来就会按类型拼目录，这种写法会变成双重目录而找不到；剥掉前缀兜底一次。
-    let stripped = strip_type_dir_prefix(file_path, media_type)?;
-    resolve_exact(data_dir, script_path, stripped, media_type)
+    extension_variants(file_path, media_type)
+        .into_iter()
+        .find_map(|candidate| resolve_exact(data_dir, script_path, &candidate, media_type))
+}
+
+/// 把引用里的扩展名换成该类型允许的其它扩展名，目录与文件名主干原样保留。
+///
+/// 磁盘上换了格式（png 转成 webp 省体积）而剧本没跟着改时靠它兜住。引用本身不带
+/// 扩展名（`imagePath: 药店`）就是在补扩展名；带一个引擎不认识的扩展名也一并替换 ——
+/// 后缀不参与匹配，磁盘上是哪种格式就用哪种。
+fn extension_variants(file_path: &str, media_type: MediaType) -> Vec<String> {
+    // 按原引用的分隔符切，别用 Path::join —— 那会把引用里的 `\` 在 Linux 上变成普通字符
+    let name_start = file_path.rfind(['/', '\\']).map_or(0, |i| i + 1);
+    let (dir, name) = file_path.split_at(name_start);
+    let Some(stem) = Path::new(name).file_stem().and_then(|s| s.to_str()) else {
+        return Vec::new();
+    };
+    if stem.is_empty() {
+        return Vec::new();
+    }
+    media_type
+        .allowed_extensions()
+        .iter()
+        .map(|ext| format!("{dir}{stem}.{ext}"))
+        .collect()
 }
 
 /// 按原始引用精确查找：先剧本 Assets 候选目录，再全局 game_data 类型目录。

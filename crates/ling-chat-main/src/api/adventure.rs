@@ -180,6 +180,9 @@ pub async fn start_adventure(app: AppHandle, adventure_folder: String) -> Result
     // 取出剧本后即结束对 state 的借用，随后把 app 交给共用的后台执行入口
     let script = {
         let service = state.ai_service.lock().await;
+        // 剧本互斥：另一段羁绊（或独立剧本）在跑时不再启动新的，
+        // 否则会把前一段静默 abort 掉，让它永远停在「进行中」
+        crate::api::script::ensure_no_script_running(&service)?;
         service
             .script_manager
             .all_scripts

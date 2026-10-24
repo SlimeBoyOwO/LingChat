@@ -255,7 +255,7 @@ import {
   PlugZap,
   Scan,
   Wifi,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button, Slider, Toggle } from "../../base";

@@ -18,7 +18,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 
 use super::events::background_effect_event::KNOWN_EFFECTS;
-use super::utils::media::{MediaType, resolve_script_media};
+use super::utils::media::{MediaType, NONE_SENTINEL, resolve_script_media};
 use super::utils::script_function::parse_variable_action;
 
 use super::schema::build_schema;
@@ -856,6 +856,7 @@ fn check_modify_character_action(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn check_asset(
     data_dir: &Path,
     script_dir: &Path,
@@ -895,26 +896,57 @@ fn check_asset(
         return; // 必填检查已经报过了
     }
     // `none` 是引擎的"清空该轨"写法（`musicPath: none` 用来停音乐），不是素材引用，当成缺失报出来是假报警。
-    if path.eq_ignore_ascii_case("none") {
+    if path.eq_ignore_ascii_case(NONE_SENTINEL) {
         return;
     }
 
-    if resolve_script_media(data_dir, Some(script_dir), path, media).is_none() {
-        let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
-        if let Some(existing) = sibling_extension_asset(data_dir, script_dir, path, media) {
-            message.push_str(&format!("；磁盘上有「{}」，疑似写错了扩展名", existing));
-        }
-        // 松紧由用户声明的素材模式决定：只有"只用已有"才算错误，"允许缺失"是用户允许的缺口；没声明时按最宽。
-        let severity = if modes.asset == Mode::OnlyExisting {
-            Severity::Error
-        } else {
-            Severity::Warn
-        };
-        if severity == Severity::Warn {
-            message.push_str("（素材模式允许缺口：登记进 .agent/assets.md 即可）");
-        }
-        diags.push(Diagnostic::event(severity, "asset.missing", cid, i, message).with_field(key));
+    match resolve_script_media(data_dir, Some(script_dir), path, media) {
+        None => {
+            // 松紧由用户声明的素材模式决定：只有"只用已有"才算错误，"允许缺失"是用户允许的缺口；没声明时按最宽。
+            let severity = if modes.asset == Mode::OnlyExisting {
+                Severity::Error
+            } else {
+                Severity::Warn
+            };
+            let mut message = format!("{}{}」{}", ASSET_MISSING_PREFIX, path, ASSET_MISSING_TAIL);
+            if severity == Severity::Warn {
+                message.push_str("（素材模式允许缺口：登记进 .agent/assets.md 即可）");
+            }
+            diags.push(
+                Diagnostic::event(severity, "asset.missing", cid, i, message).with_field(key),
+            );
+        },
+        // 解析器会按同主干的其它扩展名兜底，所以引用写错扩展名照样能跑；但对不上号本身值得
+        // 记一笔，否则磁盘上那份哪天被改名/删除，这里就会静默变成缺失。
+        Some(found) => {
+            let actual = file_name_of(&found);
+            let referenced = file_name_of(path);
+            if let (Some(actual), Some(referenced)) = (actual, referenced) {
+                if !actual.eq_ignore_ascii_case(&referenced) {
+                    diags.push(
+                        Diagnostic::event(
+                            Severity::Info,
+                            "asset.extension_mismatch",
+                            cid,
+                            i,
+                            format!(
+                                "素材「{}」按同名文件加载了「{}」，建议把引用改成磁盘上的实际文件名",
+                                path, actual
+                            ),
+                        )
+                        .with_field(key),
+                    );
+                }
+            }
+        },
     }
+}
+
+/// 取路径最后一段（路径本身，不是文件名主干）。
+fn file_name_of(path: &str) -> Option<String> {
+    Path::new(path)
+        .file_name()
+        .map(|n| n.to_string_lossy().into_owned())
 }
 
 /// `asset.missing` 文案的固定前后缀。提取函数与它同源，避免两处各写一遍。
@@ -930,47 +962,6 @@ pub fn missing_asset_name(d: &Diagnostic) -> Option<&str> {
         .strip_prefix(ASSET_MISSING_PREFIX)?
         .split('」')
         .next()
-}
-
-/// 换个扩展名能不能找到同一个素材：写的是 `夜晚.png`，磁盘上是 `夜晚.webp`。
-/// 解析器按完整文件名精确匹配不会自动命中；它和真缺素材一样会静默清空画面/声音，但修法完全不同。
-fn sibling_extension_asset(
-    data_dir: &Path,
-    script_dir: &Path,
-    path: &str,
-    media: MediaType,
-) -> Option<String> {
-    let file = Path::new(path);
-    let stem = file.file_stem()?.to_str()?;
-    let ext = file.extension().map(|e| e.to_string_lossy().to_lowercase());
-    let dir = file
-        .parent()
-        .and_then(|d| d.to_str())
-        .filter(|d| !d.is_empty());
-
-    for candidate_ext in media.allowed_extensions() {
-        if ext.as_deref() == Some(*candidate_ext) {
-            continue;
-        }
-        let candidate = match dir {
-            Some(d) => format!(
-                "{}/{}.{}",
-                d.trim_end_matches(['/', '\\']),
-                stem,
-                candidate_ext
-            ),
-            None => format!("{}.{}", stem, candidate_ext),
-        };
-        if let Some(found) = resolve_script_media(data_dir, Some(script_dir), &candidate, media) {
-            return Some(
-                Path::new(&found)
-                    .file_name()
-                    .map(|n| n.to_string_lossy().into_owned())
-                    .unwrap_or(candidate),
-            );
-        }
-    }
-    None
 }
 
 /// 单章素材自检：只查这一章引用的素材存不存在，供 Skill Agent 写完一章时当场复查。

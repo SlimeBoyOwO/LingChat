@@ -189,7 +189,7 @@ onUnmounted(() => {
           <p class="hidden xl:block">{{ t(tab.label) }}</p>
           <span
             v-if="tab.key === 'validate' && store.report && store.report.errorCount > 0"
-            class="ml-1 rounded-full bg-red-500 px-[5px] text-[0.6rem] text-white"
+            class="ml-1 rounded-full bg-red-500 px-1.25 text-[0.6rem] text-white"
             >{{ store.report.errorCount }}</span
           >
         </Button>
@@ -230,7 +230,7 @@ onUnmounted(() => {
       <span class="ml-auto flex items-center gap-3">
         <span
           v-if="store.detail"
-          class="inline-flex items-center gap-[5px] text-[0.75rem] text-white/50"
+          class="inline-flex items-center gap-1.25 text-[0.75rem] text-white/50"
         >
           <i
             class="inline-block h-1.5 w-1.5 rounded-full"
@@ -240,7 +240,7 @@ onUnmounted(() => {
         </span>
         <template v-if="store.level === 'chapter'">
           <button
-            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/12 hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canUndo"
             :title="`${t('scriptEditor.editorHeader.undo')} (${formatBinding(settings.shortcuts.undo)})`"
             @click="store.undo()"
@@ -248,7 +248,7 @@ onUnmounted(() => {
             ↩ {{ t("scriptEditor.editorHeader.undo") }}
           </button>
           <button
-            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
+            class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/12 hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
             :disabled="!store.canRedo"
             :title="`${t('scriptEditor.editorHeader.redo')} (${formatBinding(settings.shortcuts.redo)})`"
             @click="store.redo()"
@@ -257,7 +257,7 @@ onUnmounted(() => {
           </button>
         </template>
         <button
-          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/[0.12] hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
+          class="inline-flex items-center gap-1 rounded-lg border border-white/10 bg-white/6 px-3 py-[0.3rem] text-[0.8rem] whitespace-nowrap text-white/70 transition-all duration-200 hover:enabled:bg-white/12 hover:enabled:text-white disabled:cursor-not-allowed disabled:opacity-40"
           :title="`${t('scriptEditor.editorHeader.shortcut')} (${formatBinding(settings.shortcuts.shortcutHelp)})`"
           @click="emit('toggle-shortcut-help')"
         >
@@ -283,7 +283,7 @@ onUnmounted(() => {
          一个卡住不动的画面困惑一阵 —— 那正是这条横幅要省掉的时间。 -->
     <div
       v-if="store.detail && store.readiness && !store.readiness.ok"
-      class="mx-5 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-[7px] text-[0.76rem] leading-[1.7] text-amber-100/90"
+      class="mx-5 mb-2 flex items-center gap-2.5 rounded-lg border border-amber-300/30 bg-amber-300/10 px-3 py-1.75 text-[0.76rem] leading-[1.7] text-amber-100/90"
     >
       <span
         class="shrink-0 rounded-full border border-amber-300/40 px-2 py-px text-[0.66rem] font-semibold text-amber-300"

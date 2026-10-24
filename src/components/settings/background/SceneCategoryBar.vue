@@ -98,7 +98,7 @@
 
 <script setup lang="ts">
 import { nextTick, ref, watch } from "vue";
-import { Folder, Puzzle, Plus, Trash2, X, LoaderCircle } from "lucide-vue-next";
+import { Folder, Puzzle, Plus, Trash2, X, LoaderCircle } from "@lucide/vue";
 import { ALL_CATEGORY, ROOT_CATEGORY, VIRTUAL_CATEGORY } from "@/constants/background-categories";
 
 const props = defineProps<{

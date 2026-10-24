@@ -62,6 +62,7 @@ gs.refresh_memories(&self.deps.db).await?;          // 关键：写台词表后�
 - **tool 行**：`content` 存结构化的 `{tool_call_id, result}`，与「角色台词」同表同构，但 `sender_role_id: None`（不是任何角色的发言）；
 - **持久化**：`save_repo.rs` 读写存档时同步读写 `tool_call` 列（含弱匹配去重逻辑），工具历史随存档走；
 - **对玩家不可见**：前端展示历史时过滤 `attribute === 'tool'` 的行（`stores/modules/game/actions.ts`），玩家只看到 assistant 行的自然语言。
+- **前导台词只存一份**：工具前那句话会先随流式管线呈现给玩家，但入库形式只有上表第一行那一种（带 `tool_call` 的 assistant 行）；流式期间先落的普通助手行会在回填时按台账抹掉（见 [architecture.md](architecture.md) §8）。记忆里因此只有一份，顺序也保持「先说话 → 再调工具 → 再收尾」。
 
 ## 3. 提取（Extraction）：`MemoryBuilder` 还原
 
@@ -109,6 +110,15 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 - **新版为主、旧版兜底**：`tool_call` 字段缺失时，回退解析老格式 —— 老存档（工具调用写在 `content` 里，`\n\n` 分隔 JSON 与正文）也能被还原；
 - **`tool` 行一定 `flush` 掉上一个缓冲**：工具行不属于任何「角色对话缓冲」，必须独立成消息，避免被并进旁边的人话；
 - 工具行被还原成 `LlmMessage` 后，**不带情绪 / TTS / 动作富化**（`format_content_with_extras` / `format_context_line` 只用于普通台词）—— 工具消息是纯协议消息。
+
+### 回合结束边界
+
+模型在长期记忆注入后容易「说完自己的话再替玩家说下一句」。它的越界写法是从预训练里带来的角色标签：台词写完、空两行、另起一行 `user`，后面接玩家的话甚至自己漏出来的思考文本。这段内容一旦落进台词表，就会被记忆每轮复读，越滚越像真的。
+
+两侧一起处理：
+
+- **解析侧**（`message_system/producer.rs`）：逐 chunk 找回合结束边界，命中后本轮剩余内容一律不解析、不进台词表；边界之后确实还有实质内容时后台 `warn!` 一条（含被丢弃内容前 80 字），命中时另有 `info!` 说明是哪条判据。判据两条，先命中者胜：① 一整行是 `user`（可带冒号）；② 连续两个空行。两条都要求边界之前已有正文。工具闭环的栅栏是「一轮生成」的边界，标记在那里重置，工具执行之后的正文不会被误吞。终止信号沿用既有的 `isFinal`，不额外发事件。
+- **记忆侧**（`game_system/memory_builder.rs`）：assistant 回合整体拼完后在末尾多补一个换行，使**回合末尾是两个空行、台词之间只有一个空行** —— 给模型一个能照抄的「本轮到此为止」形状。序列化前还会把每条台词的 content 截到回合结束边界，旧存档里已经存进去的越界内容不会再被喂回去；长期记忆摘要的输入（`persistent_memory_system::format_archive_line`）同样先截断。
 
 ## 4. 构建（Construction）：`role.memory` 生命周期
 

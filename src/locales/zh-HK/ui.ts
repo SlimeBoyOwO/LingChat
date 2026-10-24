@@ -159,6 +159,27 @@ export default {
     maxToolRoundsHint: "限制主聊天單次回覆可連續執行工具嘅輪數；每輪可能包含多個工具調用。",
     maxToolRoundsUnit: "輪",
     maxToolRoundsRange: "範圍 {min}–{max} · 預設 {default}",
+    toolRagTitle: "工具按需檢索",
+    toolRagHint:
+      "每次請求只下發常用工具，模型需要時先用一句話檢索出合適嘅工具再調用，慳返全部工具說明佔用嘅上下文。關閉後每次請求都下發全部已授權工具。",
+    toolRecommendTitle: "工具推薦",
+    toolRecommendHint:
+      "模型經常諗唔起調用工具。喺呢度揀每輪發言之前點樣提佢一聲：推薦只係臨時提示，唔會寫入台詞表；推薦嘅工具會跟住呢一輪請求一齊下發。",
+    toolRecommendModes: {
+      off: {
+        label: "唔推薦",
+        description: "唔做任何推薦，模型完全靠自己判斷要唔要檢索或者調用工具。",
+      },
+      agent: {
+        label: "Agent 推薦",
+        description: "由一個細嘅決策代理睇一次最近嘅對話嚟揀工具，每輪多一次小模型調用。",
+      },
+      rag: {
+        label: "檢索推薦",
+        description:
+          "用你呢句話靜默檢索一次工具，只有分數超過閾值嘅先會被推薦；唔會額外調用模型，只係用少少本地算力。",
+      },
+    },
     accessModes: {
       manual: { label: "逐次確認", description: "寫入、編輯、刪除檔案同執行命令之前都會問你。" },
       auto_approve: {
@@ -238,14 +259,12 @@ export default {
     codexHint: "用「大模型管理」已登入嘅 Codex 訂閱憑證上網搜尋，唔使填 API Key",
     kimiHint:
       "API Key 可以留空：目前對話模型係官方 Kimi Code 時會安全重用佢嘅憑證；其他情況請另外填寫",
-    providerDeepSeek: "DeepSeek Responses",
+    providerDeepSeek: "DeepSeek 網頁搜尋",
     customHint: "自訂端點需要兼容 Kimi /search 協議（POST JSON，欄位名稱為 text_query）",
     apiKeyPlaceholder: "填入自訂端點 API Key",
     kimiApiKeyPlaceholder: "可以留空重用目前 Kimi Code 憑證",
     dsApiKeyPlaceholder: "填入 DeepSeek API Key",
-    dsModel: "DeepSeek 模型",
-    dsHint:
-      "透過 DeepSeek Responses API 嘅服務端 web_search 聯網；需要單獨填 DeepSeek API Key，結果由服務端生成綜合回答",
+    dsHint: "透過 DeepSeek /v1/tools/search 端點聯網搜尋；需要單獨填寫 DeepSeek API Key",
     baseUrl: "搜尋服務地址",
     proxyEnable: "透過代理存取搜尋服務（如 v2rayN）",
     maxResults: "返回結果條數",
@@ -316,6 +335,7 @@ export default {
     },
     tools: {
       web_search: "網頁搜尋",
+      tool_search: "檢索工具",
       get_current_time: "目前時間",
       schedule_get_all: "查詢日程",
       schedule_add_todo: "新增待辦",
@@ -385,6 +405,7 @@ export default {
     todoReminderStyle: "待辦提醒方式",
     todoReminderStyleRole: "角色提醒",
     todoReminderStyleToast: "彈窗訊息提醒",
+    growthRangeHint: "≈ 每輪興趣增長 {min} ~ {max}（由上面嘅間隔反推）",
   },
   calendarPage: {
     yearMonth: "{year}年 {month}月",

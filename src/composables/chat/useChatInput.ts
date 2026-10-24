@@ -1,14 +1,4 @@
-/**
- * 输入框的文本、发送与 ASR 接线 —— 主界面 GameDialog 与桌宠 ChatInput 共用。
- *
- * 收敛的差异（均按评审结论统一）：
- *   - **发送前 trim 首尾空格**（桌宠原本就 trim，主界面没有，但它的守卫
- *     `if (!text.trim())` 说明本意就是要 trim）
- *   - **选项清空改为提交成功后**（桌宠原本在 invoke 之前同步清空，见下方注释）
- *   - 用户消息的追加统一在这里做（桌宠原先提到 PetMode 的 @message-sent 里）
- *
- * 文案与模型检查的提示词条两模式不同，由 noModelTitleKey / noModelMessageKey 传入。
- */
+/** 输入框的文本、发送与 ASR 接线 —— 主界面 GameDialog 与桌宠 ChatInput 共用 */
 import { computed, onMounted, onUnmounted, ref, watch, type ComputedRef, type Ref } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
@@ -60,7 +50,6 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
   watch(text, (val) => setInputHasText(Boolean(val.trim())), { immediate: true });
 
   // AI 回复到达 / 回到 input 态即清空输入框
-  // （auto_send 识别文本填入后，随回复自动清空）
   watch(
     [() => uiStore.showCharacterLine, () => gameStore.currentStatus],
     ([newLine, newStatus]) => {
@@ -97,8 +86,6 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
     if (gameStore.runningScript) {
       const script = gameStore.runningScript;
       const wasChoice = script.choices.length > 0;
-      // 只有提交成功才清空选项。以前是无条件清空的：allow_free 为 false 时后端
-      // 会拒绝这次输入，而选项按钮已经消失、引擎仍在等待选择，玩家彻底卡死。
       invoke("script_submit_input", { input: trimmed })
         .then(() => {
           script.choices = [];
@@ -131,8 +118,6 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
   }
 
   // --- ASR 接线 ---
-  // fill_only：识别完成整句填入，由用户手动发送；短暂显示锁防 auto_listen
-  // 立即再触发录音、覆盖刚填入的内容（手动触发不受锁限制）
   function onAsrText(e: Event) {
     const ce = e as CustomEvent<string>;
     if (typeof ce.detail !== "string") return;
@@ -140,11 +125,6 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
     lockAsrForDisplay(ASR_DISPLAY_MS);
   }
 
-  // auto_send：先显示到输入框，延迟后走完整 send()（复用剧本分支/模型检查/清理）。
-  // 发送窗口用 useAsrAutoSend 统一管理（连续识别清旧 timer、卸载自动取消），
-  // 发送时刻复查（审查 F-5）：仅当输入框仍是识别结果原文时才发送——用户编辑过
-  //（非空且 ≠ detail）→ 尊重编辑不发送；被清空 → 只可能是已手动发送或手动清空，
-  // 不再重填——否则同一句语音会被手动 + 定时器双发（重复消息污染对话）。
   const asrAutoSend = useAsrAutoSend((detail) => {
     if (text.value === detail) send();
   });

@@ -34,7 +34,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted } from "vue";
-import { Upload } from "lucide-vue-next";
+import { Upload } from "@lucide/vue";
 import { useRoleImportExport } from "@/composables/useRoleImportExport";
 import type { ArchiveFormat } from "@/api/services/role-archive";
 
@@ -43,7 +43,7 @@ const props = defineProps<{
   roleName: string;
 }>();
 
-const { store, doExport } = useRoleImportExport();
+const { doExport } = useRoleImportExport();
 const open = ref(false);
 const format = ref<ArchiveFormat>("zip");
 
@@ -92,7 +92,7 @@ onUnmounted(() => {
 }
 
 .export-menu {
-  @apply absolute top-full right-0 z-50 min-w-[180px];
+  @apply absolute top-full right-0 z-50 min-w-45;
   @apply overflow-hidden rounded-xl;
   @apply p-1.5;
   background: rgba(15, 15, 15, 0.85);

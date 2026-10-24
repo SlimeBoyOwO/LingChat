@@ -1,0 +1,17 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.lingchat.maidbridge.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "EntityMaidDataMixin",
+    "EntityMaidPoseMixin",
+    "EntityMaidSleepMixin",
+    "LivingEntityLyingDimensionsMixin",
+    "LivingEntityStopSleepingMixin",
+    "MaidFollowOwnerTaskMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

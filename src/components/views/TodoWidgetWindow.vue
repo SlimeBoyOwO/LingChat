@@ -119,7 +119,7 @@ import { computed, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { CalendarClock, CheckCircle2, Layers, Pin, PinOff, X } from "lucide-vue-next";
+import { CalendarClock, CheckCircle2, Layers, Pin, PinOff, X } from "@lucide/vue";
 import { getSchedules, saveSchedules } from "@/api/services/schedule";
 import {
   closeTodoWidget,

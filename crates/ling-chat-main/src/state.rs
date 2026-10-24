@@ -60,6 +60,10 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
+    /// 文本嵌入引擎（Tool RAG 的工具语义检索；将来记忆检索复用同一实例）。
+    pub embedding: Arc<ai_service::embedding::EmbeddingEngine>,
+    /// Tool RAG：检索工具并维护按角色的激活缓存。
+    pub tool_rag: Arc<ai_service::tools::tool_rag::ToolRag>,
     /// 插件资源只读来源（由插件侧的 `PluginManager` 实现，宿主经窄接口读取）。
     pub plugin_resources: Arc<dyn PluginResourceSource>,
     pub proactive_system:

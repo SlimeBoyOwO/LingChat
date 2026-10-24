@@ -51,9 +51,18 @@ pub fn flatten_on_white(image: &DynamicImage) -> ImageBuffer<Rgb<u8>, Vec<u8>> {
     })
 }
 
-/// 等比缩放到 `target_edge`（单边上限）以内并转 JPEG，透明通道压白。
+/// 一段图片字节 → 等比缩放到 `target_edge`（单边上限）以内并转 JPEG，透明通道压白。
 pub fn recompress_jpeg(image_bytes: &[u8], target_edge: u32, jpeg_quality: u8) -> Result<Vec<u8>> {
-    let img = decode_guarded(image_bytes)?;
+    encode_jpeg_scaled(decode_guarded(image_bytes)?, target_edge, jpeg_quality)
+}
+
+/// 已经解码好的图 → 等比缩放到 `target_edge`（单边上限）以内并转 JPEG，透明通道压白。
+/// 只缩不放：比上限小的图原样编码。
+pub fn encode_jpeg_scaled(
+    img: DynamicImage,
+    target_edge: u32,
+    jpeg_quality: u8,
+) -> Result<Vec<u8>> {
     let (w, h) = img.dimensions();
     let target_edge = target_edge.max(1);
     let resized = if w.max(h) > target_edge {

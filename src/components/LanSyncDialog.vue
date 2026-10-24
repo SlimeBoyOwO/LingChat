@@ -172,7 +172,7 @@
           <div v-if="view === 'progress'" class="space-y-4 py-4 text-center">
             <div class="h-2.5 w-full overflow-hidden rounded-full bg-white/10">
               <div
-                class="h-full rounded-full bg-gradient-to-r from-cyan-500 to-indigo-500 transition-all duration-500 ease-out"
+                class="h-full rounded-full bg-linear-to-r from-cyan-500 to-indigo-500 transition-all duration-500 ease-out"
                 :style="{ width: progress.progress + '%' }"
               ></div>
             </div>
@@ -301,7 +301,7 @@
 import { computed } from "vue";
 import { useI18n } from "vue-i18n";
 import { Icon } from "./base";
-import { Wifi, Check, X } from "lucide-vue-next";
+import { Wifi, Check, X } from "@lucide/vue";
 import type {
   PeerInfo,
   SyncPlan,

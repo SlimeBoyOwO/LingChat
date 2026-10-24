@@ -168,6 +168,27 @@ export default {
     maxToolRoundsHint: "限制主聊中单次回复可连续执行工具的轮数；每轮可能包含多个工具调用。",
     maxToolRoundsUnit: "轮",
     maxToolRoundsRange: "范围 {min}–{max} · 默认 {default}",
+    toolRagTitle: "工具按需检索",
+    toolRagHint:
+      "每次请求只下发常用工具，模型需要时先用一句话检索出合适的工具再调用，省下全部工具说明占用的上下文。关闭后每次请求都下发全部已授权工具。",
+    toolRecommendTitle: "工具推荐",
+    toolRecommendHint:
+      "模型常常想不起来调用工具。这里选择每轮发言前怎么给它提个醒：推荐只是临时提示，不写进台词表；推荐的工具会随这一轮请求一起下发。",
+    toolRecommendModes: {
+      off: {
+        label: "不推荐",
+        description: "不做任何推荐，模型完全靠自己判断要不要检索或调用工具。",
+      },
+      agent: {
+        label: "Agent 推荐",
+        description: "由一个小的决策代理看一遍最近的对话来挑工具，每轮多一次小模型调用。",
+      },
+      rag: {
+        label: "检索推荐",
+        description:
+          "拿你这句话静默检索一次工具，只有分数超过阈值的才会被推荐；不额外调用模型，只花一点本地算力。",
+      },
+    },
     accessModes: {
       manual: { label: "逐次确认", description: "写入、编辑、删除文件和执行命令前都需要你确认。" },
       auto_approve: {
@@ -247,14 +268,12 @@ export default {
     codexHint: "复用「大模型管理」中已登录的 Codex 订阅凭据联网搜索，无需填写 API Key",
     kimiHint:
       "API Key 可留空：当前对话模型为官方 Kimi Code 时，会安全复用它的凭据；其他情况请单独填写",
-    providerDeepSeek: "DeepSeek Responses",
+    providerDeepSeek: "DeepSeek 网页搜索",
     customHint: "自定义端点需兼容 Kimi /search 协议（POST JSON，字段名为 text_query）",
     apiKeyPlaceholder: "填入自定义端点 API Key",
     kimiApiKeyPlaceholder: "可留空复用当前 Kimi Code 凭据",
     dsApiKeyPlaceholder: "填入 DeepSeek API Key",
-    dsModel: "DeepSeek 模型",
-    dsHint:
-      "通过 DeepSeek Responses API 的服务端 web_search 联网；需要单独填写 DeepSeek API Key，结果由服务端生成综合回答",
+    dsHint: "通过 DeepSeek /v1/tools/search 端点联网搜索；需要单独填写 DeepSeek API Key",
     baseUrl: "搜索服务地址",
     proxyEnable: "通过代理访问搜索服务（如 v2rayN）",
     maxResults: "返回结果条数",
@@ -324,6 +343,7 @@ export default {
     },
     tools: {
       web_search: "网页搜索",
+      tool_search: "检索工具",
       get_current_time: "当前时间",
       schedule_get_all: "查询日程",
       schedule_add_todo: "添加待办",
@@ -393,6 +413,7 @@ export default {
     todoReminderStyle: "待办提醒方式",
     todoReminderStyleRole: "角色提醒",
     todoReminderStyleToast: "弹窗消息提醒",
+    growthRangeHint: "≈ 每轮兴趣增长 {min} ~ {max}（由上面的间隔反推）",
   },
   calendarPage: {
     yearMonth: "{year}年 {month}月",

@@ -100,7 +100,7 @@ impl MatchValue {
 pub struct SubscribeDecl {
     /// 宿主注册的信号名（如 `scene:switch`）。
     pub signal: String,
-    /// 处理该信号的脚本（相对插件目录的单个文件名）。
+    /// 处理该信号的脚本（相对插件目录的路径，可含子目录）。
     pub script: String,
     /// 脚本内的处理函数名，签名为 `handler(ctx)`。
     pub handler: String,
@@ -215,7 +215,7 @@ pub struct WsConnInfo {
 /// 插件在程序启动（或启用）时执行的入口声明。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct StartupDecl {
-    /// 启动脚本（相对插件目录的单个文件名）。
+    /// 启动脚本（相对插件目录的路径，可含子目录）。
     pub script: String,
     /// 脚本内的入口函数名，签名为 `handler(ctx)`。
     pub handler: String,
@@ -236,6 +236,20 @@ pub struct StartupDecl {
 
 fn default_retry_interval_ms() -> u64 {
     5_000
+}
+
+/// 插件接管宿主台词语音**播放**的声明（`[voice_playback]`）。
+///
+/// 语音始终由宿主合成，这个声明只改道播放输出：合成照常，本机以 0 音量播完以维持
+/// 台词推进与 ASR 门控，音频文件交给插件转发到外部程序。是否真的接管由 `config`
+/// 指向的布尔配置决定，因此玩家可以在设置页随时开关。
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct VoicePlaybackDecl {
+    /// 布尔配置项 key：为 true 时接管。
+    pub config: String,
+    /// 可选的 WS 连接 id：该连接未处于 Connected 状态时不接管（回落到本机播放）。
+    #[serde(default)]
+    pub ws_conn: Option<String>,
 }
 
 fn default_true() -> bool {
@@ -279,9 +293,21 @@ pub struct PluginManifest {
     /// 缺省 false：未声明的插件调用一律被拒。
     #[serde(default)]
     pub send_user_message: bool,
+    /// 是否允许 `send_user_message` 顺带抓一张屏幕（要找哪个窗口由插件指定，
+    /// 见该函数的 `screen` 参数）。
+    /// 缺省 false：未声明的插件调用一律被拒——屏幕上是玩家的隐私，要和送消息分开声明。
+    #[serde(default)]
+    pub capture_screen: bool,
+    /// 是否允许 `trigger_proactive` 请求宿主主动开一次口。
+    /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮 LLM 生成
+    #[serde(default)]
+    pub trigger_proactive: bool,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
+    /// 把台词语音的播放输出交给插件（空 = 不接管，本机正常播放）。
+    #[serde(default)]
+    pub voice_playback: Option<VoicePlaybackDecl>,
     /// 前置插件 id：这些插件必须已安装且已启用，本插件才能启用；
     /// 启动时也会等它们的启动函数执行完再执行自己的。与是否有启动函数无关。
     #[serde(default)]
@@ -303,6 +329,10 @@ pub struct PluginRunEnv {
     pub read: Vec<String>,
     /// manifest `send_user_message` 声明：是否允许把外部消息送进对话。
     pub send_user_message: bool,
+    /// manifest `capture_screen` 声明：是否允许送消息时顺带抓一张屏幕。
+    pub capture_screen: bool,
+    /// manifest `trigger_proactive` 声明：是否允许请求宿主主动开口。
+    pub trigger_proactive: bool,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。
@@ -354,6 +384,8 @@ pub struct PluginInfo {
     pub author: Option<String>,
     pub enabled: bool,
     pub config_schema: Vec<ConfigFieldDecl>,
+    /// 已保存的配置值（仅非 secret 字段；secret 不回传前端，保存时按合并处理）。
+    pub config: HashMap<String, Value>,
     pub env: Vec<EnvDecl>,
     pub tools: Vec<String>,
     /// 该插件声明携带的资源类型（如 `["characters", "musics"]`）。
@@ -377,6 +409,19 @@ impl From<&PluginRecord> for PluginInfo {
             author: record.manifest.author.clone(),
             enabled: record.state.enabled,
             config_schema: record.manifest.config.clone(),
+            config: record
+                .manifest
+                .config
+                .iter()
+                .filter(|field| field.kind != ConfigKind::Secret)
+                .filter_map(|field| {
+                    record
+                        .state
+                        .config
+                        .get(&field.key)
+                        .map(|value| (field.key.clone(), value.clone()))
+                })
+                .collect(),
             env: record.manifest.env.clone(),
             tools: record
                 .manifest

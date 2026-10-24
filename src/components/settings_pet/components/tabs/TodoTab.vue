@@ -526,7 +526,7 @@ import {
   Cross,
   CalendarClock,
   BellRing,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { getSchedules, saveSchedules } from "../../../../api/services/schedule";
 import BaseModal from "@/components/ui/BaseModal.vue";
 

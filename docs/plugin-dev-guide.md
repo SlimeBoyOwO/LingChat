@@ -101,7 +101,12 @@ script = "tavily.py"
 parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
 ```
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）以及把外部消息送进对话的能力（`send_user_message`），见后文对应章节。
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）以及接管台词语音的播放输出（`[voice_playback]`），见后文对应章节。
+
+**工具的下发与权限**：插件启用时，宿主会把它声明的工具一并授权给默认角色组（与工具设置页里打开开关同义），工具才会随主聊天下发给 LLM、也才能进 Tool RAG 的候选池；同时也会写进「主动对话」映射到的场景组，让游戏事件触发的那一轮也搜得到、调得动（场景组是一份早先写死的工具快照，不补进去的话插件工具只在玩家开口的那一轮可用）。禁用插件时两处授权一起收回。
+
+- 角色授权只落在**默认角色组**。角色被移进别的角色组后就拿不到插件工具，而工具设置页只列内置工具、没法手动补授权——要用就把它放回默认组，要收就禁用插件。
+- 授权写的是「主动对话映射到的那个场景组」：默认叫 `scene_normal`，剧本自由对话也映射到它，于是同样可见；固定剧本走 `scene_default`（默认关），仍然没有插件工具。
 
 ## 插件携带资源（人物 / 剧本 / 音乐 / 背景图 / 环境音）
 
@@ -151,6 +156,41 @@ def run(ctx):
 - `run(ctx)` 必须返回可 JSON 序列化的 dict（`Value`）。
 - 顶层定义（import、函数、常量）在**沙箱拦截之前**执行；`import os/subprocess/shutil/pathlib/ctypes/sysconfig` 会直接抛 `ImportError`，这些模块被置为不可用。
 - 每次执行都会**新建**解释器，脚本里的全局状态不跨调用保留。
+
+### 拆成多个文件与子目录
+
+脚本可以 `import` 插件目录内的模块，也可以按包分层：
+
+```
+data/plugins/<id>/
+├── manifest.toml
+├── main.py              # 入口：manifest 里声明的那个脚本
+├── tables.py            # 顶层模块
+└── features/
+    ├── __init__.py      # 包必须有
+    ├── tables.py
+    └── deep/
+        ├── __init__.py
+        └── helper.py
+```
+
+```python
+# main.py
+from tables import BLOCK_NAMES
+from features.tables import describe_block
+from features.deep.helper import render
+
+def run(ctx):
+    return {"ok": True, "text": describe_block(BLOCK_NAMES, ctx["args"]["id"])}
+```
+
+- 模块名用点分：`import features.tables`、`from features.tables import X` 都可用。
+- 包目录必须有 `__init__.py`；包内可以用相对导入（`from .tables import X`、`from ..common import Y`）。
+- manifest 里的 `script` 可以写子目录路径，如 `tools/entry.py`。入口脚本按**顶层脚本**执行，本身没有包上下文，不能用相对导入；要写从插件根开始的绝对导入（`from tools.common import ...`）。
+- 只能 import **自己这个插件目录**里的文件；别的插件的文件不在搜索路径上。绝对路径、反斜杠、`.`/`..`、空段都不是合法模块名或脚本路径，manifest 与导入器都会拒绝。
+- 读那份源码的是**宿主**（脚本仍然拿不到文件系统，见「沙箱与限制」），所以模块里也不能碰文件。
+- 每次调用仍然新建解释器：模块与入口脚本一起重新执行一遍，模块级状态同样不跨调用保留；插件目录里也不会生成 `__pycache__`。
+- 名字撞上宿主已提供的模块（`plugin_host`、`sys` 这类）时，以宿主的为准。
 
 ### ctx 注入的字段（工具）
 
@@ -255,6 +295,39 @@ r = send_user_message("今天好累啊")
 - `/` 开头的内容会被当成调试指令（`/查看记忆` 等），插件侧应自行过滤
 - 别把收到的 `ai_reply` 原样再 `send_user_message` 转回来，否则会和角色互相刷屏
 
+### 让角色看一眼屏幕：`capture_screen(window="...")`
+
+有些东西光看文字是接不上的——玩家说「你看我给你搭的房子」，模型得**看见**才知道那是个什么
+形状。插件抓一张画面，再让**工具结果**带上它，模型这一轮就看得见：
+
+```toml
+# manifest.toml：抓屏是另一项能力，要单独声明；不写 = 调用一律被拒
+capture_screen = true
+```
+
+```python
+from plugin_host import capture_screen
+
+shot = capture_screen(window="Minecraft")   # 关键词匹配窗口标题或进程名，找不到就抓整个桌面
+if not shot["ok"]:
+    return {"ok": False, "error": shot["error"]}
+
+# 工具结果：image 由宿主摘出来单独交给模型，其余字段照常当文字返回
+return {
+    "ok": True,
+    "message": "你看了一眼玩家此刻屏幕上的画面。",
+    "image": {"data_url": shot["image"], "hint": "（这是玩家屏幕上此刻的样子。）"},
+}
+```
+
+- 图会先缩到**长边 1024** 再编 JPEG（约一千 token）。窗口小到 200 像素以下、或抓回来的
+  是一张纯色图（最小化、独显全屏游戏常见）都按抓失败处理，退到抓整个桌面
+- 当前对话模型没开**原生识图**时直接失败（`ok: false` + 原因）：抓了也送不进对话
+- `image` 字段是宿主约定的**工具结果附图**协议：`{"image": {"data_url": "data:image/…",
+"hint": "说明"}}`。宿主会把它从工具结果里摘掉（不进长期记忆、不进台词表），另起一条
+  消息附在本轮请求里；`hint` 就是随图那段话，缺省是一句通用的「附了一张图片」
+- 图片**只在这一轮请求里**。想让它以后还记得，得靠它自己在台词里说出来
+
 ## 订阅宿主信号：`[[subscribe]]`
 
 工具是「LLM 来调你」，信号是「宿主来调你」。在 manifest 顶层声明要监听哪些信号：
@@ -262,7 +335,7 @@ r = send_user_message("今天好累啊")
 ```toml
 [[subscribe]]
 signal = "ai_reply"              # 宿主注册的信号名，见下表
-script = "hook.py"               # 处理脚本（相对插件目录的单个文件名）
+script = "hook.py"               # 处理脚本（相对插件目录的路径，可含子目录）
 handler = "on_reply"             # 脚本内的处理函数，签名为 handler(ctx)
 timeout_ms = 30000               # 可选，单次执行超时（默认 30000，上限 120000）
 match = { emotion = "高兴" }      # 可选，见下
@@ -270,15 +343,22 @@ match = { emotion = "高兴" }      # 可选，见下
 
 ### 已注册的信号
 
-| 信号         | 触发时机                                               | payload                                              |
-| ------------ | ------------------------------------------------------ | ---------------------------------------------------- |
-| `ai_reply`   | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发 | 与前端 `ai:reply` 事件一致（camelCase），见下        |
-| `ws_message` | 插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错        | `{ connId, mode, event, data, binary, error }`，见下 |
+| 信号         | 触发时机                                                 | payload                                              |
+| ------------ | -------------------------------------------------------- | ---------------------------------------------------- |
+| `ai_reply`   | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发   | 与前端 `ai:reply` 事件一致（camelCase），见下        |
+| `line_shown` | 主界面**开始展示**某句台词（逐句；被合并的短句各算一次） | 与该句的 `ai_reply` 同形，少一个 `avatarDir`         |
+| `ws_message` | 插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错          | `{ connId, mode, event, data, binary, error }`，见下 |
 
 `ai_reply` 的 payload 顶层字段：`type`、`duration`、`isFinal`、`character`、`roleId`、`emotion`、`originalTag`、`message`、`ttsText`、`motionText`、`audioFile`、`originalMessage`、`displayName`、`displaySubtitle`、`userMessageSeq`、`thinking`、`previewGen`。
 
 比前端收到的 `ai:reply` 事件多一个 `avatarDir`：角色的立绘目录（相对 `data/`），
 例如 `game_data/characters/风雪/avatar`。角色的显示名和目录名不一定一样，所以由宿主查库给出。该键**始终存在**：没有立绘目录（剧本 / 插件角色等）时为 `null`，可直接下标取值。
+
+`line_shown` 的 payload 与该句的 `ai_reply` **完全同形**，只少一个 `avatarDir`——它就是那句回复的事件对象本身，插件读 `message` / `previewGen` 的方式不变。
+
+它和 `ai_reply` 是**同一句的两个时机**：`ai_reply` 在模型刚生成出这一句时就触发，此时它可能还在主界面的事件队列里排着队（回复是流式到达的，连着几句会几乎同时生成完）；`line_shown` 在这一句真的被摆上主界面时才触发。要把外部渲染（游戏内聊天气泡、字幕、投屏）跟主界面的节奏对齐，订阅 `line_shown`；要在生成完成的第一时间处理（记忆、存档、通知），订阅 `ai_reply`。两边的句数不一定相等：生成了却没上屏的句子（切角色把队列清空、非主窗口消费）不会触发 `line_shown`。
+
+> `line_shown` 由**主窗口前端**发出——前台界面才是唯一消费对话队列的地方。剧本编辑器的试玩流走同一条队列，也会触发本信号，照旧用 `previewGen` 区分。
 
 `ws_message` 的 payload 顶层字段：
 
@@ -474,6 +554,29 @@ depends_on = ["base_lib", "net_core"]   # 插件 id，不是显示名
 - **前置被禁用或卸载时，依赖它的插件会被自动禁用**（前置没了之后它调用上游工具会直接失败）。含传递依赖。
 - **不自动恢复**：前置重新启用后，下游插件需要手动重新启用（卡片上会显示被禁用的原因）。
 - 只有**启用与启动**时会查前置；导入插件时不校验，前置可以稍后再装。
+
+## 接管语音播放：`[voice_playback]`
+
+插件可以接管宿主台词语音的**播放输出**：语音照常由宿主合成落盘，开关打开且声明的 WS
+连接在线时，LingChat 本机以 0 音量播完，音频由插件自己转发给外部程序播放。历史记录里
+手动点播的语音不受影响。
+
+```toml
+[voice_playback]
+config = "play_in_game"   # 必须是 [[config]] 里声明过的 boolean
+ws_conn = "bridge"        # 可选：该连接不在 Connected 状态时不接管，回落到本机
+```
+
+- `config` 指向的开关由玩家在插件设置页控制，保存后下一句立即生效。
+- 声明 `ws_conn` 后，宿主每句播放前查一次连接状态：断线就回到本机播放，重连后自动再接管。
+- 多个插件同时声明时先到先得。
+- 宿主只负责静音与让你知道「这一句由你播」；音频怎么送到外部由插件自己决定。实时语音
+  的载荷与 `line_shown` 相同，`audioFile` 是 `data/voice/` 下的裸文件名，可用
+  `read_data_file("voice/<audioFile>")` 取字节（记得在 manifest 的 `read` 里声明 `voice`）。
+- 宿主会以 0 音量照常「播放」本机音频来维持自动推进与 ASR 门控，插件不需要回报播放进度。
+- **外部程序一时播不了时（目标找不到、角色倒下），插件自己报一声**：调
+  `set_voice_playback_available(False)`，宿主下一句就改回本机播放，不必让玩家去关开关；
+  恢复后再报 `True`。宿主不猜外部状态，默认当作能播。
 
 ## 启动入口：`[startup]`
 
@@ -757,6 +860,64 @@ def on_start(ctx):
 >
 > `role_id` 会先校验存在性再动手，所以写错 id 只会拿到 `ok: false`，不会先把你的对话清空。
 
+### `current_names()`
+
+取当前已加载角色的显示名与玩家的用户名（角色的 `settings.ai_name` 与 `user_name`）。插件写旁白、工具回执时用第三人称叫名字，而不是「你」「玩家」；名字由宿主给，插件不要自己猜。
+
+返回：`{ "ok": true, "role_id": 3, "ai_name": "咲夜", "user_name": "用户酱" }`；没有加载角色时 `ai_name` 为空串。取不到名字时插件应退回「女仆」「主人」这类第三人称称呼，不要退回第二人称。
+
+```python
+from plugin_host import current_names
+
+info = current_names()
+maid = info.get("ai_name") or "女仆"
+player = info.get("user_name") or "主人"
+add_prompt_line("narrator", f"{maid}走到了{player}身边。")
+```
+
+### `set_auto_mode(enabled)`
+
+切换主界面的**自动模式**：开启后对话按设置里的推进延迟（`autoAdvanceDelay`）逐句自动往下走，不用玩家点对话框。
+
+典型的用法是插件**连上外部程序时打开**——玩家在游戏里、在投屏端，双手腾不出来点「继续」，不切的话角色说完一句就停住。
+
+- **只负责设置**：断开连接、插件被禁用都**不会**帮你还原，要还原得自己再调一次 `set_auto_mode(False)`。
+- 这个开关**不落盘**，重启应用回到关闭。
+- 桌宠模式（`/pet`）与主聊天（`/chat`）是同一个开关；在主菜单时设置会先存着，进对话界面后自然生效。
+
+返回：成功 `{ "ok": true }`；失败 `{ "ok": false, "error": "..." }`。
+
+```python
+from plugin_host import set_auto_mode
+
+def on_connect():
+    set_auto_mode(True)   # 玩家在游戏里，让主界面自己推进
+```
+
+### `set_reply_length_mode(mode)`
+
+切换回复台词数量档位，对应设置页里的「对话长度」：
+
+| `mode`   | 含义   |
+| -------- | ------ |
+| `short`  | 1~2 句 |
+| `normal` | 3~5 句 |
+| `free`   | 不限制 |
+
+典型用法是插件接入游戏 / 外部程序时切到 `short`——游戏内气泡装不下长篇，逐句自动推进也会拖得很长。
+
+- **要求已经进入对话**：主菜单、剧本编辑器试玩、剧本模式下会返回 `ok: false`。连接建立得早时可以先调一次，等真正要发消息前再调一次（幂等）。
+- 档位没变化时**不写任何台词**；变化时宿主往台词表写一条系统提示，从下一轮起生效。
+- 与 `set_auto_mode` 一样，断开连接不会自动还原。
+
+返回：成功 `{ "ok": true, "mode": "short" }`；失败 `{ "ok": false, "error": "..." }`。
+
+```python
+from plugin_host import set_reply_length_mode
+
+set_reply_length_mode("short")
+```
+
 ### 台词历史（上下文源）：`read_context` / `edit_context` / `compress_context`
 
 这三个函数操作**当前对话的台词历史**（内部叫 `line_list`）——即「LLM 上下文」的**源**：每轮发给 LLM 的上下文都是它按各角色视角渲染出来的。三点务必记牢：
@@ -810,6 +971,68 @@ r = compress_context()   # {"ok": True, "triggered": 1}
 ```
 
 > **和永久记忆的关系**：如果永久记忆已经把早期台词压缩成了摘要，那些行**仍在历史里，但发给 LLM 的是摘要**——只改行对 LLM 无效（system 人设行除外）。`edit_context` 会自动把压缩指针回拨到编辑处，让这段重新进入上下文；随后的压缩把改动重新摘要进去。代价是**逐字内容会被 LLM 改写成摘要**，所以想保留原文就别在改动后紧接着压缩。
+
+### 追加提示台词：`add_prompt_line(role, text, ttl_seconds=None, key=None, severity=0)`
+
+往台词表**末尾**追加一条「提示」台词，**不触发回复生成**。它写的是模型需要参考的事实依据（旁白 / 系统提示 / 剧情提示），不是谁说的话——所以它不会显示成玩家发言，也不会被算进玩家消息序号或「真实对话」（自动存档据此判有没有新剧情）。
+
+`role` 三个取值，与引擎内部的提示角色一一对应：
+
+| `role`       | 内容信封                                   | 出现在历史里的显示名 |
+| ------------ | ------------------------------------------ | -------------------- |
+| `"narrator"` | `{旁白: <text>}`                           | 旁白                 |
+| `"system"`   | `{旁白: （系统提示：<text>）}`             | 系统                 |
+| `"plot"`     | `{旁白: （接下来的剧情演绎提示：<text>）}` | 旁白                 |
+
+系统提示词里告诉模型「大括号里的内容是提示和感知信息，不是我真正说的话」，所以**必须走这个接口**，别自己拼一行文本塞进历史——那样模型会当成玩家说的话。
+
+**只追加**（不动已有下标）。空闲时返回 `{ "ok": true, "index": N }`（`N` 是该行的位置，1 起、与 `read_context` 的下标口径一致）或 `{ "ok": false, "error": "..." }`（`role` 不认识 / 内容为空）。
+
+**生成回复的过程中调用不会当场写**：这一行会先排队，返回 `{ "ok": true, "queued": true }`，等这一轮收尾、下一轮开头再按顺序补进台词表。生成期间直接写会与流式任务按位置回填的助手台词抢行号，事件一多就会把两轮内容搅在一起。排队上限 200 条，超过时丢最早的一条；连着的旁白（narrator）在队列里会用换行接成一行（最多 600 字），下一轮开头作为一条写进去——同一批事件拆成好几行，模型会当成好几件先后发生的事。
+
+**有时效的事实要传 `ttl_seconds`**：这类条目一律先留在队列里，等角色真的轮到开口时再判一次，超过有效期的**直接丢弃、不写进台词表**。这样「一分钟前捡起一块木头」不会混进此刻的对话，而「刚挨了一下」仍然说得出。同类事件用 `key` + `severity` 合并：队列里已有同 key 的条目时只留 `severity` 更大的那条（一样大就留最新的），连着挨三下只会记成最重的一下。带有效期的调用返回 `{ "ok": true, "queued": true, "pending": N }`，`pending` 是队列里还有效的条目数，可以直接拿它判「攒够几件了」。
+
+```python
+from plugin_host import add_prompt_line
+
+add_prompt_line("narrator", "咲夜已和用户酱一起进入 Minecraft 世界，游戏里的女仆由咲夜操控。")
+add_prompt_line("system", "时间：2026/10/15 00:40")
+# 捡东西这种小事只值 5 秒；挨打能管一分钟，连挨几下只留最重的一次
+add_prompt_line("narrator", "咲夜捡起了木头。", ttl_seconds=5)
+add_prompt_line("narrator", "咲夜被僵尸打了，伤得不轻。", ttl_seconds=60, key="hurt", severity=8)
+```
+
+> 想让角色**接一句话**（而不只是记一条提示），用 `send_user_message`——那是按玩家发言走的，会触发一整轮回复。
+
+### 请求主动开口：`trigger_proactive(text, urgent=False)`
+
+主动对话系统自己那套是定时轮询：到点、看兴趣值、按策略（待办 / 话题 / 屏幕）挑一个由头。这个接口是给**外部事件**用的另一条路——插件觉得「这会儿该让角色说句话了」（游戏里刚出了点什么、玩家半天没出声），就请求宿主投一次。
+
+```python
+from plugin_host import add_prompt_line, trigger_proactive
+
+# 典型用法：先把外部事实记成旁白，再请求开口
+add_prompt_line("narrator", "女仆刚被僵尸打了两下，血量只剩 5/20")
+trigger_proactive("")
+```
+
+- `text` 是提示语，由插件给——那是策略，改它不必重编宿主。宿主会把它包成引擎自己的旁白信封（`{旁白: （系统提示：…）}`），所以它不会变成「玩家说的话」。
+- **留空表示只开口、不写提示行。** 要说的内容你已经在上一句里记成旁白了，再补一句「你注意到什么、该不该开口」等于替角色拿主意；空提示就是宿主直接接着上下文生成一轮。只有确实需要额外交代（比如截图转述）时才给提示语。
+- **需要 manifest 顶层声明 `trigger_proactive = true`**，未声明的插件调用一律被拒——它会花掉一轮 LLM 生成，与 `send_user_message` 同属「能让角色自己说话」的能力。
+- **只排队，不抢跑**：请求进队列，等这一轮台词**真的播完**（前端回到输入态）才投放；生成中、台词播放中、等玩家点继续都不算完。同一时刻最多攒一条，短时间连发多次会合并成一次——战斗里每挨一下来一次，也不会叠出好几轮。
+- **有冷却**：两次插件主动对话之间至少隔 20 秒；排队的请求最多等 2 分钟，超时丢弃。所以 `triggered: true` 只代表**已受理/已合并**，不代表马上会说。
+- **死亡这类事传 `urgent=True`**：普通请求排队时会被它顶掉，投放时也不吃冷却与上一轮的 10 秒静默期——当前这轮生成结束后就开口。仍然要等前端空闲，生成中的一轮不会被拦腰打断。
+- **真正投放前还会再判一次**：用户关了主动对话、切到不方便被打断的界面、LLM 未配置，这一轮会被放弃并记一行宿主日志——**受理不等于一定会说出来**。
+- 插件没有定时器，所以这个接口的调用时机只能是「插件被唤起的那一刻」（收到 WS 帧、收到信号、被工具调用）。要按时间自己触发，得让对端程序来推。
+
+| 返回                                                                 | 含义                                     |
+| -------------------------------------------------------------------- | ---------------------------------------- |
+| `{ "ok": true, "triggered": true }`                                  | 已受理（排队或合并），等空闲与冷却后投放 |
+| `{ "ok": true, "triggered": false, "reason": "proactive_disabled" }` | 用户在设置里关了主动对话                 |
+| `… "reason": "system_busy"`                                          | 主动对话系统正忙（同一时刻只跑一轮）     |
+| `{ "ok": false, "error": "..." }`                                    | 没声明该能力 / 宿主未就绪                |
+
+> 主动对话系统**总开关关掉时**也会走到 `proactive_disabled`——这正是它该有的行为：用户关了主动对话，插件就别再让它自己开口。
 
 ### WebSocket：`ws_open` / `ws_close` / `ws_send` / `ws_status`
 
@@ -875,7 +1098,7 @@ def run(ctx):
 
 - 禁用的顶层模块：`os`、`subprocess`、`shutil`、`pathlib`、`ctypes`、`sysconfig`
 - 环境变量只有 manifest `[[env]]` 白名单内的会注入 `ctx["env"]`
-- 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。
+- 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。唯一相关的能力是 `import` 插件目录内的模块与包（见「拆成多个文件与子目录」）：那份源码由宿主读进解释器，脚本自己依然碰不到文件。
 - 网络出站：`http_get` / `http_post` 可发往任意 URL；WebSocket client 连接受 manifest `ws_allow` 白名单约束（省略 `ws_allow` = 允许全网段），且脚本只能操作自己在 `[[ws]]` 里声明过的连接。
 - 每次调用新建解释器，无跨调用状态；超时（`timeout_ms`，上限 120000ms）后执行结果作废、本次调用终止。
 - **注意**：超时无法强制中断脚本所在的阻塞线程，死循环可能残留占用线程直至进程退出，插件作者（和你们的agent）应避免写死循环。

@@ -415,3 +415,56 @@ pub fn fix_ai_generated_text(text: &str) -> String {
     }
     parts.concat()
 }
+
+// ============================================================
+// 回合结束边界 - 钦灵：用于解决 AI 代替用户说话的问题，可扩展
+// ============================================================
+
+/// 越界边界之一：模型把角色标签当成下一次发言的开头写了出来。
+///
+/// 这是它从预训练里带来的习惯（角色标签 `user` 单独成行），台词里不可能合法出现，
+/// 所以拿它当终止信号零误伤。行内可带冒号与空白，但必须整行是这个标签。
+fn user_label_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"(?m)^[ \t]*user[ \t]*[:：]?[ \t]*\r?\n").expect("invalid regex"))
+}
+
+/// 越界边界之二：连续两个空行。记忆构建器用它标记「本轮说完了」（台词之间只有一个空行），
+/// 模型照抄这个形状；模型自己越界时也会拿它当段落分隔。
+fn blank_gap_re() -> &'static Regex {
+    static RE: OnceLock<Regex> = OnceLock::new();
+    RE.get_or_init(|| Regex::new(r"\n[ \t]*\r?\n[ \t]*\r?\n").expect("invalid regex"))
+}
+
+/// 命中的回合结束边界：起始字节位置 + 判据名（判据名只用于日志，便于分辨是哪条规则生效）。
+pub type TurnEnd = (usize, &'static str);
+
+/// 找出回复里第一个回合结束边界；模型正常收尾时返回 `None`。
+///
+/// 只认「前面已经有正文」的边界：回复开头的空行/`user` 行不算，否则整段会被截成空。
+pub fn find_turn_end(text: &str) -> Option<TurnEnd> {
+    let non_empty_prefix = |start: usize| !text[..start].trim().is_empty();
+
+    let user_label = user_label_re()
+        .find_iter(text)
+        .find(|m| non_empty_prefix(m.start()))
+        .map(|m| (m.start(), "user标签"));
+    let blank_gap = blank_gap_re()
+        .find_iter(text)
+        .find(|m| non_empty_prefix(m.start()))
+        .map(|m| (m.start(), "两空行"));
+
+    match (user_label, blank_gap) {
+        (Some(a), Some(b)) => Some(if a.0 <= b.0 { a } else { b }),
+        (found, None) | (None, found) => found,
+    }
+}
+
+/// 截到回合结束边界之前（含边界写法本身一起丢掉）。没有边界时原样返回。
+/// 用于把已经存进台词表的越界内容从喂给模型的上下文里摘掉。
+pub fn truncate_at_turn_end(text: &str) -> &str {
+    match find_turn_end(text) {
+        Some((pos, _)) => &text[..pos],
+        None => text,
+    }
+}

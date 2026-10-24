@@ -10,6 +10,9 @@ export default {
     screenshotAsk: "截图提问",
     screenshotRetake: "点击重新截图，右键取消截图",
     closeDialog: "关闭对话",
+    quickSave: "快速存档",
+    quickLoad: "快速读档",
+    quickSaveNoSave: "本次还没有存档，先在存档页创建一个吧",
     moreActions: "更多操作",
     listening: "正在聆听...",
     inputPlaceholder: "在这里输入消息...",
@@ -22,6 +25,27 @@ export default {
     // 剧本模式下提交自由输入被后端拒绝时的提示
     choiceRequired: "请点击一个选项",
     inputNotAllowed: "当前无法输入",
+  },
+  relationGuard: {
+    tipBar: "先给「{name}」补一句关系",
+    tipBarMulti: "还缺：{names} 的关系",
+    tipRole: "还差「{name}」对你的说法",
+    tipIdentity: "还差你（{me}）对「{name}」的说法",
+    modalTitle: "先给「{name}」补一句关系",
+    modalTitleRole: "补上「{name}」对你的说法",
+    modalTitleIdentity: "补上你对「{name}」的说法",
+    modalBody:
+      "和「{name}」的关系要两边都填：角色卡里写「他对你（{me}）的说法」，你的身份卡里写「你对他的说法」，两边都写上对话才会放行。以前这些是混在人设里的文字，更新后要单独填一次。",
+    modalBodyMulti:
+      "这些角色的关系要两边都填：角色卡里写「他对你（{me}）的说法」，你的身份卡里写「你对他的说法」，两边都写上对话才会放行。以前这些是混在人设里的文字，更新后要单独填一次。",
+    sideRole: "缺他对你的说法",
+    sideIdentity: "缺你对他的说法",
+    sideBoth: "两边都没填",
+    example: "比如：我是他的青梅竹马 / 我是刚搬来的转学生",
+    gotoEdit: "去填写",
+    later: "暂不设置",
+    badge: "未就绪",
+    emptyWarn: "关系栏还是空的：不填的话，和这个角色的对话会被拦下。",
   },
   avatar: {
     live2dUnavailable: "Live2D 不可用",

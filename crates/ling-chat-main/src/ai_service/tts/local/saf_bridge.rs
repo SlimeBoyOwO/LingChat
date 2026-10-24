@@ -76,11 +76,11 @@ pub async fn prepare_file_import_source(
                 .copy(&src_uri, &local_uri)
                 .await
                 .map_err(|e| format!("SAF copy to local cache: {e}"))?;
-            return Ok(ImportSource {
+            Ok(ImportSource {
                 path: local_path,
                 cleanup_after_import: true,
                 display_name,
-            });
+            })
         }
 
         #[cfg(not(target_os = "android"))]

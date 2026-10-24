@@ -129,13 +129,13 @@
           </svg>
 
           <!-- 光环粒子：内环 -->
-          <div class="absolute h-[250px] w-[250px] animate-spin" style="animation-duration: 5s">
+          <div class="absolute h-62.5 w-62.5 animate-spin" style="animation-duration: 5s">
             <span
               class="glow-cyan absolute top-0 left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-cyan-400"
             ></span>
           </div>
           <!-- 光环粒子：外环 -->
-          <div class="absolute h-[265px] w-[265px] animate-spin" style="animation-duration: 3s">
+          <div class="absolute h-66.25 w-66.25 animate-spin" style="animation-duration: 3s">
             <span
               class="absolute top-0 left-1/2 h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-teal-400 opacity-80"
             ></span>
@@ -196,7 +196,7 @@
             </span>
             <span
               v-else
-              class="text-glow-teal flex items-center space-x-2 font-mono text-2xl font-bold tracking-[0.1em] text-emerald-400"
+              class="text-glow-teal flex items-center space-x-2 font-mono text-2xl font-bold tracking-widest text-emerald-400"
             >
               <svg
                 class="h-6 w-6 animate-bounce"
@@ -227,7 +227,7 @@
               class="relative flex h-6 w-[60dvh] items-center overflow-hidden rounded-full border border-teal-500/20 bg-slate-950/80 p-0.5"
             >
               <div
-                class="glow-cyan h-full rounded-full bg-gradient-to-r from-teal-500/80 to-cyan-400 transition-all duration-100"
+                class="glow-cyan h-full rounded-full bg-linear-to-r from-teal-500/80 to-cyan-400 transition-all duration-100"
                 :style="{ width: progress + '%' }"
               >
                 <div class="h-0.5 w-full rounded-full bg-white/30"></div>

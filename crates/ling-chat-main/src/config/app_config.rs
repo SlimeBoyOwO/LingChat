@@ -112,11 +112,12 @@ pub struct AppConfig {
     /// 默认关闭：平时天气只由模型按需调用 query_weather 感知，不做任何主动注入。
     #[serde(default)]
     pub weather_first_talk: bool,
+    /// 自动同步现实天气到天气特效层（需配置 weather_city；手动或 AI 切换天气特效时自动关闭）。
+    #[serde(default)]
+    pub weather_auto_sync: bool,
     // ---- AI 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
     #[serde(default = "default_true")]
     pub ai_auto_clothes: bool,
-    #[serde(default = "default_true")]
-    pub ai_auto_scene: bool,
     #[serde(default = "default_true")]
     pub ai_auto_effect: bool,
 
@@ -131,7 +132,7 @@ pub struct AppConfig {
     /// 默认开启：genai 不做消息规范化，Gemini 等 provider 要求首条为 user。
     #[serde(default = "default_true")]
     pub memory_inject_continue_user: bool,
-    // 记忆段长度上限（字符数，0 = 不截断）：决定压缩喂给 LLM 的旧内容与运行时注入上下文的长度
+    // 记忆段语义压缩目标（字符数，0 = 不限制）：超出后交给 LLM 重新压缩，不做字符截断
     #[serde(default = "default_memory_short_term_max_chars")]
     pub memory_short_term_max_chars: u32,
     #[serde(default = "default_memory_long_term_max_chars")]
@@ -172,8 +173,8 @@ impl Default for AppConfig {
             enable_emotion_classifier: default_enable_emotion_classifier(),
             weather_city: String::new(),
             weather_first_talk: false,
+            weather_auto_sync: false,
             ai_auto_clothes: true,
-            ai_auto_scene: true,
             ai_auto_effect: true,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
@@ -283,8 +284,8 @@ impl AppConfig {
                 keys::WEATHER_FIRST_TALK,
                 default.weather_first_talk,
             ),
+            weather_auto_sync: get_bool(&store, keys::WEATHER_AUTO_SYNC, default.weather_auto_sync),
             ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
-            ai_auto_scene: get_bool(&store, keys::AI_AUTO_SCENE, default.ai_auto_scene),
             ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
             use_persistent_memory: get_bool(
                 &store,

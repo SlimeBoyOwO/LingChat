@@ -195,6 +195,16 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
+                        key: keys::WEATHER_AUTO_SYNC.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::WEATHER_AUTO_SYNC,
+                            &app_defaults.weather_auto_sync.to_string(),
+                        ),
+                        description: "WEATHER_AUTO_SYNC — 自动同步现实天气到天气特效层（需配置 WEATHER_CITY；设置页手动或 AI 工具切换天气特效时自动关闭）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
                         key: keys::AI_AUTO_CLOTHES.to_string(),
                         value: read_setting(
                             app,
@@ -202,16 +212,6 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.ai_auto_clothes.to_string(),
                         ),
                         description: "允许 AI 自动换装（在角色卡手动选过服装后自动关闭；关闭后 AI 的换装请求一律不执行，恢复需重新打开此开关）".to_string(),
-                        setting_type: "bool".to_string(),
-                    },
-                    ConfigSetting {
-                        key: keys::AI_AUTO_SCENE.to_string(),
-                        value: read_setting(
-                            app,
-                            keys::AI_AUTO_SCENE,
-                            &app_defaults.ai_auto_scene.to_string(),
-                        ),
-                        description: "允许 AI 自动切换场景（在设置中手动选过场景后自动关闭；关闭后 AI 的切景请求一律不执行，恢复需重新打开此开关）".to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
@@ -319,7 +319,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_short_term_max_chars.to_string(),
                         ),
                         description:
-                            "近期回顾长度上限（字符数，默认 500，0 不截断）"
+                            "近期回顾语义压缩目标（字符数，默认 500，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -331,7 +331,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_long_term_max_chars.to_string(),
                         ),
                         description:
-                            "长期经历长度上限（字符数，默认 2000，0 不截断）"
+                            "长期经历语义压缩目标（字符数，默认 2000，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -343,7 +343,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_user_info_max_chars.to_string(),
                         ),
                         description:
-                            "taの信息长度上限（字符数，默认 800，0 不截断）"
+                            "玩家资料语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -355,7 +355,7 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             &app_defaults.memory_promises_max_chars.to_string(),
                         ),
                         description:
-                            "重要约定长度上限（字符数，默认 800，0 不截断）"
+                            "重要约定语义压缩目标（字符数，默认 800，0 不限制；不会直接截断）"
                                 .to_string(),
                         setting_type: "text".to_string(),
                     },
@@ -632,6 +632,18 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         ),
                         description: "在用户响应之前，能主动对话的次数".to_string(),
                         setting_type: "text".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::PROACTIVE_EXPECTED_INTERVAL_MINUTES,
+                            &proactive_defaults.expected_interval_minutes.to_string(),
+                        ),
+                        description: "两次主动搭话之间的期望间隔（分钟，1–60）：数值越小越频繁，\
+                                      程序据此反推每轮兴趣值的增长随机范围"
+                            .to_string(),
+                        setting_type: "number".to_string(),
                     },
                 ],
             },

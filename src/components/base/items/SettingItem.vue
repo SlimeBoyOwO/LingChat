@@ -105,9 +105,9 @@ const emit = defineEmits<{
 
 const localValue = ref(props.setting.value);
 
-// 监听本地值的变化，并触发更新事件
+// 监听本地值的变化，并触发更新事件。
 watch(localValue, (newValue) => {
-  emit("update:value", newValue);
+  emit("update:value", String(newValue));
 });
 
 // 监听props.setting.value的变化，同步到本地值

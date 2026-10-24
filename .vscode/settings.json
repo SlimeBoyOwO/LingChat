@@ -1,5 +1,6 @@
 {
-  "Codegeex.RepoIndex": true,
+  // Codegeex 仓库级索引吃内存，默认关闭；需要时临时改回 true
+  "Codegeex.RepoIndex": false,
   "editor.formatOnSave": true,
   "editor.defaultFormatter": "esbenp.prettier-vscode",
 
@@ -8,6 +9,14 @@
   "files.eol": "\n",
   "files.autoGuessEncoding": false,
   "files.insertFinalNewline": true,
+
+  // src-tauri/gen 是生成的 Android 工程和 schema，排除文件监听与全局搜索
+  "files.watcherExclude": {
+    "**/src-tauri/gen/**": true
+  },
+  "search.exclude": {
+    "src-tauri/gen": true
+  },
 
   // 保存时自动修复
   // 关闭 import 排序：prettier/pnpm format 不做 import 排序，开着会导致保存结果和 CLI 不一致。
@@ -32,6 +41,10 @@
   "[scss]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+
+  // 让内置 CSS 语言服务认识 Tailwind v4 的 @reference / @apply / @theme 等 at-rule，
+  // 只消除未知 at-rule 误报，其余 CSS 检查保持开启
+  "css.customData": [".vscode/tailwind-css-data.json"],
   "[json]": {
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
@@ -69,5 +82,13 @@
   "files.associations": {
     "*.env.*": "dotenv",
     ".prettierrc": "json"
-  }
+  },
+  "java.jdt.ls.vmargs": "-XX:+UseParallelGC -XX:GCTimeRatio=4 -XX:AdaptiveSizePolicyWeight=90 -Dsun.zip.disableMemoryMapping=true -Xmx4G -Xms100m -Xlog:disable",
+
+  // Java 与 Python 扩展平时在扩展面板里按工作区禁用，需要时再启用。
+  // 下面几条只在启用之后生效，用于压住自动构建和索引，避免一开就全力跑。
+  "java.autobuild.enabled": false,
+  "java.configuration.updateBuildConfiguration": "disabled",
+  "python.analysis.diagnosticMode": "openFilesOnly",
+  "python.analysis.indexing": false
 }

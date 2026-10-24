@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use super::types::{PluginManifest, WsMode};
+use super::types::{ConfigKind, PluginManifest, WsMode};
 
 /// 从 TOML 文本解析并校验插件 manifest。
 pub fn parse(text: &str) -> Result<PluginManifest> {
@@ -16,15 +16,62 @@ pub fn parse(text: &str) -> Result<PluginManifest> {
 /// 避免插件声明超大超时导致阻塞线程被长期占用。
 const MAX_TIMEOUT_MS: u64 = 120_000;
 
-/// 校验脚本名是单个文件名（禁止子目录与 `..`，防路径穿越）。
-fn validate_script_name(plugin_id: &str, owner: &str, script: &str) -> Result<()> {
+/// 校验脚本路径是插件目录内的相对路径。
+///
+/// 允许 `tools/entry.py` 这种分层写法；目录段必须是合法的 Python 标识符（包名），
+/// 最后一段必须是 `.py` 文件。绝对路径、反斜杠、`.`/`..`、空段一律拒绝，防路径穿越。
+fn validate_script_path(plugin_id: &str, owner: &str, script: &str) -> Result<()> {
+    const MAX_DEPTH: usize = 8;
+    const MAX_LEN: usize = 240;
     if script.is_empty() {
         anyhow::bail!("插件 '{plugin_id}' {owner} 未指定脚本");
     }
-    if std::path::Path::new(script).components().count() != 1 {
-        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本必须为单个文件名（不允许子目录/..）");
+    if script.len() > MAX_LEN {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本路径过长（上限 {MAX_LEN} 字符）");
+    }
+    if script.contains('\\') {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本路径必须用 '/' 分隔");
+    }
+    if script.starts_with('/') {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本路径必须是相对路径");
+    }
+    let parts: Vec<&str> = script.split('/').collect();
+    if parts.len() > MAX_DEPTH {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本目录层级过深（上限 {MAX_DEPTH} 层）");
+    }
+    let Some((file, dirs)) = parts.split_last() else {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 未指定脚本");
+    };
+    for dir in dirs {
+        if !is_python_identifier(dir) {
+            anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本路径段 '{dir}' 不是合法的目录名");
+        }
+    }
+    let Some(stem) = file.strip_suffix(".py") else {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本必须是 .py 文件");
+    };
+    let starts_well = stem
+        .chars()
+        .next()
+        .is_some_and(|c| c.is_ascii_alphabetic() || c == '_');
+    if !starts_well
+        || !stem
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-')
+    {
+        anyhow::bail!("插件 '{plugin_id}' {owner} 的脚本文件名 '{file}' 不合法");
     }
     Ok(())
+}
+
+/// Python 标识符的 ASCII 子集：字母或下划线开头，其余为字母、数字、下划线。
+fn is_python_identifier(segment: &str) -> bool {
+    let mut chars = segment.chars();
+    match chars.next() {
+        Some(c) if c.is_ascii_alphabetic() || c == '_' => {},
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
 /// 校验超时值在允许区间内。
@@ -110,9 +157,36 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             anyhow::bail!("插件 '{}' 不能把自己声明为前置插件", manifest.id);
         }
     }
+    if let Some(playback) = &manifest.voice_playback {
+        let declared = manifest
+            .config
+            .iter()
+            .find(|field| field.key == playback.config);
+        match declared {
+            Some(field) if field.kind == ConfigKind::Boolean => {},
+            Some(_) => anyhow::bail!(
+                "插件 '{}' 的 [voice_playback] config '{}' 必须是 boolean 配置项",
+                manifest.id,
+                playback.config
+            ),
+            None => anyhow::bail!(
+                "插件 '{}' 的 [voice_playback] config '{}' 不在 [[config]] 声明里",
+                manifest.id,
+                playback.config
+            ),
+        }
+        if let Some(conn) = &playback.ws_conn {
+            if !manifest.ws.iter().any(|decl| decl.id == *conn) {
+                anyhow::bail!(
+                    "插件 '{}' 的 [voice_playback] ws_conn '{conn}' 不在 [[ws]] 声明里",
+                    manifest.id
+                );
+            }
+        }
+    }
     if let Some(startup) = &manifest.startup {
         let owner = "启动入口";
-        validate_script_name(&manifest.id, owner, &startup.script)?;
+        validate_script_path(&manifest.id, owner, &startup.script)?;
         if !is_valid_handler_name(&startup.handler) {
             anyhow::bail!(
                 "插件 '{}' {owner} 的处理函数名 '{}' 不是合法标识符",
@@ -140,7 +214,7 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
         if tool.name.is_empty() {
             anyhow::bail!("插件 '{}' 存在工具名为空的声明", manifest.id);
         }
-        validate_script_name(&manifest.id, &format!("工具 '{}'", tool.name), &tool.script)?;
+        validate_script_path(&manifest.id, &format!("工具 '{}'", tool.name), &tool.script)?;
         validate_timeout(
             &manifest.id,
             &format!("工具 '{}'", tool.name),
@@ -170,7 +244,7 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
                 sub.signal
             );
         }
-        validate_script_name(&manifest.id, &owner, &sub.script)?;
+        validate_script_path(&manifest.id, &owner, &sub.script)?;
         if !is_valid_handler_name(&sub.handler) {
             anyhow::bail!(
                 "插件 '{}' {owner} 的处理函数名 '{}' 不是合法标识符",
@@ -212,7 +286,7 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
         // 内联处理脚本：script 与 handler 必须成对出现，否则无法派发。
         match (&ws.script, &ws.handler) {
             (Some(script), Some(handler)) => {
-                validate_script_name(&manifest.id, &owner, script)?;
+                validate_script_path(&manifest.id, &owner, script)?;
                 if !is_valid_handler_name(handler) {
                     anyhow::bail!(
                         "插件 '{}' {owner} 的处理函数名 '{handler}' 不是合法标识符",

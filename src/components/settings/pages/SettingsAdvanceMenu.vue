@@ -189,7 +189,7 @@ import {
   SlidersHorizontal,
   Languages,
   Wrench,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "vue-i18n";
 import { MenuItem } from "../../ui";

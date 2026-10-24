@@ -23,6 +23,19 @@
           }}
         </button>
       </div>
+
+      <!-- 本局身份：只读展示 -->
+      <div class="mt-3 flex flex-col gap-1.5">
+        <label class="text-xs font-medium text-white/60">
+          {{ $t("settings.save.create.identityLabel") }}
+        </label>
+        <div class="text-sm text-white/85">
+          {{ gameStore.userName || $t("settings.save.create.identityUnknown") }}
+        </div>
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.save.create.identityHint") }}
+        </p>
+      </div>
     </MenuItem>
     <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
@@ -46,13 +59,24 @@
             <div
               v-for="(save, index) in saves"
               :key="save.id"
-              class="flex flex-col rounded-xl border border-white/10 bg-[rgba(20,20,20,0.45)] p-4 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] hover:-translate-y-0.75 hover:border-[rgba(121,217,255,0.35)] hover:bg-[rgba(20,20,20,0.55)] hover:shadow-[0_12px_40px_rgba(121,217,255,0.08)]"
+              class="flex flex-col rounded-xl border p-4 shadow-[0_8px_32px_rgba(0,0,0,0.2)] transition-all duration-300 ease-[cubic-bezier(0.25,0.8,0.25,1)] hover:-translate-y-0.75 hover:bg-[rgba(20,20,20,0.55)]"
+              :class="
+                isCurrentSave(save.id)
+                  ? 'border-pink-400/45 bg-[rgba(40,20,30,0.5)] hover:border-pink-400/60 hover:shadow-[0_12px_40px_rgba(236,72,153,0.12)]'
+                  : 'border-white/10 bg-[rgba(20,20,20,0.45)] hover:border-[rgba(121,217,255,0.35)] hover:shadow-[0_12px_40px_rgba(121,217,255,0.08)]'
+              "
             >
               <div class="flex gap-4">
                 <!-- Left: Screenshot Preview -->
                 <div
-                  class="h-48 w-1/2 shrink-0 overflow-hidden rounded-lg border border-white/8 bg-black/40"
+                  class="relative h-48 w-1/2 shrink-0 overflow-hidden rounded-lg border border-white/8 bg-black/40"
                 >
+                  <span
+                    v-if="isCurrentSave(save.id)"
+                    class="absolute top-1.5 left-1.5 rounded-full bg-pink-500/80 px-2 py-0.5 text-[10px] font-bold text-white shadow-[0_2px_8px_rgba(0,0,0,0.4)]"
+                  >
+                    {{ $t("settings.save.list.current") }}
+                  </span>
                   <img
                     v-if="save.screenshot"
                     :src="`${convertFileSrc(save.screenshot)}?v=${save.update_date}`"
@@ -111,6 +135,14 @@
                   >
                     {{ save.last_message || $t("settings.save.list.noMessage") }}
                   </div>
+
+                  <!-- Line 4: Bound identity -->
+                  <div
+                    v-if="save.identity_name"
+                    class="mt-1 truncate text-[11px] text-[#79d9ff]/70"
+                  >
+                    {{ $t("settings.save.list.identityLabel", { name: save.identity_name }) }}
+                  </div>
                 </div>
               </div>
 
@@ -129,13 +161,22 @@
                 </button>
                 <button
                   @click="handleSaveGame(save.id)"
-                  class="flex-1 cursor-pointer rounded-md border border-emerald-500/40 bg-emerald-500/25 px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-white transition-all duration-200 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)] disabled:cursor-not-allowed disabled:opacity-50"
+                  class="flex-1 cursor-pointer rounded-md border px-3 py-1.5 text-xs font-semibold whitespace-nowrap text-white transition-all duration-200 disabled:cursor-not-allowed disabled:opacity-50"
+                  :class="
+                    isCurrentSave(save.id)
+                      ? 'border-pink-500/40 bg-pink-500/25 hover:bg-pink-500/45 hover:shadow-[0_0_10px_rgba(236,72,153,0.2)]'
+                      : 'border-emerald-500/40 bg-emerald-500/25 hover:bg-emerald-500/45 hover:shadow-[0_0_10px_rgba(16,185,129,0.2)]'
+                  "
                   :disabled="actionLoading !== null"
                 >
                   {{
                     actionLoading === save.id
                       ? $t("settings.save.action.saving")
-                      : $t("settings.save.action.overwrite")
+                      : $t(
+                          isCurrentSave(save.id)
+                            ? "settings.save.action.update"
+                            : "settings.save.action.overwrite",
+                        )
                   }}
                 </button>
                 <button
@@ -159,20 +200,21 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onBeforeUnmount } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { MenuPage, MenuItem } from "../../ui";
 import { Input } from "../../base";
 import { useGameStore } from "../../../stores/modules/game";
 import { applyWebInitData } from "../../../stores/modules/game/actions";
-import { eventQueue } from "../../../core/events/event-queue";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { eventQueue } from "../../../core/events/event-queue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";
-import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "lucide-vue-next";
+import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "@lucide/vue";
 
 interface SaveListResponse {
   saves: SaveInfo[];
@@ -194,6 +236,8 @@ const saves = ref<SaveInfo[]>([]);
 const newSaveTitle = ref("");
 const loading = ref(false);
 const error = ref<string | null>(null);
+/** 自动存档事件监听句柄，卸载时解绑 */
+let unlistenAutoSave: UnlistenFn | null = null;
 const actionLoading = ref<number | null>(null);
 
 // Title editing state
@@ -247,6 +291,9 @@ const handleSaveTitle = async (saveId: number) => {
   }
 };
 
+/** 该存档是不是本局正在进行的那一个（决定「更新存档」按钮与卡片高亮） */
+const isCurrentSave = (saveId: number) => gameStore.currentSaveId === saveId;
+
 const formatDate = (dateString: string): string => {
   const date = new Date(dateString);
   const pad = (n: number) => n.toString().padStart(2, "0");
@@ -270,15 +317,6 @@ const fetchSaves = async () => {
   }
 };
 
-/** 确保截图已就绪：若最新截图为空但仍有进行中的截图任务，等待它完成。 */
-const ensureScreenshot = async (): Promise<string | null> => {
-  if (gameStore.latestScreenshot) return gameStore.latestScreenshot;
-  if (gameStore.screenshotPending) {
-    await gameStore.screenshotPending;
-  }
-  return gameStore.latestScreenshot;
-};
-
 const handleCreateSave = async () => {
   if (!newSaveTitle.value.trim()) {
     uiStore.showWarning({
@@ -289,19 +327,16 @@ const handleCreateSave = async () => {
   }
   actionLoading.value = -1;
   try {
-    const cursor = gameStore.scriptReadCursor;
-    await invoke<CreateSaveResponse>("create_save", {
+    const created = await invoke<CreateSaveResponse>("create_save", {
       title: newSaveTitle.value.trim(),
-      screenshotPath: await ensureScreenshot(),
-      ...(cursor
-        ? {
-            playerChapter: cursor.chapter,
-            playerEventIndex: cursor.eventIndex,
-            playerLineCount: cursor.lineCount,
-            playerVarsJson: JSON.stringify(cursor.vars),
-          }
-        : {}),
+      ...(await gameStore.collectSaveProgress()),
     });
+    // 建档后本局就绑定到这个存档了 → 身份锁定，UI 立刻反映
+    if (typeof created?.save_id === "number") {
+      gameStore.activeSaveId = created.save_id;
+    }
+    // 新建的档即本局当前存档，之后快速存档就落在它身上
+    gameStore.currentSaveId = created.save_id;
     newSaveTitle.value = "";
     uiStore.showSuccess({
       title: t("settings.save.msg.createSuccessTitle"),
@@ -323,15 +358,13 @@ const handleLoadSave = async (saveId: number) => {
   const confirmed = await dialogStore.confirm(t("settings.save.msg.loadConfirm"));
   if (!confirmed) return;
   actionLoading.value = saveId;
-  // 读档会整体替换游戏状态：先清空事件队列，旧会话积压的剧本事件不得播进新会话。
-  // clear 会暂停队列，invoke 期间到达的新事件（读档续跑的引擎已经在跑）只排队不播放，
-  // 待状态落地后统一 resume，保证它们被消费时剧情模式标记已就位。
   eventQueue.clear();
   try {
     const gameInfo = await invoke<WebInitData>("load_save", { saveId });
     applyWebInitData(gameStore.$state, gameInfo);
+    // 读进来的档成为本局当前存档
+    gameStore.currentSaveId = saveId;
 
-    // 此处解决了 剧本状态持久化和自动事件clear，注意之后出问题了可以看这里的代码
     gameStore.scriptReadCursor = null;
     // 存档带剧本进度时后端已从存档点续跑引擎，前端同步回到剧情模式；否则回到自由对话
     if (gameInfo.active_script) {
@@ -339,7 +372,6 @@ const handleLoadSave = async (saveId: number) => {
     } else {
       gameStore.exitStoryMode();
     }
-    // 读档后丢弃旧会话残留事件队列（防止旧角色未说完的回复串进新存档对话，issue #796）
     eventQueue.clear();
     eventQueue.resume();
     uiStore.showSuccess({
@@ -364,26 +396,21 @@ const handleLoadSave = async (saveId: number) => {
 };
 
 const handleSaveGame = async (saveId: number) => {
-  const confirmed = await dialogStore.confirm(t("settings.save.msg.overwriteConfirm"));
-  if (!confirmed) return;
+  // 往本局自己的档里写只是把进度落回原处，不丢任何东西，不必再问一次覆盖确认
+  const isCurrent = isCurrentSave(saveId);
+  if (!isCurrent && !(await dialogStore.confirm(t("settings.save.msg.overwriteConfirm")))) return;
   actionLoading.value = saveId;
   try {
-    const cursor = gameStore.scriptReadCursor;
-    await invoke("update_save", {
-      saveId,
-      screenshotPath: await ensureScreenshot(),
-      ...(cursor
-        ? {
-            playerChapter: cursor.chapter,
-            playerEventIndex: cursor.eventIndex,
-            playerLineCount: cursor.lineCount,
-            playerVarsJson: JSON.stringify(cursor.vars),
-          }
-        : {}),
-    });
+    await invoke("update_save", { saveId, ...(await gameStore.collectSaveProgress()) });
     uiStore.showSuccess({
-      title: t("settings.save.msg.overwriteSuccessTitle"),
-      message: t("settings.save.msg.overwriteSuccessMsg"),
+      title: t(
+        isCurrent
+          ? "settings.save.msg.updateSuccessTitle"
+          : "settings.save.msg.overwriteSuccessTitle",
+      ),
+      message: t(
+        isCurrent ? "settings.save.msg.updateSuccessMsg" : "settings.save.msg.overwriteSuccessMsg",
+      ),
     });
     await fetchSaves();
   } catch (e: any) {
@@ -402,6 +429,12 @@ const handleDeleteSave = async (saveId: number) => {
   actionLoading.value = saveId;
   try {
     await invoke("delete_save", { saveId });
+    // 删掉的正好是本局绑定的存档 → 本局解除绑定，身份重新可切换
+    if (gameStore.activeSaveId === saveId) {
+      gameStore.activeSaveId = null;
+    }
+    // 删掉的是本局当前存档：解绑，下次快速存档重新引导建档
+    if (isCurrentSave(saveId)) gameStore.currentSaveId = null;
     uiStore.showSuccess({
       title: t("settings.save.msg.deleteSuccessTitle"),
       message: t("settings.save.msg.deleteSuccessMsg"),
@@ -418,8 +451,16 @@ const handleDeleteSave = async (saveId: number) => {
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   fetchSaves();
+  // 自动存档不在本页触发，但它会换掉列表里那条自动存档的时间戳与截图：
+  // 不在这里补听一次，就得等重开程序才看得到更新。
+  unlistenAutoSave = await listen("save:auto-saved", () => void fetchSaves());
+});
+
+onBeforeUnmount(() => {
+  unlistenAutoSave?.();
+  unlistenAutoSave = null;
 });
 </script>
 
