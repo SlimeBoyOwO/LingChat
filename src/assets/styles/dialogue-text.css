@@ -76,12 +76,3 @@
     transform: translateY(-4px);
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .text-effects-enabled .tw-fx-emphasis,
-  .text-effects-enabled .tw-fx-shake,
-  .text-effects-enabled .tw-fx-blur,
-  .text-effects-enabled .tw-fx-float {
-    animation: none;
-  }
-}
