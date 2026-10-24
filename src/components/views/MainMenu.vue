@@ -20,9 +20,11 @@
       :stars-fps="starsFps"
     />
 
-    <!-- 人物图层（位于星星之上，菜单之下） -->
+    <!-- 人物图层（位于星星之上，菜单之下）
+         贴底而非居中：立绘是横构图（2560x1446），竖屏手机由 max-w-full 先卡住，
+         居中会在屏幕底部留下大片背景空隙（导航条处最明显），贴底让人物落到屏底 -->
     <img
-      class="pointer-events-none absolute top-1/2 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,-50%)] will-change-transform select-none"
+      class="pointer-events-none absolute bottom-0 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,0)] will-change-transform select-none"
       ref="charRef"
       src="../../assets/images/alona.png"
       :alt="$t('views.mainMenu.characterAlt')"
@@ -45,7 +47,6 @@
     <Transition name="menu-page">
       <StartPage
         v-if="currentPage === 'mainMenu'"
-        ref="containerRef"
         class="select-none"
         @mousemove="handleMouseMove"
         @mouseleave="handleMouseLeave"
@@ -135,7 +136,6 @@ const effectiveMeteorsEnabled = computed(() => meteorsEnabled.value && !transien
 const parallaxEnabled = computed(() => !transientSuspend.value);
 
 // DOM Refs
-const containerRef = ref<HTMLElement | null>(null);
 const bgRef = ref<HTMLElement | null>(null);
 const charRef = ref<HTMLElement | null>(null);
 const starsLayerRef = ref<HTMLElement | null>(null);

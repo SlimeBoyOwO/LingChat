@@ -525,12 +525,15 @@ pub fn capture_window_as_jpeg(keyword: &str) -> Option<Vec<u8>> {
 
 /// 抓给模型看的那一帧的压缩档位：整屏截图本来就缩到 1024×768，这里对齐同一个量级
 /// （约一千 token），够看清搭了什么形状，又不至于把上下文撑起来。
+#[cfg(target_os = "windows")]
 const SHOT_MAX_EDGE: u32 = 1024;
+#[cfg(target_os = "windows")]
 const SHOT_JPEG_QUALITY: u8 = 80;
 
 /// 抓回来的窗口小于这个边长就当作没抓着。窗口最小化（含「最小化后又被枚举到」的
 /// 时间差）时，PrintWindow 只能给回标题栏那一小条，甚至几像素——那种图给模型看
 /// 只会让它胡说，不如当作抓失败退到整屏。
+#[cfg(target_os = "windows")]
 const SHOT_MIN_EDGE: u32 = 200;
 
 /// 按标题或进程名找窗口并抓图；找不到、抓失败、抓回来的图不像一张画面都给 None

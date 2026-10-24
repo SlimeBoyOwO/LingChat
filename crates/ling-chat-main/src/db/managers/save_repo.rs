@@ -4,7 +4,9 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
+use crate::db::entities::{
+    line, line_perception, memory_bank, running_script, save, save_identity,
+};
 
 pub struct SaveRepo;
 
@@ -180,6 +182,12 @@ impl SaveRepo {
             .await
             .map_err(|e| anyhow!("{e}"))?;
 
+        save_identity::Entity::delete_many()
+            .filter(save_identity::Column::SaveId.eq(save_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
         let result = save::Entity::delete_by_id(save_id)
             .exec(db)
             .await
@@ -191,8 +199,6 @@ impl SaveRepo {
 // ========== Line Reconstruction ==========
 
 impl SaveRepo {
-    /// Reconstruct ordered line list by walking `parent_line_id` chain
-    /// from `save.last_message_id` backwards, then reversing.
     pub async fn get_line_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<line::Model>> {
         let all_lines = line::Entity::find()
             .filter(line::Column::SaveId.eq(save_id))
@@ -259,9 +265,11 @@ impl SaveRepo {
                         thinking: db_line.thinking,
                         audio_file: db_line.audio_file,
                         tool_call: db_line.tool_call,
+                        round_id: db_line.round_id,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
+                        identity_id: db_line.identity_id,
                     },
                     perceived_role_ids: perceived,
                 })
@@ -273,6 +281,22 @@ impl SaveRepo {
 }
 
 // ========== Smart Diff: sync_lines ==========
+
+/// 两条台词行除 id 与感知列表外是否完全一致（sync_lines 与 can_sync_into 共用同一把尺）。
+fn same_line_fields(db_line: &line::Model, input_line: &GameLine) -> bool {
+    db_line.content == input_line.base.content
+        && db_line.attribute == input_line.base.attribute.0
+        && db_line.sender_role_id == input_line.base.sender_role_id
+        && db_line.original_emotion == input_line.base.original_emotion
+        && db_line.predicted_emotion == input_line.base.predicted_emotion
+        && db_line.tts_content == input_line.base.tts_content
+        && db_line.audio_file == input_line.base.audio_file
+        && db_line.thinking == input_line.base.thinking
+        && db_line.action_content == input_line.base.action_content
+        && db_line.display_name == input_line.base.display_name
+        && db_line.tool_call == input_line.base.tool_call
+        && db_line.round_id == input_line.base.round_id
+}
 
 impl SaveRepo {
     /// Port of Python `SaveManager.sync_lines`. Walks DB line chain and
@@ -303,18 +327,7 @@ impl SaveRepo {
             if let Some(input_id) = input_line.base.id {
                 if input_id == db_line.id {
                     // Same ID — update if any persisted field changed
-                    if db_line.content != input_line.base.content
-                        || db_line.attribute != input_line.base.attribute.0
-                        || db_line.sender_role_id != input_line.base.sender_role_id
-                        || db_line.original_emotion != input_line.base.original_emotion
-                        || db_line.predicted_emotion != input_line.base.predicted_emotion
-                        || db_line.tts_content != input_line.base.tts_content
-                        || db_line.audio_file != input_line.base.audio_file
-                        || db_line.thinking != input_line.base.thinking
-                        || db_line.action_content != input_line.base.action_content
-                        || db_line.display_name != input_line.base.display_name
-                        || db_line.tool_call != input_line.base.tool_call
-                    {
+                    if !same_line_fields(db_line, input_line) {
                         let mut active: line::ActiveModel = db_line.clone().into();
                         active.content = Set(input_line.base.content.clone());
                         active.attribute = Set(input_line.base.attribute.0.clone());
@@ -326,26 +339,16 @@ impl SaveRepo {
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.thinking = Set(input_line.base.thinking.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
+                        active.identity_id = Set(input_line.base.identity_id.clone());
                         active.tool_call = Set(input_line.base.tool_call.clone());
+                        active.round_id = Set(input_line.base.round_id.clone());
                     }
                     continue;
                 }
             }
 
             // Try weak match using every persisted field except generated IDs.
-            if db_line.content == input_line.base.content
-                && db_line.original_emotion == input_line.base.original_emotion
-                && db_line.predicted_emotion == input_line.base.predicted_emotion
-                && db_line.tts_content == input_line.base.tts_content
-                && db_line.attribute == input_line.base.attribute.0
-                && db_line.sender_role_id == input_line.base.sender_role_id
-                && db_line.audio_file == input_line.base.audio_file
-                && db_line.thinking == input_line.base.thinking
-                && db_line.display_name == input_line.base.display_name
-                && db_line.action_content == input_line.base.action_content
-                && db_line.tool_call == input_line.base.tool_call
-                && db_line.save_id == save_id
-            {
+            if same_line_fields(db_line, input_line) && db_line.save_id == save_id {
                 // Same logical line — no update needed for existing DB row
                 continue;
             }
@@ -371,11 +374,8 @@ impl SaveRepo {
             );
         }
 
-        // Keep line rows, perceptions, and the save tail pointer consistent if
-        // the process is interrupted or any individual write fails.
         let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
 
-        // 3. Delete stale DB lines and their perceptions
         let stale_lines = &db_lines[diverge..];
         if !stale_lines.is_empty() {
             let stale_ids: Vec<i32> = stale_lines.iter().map(|l| l.id).collect();
@@ -393,8 +393,6 @@ impl SaveRepo {
                 .map_err(|e| anyhow!("{e}"))?;
         }
 
-        // 匹配到的行（0..diverge）的感知集合：`line` 表字段更新不覆盖
-        // `line_perception`，只改 `perceived_role_ids` 的编辑会静默丢失，这里补同步。
         let matched_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
         let mut existing_perceptions: HashMap<i32, Vec<i32>> = HashMap::new();
         if !matched_ids.is_empty() {
@@ -411,8 +409,6 @@ impl SaveRepo {
             }
         }
 
-        // Updates for matching IDs belong to the same transaction as the
-        // divergence replacement below.
         for i in 0..diverge {
             let db_line = &db_lines[i];
             let input_line = &input_lines[i];
@@ -432,6 +428,7 @@ impl SaveRepo {
                 || db_line.action_content != input_line.base.action_content
                 || db_line.display_name != input_line.base.display_name
                 || db_line.tool_call != input_line.base.tool_call
+                || db_line.round_id != input_line.base.round_id
             {
                 let mut active: line::ActiveModel = db_line.clone().into();
                 active.content = Set(input_line.base.content.clone());
@@ -445,10 +442,10 @@ impl SaveRepo {
                 active.thinking = Set(input_line.base.thinking.clone());
                 active.display_name = Set(input_line.base.display_name.clone());
                 active.tool_call = Set(input_line.base.tool_call.clone());
+                active.round_id = Set(input_line.base.round_id.clone());
                 active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
             }
 
-            // 2) perception 表：按集合语义比较（顺序无关、去重）后整体替换
             let mut existing = existing_perceptions
                 .get(&db_line.id)
                 .cloned()
@@ -475,7 +472,6 @@ impl SaveRepo {
             }
         }
 
-        // 4. Insert new input lines after divergence point
         let new_input_lines = &input_lines[diverge..];
         let mut parent_id: Option<i32> = None;
         if !new_input_lines.is_empty() {
@@ -491,6 +487,7 @@ impl SaveRepo {
                     attribute: Set(input_line.base.attribute.0.clone()),
                     sender_role_id: Set(input_line.base.sender_role_id),
                     display_name: Set(input_line.base.display_name.clone()),
+                    identity_id: Set(input_line.base.identity_id.clone()),
                     original_emotion: Set(input_line.base.original_emotion.clone()),
                     predicted_emotion: Set(input_line.base.predicted_emotion.clone()),
                     tts_content: Set(input_line.base.tts_content.clone()),
@@ -498,6 +495,7 @@ impl SaveRepo {
                     audio_file: Set(input_line.base.audio_file.clone()),
                     thinking: Set(input_line.base.thinking.clone()),
                     tool_call: Set(input_line.base.tool_call.clone()),
+                    round_id: Set(input_line.base.round_id.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()
@@ -519,9 +517,6 @@ impl SaveRepo {
             }
         }
 
-        // 5. Update save.last_message_id
-        // parent_id tracks the last inserted line's ID through the insert loop.
-        // If nothing was inserted, keep the last non-stale DB line as chain tail.
         let last_id = if !new_input_lines.is_empty() {
             parent_id
         } else if diverge > 0 {
@@ -541,6 +536,44 @@ impl SaveRepo {
 
         txn.commit().await.map_err(|e| anyhow!("{e}"))?;
 
+        Ok(())
+    }
+
+    /// 输入台词表能否安全写入该存档：存档为空，或首行与输入首行匹配（与 sync_lines 的锚点规则一致）。
+    pub async fn can_sync_into(
+        db: &DatabaseConnection,
+        save_id: i32,
+        input_lines: &[GameLine],
+    ) -> Result<bool> {
+        let db_lines = Self::get_line_list(db, save_id).await?;
+        if db_lines.is_empty() || input_lines.is_empty() {
+            return Ok(true);
+        }
+        let db_line = &db_lines[0];
+        let input_line = &input_lines[0];
+        if let Some(input_id) = input_line.base.id {
+            if input_id == db_line.id {
+                return Ok(true);
+            }
+        }
+        Ok(same_line_fields(db_line, input_line))
+    }
+
+    /// 内存行拿到 id 后，后续锚点按 id 命中——人设行重建改动了首行内容也不会再触发"首行分歧"。
+    pub async fn bind_line_ids(
+        db: &DatabaseConnection,
+        save_id: i32,
+        lines: &mut [GameLine],
+    ) -> Result<()> {
+        let db_lines = Self::get_line_list(db, save_id).await?;
+        for (i, db_line) in db_lines.iter().enumerate() {
+            if i >= lines.len() {
+                break;
+            }
+            if lines[i].base.id.is_none() {
+                lines[i].base.id = Some(db_line.id);
+            }
+        }
         Ok(())
     }
 }
@@ -666,8 +699,58 @@ impl SaveRepo {
         Ok(())
     }
 
-    /// 清除存档关联的剧本进度行。存档时若当前无剧本在跑，必须清掉该存档
-    /// 早年关联的旧行，否则读档会把一个早已结束的剧本误续跑起来。
+    pub async fn upsert_save_identity(
+        db: &DatabaseConnection,
+        save_id: i32,
+        identity_id: &str,
+    ) -> Result<()> {
+        let now = Utc::now().naive_utc().to_string();
+
+        if let Some(existing) = save_identity::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+        {
+            let mut active: save_identity::ActiveModel = existing.into();
+            active.identity_id = Set(identity_id.to_string());
+            active.updated_at = Set(now);
+            active.update(db).await.map_err(|e| anyhow!("{e}"))?;
+        } else {
+            let active = save_identity::ActiveModel {
+                save_id: Set(save_id),
+                identity_id: Set(identity_id.to_string()),
+                created_at: Set(now.clone()),
+                updated_at: Set(now),
+            };
+            active.insert(db).await.map_err(|e| anyhow!("{e}"))?;
+        }
+
+        Ok(())
+    }
+
+    pub async fn get_save_identity(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<Option<String>> {
+        Ok(save_identity::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .map(|m| m.identity_id))
+    }
+
+    pub async fn find_saves_using_identity(
+        db: &DatabaseConnection,
+        identity_id: &str,
+    ) -> Result<Vec<i32>> {
+        save_identity::Entity::find()
+            .filter(save_identity::Column::IdentityId.eq(identity_id))
+            .all(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))
+            .map(|rows| rows.into_iter().map(|r| r.save_id).collect())
+    }
+
     pub async fn clear_running_script(db: &DatabaseConnection, save_id: i32) -> Result<()> {
         let save_model = Self::get_save_by_id(db, save_id)
             .await?

@@ -16,6 +16,7 @@ pub mod locale;
 pub mod memory;
 pub mod music;
 pub mod pet;
+pub mod player_identity;
 pub mod save;
 pub mod scene;
 pub mod schedule;
@@ -85,26 +86,15 @@ pub fn decode_plugin_folder(resource_folder: &str) -> Option<(&str, &str)> {
 }
 
 /// 把角色的 resource_folder 解析为实际目录（游戏 characters 或插件 characters）。
-///
-/// 这是所有「硬编码 characters_dir().join(resource_folder)」的统一替换点：
-/// `plugin:<id>/<folder>` → `data/plugins/<id>/characters/<folder>`；
-/// 其余 → `game_data/characters/<folder>`（原行为）。
 pub fn resolve_character_dir(resource_folder: &str) -> PathBuf {
     resolve_character_dir_in(&data_dir(), resource_folder)
 }
 
-/// `resolve_character_dir` 的显式 base 版本（供已持有 data_dir 的调用方使用，如 role_repo）。
-/// 复用底层 `utils::path::resolve_character_path`（其内部已处理 `plugin:` 编码前缀）。
 pub fn resolve_character_dir_in(base_data_dir: &std::path::Path, resource_folder: &str) -> PathBuf {
     crate::utils::path::resolve_character_path(base_data_dir, resource_folder)
 }
 
-/// 角色在磁盘上的资源目录。
-///
-/// - `Main` → `game_data/characters/<folder>`，经 `resolve_character_dir_in`，
-///   因此 `plugin:<id>/<folder>` 编码前缀能被正确展开。
-/// - `Npc` → `game_data/scripts/<script_key>/characters/<folder>`。
-/// - `System` / `User` 没有磁盘目录 → `Err`。
+/// 角色在磁盘上的资源目录；`System` / `User` 没有磁盘目录。
 pub fn resolve_role_dir_in(
     base_data_dir: &std::path::Path,
     role_type: &RoleType,
@@ -161,7 +151,6 @@ pub(crate) fn fonts_dir() -> PathBuf {
 // ========== 主动对话系统指令 ==========
 
 /// 前端通知后端当前是否具备主动对话投放条件。
-/// 仅在最终布尔值翻转时调用。
 #[tauri::command]
 pub async fn proactive_set_can_deliver(
     app: tauri::AppHandle,
@@ -170,6 +159,10 @@ pub async fn proactive_set_can_deliver(
     let state = app.state::<AppState>();
     if let Some(ref ps) = state.proactive_system {
         ps.lock().await.set_can_deliver(can_deliver);
+        if can_deliver {
+            // 台词播完、前端刚空闲下来：把排队的插件主动对话投出去
+            crate::ai_service::proactive_system::ProactiveSystem::notify_can_deliver(ps.clone());
+        }
     }
     Ok(())
 }

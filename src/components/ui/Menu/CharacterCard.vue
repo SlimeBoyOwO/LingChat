@@ -244,8 +244,8 @@ import { useGameStore } from "@/stores/modules/game";
 import { applyWebInitData } from "@/stores/modules/game/actions";
 import { eventQueue } from "@/core/events/event-queue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
-import { Settings, Star } from "lucide-vue-next";
-import { Cat, Check } from "lucide-vue-next";
+import { Settings, Star } from "@lucide/vue";
+import { Cat, Check } from "@lucide/vue";
 import type { Clothes } from "@/types";
 
 interface CharacterProps {
@@ -273,7 +273,6 @@ const props = withDefaults(defineProps<CharacterProps>(), {
 
 const emit = defineEmits(["saved", "favoredChange"]);
 
-// 状态管理
 const isDetailVisible = ref(false);
 const avatarFailed = ref(false);
 watch(
@@ -291,7 +290,6 @@ const { t } = useI18n();
 const gameStore = useGameStore();
 const dialogStore = useDialogStore();
 
-// 逻辑函数
 const isSelected = () => gameStore.mainRoleId === props.id;
 const isClothesSelected = (role_id: number, clothes_name: string) =>
   gameStore.getGameRole(role_id)?.clothesName === clothes_name;
@@ -306,7 +304,6 @@ const selectCharacter = async () => {
   try {
     const data = await selectCharacterApi(props.id);
     applyWebInitData(gameStore.$state, data);
-    // 切换角色后丢弃旧角色残留事件队列（防止未说完的回复串进新角色对话，issue #796）
     eventQueue.clear();
     eventQueue.resume();
   } catch (error) {
@@ -316,11 +313,9 @@ const selectCharacter = async () => {
 
 const selectClothes = async (role_id: number, clothes_name: string) => {
   try {
-    // 调用后端API选择衣服
     const response = await selectClothesApi(role_id, clothes_name);
 
     if (response.success) {
-      // 更新本地状态
       const role = gameStore.getGameRole(role_id);
       if (role) {
         role.clothesName = clothes_name;
@@ -328,7 +323,6 @@ const selectClothes = async (role_id: number, clothes_name: string) => {
     }
   } catch (error) {
     console.error("选择衣服失败:", error);
-    // 可选：显示错误提示
   }
 };
 
@@ -344,7 +338,6 @@ const joinScene = async () => {
     };
     if (result.success) {
       gameStore.presentRoleIds.push(props.id);
-      // 确保角色信息已加载
       await gameStore.getOrCreateGameRole(props.id);
     }
     console.log("[CharacterCard] 角色加入场景:", result.message);
@@ -393,7 +386,6 @@ const handleSettingsSaved = () => emit("saved");
   display: none;
 }
 
-/* 服装横向列表保留可见滚动条，方便拖动查看后续服装。 */
 .clothes-scroll {
   padding-bottom: 8px;
   scrollbar-width: thin;

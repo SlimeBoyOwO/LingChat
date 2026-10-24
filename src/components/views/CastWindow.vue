@@ -22,7 +22,7 @@
     <!-- 对话层（打字机 / 情绪 / 动作文本）：
          复刻主界面 .main-box 的 flex column + justify-end，让对话框贴底居中显示 -->
     <div class="cast-layer cast-dialog-layer z-2">
-      <GameDialog ref="gameDialogRef" />
+      <GameDialog />
     </div>
 
     <!-- 投屏交互按钮：左上「日程」、右上「菜单」（同主界面）。
@@ -42,7 +42,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
+import { computed, onMounted, onUnmounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { GameBackground, GameRolesStage, GameDialog } from "@/components/game/standard";
@@ -102,7 +102,6 @@ const openSettings = () => {
   uiStore.setSettingsTab("text");
 };
 
-const gameDialogRef = ref<InstanceType<typeof GameDialog> | null>(null);
 // 调参值：挂载时从 cast_get_status 读取，设置页改动经 cast:config 事件即时同步。
 // 缩放与偏移作为 prop 注入角色布局（偏移在布局内夹紧）；对话框经 CSS 变量。
 const tune = reactive<CastTune>({

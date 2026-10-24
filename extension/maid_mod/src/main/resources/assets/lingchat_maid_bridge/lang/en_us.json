@@ -1,0 +1,12 @@
+{
+  "lingchat_maid_bridge.configuration.title": "LingChat Maid Bridge",
+  "lingchat_maid_bridge.configuration.bridge": "Bridge",
+  "lingchat_maid_bridge.configuration.bridge.enabled": "Enable bridge",
+  "lingchat_maid_bridge.configuration.bridge.enabled.tooltip": "When off, no port is opened. Useful for telling the mod apart from the plugin.",
+  "lingchat_maid_bridge.configuration.bridge.port": "WebSocket port",
+  "lingchat_maid_bridge.configuration.bridge.port.tooltip": "Listens on 127.0.0.1 only. Must match the address configured in the LingChat plugin.",
+  "lingchat_maid_bridge.configuration.bridge.chatBubbleEnabled": "Maid chat bubble",
+  "lingchat_maid_bridge.configuration.bridge.chatBubbleEnabled.tooltip": "Show the character's replies as a bubble above the maid.",
+  "lingchat_maid_bridge.configuration.bridge.chatBoxEnabled": "Chat box line",
+  "lingchat_maid_bridge.configuration.bridge.chatBoxEnabled.tooltip": "Also print the replies to the chat box, visible to the maid's owner only."
+}

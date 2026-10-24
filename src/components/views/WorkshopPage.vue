@@ -277,7 +277,7 @@ import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { fetchDiscussions, type Discussion } from "@/api/services/workshop";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Cat, Clover, ExternalLink, ThumbsUp, User, Clock } from "lucide-vue-next";
+import { Cat, Clover, ExternalLink, ThumbsUp, User, Clock } from "@lucide/vue";
 import type { Component } from "vue";
 
 // ── Data ──────────────────────────────────────────────────────

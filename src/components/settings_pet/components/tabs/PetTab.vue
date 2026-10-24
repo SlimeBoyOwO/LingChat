@@ -407,7 +407,7 @@ import {
   Sun,
   Volume2,
   Gauge,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { useUIStore } from "../../../../stores/modules/ui/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { PARTICLE_EFFECTS } from "@/components/game/standard/particles";

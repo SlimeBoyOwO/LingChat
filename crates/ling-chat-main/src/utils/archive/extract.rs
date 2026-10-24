@@ -61,7 +61,7 @@ pub fn extract_zip(
             return Err(ArchiveError::Cancelled);
         }
         let mut entry = archive.by_index(i)?;
-        let raw_name = entry.name().to_string();
+        let raw_name = entry.name()?.into_owned();
         let compressed = entry.compressed_size();
         let uncompressed = entry.size();
 

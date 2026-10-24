@@ -1,5 +1,5 @@
 //! 网页搜索工具：直接 POST 独立搜索端点（需要单独配置 API Key）。
-//! 支持 Kimi /search、BoCha、DeepSeek Responses API（服务端内置 `web_search`）、
+//! 支持 Kimi /search、BoCha、DeepSeek `/v1/tools/search`、
 //! Tavily 与自定义兼容端点。
 
 use std::collections::HashSet;
@@ -18,12 +18,16 @@ use super::settings::{SharedToolSettings, WebSearchSettings};
 
 /// 独立端点模式的执行超时。
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);
-/// DeepSeek Responses API 执行超时（服务端需要跑一轮模型 + 搜索，更慢）。
-const DEEPSEEK_TIMEOUT: Duration = Duration::from_secs(45);
+/// Codex 搜索执行超时（服务端需要跑一轮模型 + 搜索，更慢）。
+const CODEX_TIMEOUT: Duration = Duration::from_secs(45);
 /// 返回给模型的结果文本总量上限，避免把上下文塞爆。
 const MAX_OUTPUT_CHARS: usize = 20_000;
 /// 搜索词长度上限，避免异常参数放大请求体、日志与第三方计费。
 const MAX_QUERY_CHARS: usize = 500;
+/// DeepSeek 搜索端点对搜索词的硬限制。
+const DEEPSEEK_MAX_QUERY_CHARS: usize = 128;
+/// DeepSeek 搜索端点单次可返回的最大条数。
+const DEEPSEEK_MAX_RESULTS: usize = 50;
 
 /// 网页搜索内置工具。
 pub struct WebSearchTool {
@@ -542,44 +546,26 @@ impl WebSearchTool {
         }))
     }
 
-    /// DeepSeek Responses API 服务端联网搜索。
+    /// 独立端点模式 · DeepSeek 网页搜索（`/v1/tools/search`）。
     ///
-    /// 请求 `POST {base}/responses`，声明 `web_search` 工具并强制触发。
-    /// 服务端会执行搜索并生成带引用的综合回答；这里解析 `output` 中的
-    /// `web_search_call` 与 `final_answer` 消息。
+    /// 返回结构化结果条目，不再经过 Responses API 的模型综合回答，
+    /// 因此没有模型参数、执行也回到普通搜索超时。
     async fn execute_deepseek_search(
         &self,
         query: &str,
         cfg: &WebSearchSettings,
     ) -> Result<ToolResult, ToolError> {
-        // DeepSeek Responses API 固定使用官方端点（与 bocha/kimi 一致，不读 base_url 配置）
-        let endpoint = "https://api.deepseek.com/responses".to_string();
-        let model = if cfg.model.trim().is_empty() {
-            "deepseek-flash"
-        } else {
-            cfg.model.trim()
-        };
-        // DeepSeek 的返回是模型生成的一段综合回答（内联引用），没有独立结构化条目，
-        // 因此用 instructions 控制是否保留来源/链接，而不是事后剥离文本。
-        let instructions = if cfg.hide_search_results {
-            "你是联网搜索助手。搜索后把关键内容自然地融入回答，绝对不要输出来源名称、网址或链接列表。"
-        } else {
-            "你是联网搜索助手。搜索后请用简洁的中文总结搜索结果，保留关键事实与来源链接。"
-        };
-        let body = serde_json::json!({
-            "model": model,
-            "instructions": instructions,
-            "input": query,
-            "tools": [ { "type": "web_search" } ],
-            "tool_choice": { "type": "web_search" },
-            "max_output_tokens": 4096,
-        });
-
+        const ENDPOINT: &str = "https://api.deepseek.com/v1/tools/search";
+        let query: String = query.chars().take(DEEPSEEK_MAX_QUERY_CHARS).collect();
+        let max_results = cfg.max_results.clamp(1, DEEPSEEK_MAX_RESULTS);
         let client = Self::build_client(cfg)?;
         let response = client
-            .post(&endpoint)
+            .post(ENDPOINT)
             .bearer_auth(cfg.api_key.trim())
-            .json(&body)
+            .json(&serde_json::json!({
+                "query": query,
+                "count": max_results,
+            }))
             .send()
             .await
             .map_err(classify_request_error)?;
@@ -595,25 +581,31 @@ impl WebSearchTool {
             .json()
             .await
             .map_err(|e| ToolError::Execution(format!("DeepSeek 搜索响应解析失败: {e}")))?;
-        let output = payload
-            .get("output")
+        let rows = payload
+            .get("results")
             .and_then(Value::as_array)
             .cloned()
             .unwrap_or_default();
+        // 统一成 format_results 认识的字段：summary 是面向模型的长摘要，优先于 snippet
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("title"),
+                    "url": get("url"),
+                    "site_name": get("site_name"),
+                    "date": get("date"),
+                    "snippet": if get("summary").is_empty() { get("snippet") } else { get("summary") },
+                })
+            })
+            .collect();
 
-        let answer = extract_deepseek_answer(&output);
-        if answer.trim().is_empty() {
-            return Err(ToolError::Execution(
-                "DeepSeek 搜索未返回有效结果（可能没有触发 web_search）".into(),
-            ));
-        }
-        let mut text = answer.trim().to_string();
-        truncate_output(&mut text);
-
+        let text = Self::format_results(&query, &results, max_results, cfg.hide_search_results);
         Ok(serde_json::json!({
             "ok": true,
             "query": query,
-            "result_count": deepseek_search_action_count(&output),
+            "result_count": results.len().min(max_results),
             "text": text,
         }))
     }
@@ -666,44 +658,6 @@ fn codex_search_model(chat_provider: Option<&LlmProviderConfig>) -> String {
     "gpt-5.6-sol".to_string()
 }
 
-/// 从 DeepSeek Responses API 的 `output` 中提取最终回答文本。
-///
-/// 只取 `phase == "final_answer"` 的 message 的 `output_text` 内容，
-/// 跳过 commentary / reasoning 等非最终回答文本。
-fn extract_deepseek_answer(output: &[Value]) -> String {
-    let mut parts = Vec::new();
-    for item in output {
-        if item.get("type").and_then(Value::as_str) != Some("message") {
-            continue;
-        }
-        if item.get("phase").and_then(Value::as_str) != Some("final_answer") {
-            continue;
-        }
-        let Some(content) = item.get("content").and_then(Value::as_array) else {
-            continue;
-        };
-        for part in content {
-            if part.get("type").and_then(Value::as_str) != Some("output_text") {
-                continue;
-            }
-            if let Some(text) = part.get("text").and_then(Value::as_str) {
-                parts.push(text);
-            }
-        }
-    }
-    parts.join("")
-}
-
-/// 统计 DeepSeek Responses 响应中实际执行的搜索动作数量（用于测试/日志展示）。
-fn deepseek_search_action_count(output: &[Value]) -> usize {
-    output
-        .iter()
-        .filter(|item| item.get("type").and_then(Value::as_str) == Some("web_search_call"))
-        .filter_map(|item| item.get("action").and_then(Value::as_object))
-        .filter(|action| action.get("type").and_then(Value::as_str) == Some("search"))
-        .count()
-}
-
 /// 限制返回给模型的文本长度。
 fn truncate_output(text: &mut String) {
     if text.chars().count() > MAX_OUTPUT_CHARS {
@@ -743,11 +697,9 @@ impl Tool for WebSearchTool {
 
     fn timeout_hint(&self) -> Option<Duration> {
         let settings = self.settings.get().web_search;
-        Some(if settings.provider == "deepseek" {
-            DEEPSEEK_TIMEOUT
-        } else if settings.provider == "codex" {
-            // Codex 搜索 = 一轮模型生成 + 联网，与 DeepSeek 同级
-            DEEPSEEK_TIMEOUT
+        Some(if settings.provider == "codex" {
+            // Codex 搜索 = 一轮模型生成 + 联网
+            CODEX_TIMEOUT
         } else {
             SEARCH_TIMEOUT
         })

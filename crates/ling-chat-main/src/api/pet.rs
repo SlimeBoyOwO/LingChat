@@ -287,24 +287,22 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
 
 // ═══════════════════════════ 气泡窗（双窗口）═══════════════════════════
 //
-// 宠物窗是锚点：尺寸固定、位置只由用户拖动决定。气泡窗是独立窗口，位置**相对宠物窗
-// 恒定**（底边落在宠物头顶上方 BUBBLE_GAP 处），靠监听宠物窗的移动事件跟随 ——
-// 不用原生父子窗口是因为那种从属关系在三个桌面平台的 z-order 表现不一致，
-// 而"按绝对坐标重算一次"到处都一样。
-//
 // 气泡窗整窗点击穿透：它叠在宠物窗上方，不穿透就会抢走头像的拖拽与点击。
 
 /// 两窗共用的宽度基准：视觉上必须一致，否则气泡窗与宠物窗明显错位。
+#[cfg(desktop)]
 const WINDOW_W: f64 = 264.0;
 /// 顶部留白：给头像圆框外圈的频谱圆环腾地方，头像带因此整体下移一段。
 /// 气泡定位要按它补偿，否则气泡与头像的间距会从 8 变成 34
-/// （与 constants.ts 的 PET_SPECTRUM_TOP_PAD_BASE 同步）
+#[cfg(desktop)]
 const PET_TOP_PAD: f64 = 26.0;
 /// 宠物窗高度 = 顶部留白 26 + 头像带 210 + 输入带 64
-/// （与 constants.ts 的 PET_WINDOW_H_BASE 同步）
+#[cfg(desktop)]
 const PET_WINDOW_H: f64 = 300.0;
 /// 气泡窗高度 = 气泡带 278 + 长尾余量 10 + 间隙 8
+#[cfg(desktop)]
 const BUBBLE_H: f64 = 296.0;
+#[cfg(desktop)]
 const BUBBLE_GAP: f64 = 8.0;
 
 /// 按宠物窗当前位置重算气泡窗位置。
@@ -315,10 +313,6 @@ const BUBBLE_GAP: f64 = 8.0;
 /// 对齐同一条边 —— 贴上边则气泡窗顶边与头像顶边齐平，贴下边则两窗底边齐平。
 ///
 /// 窗口顶部有一段专供频谱圆环的留白 `PET_TOP_PAD`，头像盒在它下面；
-/// 凡是以「头像顶边」为参照的分支都要补上这段留白，详见下方注释。
-///
-/// 用气泡窗/宠物窗**实测**逻辑尺寸而不是常量，这样换缩放倍率时偏移自动跟着变。
-/// 两窗共用同一 scale_factor，逻辑坐标可直接相加。
 #[cfg(desktop)]
 fn place_bubble(app: &AppHandle, pet: &tauri::WebviewWindow) {
     let Some(bubble) = app.get_webview_window("pet_bubble") else {
@@ -400,11 +394,14 @@ pub fn set_bubble_side(
     }
 }
 
+/// 退出桌宠时把气泡窗收起来，而不是销毁。
 #[cfg(desktop)]
-fn close_bubble_window(app: &AppHandle) {
-    if let Some(bubble) = app.get_webview_window("pet_bubble") {
-        let _ = bubble.close();
-    }
+fn hide_bubble_window(app: &AppHandle) {
+    let Some(bubble) = app.get_webview_window("pet_bubble") else {
+        return;
+    };
+    let _ = bubble.emit("pet:bubble-clear", ());
+    let _ = bubble.hide();
 }
 
 /// 确保气泡窗存在且尺寸正确。
@@ -417,6 +414,8 @@ fn ensure_bubble_window(app: &AppHandle, scale: f64) -> tauri::Result<()> {
 
     if let Some(bubble) = app.get_webview_window("pet_bubble") {
         let _ = bubble.set_size(LogicalSize::new(WINDOW_W * scale, BUBBLE_H * scale));
+        // 退出桌宠时是藏起来而不是销毁，这里要把它重新显示出来
+        bubble.show()?;
         return Ok(());
     }
 
@@ -615,7 +614,7 @@ pub async fn set_pet_mode(
                 place_ms - bubble_ms
             );
         } else {
-            close_bubble_window(&app_handle);
+            hide_bubble_window(&app_handle);
 
             // 兜底退全屏 / 取消最大化：leave_fullscreen 依赖 tao 内部全屏标志
             // （set_fullscreen(false) 一调用标志即同步清除，OS 侧可能尚未真正退出，

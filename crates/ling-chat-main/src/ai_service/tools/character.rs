@@ -3,12 +3,13 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::runtime_relations;
 use crate::ai_service::types::{LineAttributeExt, LineBase, ToolDefinition};
 use crate::api::character::{ClothesItem, read_character_settings, scan_clothes};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings};
+use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::{ensure_no_args, game_status_handle};
@@ -29,6 +30,12 @@ impl Tool for CharacterList {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "现在有哪些角色",
+            "还有别的角色吗",
+            "列出所有角色",
+            "角色列表给我看看",
+        ])
     }
 
     async fn execute(
@@ -47,10 +54,6 @@ impl Tool for CharacterList {
             "characters": roles
                 .iter()
                 .map(|r| {
-                    // name = 对话里的 AI 名称（settings.yml 的 ai_name），
-                    // title = 角色标题（DB 的 role.name，即 settings.yml 的 title）。
-                    // 两个名字在界面上都出现过：角色列表页的大字用 title，
-                    // 详情页与对话里用 name，所以都给出来。
                     let settings =
                         read_character_settings(r.resource_folder.as_deref().unwrap_or_default());
                     json!({"id": r.id, "name": settings.ai_name, "title": r.name})
@@ -60,11 +63,7 @@ impl Tool for CharacterList {
     }
 }
 
-/// character_switch：切换当前对话角色。
-///
-/// 这是不清空对话历史的运行时切换，但仍必须完成三件事：加载目标角色、注入其
-/// SYSTEM 人设、同步后端在场角色。缺少任一步，下一轮用户消息都会继续落到旧角色
-/// 或在没有人设的上下文中生成。
+/// character_switch：切换当前对话角色（不清空对话历史的运行时切换）。
 pub struct CharacterSwitch;
 
 #[async_trait]
@@ -82,6 +81,12 @@ impl Tool for CharacterSwitch {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "让另一个角色来",
+            "我要跟别的角色说话",
+            "我想找其他角色",
+            "现在让谁来陪我",
+        ])
     }
 
     async fn execute(
@@ -124,16 +129,12 @@ impl Tool for CharacterSwitch {
         let fallback_role_name = title.clone();
 
         let app_config = AppConfig::load(&app).unwrap_or_default();
-        let prompt_options = PromptOptions {
-            output_sec_lang: app_config.llm_output_sec_lang,
-            no_emotion_limit: app_config.no_emotion_limit_prompt,
-        };
+        let prompt_options = PromptOptions::from_config(&app_config);
 
         let gs = game_status_handle(&app).await;
         let mut gs = gs.lock().await;
 
-        // 先加载并构建目标角色的人设；任何一步失败都不修改 current_role_id，避免
-        // 留下“界面已经切换、后端上下文却不可用”的半完成状态。
+        // 任何一步失败都不修改 current_role_id，避免半完成状态。
         gs.get_role(&state.db, role_id)
             .await
             .map_err(|e| ToolError::Execution(format!("加载角色 {role_id} 失败: {e}")))?;
@@ -143,7 +144,26 @@ impl Tool for CharacterSwitch {
                 .get_loaded(role_id)
                 .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 加载后不可用")))?;
             let name = loaded.display_name.clone().unwrap_or(fallback_role_name);
-            let prompt = sys_prompt_builder_by_settings(&loaded.settings, prompt_options);
+            let speaker_relations = runtime_relations::load_effective(
+                &crate::api::data_dir(),
+                &loaded.settings.character_folder,
+                &gs,
+            );
+            let alias = gs.player.user_name.clone();
+            let player_block =
+                crate::ai_service::game_system::player_identity::persona::player_block_for(
+                    &gs,
+                    &loaded.settings,
+                    &alias,
+                    &speaker_relations,
+                );
+
+            let prompt = sys_prompt_builder_by_settings_with_player(
+                &loaded.settings,
+                &alias,
+                &player_block,
+                prompt_options,
+            );
             (name, prompt)
         };
 
@@ -174,9 +194,15 @@ impl Tool for CharacterSwitch {
             gs.onstage_role(role_id);
         }
         gs.current_role_id = Some(role_id);
-        gs.refresh_memories(&state.db)
-            .await
-            .map_err(|e| ToolError::Execution(format!("刷新角色 {role_id} 上下文失败: {e}")))?;
+
+        crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
+            &mut gs,
+            &state.db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| ToolError::Execution(format!("重建在场角色人设行失败: {e}")))?;
         drop(gs);
 
         // 通知前端当前对话角色已切换（与 God Agent 切换使用同一事件）
@@ -193,12 +219,6 @@ impl Tool for CharacterSwitch {
     }
 }
 
-/// 把外部传入的服装名归一到 `scan_clothes` 的列表项上。
-///
-/// `scan_clothes` 给根目录立绘起的 title 是「默认」，而同一套服装在角色配置里
-/// 可能被写成 `default` 或空串（`role_manager` 找不到配置时的兜底值就是
-/// `default`），所以这三种写法都归到根目录那一项；其余先精确匹配，再忽略大小写。
-/// 都不匹配返回 `None`，由调用方给出带可选列表的错误。
 fn canonical_clothes(available: &[ClothesItem], raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let is_root_alias =
@@ -238,9 +258,6 @@ async fn resolve_target_role(app: &AppHandle, arguments: &Value) -> Result<i32, 
 }
 
 /// 确保目标角色已加载，取出（展示名、当前服装、可换服装列表）。
-///
-/// 必须先把角色加载起来：`on_character_change_clothes` 内部走 `get_loaded_mut`，
-/// 未加载的角色会直接报「角色 X 未加载」。这里与 `character_switch` 同样处理。
 async fn load_clothes_view(
     app: &AppHandle,
     role_id: i32,
@@ -290,6 +307,12 @@ impl Tool for CharacterGetClothes {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "你现在穿的哪一身",
+            "都有哪些衣服可以换",
+            "看看你的衣柜",
+            "今天穿的是什么装扮",
+        ])
     }
 
     async fn execute(
@@ -301,8 +324,6 @@ impl Tool for CharacterGetClothes {
         let role_id = resolve_target_role(&app, &arguments).await?;
         let (name, current, available) = load_clothes_view(&app, role_id).await?;
 
-        // 当前值可能是 "default"/"" 这类别名写法，回给模型前归一到列表里的名字；
-        // 归一不了（比如那套服装的目录已被删）就如实回原始值。
         let clothes_name =
             canonical_clothes(&available, &current).unwrap_or_else(|| current.clone());
 
@@ -319,12 +340,6 @@ impl Tool for CharacterGetClothes {
     }
 }
 
-/// character_set_clothes：更换角色的服装。
-///
-/// 复用玩家换装的唯一入口 `api::character::select_clothes`（session 持久化 +
-/// role_manager override + 旁白台词生成），再补发 `character:clothes-changed`：
-/// 玩家换装时前端拿到返回值自己更新 store，LLM 工具没有这个调用方，不广播的话
-/// 后端状态变了而前端立绘仍停在旧服装。
 pub struct CharacterSetClothes;
 
 #[async_trait]
@@ -343,6 +358,12 @@ impl Tool for CharacterSetClothes {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "换一身衣服",
+            "穿上那套校服",
+            "换成另一套衣服",
+            "把衣服换一下",
+        ])
     }
 
     async fn execute(
@@ -352,8 +373,6 @@ impl Tool for CharacterSetClothes {
     ) -> Result<ToolResult, ToolError> {
         let app = context.require_app()?;
 
-        // 手动优先（硬边界）：用户手动选过服装后，AI 的换装请求一律不执行；
-        // 恢复自动换装的唯一途径是用户在设置页重新打开开关
         let auto_allowed = crate::config::AppConfig::load(&app)
             .map(|c| c.ai_auto_clothes)
             .unwrap_or(true);
@@ -383,8 +402,6 @@ impl Tool for CharacterSetClothes {
             ))
         })?;
 
-        // 语义相同但写法不同（当前是 "default"、目标是「默认」）时不能交给
-        // select_clothes：它按原始字符串比较，会凭空生成一句换装旁白。
         let switched = canonical_clothes(&available, &current).as_deref() != Some(target.as_str());
         if switched {
             // 走不落锁的内部实现：落锁只发生在"用户手动"的 select_clothes 命令里

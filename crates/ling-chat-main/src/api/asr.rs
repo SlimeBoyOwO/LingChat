@@ -557,6 +557,8 @@ pub async fn asr_get_status(
     app: AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Result<AsrStatus, String> {
+    #[cfg(not(desktop))]
+    let _ = &app;
     let guard = state.asr_state.session.lock().await;
     // 全局快捷键健康检查（仅桌面）：开关开且实际注册成功才算 ok。
     // 注册失败（键被占用等）时设置页据此显示红字提示

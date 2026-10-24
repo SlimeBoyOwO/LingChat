@@ -24,6 +24,12 @@ impl Tool for CurrentStatus {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "你现在是什么状态",
+            "你观察一下周围的环境",
+            "现在背景是什么",
+            "现在放的是什么音乐",
+        ])
     }
 
     async fn execute(
@@ -71,6 +77,12 @@ impl Tool for SceneStatus {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "我们现在在哪",
+            "这是什么地方",
+            "周围是什么样子",
+            "现在是什么场景",
+        ])
     }
 
     async fn execute(

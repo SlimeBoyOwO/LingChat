@@ -183,8 +183,10 @@ pub(super) fn build_service_graph(
         &data_dir
             .join("third_party")
             .join(ai_service::embedding::MODEL_DIR_NAME),
+        ling_chat_main::utils::onnx::onnx_available(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
+    tool_rag.set_capacity(tool_settings.get().cache_capacity());
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用

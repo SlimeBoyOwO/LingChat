@@ -42,12 +42,17 @@ def send(frame):
     return ws_send(CONN_ID, frame)
 
 
-def bind(maid_id):
+def bind(maid_id, owner_name=""):
     """告诉模组盯哪只女仆：玩家说话与「她自发注意到」都得先有这一步。
 
     模组那边是幂等的：重复发只当又改了一次绑定目标，所以可以放心在别的时机重申。
+    顺带把主人的 MC 用户名交过去：她死后实体查不到，模组靠这个名字在复活时认出
+    「胶片里的是不是你那位主人」。
     """
-    return send({"type": "set_monitored_maid", "data": {"maid_id": maid_id}})
+    data = {"maid_id": maid_id}
+    if owner_name:
+        data["owner_name"] = owner_name
+    return send({"type": "set_monitored_maid", "data": data})
 
 
 def ask(frame, timeout_ms):
@@ -65,7 +70,8 @@ def maid_id(cfg):
     """绑定的女仆 UUID；没配现问一次。返回 (id, 错误说明)。
 
     插件无状态存不下发现到的 id，所以未配置时每次用到都要重问一遍；填了配置就免掉
-    这次往返。建议从模组面板复制填上。
+    这次往返。建议从模组面板复制填上。游戏里有多只女仆时，优先选 `player_name` 那位
+    主人名下的，免得认到别人的女仆。
     """
     configured = cfg.get("maid_id")
     configured = configured.strip() if isinstance(configured, str) else ""
@@ -77,6 +83,12 @@ def maid_id(cfg):
     maids = (response.get("data") or {}).get("maids") or []
     if not maids:
         return "", "游戏里没有找到女仆"
+    # 游戏里不止一只时优先认自己那只：主人的账号名配置项就是为这一步准备的。
+    owner = player_name(cfg)
+    if owner:
+        for one in maids:
+            if (one.get("owner") or "").strip() == owner:
+                return one.get("id") or "", ""
     return maids[0].get("id") or "", ""
 
 
@@ -90,8 +102,8 @@ def ready(ctx):
 def player_name(cfg):
     """玩家在 MC 里的用户名（配置项）。没填就是空串。
 
-    只用来把事件旁白里撞上的名字改写成「玩家」——模组给的名字是裸的，模型不知道那是谁。
-    填了最稳；不填也有一条兜底：接上游戏的第一帧旁白里会写明玩家叫什么。
+    只用来判断「游戏里说话的是不是主人本人」：是就不带账号名，不是才点名。
+    事件旁白不再用它——那边一律用 `current_names()` 给的 LingChat 名字。
     """
     raw = cfg.get("player_name")
     return raw.strip() if isinstance(raw, str) else ""

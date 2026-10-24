@@ -1,0 +1,81 @@
+//! 「我的身份」：可切换的玩家身份卡（名字 / 副标题 / 提示词 / 关系）。
+
+pub mod bootstrap;
+pub mod guard;
+pub mod persona;
+pub mod resolve;
+pub mod role_relations;
+pub mod runtime_relations;
+pub mod store;
+
+pub use guard::ensure_identity_switchable;
+pub use resolve::{
+    RelationEndpoint, ScenePeer, build_peers_block, build_player_block, resolve_relation,
+};
+pub use store::IdentityStore;
+
+use std::collections::HashMap;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+pub struct PlayerIdentity {
+    /// 不可变 id；关系键与存档记录都用它。
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub avatar: Option<String>,
+    /// 我对各个对象的出厂关系，键为 `ai:<角色文件夹>` 或 `me:<身份 id>`。
+    #[serde(default)]
+    pub relations: HashMap<String, String>,
+}
+
+impl PlayerIdentity {
+    pub fn display_name(&self) -> &str {
+        if self.name.trim().is_empty() {
+            "用户"
+        } else {
+            self.name.trim()
+        }
+    }
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerIdentitySummary {
+    pub id: String,
+    pub name: String,
+    pub subtitle: String,
+    pub prompt: String,
+    pub has_avatar: bool,
+    pub relation_count: usize,
+    pub is_current: bool,
+}
+
+impl PlayerIdentitySummary {
+    pub fn from_identity(identity: &PlayerIdentity, current_id: Option<&str>) -> Self {
+        Self {
+            id: identity.id.clone(),
+            name: identity.display_name().to_string(),
+            subtitle: identity.subtitle.clone(),
+            prompt: identity.prompt.clone(),
+            has_avatar: identity
+                .avatar
+                .as_deref()
+                .map(|s| !s.trim().is_empty())
+                .unwrap_or(false),
+            relation_count: identity
+                .relations
+                .values()
+                .filter(|v| !v.trim().is_empty())
+                .count(),
+            is_current: current_id.map(|c| c == identity.id).unwrap_or(false),
+        }
+    }
+}

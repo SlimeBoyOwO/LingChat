@@ -535,7 +535,7 @@ import {
   ScanLine,
   Star,
   FolderOpen,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();

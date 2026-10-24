@@ -184,6 +184,18 @@ textarea {
   .btn-icon-primary {
     @apply enabled:hover:border-cyan-300/40 enabled:hover:bg-cyan-300/10 enabled:hover:text-cyan-50;
   }
+  /* 小号文字按钮：设置页里反复出现的删除/编辑/添加/取消。与 .btn-icon 同类收敛，
+     避免每个组件再抄一份 scoped CSS。主操作走 btn-sm-primary。 */
+  .btn-sm {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-lg border-0 bg-[#e9ecef] px-2.5 py-1 text-xs font-medium text-[#495057] transition-colors enabled:hover:bg-[var(--accent-color)] enabled:hover:text-white disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-sm-primary {
+    @apply inline-flex cursor-pointer items-center justify-center rounded-lg border-0 bg-[var(--accent-color)] px-3.5 py-1.5 text-[0.8rem] font-medium text-white transition enabled:hover:brightness-110 disabled:opacity-50;
+  }
+  /* 深色玻璃版小号按钮，配 btn-sm 用在深色面板内部（如关系行） */
+  .btn-sm-ghost {
+    @apply border border-white/12 bg-white/6 text-white/85 enabled:hover:border-cyan-300/45 enabled:hover:bg-cyan-300/18 disabled:opacity-45;
+  }
 }
 
 /* ─── Markdown 渲染（剧本导师聊天） ─────────────────────

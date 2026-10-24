@@ -42,3 +42,11 @@ export const PET_LINE_DRAINED = "pet:line-drained";
 
 /** 宠物窗 → 气泡窗：补全当前打字动画（点击跳过：先补全文本，不推进队列） */
 export const PET_FINISH_TYPING_EVENT = "pet:finish-typing";
+
+/**
+ * 宠物窗 → 气泡窗：清空气泡内容。
+ *
+ * 退出桌宠时气泡窗只是被藏起来（不销毁，省下一次 WebView2 创建），
+ * 独立 webview 藏起来再显示不会重新挂载，不清就会留着上一次的台词。
+ */
+export const PET_BUBBLE_CLEAR = "pet:bubble-clear";

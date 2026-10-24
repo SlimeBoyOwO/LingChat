@@ -92,9 +92,10 @@ fn scan_archive_for_model(path: &Path, kind: PackageKind) -> std::result::Result
             let mut found: Option<String> = None;
             for i in 0..zip.len() {
                 let entry = zip.by_index(i).map_err(|e| format!("zip entry: {e}"))?;
-                let n = entry.name().to_lowercase();
+                let name = entry.name().map_err(|e| format!("zip name: {e}"))?;
+                let n = name.to_lowercase();
                 if n.ends_with(".sbv2") || n.ends_with(".onnx") {
-                    found = Some(entry.name().to_string());
+                    found = Some(name.into_owned());
                     break;
                 }
             }

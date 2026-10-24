@@ -123,6 +123,27 @@ impl ToolPermissionConfig {
             group.tools.remove(tool);
         }
     }
+
+    /// 授权/收回「主动对话」场景映射到的场景组对某个工具的访问。
+    pub fn set_tool_allowed_for_proactive_scene(&mut self, tool: &str, allowed: bool) {
+        let Some(group_name) = self
+            .scene_mapping
+            .get(&GeneratorSourceKey::Proactive)
+            .cloned()
+        else {
+            return;
+        };
+        let Some(group) = self.scene_groups.get_mut(&group_name) else {
+            return;
+        };
+        if allowed {
+            if !group.all_tools {
+                group.tools.insert(tool.to_string());
+            }
+        } else {
+            group.tools.remove(tool);
+        }
+    }
 }
 
 impl Default for GroupPermission {

@@ -8,6 +8,10 @@ export default {
       title: "自动存档",
       message: "已于 {time} 自动保存",
     },
+    autoSaveFailed: {
+      title: "自动存档失败",
+      message: "自动存档未能写入（{time}），本局进度可能未保存。",
+    },
   },
   ambient: {
     uploadFailed: "环境音上传失败",

@@ -10,6 +10,8 @@ pub struct MemoryBuilder {
     /// 窗口内没有任何 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。
     /// 关闭时只裁切、不注入（首条会是 assistant，OpenAI 兼容端点接受，Gemini 会 400）。
     inject_continue_user: bool,
+    player_alias: Option<String>,
+    player_identity_id: Option<String>,
 }
 
 enum BufferKind {
@@ -22,7 +24,19 @@ impl MemoryBuilder {
         Self {
             target_role_id,
             inject_continue_user: false,
+            player_alias: None,
+            player_identity_id: None,
         }
+    }
+
+    pub fn with_player_alias(mut self, alias: Option<String>) -> Self {
+        self.player_alias = alias;
+        self
+    }
+
+    pub fn with_player_identity(mut self, identity_id: Option<String>) -> Self {
+        self.player_identity_id = identity_id;
+        self
     }
 
     /// 设置「窗口内无 user 时是否注入 user「继续」」。仅用于发给 LLM 的对话上下文；
@@ -139,23 +153,27 @@ impl MemoryBuilder {
                     }
 
                     if !active_user_lines.is_empty() {
-                        // [修改点 2]：仅当消息里存在需要区分的说话人时才给玩家台词加 "主角名称: "
-                        // 前缀——有其他角色台词(has_context)，或同段里混入旁白/系统行。
-                        // 单人纯对话下 role=user 已能确定说话人，加前缀是冗余。
-                        let has_narration = active_user_lines.iter().any(|l| {
-                            matches!(l.base.display_name.as_deref(), Some("旁白") | Some("系统"))
-                        });
-                        let need_name = has_context || has_narration;
+                        // 玩家行一律带名（"永远带名"）：换身份后历史里并存多个身份的台词，
+                        // 只靠 role=user 无法区分是谁说的；旁白/系统行保持裸内容。
                         let user_text: Vec<String> = active_user_lines
                             .iter()
                             .map(|l| {
-                                let name = l.base.display_name.as_deref().unwrap_or("未知");
+                                let name = match l.sender_role_id() {
+                                    Some(0)
+                                        if self
+                                            .player_alias
+                                            .as_deref()
+                                            .is_some_and(|s| !s.is_empty())
+                                            && l.base.identity_id.is_some()
+                                            && l.base.identity_id == self.player_identity_id =>
+                                    {
+                                        self.player_alias.as_deref().unwrap_or_default()
+                                    },
+                                    _ => l.base.display_name.as_deref().unwrap_or("未知"),
+                                };
                                 match name {
                                     "旁白" | "系统" => l.base.content.clone(),
-                                    _ if need_name => {
-                                        format!("{}: {}", name, l.base.content)
-                                    },
-                                    _ => l.base.content.clone(),
+                                    _ => format!("{}: {}", name, l.base.content),
                                 }
                             })
                             .collect();
@@ -180,7 +198,7 @@ impl MemoryBuilder {
         let mut has_system_for_target = false;
 
         for line in lines {
-            // system 消息处理逻辑保持不变...
+            // 只有目标角色自己的第一条人设会成为 system 消息；
             if matches!(line.attribute(), LineAttribute::System) {
                 if line.sender_role_id() == Some(self.target_role_id) {
                     flush(&mut memory, &mut buffer, &mut buffer_kind, self);
@@ -209,20 +227,50 @@ impl MemoryBuilder {
                     .unwrap_or(false);
 
                 if has_tool_call {
-                    // 新版：tool_call 存 JSON，content 纯文本
+                    // 新版：tool_call 存 JSON，content 纯文本。
+                    // 带 round_id 的载体行只合并同轮标识的前导台词；标识之前的行
+                    // 属于上一轮回复，先按普通 assistant 消息 flush。
                     if let Ok(tool_calls) =
                         serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(
                             line.base.tool_call.as_deref().unwrap_or(""),
                         )
                     {
-                        flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                        let split_at = line.base.round_id.as_deref().and_then(|round_id| {
+                            if matches!(buffer_kind, Some(BufferKind::TargetAssistant)) {
+                                buffer
+                                    .iter()
+                                    .position(|l| l.base.round_id.as_deref() == Some(round_id))
+                            } else {
+                                None
+                            }
+                        });
+                        let content = if let Some(split_at) = split_at {
+                            let suffix = buffer.split_off(split_at);
+                            flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                            buffer = suffix;
+                            let merged: String = buffer
+                                .iter()
+                                .map(|l| self.format_content_with_extras(&l.base))
+                                .collect();
+                            buffer.clear();
+                            buffer_kind = None;
+                            merged.trim_end().to_string()
+                        } else {
+                            flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                            line.base.content.clone()
+                        };
                         memory.push(LlmMessage {
                             role: "assistant".into(),
-                            content: line.base.content.clone(),
+                            content,
                             tool_calls: Some(tool_calls),
                             tool_call_id: None,
                             image_data_url: None,
                         });
+                        continue;
+                    }
+                    // 空载体行解析失败时直接跳过，避免被当成 OtherBlock 混进上下文
+                    if line.base.content.trim().is_empty() {
+                        tracing::warn!("工具调用载体行的 tool_call 无法解析，已跳过");
                         continue;
                     }
                 } else if !line.base.content.is_empty() {
@@ -344,10 +392,6 @@ impl MemoryBuilder {
     /// 工具调用配对清洗（上游 issue #774）：窗口裁剪可能把 `assistant(tool_calls) → tool`
     /// 拦腰切断，存档对话链断裂时也会静默丢行，留下没有声明者的孤儿 tool 消息，provider
     /// 校验失败直接返回 HTTP 400（genai 不做任何规范化，原样下发）。
-    ///
-    /// - assistant 的 `tool_calls` 只保留确实有 tool 结果回应的项；全被剪掉时，正文也为空
-    ///   的纯工具占位行整条丢弃，有正文的降级为普通 assistant；
-    /// - tool 消息只有其 `tool_call_id` 被前面 assistant 声明过才保留，孤儿一律丢弃。
     fn sanitize_tool_pairing(&self, messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
         let answered: HashSet<String> = messages
             .iter()

@@ -53,8 +53,9 @@ pub struct ProducerOutput {
     pub accumulated: String,
     /// 本轮是否发出过 `is_final=true` 的句子。
     pub sent_final: bool,
-    /// 工具前那句「前导台词」占用的句子序号。
-    pub preamble_indices: Vec<usize>,
+    /// 每道工具栅栏对应一组「栅栏之前发出的句子序号」。
+    /// 空前导轮也保留一个空组，保证与工具轮按顺序一一对应。
+    pub preamble_groups: Vec<Vec<usize>>,
 }
 
 pub struct StreamProducer {
@@ -102,10 +103,10 @@ impl StreamProducer {
         // 本轮是否已发出收尾句。工具闭环下"工具后无新正文"会让这条保持 false，
         // 调用方据此补一次收尾（否则前端永远停在等待态）。
         let mut sent_final = false;
-        // 本轮（两道栅栏之间）发出的句子序号，与「栅栏之前发出、只做呈现」的那些。
-        // 工具循环落进台词表的助手行里带着同一段原文，所以前者的行稍后要抹掉。
+        // 本轮（两道栅栏之间）发出的句子序号。栅栏到来时整组转入 preamble_groups，
+        // 供回填阶段按句子顺序重排前导行、并定位载体行的插入位置。
         let mut round_indices: Vec<usize> = Vec::new();
-        let mut preamble_indices: Vec<usize> = Vec::new();
+        let mut preamble_groups: Vec<Vec<usize>> = Vec::new();
         // 本轮是否已经出现过回合结束边界。出现后其内容一律不再解析——模型常在说完话之后
         // 继续替玩家发言（`\n\n\nuser\n…`），那些内容一旦落进台词表就会被记忆反复复读。
         let mut turn_ended = false;
@@ -236,9 +237,9 @@ impl StreamProducer {
                         .await?;
                     }
 
-                    // 到栅栏为止发的都是「工具前说的话」：它们的内容在工具行里已经有一份，
-                    // 全部记进只做呈现的那一档（含本轮更早分出去的那几段）。
-                    preamble_indices.append(&mut round_indices);
+                    // 到栅栏为止发的都是「工具前说的话」：整组交给回填阶段，
+                    // 由它按句子序号重排这些行并定位载体行。
+                    preamble_groups.push(std::mem::take(&mut round_indices));
 
                     // 栅栏自身占一个索引，且不经 `send_sentence`（item 类型不同）。
                     let index = sentence_index;
@@ -331,7 +332,7 @@ impl StreamProducer {
         Ok(ProducerOutput {
             accumulated,
             sent_final,
-            preamble_indices,
+            preamble_groups,
         })
     }
 

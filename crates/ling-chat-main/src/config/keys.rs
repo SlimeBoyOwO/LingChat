@@ -50,8 +50,6 @@ pub const WEATHER_AUTO_SYNC: &str = "features.weather_auto_sync";
 // ========== AI 自动切换（手动优先锁） ==========
 /// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）
 pub const AI_AUTO_CLOTHES: &str = "features.ai_auto_clothes";
-/// 是否允许 AI 自动切换场景（用户手动选场景后自动关闭，设置页可重新打开）
-pub const AI_AUTO_SCENE: &str = "features.ai_auto_scene";
 /// 是否允许 AI 自动切换粒子特效（用户手动选特效后自动关闭，设置页可重新打开）
 pub const AI_AUTO_EFFECT: &str = "features.ai_auto_effect";
 

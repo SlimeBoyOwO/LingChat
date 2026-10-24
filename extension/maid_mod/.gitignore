@@ -1,0 +1,22 @@
+# Gradle 构建产物
+.gradle/
+build/
+out/
+
+# IDE 生成的工程文件（含本机绝对路径，不适合入库）
+.idea/
+*.iml
+.eclipse/
+.settings/
+.classpath
+.project
+.vscode/
+bin/
+
+# dev 运行目录与日志
+run/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db

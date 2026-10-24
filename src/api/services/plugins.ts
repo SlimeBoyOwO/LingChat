@@ -41,6 +41,8 @@ export interface PluginInfo {
   author?: string | null;
   enabled: boolean;
   config_schema: ConfigFieldDecl[];
+  /** 已保存的配置值（不含 secret 字段）。 */
+  config: Record<string, unknown>;
   env: EnvDecl[];
   tools: string[];
   /** 插件声明携带的资源类型（characters / scripts / musics / backgrounds / ambients）。 */
@@ -79,6 +81,11 @@ export async function setPluginEnabled(id: string, enabled: boolean): Promise<vo
 
 export async function savePluginConfig(id: string, config: Record<string, unknown>): Promise<void> {
   return invoke("plugin_save_config", { id, config });
+}
+
+/** 当前是否有插件接管台词语音的播放（本机静音、由插件转发到外部程序）。 */
+export async function isPluginVoicePlaybackActive(): Promise<boolean> {
+  return invoke("plugin_voice_playback_active");
 }
 
 export async function reloadPlugins(): Promise<void> {

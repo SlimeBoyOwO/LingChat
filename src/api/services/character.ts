@@ -317,3 +317,7 @@ export const readCharacterWorldbook = (roleId: number, editId: string) =>
   invoke<Worldbook | null>("read_character_worldbook", { roleId, editId });
 export const previewCharacterWorldbook = (book: Worldbook, input: string) =>
   invoke<WorldbookPreview>("preview_character_worldbook", { book, input });
+
+/** 把角色的形象切回静态立绘（Live2D 模型文件缺失时的自动回退，会落盘） */
+export const setRoleAvatarStatic = (roleId: number) =>
+  invoke<void>("set_role_avatar_static", { roleId });

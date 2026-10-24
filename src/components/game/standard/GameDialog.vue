@@ -29,7 +29,7 @@
               </div>
               <div
                 v-show="!uiStore.isNarrowScreen"
-                class="font-[inherit] text-xl font-bold text-[#6eb4ff] text-shadow-[inherit]"
+                class="font-[inherit] text-xl font-bold whitespace-nowrap text-[#6eb4ff] text-shadow-[inherit]"
               >
                 <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
               </div>
@@ -262,7 +262,7 @@
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
-import { X } from "lucide-vue-next";
+import { X } from "@lucide/vue";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
 import { setMobileMenuOpen, useAsrInput } from "../../../composables/asr";
 import { useChatInput } from "../../../composables/chat/useChatInput";

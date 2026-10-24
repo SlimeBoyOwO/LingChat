@@ -174,6 +174,68 @@
               />
             </div>
           </div>
+          <div
+            v-if="form.tool_rag"
+            class="mt-3 flex flex-col gap-3 border-t border-white/10 pt-3 sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div class="min-w-0">
+              <h4 class="text-sm font-semibold text-white">
+                {{ $t("ui.toolCalls.toolCacheCapacityTitle") }}
+              </h4>
+              <p class="mt-1 text-xs leading-relaxed text-gray-400">
+                {{
+                  $t("ui.toolCalls.toolCacheCapacityHint", {
+                    min: MIN_TOOL_CACHE_CAPACITY,
+                    max: MAX_TOOL_CACHE_CAPACITY,
+                  })
+                }}
+              </p>
+            </div>
+            <label
+              class="focus-within:border-brand flex shrink-0 items-center gap-2 rounded-lg border border-white/20 bg-black/20 px-3 py-2"
+            >
+              <input
+                v-model.number="form.tool_cache_capacity"
+                type="number"
+                :min="MIN_TOOL_CACHE_CAPACITY"
+                :max="MAX_TOOL_CACHE_CAPACITY"
+                step="1"
+                class="w-14 [appearance:textfield] bg-transparent text-center font-semibold text-white outline-none [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none"
+                :aria-label="$t('ui.toolCalls.toolCacheCapacityTitle')"
+                @blur="normalizeToolCacheCapacity"
+              />
+              <span class="text-sm text-gray-300">{{
+                $t("ui.toolCalls.toolCacheCapacityUnit")
+              }}</span>
+            </label>
+          </div>
+        </div>
+        <div class="mt-3 rounded-xl border border-white/15 bg-white/5 px-4 py-3">
+          <h3 class="font-semibold text-white">
+            {{ $t("ui.toolCalls.toolRecommendTitle") }}
+          </h3>
+          <p class="mt-1 text-sm leading-relaxed text-gray-300">
+            {{ $t("ui.toolCalls.toolRecommendHint") }}
+          </p>
+          <div class="mt-3 flex flex-wrap gap-2">
+            <button
+              v-for="mode in toolRecommendModes"
+              :key="mode"
+              type="button"
+              class="rounded-lg border px-3 py-1.5 text-sm transition-colors duration-200"
+              :class="
+                form.tool_recommend_mode === mode
+                  ? 'border-brand bg-brand/15 text-white'
+                  : 'border-white/15 bg-black/20 text-gray-300 hover:bg-white/10'
+              "
+              @click="form.tool_recommend_mode = mode"
+            >
+              {{ $t(`ui.toolCalls.toolRecommendModes.${mode}.label`) }}
+            </button>
+          </div>
+          <p class="mt-2 text-xs leading-relaxed text-gray-400">
+            {{ $t(`ui.toolCalls.toolRecommendModes.${form.tool_recommend_mode}.description`) }}
+          </p>
         </div>
         <div
           v-if="form.access_mode === 'full_access'"
@@ -291,17 +353,8 @@
           </p>
         </template>
 
-        <!-- DeepSeek Responses：可切换模型；结果数量由服务端决定，不展示条数设置 -->
+        <!-- DeepSeek 独立搜索端点：需要单独 API Key -->
         <template v-if="form.web_search.provider === 'deepseek'">
-          <label class="text-brand mt-4 inline-flex items-center font-medium">
-            {{ $t("ui.toolCalls.dsModel") }}
-          </label>
-          <input
-            type="text"
-            v-model="form.web_search.model"
-            placeholder="deepseek-flash"
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200 focus:ring-2 focus:outline-none"
-          />
           <p class="mt-2 mb-2 text-sm text-gray-300">
             {{ $t("ui.toolCalls.dsHint") }}
           </p>
@@ -323,19 +376,17 @@
           />
         </template>
 
-        <template v-if="form.web_search.provider !== 'deepseek'">
-          <label class="text-brand mt-4 inline-flex items-center font-medium">
-            {{ $t("ui.toolCalls.maxResults") }}
-          </label>
-          <input
-            type="number"
-            v-model.number="form.web_search.max_results"
-            min="1"
-            max="20"
-            step="1"
-            class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200 focus:ring-2 focus:outline-none"
-          />
-        </template>
+        <label class="text-brand mt-4 inline-flex items-center font-medium">
+          {{ $t("ui.toolCalls.maxResults") }}
+        </label>
+        <input
+          type="number"
+          v-model.number="form.web_search.max_results"
+          min="1"
+          max="20"
+          step="1"
+          class="shadow-glass focus:border-brand focus:ring-brand/20 mt-2 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200 focus:ring-2 focus:outline-none"
+        />
 
         <div class="flex items-center gap-3 px-1 py-2.5">
           <Toggle
@@ -572,6 +623,7 @@ import {
   testWebSearch,
   TOOL_GROUP_KEYS,
   type ToolAccessMode,
+  type ToolRecommendMode,
   type ToolRuntimeInfo,
   type ToolSettings,
 } from "@/api/services/tool-settings";
@@ -590,9 +642,13 @@ const commandAvailable = computed(() => runtimeInfo.value?.commandAvailable ?? !
 
 const navItems = ["access", "web_search", ...TOOL_GROUP_KEYS] as const;
 const accessModes: ToolAccessMode[] = ["manual", "auto_approve", "full_access"];
+const toolRecommendModes: ToolRecommendMode[] = ["off", "agent", "rag"];
 const DEFAULT_TOOL_ROUND_LIMIT = 8;
 const MIN_TOOL_ROUND_LIMIT = 1;
 const MAX_TOOL_ROUND_LIMIT = 64;
+const DEFAULT_TOOL_CACHE_CAPACITY = 5;
+const MIN_TOOL_CACHE_CAPACITY = 1;
+const MAX_TOOL_CACHE_CAPACITY = 20;
 const DEFAULT_MEDIA_PROMPT =
   "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。";
 
@@ -609,7 +665,6 @@ const form = reactive<ToolSettings>({
   web_search: {
     enabled: false,
     provider: "kimi",
-    model: "deepseek-flash",
     api_key: "",
     base_url: "",
     proxy_enabled: false,
@@ -630,6 +685,8 @@ const form = reactive<ToolSettings>({
   access_mode: "manual",
   max_tool_rounds: DEFAULT_TOOL_ROUND_LIMIT,
   tool_rag: true,
+  tool_recommend_mode: "rag",
+  tool_cache_capacity: DEFAULT_TOOL_CACHE_CAPACITY,
 });
 
 const status = reactive({ message: "", color: "#4ade80" });
@@ -679,6 +736,13 @@ const normalizeToolRoundLimit = () => {
     : DEFAULT_TOOL_ROUND_LIMIT;
 };
 
+const normalizeToolCacheCapacity = () => {
+  const value = Number(form.tool_cache_capacity);
+  form.tool_cache_capacity = Number.isFinite(value)
+    ? Math.min(MAX_TOOL_CACHE_CAPACITY, Math.max(MIN_TOOL_CACHE_CAPACITY, Math.round(value)))
+    : DEFAULT_TOOL_CACHE_CAPACITY;
+};
+
 const normalizeMediaSettings = () => {
   const clamp = (value: unknown, fallback: number, min: number, max: number) => {
     const parsed = Number(value);
@@ -694,6 +758,7 @@ const normalizeMediaSettings = () => {
 const saveSettings = async (): Promise<boolean> => {
   try {
     normalizeToolRoundLimit();
+    normalizeToolCacheCapacity();
     normalizeMediaSettings();
     if (android) {
       form.groups.command = false;
@@ -777,7 +842,10 @@ onMounted(async () => {
     form.access_mode = settings.access_mode ?? "manual";
     form.max_tool_rounds = settings.max_tool_rounds ?? DEFAULT_TOOL_ROUND_LIMIT;
     form.tool_rag = settings.tool_rag ?? true;
+    form.tool_recommend_mode = settings.tool_recommend_mode ?? "rag";
+    form.tool_cache_capacity = settings.tool_cache_capacity ?? DEFAULT_TOOL_CACHE_CAPACITY;
     normalizeToolRoundLimit();
+    normalizeToolCacheCapacity();
     normalizeMediaSettings();
     await loadRuntimeInfo();
     if (isWindows()) await refreshElevationStatus();

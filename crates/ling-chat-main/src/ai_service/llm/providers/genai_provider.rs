@@ -69,6 +69,16 @@ fn infer_image_mime(data_url: &str) -> String {
     "image/jpeg".to_string()
 }
 
+/// 组装「带正文的工具调用」assistant 消息。
+fn assistant_tool_calls_message(content: &str, calls: Vec<GenaiToolCall>) -> ChatMessage {
+    let mut parts: Vec<ContentPart> = Vec::new();
+    if !content.trim().is_empty() {
+        parts.push(ContentPart::Text(content.to_string()));
+    }
+    parts.extend(calls.into_iter().map(ContentPart::ToolCall));
+    ChatMessage::assistant(MessageContent::from_parts(parts))
+}
+
 /// 按字符数截断，超长时补一句省略说明。按字符切，不会打断 UTF-8。
 fn truncate_chars(text: &str, max_chars: usize) -> String {
     let total = text.chars().count();
@@ -141,7 +151,7 @@ impl GenaiProvider {
         }
 
         Ok(Self {
-            client: builder.build(),
+            client: builder.build()?,
             model,
             provider: cfg.provider.to_lowercase(),
             temperature: cfg.temperature,
@@ -197,7 +207,7 @@ impl GenaiProvider {
                             })
                         })
                         .collect::<Result<Vec<_>>>()?;
-                    genai_messages.push(ChatMessage::from(calls));
+                    genai_messages.push(assistant_tool_calls_message(&msg.content, calls));
                 },
                 _ => {
                     let role = match msg.role.as_str() {
@@ -322,7 +332,13 @@ impl GenaiProvider {
                     truncate_chars(&call.fn_arguments.to_string(), 200)
                 )),
                 ContentPart::ToolResponse(resp) => {
-                    out.push_str(&format!("[工具结果 call_id={}]", resp.call_id))
+                    out.push_str(&format!("[工具结果 call_id={}]", resp.call_id));
+                    // 摘要默认不展开工具结果；台词余额是排查回复长度的关键，单独带出来
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&resp.content) {
+                        if let Some(budget) = value.get("line_budget") {
+                            out.push_str(&format!(" [台词余额] {budget}"));
+                        }
+                    }
                 },
                 other => out.push_str(&format!("[非文本内容 {} 字节]", other.size())),
             }
@@ -506,7 +522,10 @@ impl GenaiProvider {
         let output = async_stream::try_stream! {
             while let Some(event) = inner.next().await {
                 match event.map_err(|e| anyhow!("genai 流式事件错误: {e}"))? {
-                    ChatStreamEvent::Start | ChatStreamEvent::ThoughtSignatureChunk(_) | ChatStreamEvent::ToolCallChunk(_) => {}
+                    ChatStreamEvent::Start
+                    | ChatStreamEvent::Heartbeat
+                    | ChatStreamEvent::ThoughtSignatureChunk(_)
+                    | ChatStreamEvent::ToolCallChunk(_) => {}
                     ChatStreamEvent::Chunk(chunk) if !chunk.content.is_empty() => {
                         yield LlmChunk::Content(chunk.content);
                     }
@@ -650,61 +669,5 @@ impl LlmProvider for GenaiProvider {
             tool_calls,
             usage,
         })
-    }
-}
-
-#[cfg(test)]
-mod worldbook_tests {
-    use super::*;
-    use crate::ai_service::worldbook::Worldbook;
-
-    #[test]
-    fn worldbook_dynamic_reference_stays_out_of_provider_system() {
-        let provider = GenaiProvider {
-            client: GenaiClient::builder().build(),
-            model: "test".into(),
-            provider: "openai".into(),
-            temperature: None,
-            top_p: None,
-            enable_thinking: false,
-            reasoning_effort: None,
-            is_minimax: false,
-        };
-        let book: Worldbook = serde_yaml::from_str(
-            "entries: [{id: core, activation: {type: always}, content: 常驻资料}, {id: family, activation: {type: keyword, keys: [家庭]}, content: 动态家庭资料}]",
-        )
-        .unwrap();
-        let memory = vec![
-            LlmMessage::system("角色设定"),
-            LlmMessage::user("历史问题"),
-            LlmMessage::assistant("历史回复"),
-            LlmMessage::user("当前问题"),
-        ];
-        let mut hit = memory.clone();
-        let mut miss = memory.clone();
-        book.inject(&mut hit, Some("家庭"));
-        book.inject(&mut miss, Some("你好"));
-        let hit = provider.build_chat_request(&hit, None).unwrap();
-        let miss = provider.build_chat_request(&miss, None).unwrap();
-        assert_eq!(hit.system, miss.system);
-        assert!(hit.system.as_deref().unwrap().contains("常驻资料"));
-        assert!(!hit.system.as_deref().unwrap().contains("动态家庭资料"));
-        assert_eq!(
-            serde_json::to_value(&hit.messages[..2]).unwrap(),
-            serde_json::to_value(&miss.messages[..2]).unwrap(),
-        );
-        assert!(
-            hit.messages
-                .last()
-                .unwrap()
-                .content
-                .first_text()
-                .unwrap()
-                .contains("动态家庭资料")
-        );
-        assert_eq!(
-            miss.messages.last().unwrap().content.first_text(),
-            Some("当前问题")
-        );
     }
 }

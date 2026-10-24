@@ -17,11 +17,7 @@ use tauri::{Emitter, Manager};
 
 use crate::AppState;
 use crate::ai_service::affection::{self, AffectionChangedPayload, AffectionState};
-use crate::ai_service::types::{
-    AffectionVector, LineAttributeExt, LineBase, NegativeVector, ToolDefinition,
-};
-use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::PromptRole;
+use crate::ai_service::types::{AffectionVector, NegativeVector, ToolDefinition};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::game_status_handle;
@@ -29,6 +25,7 @@ use super::registry::ToolRegistry;
 
 pub const SELECT_NEXT_SPEAKER: &str = "select_next_speaker";
 pub const UPDATE_AFFECTION: &str = "update_affection";
+pub const RECOMMEND_TOOLS: &str = "recommend_tools";
 
 /// 构建上帝 Agent 的专用注册表。
 pub fn god_agent_registry() -> ToolRegistry {
@@ -39,6 +36,9 @@ pub fn god_agent_registry() -> ToolRegistry {
     registry
         .register(Arc::new(UpdateAffection))
         .expect("注册 update_affection 失败");
+    registry
+        .register(Arc::new(RecommendTools))
+        .expect("注册 recommend_tools 失败");
     registry
 }
 
@@ -241,7 +241,6 @@ impl Tool for UpdateAffection {
         }
 
         let app = context.require_app()?;
-        let state = app.state::<AppState>();
         let game_status = game_status_handle(&app).await;
         let mut gs = game_status.lock().await;
 
@@ -285,40 +284,105 @@ impl Tool for UpdateAffection {
         );
         let _ = app.emit("affection:changed", payload);
 
-        // 变化结果以旁白台词写入历史（复用换装/场景同款 add_line 台词工具），
-        // 随记忆构建进入后续上下文；不做每轮注入，避免每次思维链都携带情感状态。
+        // 旁白文本交给评估能力层排入近期记忆，后台任务不直接改台词表。
         let name = gs
             .role_manager
             .get_loaded(role_id)
             .and_then(|r| r.display_name.clone())
             .unwrap_or_else(|| format!("角色{role_id}"));
         let player_name = gs.player.user_name.clone();
-        let text = affection::describe_change_for_line(&name, &player_name, &values, &negative);
-        let line = LineBase {
-            content: PromptRole::Narrator.build_prompt(&text),
-            attribute: LineAttributeExt(LineAttribute::User),
-            sender_role_id: Some(0),
-            display_name: Some("系统".to_string()),
-            ..Default::default()
-        };
-        // 插到玩家最近一次发言之后，而不是追加到末尾：评估在整轮回复结束后才跑，
-        // 此时末尾已经是助手回复，追加会让人误以为变化是助手那几句话引发的。
-        let insert_at = gs
-            .line_list
-            .iter()
-            .rposition(|l| matches!(l.attribute(), LineAttribute::User))
-            .map_or(gs.line_list.len(), |i| i + 1);
-        if let Err(e) = gs.insert_line(&state.db, insert_at, line).await {
-            tracing::warn!("[Affection] 写入好感度旁白台词失败: {e:#}");
-        }
+        let line_text =
+            affection::describe_change_for_line(&name, &player_name, &values, &negative);
 
         Ok(json!({
             "ok": true,
             "role_id": role_id,
             "average": values.average(),
             "reason": reason,
+            "line_text": line_text,
         }))
     }
+}
+
+// ============================================================
+// recommend_tools
+// ============================================================
+
+/// 本轮可用工具的推荐结果：只把挑中的名字回显给调用方，不改任何状态。
+///
+/// 与另外两个决策工具不同，它不碰 `AppState`——推荐是「一句话提示」，
+/// 真正让工具可调用的是调用方把这几个名字并进本轮工具集。
+pub struct RecommendTools;
+
+#[async_trait]
+impl Tool for RecommendTools {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            RECOMMEND_TOOLS,
+            "从给定的工具清单里挑出与这次对话相关的那几件，供对话模型参考。\
+             只挑能直接帮上忙的；都不相关就把 names 留空。不要挑工具清单以外的名字。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "names": {
+                        "type": "array",
+                        "items": { "type": "string" },
+                        "description": "推荐的工具名，必须来自清单，最多 5 个；都不相关就传空数组。"
+                    },
+                    "reason": {
+                        "type": "string",
+                        "description": "为什么推荐它们（一句中文）。"
+                    }
+                },
+                "required": ["names", "reason"]
+            }),
+        )
+    }
+
+    fn lenient_arguments(&self) -> bool {
+        true
+    }
+
+    async fn execute(
+        &self,
+        _context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        Ok(json!({
+            "ok": true,
+            "names": parse_names(arguments.get("names")),
+            "reason": arguments
+                .get("reason")
+                .and_then(Value::as_str)
+                .unwrap_or("（无理由）"),
+        }))
+    }
+}
+
+/// 容错解析工具名列表：数组取字符串元素，单个字符串按顿号/逗号拆开。
+fn parse_names(raw: Option<&Value>) -> Vec<String> {
+    let mut names = Vec::new();
+    match raw {
+        Some(Value::Array(items)) => {
+            names.extend(
+                items
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(|name| name.trim().to_string()),
+            );
+        },
+        Some(Value::String(text)) => {
+            names.extend(
+                text.split(['、', ',', '，', ' ', '\n'])
+                    .map(str::trim)
+                    .filter(|name| !name.is_empty())
+                    .map(str::to_string),
+            );
+        },
+        _ => {},
+    }
+    names.retain(|name| !name.is_empty());
+    names
 }
 
 // ============================================================

@@ -130,7 +130,7 @@
             <div class="grid w-[80%] max-w-200 grid-cols-4 justify-items-center gap-x-8 gap-y-6">
               <div v-for="(item, i) in section.items" :key="i" class="max-w-full">
                 <!-- 允许长名换行（break-words），避免 nowrap 溢出列宽与相邻名字重叠 -->
-                <p class="text-center text-[1.5em] leading-[1.8] font-light break-words">
+                <p class="text-center text-[1.5em] leading-[1.8] font-light wrap-break-word">
                   {{ item.name }}
                 </p>
               </div>

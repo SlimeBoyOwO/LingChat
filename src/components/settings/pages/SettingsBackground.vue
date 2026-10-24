@@ -350,7 +350,7 @@ import {
   CloudSnow,
   Snowflake,
   CloudFog,
-} from "lucide-vue-next";
+} from "@lucide/vue";
 import { PARTICLE_EFFECTS, WEATHER_EFFECTS } from "@/components/game/standard/particles";
 import {
   selectBackgroundEffect,
@@ -374,7 +374,7 @@ import {
   getActiveGpu,
   type GpuInfo,
 } from "../../../api/services/gpu-perf";
-import { Settings, Cpu } from "lucide-vue-next";
+import { Settings, Cpu } from "@lucide/vue";
 import SceneManageSection from "../background/SceneManageSection.vue";
 
 const uiStore = useUIStore();
