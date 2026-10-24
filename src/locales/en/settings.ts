@@ -1543,6 +1543,13 @@ export default {
       scopeLibrary: "Hotword library",
     },
   },
+  hotwordBatch: {
+    entry: "Batch Delete",
+    exit: "Exit Batch",
+    selectAll: "Select All",
+    clearSelection: "Clear Selection",
+    deleteSelected: "Delete Selected ({count})",
+  },
   memoryDebug: {
     title: "Permanent Memory Debug",
     rolesTitle: "Roles",

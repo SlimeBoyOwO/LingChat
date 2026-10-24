@@ -45,19 +45,54 @@
           {{ $t("settings.characterInfo.hotword.roleHint") }}
         </p>
       </div>
-      <div class="flex items-center gap-2">
-        <button
-          class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
-          @click="showPicker = true"
-        >
-          {{ $t("settings.asr.hotwordLibrary.pickButton") }}
-        </button>
-        <button
-          class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
-          @click="showImport = true"
-        >
-          {{ $t("settings.hotwordImport.entry") }}
-        </button>
+      <div class="flex flex-wrap items-center justify-end gap-2">
+        <template v-if="batchMode">
+          <button
+            class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="draft.hotwords.length === 0"
+            @click="toggleAll"
+          >
+            {{
+              allSelected
+                ? $t("settings.hotwordBatch.clearSelection")
+                : $t("settings.hotwordBatch.selectAll")
+            }}
+          </button>
+          <button
+            class="cursor-pointer rounded-lg border border-red-400/40 bg-red-500/20 px-3.5 py-2 text-sm text-red-200 transition-colors hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+            :disabled="selectedCount === 0"
+            @click="deleteSelected"
+          >
+            {{ $t("settings.hotwordBatch.deleteSelected", { count: selectedCount }) }}
+          </button>
+          <button
+            class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+            @click="toggleBatchMode"
+          >
+            {{ $t("settings.hotwordBatch.exit") }}
+          </button>
+        </template>
+        <template v-else>
+          <button
+            class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+            @click="showPicker = true"
+          >
+            {{ $t("settings.asr.hotwordLibrary.pickButton") }}
+          </button>
+          <button
+            class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+            @click="showImport = true"
+          >
+            {{ $t("settings.hotwordImport.entry") }}
+          </button>
+          <button
+            v-if="draft.hotwords.length > 0"
+            class="cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+            @click="toggleBatchMode"
+          >
+            {{ $t("settings.hotwordBatch.entry") }}
+          </button>
+        </template>
       </div>
     </div>
 
@@ -66,6 +101,7 @@
       v-if="draft.hotwords.length > 0"
       class="flex items-center gap-2 px-2 text-[13px] text-white/40"
     >
+      <span v-if="batchMode" class="size-4 shrink-0"></span>
       <span class="flex-1">{{ $t("settings.characterInfo.hotword.colText") }}</span>
       <span class="w-24 shrink-0">{{ $t("settings.characterInfo.hotword.colWeight") }}</span>
       <span class="w-6 shrink-0"></span>
@@ -77,6 +113,13 @@
       class="rounded-xl border border-white/10 bg-white/5 p-2"
     >
       <div class="flex items-center gap-2">
+        <input
+          v-if="batchMode"
+          type="checkbox"
+          class="size-4 shrink-0 cursor-pointer accent-[#5e72e4]"
+          :checked="selected.has(item)"
+          @change="toggleRow(item)"
+        />
         <input
           v-model="item.text"
           type="text"
@@ -167,7 +210,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, reactive, ref } from "vue";
 import { useI18n } from "vue-i18n";
 
 import {
@@ -228,6 +271,43 @@ const addHotword = () => {
 
 const removeHotword = (idx: number) => {
   props.modelValue.hotwords.splice(idx, 1);
+};
+
+/** 批量删除模式：开启后每行显示复选框，删除只作用于草稿，仍由宿主的「保存」落库。 */
+const batchMode = ref(false);
+const selected = reactive(new Set<RoleHotword>());
+
+const selectedCount = computed(() =>
+  draft.value.hotwords.reduce((count, row) => (selected.has(row) ? count + 1 : count), 0),
+);
+const allSelected = computed(
+  () => draft.value.hotwords.length > 0 && draft.value.hotwords.every((row) => selected.has(row)),
+);
+
+const toggleRow = (row: RoleHotword) => {
+  if (selected.has(row)) selected.delete(row);
+  else selected.add(row);
+};
+
+const toggleAll = () => {
+  if (allSelected.value) {
+    for (const row of draft.value.hotwords) selected.delete(row);
+  } else {
+    for (const row of draft.value.hotwords) selected.add(row);
+  }
+};
+
+const toggleBatchMode = () => {
+  batchMode.value = !batchMode.value;
+  if (!batchMode.value) selected.clear();
+};
+
+const deleteSelected = () => {
+  if (selectedCount.value === 0) return;
+  const rows = draft.value.hotwords;
+  rows.splice(0, rows.length, ...rows.filter((row) => !selected.has(row)));
+  selected.clear();
+  batchMode.value = false;
 };
 
 // 下面是共享实现的薄包装：模板里的调用点保持不变

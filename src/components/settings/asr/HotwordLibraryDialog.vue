@@ -146,18 +146,53 @@
                     class="hotword-control w-full min-w-0 flex-none rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white md:w-auto md:flex-1"
                     :placeholder="$t('settings.asr.hotwordLibrary.dialog.words.searchPlaceholder')"
                   />
-                  <button
-                    class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
-                    @click="showImport = true"
-                  >
-                    {{ $t("settings.hotwordImport.entry") }}
-                  </button>
-                  <button
-                    class="shrink-0 cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3.5 py-2 text-sm text-white hover:bg-[#4a5acf]"
-                    @click="addWord"
-                  >
-                    ＋ {{ $t("settings.asr.hotwordLibrary.dialog.words.add") }}
-                  </button>
+                  <template v-if="batchMode">
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-40"
+                      :disabled="visibleWords.length === 0"
+                      @click="toggleAll"
+                    >
+                      {{
+                        allSelected
+                          ? $t("settings.hotwordBatch.clearSelection")
+                          : $t("settings.hotwordBatch.selectAll")
+                      }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-red-400/40 bg-red-500/20 px-3.5 py-2 text-sm text-red-200 transition-colors hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-40"
+                      :disabled="selectedCount === 0"
+                      @click="deleteSelected"
+                    >
+                      {{ $t("settings.hotwordBatch.deleteSelected", { count: selectedCount }) }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="toggleBatchMode"
+                    >
+                      {{ $t("settings.hotwordBatch.exit") }}
+                    </button>
+                  </template>
+                  <template v-else>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="showImport = true"
+                    >
+                      {{ $t("settings.hotwordImport.entry") }}
+                    </button>
+                    <button
+                      class="shrink-0 cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3.5 py-2 text-sm text-white hover:bg-[#4a5acf]"
+                      @click="addWord"
+                    >
+                      ＋ {{ $t("settings.asr.hotwordLibrary.dialog.words.add") }}
+                    </button>
+                    <button
+                      v-if="draft.words.length > 0"
+                      class="shrink-0 cursor-pointer rounded-lg border border-white/15 bg-white/10 px-3.5 py-2 text-sm text-white transition-colors hover:bg-white/20"
+                      @click="toggleBatchMode"
+                    >
+                      {{ $t("settings.hotwordBatch.entry") }}
+                    </button>
+                  </template>
                 </div>
 
                 <p
@@ -177,6 +212,7 @@
                   v-if="visibleWords.length > 0"
                   class="mb-1 hidden items-center gap-2 text-[13px] text-white/40 md:flex"
                 >
+                  <span v-if="batchMode" class="size-4 shrink-0"></span>
                   <span class="flex-1">{{ $t("settings.characterInfo.hotword.colText") }}</span>
                   <span class="w-32 shrink-0">
                     {{ $t("settings.asr.hotwordLibrary.dialog.words.colCategory") }}
@@ -190,6 +226,13 @@
                 <div class="min-h-0 flex-1 overflow-y-auto">
                   <div v-for="word in visibleWords" :key="draft.words.indexOf(word)" class="mb-1">
                     <div class="flex flex-wrap items-center gap-2">
+                      <input
+                        v-if="batchMode"
+                        type="checkbox"
+                        class="size-4 shrink-0 cursor-pointer accent-[#5e72e4]"
+                        :checked="checkedWords.has(word)"
+                        @change="toggleRow(word)"
+                      />
                       <input
                         v-model="word.text"
                         type="text"
@@ -331,7 +374,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, reactive, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 
 import {
@@ -398,6 +441,8 @@ watch(
   async (visible) => {
     if (!visible) {
       showImport.value = false;
+      batchMode.value = false;
+      checkedWords.clear();
       return;
     }
     loading.value = true;
@@ -430,6 +475,44 @@ const visibleWords = computed(() => {
     return byCategory && bySearch;
   });
 });
+
+/** 批量删除模式：开启后每行显示复选框，删除只作用于草稿。 */
+const batchMode = ref(false);
+const checkedWords = reactive(new Set<LibraryWord>());
+
+/** 计数按整个词库算：被筛选隐藏的已选词条也会一起删除，按钮上的数字才不会误导。 */
+const selectedCount = computed(() =>
+  draft.value.words.reduce((count, word) => (checkedWords.has(word) ? count + 1 : count), 0),
+);
+/** 全选只作用于当前筛选结果（与选择器同口径）。 */
+const allSelected = computed(
+  () => visibleWords.value.length > 0 && visibleWords.value.every((word) => checkedWords.has(word)),
+);
+
+const toggleRow = (word: LibraryWord) => {
+  if (checkedWords.has(word)) checkedWords.delete(word);
+  else checkedWords.add(word);
+};
+
+const toggleAll = () => {
+  if (allSelected.value) {
+    for (const word of visibleWords.value) checkedWords.delete(word);
+  } else {
+    for (const word of visibleWords.value) checkedWords.add(word);
+  }
+};
+
+const toggleBatchMode = () => {
+  batchMode.value = !batchMode.value;
+  if (!batchMode.value) checkedWords.clear();
+};
+
+const deleteSelected = () => {
+  if (selectedCount.value === 0) return;
+  draft.value.words = draft.value.words.filter((word) => !checkedWords.has(word));
+  checkedWords.clear();
+  batchMode.value = false;
+};
 
 const tooManyWords = computed(() => draft.value.words.length > MAX_LIBRARY_ROWS);
 const tooManyCategories = computed(() => draft.value.categories.length > MAX_LIBRARY_CATEGORIES);

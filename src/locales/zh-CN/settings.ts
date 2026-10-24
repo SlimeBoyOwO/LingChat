@@ -1693,6 +1693,13 @@ export default {
       scopeLibrary: "热词库",
     },
   },
+  hotwordBatch: {
+    entry: "批量删除",
+    exit: "退出批量",
+    selectAll: "全选",
+    clearSelection: "取消全选",
+    deleteSelected: "删除选中（{count}）",
+  },
   memoryDebug: {
     title: "永久记忆调试",
     rolesTitle: "角色",

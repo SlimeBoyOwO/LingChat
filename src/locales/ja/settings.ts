@@ -1530,6 +1530,13 @@ export default {
       scopeLibrary: "ホットワードライブラリ",
     },
   },
+  hotwordBatch: {
+    entry: "一括削除",
+    exit: "一括モード終了",
+    selectAll: "すべて選択",
+    clearSelection: "選択を解除",
+    deleteSelected: "選択した {count} 件を削除",
+  },
   memoryDebug: {
     title: "永続記憶デバッグ",
     rolesTitle: "キャラクター",

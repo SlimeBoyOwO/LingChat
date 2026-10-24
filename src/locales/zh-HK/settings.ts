@@ -1491,6 +1491,13 @@ export default {
       scopeLibrary: "熱詞庫",
     },
   },
+  hotwordBatch: {
+    entry: "批量刪除",
+    exit: "退出批量",
+    selectAll: "全選",
+    clearSelection: "取消全選",
+    deleteSelected: "刪除已選（{count}）",
+  },
   memoryDebug: {
     title: "永久記憶調試",
     rolesTitle: "角色",
