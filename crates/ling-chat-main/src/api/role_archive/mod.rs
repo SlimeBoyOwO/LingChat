@@ -44,6 +44,47 @@ pub struct ExportResult {
     pub size_bytes: u64,
 }
 
+// ===== 热词旁挂文件 =====
+
+/// 归档内的热词旁挂文件名：与 `settings.yml` 同级，点号开头表明不是角色内容。
+///
+/// ⚠️ **已停用**：热词不随角色包移动。导出侧不再注入、导入侧不再回写；
+/// 本常量仍有生产调用点——导出时按名排除残留在角色目录里的旧旁挂文件。
+/// 类型与读取函数保留，供将来恢复旁挂读取。
+const HOTWORD_SIDECAR_NAME: &str = ".lingchat_hotwords.json";
+
+/// 旁挂文件格式版本；未知版本跳过导入并记一条 warning。
+const HOTWORD_SIDECAR_VERSION: u32 = 1;
+
+/// 旁挂文件结构；导出侧已不再序列化，保留反序列化供将来恢复读取。
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct HotwordSidecar {
+    version: u32,
+    /// 兼容垫片：老包可能带 `language`，读入即忽略；新包不再写出。
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    language: String,
+    #[serde(default)]
+    hotwords: Vec<SidecarHotword>,
+}
+
+/// 旁挂文件里的单条热词；字段缺失按缺省处理，越界值由 `replace_for_role` 兜底。
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+struct SidecarHotword {
+    #[serde(default)]
+    text: String,
+    #[serde(default = "default_weight")]
+    weight: i32,
+    /// 兼容垫片：老包可能带 `lang`，读入即忽略；新包不再写出（设计 §4.3）。
+    #[serde(default, skip_serializing)]
+    #[allow(dead_code)]
+    lang: String,
+}
+
+fn default_weight() -> i32 {
+    i32::from(crate::ai_service::asr::provider::Hotword::DEFAULT_WEIGHT)
+}
+
 // ===== 导入命令 =====
 
 #[tauri::command]

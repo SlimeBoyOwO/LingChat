@@ -2,15 +2,50 @@
 //!
 //! `compress_role_to_temp` 由 `mod.rs` 中的 `export_role_to_path` 调用。
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
+use sea_orm::{DatabaseConnection, EntityTrait};
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::db::entities::role::Entity as RoleEntity;
 use crate::utils::archive::{self, ArchiveFormat, EntryEvent};
 
-use crate::db::entities::role::Entity as RoleEntity;
+use super::HOTWORD_SIDECAR_NAME;
 
 // ===== 导出命令 =====
+
+/// 导出内核：压缩 `src_dir` 到 `out`。
+///
+/// `_db`/`_role_id` 入参保留只为不动调用点（热词旁挂已停用）。
+/// 不依赖 `AppHandle`（`tauri/test` 未启用，取不到 mock）：路径解析与进度 emit 都留给
+/// 外层 [`compress_role_to_temp`]，这里只认显式入参与回调，便于端到端测试。
+async fn compress_role_dir<F: Fn(EntryEvent) + Send + 'static>(
+    _db: &DatabaseConnection,
+    _role_id: i32,
+    src_dir: &Path,
+    out: &Path,
+    format: ArchiveFormat,
+    on_entry: F,
+) -> Result<(), String> {
+    // 热词旁挂已停用：热词是「人用什么词」的属性，不随角色包移动。
+    // 但老包导入后旁挂文件会留在角色目录里（导入侧有意不删），仍须按名排除——
+    // 否则它会被原样打回新包，在旧版客户端上重新入库。编辑器草稿/回收站同理，
+    // 它们只服务于本地编辑流程，不属于角色内容。
+    //
+    // 用 `compress_excluding_root_entries`（按第一层名字匹配）而不是带 `exclude_names`
+    // 的通用 `compress`：后者按**归档内完整相对路径**精确匹配，是给 `extra_entries`
+    // 那套「同名内存条目顶掉磁盘文件」用的，语义不同。
+    let excluded: [&str; 3] = [HOTWORD_SIDECAR_NAME, ".editor-drafts", ".editor-trash"];
+
+    let src_path = src_dir.to_path_buf();
+    let arc_path = out.to_path_buf();
+    tokio::task::spawn_blocking(move || {
+        archive::compress_excluding_root_entries(&src_path, format, &arc_path, &on_entry, &excluded)
+    })
+    .await
+    .map_err(|e| format!("spawn_blocking join: {e}"))?
+    .map_err(|e| e.to_string())
+}
 
 /// 把角色压缩到缓存目录，并返回临时路径、建议文件名和文件大小。
 pub(super) async fn compress_role_to_temp(
@@ -18,7 +53,6 @@ pub(super) async fn compress_role_to_temp(
     role_id: i32,
     format: ArchiveFormat,
 ) -> Result<(PathBuf, String, u64), String> {
-    use sea_orm::EntityTrait;
     tracing::info!(
         "[RoleArchive] compress_role_to_temp 开始: role_id={}, format={:?}",
         role_id,
@@ -60,26 +94,12 @@ pub(super) async fn compress_role_to_temp(
     let suggested_name = format!("{safe_name}_{ts}.{}", format.as_str());
     let out_path = exports_root.join(&suggested_name);
 
-    let arc_path = out_path.clone();
-    let src_path = src_dir.clone();
-    let fmt = format;
     let app_for_emit = app.clone();
-    tokio::task::spawn_blocking(move || {
-        let on_entry = |evt: EntryEvent| {
-            // 发送导出进度事件，前端可复用现有进度条展示。
-            let _ = app_for_emit.emit("role:export-progress", &evt);
-        };
-        archive::compress_excluding_root_entries(
-            &src_path,
-            fmt,
-            &arc_path,
-            &on_entry,
-            &[".editor-drafts", ".editor-trash"],
-        )
+    compress_role_dir(&db, role_id, &src_dir, &out_path, format, move |evt| {
+        // 发送导出进度事件，前端可复用现有进度条展示。
+        let _ = app_for_emit.emit("role:export-progress", &evt);
     })
-    .await
-    .map_err(|e| format!("spawn_blocking join: {e}"))?
-    .map_err(|e| e.to_string())?;
+    .await?;
 
     let metadata = tokio::fs::metadata(&out_path)
         .await
