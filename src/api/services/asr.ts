@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import type { HotwordInput } from "./hotword";
 
 export type AsrSource = "button" | "auto";
 export type SendMode = "fill_only" | "auto_send";
@@ -6,7 +7,6 @@ export type AsrPhase = "idle" | "recording" | "recognizing";
 
 export interface AsrResult {
   text: string;
-  language?: string;
   confidence?: number;
   provider_id: string;
 }
@@ -29,7 +29,7 @@ export interface ProviderConfig {
   /** DashScope 地域 id（"cn-beijing" / "ap-southeast-1"）；空/未知 = 默认地域 */
   region?: string;
   // 热词不在这里：热词逐角色（存数据库），按调用经识别命令的 `hotwords`
-  // 参数传入，见下方 HotwordInput。
+  // 参数传入，见 hotword.ts 的 HotwordInput。
 }
 
 /** 模型对应的端点类型：选中该模型时把对应端点字段填成当前地域的默认值 */
@@ -39,6 +39,14 @@ export interface ModelInfo {
   id: string;
   display_name: string;
   supports_streaming: boolean;
+  /** 支持即时热词 `parameters.vocabulary`（qwen-audio-3.x 系专属）。 */
+  supports_inline_vocabulary: boolean;
+  /** 热词经 `prompt` 上下文偏置生效（llama-asr；权重被忽略，词条仍会发出）。
+   *  与上面那位同为「热词会不会被用上」的判定输入：两者都 false 时模型静默丢弃热词。 */
+  supports_prompt_bias: boolean;
+  /** 一次请求可接受的即时热词条数上限；null/缺省 = 不发即时热词或没有条数上限。
+   *  ⚠️ null 有**两种**含义，不能一律读成「不支持」——判据是上面那两个能力位。 */
+  max_hotword_count?: number | null;
   is_default: boolean;
   /**
    * 端点预设类型。只给类型不给完整 URL —— 端点是地域相关的，
@@ -56,8 +64,13 @@ export interface AsrRegionInfo {
   ws_endpoint: string;
 }
 
-/** 一次识别调用的热词：纯词（默认权重）或带权重对象 */
-export type HotwordInput = string | { text: string; weight?: number };
+/** 与后端 region.rs 的 AsrRegionInfo 对齐：某地域的端点默认值 */
+export interface AsrRegionInfo {
+  id: string;
+  label: string;
+  http_endpoint: string;
+  ws_endpoint: string;
+}
 
 export interface AsrSettings {
   active_provider: string;
@@ -134,17 +147,15 @@ export const asrStopListening = (source: AsrSource) =>
 export const asrVadProcessChunk = (pcm: number[]) => invoke<void>("asr_vad_process_chunk", { pcm });
 
 /** `hotwords` 是热词的**唯一入口**（ASR 设置页已无热词设置）：热词逐角色、
- *  存数据库，接入时在这里传入即可，provider 侧无需改动。目前一律省略。 */
+ *  存数据库，由 `composables/asr` 在录音开始时快照后传入，provider 侧无需改动。 */
 export const asrRecognizeWav = (params: {
   providerId: string;
   wavBytes: number[];
-  languageHint?: string | null;
   hotwords?: HotwordInput[] | null;
 }) =>
   invoke<AsrResult>("asr_recognize_wav", {
     providerId: params.providerId,
     wavBytes: params.wavBytes,
-    languageHint: params.languageHint ?? null,
     hotwords: params.hotwords ?? null,
   });
 
@@ -213,12 +224,10 @@ export const asrTestProvider = (providerId: string) =>
 
 export const asrStartStreaming = (params: {
   providerId: string;
-  languageHint?: string | null;
   hotwords?: HotwordInput[] | null;
 }) =>
   invoke<void>("asr_start_streaming", {
     providerId: params.providerId,
-    languageHint: params.languageHint ?? null,
     hotwords: params.hotwords ?? null,
   });
 

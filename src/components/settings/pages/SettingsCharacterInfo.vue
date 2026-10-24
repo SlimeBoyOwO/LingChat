@@ -288,6 +288,15 @@
                   {{ $t("settings.characterInfo.touch.open") }}
                 </button>
               </div>
+
+              <HotwordSettings
+                v-if="activeTab === 'hotword' && props.roleId"
+                v-model="hotwordDraft"
+                :role-id="props.roleId"
+                :model-capability="modelCapability"
+                scope="role"
+                :save-hotwords="saveHotwordRows"
+              />
             </fieldset>
           </div>
         </div>
@@ -386,13 +395,22 @@ import {
   getLive2dFilePath,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import {
+  getRoleHotwords,
+  saveRoleHotwords,
+  type RoleHotword,
+  type RoleHotwordDraft,
+} from "../../../api/services/hotword";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
 import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
+import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import { refreshSceneHotwords } from "@/composables/asr/hotwords";
+import { useAsrModelCapability } from "@/composables/asr/modelCapability";
 import AvatarManager from "../character/AvatarManager.vue";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
@@ -442,7 +460,10 @@ let clothesSequence = 0;
 let loadSequence = 0;
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
-  () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
+  () =>
+    resourceRevision.value > 0 ||
+    JSON.stringify(localSettings.value) !== baseline.value ||
+    JSON.stringify(hotwordDraft.value.hotwords) !== hotwordBaseline.value,
 );
 async function refreshDraftClothes() {
   const id = editId.value;
@@ -496,6 +517,15 @@ const {
   toggleGsvEmo,
   gsvEmoField,
 } = useVoiceResources(localSettings);
+
+/**
+ * 热词 tab 的草稿：编辑只进内存，随底部「保存」与其余设置一次提交，
+ * 「取消」即丢弃。
+ */
+const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
+const hotwordBaseline = ref("[]");
+
+const modelCapability = useAsrModelCapability();
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
@@ -566,6 +596,7 @@ const tabs = computed(() => [
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
+  { id: "hotword", label: t("settings.characterInfo.tabs.hotword") },
 ]);
 
 const resolveFieldOptions = (field: FieldSchema) => {
@@ -706,6 +737,13 @@ watch(
         }
         baseline.value = JSON.stringify(localSettings.value);
         draftClothes.value = [...(props.clothes ?? [])];
+        // 热词：保存是整表替换，读失败必须让弹窗打不开——草稿默认是
+        // 空表，若放行，用户随手点一次「保存」就会静默清空该角色的热词
+        const roleHotwords = await getRoleHotwords(roleId);
+        // 读取期间可能已关闭弹窗或切到别的角色，此时不能把结果写进当前草稿
+        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) return;
+        hotwordDraft.value = { hotwords: roleHotwords };
+        hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
       } catch (e) {
         console.error("Failed to load character settings", e);
         emit("close");
@@ -781,11 +819,27 @@ function applySettingsToRuntime() {
     runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
     // /chat 与 /pet 互斥，靠这次内存热更避免后端 re-init
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 触摸区域热更：TouchAreas 直接读 role.bodyPart
+    // 角色名参与识别热词：store 里的 roleName 不改，
+    // 改名要等重启才生效——热更正是为了避免它。这里与其它字段一并热更。
+    if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
+      runtimeRole.roleName = localSettings.value.ai_name.trim();
+    }
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
     runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
   }
   const role = gameStore.gameRoles[props.roleId];
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
+}
+
+/** 批量导入保存：只保存热词表，不提交角色设置；失败时由导入面板显示错误。 */
+async function saveHotwordRows(rows: RoleHotword[]) {
+  if (!props.roleId) return;
+  await saveRoleHotwords(
+    props.roleId,
+    rows.map(({ text, weight }) => ({ text, weight })),
+  );
+  hotwordBaseline.value = JSON.stringify(rows);
+  void refreshSceneHotwords();
 }
 
 /** 保存前校验：实际会被加载的那个 variant 的模型文件是否还在。走 getLive2dFilePath 是为了让草稿里的模型按 editId 解析。 */
@@ -805,18 +859,37 @@ async function isLive2dModelAvailable(): Promise<boolean> {
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
   if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  // 保存期间弹窗可能被关闭或切到别的角色：先捕获本次提交对象，await 回来再校验
+  const currentRoleId = props.roleId;
+  const currentEditId = editId.value;
   saving.value = true;
   try {
+    // 热词先保存：它失败时角色设置不提交，editId 保留，用户可以直接重试。
+    // 热词保存是整表替换，重试幂等。
+    await saveRoleHotwords(
+      currentRoleId,
+      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
+    );
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
+    hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
+    // 第一次刷新：热词已单独落盘，让新词不必等设置提交就生效
+    void refreshSceneHotwords();
     // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
     // WebGL 上下文、失败之后才退回静态
     if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
     }
-    await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
+    await commitCharacterEdit(currentRoleId, currentEditId, localSettings.value);
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();
+    // 第二次刷新：提交后角色名可能已改，重新派生角色名热词。刷新有 generation
+    // 守卫，重复调用的旧结果会被丢弃。
+    void refreshSceneHotwords();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);

@@ -290,7 +290,7 @@ entries:
         for format in [ArchiveFormat::Zip, ArchiveFormat::SevenZ] {
             let output = root.path().join(format!("character.{}", format.as_str()));
             let target = root.path().join(format.as_str());
-            archive::compress(&source, format, &output, &|_| {}).unwrap();
+            archive::compress(&source, format, &output, &[], &[], &|_| {}).unwrap();
             let token = CancellationToken::new();
             match format {
                 ArchiveFormat::Zip => archive::extract_zip(&output, &target, &token, &|_| {}),
