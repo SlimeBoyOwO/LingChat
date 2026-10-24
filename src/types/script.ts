@@ -24,6 +24,12 @@ export interface ScriptPlayerEvent extends ScriptEvent {
   emotion?: string;
 }
 
+export interface TextEffectSpan {
+  start: number;
+  end: number;
+  effect: "emphasis" | "shake" | "blur" | "float";
+}
+
 export interface ScriptDialogueEvent extends ScriptEvent {
   type: "reply";
   character?: string;
@@ -31,6 +37,7 @@ export interface ScriptDialogueEvent extends ScriptEvent {
   emotion: string;
   originalTag: string;
   message: string;
+  textEffects?: TextEffectSpan[];
   motionText: string;
   ttsText?: string;
   audioFile?: string;

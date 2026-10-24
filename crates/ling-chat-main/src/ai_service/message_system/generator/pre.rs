@@ -14,6 +14,7 @@ use crate::ai_service::message_system::processor::UserMessageOutcome;
 use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage, ToolDefinition};
 use crate::api::data_dir;
+use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
@@ -130,6 +131,13 @@ impl MessageGenerator {
                 .collect();
             apply_request_injections(&mut context, &injections);
         }
+        let text_effects = AppConfig::load(&self.deps.app)
+            .map(|config| config.text_effects)
+            .unwrap_or(false);
+        crate::ai_service::message_system::text_effects::inject_text_effects(
+            &mut context,
+            text_effects,
+        );
         Ok(context)
     }
 

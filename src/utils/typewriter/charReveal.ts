@@ -85,22 +85,28 @@ export function createCharRevealWriter(options: CharRevealOptions): CharRevealWr
       // 只插入新增部分：不能用 innerHTML +=（会重建旧节点并重播动画）。
       // 单字符 tick → 动画；批量（finish 补全剩余字符）→ 瞬时。
       // 逐字符按 route 插入对应子容器。
-      for (let i = prev.length; i < text.length; i++) {
+      let i = prev.length;
+      const animate = Array.from(text.slice(i)).length === 1;
+      while (i < text.length) {
+        const code = text.charCodeAt(i);
+        // 打字机可能只送来代理对的前半部分，等下一个 tick 再渲染完整字符。
+        if (code >= 0xd800 && code <= 0xdbff && i + 1 === text.length) break;
+        const char = String.fromCodePoint(text.codePointAt(i)!);
         const target = targetFor(element, i, text);
-        target.insertAdjacentHTML(
-          "beforeend",
-          options.charHtml(text.charAt(i), i, text, addedLen === 1),
-        );
+        target.insertAdjacentHTML("beforeend", options.charHtml(char, i, text, animate));
+        i += char.length;
       }
-      prev = text;
+      prev = text.slice(0, i);
     }
   };
 
   const renderInstant = (element: HTMLElement, text: string): void => {
     clearDisplay(element);
-    for (let i = 0; i < text.length; i++) {
+    let i = 0;
+    for (const char of text) {
       const target = targetFor(element, i, text);
-      target.insertAdjacentHTML("beforeend", options.charHtml(text.charAt(i), i, text, false));
+      target.insertAdjacentHTML("beforeend", options.charHtml(char, i, text, false));
+      i += char.length;
     }
     prev = text;
   };

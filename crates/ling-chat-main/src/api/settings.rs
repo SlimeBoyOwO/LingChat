@@ -161,6 +161,11 @@ pub fn save_settings(
 
     store.save().map_err(|e| e.to_string())?;
 
+    if let Some(value) = values.get(keys::TEXT_EFFECTS) {
+        use tauri::Emitter;
+        let _ = app.emit("text-effects:changed", value == "true");
+    }
+
     if god_agent_settings_changed {
         // 热更新运行中的上帝 Agent 配置（含好感度总开关），无需重启
         if let Some(god) = &state.god_agent {

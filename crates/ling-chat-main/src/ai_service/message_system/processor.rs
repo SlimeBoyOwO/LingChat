@@ -17,6 +17,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
+use super::text_effects::{TextEffectSpan, parse_text_effects};
 use crate::ai_service::emotion::EmotionClassifier;
 
 /// 单个情绪片段。字段与旧版 `parse_and_classify_emotional_segments` 返回一致。
@@ -25,6 +26,8 @@ pub struct EmotionSegment {
     pub index: usize,
     pub original_tag: String,
     pub following_text: String,
+    #[serde(default)]
+    pub text_effects: Vec<TextEffectSpan>,
     pub motion_text: String,
     pub japanese_text: String,
     /// 情绪分类器的预测 label。未启用时等于 `original_tag`。
@@ -151,6 +154,10 @@ impl MessageProcessor {
                 .trim()
                 .to_string();
 
+            let (cleaned_text, text_effects) = parse_text_effects(&cleaned_text);
+            let japanese_text = parse_text_effects(&japanese_text).0;
+            let motion_text = parse_text_effects(&motion_text).0;
+
             // 翻译关闭：cleaned_text 即 japanese_text
             let japanese_text = if !self.options.enable_translate {
                 cleaned_text.clone()
@@ -182,6 +189,7 @@ impl MessageProcessor {
                 index: i,
                 original_tag: emotion_tag.to_string(),
                 following_text: cleaned_text,
+                text_effects,
                 motion_text,
                 japanese_text,
                 predicted,

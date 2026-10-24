@@ -681,6 +681,7 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
             index: 0,
             original_tag,
             following_text: text,
+            text_effects: Vec::new(),
             motion_text,
             japanese_text,
             predicted,

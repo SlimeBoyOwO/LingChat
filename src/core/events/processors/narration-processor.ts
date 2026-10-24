@@ -15,6 +15,7 @@ export default class NarrationProcessor implements IEventProcessor {
     // 更新游戏状态
     gameStore.currentStatus = "responding";
     uiStore.showCharacterLine = event.text;
+    uiStore.showCharacterTextEffects = [];
 
     if (event.displayName) {
       uiStore.showCharacterTitle = event.displayName;

@@ -1,5 +1,6 @@
 // stores/ui.ts
 import { defineStore } from "pinia";
+import type { TextEffectSpan } from "@/types/script";
 import { useSettingsStore } from "../settings";
 import { saveBgmState } from "../../../api/services/music";
 import { saveAmbientState } from "../../../api/services/ambient";
@@ -30,6 +31,7 @@ interface UIState {
   showCharacterSubtitle: string;
   showCharacterEmotion: string;
   showCharacterLine: string;
+  showCharacterTextEffects: TextEffectSpan[];
   showCharacterMotionText: string;
   showPlayerHintLine: string;
   showCharacterThinkLine: string;
@@ -102,6 +104,7 @@ export const useUIStore = defineStore("ui", {
     showCharacterSubtitle: "Bilibili",
     showCharacterEmotion: "",
     showCharacterLine: "",
+    showCharacterTextEffects: [],
     showCharacterMotionText: "",
     showPlayerHintLine: "",
     showCharacterThinkLine: "Ling Ling Thinking...",

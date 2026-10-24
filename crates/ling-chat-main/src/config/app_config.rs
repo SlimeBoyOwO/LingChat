@@ -105,6 +105,8 @@ pub struct AppConfig {
     pub enable_time_sense: bool,
     #[serde(default = "default_enable_emotion_classifier")]
     pub enable_emotion_classifier: bool,
+    #[serde(default)]
+    pub text_effects: bool,
     /// 天气工具的手动城市（最高优先级；空 = 未配置）
     #[serde(default)]
     pub weather_city: String,
@@ -171,6 +173,7 @@ impl Default for AppConfig {
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
+            text_effects: false,
             weather_city: String::new(),
             weather_first_talk: false,
             weather_auto_sync: false,
@@ -279,6 +282,7 @@ impl AppConfig {
                 default.enable_emotion_classifier,
             ),
             weather_city: get_string(&store, keys::WEATHER_CITY).unwrap_or_default(),
+            text_effects: get_bool(&store, keys::TEXT_EFFECTS, default.text_effects),
             weather_first_talk: get_bool(
                 &store,
                 keys::WEATHER_FIRST_TALK,

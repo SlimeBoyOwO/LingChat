@@ -226,7 +226,11 @@
             @click="sendOrContinue"
           >
             <!-- 台词区：白字 -->
-            <div ref="dialogueLineRef" class="whitespace-pre-line text-white"></div>
+            <div
+              ref="dialogueLineRef"
+              class="whitespace-pre-line text-white"
+              :class="{ 'text-effects-enabled': settingsStore.text.textEffects }"
+            ></div>
             <!-- 动作区：灰字（独立打字机，与台词并行） -->
             <div ref="motionLineRef" class="whitespace-pre-line text-[#9ca3af]"></div>
           </div>
@@ -278,6 +282,7 @@ import { useSettingsStore } from "../../../stores/modules/settings";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { charRevealCharHtml } from "../../../utils/typewriter/charHtml";
+import type { TextEffectSpan } from "@/types/script";
 import { createCharRevealWriter } from "../../../utils/typewriter/charReveal";
 import { TypeWriter } from "../../../utils/typewriter/TypeWriter";
 import { Button } from "../../base";
@@ -399,6 +404,17 @@ const onMobileMenuAction = (action: () => void) => {
   showMobileMenu.value = false;
 };
 const currentDisplayedText = ref("");
+let textEffects: TextEffectSpan[] = [];
+let effectStartAt = performance.now();
+
+function dialogueCharHtml(char: string, index: number, rawText: string, animate: boolean): string {
+  const inner = charRevealCharHtml(char, index, rawText, animate);
+  if (char === "\n" || char === " ") return inner;
+  const span = textEffects.find((span) => index >= span.start && index < span.end);
+  if (!span || !["emphasis", "shake", "blur", "float"].includes(span.effect)) return inner;
+  const delay = ((effectStartAt - performance.now()) / 1000).toFixed(3);
+  return `<span class="tw-fx-${span.effect}" style="animation-delay:${delay}s">${inner}</span>`;
+}
 const dialogueLineRef = ref<HTMLDivElement | null>(null);
 const motionLineRef = ref<HTMLDivElement | null>(null);
 
@@ -484,7 +500,7 @@ function rearmNextMerge(appendedLine: string) {
 // 逐字符淡入+上浮渲染器。颜色不再由字符决定，改由容器决定：台词打字机的字符
 // 一律进台词区（动作区由独立动作打字机负责）。
 const charReveal = createCharRevealWriter({
-  charHtml: charRevealCharHtml,
+  charHtml: dialogueCharHtml,
   route: () => dialogueLineRef.value,
   // 清空子容器内容、保留容器结构——清外层会把子容器节点销毁，模板 ref 指向
   // 脱离文档的旧节点，之后字符全插进不可见处。
@@ -504,6 +520,8 @@ function resetResponseDisplay() {
 
 // 立即把当前台词写入显示元素（不经过打字动画；供挂载恢复使用）
 function renderLineInstant(line: string) {
+  textEffects = [...uiStore.showCharacterTextEffects];
+  effectStartAt = performance.now();
   currentDisplayedText.value = line;
   segments = buildSegments(line);
   if (inlineDisplayRef.value) {
@@ -616,64 +634,82 @@ const placeholderText = computed(() => {
   }
 });
 
-watch([() => uiStore.showCharacterLine, () => gameStore.currentStatus], ([newLine, newStatus]) => {
-  if (newLine && newLine !== "" && newStatus === "responding") {
-    // 输入框清空由 useChatInput 的同源 watch 负责
-    currentDisplayedText.value = "";
+watch(
+  [
+    () => uiStore.showCharacterLine,
+    () => gameStore.currentStatus,
+    () => uiStore.showCharacterTextEffects,
+  ],
+  ([newLine, newStatus]) => {
+    if (newLine && newLine !== "" && newStatus === "responding") {
+      // 输入框清空由 useChatInput 的同源 watch 负责
+      currentDisplayedText.value = "";
 
-    // 合并续打：i+1 到达时 event-queue 已武装（i 仍打字/播音频），MainChat 在 i
-    // 展示完成后自动推进队列，这里对 i+1 走追加路径——不重置显示区、续打新增文本。
-    // 同一容器里已有内容时，新段前加空格隔离，避免两句黏在一起。
-    if (dialogueMerge.armed) {
-      dialogueMerge.armed = false;
-      const newSegs: DisplaySegment[] = [];
-      const appendMerged = (kind: DisplaySegment["kind"], text: string, separator: string) => {
-        const hasPrior = segments.some((s) => s.kind === kind);
-        newSegs.push({ kind, text: hasPrior ? separator + text : text });
-      };
-      appendMerged("dialogue", newLine, " ");
-      // 动作段记账 + 动作区续打（独立于台词打字机）。hadPriorMotion 必须在
-      // segments.push 之前算——push 后新动作段已在 segments 里，会误判成已有前序动作。
-      const hadPriorMotion = segments.some((s) => s.kind === "motion");
-      const motionText = uiStore.showCharacterMotionText;
-      if (settingsStore.text.mergeMotionMode === "replace") {
-        // 独立显示模式：清掉旧动作段，只保留本次动作（无动作则动作区清空）
-        segments = segments.filter((s) => s.kind !== "motion");
-        if (motionText) newSegs.push({ kind: "motion", text: motionText });
-        // 清空旧动作并重打本次动作（无动作则清空动作区）
-        stopMotionTyping();
-        if (motionText) startMotionTyping(motionText, uiStore.typeWriterSpeed);
-      } else if (motionText) {
-        // 接在后面显示：动作段之间用 | 分隔，动作区接续打字
-        appendMerged("motion", motionText, " | ");
-        if (hadPriorMotion) appendMotionTyping(" | " + motionText);
-        else startMotionTyping(motionText, uiStore.typeWriterSpeed);
+      // 合并续打：i+1 到达时 event-queue 已武装（i 仍打字/播音频），MainChat 在 i
+      // 展示完成后自动推进队列，这里对 i+1 走追加路径——不重置显示区、续打新增文本。
+      // 同一容器里已有内容时，新段前加空格隔离，避免两句黏在一起。
+      if (dialogueMerge.armed) {
+        dialogueMerge.armed = false;
+        const newSegs: DisplaySegment[] = [];
+        const appendMerged = (kind: DisplaySegment["kind"], text: string, separator: string) => {
+          const hasPrior = segments.some((s) => s.kind === kind);
+          newSegs.push({ kind, text: hasPrior ? separator + text : text });
+        };
+        appendMerged("dialogue", newLine, " ");
+        const offset = typedText().length + (segments.some((s) => s.kind === "dialogue") ? 1 : 0);
+        textEffects.push(
+          ...uiStore.showCharacterTextEffects.map((span) => ({
+            ...span,
+            start: span.start + offset,
+            end: span.end + offset,
+          })),
+        );
+        // 动作段记账 + 动作区续打（独立于台词打字机）。hadPriorMotion 必须在
+        // segments.push 之前算——push 后新动作段已在 segments 里，会误判成已有前序动作。
+        const hadPriorMotion = segments.some((s) => s.kind === "motion");
+        const motionText = uiStore.showCharacterMotionText;
+        if (settingsStore.text.mergeMotionMode === "replace") {
+          // 独立显示模式：清掉旧动作段，只保留本次动作（无动作则动作区清空）
+          segments = segments.filter((s) => s.kind !== "motion");
+          if (motionText) newSegs.push({ kind: "motion", text: motionText });
+          // 清空旧动作并重打本次动作（无动作则清空动作区）
+          stopMotionTyping();
+          if (motionText) startMotionTyping(motionText, uiStore.typeWriterSpeed);
+        } else if (motionText) {
+          // 接在后面显示：动作段之间用 | 分隔，动作区接续打字
+          appendMerged("motion", motionText, " | ");
+          if (hadPriorMotion) appendMotionTyping(" | " + motionText);
+          else startMotionTyping(motionText, uiStore.typeWriterSpeed);
+        }
+        segments.push(...newSegs);
+        appendTyping(typedText(newSegs));
+        // 链式合并：刚追加的这行若仍满足合并条件、且队头下一条也是同角色短句，
+        // 继续武装，让 MainChat 在本行展示完成后再次自动续打下一条——突破只融合两句的限制。
+        dialogueMerge.mergedLength += newLine.length;
+        rearmNextMerge(newLine);
+      } else {
+        // 全新台词：重置显示区 + 从 0 打字（台词与动作区并行逐字打字）
+        segments = buildSegments(newLine);
+        textEffects = [...uiStore.showCharacterTextEffects];
+        effectStartAt = performance.now();
+        dialogueMerge.mergedLength = newLine.length;
+        resetResponseDisplay();
+        startTyping(typedText(), uiStore.typeWriterSpeed);
+        if (uiStore.showCharacterMotionText) {
+          startMotionTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed);
+        }
+        rearmNextMerge(newLine);
       }
-      segments.push(...newSegs);
-      appendTyping(typedText(newSegs));
-      // 链式合并：刚追加的这行若仍满足合并条件、且队头下一条也是同角色短句，
-      // 继续武装，让 MainChat 在本行展示完成后再次自动续打下一条——突破只融合两句的限制。
-      dialogueMerge.mergedLength += newLine.length;
-      rearmNextMerge(newLine);
-    } else {
-      // 全新台词：重置显示区 + 从 0 打字（台词与动作区并行逐字打字）
-      segments = buildSegments(newLine);
-      dialogueMerge.mergedLength = newLine.length;
-      resetResponseDisplay();
-      startTyping(typedText(), uiStore.typeWriterSpeed);
-      if (uiStore.showCharacterMotionText) {
-        startMotionTyping(uiStore.showCharacterMotionText, uiStore.typeWriterSpeed);
-      }
-      rearmNextMerge(newLine);
+    } else if (newStatus === "input") {
+      stopTyping();
+      stopMotionTyping();
+      dialogueMerge.mergedLength = 0;
+      currentDisplayedText.value = "";
+      segments = [];
+      textEffects = [];
     }
-  } else if (newStatus === "input") {
-    stopTyping();
-    stopMotionTyping();
-    dialogueMerge.mergedLength = 0;
-    currentDisplayedText.value = "";
-    segments = [];
-  }
-});
+  },
+);
 
 // 同步打字状态给合并判定（event-queue.addEvent 在 i+1 到达时读取）
 watch(isTyping, (t) => {

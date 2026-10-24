@@ -3,6 +3,7 @@
 //! Tauri 版通过 `window.emit("ai:reply", payload)` 发送给前端。序列化字段
 //! 保持与旧版一致（camelCase），使前端事件 handler 可以直接复用。
 
+use super::text_effects::TextEffectSpan;
 use serde::{Deserialize, Serialize};
 
 // ============================================================
@@ -64,6 +65,8 @@ pub struct ReplyResponse {
     pub emotion: String,
     pub original_tag: String,
     pub message: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub text_effects: Vec<TextEffectSpan>,
     pub tts_text: Option<String>,
     pub motion_text: Option<String>,
     pub audio_file: Option<String>,
@@ -94,6 +97,7 @@ impl ReplyResponse {
             emotion: String::new(),
             original_tag: String::new(),
             message: String::new(),
+            text_effects: Vec::new(),
             tts_text: None,
             motion_text: None,
             audio_file: None,

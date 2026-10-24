@@ -2,7 +2,7 @@
  * 统一设置管理 Store
  * 集中管理所有用户偏好设置，自动持久化到 localStorage
  */
-import { setHdrMode } from "@/api/services/config";
+import { getEnvConfigByKey, saveEnvConfigSettings, setHdrMode } from "@/api/services/config";
 import { setSceneAwareness } from "@/api/services/scene";
 import {
   DEFAULT_SPECTRUM_COLOR_FROM,
@@ -23,6 +23,7 @@ export const DEFAULT_SETTINGS = {
     speed: 80, // 打字速度 (0-100)
     autoAdvanceDelay: 1000, // 自动模式自动推进延迟 (ms, 0-2000)
     animation: true, // 页面切换动画
+    textEffects: false, // 台词文字演出
     mergeLineThreshold: 55, // 台词合并阈值：同角色连续短句（字符数）自动合并续打；0=关闭
     mergeLineDelay: 200, // 台词合并时上一句展示完成到续打的延迟 (ms)
     mergeMotionMode: "append" as const, // 台词合并时动作文本的处理方式：append=接在后面显示（| 分隔）/ replace=清空旧动作，独立显示本次动作
@@ -84,6 +85,7 @@ export interface TextSettings {
   speed: number;
   autoAdvanceDelay: number;
   animation: boolean;
+  textEffects: boolean;
   mergeLineThreshold: number;
   mergeLineDelay: number;
   mergeMotionMode: "append" | "replace";
@@ -226,6 +228,15 @@ export const useSettingsStore = defineStore("settings", {
   },
 
   actions: {
+    async loadTextEffects() {
+      const setting = await getEnvConfigByKey("text.text_effects");
+      this.text.textEffects = setting.value === "true";
+    },
+
+    async setTextEffects(enabled: boolean) {
+      await saveEnvConfigSettings({ "text.text_effects": String(enabled) });
+      this.text.textEffects = enabled;
+    },
     // 校验快捷键数据：旧版本捕获逻辑可能写入非法绑定（如把 Ctrl+S 绑成单独的 S），
     // 非法项回退默认。编辑器挂载时调用一次，幂等。
     ensureValidShortcuts() {
