@@ -99,7 +99,7 @@
 
 <script setup lang="ts">
 import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useSettingsStore } from "../../stores/modules/settings";
@@ -122,6 +122,7 @@ const currentPage = ref("mainMenu");
 // 设置面板是否挂载。与 currentPage 分开是因为关闭时面板要留到退场动画播完才卸载，
 // 而菜单需要立刻回场与它重叠
 const settingsMounted = ref(false);
+let settingsMountFrame: number | null = null;
 const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
@@ -170,16 +171,30 @@ function handleOpenSettings(tab?: string) {
   } else {
     currentPage.value = "settings";
   }
-  settingsMounted.value = true;
+  // 面板推迟一帧挂载：先让菜单列开始离场，避免整块 DOM 插入与过渡钩子里的
+  // 强制同步布局挤在同一帧
+  if (settingsMountFrame !== null) cancelAnimationFrame(settingsMountFrame);
+  settingsMountFrame = requestAnimationFrame(() => {
+    settingsMountFrame = null;
+    if (uiStore.showSettings) settingsMounted.value = true;
+  });
   // 设置页常驻期间暂停星星与流星
   transientSuspend.value = true;
 }
 
 // 面板退场动画播完后才真正卸载，并恢复主菜单的粒子动画
 function onSettingsClosed() {
+  if (settingsMountFrame !== null) {
+    cancelAnimationFrame(settingsMountFrame);
+    settingsMountFrame = null;
+  }
   settingsMounted.value = false;
   if (transientSuspend.value) transientSuspend.value = false;
 }
+
+onUnmounted(() => {
+  if (settingsMountFrame !== null) cancelAnimationFrame(settingsMountFrame);
+});
 
 watch(
   () => uiStore.showSettings,

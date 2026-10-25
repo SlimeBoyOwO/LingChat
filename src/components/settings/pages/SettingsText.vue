@@ -10,16 +10,13 @@
             v-model="fontFamily"
             class="max-w-48 min-w-32 flex-none cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none focus:border-(--accent-color)"
             @change="onFontChange"
+            @focus="ensureSystemFonts"
+            @pointerdown="ensureSystemFonts"
             :title="$t('settings.text.font.selectHint')"
           >
             <option value="">{{ $t("settings.text.font.default") }}</option>
             <optgroup v-if="importedFonts.length > 0" :label="$t('settings.text.font.imported')">
-              <option
-                v-for="f in importedFonts"
-                :key="f.name"
-                :value="f.name"
-                :style="{ fontFamily: `'${f.name}'` }"
-              >
+              <option v-for="f in importedFonts" :key="f.name" :value="f.name">
                 {{ f.name }}
               </option>
             </optgroup>
@@ -27,9 +24,7 @@
             <option v-if="fontsLoading" value="" disabled>
               {{ $t("settings.text.font.loading") }}
             </option>
-            <option v-for="f in systemFonts" :key="f" :value="f" :style="{ fontFamily: `'${f}'` }">
-              {{ f }}
-            </option>
+            <option v-for="f in systemFonts" :key="f" :value="f">{{ f }}</option>
           </select>
           <button
             class="flex flex-none cursor-pointer items-center justify-center rounded-lg border border-white/20 bg-white/10 px-[0.6rem] py-[0.35rem] text-white transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
@@ -867,8 +862,7 @@ onMounted(async () => {
   loadConfig();
   checkTtsCache();
   loadLastTtsCleanup();
-  // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
-  void loadSystemFonts();
+  // 系统字体列表改为展开下拉时再加载：几百个 option 在页面首次布局时会明显拖慢
   // 加载已导入字体列表
   void loadImportedFonts();
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
@@ -1046,6 +1040,14 @@ async function loadSystemFonts() {
   } finally {
     fontsLoading.value = false;
   }
+}
+
+// 系统字体列表只在用户要展开下拉时才枚举，避免设置页首屏渲染几百个 option
+let systemFontsRequested = false;
+function ensureSystemFonts() {
+  if (systemFontsRequested) return;
+  systemFontsRequested = true;
+  void loadSystemFonts();
 }
 
 // ─── 导入字体 ───────────────────────────────────────────────
