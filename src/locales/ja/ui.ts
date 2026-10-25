@@ -94,6 +94,7 @@ export default {
   notification: {
     titlePlaceholder: "[通知タイトル]",
     messagePlaceholder: "[通知内容]",
+    mcMaidConnected: "Minecraft のメイドと接続しました(*^▽^*)",
   },
   settingItem: {
     multilineHint: "複数行の入力に対応",

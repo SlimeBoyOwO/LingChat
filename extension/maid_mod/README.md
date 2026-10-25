@@ -66,7 +66,7 @@ Gradle 发行包走的是腾讯云镜像（见 `gradle/wrapper/gradle-wrapper.pr
 | `bridge/` | 本机 WebSocket、信封、路由、协议常量。 |
 | `chat/` | 游戏内聊天双向：玩家打字推给 LingChat，角色回复变成气泡。 |
 | `voice/` | 游戏内语音：把 LingChat 的 TTS（WAV）分片广播给附近玩家，在女仆身上播放。 |
-| `perception/` | 一切「观察世界」。`world` 全局采样、`nearby` 身边采样、`query` 按需查询与投影（关系、相连团、按需小图）、`event` 受伤/死亡/成就/讨食、`item` 物品与背包、`carry` 抱放；`spatial` 是在它们底下共用的一层：`LocalTerrain` 按需读一片方块、`SightLine` 判看不看得见、`TerrainMemory` 记半分钟内看见过的方块、`BlockSight` 是清单里的一条，`SpatialReader` / `SpatialDiff` 把「新进眼里的岩浆与火」做成事件。`EventFrames`、`PerceptionProfiles`、`PerceptionSampler` 是这几层共用的帧外形、半径与采样门控。 |
+| `perception/` | 一切「观察世界」。`world` 全局采样、`nearby` 身边采样与活物短期记忆（`CreatureMemory`，两分钟，供追打与查询解释「刚才那只呢」）、`query` 按需查询与投影（关系、相连团、按需小图）、`event` 受伤/投掷物/死亡/成就/讨食、`item` 物品与背包、`carry` 抱放；`spatial` 是在它们底下共用的一层：`LocalTerrain` 按需读一片方块、`SightLine` 判看不看得见、`TerrainMemory` 记半分钟内看见过的方块、`BlockSight` 是清单里的一条，`SpatialReader` / `SpatialDiff` 把「新进眼里的岩浆与火」做成事件。`EventFrames`、`PerceptionProfiles`、`PerceptionSampler` 是这几层共用的帧外形、半径与采样门控。 |
 | `maid/` | 女仆身份、查询、监控目标、状态与背包只读清单、最喜欢吃什么。 |
 | `integration/` | 可选模组适配；目前只有 `carry`（Carry On）。 |
 | `mixin/` | NeoForge mixin，包名被 `lingchat_maid_bridge.mixins.json` 固定，不要随意移动。 |
@@ -270,7 +270,7 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 ### `maid_attack`：去打那个活物
 
 ```json
-{"type":"maid_attack","data":{"maid_id":"...","target":"minecraft:zombie","style":"fight"}}
+{"type":"maid_attack","data":{"maid_id":"...","target":"minecraft:zombie","style":"fight","count":3}}
 ```
 
 `target` 五种写法：`owner`（她主人）、`other_player`（另一个玩家）、`hostile`（最近的敌对生物）、
@@ -278,8 +278,12 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 （大小写不敏感，照感知里看到的那个名字说）。插件负责把「僵尸」「zombie」翻成 id，也把
 认不出的英文写法原样交过来——模组先按 `minecraft:<名字>` 认生物，再按玩家名认。
 
+`count` 要打几只，默认 1、最多 8：按离她最近的顺序凑齐，追打队列一只一只推进，
+全部打完才收工。附近不够这么多只时按找到的来，回执里 `requested` 是玩家要的数量。
+
 `style` 两种力度：`fight`（默认，不给也是它）追上去一直打到对方倒下；`light` 只轻轻打
 一下就收手——那一下的伤害固定 1 点（半点血，穿甲更少），也不会替她换武器，用来逗她抬手。
+两者都能连着点好几只。
 
 - **不走车万女仆的 `canAttack` 白名单**：主人自己、村民、动物、别的玩家都能点名。这是这个
   工具存在的意义，该打谁由玩家决定。仍会排除盔甲架与她自己的实体。
@@ -293,13 +297,20 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
   只是超出 32 格时，回 `target_too_far` 并点名说明。居家模式下目标要在她的活动
   范围里，否则当场拒绝（`target_too_far`）；跟随模式不再限制「主人到目标」的距离——追打期间
   跟随行为的传送被 `LongTaskGuard` 拦住了（见「已知边界」），打完收工后跟随恢复。
-- **收工**：目标死了、被打断（新动作、换工作模式）或追满 30 秒，循环就停。她打死目标时
-  由死亡旁白交代「被你杀了」，这里不重复。
+- **收工**：全部目标打完、被打断（新动作、换工作模式）、被抱起来，或当前这只追满 30 秒。
+  她打死目标时由死亡旁白交代「被你杀了」，这里不重复。
+- **打不了的原因**：附近找不到目标时先查短期记忆（见 `CreatureMemory`），回执按原因拒绝：
+  `target_killed_by_maid`（她自己已经打倒了）、`target_killed_by_owner`（主人先打死了）、
+  `target_killed_by_other`（别的生物先打死了）、`target_dead`（死了，死因不明）、
+  `target_gone`（刚才还在附近，现在找不到）。说得清就不会退回 `no_target`，模型才改得了计划。
+- **追到一半没了**：目标消失、换维度或被抱走时推 `attack_failed`（见事件表），
+  理由与上面同一套；她自己打死的算打完，不推事件。剩下的目标继续打。
 - **重复调用同一个目标**：追打已经在进行时只回执、不重启，`already_fighting=true`。模型
   容易把「还在打」读成「要再叫一次」，重复启动会把这一仗从头再来；回执与插件文案都要
   说清「她自己会打到对方倒下，不用再叫」。
-- 回执（`maid_attack_result`）：`accepted`、`weapon`、`style`、`already_fighting`，以及
-  `target{id,type,name,distance,owner}`。
+- 回执（`maid_attack_result`）：`accepted`、`weapon`、`style`、`already_fighting`、
+  `requested`、`targets[{id,type,category,name,distance,owner}]`；`target` 仍是第一只，
+  老插件照读。
 
 ### `maid_mine`：挖掉方块
 
@@ -448,12 +459,13 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `event_type` | 触发 | 主要字段 |
 | --- | --- | --- |
 | `state_snapshot` | 刚接上 / 刚绑定女仆（含重连） | `dimension` `biome` `sky` `phase` `raining` `thundering` 双方血量 `posture` |
-| `biome_change` | 换了生物群系（30 秒内只报一次） | `from_biome` `biome` |
+| `biome_change` | 换了生物群系（一分钟内只报一次） | `from_biome` `biome` |
 | `dimension_change` | 换了维度（同一帧不再报群系） | `from_dimension` `to_dimension` |
 | `time_phase_change` | 昼夜翻转（只推翻转那一次） | `phase` = `day` / `night` |
 | `weather_change` | 开始 / 停止下雨、打雷 | `raining` `thundering` |
 | `low_health` | 玩家或女仆血量跌破阈值（边沿触发） | `who` `name` `health` `max_health` |
 | `maid_hurt` | 女仆挨打（一小段连续挨打合成一条，两次上报至少隔 5 秒） | `damage` `count` `attacker` `damage_type` `health` `max_health`（后两项是这一波最后一下之后的血量） |
+| `projectile_hit` | 雪球、鸡蛋这类零伤害的投掷物砸中了她（一小段合成一条，两次上报至少隔 5 秒；倒下与昏迷时不报） | `item` `count` `thrower` `thrower_type` `thrower_owner` |
 | `creature_death` | 附近（`noticeRadius` 内）有生物死亡（10 秒内只报第一条） | `type` `category` `distance` `attacker` `attacker_type` `damage_type` `victim_owner` `attacker_owner` `attacker_maid` |
 | `maid_death` | **她自己死了**：不吃死亡静默期，也不受距离限制 | `attacker` `attacker_type` `damage_type` `attacker_owner` `attacker_maid` |
 | `owner_death` | **她主人死了**：不看距离与维度，主人复活后她会跟过去 | `attacker` `attacker_type` `damage_type` `attacker_maid` `home_mode`（居家模式下她不跟过去） |
@@ -462,30 +474,36 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `maid_carried` | 她被 Carry On 抱了起来（没装那个模组就不会出现） | — |
 | `maid_dropped` | 她被放了下来 | — |
 | `action_done` | 动作收尾：成功、失败或被新动作顶掉 | `action` `target` `status` `reason_code` `reason` `elapsed_ticks` `distance` |
+| `attack_failed` | 追打没能打完：目标走了、被谁先打死了，或她被抱走了（她自己打死的算打完，不报） | `reason_code` = `target_left_range` / `killed_by_owner` / `killed_by_other` / `killed_unknown` / `maid_carried` / `timeout`，`killed_by_type`（凶手实体 id，玩家就是 `minecraft:player`；环境致死为空串），`remaining`，`target{id,type,category,name,distance,owner}` |
 | `player_proximity_change` | 与主人的远近跨档（回滞，5 秒内只报一次；插件只在跨到 `gone` 或从 `gone` 回来时写旁白） | `from_proximity` `proximity` = `close` / `near` / `far` / `gone`，`distance` |
 | `player_sight_change` | 主人进出视线（要连续两次采样一致才认） | `visible` |
 | `threat_near` | 附近**从无到有**敌对生物，或最近那只由远转近 | `type` `distance` `direction` `visible` |
 | `living_near` | 身边来了别的活物（主人以外的生物、别的玩家、别的女仆） | `type` `category` `distance` `direction` |
-| `shelter_change` | 从露天走进遮蔽处，或反过来 | `sheltered`，以及用于同键合并取最后一帧的 `tick` |
-| `light_change` | 光线跨档：很黑（0-3）/ 昏暗（4-7）/ 明亮（8-15） | `band`（`dark` / `dim` / `bright`） |
-| `ground_change` | 脚下换了种值得说的地（水、岩浆、火、雪、沙、耕地、冰）；坐在载具里不报 | `block` `kind` |
-| `hazard_near` | 视野里**新出现**的岩浆、火、灵魂火、岩浆块或细雪（8 格内、露在外面、真能看见；脚下那一列交给 `ground_change`） | `block` `distance` `direction` |
+| `shelter_change` | 从露天走进遮蔽处，或反过来（一分钟内只报一次） | `sheltered`，以及用于同键合并取最后一帧的 `tick` |
+| `light_change` | 光线跨档：很黑（0-3）/ 昏暗（4-7）/ 明亮（8-15）（一分钟内只报一次） | `band`（`dark` / `dim` / `bright`） |
+| `ground_change` | 脚下换了种值得说的地（火、雪、沙、耕地、冰）；坐在载具里不报；一分钟内只报一次，火除外 | `block` `kind` |
+| `liquid_change` | 她自己这一格里泡着液体（水、岩浆或模组液体），或头也浸进去游泳；一分钟内只报一次 | `liquid` `from_liquid` `swimming` |
+| `hazard_near` | 视野里**新出现**的岩浆、火、灵魂火、岩浆块或细雪（8 格内、露在外面、真能看见；脚下那一列交给 `ground_change` 与 `liquid_change`） | `block` `distance` `direction` |
 | `vehicle_change` | 坐进船 / 矿车这类载具，或从上面下来 | `vehicle` `from_vehicle` |
 | `posture_change` | 她换了姿势：坐下、站起、就地躺下、上床睡着、醒过来 | `posture` `from_posture` = `standing` / `sitting` / `sleeping` / `lying` |
-| `structure_change` | 走进或离开村庄、矿井、要塞这类结构（冷静期 30 秒） | `structure` `from_structure` |
+| `structure_change` | 走进或离开村庄、矿井、要塞这类结构（冷静期一分钟） | `structure` `from_structure` |
 | `item_pickup` | 她真的把地上的物品收进了背包 | `item` `count` `from_owner` `source` `source_id` `source_name` |
 | `item_received` | 她身上多出物品（多半是玩家在女仆界面里放的）：背包、双手、盔甲栏、饰品栏都算 | `items[{item,count,slot}]`（`slot`：`hand` / `armor` / `bauble` / `backpack`） `from_owner` |
 | `item_fed` | 玩家喂她吃了东西（连喂几口合成一条） | `items[{item,count}]` `leftover[{item,count}]`（吃完剩下的碗这类容器，车万女仆会把它收进她的背包） |
 | `maid_ate` | 她自己从背包里找东西吃了（受伤后进食；停口 6 秒才算一顿，合并成一条） | `items[{item,count}]` `leftover[{item,count}]` |
 | `favorite_food` | 主人拿着她最爱吃的东西，她的讨食姿态真的翻过去了（两次上报至少隔 10 秒） | `item` |
 
-身边这一层 `threat_near` 与踩进岩浆 / 火里的 `ground_change` 算紧急，插件会当场请角色开口；
+身边这一层 `threat_near`、踩到火上的 `ground_change` 与陷进岩浆里的 `liquid_change` 算紧急，
+插件会当场请角色开口；
 `favorite_food` 与 `maid_hurt` 一档，同样当场开口；
+`projectile_hit` 也当场开口（被雪球砸一下总得有个反应），但有效期只有 10 秒；
 `hazard_near` 不紧急（她还没踩进去），同键合并只留最近的一处，走「攒够几条」那套；
 其余（含 `shelter_change`、`posture_change`、普通地面变化）同样走「攒够几条」那套。
 同一批采样里推出去的帧按**危险 > 与主人相关 > 新奇**排好再发：危险是受伤、血量告急、敌对生物、
 边上的岩浆与火；与主人相关是他走远或离开视线；其余换群系、进结构、落脚变化都算新奇。
 事件自身的有效期、合并键与冷静期不变，插件按到达顺序写旁白。
+`maid_hurt` 的有效期按伤势分档（轻伤 2 秒、中等 20 秒、重伤一分钟）：擦破皮的事等她下一次
+开口时早就不算数了，重伤则要一直记着。
 `creature_death` 里死的是她主人时也当场开口；`maid_death`、`owner_death` 与 `maid_revive`
 一律当场开口——她倒下之后所有指令都只会回「找不到女仆」，这几条是插件唯一的信息来源。
 主人死掉走单独的 `owner_death`：`creature_death` 有距离限制，而她可能被留在家里或另一个
@@ -577,6 +595,8 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   "map":{"radius":8,"text":"近处（一格一单元）：\n. . .\n"},
   "backpack":[{"item":"minecraft:rose_bush","count":2},{"item":"minecraft:iron_pickaxe","count":1}],
   "headwear":{"item":"minecraft:oak_planks","count":1},
+  "remembered":[{"type":"minecraft:zombie","category":"hostile","name":"","dead":true,
+                 "killed_by":"maid","distance":5.2}],
   "vehicle":"", "structure":"minecraft:village_plains",
   "posture":"standing",
   "truncated":false
@@ -597,6 +617,10 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   `back` `back_left` `left` `front_left`。她不一定是面朝哪就看哪，而「她周围有什么」
   说的是她站着的方位；只有 `looking_at` 那条射线用头部朝向。
 - `visible` 是「她看不看得见」，判据是无遮挡，不要求她朝着它。
+- `remembered` 是短期记忆里「刚才见过、现在不在了」的活物（死了或走远了），最多 5 条：
+  死掉的带 `killed_by` = `maid` / `owner` / `other` 与凶手实体 id `killed_by_type`（环境致死
+  两者为空）。还活着、此刻仍在她身边的不会列在这里——它们本来就在 `nearby` 里。只在 `query`
+  档给；一条记忆被用来解释一次「打不了」之后就会删掉（见 `maid_attack` 的失败原因）。
 - `nearby` 按距离升序、最多 3 条，超出时 `truncated` 为 `true`；不含主人与她自己。
   看得见的按档位半径（`query` 32 格、`auto` 工作范围）保留，看不见的只在 `heardRadius`
   （默认 6 格）内保留——地表上走着、脚底下洞里十几格外的僵尸不该算她注意到的东西。

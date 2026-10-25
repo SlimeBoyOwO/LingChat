@@ -207,6 +207,14 @@ impl InterestManager {
         self.decay_max_interest_cap();
     }
 
+    /// 她已经因为别的原因开过口了（插件推的主动对话）：兴趣清零，从头再攒。
+    ///
+    /// 不记一次主动对话——那份额度管的是原版自己找话题的次数，插件那条不是它想说的；
+    /// 但兴趣必须归零，否则下一轮轮询可能马上再投一条「想说话了」，同一件事说两遍。
+    pub fn clear_interest(&mut self) {
+        self.interest = 0.0;
+    }
+
     pub fn decay_max_interest_cap(&mut self) {
         self.max_interest_cap = (self.max_interest_cap - self.decay_step).max(50.0);
         tracing::info!("[Engagement] Cap decayed to {:.2}", self.max_interest_cap);

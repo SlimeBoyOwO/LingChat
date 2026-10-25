@@ -7,7 +7,8 @@
        其余窗口 / Windows / Linux / 移动端不渲染，避免影响既有拖动与点击。 -->
   <div v-if="isMacOverlayWindow" class="mac-drag-region" data-tauri-drag-region></div>
   <!-- 内置光标特效：teleport 到 body，避免 #app 上的整体缩放（transform: scale）导致坐标偏移。
-       默认走 useCursorFx（ba-click-fx，覆盖层由库自己挂在 body 下），仅在选择内置实现时挂载 -->
+       默认走 useCursorFx（ba-click-fx，覆盖层由库自己挂在 body 下），仅在选择内置实现时挂载。
+       与新版引擎共用同一个门控：只在主窗口的主界面启用，桌宠/气泡/投屏/日志等窗口不挂 -->
   <Teleport to="body">
     <CursorEffects v-if="legacyCursorFxActive" />
   </Teleport>
@@ -56,14 +57,19 @@ const route = useRoute();
 const isMainWindow = getCurrentWindow().label === "main";
 
 const settingsStore = useSettingsStore();
+// 光标特效只在主界面提供：桌宠是同窗口的透明小窗，气泡/投屏/日志/TODO 小组件是独立窗口，
+// 这些场景既没有视线内的鼠标操作，也没必要保留覆盖层与 WebGL 上下文
+const cursorFxEnabled = computed(() => isMainWindow && route.path !== "/pet");
 // 选到内置实现，或新版引擎初始化失败时，回退到内置的 Canvas2D 特效
 const legacyCursorFxActive = computed(
-  () => settingsStore.cursorEffectEngine === "legacy" || !cursorFxBaAvailable.value,
+  () =>
+    cursorFxEnabled.value &&
+    (settingsStore.cursorEffectEngine === "legacy" || !cursorFxBaAvailable.value),
 );
 
 // ─── 全局单例 composables（仅在此处调用一次以激活）──────────
 // 光标特效（新版，库自带 body 覆盖层）
-useCursorFx();
+useCursorFx(() => cursorFxEnabled.value);
 // 激活主动对话投放条件上报
 useCanDeliver();
 // 激活 Ctrl+滚轮 UI 全局缩放

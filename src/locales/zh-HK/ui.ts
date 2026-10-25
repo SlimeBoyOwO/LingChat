@@ -92,6 +92,7 @@ export default {
   notification: {
     titlePlaceholder: "[通知標題]",
     messagePlaceholder: "[通知內容]",
+    mcMaidConnected: "已連接 MC 的女僕(*^▽^*)",
   },
   settingItem: {
     multilineHint: "支援多行輸入",

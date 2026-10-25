@@ -95,6 +95,7 @@ export default {
   notification: {
     titlePlaceholder: "[Notification Title]",
     messagePlaceholder: "[Notification Content]",
+    mcMaidConnected: "Connected to the maid in Minecraft (*^▽^*)",
   },
   settingItem: {
     multilineHint: "Multi-line input supported",

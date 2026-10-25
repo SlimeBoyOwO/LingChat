@@ -288,6 +288,18 @@ export function initializeTauriEventListeners() {
     },
   );
 
+  // 插件的对外连接（游戏桥接这类）连上了：给一句提示，省得玩家自己去插件页确认。
+  // 只认女仆桥接插件，其余插件的连接不打扰界面。
+  mainWindow?.listen<{ pluginId?: string; event?: string }>("plugin:ws-state", (event) => {
+    const { pluginId, event: state } = event.payload ?? {};
+    if (pluginId !== "mc_maid_bridge" || state !== "connect") return;
+    useUIStore().showNotification({
+      type: "success",
+      title: i18n.global.t("ui.notification.mcMaidConnected"),
+      skipTipsCheck: true,
+    });
+  });
+
   // === ASR events ===
 
   listen<VadEvent>("asr://speech_started", () => {

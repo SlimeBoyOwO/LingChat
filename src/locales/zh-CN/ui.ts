@@ -101,6 +101,7 @@ export default {
   notification: {
     titlePlaceholder: "[通知标题]",
     messagePlaceholder: "[通知内容]",
+    mcMaidConnected: "已连接 MC 的女仆(*^▽^*)",
   },
   settingItem: {
     multilineHint: "支持多行输入",

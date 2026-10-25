@@ -11,7 +11,6 @@ use crate::ai_service::god_agent::capabilities::{
     speaker::{self as god_speaker, SpeakerView},
     tool_hint as god_tool_hint,
 };
-use crate::ai_service::memory_injection::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
@@ -159,8 +158,10 @@ impl MessageGenerator {
     }
 
     /// 回复纠偏：上一轮回复的格式要素（情绪标签 / 正文 / 日语翻译）缺失、
-    /// 台词数量越界、动作分布异常或情绪标签过长时，各排一条临时记忆，
-    /// 只在下一轮请求里出现一次，不写进台词表。
+    /// 台词数量越界、动作分布异常或情绪标签过长时，各写一条系统提示台词。
+    ///
+    /// 提示直接落在台词表里，不是只搭下一轮请求的临时记忆：模型当轮照着改了、
+    /// 隔几轮又松回去是最常见的复发方式，留在历史里才管得住。
     ///
     /// 只对自由对话 / 主动对话生效：入场问候天然只有一两句，会被「正常」档误判过短；
     /// 剧本模式的节奏由剧本作者控制，不插提示（判据与好感度评估一致）。
@@ -211,12 +212,14 @@ impl MessageGenerator {
             }
         }
 
-        // 各条提示排队给下一轮；同一条已排队时 queue_temporary_memory 会跳过
+        // 各条提示写进台词表；写失败只记一笔，不影响已经呈现给玩家的回复
         for text in texts {
-            gs.queue_temporary_memory(TemporaryMemory {
-                text: PromptRole::System.build_prompt(&text),
-                placement: TemporaryPlacement::TrailingUser,
-            });
+            if let Err(error) = gs
+                .add_prompt_line(&self.deps.db, PromptRole::System, &text)
+                .await
+            {
+                tracing::warn!("[Correction] 纠偏提示写入失败: {error:#}");
+            }
         }
     }
 

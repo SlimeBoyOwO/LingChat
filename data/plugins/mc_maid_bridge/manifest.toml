@@ -158,8 +158,8 @@ timeout_ms = 15000
 [[tools]]
 name = "maid_attack"
 examples = ["去打那只僵尸", "揍它", "打我一下", "轻轻拍我一下"]
-description = "让自己去攻击身边的一个活物。target 写要打谁：活物的中文名或英文短名（僵尸、zombie、羊、sheep）、另一个玩家的名字（照 maid_look_around 里看到的那个名字），或 hostile（最近的敌对生物）、animal（最近的动物）、other_player（另一个玩家）、owner（主人自己）。style 选力度：fight（默认，追着一直打到对方倒下；一次调用就够了，战斗中不要重复调用，重复调用只会得到「已经在打」的回执）或 light（只轻轻打一下，打完就收手、伤害很小）。主人说「去打那只僵尸」「揍它」用默认；说「打我一下」「轻轻碰我一下」「拍我一下」时用 light，不然自己会追着主人一直打到倒下。这个工具只负责攻击，不保证目标已经倒下：结果只说明自己开始打了，目标还在。目标离自己太远会失败，先走近再让自己打。"
-parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "description":"要打谁：活物名字、英文短名、实体 id、另一个玩家的名字，或 hostile / animal / other_player / owner" }, "style":{ "type":"string", "description":"fight = 追着打倒（默认）；light = 只轻轻打一下" } }, "required":["target"] }'
+description = "让自己去攻击身边的活物，可以一次点好几只。target 写要打谁：活物的中文名或英文短名（僵尸、zombie、羊、sheep）、另一个玩家的名字（照 maid_look_around 里看到的那个名字），或 hostile（最近的敌对生物）、animal（最近的动物）、other_player（另一个玩家）、owner（主人自己）。count 是要打几只，默认 1，最多 8；填 2 以上会按最近的顺序一只一只打完，主人说「把这几只僵尸都打了」时用它。style 选力度：fight（默认，追着一直打到对方倒下；一次调用就够了，战斗中不要重复调用，重复调用只会得到「已经在打」的回执）或 light（只轻轻打一下，打完就收手、伤害很小）。主人说「去打那只僵尸」「揍它」用默认；说「打我一下」「轻轻碰我一下」「拍我一下」时用 light，不然自己会追着主人一直打到倒下。这个工具只负责攻击，不保证目标已经倒下：结果只说明自己开始打了，目标还在。目标离自己太远会失败，先走近再让自己打。想打的那个活物已经不在时会说明原因：已经被自己或玩家打死了、还是刚才还在附近现在找不到了，照回执说清楚即可，不要重复调用。"
+parameters = '{ "type":"object", "properties":{ "target":{ "type":"string", "description":"要打谁：活物名字、英文短名、实体 id、另一个玩家的名字，或 hostile / animal / other_player / owner" }, "count":{ "type":"integer", "minimum":1, "maximum":8, "description":"要打几只（默认 1，最多 8）；按最近的顺序一只一只打" }, "style":{ "type":"string", "description":"fight = 追着打倒（默认）；light = 只轻轻打一下" } }, "required":["target"] }'
 script = "tools/entry.py"
 timeout_ms = 15000
 

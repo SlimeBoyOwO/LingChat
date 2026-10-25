@@ -5,7 +5,7 @@ from plugin_host import capture_screen
 from bridge import ask, config, ready
 from naming import names
 from tools.common import LOOK_TIMEOUT_MS, STATE_TIMEOUT_MS
-from tools.context import LOOK_AROUND_TOOL, creature_text, owner_phrase, snapshot
+from tools.context import LOOK_AROUND_TOOL, creature_text, owner_phrase, remembered_text, snapshot
 from wording import (
     BLOCK_NAMES,
     DIMENSION_NAMES,
@@ -180,6 +180,9 @@ def _look_around_text(data):
 
     creatures = creature_text(data)
     lines.append(creatures if creatures else "附近没有别的活物。")
+    remembered = remembered_text(data.get("remembered") or [])
+    if remembered:
+        lines.append(remembered)
     if data.get("truncated"):
         lines.append("更远的没再细看。")
     return "".join(lines)

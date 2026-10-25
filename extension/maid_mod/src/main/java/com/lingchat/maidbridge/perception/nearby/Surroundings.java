@@ -38,6 +38,8 @@ import java.util.List;
  * @param structure 她所在结构（村庄、矿井这类）的 id；不在结构里时为空串
  * @param posture 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
  *                / {@code unconscious}
+ * @param liquid 她自己这一格里的液体 id（水、岩浆或模组液体）；没泡在液体里时为空串
+ * @param submerged 头也浸在同一种液体里，也就是在水下游泳
  */
 public record Surroundings(
         String entityId,
@@ -53,7 +55,9 @@ public record Surroundings(
         boolean nearbyTruncated,
         String vehicle,
         String structure,
-        String posture) {
+        String posture,
+        String liquid,
+        boolean submerged) {
 
     /** 一次视线命中的结果：{@code kind} 取 {@code block} / {@code entity} / {@code none}。 */
     public record Gaze(String kind, String id, double distance) {

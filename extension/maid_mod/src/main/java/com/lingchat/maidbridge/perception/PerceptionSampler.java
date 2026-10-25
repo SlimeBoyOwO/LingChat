@@ -8,6 +8,7 @@ import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.perception.carry.CarryReporter;
 import com.lingchat.maidbridge.perception.event.DeathReporter;
 import com.lingchat.maidbridge.perception.event.HurtReporter;
+import com.lingchat.maidbridge.perception.event.ProjectileReporter;
 import com.lingchat.maidbridge.perception.item.BackpackWatcher;
 import com.lingchat.maidbridge.perception.item.ItemReporter;
 import com.lingchat.maidbridge.maid.MaidCondition;
@@ -71,6 +72,7 @@ public final class PerceptionSampler {
             lastSurroundings = null;
             lastSpatial = null;
             HurtReporter.clear();
+            ProjectileReporter.clear();
             ItemReporter.clear();
             BackpackWatcher.clear();
             return;
@@ -86,6 +88,8 @@ public final class PerceptionSampler {
         }
         // 挨打那条不受感知开关影响，也不吃采样间隔：它自己被去抖管着
         HurtReporter.tick(bridge);
+        // 雪球、鸡蛋这类零伤害的投掷物同理：砸在身上就该有反应
+        ProjectileReporter.tick(bridge);
         // 丢东西、喂饭同样是「一小段合成一条」，只在它自己的去抖到点时推
         ItemReporter.tick(bridge);
         // 附近死亡那条在事件里就推出去了，这里只推进它的静默期
@@ -197,6 +201,7 @@ public final class PerceptionSampler {
         sinceSample = 0;
         sawClients = false;
         HurtReporter.clear();
+        ProjectileReporter.clear();
         ItemReporter.clear();
         BackpackWatcher.clear();
         CarryReporter.reset();

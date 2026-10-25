@@ -170,21 +170,29 @@ def _settle(maid):
 
 
 def _send_tts(maid, audio_file):
-    """把这一句的音频原样发给模组，由它在女仆的位置播放（宿主此时已把本机静音）。"""
+    """把这一句的音频原样发给模组，由它在女仆的位置播放（宿主此时已把本机静音）。
+
+    读不到文件或发不出去都要记一笔：这时候本机是静音的，游戏里也没响就是彻底没声音，
+    静默返回会让「语音没了」变成一个只能猜的问题。
+    """
     if "/" in audio_file or "\\" in audio_file or audio_file in (".", ".."):
         return
     result = read_data_file(f"voice/{audio_file}")
     if not result.get("ok"):
+        print(f"[mc_maid_bridge] 游戏内语音读取失败：{result.get('error')}")
         return
     if (result.get("size") or 0) > MAX_TTS_BYTES:
+        print(f"[mc_maid_bridge] 游戏内语音过大，跳过：{result.get('size')} 字节")
         return
     audio = result.get("base64") or ""
     if not audio:
         return
-    bridge.send({
+    sent = bridge.send({
         "type": "play_tts",
         "data": {"maid_id": maid, "format": "wav", "audio": audio},
     })
+    if not sent.get("ok"):
+        print(f"[mc_maid_bridge] 游戏内语音没能发出去：{sent.get('error')}")
 
 
 def _use_short_replies(quiet=False):
@@ -312,7 +320,7 @@ def _append_event(text, kind, data):
     written = add_prompt_line(
         "narrator",
         text,
-        ttl_seconds=event_ttl(kind),
+        ttl_seconds=event_ttl(kind, data),
         key=event_key(kind),
         severity=event_severity(kind, data),
     )

@@ -29,6 +29,8 @@ import com.lingchat.maidbridge.perception.event.AchievementReporter;
 import com.lingchat.maidbridge.perception.event.DeathReporter;
 import com.lingchat.maidbridge.perception.event.FavoriteFoodReporter;
 import com.lingchat.maidbridge.perception.event.HurtReporter;
+import com.lingchat.maidbridge.perception.event.ProjectileReporter;
+import com.lingchat.maidbridge.perception.nearby.CreatureMemory;
 import com.lingchat.maidbridge.perception.PerceptionSampler;
 import com.lingchat.maidbridge.perception.query.LookAroundHandler;
 import com.lingchat.maidbridge.voice.PlayTtsHandler;
@@ -90,6 +92,8 @@ public class LingChatMaidBridge {
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerTick);
         NeoForge.EVENT_BUS.addListener(ChatPushListener::onServerChat);
         NeoForge.EVENT_BUS.addListener(HurtReporter::onDamage);
+        // 雪球、鸡蛋这类零伤害的投掷物：不算受伤，但确实砸在了她身上
+        NeoForge.EVENT_BUS.addListener(ProjectileReporter::onImpact);
         // 致命伤改成就地昏迷：普通伤害在昏迷期间取消，/kill 与虚空仍走旧死亡
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, MaidCondition::onDamage);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, MaidCondition::onIncoming);
@@ -184,6 +188,9 @@ public class LingChatMaidBridge {
         PerceptionSampler.reset();
         // 附近死亡那条记着静默期，别带到下一个世界
         DeathReporter.clear();
+        ProjectileReporter.clear();
+        // 她记得的活物同样是一个世界的：换存档后 uuid 都不作数了
+        CreatureMemory.clear();
         // 物品的去抖与背包基线同理
         ItemReporter.clear();
         FavoriteFoodReporter.clear();

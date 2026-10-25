@@ -29,15 +29,17 @@ public final class SurroundingsDiff {
     public static final double BAND_MARGIN = 2.0;
     /** 敌对生物多近算「靠过来了」；更远那一档只报「出现了」。 */
     public static final double THREAT_CLOSE = 6.0;
-    /** 同类变化的最短间隔。 */
+    /** 同类变化的最短间隔。环境类一律一分钟：这些事变得比旁白能说的还快。 */
     public static final long PROXIMITY_COOLDOWN_TICKS = 100L;
     public static final long SIGHT_COOLDOWN_TICKS = 200L;
-    public static final long SHELTER_COOLDOWN_TICKS = 400L;
-    public static final long GROUND_COOLDOWN_TICKS = 600L;
+    public static final long SHELTER_COOLDOWN_TICKS = 1200L;
+    public static final long GROUND_COOLDOWN_TICKS = 1200L;
     /** 进出结构的最短重报间隔：在村子边上走来走去不该反复说。 */
-    public static final long STRUCTURE_COOLDOWN_TICKS = 600L;
-    /** 光线跨档的最短重报间隔：在洞口、树荫边缘走动不该反复说。 */
-    public static final long LIGHT_COOLDOWN_TICKS = 200L;
+    public static final long STRUCTURE_COOLDOWN_TICKS = 1200L;
+    /** 光线跨档的最短重报间隔：洞里来回走、点灭火把不该反复说。 */
+    public static final long LIGHT_COOLDOWN_TICKS = 1200L;
+    /** 泡进液体与埋头游泳的最短重报间隔，与环境类一致：一分钟。 */
+    public static final long LIQUID_COOLDOWN_TICKS = 1200L;
     /** 光照分档阈值：0-3 很黑，4-7 昏暗，8 以上明亮。 */
     public static final int LIGHT_DARK_MAX = 3;
     public static final int LIGHT_DIM_MAX = 7;
@@ -120,6 +122,9 @@ public final class SurroundingsDiff {
         private final KeyedCooldown living = new KeyedCooldown();
         /** 上次报结构变化的时间：在村子边上反复进出不该刷屏。 */
         private long lastStructureTick = Long.MIN_VALUE;
+        /** 已报出的液体状态：空串 = 没泡着，否则是液体 id，埋头时再缀 {@code |swim}。 */
+        private String liquid = "";
+        private long lastLiquidTick = Long.MIN_VALUE;
 
         /** 换了监控对象、重新接上、或女仆离开已加载区块时清掉，免得拿旧世界的状态去比。 */
         public void reset() {
@@ -132,6 +137,8 @@ public final class SurroundingsDiff {
             lastSurfaceTick = Long.MIN_VALUE;
             living.reset();
             lastStructureTick = Long.MIN_VALUE;
+            liquid = "";
+            lastLiquidTick = Long.MIN_VALUE;
         }
     }
 
@@ -147,6 +154,7 @@ public final class SurroundingsDiff {
             state.shelter.baseline(shelterValue(next));
             state.light.baseline(lightBand(next.light()));
             state.threatBand = threatBand(nearestHostile(next));
+            state.liquid = liquidValue(next);
             return frames;
         }
 
@@ -158,6 +166,7 @@ public final class SurroundingsDiff {
         addLight(frames, next, state, nowTick);
         addVehicle(frames, prev, next);
         addStructure(frames, prev, next, state, nowTick);
+        addLiquid(frames, prev, next, state, nowTick);
         addGround(frames, prev, next, state, nowTick);
         addPosture(frames, prev, next);
         return frames;
@@ -327,6 +336,44 @@ public final class SurroundingsDiff {
         frames.add(frame);
     }
 
+    /**
+     * 泡进液体里：水、岩浆或模组液体，以及头也浸进去的游泳。
+     *
+     * <p>与脚下那层分开：那里的白名单说的是「踩着什么样的地」，泡在液体里是另一件事——
+     * 跨进水里时脚下还是河床，所以她这一格有没有液体才是判据。埋头与抬头也算一次变化。
+     * 与环境类一样一分钟最多报一次，浅滩里踩进踩出不会一句接一句。
+     */
+    private static void addLiquid(
+            List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
+        // 坐在船里、矿车里时她在水面之上，不是自己泡着：上下船那一下不当作进水出水
+        if (!next.vehicle().isEmpty() || !prev.vehicle().isEmpty()) {
+            return;
+        }
+        String value = liquidValue(next);
+        if (value.equals(state.liquid)) {
+            return;
+        }
+        state.liquid = value;
+        // 冷静期内换了液体（浅滩里踩进踩出、岸边被浪打一下）不补报
+        if (nowTick < state.lastLiquidTick + LIQUID_COOLDOWN_TICKS) {
+            return;
+        }
+        state.lastLiquidTick = nowTick;
+        JsonObject frame = EventFrames.base("liquid_change", next.entityId());
+        frame.addProperty("liquid", next.liquid());
+        frame.addProperty("from_liquid", prev.liquid());
+        frame.addProperty("swimming", next.submerged());
+        frames.add(frame);
+    }
+
+    /** 液体状态的比较口径：没泡着为空串，泡着是液体 id，埋头再缀一个标记。 */
+    private static String liquidValue(Surroundings s) {
+        if (s.liquid().isEmpty()) {
+            return "";
+        }
+        return s.submerged() ? s.liquid() + "|swim" : s.liquid();
+    }
+
     /** 脚下换了种地。只在「值得说」的几种之间变时报，走在石头路上不报。 */
     private static void addGround(
             List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
@@ -334,11 +381,15 @@ public final class SurroundingsDiff {
         if (!next.vehicle().isEmpty() || !prev.vehicle().isEmpty()) {
             return;
         }
+        // 泡在液体里的那一步交给 liquid_change，脚下那块地这时说不说都一样
+        if (!next.liquid().isEmpty() || !prev.liquid().isEmpty()) {
+            return;
+        }
         String kind = GroundKind.of(next.feetBlock());
         if (kind.isEmpty() || kind.equals(GroundKind.of(prev.feetBlock()))) {
             return;
         }
-        // 踩进水里、岩浆里、火里要立刻说，不被刚刚报过的遮蔽或脚下挡住
+        // 踩进岩浆、火里要立刻说，不被刚刚报过的遮蔽或脚下挡住；水只算换了种地
         if (!GroundKind.isUrgent(kind) && nowTick < state.lastSurfaceTick + GROUND_COOLDOWN_TICKS) {
             return;
         }

@@ -606,6 +606,7 @@ ITEM_NAMES = {
     "minecraft:bone_meal": "骨粉",
     "minecraft:sugar": "糖",
     "minecraft:egg": "鸡蛋",
+    "minecraft:snowball": "雪球",
     "minecraft:cocoa_beans": "可可豆",
     "minecraft:ink_sac": "墨囊",
     "minecraft:glow_ink_sac": "荧光墨囊",
