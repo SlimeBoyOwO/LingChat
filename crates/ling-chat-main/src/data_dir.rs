@@ -54,7 +54,7 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         // 本 crate 位于 <repo>/crates/ling-chat-main，故需上跳两级回仓库根。
@@ -65,12 +65,80 @@ fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
             .unwrap()
             .join("data")
     } else {
-        // 桌面端便携发布：data 目录放在 exe 旁边
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+        #[cfg(target_os = "linux")]
+        {
+            // Linux 系统安装（deb/rpm/AppImage）：exe 在 /usr/bin 或只读挂载点，
+            // 不能把 data/ 放在 exe 旁边 —— 普通用户没有写权限，启动时创建
+            // models/ 等目录会直接以 os error 13 失败。改用用户数据目录，
+            // 并从安装包资源目录播种。
+            use tauri::Manager;
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app_data_dir")
+                .join("data");
+            prepare_linux_data_dir(app, &data_dir);
+            data_dir
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // 桌面端便携发布：data 目录放在 exe 旁边
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("data")
+        }
+    }
+}
+
+/// Linux 发布版：把安装包里的只读资源播种到可写的用户数据目录。
+///
+/// 安装包资源位于 `resource_dir()/data/`（deb/rpm 为 `/usr/lib/LingChat/data`，
+/// AppImage 为 AppDir 内同一路径），包含 `.official/` 与 `third_party/`。
+#[cfg(target_os = "linux")]
+fn prepare_linux_data_dir(app: &tauri::AppHandle, data_dir: &std::path::Path) {
+    use tauri::Manager;
+
+    let Ok(resource_dir) = app.path().resource_dir() else {
+        return;
+    };
+    let resource_data = resource_dir.join("data");
+    if !resource_data.exists() {
+        return;
+    }
+
+    // 首次启动（尚未写入 .seeded）：整体复制 .official/ 与 third_party/。
+    if !data_dir.join(".seeded").exists() {
+        if let Err(e) = crate::resource_sync::sync::copy_dir_recursive(&resource_data, data_dir) {
+            tracing::error!("播种用户数据目录失败: {e}");
+        }
+        return;
+    }
+
+    // 后续启动：安装包升级后，把新版本 .official/ 放进数据目录，交给前端增量同步。
+    let resource_official = resource_data.join(".official");
+    if !resource_official.exists() {
+        return;
+    }
+    let resource_manifest = resource_official.join("data_manifest.json");
+    let local_manifest = data_dir.join("data_manifest.json");
+    let newer = match (
+        crate::manifest::DataManifest::load(&resource_manifest),
+        crate::manifest::DataManifest::load(&local_manifest),
+    ) {
+        (Ok(resource), Ok(local)) => resource.data_version > local.data_version,
+        (Ok(_), Err(_)) => true,
+        _ => false,
+    };
+    if newer {
+        if let Err(e) = crate::resource_sync::sync::copy_dir_recursive(
+            &resource_official,
+            &data_dir.join(".official"),
+        ) {
+            tracing::error!("更新 .official 失败: {e}");
+        }
     }
 }
 

@@ -118,7 +118,7 @@ pub fn apply_selected_files(
 
 /// 递归复制目录内容。
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
+pub(crate) fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
     if !dst.exists() {
         std::fs::create_dir_all(dst)?;
     }
