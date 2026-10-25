@@ -91,6 +91,29 @@ export function useVoiceResources(localSettings: Ref<any>) {
       },
     });
 
+  // 合成采样参数：空串删除键（留空=后端默认），非空转数字
+  const gsvSamplingField = (key: "gsv_temperature" | "gsv_top_p" | "gsv_speed_factor") =>
+    computed({
+      get: () => {
+        const v = ensureVoiceModels()[key];
+        return v === undefined || v === null ? "" : String(v);
+      },
+      set: (val: string | number) => {
+        const trimmed = String(val).trim();
+        const voiceModels = ensureVoiceModels();
+        if (trimmed === "") {
+          delete voiceModels[key];
+          return;
+        }
+        const n = Number(trimmed);
+        if (Number.isFinite(n)) voiceModels[key] = n;
+      },
+    });
+
+  const gsvTemperature = gsvSamplingField("gsv_temperature");
+  const gsvTopP = gsvSamplingField("gsv_top_p");
+  const gsvSpeedFactor = gsvSamplingField("gsv_speed_factor");
+
   return {
     installedVoices,
     cloudVoices,
@@ -102,5 +125,8 @@ export function useVoiceResources(localSettings: Ref<any>) {
     gsvEmoEnabled,
     toggleGsvEmo,
     gsvEmoField,
+    gsvTemperature,
+    gsvTopP,
+    gsvSpeedFactor,
   };
 }
