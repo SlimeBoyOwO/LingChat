@@ -1,3 +1,4 @@
 /src/
 /pkg/
 /*.pkg.tar.*
+/*.pkg/
