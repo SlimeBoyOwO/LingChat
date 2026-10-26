@@ -115,6 +115,7 @@ public final class SurroundingsReader {
                 GroundKind.of(feetBlock),
                 level.canSeeSky(pos),
                 level.dimensionType().hasSkyLight(),
+                OverheadScan.read(level, pos),
                 level.getMaxLocalRawBrightness(pos),
                 ownerView(maid, owner),
                 nearby,

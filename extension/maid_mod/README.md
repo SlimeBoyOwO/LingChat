@@ -181,16 +181,21 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `go_to` | `bed` | 找最近的空床（原版床与车万女仆的女仆床都算），走到床头那格 | 否，到位后推 `action_done` |
 | `sit` | — | 坐下；坐姿下她不会自己走动 | 是 |
 | `stand` | — | 站起来；正睡着会被叫醒，坐在地上躺着会被扶起来，坐在坐垫/椅子/船上会下来 | 是 |
-| `lie_down` | `bed`（默认） | 先走到床边，再按一个床上的睡位与睡姿躺下（不调 `startSleeping`，不回血不涨好感） | 否，被打断或叫起来后推 `action_done` |
+| `lie_down` | `bed`（默认） | 先走到床边，再按**床头那一格**的睡位与睡姿躺下（不调 `startSleeping`：不会一口气回满、也不涨好感；躺着休息每 10 秒回一滴血） | 否，被打断或叫起来后推 `action_done` |
 | `lie_down` | `ground` | 就地躺下：睡位按在脚下、每 tick 冻结移动；挨打、泡进液体、身下没地、被抱走时起来 | 否，她自己起来后推 `action_done` |
 | `look_at` | `player` | 转头看向玩家，保持约 2 秒 | 是（到时静默收尾，不推事件） |
 | `scout` | — | 每 tick 按主人朝向找正前方约 8 格、站得下的那一格过去；主人走动、转身就跟着换点 | 否，被叫停或自己撑不住时推 `action_done` |
 
 两种躺法都按「睡位 + `Pose.SLEEPING`」两件一起走：地上的躺姿在脚下按一个睡位，YSM 的
-闭眼与躺姿、车万女仆的「别乱走」都只认 `isSleeping()`。原版「睡位不是床就起来」与车万女仆
-「日程不在睡觉时段就叫醒」由 `LivingEntityStopSleepingMixin` 在动作期间拦掉；车万女仆的
-游泳管理器每 tick 会把不在水里的姿势改回站立，由 `EntityMaidPoseMixin` 挡住。走路、做事
-或 `stand` 都会把这次动作顶掉，她随即被扶起来。
+闭眼与躺姿、车万女仆的「别乱走」都只认 `isSleeping()`。**床上的睡位一定压在床头那一格**：
+车万女仆每 tick 把人吸到睡位中心，渲染又按睡位那格床的朝向把身子往床尾铺开一格半，
+睡位落在床尾时她整个人会往床外错出去——所以「她脚下这一格」与「床头这一格」分开算，
+床尾会顺着朝向翻到床头，踩在床的任意一半上都会被摆回床头中心。原版「睡位不是床就起来」与
+车万女仆「日程不在睡觉时段就叫醒」由 `LivingEntityStopSleepingMixin` 在动作期间拦掉；
+车万女仆的游泳管理器每 tick 会把不在水里的姿势改回站立，由 `EntityMaidPoseMixin` 挡住。
+走路、做事或 `stand` 都会把这次动作顶掉，她随即被扶起来。
+床上的休息只有躺在床上时算：每 10 秒回一滴血，起身、被打断或血满了计时清零；
+就地躺下不回血——那只是换个姿势待着，不是在休息。
 
 探路是持续状态，和躺下一样不会自己到期：主人往前走、转身，她就每 tick 换一次落点；
 落点新算出来跟原来差不到 2 格时不换，免得主人站着晃视角时她来回打转。沿朝向逐格往回试
@@ -317,12 +322,15 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 ```json
 {"type":"maid_mine","data":{"maid_id":"...","target":"looked","count":1}}
 {"type":"maid_mine","data":{"maid_id":"...","target":"minecraft:iron_ore","count":1,"at":"@4,-2,-3"}}
+{"type":"maid_mine","data":{"maid_id":"...","target":"","at":"@-2,0,4","whole":true}}
+{"type":"maid_mine","data":{"maid_id":"...","target":"","area":"@-3,0,2 @3,3,4"}}
 ```
 
 `target` 两种写法：`looked`（默认，玩家准星指着的方向）或一个方块注册表 id
 （`minecraft:stone`，插件负责把「石头」这类中文翻成 id）。也接受方块标签
 （`#minecraft:logs`，插件把「木头」这类泛称翻成它）。`count` 是这一次挖几块，
-默认 1，上限 64。可选字段 `at` 是相对地址（见下）。
+默认 1，上限 64。可选字段 `at` 是相对地址（见下）；`whole` 与 `area` 是两种「拆一片」
+的写法（见下），给了它们就按区域拆，`count` 不再起作用。
 
 - **玩家指哪片就在哪片挖**：准星射线放宽到 32 格，落点当作区域中心（不必凑到交互距离内）。
   写了方块名时，先在这一带 8 格内找这种方块，找到就只在这一带挖；`looked` 则先挖落点那块，
@@ -339,6 +347,14 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
   （那一格的 id、方位、挡路）与 `nearest`（她看见过的最近同类，含它自己的 `at`），
   模型照着新地址改一次就行，不用原样重试。`target` 留空或写 `looked` 时按那一格原本的
   方块挖。
+- **整团拆（2026-10-26）**：`whole=true` 时以 `at`（没给 `at` 就用准星落点）那一格为种子，
+  按六面相连把同种方块收成一团，逐块拆掉——与「看一眼周围」的成团口径一致。种子那一格
+  要她看见过、挖得动、不受保护；团里受保护与缺工具的方块在受理时先剔掉。一次最多 64 块，
+  没数完就是 `truncated=true`。
+- **按区域拆（2026-10-26）**：`area` 写两个相对角，用空格或 `~` 分开，如
+  `"@-3,0,2 @3,3,4"`；两个角不分先后，每条边最多 16 格（`bad_address` 之外不偷偷缩小）。
+  这一片里的空气、液体、挖不动的、受保护与缺工具的方块都不进清单；剩下的按离她的远近
+  取前 64 块，多出来的只拆最近的并标 `truncated`。掉落照旧进她的背包。
 
 - **自己驱动，不占任务槽**：和攻击一样不走车万女仆的任务/AI，`MaidMineController` 每 tick
   推进——找一块站得下、够得着、看得见、寻路走得到的落脚点，走过去，然后朝方块挖。
@@ -375,7 +391,9 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
   当场拒绝——她会一路挖穿挡路的方块过去。
 - `async=true`：受理只代表开始挖了。挖穿 / 挖够 / 走不到由 `maid_mine_done` 事件交代，
   字段是 `status`（`done` / `partial` / `failed`）、`mined`、`wanted`、`block`、
-  `reason_code`、`reason`。**插件在那之前不能说她挖到了。**
+  `area`、`remaining`、`truncated`、`stuck_at`、`reason_code`、`reason`。
+  `remaining` 是清单里还剩几块（单块/若干块那条按 `wanted - mined`），`stuck_at` 是停下时
+  卡着的那一格的相对地址（正常收工为空串）。**插件在那之前不能说她挖到了。**
 - `has_tool=false` 表示她手上和背包里都没有趁手的工具，只能徒手挖（会慢一些）。
 - `scene` 只在已经定到目标的失败里带：`id` / `name` 是那一格实际是什么，`dx`/`dy`/`dz`
   相对她脚下那一格，`at` 是它的相对地址，`facing` 同八向方位，`blockers` / `blocker`
@@ -386,7 +404,26 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
   `at` 可以直接拿去做下一次调用的地址；她也一个都没看见过时不带。
 - `addressed=true` 表示这次是按 `at` 指的：回执多带 `at` 与 `scene`（被指的那一格），
   插件说「朝你指的那块去了」而不是「去挖 N 块」。
+- `area=true` 表示这次是整团或区域拆除：回执多带 `cells`（这次要拆几块）与 `truncated`
+  （还有没装进这次范围的）。`block` 只在这片方块种类一致时才有值，混着几种为空串；
+  `count` 与 `cells` 相同。插件说「开始拆这一片」，不说「去挖 N 块」。
 - 与攻击、动作、换工作模式互斥：新的挖掘令会顶掉它们，它们也会顶掉挖掘。
+
+### `maid_place`：放下一块方块
+
+```json
+{"type":"maid_place","data":{"maid_id":"...","item":"minecraft:stone"}}
+{"type":"maid_place","data":{"maid_id":"...","item":"minecraft:oak_planks","at":"@2,0,1","facing":"north"}}
+```
+
+- `item` 是方块注册表 id（插件把中文名翻成 id）；实际取的是它的物品形态，必须在她主手、副手或背包里，头饰栏那一格不算。
+- **两种定位**：没有 `at` 时按主人准星看到的那一面放，和玩家自己右键一致——点到草、雪这类可替换方块就是把它换掉。给了 `at` 就把那一格当目标（相对她脚下那一格的偏移，插件可从「看一眼周围」的地址往旁边推一格）。
+- **按原版规则放**：用 `BlockPlaceContext` 加一个只用来算朝向的假玩家，台阶的上下半、原木朝向、含水、连接状态都交给游戏算；`facing` 可选 `north` / `south` / `east` / `west`，不给就用她自己的朝向。
+- **受理前核**：目标格可替换（`not_replaceable`）、旁边有能贴着的面（`no_support`）、那一格没有别的活物（`occupied`）、她身上有这种方块（`no_item`）、在活动范围里（`out_of_restriction`）。走不到、材料在中途没了、放不进去由控制器收尾（`unreachable` / `timeout` / `no_item` / `place_failed` / `no_sight` / `carried` / `unconscious`）。
+- 材料只从她身上扣一块，不凭空生成；放下去之后才扣，放失败不扣。
+- 回执（`maid_place_result`）：`accepted`、`async`、`looked`、`addressed`、`at`、`item`、`block`、`name`、`count`、`facing`、`replaced_action`、`reason_code`、`reason`；已定到目标的失败带 `scene`（目标格的 id、方位、上方压没压着、周围站不站得下）。
+- **收尾**：异步推 `maid_place_done`，字段是 `status`（`done` / `failed`）、`block`、`item`、`reason_code`、`reason`。受理只代表她过去了，插件在收到这条之前不能说她放好了。
+- 与攻击、动作、挖掘、换工作模式互斥：新的放置令会顶掉它们，它们也会顶掉放置。
 
 ### `maid_give_item`：把东西交给玩家
 
@@ -479,7 +516,7 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `player_sight_change` | 主人进出视线（要连续两次采样一致才认） | `visible` |
 | `threat_near` | 附近**从无到有**敌对生物，或最近那只由远转近 | `type` `distance` `direction` `visible` |
 | `living_near` | 身边来了别的活物（主人以外的生物、别的玩家、别的女仆） | `type` `category` `distance` `direction` |
-| `shelter_change` | 从露天走进遮蔽处，或反过来（一分钟内只报一次） | `sheltered`，以及用于同键合并取最后一帧的 `tick` |
+| `shelter_change` | 头顶换了档：露天 / 半遮 / 屋内（一分钟内只报一次，要连续两次采样一致） | `overhead`（`open` / `partial` / `enclosed`）、`overhead_cover`（头顶那块方块的 id，扫不到为空串）、`overhead_band`（`low` / `high`），以及给老插件用的 `sheltered` 与同键合并取最后一帧的 `tick` |
 | `light_change` | 光线跨档：很黑（0-3）/ 昏暗（4-7）/ 明亮（8-15）（一分钟内只报一次） | `band`（`dark` / `dim` / `bright`） |
 | `ground_change` | 脚下换了种值得说的地（火、雪、沙、耕地、冰）；坐在载具里不报；一分钟内只报一次，火除外 | `block` `kind` |
 | `liquid_change` | 她自己这一格里泡着液体（水、岩浆或模组液体），或头也浸进去游泳；一分钟内只报一次 | `liquid` `from_liquid` `swimming` |
@@ -489,6 +526,7 @@ JSON 文本帧，信封固定是 `{"type": ..., "request_id": ..., "data": {...}
 | `structure_change` | 走进或离开村庄、矿井、要塞这类结构（冷静期一分钟） | `structure` `from_structure` |
 | `item_pickup` | 她真的把地上的物品收进了背包 | `item` `count` `from_owner` `source` `source_id` `source_name` |
 | `item_received` | 她身上多出物品（多半是玩家在女仆界面里放的）：背包、双手、盔甲栏、饰品栏都算 | `items[{item,count,slot}]`（`slot`：`hand` / `armor` / `bauble` / `backpack`） `from_owner` |
+| `item_taken` | 她身上少了物品：主人在女仆界面里拿走了（只在主人 8 格内、她自己没在干活时报；她吃掉的、交出去的、放方块用掉的那几件事先扣账） | `items[{item,count,slot}]`（`slot` 同上） |
 | `item_fed` | 玩家喂她吃了东西（连喂几口合成一条） | `items[{item,count}]` `leftover[{item,count}]`（吃完剩下的碗这类容器，车万女仆会把它收进她的背包） |
 | `maid_ate` | 她自己从背包里找东西吃了（受伤后进食；停口 6 秒才算一顿，合并成一条） | `items[{item,count}]` `leftover[{item,count}]` |
 | `favorite_food` | 主人拿着她最爱吃的东西，她的讨食姿态真的翻过去了（两次上报至少隔 10 秒） | `item` |
@@ -579,6 +617,7 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   "looking_at":{"kind":"block","id":"minecraft:oak_door","distance":4.3},
   "standing_on":{"id":"minecraft:farmland","footing":"farmland"},
   "sheltered":false, "has_sky":true, "light":12,
+  "overhead":"open", "overhead_cover":"", "overhead_band":"",
   "owner":{"name":"NoiQing_Ling","distance":3.4,"visible":true,"same_dimension":true},
   "nearby":[{"type":"minecraft:zombie","category":"hostile","distance":6.8,"direction":"left","visible":false,"name":""},
             {"type":"minecraft:player","category":"player","distance":7.2,"direction":"right","visible":true,"name":"Layeray"}],
@@ -605,6 +644,10 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
 
 - 一律只给注册表 id：专用服务端上 `getName()` 只有英文（甚至裸翻译键），中文只在客户端
   按玩家语言选得出来，所以中文名全在插件那侧定。
+- `overhead` 是头顶这一层的三档：`open` 露天、`partial` 半遮（树荫、屋檐、洞口）、
+  `enclosed` 屋内（房间、洞穴），口径见已知边界。`overhead_cover` 是头顶第一块挡路的方块，
+  她那一格就露天时为空串；`overhead_band` 只说它压得低（`low`）还是很高（`high`），不报格数。
+  没有天空的维度整项为空串。老插件继续读 `sheltered`，它仍然只是「她那一格看不看得见天」。
 - `posture` 取 `standing` / `sitting` / `sleeping` / `lying`。站着是常态、插件不念；坐着、
   睡着与躺在地上要说一句，否则模型会当她站着指挥。`lying` 只可能是就地躺下——床上睡着的
   给 `sleeping`。
@@ -665,6 +708,10 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
 
 - 女仆走远到区块卸载后查不到，`send_chat` 与 `maid_action` 都会返回「找不到女仆」。车万女仆的
   实体只在已加载区块里拿得到，这是它本身的限制。
+- **头顶三档只看她脚下这一层**：四格以内、中间不隔着挡路方块（墙、关着的门）的那些列里，
+  还有一列露天就算半遮（树荫、屋檐、洞口），一列都没有才算屋内（房间、洞穴）。开着的门会把
+  门外那片露天算进来，石屋与山洞光凭方块分不出，只回头顶那块方块的 id；上下坡不计。
+  头顶十六格以上才封着时档位记 `high`，不报具体格数。
 - **物品这一层依赖她自己的背包与拾物设置**：没有背包就装不下东西（界面里也放不进去），
   拾物模式没开就不会捡地上的物品。玩家在界面里交接没有事件可挂，只能前后比一次；
   主人就在 8 格内时 `item_received` 带 `from_owner=true`（界面必须贴身才打得开），
@@ -680,6 +727,14 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   吃完剩下的容器（`usingConvertsTo`，蘑菇煲的碗这类）由车万女仆自己塞进她背包，同样
   预先把这一份记进差分账，并作为 `leftover` 跟着 `item_fed` / `maid_ate` 一起报——
   否则主人站在旁边时，那只碗会被说成「主人往背包里放了碗」。
+  反过来少了也一样：主人从她背包里拿走东西原来完全没有感知，她会当成自己弄丢了。现在
+  前后比出来的减量走 `item_taken`，但只在**主人就在 8 格内、她自己又没在干活**时才报——
+  她干活时背包本来就会少东西（农场播种吃种子、拉弓吃箭），那段说不清是被拿走还是用掉了，
+  不去猜。她自己吃掉的、`maid_give_item` 交出去的、没吃成掉回地上的、`maid_place` 放下去的
+  那一块，调用方会先记进 `ItemReporter` 的账再扣掉，不会被说成「主人拿走了」；减量按少掉的
+  那一处标 `slot`，插件说成「从背包里拿走了」「把手里的拿走了」「把身上的脱了下来」「把戴着的取了下来」。
+  看的位置里还包括车万女仆那格隐藏的临时存放：她自己吃饭、喝水时会把手里那件暂收进去，
+  吃完再放回手上；不算进来的话，那一顿饭的时间里她的东西就像「少了一件」。
 - 单人游戏按 Esc 暂停时游戏 tick 停止，请求会超时。插件那边会提示「游戏可能处于暂停或
   未响应状态」，不是卡死。反过来，动作的计时走的是游戏 tick，暂停期间**不算超时**。
 - **居家模式（禁足）会直接拒掉走不到的目标**：车万女仆每个 tick 都会清掉落在活动范围之外的
@@ -695,6 +750,9 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   连挖时第一块看她的位置，之后按「离刚挖掉的那块最近」找（树干上方那几块就是窗口跟着
   上移）；水平找 32 格。落脚点按离目标最近挑、竖直往下多看 6 格，并且**走到落脚点才动手**——
   原来一进五格交互距离就开挖，看起来像是在离树很远的地方挥镐。
+  整团拆与区域拆同样走这套走位与挖穿：一次最多 64 块、每条边最多 16 格；拆到一半被打断
+  （走不到、超时、被抱走）就停下，剩余与卡住的格子由 `maid_mine_done` 交代，不会自己接着拆。
+  区域里的方块按离她远近挑，受保护或缺工具的方块在受理时先剔掉。
 - **有活的时候不会被拽回来**：车万女仆的 `MaidFollowOwnerTask` 在主人离她超过「活动半径 + 2」时
   会把正在干活的女仆直接传送回主人身边，顺手清掉寻路目标。桥接用一个很小的服务端 mixin：
   她手上有活（攻击、挖方块、走过去/躺床/探路，或非空闲工作模式）**且主人已经超出原版回头线**
@@ -712,6 +770,11 @@ uuid 查不到她。本模组每 tick 反过来问「谁手里的那份 NBT 是�
   被抱走、床没了这几种，或者被新指令顶掉。地上的躺姿沿用原版睡姿的渲染：没有床时方向不会
   跟着她的朝向走（原版那条兜底在 1.21.1 走不到），要改得碰客户端渲染；躺姿碰撞箱由
   `LivingEntityLyingDimensionsMixin` 放宽到 0.9 宽、0.4 高，右键与搬运不必只对着脚。
+- **床上的睡位按床头算**：车万女仆每 tick 把人吸到睡位那一格的中心，渲染又按睡位那格床的
+  朝向把身子往床尾铺开一格半。睡位落在床尾那半张，头就离开枕头、身子往床外错出去一格，
+  所以床尾会顺着 `FACING`（两套床都是「床尾指向床头」）翻到床头；人不在床头那格就摆回
+  床头中心，踩在任意一半上都会被对齐。昏迷后被搬上床同理，恢复计时也按床头压睡位。
+  床上休息每 10 秒回一滴血，地上的躺姿不回。
 - **讨食走的是车万女仆自己的任务**：模组只把插件发来的食物接进她的诱惑物（`getTemptationItem`），
   所以「主人拿在主手上、她看得见、六格以内」这些条件与原版蛋糕完全一致；她在干活、打架或
   睡着时不讨，`favorite_food` 也不会推。食物清单是插件在连上时与玩家每次开口前发来的

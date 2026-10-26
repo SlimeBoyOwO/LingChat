@@ -8,6 +8,7 @@ import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
+import com.lingchat.maidbridge.perception.item.ItemReporter;
 import java.util.Locale;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -94,6 +95,8 @@ public class MaidGiveItemHandler implements MessageHandler {
         if (given == 0) {
             return rejected(maid, "not_found", "她身上没有这件东西", itemId, wanted, 0);
         }
+        // 这几件是她自己递出去的：背包差分会看到背包少了，别让旁白说成「主人从背包里拿走了」
+        ItemReporter.markRemoval(itemId, given);
 
         JsonObject out = new JsonObject();
         out.addProperty("accepted", true);

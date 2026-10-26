@@ -7,6 +7,8 @@ import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -19,6 +21,7 @@ import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
@@ -47,6 +50,10 @@ public final class MaidMineController {
         final int wanted;
         /** 玩家准星指着的那一片；为 null 时按她自己的位置找。 */
         final BlockPos anchor;
+        /** 区域拆除的待拆清单；null 表示按「同种方块若干块」找。 */
+        final List<BlockPos> cells;
+        /** 这一片比上限大，只拆了最近的这些。 */
+        final boolean truncated;
         int mined;
         /** 已经为够到目标挖穿了几块挡路的方块。 */
         int dug;
@@ -63,6 +70,11 @@ public final class MaidMineController {
         BlockPos cracking;
 
         Run(EntityMaid maid, BlockPos target, String blockId, int wanted, BlockPos anchor) {
+            this(maid, target, blockId, wanted, anchor, null, false);
+        }
+
+        Run(EntityMaid maid, BlockPos target, String blockId, int wanted, BlockPos anchor,
+                List<BlockPos> cells, boolean truncated) {
             this.maidId = maid.getStringUUID();
             this.level = (ServerLevel) maid.level();
             this.blockId = blockId;
@@ -70,6 +82,8 @@ public final class MaidMineController {
             this.wanted = wanted;
             this.target = target;
             this.anchor = anchor;
+            this.cells = cells;
+            this.truncated = truncated;
         }
     }
 
@@ -85,6 +99,18 @@ public final class MaidMineController {
     /** 受理一次挖掘：目标与块数已经由 handler 定好，这里只记下来。 */
     public static void start(EntityMaid maid, BlockPos target, String blockId, int wanted, BlockPos anchor) {
         current = new Run(maid, target, blockId, wanted, anchor);
+        MaidActuator.beginWalk(maid);
+    }
+
+    /**
+     * 受理一次区域拆除：格子已经由 handler 挑好，这里按清单逐块推进。
+     *
+     * <p>{@code blockId} 只在这片方块种类一致时才有值；混着几种就空着，控制器按清单拆，
+     * 不再按方块族筛。
+     */
+    public static void startCells(
+            EntityMaid maid, List<BlockPos> cells, boolean truncated, String blockId) {
+        current = new Run(maid, null, blockId, cells.size(), null, new ArrayList<>(cells), truncated);
         MaidActuator.beginWalk(maid);
     }
 
@@ -117,7 +143,7 @@ public final class MaidMineController {
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
         }
-        broadcast(run, run.mined > 0 ? "partial" : "failed", "unconscious", "她昏过去了");
+        broadcast(run, maid, run.mined > 0 ? "partial" : "failed", "unconscious", "她昏过去了");
     }
 
     /** 这只女仆正在被我们带着挖：跟随行为给长任务让路时用。 */
@@ -169,7 +195,7 @@ public final class MaidMineController {
             return;
         }
         BlockState state = run.level.getBlockState(run.target);
-        if (state.isAir() || !run.blocks.contains(state.getBlock())) {
+        if (state.isAir() || !wantedBlock(run, state)) {
             // 别人先挖掉了，或者方块被换成了别的：这块不算数，再找一块
             clearCracks(run, maid);
             run.target = null;
@@ -203,6 +229,14 @@ public final class MaidMineController {
             return;
         }
         walkToTarget(run, maid);
+    }
+
+    /** 这一格现在还算不算这次要拆的：区域清单里什么方块都拆，同种方块只认那一族。 */
+    private static boolean wantedBlock(Run run, BlockState state) {
+        if (run.cells != null && run.blockId.isEmpty()) {
+            return true;
+        }
+        return run.blocks.contains(state.getBlock());
     }
 
     /**
@@ -325,6 +359,13 @@ public final class MaidMineController {
         run.lastMined = pos;
         run.target = null;
         run.stand = null;
+        if (run.cells != null) {
+            run.cells.remove(pos);
+            if (run.cells.isEmpty()) {
+                finish(run, maid, "done", "", "");
+            }
+            return;
+        }
         if (run.mined >= run.wanted) {
             finish(run, maid, "done", "", "");
         }
@@ -332,6 +373,9 @@ public final class MaidMineController {
 
     /** 找下一块同类方块。有锚点时只在那一带找，找不到就收尾。 */
     private static boolean nextTarget(Run run, EntityMaid maid) {
+        if (run.cells != null) {
+            return nextCell(run, maid);
+        }
         // 第一块看她站的地方；之后看她刚挖掉的那块——同一棵树、同一片矿脉才连得起来
         BlockPos center = run.anchor != null ? run.anchor
                 : run.lastMined != null ? run.lastMined
@@ -365,6 +409,58 @@ public final class MaidMineController {
         return false;
     }
 
+    /** 区域模式：从清单里挑剩下最近的一块，已经没了的格子顺手划掉。 */
+    private static boolean nextCell(Run run, EntityMaid maid) {
+        BlockPos center = run.lastMined != null ? run.lastMined : maid.blockPosition();
+        run.cells.removeIf(pos -> !cellValid(run, maid, pos));
+        if (run.cells.isEmpty()) {
+            if (run.mined > 0) {
+                finish(run, maid, "done", "", "");
+            } else {
+                finish(run, maid, "failed", "no_target", "清单里的方块都已经不在了");
+            }
+            return false;
+        }
+        List<BlockPos> sorted = new ArrayList<>(run.cells);
+        sorted.sort(Comparator.comparingDouble(center::distSqr));
+        // 与同种方块那条一样：先挑有落脚点的；都埋着就挑最近一块，走过去把挡路的挖穿
+        for (BlockPos candidate : sorted) {
+            if (!maid.canDestroyBlock(candidate)) {
+                continue;
+            }
+            BlockPos stand = MineTargets.standFor(maid, candidate);
+            if (stand == null) {
+                continue;
+            }
+            return startOn(run, maid, candidate, stand);
+        }
+        for (BlockPos candidate : sorted) {
+            if (maid.canDestroyBlock(candidate)) {
+                return startOn(run, maid, candidate, null);
+            }
+        }
+        finish(run, maid, run.mined > 0 ? "partial" : "failed", "no_target", "剩下的方块都拆不了了");
+        return false;
+    }
+
+    /** 清单里的这一格还能不能拆：还在、挖得动、没出活动范围；同种方块模式还要求是那一族。 */
+    private static boolean cellValid(Run run, EntityMaid maid, BlockPos pos) {
+        if (!run.level.isLoaded(pos)) {
+            return false;
+        }
+        if (maid.hasRestriction() && !maid.isWithinRestriction(pos)) {
+            return false;
+        }
+        BlockState state = run.level.getBlockState(pos);
+        if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
+            return false;
+        }
+        if (!MineRules.mineable(state.getDestroySpeed(run.level, pos))) {
+            return false;
+        }
+        return run.blockId.isEmpty() || run.blocks.contains(state.getBlock());
+    }
+
     private static boolean startOn(Run run, EntityMaid maid, BlockPos target, BlockPos stand) {
         run.target = target;
         run.stand = stand;
@@ -388,7 +484,7 @@ public final class MaidMineController {
         current = null;
         MaidActuator.stopWalking(maid);
         MaidActuator.stopLooking(maid);
-        broadcast(run, status, reasonCode, reason);
+        broadcast(run, maid, status, reasonCode, reason);
     }
 
     private static void clearCracks(Run run, EntityMaid maid) {
@@ -399,7 +495,8 @@ public final class MaidMineController {
         run.cracking = null;
     }
 
-    private static void broadcast(Run run, String status, String reasonCode, String reason) {
+    private static void broadcast(
+            Run run, EntityMaid maid, String status, String reasonCode, String reason) {
         BridgeServer bridge = LingChatMaidBridge.server();
         if (bridge == null || !bridge.hasClients()) {
             return;
@@ -411,8 +508,26 @@ public final class MaidMineController {
         data.addProperty("block", run.blockId);
         data.addProperty("mined", run.mined);
         data.addProperty("wanted", run.wanted);
+        // 区域拆除：area 区分说法，remaining 是清单里还剩几块，stuck_at 是停下时卡着的那一格
+        data.addProperty("area", run.cells != null);
+        data.addProperty(
+                "remaining",
+                run.cells != null ? run.cells.size() : Math.max(0, run.wanted - run.mined));
+        data.addProperty("truncated", run.truncated);
+        data.addProperty("stuck_at", stuckAt(run, maid));
         data.addProperty("reason_code", reasonCode == null ? "" : reasonCode);
         data.addProperty("reason", reason == null ? "" : reason);
         bridge.broadcastEvent(data);
+    }
+
+    /** 收尾时卡着的那一格，相对她脚下：区域拆到一半走不到时，插件能把这句念出来。 */
+    private static String stuckAt(Run run, EntityMaid maid) {
+        if (maid == null || run.target == null) {
+            return "";
+        }
+        BlockPos feet = maid.blockPosition();
+        BlockPos at = run.target;
+        return MineRules.formatOffset(
+                at.getX() - feet.getX(), at.getY() - feet.getY(), at.getZ() - feet.getZ());
     }
 }

@@ -88,4 +88,28 @@ class MineRulesTest {
         // 超出一眼能看见的范围：多半是模型自己编的坐标
         assertNull(MineRules.parseOffset("@999,0,0"));
     }
+
+    @Test
+    void areaAcceptsTwoCornersInEitherOrder() {
+        MineRules.Area area = MineRules.parseArea("@-3,0,2 @3,3,4");
+        assertEquals(new MineRules.Offset(-3, 0, 2), area.from());
+        assertEquals(new MineRules.Offset(3, 3, 4), area.to());
+        // 两个角不分先后，~ 当分隔符也认
+        MineRules.Area reversed = MineRules.parseArea("@3,3,4 ~ @-3,0,2");
+        assertEquals(new MineRules.Offset(3, 3, 4), reversed.from());
+        assertEquals(new MineRules.Offset(-3, 0, 2), reversed.to());
+        assertTrue(reversed.withinSpan());
+    }
+
+    @Test
+    void areaRejectsBadShapeOrTooLargeBox() {
+        assertNull(MineRules.parseArea(""));
+        assertNull(MineRules.parseArea("@-3,0,2"));
+        assertNull(MineRules.parseArea("@-3,0,2 @3,3"));
+        assertNull(MineRules.parseArea("@-3,0,2 @999,0,0"));
+        // 每条边最多十六格：再大就不是「这一片」了
+        assertNull(MineRules.parseArea("@0,0,0 @" + (MineRules.MAX_AREA_SPAN + 1) + ",0,0"));
+        assertTrue(MineRules.parseArea("@0,0,0 @" + MineRules.MAX_AREA_SPAN + ",0,0")
+                .withinSpan());
+    }
 }

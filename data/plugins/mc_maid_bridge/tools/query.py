@@ -11,6 +11,7 @@ from wording import (
     DIMENSION_NAMES,
     DIRECTION_NAMES,
     MOB_NAMES,
+    OVERHEAD_PLACES,
     STRUCTURE_NAMES,
     VEHICLE_NAMES,
     as_int,
@@ -96,10 +97,7 @@ def _look_around_text(data):
     dimension = name_of(DIMENSION_NAMES, data.get("dimension"), "某个世界")
     foot = name_of(BLOCK_NAMES, (data.get("standing_on") or {}).get("id"), "说不清的东西")
     vehicle = (data.get("vehicle") or "").strip()
-    # 下界与末地没有天空，不谈头顶
-    roof = "" if data.get("has_sky") is False else (
-        "头顶有遮挡，看不到天" if data.get("sheltered") else "头顶是露天的"
-    )
+    roof = _overhead_text(data)
     if vehicle:
         seat = f"{maid}正坐在{dimension}的{name_of(VEHICLE_NAMES, vehicle, '载具')}里"
         lines = [f"{seat}，{roof}。" if roof else f"{seat}。"]
@@ -186,6 +184,30 @@ def _look_around_text(data):
     if data.get("truncated"):
         lines.append("更远的没再细看。")
     return "".join(lines)
+
+
+def _overhead_text(data):
+    """头顶这一句：露天 / 半遮（树荫、屋檐、洞口）/ 屋内（房间、洞穴）。
+
+    三档与头顶那块方块由模组判定，这里只挑说法；老模组没有 `overhead` 时退回布尔。
+    下界与末地没有天空，整句不说。
+    """
+    if data.get("has_sky") is False:
+        return ""
+    kind = (data.get("overhead") or "").strip()
+    if not kind:
+        return "头顶有遮挡，看不到天" if data.get("sheltered") else "头顶是露天的"
+    if kind == "open":
+        return "头顶是露天的"
+    cover = name_of(BLOCK_NAMES, data.get("overhead_cover"), "")
+    place = OVERHEAD_PLACES.get((data.get("overhead_band") or "").strip(), "头顶")
+    if kind == "partial":
+        if cover:
+            return f"{place}有{cover}遮着一部分，还能看见天"
+        return "头顶遮着一部分，还能看见天"
+    if cover:
+        return f"{place}被{cover}封着，看不到天"
+    return "头顶封着，看不到天"
 
 
 def _posture_subject(data, maid, dimension):

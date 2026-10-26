@@ -242,26 +242,47 @@ class SurroundingsDiffTest {
     }
 
     @Test
-    void shelterFlipIsReportedAfterTwoFrames() {
+    void steppingUnderCoverIsReportedAfterTwoFrames() {
         SurroundingsDiff.State state = new SurroundingsDiff.State();
         Surroundings outside = plain();
         SurroundingsDiff.events(null, outside, state, 100L);
 
-        Surroundings inside = withSky(outside, false);
-        assertTrue(diff(outside, inside, state, 200L).isEmpty(), "一次进洞只是待确认");
+        Surroundings eaves = withOverhead(outside, "partial");
+        assertTrue(diff(outside, eaves, state, 200L).isEmpty(), "一次进檐下只是待确认");
 
-        List<JsonObject> frames = diff(inside, inside, state, 300L);
+        List<JsonObject> frames = diff(eaves, eaves, state, 300L);
         assertEquals(List.of("shelter_change"), types(frames));
-        assertTrue(frames.get(0).get("sheltered").getAsBoolean(), "头顶看不到天就是进了遮蔽处");
+        assertEquals("partial", frames.get(0).get("overhead").getAsString(), "树荫、屋檐、洞口都是半遮");
+        assertEquals(
+                "minecraft:stone", frames.get(0).get("overhead_cover").getAsString(),
+                "要把头顶挡着的方块带过去");
+        assertTrue(frames.get(0).get("sheltered").getAsBoolean(), "头顶看不到天就是有遮挡");
+    }
+
+    @Test
+    void movingFromEavesToEnclosedIsReportedAfterTheCooldown() {
+        SurroundingsDiff.State state = new SurroundingsDiff.State();
+        SurroundingsDiff.events(null, plain(), state, 100L);
+        Surroundings eaves = withOverhead(plain(), "partial");
+        assertTrue(diff(plain(), eaves, state, 200L).isEmpty(), "进檐下第一次只是待确认");
+        assertEquals(List.of("shelter_change"), types(diff(eaves, eaves, state, 300L)));
+
+        Surroundings room = withOverhead(eaves, "enclosed");
+        assertTrue(diff(eaves, room, state, 400L).isEmpty(), "换档第一次只是待确认");
+        assertTrue(diff(room, room, state, 500L).isEmpty(), "一分钟冷静期内不重复说");
+
+        List<JsonObject> frames = diff(room, room, state, 300L + SurroundingsDiff.SHELTER_COOLDOWN_TICKS);
+        assertEquals(List.of("shelter_change"), types(frames), "冷静期过了要补报");
+        assertEquals("enclosed", frames.get(0).get("overhead").getAsString());
     }
 
     @Test
     void shelterIsSkippedWithoutSky() {
         SurroundingsDiff.State state = new SurroundingsDiff.State();
-        Surroundings netherClosed = withHasSky(withSky(plain(), false), false);
+        Surroundings netherClosed = withHasSky(withOverhead(plain(), "enclosed"), false);
         SurroundingsDiff.events(null, netherClosed, state, 100L);
 
-        Surroundings netherOpen = withHasSky(withSky(plain(), true), false);
+        Surroundings netherOpen = withHasSky(withOverhead(plain(), "open"), false);
         assertTrue(diff(netherClosed, netherOpen, state, 200L).isEmpty(), "下界不谈露天");
         assertTrue(diff(netherOpen, netherOpen, state, 300L).isEmpty(), "下界不谈露天");
     }
@@ -457,6 +478,7 @@ class SurroundingsDiffTest {
                 "",
                 true,
                 true,
+                new Surroundings.Overhead("open", "", ""),
                 15,
                 owner,
                 nearby,
@@ -478,28 +500,31 @@ class SurroundingsDiffTest {
 
     private static Surroundings withId(Surroundings s, String entityId) {
         return new Surroundings(
-                entityId, s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                entityId, s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withNearby(Surroundings s, Surroundings.Nearby... nearby) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), List.of(nearby), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withFeet(Surroundings s, String block) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), block, s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), block, s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
 
-    private static Surroundings withSky(Surroundings s, boolean skyAbove) {
+    /** 换头顶三档：看不见天的那两档同时把 skyAbove 摆成假，与读世界那边的口径一致。 */
+    private static Surroundings withOverhead(Surroundings s, String kind) {
+        boolean open = kind.equals("open");
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), skyAbove, s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), open, s.hasSky(),
+                new Surroundings.Overhead(kind, open ? "" : "minecraft:stone", open ? "" : "low"),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
@@ -507,41 +532,41 @@ class SurroundingsDiffTest {
     private static Surroundings withHasSky(Surroundings s, boolean hasSky) {
         return new Surroundings(
                 s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), hasSky,
-                s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
-                s.liquid(), s.submerged());
+                s.overhead(), s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(),
+                s.posture(), s.liquid(), s.submerged());
     }
 
     private static Surroundings withLight(Surroundings s, int light) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 light, s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withVehicle(Surroundings s, String vehicle) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), vehicle, s.structure(), s.posture(),
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withStructure(Surroundings s, String structure) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), structure, s.posture(),
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withPosture(Surroundings s, String posture) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), posture,
                 s.liquid(), s.submerged());
     }
 
     private static Surroundings withLiquid(Surroundings s, String liquid, boolean swimming) {
         return new Surroundings(
-                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(),
+                s.entityId(), s.dimension(), s.gaze(), s.feetBlock(), s.footing(), s.skyAbove(), s.hasSky(), s.overhead(),
                 s.light(), s.owner(), s.nearby(), s.nearbyTruncated(), s.vehicle(), s.structure(), s.posture(),
                 liquid, swimming);
     }

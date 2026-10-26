@@ -1125,6 +1125,9 @@ DIRECTION_NAMES = {
 # 光线跨档的旁白说法。档位由模组判定（SurroundingsDiff.lightBand），这里只负责中文。
 LIGHT_PLACES = {"dark": "很黑的地方", "dim": "光线昏暗的地方", "bright": "光线明亮的地方"}
 
+# 头顶那块遮挡物离她多高。模组只给 low / high 两档（OverheadScan），不报具体格数。
+OVERHEAD_PLACES = {"low": "头顶", "high": "头顶很高处"}
+
 
 def as_int(value, default=0):
     """配置与事件里的数字可能是浮点（前端表单、JSON）或字符串。"""

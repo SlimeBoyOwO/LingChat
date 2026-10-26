@@ -7,6 +7,7 @@ import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.perception.EventFrames;
 import com.lingchat.maidbridge.perception.PerceptionSampler;
@@ -129,6 +130,9 @@ public final class MaidCondition {
      * <p>车万女仆的 {@code onMaidSleep} 会把位置吸到睡位中心：睡在地上时会浮起来，
      * 被抱着时会和搬运抢位置。她被刚放上床时睡位还停在旧地方，也要先跳过一 tick，
      * 等 {@link #tick} 把睡位改成床，否则 {@code onMaidSleep} 会把她拽回旧位置。
+     *
+     * <p>按床头比而不是按脚下那一格：她可能正踩在床尾那半张，床头对得上就该让它吸附，
+     * 那一吸正好把人对齐到床头中心。
      */
     public static boolean isSleepingOffBed(EntityMaid maid) {
         if (maid == null || !maid.isSleeping()) {
@@ -137,7 +141,7 @@ public final class MaidCondition {
         if (maid.isPassenger()) {
             return true;
         }
-        BlockPos bed = bedAt(maid);
+        BlockPos bed = MaidActuator.bedHeadAt(maid);
         if (bed == null) {
             return true;
         }
@@ -314,7 +318,7 @@ public final class MaidCondition {
         MaidActuator.stopLooking(maid);
         maid.setYHeadRot(maid.yBodyRot);
 
-        BlockPos bed = isOnBed(maid) ? bedAt(maid) : null;
+        BlockPos bed = isOnBed(maid) ? MaidActuator.bedHeadAt(maid) : null;
         if (bed != null) {
             clearGroundLift(maid);
             if (!maid.hasPose(Pose.SLEEPING)) {
@@ -365,6 +369,7 @@ public final class MaidCondition {
             MaidActionController.cancelForUnconscious(server);
             MaidAttackController.cancel();
             MaidMineController.cancelForUnconscious(server);
+            MaidPlaceController.cancelForUnconscious(server);
         }
         // 先把坐姿、载具、普通睡眠都收掉；被玩家抱着时 standUp 会自己避开
         MaidActuator.standUp(maid);
@@ -378,7 +383,8 @@ public final class MaidCondition {
 
         // 留 1 点血：0 血会进原版死亡计时
         maid.setHealth(1.0F);
-        BlockPos bed = bedAt(maid);
+        // 倒在床上就按这张床的床头：压着床尾那半张摆睡位，人会往床外错一格
+        BlockPos bed = MaidActuator.bedHeadAt(maid);
         if (maid.isPassenger()) {
             // 搬运模组抱着她时不能压成睡姿，否则公主抱动画会被睡姿顶掉；
             // 睡位留着只为闭眼。

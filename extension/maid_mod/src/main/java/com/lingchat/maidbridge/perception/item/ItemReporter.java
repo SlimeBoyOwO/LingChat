@@ -48,8 +48,9 @@ import net.neoforged.neoforge.event.level.BlockEvent;
  * <p>喂食与自食仍然只有游戏这一侧看得见，所以判定与去抖都在这里，中文措辞留给插件。
  * 喂与吃都是「一小段连续动作合成一条」：连喂几口时，台词表不该被刷屏。
  *
- * <p>玩家在女仆界面里把东西放进背包没有事件可挂，那一路由 {@link BackpackWatcher} 每轮
- * 采样比出来；它会把这里记下的捡取扣掉，同一件事只说一遍。
+ * <p>玩家在女仆界面里把东西放进背包、或从背包里拿走，都没有事件可挂，那两路由
+ * {@link BackpackWatcher} 每轮采样比出来；它会把这里记下的账扣掉——捡起来的算「多出来
+ * 的那份」，她自己吃掉与交出去的算「少掉的那份」，同一件事只说一遍。
  */
 public final class ItemReporter {
     /** 喂食的去抖（tick）。 */
@@ -107,6 +108,12 @@ public final class ItemReporter {
     private static int selfFeedCooldown;
     /** 上一次采样之后她捡起来的物品：背包差分要把这部分扣掉。 */
     private static final Map<String, Integer> recentPickups = new LinkedHashMap<>();
+    /**
+     * 她自己弄没的东西：吃掉的那口、交给主人的那几件、没吃成掉回地上的。
+     *
+     * <p>背包差分把这份扣掉，否则主人站在旁边时，这些都会变成「主人从背包里拿走了」。
+     */
+    private static final Map<String, Integer> recentRemovals = new LinkedHashMap<>();
     /** 这一次捡的东西是哪来的（Pre 与 Post 在同一次拾取调用里前后脚触发）。 */
     private static ItemEntity pendingItem;
     private static Origin pendingOrigin;
@@ -267,6 +274,8 @@ public final class ItemReporter {
             return;
         }
         feeds.merge(itemId(eaten), 1, Integer::sum);
+        // 这一口先摆在她手上、吃完就没了：账上算她自己弄没的，别让背包差分说成被拿走了
+        markRemoval(itemId(eaten), 1);
         mergeLeftover(feedLeftovers, leftoverOf(maid, eaten));
         feedMaid = maid.getStringUUID();
         feedCooldown = DEBOUNCE_TICKS;
@@ -294,6 +303,8 @@ public final class ItemReporter {
             return;
         }
         selfFeeds.merge(itemId(used), 1, Integer::sum);
+        // 她自己吃掉的这份：账上记一笔，背包差分不会说成「主人从背包里拿走了」
+        markRemoval(itemId(used), 1);
         mergeLeftover(selfFeedLeftovers, leftoverOf(maid, used));
         selfFeedMaid = maid.getStringUUID();
         selfFeedCooldown = MEAL_DEBOUNCE_TICKS;
@@ -339,6 +350,34 @@ public final class ItemReporter {
         return copy;
     }
 
+    /**
+     * 记一笔「这件东西是她自己弄没的」：吃掉的那口、交给主人的那几件、没吃成掉回地上的。
+     *
+     * <p>与 {@link #suppressHandGain} 是同一本账的另一半：那一半防「多出来被当成收到」，
+     * 这一半防「少下去被当成被拿走」。她正在干活时背包本来就会少东西（农场吃种子、弓吃箭），
+     * 那种整段路不走差分，不必记在这里。
+     */
+    public static void markRemoval(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return;
+        }
+        markRemoval(itemId(stack), stack.getCount());
+    }
+
+    public static void markRemoval(String item, int count) {
+        if (item == null || item.isEmpty() || count <= 0) {
+            return;
+        }
+        recentRemovals.merge(item, count, Integer::sum);
+    }
+
+    /** 取走并清空「上一次采样之后她自己弄没的物品」，供背包差分扣账。 */
+    public static Map<String, Integer> drainRecentRemovals() {
+        Map<String, Integer> copy = new LinkedHashMap<>(recentRemovals);
+        recentRemovals.clear();
+        return copy;
+    }
+
     /** 停服、换存档、没人听的时候清干净：别把上一波东西算到下一次头上。 */
     public static void clear() {
         sources.clear();
@@ -351,6 +390,7 @@ public final class ItemReporter {
         selfFeedMaid = "";
         selfFeedCooldown = 0;
         recentPickups.clear();
+        recentRemovals.clear();
         pendingItem = null;
         pendingFromOwner = false;
         selfGatherMaid = "";

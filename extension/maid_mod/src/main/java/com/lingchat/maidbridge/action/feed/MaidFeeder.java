@@ -217,9 +217,11 @@ public final class MaidFeeder {
         // 食物在哪只手就收回哪只：喂的时候是塞进空手里的，不会两边都有
         if (!hand.isEmpty() && hand.is(bite.food.getItem())) {
             maid.setItemInHand(InteractionHand.OFF_HAND, ItemStack.EMPTY);
+            ItemReporter.markRemoval(hand);
             maid.spawnAtLocation(hand);
         } else if (!main.isEmpty() && main.is(bite.food.getItem())) {
             maid.setItemInHand(InteractionHand.MAIN_HAND, ItemStack.EMPTY);
+            ItemReporter.markRemoval(main);
             maid.spawnAtLocation(main);
         }
     }

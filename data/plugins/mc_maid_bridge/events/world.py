@@ -8,6 +8,7 @@ from wording import (
     BLOCK_NAMES,
     DIMENSION_NAMES,
     LIGHT_PLACES,
+    OVERHEAD_PLACES,
     STRUCTURE_NAMES,
     UNCONSCIOUS_STATE_MARK,
     VEHICLE_NAMES,
@@ -85,11 +86,27 @@ def low_health(data):
 
 
 def shelter_change(data):
-    """头顶从露天变成有遮挡，或反过来。模组只在这件事真的翻转时推。"""
+    """头顶换了档：露天 / 半遮（树荫、屋檐、洞口）/ 屋内（房间、洞穴）。
+
+    模组三档都推，这里只挑说法；老模组只给 `sheltered` 一个布尔，退回原来那两句。
+    """
     maid, _ = names()
-    if data.get("sheltered"):
-        return f"{maid}走进了有遮挡的地方，头顶看不到天了。"
-    return f"{maid}走出了遮挡，头顶又见天了。"
+    kind = (data.get("overhead") or "").strip()
+    if not kind:
+        if data.get("sheltered"):
+            return f"{maid}走进了有遮挡的地方，头顶看不到天了。"
+        return f"{maid}走出了遮挡，头顶又见天了。"
+    if kind == "open":
+        return f"{maid}走出了遮挡，头顶又见天了。"
+    cover = name_of(BLOCK_NAMES, data.get("overhead_cover"), "")
+    place = OVERHEAD_PLACES.get((data.get("overhead_band") or "").strip(), "头顶")
+    if kind == "partial":
+        if cover:
+            return f"{maid}走到{cover}下面，头顶只遮着一部分，还能看见天。"
+        return f"{maid}走进一片遮挡里，头顶只遮着一部分，还能看见天。"
+    if cover:
+        return f"{maid}走到了一处头顶封着的地方，{place}是{cover}，看不到天了。"
+    return f"{maid}走到了一处头顶封着的地方，看不到天了。"
 
 
 def light_change(data):

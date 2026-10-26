@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
@@ -111,6 +112,7 @@ public class MaidAttackHandler implements MessageHandler {
         // 插件发起的动作每 tick 写寻路目标，与追打会互相顶
         MaidActionController.cancelCurrent(server);
         MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
         MaidActuator.standUp(maid);
         // 轻轻一下不用换武器：那一下的伤害是固定的，换刀反而像是要动真格
         boolean weapon = singleHit ? isWeapon(maid.getMainHandItem()) : equipWeapon(maid);

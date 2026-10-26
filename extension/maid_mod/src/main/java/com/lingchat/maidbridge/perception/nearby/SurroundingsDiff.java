@@ -268,7 +268,7 @@ public final class SurroundingsDiff {
         return false;
     }
 
-    /** 露天与遮蔽之间来回。没有天空的维度（下界、末地）不谈这件事。 */
+    /** 头顶换了档：露天 / 半遮 / 屋内。没有天空的维度（下界、末地）不谈这件事。 */
     private static void addShelter(
             List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
         if (!prev.hasSky() || !next.hasSky()) {
@@ -280,6 +280,9 @@ public final class SurroundingsDiff {
         state.lastSurfaceTick = nowTick;
         JsonObject frame = EventFrames.base("shelter_change", next.entityId());
         frame.addProperty("sheltered", !next.skyAbove());
+        frame.addProperty("overhead", next.overhead().kind());
+        frame.addProperty("overhead_cover", next.overhead().cover());
+        frame.addProperty("overhead_band", next.overhead().band());
         // 同一段时间里先进树荫又走出来时，两句并排记下来读着像来回折腾。插件按这个
         // tick 把同键的合成一条，只留最后那次（数值大的胜出）。
         frame.addProperty("tick", nowTick);
@@ -446,7 +449,9 @@ public final class SurroundingsDiff {
     }
 
     private static String shelterValue(Surroundings s) {
-        return s.skyAbove() ? "open" : "sheltered";
+        String kind = s.overhead().kind();
+        // 老数据或没扫出结果时退回布尔，三档字段照样能空着走
+        return kind.isEmpty() ? (s.skyAbove() ? "open" : "sheltered") : kind;
     }
 
     /** 远近档。{@code before} 是已认可的档位，用它做回滞；没有基线时按严格阈值判。 */

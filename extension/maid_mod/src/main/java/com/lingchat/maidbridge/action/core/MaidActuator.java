@@ -28,6 +28,7 @@ import net.minecraft.world.entity.ai.village.poi.PoiManager;
 import net.minecraft.world.entity.ai.village.poi.PoiType;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.BedBlock;
+import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BedPart;
 import net.minecraft.world.phys.Vec3;
@@ -59,12 +60,18 @@ public final class MaidActuator {
     private static final int BED_SEARCH_RADIUS = 32;
     /** 与车万女仆睡自己的女仆床时一致：躺进床的中心。 */
     private static final double SLEEP_OFFSET_Y = 0.8;
+    /** 在床上躺着休息的回血节奏：每 10 秒一滴（tick，20 tick = 1 秒）。 */
+    private static final int REST_HEAL_TICKS = 200;
     /** 探路时她停在主人正前方多远（格）。 */
     private static final int SCOUT_DISTANCE = 8;
     /** 探路点新算出来的差这么几格以内就不换：主人挪一小步、转个身时别让她原地打转。 */
     private static final int SCOUT_DRIFT = 2;
     /** 探路时离主人超过这么远就算走散了：她跟不上，再追也没意义。 */
     private static final float SCOUT_LEASH = 24.0F;
+
+    /** 床上休息的回血计时：只剩一个动作槽，记一个就够。 */
+    private static String restMaid = "";
+    private static int restTicks;
 
     /** 受理时就能判定的失败。 */
     public record Reject(String code, String reason) {
@@ -343,7 +350,7 @@ public final class MaidActuator {
      *
      * <p>睡位与姿势一起按：YSM 的闭眼与躺姿、车万女仆的「别乱走」看的都是
      * {@code isSleeping()}，光有姿势没有睡位在游戏里等于没躺下。床上的睡位被人清掉
-     * （原版「床没了」、别的模组叫醒）就当场补回去；人还在床下时也摆到床头中心，
+     * （原版「床没了」、别的模组叫醒）就当场补回去；人不在床头那一格就摆回床头中心，
      * 剩下的床位吸附交给车万女仆自己的 {@code onMaidSleep}。
      */
     public static void holdLying(EntityMaid maid, BlockPos bedHead) {
@@ -356,16 +363,42 @@ public final class MaidActuator {
             if (!bedHead.equals(maid.getSleepingPos().orElse(null))) {
                 maid.setSleepingPos(bedHead);
             }
-            if (MaidCondition.bedAt(maid) == null) {
-                // 只是走到了床边、人还在床下：直接摆到床头中心，与车万女仆自己上床一致
+            // 人不在床头那一格就摆到床头中心：她可能迈步时已经站上了床沿，也可能正踩着床尾。
+            // 只按「脚下有没有床」判，这两种会被当成已经躺好，随后那层的吸附又被拦掉，
+            // 她就一直躺在床尾——头离开枕头、身子往床外错出去一格。
+            if (!bedHead.equals(maid.blockPosition())) {
                 maid.setPos(bedHead.getX() + 0.5, bedHead.getY() + SLEEP_OFFSET_Y, bedHead.getZ() + 0.5);
             }
+            restOnBed(maid, bedHead);
             return;
         }
         MaidCondition.holdGroundLift(maid);
         if (!maid.blockPosition().equals(maid.getSleepingPos().orElse(null))) {
             maid.setSleepingPos(maid.blockPosition());
         }
+    }
+
+    /**
+     * 躺在床上时慢慢回血：每 10 秒一滴。
+     *
+     * <p>只有人真的在床头那一格里才算——刚被摆上去的那一 tick 也算，反正位置已经改过了。
+     * 起身、换动作、满血都从这里走开，计时清零，下次躺下从头算。
+     */
+    private static void restOnBed(EntityMaid maid, BlockPos bedHead) {
+        String maidId = maid.getStringUUID();
+        if (!maidId.equals(restMaid)) {
+            restMaid = maidId;
+            restTicks = 0;
+        }
+        if (!bedHead.equals(maid.blockPosition()) || maid.getHealth() >= maid.getMaxHealth()) {
+            restTicks = 0;
+            return;
+        }
+        if (++restTicks < REST_HEAL_TICKS) {
+            return;
+        }
+        restTicks = 0;
+        maid.heal(1.0F);
     }
 
     /**
@@ -523,7 +556,41 @@ public final class MaidActuator {
 
     // ─── 找床 ───
 
-    /** 最近的空床。索引里翻不到时给出「有没有床但被占了」这两个不同的理由。 */
+    /**
+     * 这一格床的床头在哪一格：拿到的格子是床尾时顺着朝向翻过去；不是床就给 null。
+     *
+     * <p>睡位必须压在床头：车万女仆每 tick 把实体摆到睡位那一格的中心，渲染又按睡位那格
+     * 床的朝向把身子往床尾铺开一格半。睡位落在床尾，她整个人就往床尾错出去一格——头离开
+     * 枕头、身子压在床的下半截。两套床的 FACING 都是「床尾指向床头」。
+     */
+    public static BlockPos bedHeadOf(Level level, BlockPos pos) {
+        BlockState state = level.getBlockState(pos);
+        BedPart part;
+        if (state.getBlock() instanceof BedBlock) {
+            part = state.getValue(BedBlock.PART);
+        } else if (state.is(InitBlocks.MAID_BED.get())) {
+            part = state.getValue(BlockMaidBed.PART);
+        } else {
+            return null;
+        }
+        if (part == BedPart.HEAD) {
+            return pos;
+        }
+        return pos.relative(state.getValue(HorizontalDirectionalBlock.FACING));
+    }
+
+    /** 她脚下这张床的床头（脚下或脚下那一格是床都认）；不在床上给 null。 */
+    public static BlockPos bedHeadAt(EntityMaid maid) {
+        if (maid == null) {
+            return null;
+        }
+        BlockPos head = bedHeadOf(maid.level(), maid.blockPosition());
+        return head != null ? head : bedHeadOf(maid.level(), maid.blockPosition().below());
+    }
+
+    /**
+     * 最近的空床。索引里翻不到时给出「有没有床但被占了」这两个不同的理由。
+     */
     public static BedChoice.Pick findBed(EntityMaid maid) {
         if (!(maid.level() instanceof ServerLevel level)) {
             return new BedChoice.Pick(null, false);

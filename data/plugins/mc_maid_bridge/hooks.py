@@ -60,7 +60,7 @@ def _entry_hint():
         f"［Minecraft 桥接］{maid}和{player}一起进入了 Minecraft 世界，"
         f"{maid}变成了游戏里的小女仆。\n"
 
-        f"{maid}现在可以调用maid_开头的工具实现对游戏的操作啦！"
+        f"{maid}现在可以调用maid_开头的工具实现对游戏的操作啦！尽可能用 tool_search 找到的工具注册来帮助{player}！"
     )
 
 # 幂等检查先扫这么多条尾巴；不够长才整段再扫一次（见 `_entry_hint_written`）。

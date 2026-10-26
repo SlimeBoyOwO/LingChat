@@ -5,12 +5,14 @@ import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
 import com.lingchat.maidbridge.perception.spatial.SightLine;
 import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
+import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.resources.ResourceLocation;
@@ -135,6 +137,54 @@ public final class MineTargets {
     }
 
     /**
+     * 整团同种方块：从 {@code seed} 出发按六面相连收，最多 {@code limit} 格。
+     *
+     * <p>与「看一眼周围」的成团口径一致（同一种方块、六面相连），但这里要的是能拆的格子，
+     * 所以顺路跳过她活动范围外的。未加载的邻居不往里扩：那边还有没有，她也不知道。
+     */
+    public static Cells cluster(EntityMaid maid, BlockPos seed, String blockId, int limit) {
+        List<BlockPos> cells = new ArrayList<>();
+        if (!(maid.level() instanceof ServerLevel level) || limit <= 0) {
+            return new Cells(cells, false);
+        }
+        Set<Block> targets = targets(blockId);
+        if (targets.isEmpty()) {
+            return new Cells(cells, false);
+        }
+        Set<BlockPos> seen = new HashSet<>();
+        ArrayDeque<BlockPos> queue = new ArrayDeque<>();
+        seen.add(seed);
+        queue.add(seed);
+        boolean truncated = false;
+        while (!queue.isEmpty()) {
+            if (cells.size() >= limit) {
+                truncated = true;
+                break;
+            }
+            BlockPos pos = queue.poll();
+            BlockState state = level.getBlockState(pos);
+            if (state.isAir() || !targets.contains(state.getBlock())) {
+                continue;
+            }
+            if (maid.hasRestriction() && !maid.isWithinRestriction(pos)) {
+                continue;
+            }
+            cells.add(pos);
+            for (Direction side : Direction.values()) {
+                BlockPos next = pos.relative(side);
+                if (level.isLoaded(next) && seen.add(next)) {
+                    queue.add(next);
+                }
+            }
+        }
+        return new Cells(cells, truncated);
+    }
+
+    /** 一团方块：格子清单（BFS 顺序），以及是不是数到上限还没数完。 */
+    public record Cells(List<BlockPos> cells, boolean truncated) {
+    }
+
+    /**
      * 站哪能挖到这一块：站得下、够得着、看得见，而且寻路能走到。找不到给 null。
      *
      * <p>准入点选**离目标最近**的那一处：她先贴到方块跟前再动手，不站在半路上隔空挥镐。
@@ -148,6 +198,49 @@ public final class MineTargets {
         if (!(maid.level() instanceof ServerLevel level)) {
             return null;
         }
+        List<BlockPos> candidates = standCandidates(maid, target);
+        int checks = Math.min(candidates.size(), PATH_CHECKS);
+        for (int i = 0; i < checks; i++) {
+            BlockPos stand = candidates.get(i);
+            if (!reachableFrom(level, stand, target, maid)) {
+                continue;
+            }
+            // 已经站在跟前就不用再问寻路了
+            if (stand.closerToCenterThan(maid.position(), 2.0) || maid.canPathReach(stand)) {
+                return stand;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 放置用的落脚点：伸手够得着要放的那一格就行。
+     *
+     * <p>不用「视线落到目标」那一条：目标是空格子，射线打不到它。中间隔没隔着东西由
+     * 放置上下文按支撑面另判。
+     */
+    public static BlockPos standForPlacement(EntityMaid maid, BlockPos target) {
+        if (!(maid.level() instanceof ServerLevel level)) {
+            return null;
+        }
+        List<BlockPos> candidates = standCandidates(maid, target);
+        int checks = Math.min(candidates.size(), PATH_CHECKS);
+        for (int i = 0; i < checks; i++) {
+            BlockPos stand = candidates.get(i);
+            Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
+            if (eye.distanceTo(Vec3.atCenterOf(target)) > EYE_REACH) {
+                continue;
+            }
+            if (stand.closerToCenterThan(maid.position(), 2.0) || maid.canPathReach(stand)) {
+                return stand;
+            }
+        }
+        return null;
+    }
+
+    /** 目标周围站得下、在活动范围里的格子，按离目标远近排好。 */
+    private static List<BlockPos> standCandidates(EntityMaid maid, BlockPos target) {
+        ServerLevel level = (ServerLevel) maid.level();
         List<BlockPos> candidates = new ArrayList<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
         for (int dx = -2; dx <= 2; dx++) {
@@ -169,18 +262,7 @@ public final class MineTargets {
             }
         }
         candidates.sort(Comparator.comparingDouble(stand -> stand.distSqr(target)));
-        int checks = Math.min(candidates.size(), PATH_CHECKS);
-        for (int i = 0; i < checks; i++) {
-            BlockPos stand = candidates.get(i);
-            if (!reachableFrom(level, stand, target, maid)) {
-                continue;
-            }
-            // 已经站在跟前就不用再问寻路了
-            if (stand.closerToCenterThan(maid.position(), 2.0) || maid.canPathReach(stand)) {
-                return stand;
-            }
-        }
-        return null;
+        return candidates;
     }
 
     /** 目标周围有没有能站人的空格：只看空间，不问寻路。失败回执用它说「站不下」。 */

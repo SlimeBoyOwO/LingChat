@@ -15,7 +15,7 @@ TARGET_DEFAULTS = {"go_to": "player", "lie_down": "bed"}
 PENDING_TEXT = {
     ("go_to", "player"): "{maid}开始动身往{player}那边去中",
     ("go_to", "bed"): "{maid}开始朝床边走去",
-    ("lie_down", "bed"): "{maid}开始朝床边走去，走到就会躺下睡着",
+    ("lie_down", "bed"): "{maid}开始朝床边走去，走到就会躺下睡着；躺在床上歇着，{maid}会慢慢回血。",
     ("lie_down", "ground"): "{maid}就地躺了下来，安安静静待着。",
     ("scout", ""): "{maid}正在往{player}前面走，走到就在头里带着路了。",
 }
