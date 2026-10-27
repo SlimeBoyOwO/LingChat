@@ -324,6 +324,7 @@ export function initializeTauriEventListeners() {
     console.log("[Tauri] 收到 adventure:unlocked", payload);
     const adventureStore = useAdventureStore();
     if (payload?.adventure_folder) {
+      adventureStore.markAdventureUnlocked(payload.adventure_folder);
       adventureStore.unlockNotifications.push(payload);
     }
   });
