@@ -18,6 +18,11 @@ impl MigratorTrait for Migrator {
             Box::new(m20261004_000001_create_role_hotword::Migration),
             Box::new(m20261005_000001_create_global_hotword::Migration),
             Box::new(m20261009_000001_create_hotword_library::Migration),
+            // 与 asr-hotword-base 的库兼容：该分支已应用过这三条迁移。当前分支的
+            // 建表迁移虽已不带 lang/asr_config，仍须保留文件供 SeaORM 对账，不能删。
+            Box::new(m20261010_000001_drop_hotword_lang::Migration),
+            Box::new(m20261011_000001_remove_asr_language::Migration),
+            Box::new(m20261012_000001_normalize_hotword_weight::Migration),
             // 台词行归属身份：只加列。必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261015_000001_add_line_identity_id::Migration),
             // 身份索引表（文件为真源，本表供查询）：必须追加在末尾，保持时间戳单调递增。
@@ -40,6 +45,9 @@ pub mod m20260918_000001_create_save_identity;
 pub mod m20261004_000001_create_role_hotword;
 pub mod m20261005_000001_create_global_hotword;
 pub mod m20261009_000001_create_hotword_library;
+pub mod m20261010_000001_drop_hotword_lang;
+pub mod m20261011_000001_remove_asr_language;
+pub mod m20261012_000001_normalize_hotword_weight;
 pub mod m20261015_000001_add_line_identity_id;
 pub mod m20261016_000001_create_player_identity_index;
 pub mod m20261020_000001_add_line_round_id;
