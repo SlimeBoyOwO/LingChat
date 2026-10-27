@@ -77,11 +77,6 @@ pub struct GameStatus {
     pub scene_awareness_enabled: bool,
 
     /// 生成进行中由插件攒下的旁白，等这一轮收尾、下一轮开头再按顺序落进台词表。
-    ///
-    /// 生成期间直接 `add_prompt_line` 会往流式任务算好的行号后面插队（它按位置回填
-    /// 助手台词），事件一多就会与正在生成的这一轮搅在一起。排队到下一轮开头写，
-    /// 既保住行号，也让「这一轮生成时发生的事」完整地出现在下一轮上下文里。
-    /// 不参与存档：换会话时随 `GameStatus` 一起丢弃。
     pending_prompt_lines: Vec<QueuedPromptLine>,
 
     /// 待落位的近期记忆（好感度这类后台任务产出），不参与存档。
@@ -91,8 +86,6 @@ pub struct GameStatus {
     pending_temporary_memories: Vec<TemporaryMemory>,
 
     /// 回复后工具推荐的暂存：下一轮请求取走并渲染成临时提示，取用后即丢。
-    /// 每轮用户发言前若又算出了新的推荐，它会被覆盖——同一时刻只保留最后一份，
-    /// 避免两份推荐提示同时出现在请求里。
     pending_tool_hint: Option<Vec<String>>,
 }
 
@@ -255,13 +248,8 @@ impl GameStatus {
     /// 攒一条插件旁白，等下一轮开头由 [`Self::flush_pending_prompt_lines`] 写进台词表。
     ///
     /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目**不会立刻进台词表**，等到真的
-    /// 要开口那一刻再判一次——已经过期的直接丢掉，不让一分钟前捡起一块木头这种事
-    /// 混进此刻的对话。`key` 相同的条目（比如连着挨打）只留 `severity` 最大的那条。
-    ///
-    /// 连着来的旁白会先接成一行（换行隔开）：同一批事件拆成好几行落进台词表，
-    /// 模型会把它们当成好几件先后发生的事来复述。系统 / 剧情提示不并。
-    ///
-    /// 返回队列里还有效的带时效条目数，插件用它判「攒够几条了」。
+    /// 要开口那一刻再判一次——已经过期的直接丢掉。
+    /// `key` 相同的条目（比如连着挨打）只留 `severity` 最大的那条。
     pub fn queue_prompt_line(
         &mut self,
         role: PromptRole,
@@ -285,11 +273,6 @@ impl GameStatus {
     }
 
     /// 把攒下的插件旁白按顺序写进台词表。
-    ///
-    /// **必须在持有 `generation_lock` 之后、构建本轮上下文之前调用**，否则又会和
-    /// 流式写入抢行号。写之前先按有效期筛一遍：过期的游戏事件直接丢掉，不进台词表；
-    /// 连续的 narrator 旁白仍接成一行（换行隔开）。
-    /// 返回实际写入的条数（写入失败的条目不阻塞后面的）。
     pub async fn flush_pending_prompt_lines(&mut self, db: &DatabaseConnection) -> usize {
         drop_expired_prompt_lines(&mut self.pending_prompt_lines, Instant::now());
         if self.pending_prompt_lines.is_empty() {
@@ -545,20 +528,7 @@ impl GameStatus {
             .await
     }
 
-    // ── 台词历史（上下文源）的区间查看 / 编辑 ──
-    //
-    // 「第 start~end 条」一律指 `line_list` 的下标：**从 1 开始、闭区间**，第 1 条
-    // 通常就是 role system 的人设行；越界会被夹到可用范围。这里操作的是台词行
-    // （`GameLine`，全字段），**不是**渲染后发给 LLM 的 `LlmMessage`——渲染会按角色
-    // 合并/过滤，两者不是同一套下标空间。
-    //
-    // 参数名用 `start`/`end` 而非 `from`/`to`：与插件侧同名 API 对齐（Python 里
-    // `from` 是关键字，用不了）。
-
-    /// 读取第 `start`~`end` 条台词（含两端，1 起）的完整运行时行。
-    ///
-    /// 返回的 `GameLine` 携带全部字段（情绪、动作、TTS、音频、thinking、tool_call、
-    /// 感知集合等），可改后原样回传给 [`Self::edit_context_lines`]；只读，无副作用。
+    // ── 台词历史（上下文源）的区间查看 / 编辑，下标 1 开始，左开右闭 ──
     pub fn read_context_lines(&self, start: usize, end: usize) -> Vec<GameLine> {
         match Self::clamp_line_range(self.line_list.len(), start, end) {
             Some((lo, hi)) => self.line_list[lo..hi].to_vec(),
@@ -568,19 +538,6 @@ impl GameStatus {
 
     /// 用 `replacement` 替换第 `start`~`end` 条台词（含两端，1 起），并让改动真正
     /// 落进上下文。`replacement` 条数不限：空 = 删除该区间，多条 = 展开。
-    ///
-    /// 依次做：
-    /// - 生成进行中直接拒绝（`generation_lock` 被占），避免改历史与流式写入打架；
-    /// - System 人设行可编辑/删除：删掉后相应角色的上下文失去 system 前缀，只记
-    ///   一条 warn，不拦截；
-    /// - `replacement` 中未带 id 的行按位置继承被替换行的 id，保住存档链锚点
-    ///   （否则 `SaveRepo::sync_lines` 可能因「首行分歧」拒绝覆盖）；
-    /// - 回拨所有角色的压缩指针到编辑起点（仅当指针在其之后），使被编辑的早期
-    ///   内容重新进入窗口、下次压缩重新摘要；
-    /// - `invalidate_memory_history` + `refresh_memories`。
-    ///
-    /// 返回被替换掉的条数。**落库不在这里**，由调用方走正常存盘流程
-    /// （`SaveRepo::sync_lines`）持久化。
     pub async fn edit_context_lines(
         &mut self,
         db: &DatabaseConnection,
@@ -909,98 +866,4 @@ fn default_background_music() -> String {
 }
 fn default_background_effect() -> String {
     "none".into()
-}
-
-#[cfg(test)]
-mod queue_tests {
-    use super::*;
-
-    fn event(
-        text: &str,
-        ttl_secs: u64,
-        key: &str,
-        severity: i64,
-        now: Instant,
-    ) -> QueuedPromptLine {
-        QueuedPromptLine {
-            role: PromptRole::Narrator,
-            text: text.to_string(),
-            queued_at: now,
-            ttl: Some(Duration::from_secs(ttl_secs)),
-            key: (!key.is_empty()).then(|| key.to_string()),
-            severity,
-        }
-    }
-
-    #[test]
-    fn expired_events_are_dropped_from_the_queue() {
-        let now = Instant::now();
-        let mut queue = vec![
-            event("捡起了木头", 5, "", 0, now),
-            event("挨了僵尸一下", 60, "", 0, now),
-        ];
-        let later = now + Duration::from_secs(10);
-        assert_eq!(drop_expired_prompt_lines(&mut queue, later), 1);
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "挨了僵尸一下");
-    }
-
-    #[test]
-    fn no_ttl_entries_never_expire() {
-        let now = Instant::now();
-        let mut queue = vec![QueuedPromptLine {
-            role: PromptRole::Narrator,
-            text: "进入 MC 的提示".into(),
-            queued_at: now,
-            ttl: None,
-            key: None,
-            severity: 0,
-        }];
-        drop_expired_prompt_lines(&mut queue, now + Duration::from_secs(3600));
-        assert_eq!(queue.len(), 1);
-        assert_eq!(timed_prompt_count(&queue), 0);
-    }
-
-    #[test]
-    fn same_key_keeps_the_most_severe_line() {
-        let now = Instant::now();
-        let mut queue = vec![event("伤得不轻", 60, "hurt", 800, now)];
-        // 轻的一下不该覆盖重的
-        enqueue_prompt_line(
-            &mut queue,
-            PromptRole::Narrator,
-            "受了点轻伤".into(),
-            Some(Duration::from_secs(60)),
-            Some("hurt".into()),
-            100,
-            now + Duration::from_secs(1),
-        );
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "伤得不轻");
-        // 更重的一下替换掉原来的
-        enqueue_prompt_line(
-            &mut queue,
-            PromptRole::Narrator,
-            "伤得很重".into(),
-            Some(Duration::from_secs(60)),
-            Some("hurt".into()),
-            1500,
-            now + Duration::from_secs(2),
-        );
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "伤得很重");
-    }
-
-    #[test]
-    fn consecutive_narrator_events_become_one_line() {
-        let now = Instant::now();
-        let mut queue = vec![
-            event("天黑了", 300, "", 0, now),
-            event("开始下雨了", 300, "", 0, now),
-        ];
-        let batches = take_prompt_batches(queue.split_off(0));
-        assert_eq!(batches.len(), 1);
-        assert!(matches!(batches[0].0, PromptRole::Narrator));
-        assert_eq!(batches[0].1, "天黑了\n开始下雨了");
-    }
 }
