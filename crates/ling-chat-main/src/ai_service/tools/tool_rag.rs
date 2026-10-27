@@ -16,7 +16,7 @@ use anyhow::{Result, anyhow};
 use super::settings::{
     DEFAULT_TOOL_CACHE_CAPACITY, MAX_TOOL_CACHE_CAPACITY, MIN_TOOL_CACHE_CAPACITY,
 };
-use crate::ai_service::embedding::{EmbeddingEngine, cosine_similarity};
+use crate::ai_service::embedding::{Embedder, cosine_similarity};
 use crate::ai_service::types::ToolDefinition;
 
 /// 检索入口工具名。常驻下发，且不进检索语料（否则会检索到自己）。
@@ -27,9 +27,6 @@ pub const WEB_SEARCH_NAME: &str = "web_search";
 
 /// 每次检索取回的候选数。
 pub const SEARCH_TOP_K: usize = 5;
-
-/// 单个角色同时激活的普通工具上限，超出按激活时间淘汰最久未激活的。
-/// 实际值来自工具设置（默认 5，可调 1~20）；常驻工具不占这个额度。
 
 /// 静默推荐（玩家每说一句话就自动检索一次）最多推荐几件。
 pub const AUTO_RECOMMEND_TOP_K: usize = 3;
@@ -53,8 +50,11 @@ pub fn is_resident(name: &str) -> bool {
 /// 工具名 → (语料指纹, 每个语料文本一条归一化向量)。
 type EmbeddingEntry = (u64, Vec<Arc<[f32]>>);
 
+/// 一条待写回缓存的语料向量：工具名、指纹、向量。
+type ComputedEntry = (String, EmbeddingEntry);
+
 pub struct ToolRag {
-    engine: Arc<EmbeddingEngine>,
+    engine: Arc<dyn Embedder>,
     /// 工具名 -> (语料指纹, 归一化向量)。指纹变化或工具消失时自动失效，
     /// 因此插件热重载/卸载不需要任何主动通知。
     embeddings: RwLock<HashMap<String, EmbeddingEntry>>,
@@ -68,7 +68,7 @@ pub struct ToolRag {
 }
 
 impl ToolRag {
-    pub fn new(engine: Arc<EmbeddingEngine>) -> Self {
+    pub fn new(engine: Arc<dyn Embedder>) -> Self {
         Self {
             engine,
             embeddings: RwLock::new(HashMap::new()),
@@ -99,9 +99,79 @@ impl ToolRag {
         self.engine.is_enabled()
     }
 
-    /// 只读嵌入引擎，便于将来记忆检索复用同一个实例。
-    pub fn engine(&self) -> &Arc<EmbeddingEngine> {
-        &self.engine
+    /// 嵌入后端换了（本地↔云端、或换了云端模型）时作废语料缓存。
+    ///
+    /// 向量缓存是纯内存的，但新旧维度的向量混在一张表里会直接打错分，
+    /// 因此后端变化必须由调用方显式清空。
+    pub fn invalidate_embeddings(&self) {
+        if let Ok(mut guard) = self.embeddings.write() {
+            guard.clear();
+        }
+    }
+
+    /// 预热：把候选工具的语料全部嵌入并写入缓存，返回（预热工具数, 语料条数）。
+    ///
+    /// 与检索走同一套指纹对账，已缓存的不会重复调用后端。
+    pub async fn warm(&self, candidates: &[ToolDefinition]) -> Result<(usize, usize)> {
+        if !self.is_enabled() {
+            return Err(anyhow!("文本嵌入后端未启用，无法预热工具语料"));
+        }
+        let corpus = build_corpus(candidates);
+        let pending: Vec<(String, Vec<String>, u64)> = {
+            let guard = self
+                .embeddings
+                .read()
+                .map_err(|e| anyhow!("嵌入缓存锁中毒: {e}"))?;
+            corpus
+                .iter()
+                .filter(|entry| {
+                    guard
+                        .get(&entry.name)
+                        .map(|(cached, _)| *cached != entry.fingerprint)
+                        .unwrap_or(true)
+                })
+                .map(|entry| (entry.name.clone(), entry.texts.clone(), entry.fingerprint))
+                .collect()
+        };
+        if pending.is_empty() {
+            return Ok((0, 0));
+        }
+
+        let engine = self.engine.clone();
+        let (computed, texts) = tokio::task::spawn_blocking(move || {
+            let flat: Vec<String> = pending
+                .iter()
+                .flat_map(|(_, texts, _)| texts.iter().cloned())
+                .collect();
+            let total = flat.len();
+            let vectors = engine.embed_batch(&flat)?;
+            let mut offset = 0usize;
+            let mut computed: Vec<ComputedEntry> = Vec::with_capacity(pending.len());
+            for (name, texts, fingerprint) in pending {
+                let end = offset + texts.len();
+                let entry_vectors: Vec<Arc<[f32]>> = vectors[offset..end]
+                    .iter()
+                    .cloned()
+                    .map(Arc::from)
+                    .collect();
+                computed.push((name, (fingerprint, entry_vectors)));
+                offset = end;
+            }
+            Ok::<_, anyhow::Error>((computed, total))
+        })
+        .await
+        .map_err(|e| anyhow!("预热嵌入任务失败: {e}"))??;
+
+        let tools = computed.len();
+        let mut guard = self
+            .embeddings
+            .write()
+            .map_err(|e| anyhow!("嵌入缓存锁中毒: {e}"))?;
+        for (name, entry) in computed {
+            guard.insert(name, entry);
+        }
+        tracing::info!(tools, texts, "Tool RAG 语料预热完成");
+        Ok((tools, texts))
     }
 
     /// 读取某角色已激活的工具（按最近激活在前）。
@@ -199,8 +269,7 @@ impl ToolRag {
                 .flat_map(|(_, texts)| texts.iter().cloned())
                 .collect();
             let vectors = engine.embed_batch(&texts)?;
-            let mut computed: Vec<(String, u64, Vec<Arc<[f32]>>)> =
-                Vec::with_capacity(pending.len());
+            let mut computed: Vec<ComputedEntry> = Vec::with_capacity(pending.len());
             let mut offset = 0usize;
             for (name, texts) in pending {
                 let end = offset + texts.len();
@@ -209,7 +278,7 @@ impl ToolRag {
                     .cloned()
                     .map(Arc::from)
                     .collect();
-                computed.push((name, fingerprint_of_texts(&texts), entry_vectors));
+                computed.push((name, (fingerprint_of_texts(&texts), entry_vectors)));
                 offset = end;
             }
             if !computed.is_empty() {
@@ -232,8 +301,8 @@ impl ToolRag {
             .embeddings
             .write()
             .map_err(|e| anyhow!("嵌入缓存锁中毒: {e}"))?;
-        for (name, fingerprint, vectors) in computed {
-            guard.insert(name, (fingerprint, vectors));
+        for (name, entry) in computed {
+            guard.insert(name, entry);
         }
 
         // 4) 打分排序取 top_k。一个工具有多条示例问句时取最高分。
@@ -306,6 +375,14 @@ fn build_corpus(candidates: &[ToolDefinition]) -> Vec<CorpusEntry> {
             })
         })
         .collect()
+}
+
+/// 语料总条数（预热进度的分母）。
+pub fn corpus_size(candidates: &[ToolDefinition]) -> usize {
+    build_corpus(candidates)
+        .iter()
+        .map(|entry| entry.texts.len())
+        .sum()
 }
 
 /// 语料文本：优先用工具配置的示例问句；没配置时回退到描述。

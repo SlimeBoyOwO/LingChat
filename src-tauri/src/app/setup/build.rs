@@ -181,13 +181,19 @@ pub(super) fn build_service_graph(
         tool_settings.clone(),
     )?);
 
-    // 文本嵌入引擎（Tool RAG 的工具语义检索）。模型缺失 / ONNX 不可用都只是
-    // 降级为禁用态，由工具闭环回退到「全量工具下发」。
-    let embedding = ai_service::embedding::EmbeddingEngine::load(
+    // 文本嵌入引擎（本地 ONNX）。模型缺失 / ONNX 不可用都只是降级为禁用态。
+    let local_embedding = ai_service::embedding::EmbeddingEngine::load(
         &data_dir
             .join("third_party")
             .join(ai_service::embedding::MODEL_DIR_NAME),
         ling_chat_main::utils::onnx::onnx_available(),
+    );
+    // 本地 / 云端路由器：用户配置了云端就换后端，云端连续失败则熔断并告警，
+    // 两条路径都只暴露同一个 Embedder 接口给下游。
+    let embedding = ai_service::embedding_remote::EmbeddingSelector::new(
+        local_embedding,
+        tool_settings.clone(),
+        app.handle().clone(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
     tool_rag.set_capacity(tool_settings.get().cache_capacity());
@@ -283,6 +289,7 @@ pub(super) fn build_service_graph(
         tool_registry,
         tool_settings,
         embedding,
+        embedding_warming: Arc::new(ai_service::embedding_remote::WarmingTask::default()),
         tool_rag,
         plugin_resources,
         proactive_system: Some(proactive),
