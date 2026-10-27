@@ -8,7 +8,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::memory_injection::{RecentMemory, RecentMemoryAnchor};
+use crate::ai_service::game_system::status_ops::{RecentMemory, RecentMemoryAnchor};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
 use crate::ai_service::tools::game_status_handle;
 use crate::ai_service::tools::god_agent::UPDATE_AFFECTION;

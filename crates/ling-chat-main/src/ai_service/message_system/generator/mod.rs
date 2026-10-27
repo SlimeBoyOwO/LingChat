@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
 use crate::ai_service::llm::LlmClient;
@@ -122,8 +123,7 @@ impl MessageGenerator {
             self.god_agent_pre_select().await?;
         }
 
-        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
-        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一。
         // 没有玩家发言时（主动对话）只取上一轮回复后暂存的那份。
         let tool_hint = if user_message.is_some() {
             self.tool_hint(user_message.as_deref().unwrap_or_default())
@@ -131,6 +131,18 @@ impl MessageGenerator {
         } else {
             self.pending_tool_hint().await
         };
+        // 推荐内容按临时记忆注入：与提示行同一个信封，只进本轮请求，不写台词表。
+        // 工具名另走参数并进本轮工具集，两半不拆。
+        if let Some(hint) = &tool_hint {
+            self.deps
+                .game_status
+                .lock()
+                .await
+                .queue_temporary_memory(TemporaryMemory {
+                    text: hint.text.clone(),
+                    placement: TemporaryPlacement::IntoUser,
+                });
+        }
 
         // 本轮新落台词的起点：回复后推荐只取这之后的助手行，用户行与场景旁白都应排除。
         let reply_start = {
@@ -305,14 +317,6 @@ impl MessageGenerator {
                 )
             };
             ctx.push(LlmMessage::user_with_image(marker, image));
-            ctx
-        } else {
-            context
-        };
-        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
-        let context = if let Some(hint) = tool_hint {
-            let mut ctx = context;
-            ctx.insert(0, LlmMessage::system(hint.text.clone()));
             ctx
         } else {
             context

@@ -5,11 +5,11 @@ use tauri::Manager;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::game_system::status_ops::{PromptLine, apply_temporary};
 use crate::ai_service::god_agent::capabilities::{
     speaker::{self as god_speaker, SpeakerView},
     tool_hint::{self as god_tool_hint, ToolHintView},
 };
-use crate::ai_service::memory_injection::{MemoryInjection, apply_request_injections};
 use crate::ai_service::message_system::processor::UserMessageOutcome;
 use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage, ToolDefinition};
@@ -84,13 +84,9 @@ impl MessageGenerator {
                     "你们一起去了新的场景 - \"{}\"，\"{}\"",
                     scene.name, scene.description
                 );
-                let prompt = PromptRole::Narrator.build_prompt(&text);
-                let line = LineBase {
-                    content: prompt,
-                    attribute: LineAttributeExt(LineAttribute::User),
-                    display_name: Some("系统".to_string()),
-                    ..Default::default()
-                };
+                let line = PromptLine::new(PromptRole::Narrator, text)
+                    .display_name("系统")
+                    .into_base();
                 let _ = gs.add_line(&self.deps.db, line).await;
             }
         }
@@ -123,13 +119,7 @@ impl MessageGenerator {
         // 临时记忆只供这一次请求，取走即弃
         let temporary = gs.take_temporary_memories();
         drop(gs);
-        if !temporary.is_empty() {
-            let injections: Vec<MemoryInjection> = temporary
-                .into_iter()
-                .map(MemoryInjection::Temporary)
-                .collect();
-            apply_request_injections(&mut context, &injections);
-        }
+        apply_temporary(&mut context, &temporary);
         Ok(context)
     }
 
@@ -147,12 +137,9 @@ impl MessageGenerator {
         if let Some(reminder) =
             crate::ai_service::tools::weather::first_talk_reminder(&self.deps.app, gs, allowed)
         {
-            let line = LineBase {
-                content: PromptRole::Narrator.build_prompt(&reminder),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            };
+            let line = PromptLine::new(PromptRole::Narrator, reminder)
+                .display_name("系统")
+                .into_base();
             let _ = gs.add_line(&self.deps.db, line).await;
         }
     }
@@ -194,9 +181,9 @@ impl MessageGenerator {
 
     /// 预处理：本轮推荐几件工具。
     ///
-    /// 三种模式见 `ToolRecommendMode`。两种推荐都只产出「临时提示 + 本轮并进工具集的
-    /// 名字」——命中的工具在工具闭环里并入本轮定义（不然模型看得见名字也调不了），
-    /// 不写台词表、不进记忆，下一轮重新算。
+    /// 三种模式见 `ToolRecommendMode`。两种推荐都只产出「提示文本 + 本轮并进工具集的
+    /// 名字」——提示文本走临时记忆通道，命中的工具在工具闭环里并入本轮定义
+    /// （不然模型看得见名字也调不了），不写台词表、不进记忆，下一轮重新算。
     pub(super) async fn tool_hint(&self, user_text: &str) -> Option<god_tool_hint::ToolHint> {
         if self.deps.is_preview {
             return None;

@@ -113,6 +113,16 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
 
 "#};
 
+/// 工具使用要求。随人设一起下发，而不是每轮请求临时插一条 system 消息：
+/// 临时 system 会跟人设层抢位置，模型也几乎不感知。
+const TOOL_USE_POLICY_PROMPT: &str = indoc! {r#"
+
+        以下是你使用工具函数时的要求：
+            工具函数是你能对世界使用的工具，你可以随时通过使用 tool_search 函数来搜索你需要的工具。
+            当我有比较明确需要你做的事情，如去别的地方，看屏幕，写日程等，你都应该尽量通过工具函数帮助我
+            此外，也会有旁白提示你可能需要调用的工具函数，仅供参考。两次工具调用之间可以完全不说话，工具结果不必复述。
+"#};
+
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
 
     以下是你正确的输出示范：
@@ -171,7 +181,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
         以下是我的对话格式提示：
             首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
             "{{旁白: {u}在路上偶尔碰到了{c}，决定上前打个招呼}}"
-                你好呀{c}~
+            {u}：你好呀{c}~
             {{系统：时间：2025/6/1 0:29}}"
             我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
             "{{系统：时间：2025/5/20 13:14，你看到：{u}的电脑上正在玩Alice In Cradle}}"
@@ -282,6 +292,7 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
         // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
@@ -305,6 +316,7 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
         // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out

@@ -7,12 +7,12 @@
 //! - `Agent`：上帝 Agent 看一遍最近的对话，按语义挑；
 //! - `Rag`：拿玩家这一句话静默检索一次工具，分数过阈值的才留下。
 //!
-//! 两者都只产出一条**临时 system 提示**（只搭本轮请求，不写台词表、不进记忆），外加
-//! 几个要并进本轮工具集的名字。推荐不构成授权：命中的名字在调用方
-//! （`tool_loop::activate_recommended`）还要过一遍权限集才会真正下发。
+//! 两者都只产出一条**临时记忆**（走 `status_ops::RequestScoped`，只搭本轮请求、
+//! 不写台词表、不进记忆），外加几个要并进本轮工具集的名字。推荐不构成授权：命中的
+//! 名字在调用方（`tool_loop::activate_recommended`）还要过一遍权限集才会真正下发。
 //!
 //! 另有一条回复后的补充检索：生成结束时拿助手自己说过的正文与动作再检索一次，
-//! 只暂存工具名，下一轮再由 [`hint_for_names`] 渲染成同样的临时提示。
+//! 只暂存工具名，下一轮再由 [`hint_for_names`] 渲染成同样的提示文本。
 
 use anyhow::Result;
 use serde_json::Value;
@@ -23,14 +23,12 @@ use crate::ai_service::tools::agent::AgentTask;
 use crate::ai_service::tools::god_agent::RECOMMEND_TOOLS;
 use crate::ai_service::tools::tool_rag::{AUTO_RECOMMEND_MIN_SCORE, AUTO_RECOMMEND_TOP_K, ToolRag};
 use crate::ai_service::types::{GameLine, ToolDefinition};
+use crate::utils::prompt::PromptRole;
 
 use crate::ai_service::god_agent::core::{GodAgentCore, tail_lines};
 
 /// 最多点几件。再多就等于把工具清单原样塞回去，反而没有重点。
 pub const MAX_RECOMMENDATIONS: usize = 5;
-
-/// 提示里每件工具用途的截断长度：完整说明在工具定义里，这里只做「认得出」。
-const PURPOSE_MAX_CHARS: usize = 40;
 
 /// 推荐任务的输入视图（锁内取台词，锁外拼工具清单）。
 pub struct ToolHintView {
@@ -115,14 +113,14 @@ pub async fn recommend_by_rag(
     Ok(render_rag_hint(candidates, &hits))
 }
 
-/// 把命中的工具渲染成临时提示。命中为空（全都没过阈值）时不加任何提示。
+/// 把命中的工具渲染成提示文本。命中为空（全都没过阈值）时不加任何提示。
 fn render_rag_hint(candidates: &[ToolDefinition], hits: &[(String, f32)]) -> Option<ToolHint> {
     let names: Vec<String> = hits
         .iter()
         .take(AUTO_RECOMMEND_TOP_K)
         .map(|(name, _)| name.clone())
         .collect();
-    render_names(candidates, &names, "推荐可能使用工具：")
+    render_names(candidates, &names)
 }
 
 /// 用一组已知的工具名渲染推荐提示。
@@ -130,29 +128,23 @@ fn render_rag_hint(candidates: &[ToolDefinition], hits: &[(String, f32)]) -> Opt
 /// 回复后推荐只暂存名字，下一轮再渲染：两轮之间角色可能切换，名字要先对回当前的
 /// 候选集，渲染出来才不会是调不动的工具。
 pub fn hint_for_names(candidates: &[ToolDefinition], names: &[String]) -> Option<ToolHint> {
-    render_names(candidates, names, "上一轮说的话可能用到的工具：")
+    render_names(candidates, names)
 }
 
 /// 按名字渲染提示，对不上候选集的（或不在榜单前几位的）直接丢掉。
-fn render_names(candidates: &[ToolDefinition], names: &[String], intro: &str) -> Option<ToolHint> {
+fn render_names(candidates: &[ToolDefinition], names: &[String]) -> Option<ToolHint> {
     let mut picked = Vec::new();
-    let mut lines = Vec::new();
     for name in names.iter().take(AUTO_RECOMMEND_TOP_K) {
-        let Some(def) = candidates.iter().find(|def| &def.function.name == name) else {
+        if !candidates.iter().any(|def| &def.function.name == name) {
             continue;
-        };
+        }
         picked.push(name.clone());
-        lines.push(format!(
-            "- {}：{}",
-            name,
-            truncate(&def.function.description)
-        ));
     }
     if picked.is_empty() {
         return None;
     }
     Some(ToolHint {
-        text: format!("【工具推荐】{intro}\n{}\n按需调用。", lines.join("\n")),
+        text: hint_text(&picked),
         names: picked,
     })
 }
@@ -160,7 +152,6 @@ fn render_names(candidates: &[ToolDefinition], names: &[String], intro: &str) ->
 /// 把挑中的名字对回工具清单，拼成提示。清单之外的名字丢弃（模型会编）。
 fn render_hint(view: &ToolHintView, picked: &[String]) -> Option<ToolHint> {
     let mut names = Vec::new();
-    let mut lines = Vec::new();
     for name in picked {
         if names.len() >= MAX_RECOMMENDATIONS {
             break;
@@ -168,32 +159,24 @@ fn render_hint(view: &ToolHintView, picked: &[String]) -> Option<ToolHint> {
         if names.iter().any(|existing: &String| existing == name) {
             continue;
         }
-        let Some((_, purpose)) = view.tools.iter().find(|(tool, _)| tool == name) else {
+        if !view.tools.iter().any(|(tool, _)| tool == name) {
             continue;
-        };
+        }
         names.push(name.clone());
-        lines.push(format!("- {}：{}", name, truncate(purpose)));
     }
     if names.is_empty() {
         return None;
     }
     Some(ToolHint {
-        text: format!(
-            "【本轮推荐工具】按最近对话，这几件可能用得上：\n{}\n需要就直接调用，定义已经随本次请求提供。",
-            lines.join("\n")
-        ),
+        text: hint_text(&names),
         names,
     })
 }
 
-fn truncate(text: &str) -> String {
-    // 只取第一行：描述里常带换行与注意事项，带进提示会破坏「一行一件」的格式。
-    let cleaned = text.lines().next().unwrap_or("").trim();
-    if cleaned.chars().count() <= PURPOSE_MAX_CHARS {
-        return cleaned.to_string();
-    }
-    let head: String = cleaned.chars().take(PURPOSE_MAX_CHARS).collect();
-    format!("{head}…")
+/// 与旁白/系统提示同一种信封：临时记忆注入后模型看到的是一条 `{旁白: （系统提示：…）}`，
+/// 而不是 system 消息——后者会跟人设层抢位置，模型也几乎不感知。
+fn hint_text(names: &[String]) -> String {
+    PromptRole::System.build_prompt(&format!("参考推荐工具：{}", names.join("、")))
 }
 
 // ============================================================

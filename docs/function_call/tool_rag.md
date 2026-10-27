@@ -24,8 +24,9 @@
 工具本来**不是**写在 System Prompt 里枚举的，而是通过原生 function-calling 的 `tools` 数组下发
 （`tools/tool_loop.rs` 的 `stream_with_tool_loop` → `ToolRegistry::definitions_for_allowed`
 → `LlmClient::complete_stream_with_tools`）。所以本功能的实质是：**把下发的工具定义从
-「权限全集」收窄为「常驻工具 + 检索激活的工具」**，再补一段 system 提示，让模型知道
-「先去检索」这件事本身存在。
+「权限全集」收窄为「常驻工具 + 检索激活的工具」**，并把「随附工具不够用就去检索」这层
+要求写进人设系统提示词（`utils/prompt.rs` 的 `TOOL_USE_POLICY_PROMPT`），而不是每轮请求
+临时插一条 system 消息——临时 system 会与人设层抢位置，模型也几乎不感知。
 
 ### 检索方案
 
@@ -139,8 +140,9 @@ cargo test -p ling-chat-main --lib threshold_smoke -- --ignored --nocapture
 RAG 收窄工具集之后，另一个问题浮出来：**模型想不起来去 `tool_search`**。它不会主动检索
 自己不知道存在的东西，`tool_search` 的动态描述只是把清单摆在那里，能不能想到用全看运气。
 
-于是加了一步可选的预处理：每轮用户发言时先算出「这一轮可能用得上」的工具，写进一条
-**临时 system 提示**，并把它们并进本轮的 `effective_allowed`。设置里三选一
+于是加了一步可选的预处理：每轮用户发言时先算出「这一轮可能用得上」的工具，作为一条
+**临时记忆**（`{旁白: （系统提示：参考推荐工具：a、b）}` 信封，由 `status_ops::RequestScoped`
+注入本轮请求），并把它们并进本轮的 `effective_allowed`。设置里三选一
 （`tool_settings.tool_recommend_mode`，默认 `off`）：
 
 | 模式    | 谁来挑                                                                    | 额外成本               |
@@ -151,7 +153,7 @@ RAG 收窄工具集之后，另一个问题浮出来：**模型想不起来去 `
 
 两条路径的共同约定：
 
-- 提示是**临时**的：只搭本轮请求，不写台词表、不进长期记忆，下一轮重新算
+- 提示是**临时**的：只搭本轮第一个请求，不写台词表、不进长期记忆，下一轮重新算
 - 挑中的名字先过一遍权限集再并进本轮工具集——**推荐不构成授权**
 - 没有推荐（或都不过阈值）时什么都不加
 - 推荐失败只记 warn，不能拖累这一轮回复；Tool RAG 关闭时全量下发，推荐在工具集上是空操作，

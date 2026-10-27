@@ -223,7 +223,7 @@ pub struct ToolSettings {
     /// 而不是把全部已授权工具定义随每次请求下发。关闭即回到全量下发。
     pub tool_rag: bool,
     /// 每轮用户发言前怎么推荐工具：不推荐 / 上帝 Agent 挑 / 静默检索。
-    /// 两种推荐都只是临时提示，不写台词表也不进记忆。
+    /// 两种推荐都只走临时记忆通道，不写台词表也不进记忆。
     pub tool_recommend_mode: ToolRecommendMode,
     /// Tool RAG 同时记住多少个检索激活的工具。常驻的 tool_search 与 web_search
     /// 不占这个额度；缓存满了按最久未激活淘汰。

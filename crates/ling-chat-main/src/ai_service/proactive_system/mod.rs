@@ -15,14 +15,13 @@ use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::ChatComponents;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::tools::registry::ToolRegistry;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
 use activity_monitor::UserActivityMonitor;
@@ -395,13 +394,7 @@ impl ProactiveSystem {
             let written = gs
                 .add_line(
                     &self.db,
-                    LineBase {
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        content: prompt,
-                        sender_role_id: None,
-                        display_name: Some(PromptRole::System.display_name().to_string()),
-                        ..Default::default()
-                    },
+                    PromptLine::formatted(PromptRole::System, prompt).into_base(),
                 )
                 .await;
             if let Err(e) = written {

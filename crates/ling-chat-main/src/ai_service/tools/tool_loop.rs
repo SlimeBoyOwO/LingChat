@@ -30,8 +30,6 @@ const TOOL_RESULT_TRUNCATION_MARKER: &str = "\n...[工具结果过长，长期�
 /// 收尾轮只返回工具调用、没有任何正文时的补救提示：明确调用未执行、已无工具可用，
 /// 要求直接输出总结正文，避免整条回复落空触发前端报错。
 const FINAL_SYNTHESIS_RETRY_PROMPT: &str = "你刚才尝试调用的工具未被执行：当前已没有可用工具。请不要再尝试调用工具，直接基于已完成的工具结果，用正文给出最终答复；如仍有未完成事项，请明确说明。";
-const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。调用工具之前最多用一句话交代要做什么；多个互不依赖的操作在同一轮里一起发起，不要拆成多轮；两次工具调用之间可以完全不说话，工具结果不必复述。";
-
 /// 工具轮数用满、收掉工具定义后的收尾提示：还要报一次本回合的台词额度。
 fn final_synthesis_text(mode: ReplyLengthMode, spoken: usize) -> String {
     let mut text = String::from(
@@ -101,13 +99,6 @@ fn attach_line_budget(messages: &mut [LlmMessage], mode: ReplyLengthMode, spoken
         }),
     );
 }
-
-/// Tool RAG 开启时的检索引导。
-///
-/// 开启后随请求下发的工具被收窄为「常驻工具 + 已激活的工具」，模型必须知道两件事
-/// 才可能用上其余能力：一是「还有别的工具可以检索」，二是「有哪些」。后者写在
-/// `tool_search` 的动态描述里（见 `tool_rag::search_description`），这里负责前者。
-const TOOL_SEARCH_PROMPT: &str = "本请求只随附了少量常用工具，其余工具都可以用 tool_search 检索到。tool_search 的说明里列出了当前可用的工具清单，请先看那份清单判断有没有能用的工具：有就用一句自然语言描述你想完成的事调用 tool_search，它会返回匹配工具的名称与完整说明（含参数），拿到之后再调用那些工具完成任务。用户要求你做某件事而清单里有对应工具时，不要因为「请求里没直接附带这个工具」就说自己做不到；只有清单和检索结果里都没有合适的工具，才如实说明做不到，不要编造能力，也不要假装已经完成。";
 
 /// 工具执行前等待"前导台词已经 emit"的上限。
 ///
@@ -212,9 +203,6 @@ pub async fn stream_with_tool_loop(
     let stream = async_stream::try_stream! {
         let executor = ToolExecutor::new(&registry);
         let mut messages = messages;
-        // 角色人设经常要求先给出演出文本，部分模型会因此只口头宣称完成操作。
-        // 该临时系统消息只用于本次请求，不写入长期记忆，并明确工具结果才是事实依据。
-        messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
         // 切换到一个原本不在场的角色时，它的历史记忆不会包含触发切换的用户消息；
         // 保留这一条，重建上下文后补回，避免新角色只看到孤立的 tool_result。
         let active_user_message = messages
@@ -223,9 +211,6 @@ pub async fn stream_with_tool_loop(
             .find(|message| message.role == "user")
             .cloned();
         let mut active_role_name = role_name;
-        if rag_on && !initial_base_allowed.is_empty() {
-            messages.insert(1, LlmMessage::system(TOOL_SEARCH_PROMPT));
-        }
         let mut persisted_tool_result_chars = 0usize;
         // 这一回合已经说出去的台词句数：台词额度按整回合算，不按单轮算。
         // 每轮各自守「1~2 句」的话，连着几个工具下来就是十几句，而且大半在复述旧事。
@@ -487,14 +472,6 @@ pub async fn stream_with_tool_loop(
                 );
                 messages.extend(pending_images);
                 active_role_name = refreshed_name;
-                // rebase 用新角色的记忆整体替换了 messages，顶层的工具策略提示会一并丢失。
-                // 新角色的激活缓存是空的，不补回提示模型就不知道 tool_search 的存在，
-                // 会以为自己没有任何可用的工具。
-                let switched_base = registry.allowed_tools(source, active_role_name.as_deref());
-                messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
-                if rag_on && !switched_base.is_empty() {
-                    messages.insert(1, LlmMessage::system(TOOL_SEARCH_PROMPT));
-                }
             } else {
                 messages.extend(live_round_messages);
                 messages.extend(pending_images);

@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Manager};
@@ -9,10 +8,10 @@ use crate::ai_service::game_system::player_identity::{
     IdentityStore, PlayerIdentity, PlayerIdentitySummary, ensure_identity_switchable,
     role_relations, runtime_relations,
 };
-use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::ai_service::game_system::status_ops::PromptLine;
+use crate::ai_service::types::LineBase;
 use crate::api::game::{WebInitData, build_web_init_data};
 use crate::config::AppConfig;
-use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{PromptOptions, PromptRole};
@@ -23,12 +22,9 @@ fn store() -> IdentityStore {
 
 /// 系统旁白台词（不归属任何身份）。
 fn narrator_line(text: String) -> LineBase {
-    LineBase {
-        content: PromptRole::Narrator.build_prompt(&text),
-        attribute: LineAttributeExt(LineAttribute::User),
-        display_name: Some("系统".to_string()),
-        ..Default::default()
-    }
+    PromptLine::new(PromptRole::Narrator, text)
+        .display_name("系统")
+        .into_base()
 }
 
 #[tauri::command]
