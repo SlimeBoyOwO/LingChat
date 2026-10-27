@@ -35,6 +35,9 @@ pub struct ToolDefinition {
     #[serde(rename = "type")]
     pub type_: String,
     pub function: FunctionSchema,
+    /// Tool RAG 的检索示例问句。只在本机做索引，不随请求下发给模型。
+    #[serde(skip)]
+    pub rag_examples: Vec<String>,
 }
 
 impl ToolDefinition {
@@ -50,7 +53,18 @@ impl ToolDefinition {
                 description: description.into(),
                 parameters,
             },
+            rag_examples: Vec::new(),
         }
+    }
+
+    /// 挂上 Tool RAG 的检索示例问句；没有配置时语料回退到描述。
+    pub fn with_rag_examples<I, S>(mut self, examples: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.rag_examples = examples.into_iter().map(Into::into).collect();
+        self
     }
 }
 
@@ -174,6 +188,9 @@ pub struct LineBase {
     /// 该轮生成的思考链（仅挂在每轮最后一条 assistant 行上）。
     pub thinking: Option<String>,
     pub tool_call: Option<String>,
+    /// 工具轮标识：同一轮的前导台词、空内容载体与工具结果共享。
+    #[serde(default)]
+    pub round_id: Option<String>,
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,

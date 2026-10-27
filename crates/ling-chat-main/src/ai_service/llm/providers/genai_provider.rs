@@ -332,7 +332,13 @@ impl GenaiProvider {
                     truncate_chars(&call.fn_arguments.to_string(), 200)
                 )),
                 ContentPart::ToolResponse(resp) => {
-                    out.push_str(&format!("[工具结果 call_id={}]", resp.call_id))
+                    out.push_str(&format!("[工具结果 call_id={}]", resp.call_id));
+                    // 摘要默认不展开工具结果；台词余额是排查回复长度的关键，单独带出来
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&resp.content) {
+                        if let Some(budget) = value.get("line_budget") {
+                            out.push_str(&format!(" [台词余额] {budget}"));
+                        }
+                    }
                 },
                 other => out.push_str(&format!("[非文本内容 {} 字节]", other.size())),
             }

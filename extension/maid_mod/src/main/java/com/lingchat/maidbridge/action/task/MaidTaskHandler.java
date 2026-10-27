@@ -14,6 +14,8 @@ import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
 import java.util.Optional;
@@ -50,6 +52,9 @@ public class MaidTaskHandler implements MessageHandler {
         if (maid == null) {
             return rejected("maid_not_found", MaidQueries.NOT_FOUND, "");
         }
+        if (MaidCondition.isUnconscious(maid)) {
+            return rejected("maid_unconscious", "她昏迷不醒，叫不动", "");
+        }
         return switchTask(server, maid, Envelope.string(Envelope.data(request), "task"));
     }
 
@@ -73,6 +78,7 @@ public class MaidTaskHandler implements MessageHandler {
         // 换工作与追打、挖掘会互相抢寻路，先把还没做完的收掉
         MaidAttackController.cancel();
         MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
         String replaced = MaidActionController.cancelCurrent(server);
         boolean stoodUp = MaidActuator.standUp(maid);
         if (changed) {

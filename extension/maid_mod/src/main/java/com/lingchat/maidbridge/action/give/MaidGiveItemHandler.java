@@ -5,8 +5,10 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
+import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
+import com.lingchat.maidbridge.perception.item.ItemReporter;
 import java.util.Locale;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
@@ -49,6 +51,9 @@ public class MaidGiveItemHandler implements MessageHandler {
         if (maid == null) {
             return rejected("maid_not_found", MaidQueries.NOT_FOUND, "", 0, 0);
         }
+        if (MaidCondition.isUnconscious(maid)) {
+            return rejected("maid_unconscious", "她昏迷不醒，拿不了东西", "", 0, 0);
+        }
         String itemId = parseId(Envelope.string(data, "item"));
         ResourceLocation id = itemId == null ? null : ResourceLocation.tryParse(itemId);
         Item item = id == null ? null : BuiltInRegistries.ITEM.get(id);
@@ -69,6 +74,10 @@ public class MaidGiveItemHandler implements MessageHandler {
         int remaining = wanted;
         int given = 0;
         for (int slot = 0; slot < backpack.getSlots() && remaining > 0; slot++) {
+            // 头饰栏里的东西顶在头上，不算背包存货，交不出去
+            if (slot == MaidInventory.HEADWEAR_SLOT) {
+                continue;
+            }
             ItemStack stack = backpack.getStackInSlot(slot);
             if (stack.isEmpty() || !stack.is(item)) {
                 continue;
@@ -86,6 +95,8 @@ public class MaidGiveItemHandler implements MessageHandler {
         if (given == 0) {
             return rejected(maid, "not_found", "她身上没有这件东西", itemId, wanted, 0);
         }
+        // 这几件是她自己递出去的：背包差分会看到背包少了，别让旁白说成「主人从背包里拿走了」
+        ItemReporter.markRemoval(itemId, given);
 
         JsonObject out = new JsonObject();
         out.addProperty("accepted", true);

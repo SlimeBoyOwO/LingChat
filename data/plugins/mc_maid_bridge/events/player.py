@@ -25,6 +25,6 @@ def maid_task_change(data):
 
 
 SPECS = {
-    "player_advancement": EventSpec(player_advancement, urgent=True, ttl=300),
+    "player_advancement": EventSpec(player_advancement, ttl=600),
     "maid_task_change": EventSpec(maid_task_change, ttl=300),
 }

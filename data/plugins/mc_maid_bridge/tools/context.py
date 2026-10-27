@@ -1,32 +1,37 @@
-"""她身边那一圈：按需快照，以及随发言 / 事件带过去的处境措辞。
+"""她身边那一圈：按需快照，以及事件旁白里的处境措辞。
 
-工具「看一眼周围」与「玩家开口时顺手带一份」共用这一条路：帧、超时口径、老模组
-认不出这个帧时的说法都只有一处。profile 决定模组用哪一档：auto 是开口时顺手带的
+工具「看一眼周围」与「出事那一刻顺手补一份」共用这一条路：帧、超时口径、老模组
+认不出这个帧时的说法都只有一处。profile 决定模组用哪一档：auto 是出事时顺手带的
 近处快照（看得见按工作范围、看不见只听很近的声音），query 是玩家明确问周围有什么
 （看得见放宽到 32 格，并附方块与背包清单）。
+
+处境信息不往玩家那句话后面追加：玩家的发言原样送进对话，感知一律走 `events/` 的旁白入口。
 """
 
 from bridge import ask
 from naming import names, narrate
-from wording import BLOCK_NAMES, heard_sounds, name_of, sighting
+from wording import MOB_NAMES, heard_sounds, name_of, sighting, who_of
 
-# 玩家说话时顺手取快照的超时：给得很短，玩家那句话不能被一次查询拖住（游戏暂停时
-# 模组答不上来，这一轮就不带，照常把话送进对话）。
-CARRY_TIMEOUT_MS = 1500
+# 出事时顺手取快照的超时：给得很短，那条旁白不能被一次查询拖住（游戏暂停时
+# 模组答不上来，这一轮就不带，旁白照常进队列）。
+NEARBY_TIMEOUT_MS = 1500
 
-# 玩家离她这么近才算「在身边」。只判距离，不问「她看不看得见他」——视线那条会让模型
-# 去编「我看见你了」，而真正要紧的只是主人有没有走远。
-OWNER_NEAR = 30.0
+# 玩家离她这么近才算「在身边」。与模组远近档里「走开了」那条线（16 格）对齐：
+# 两边口径不一样的话，同一个距离上工具说「就在身边」、旁白却说「走远了」。
+OWNER_NEAR = 16.0
 
-# 「某角色此刻：附近有…」里最多念几只活物。模组两档都只给最近 3 个，这里再兜一层。
-CARRY_CREATURE_LIMIT = 3
+# 旁白与工具回执里最多念几只活物。模组两档都只给最近 3 个，这里再兜一层。
+CREATURE_LIMIT = 3
 
 LOOK_AROUND_TOOL = "maid_look_around"
 
 
-def snapshot(maid_id, timeout_ms, profile="auto"):
-    """现取一份她身边的快照。返回 (数据, 错误说明)；出错时数据是 None。"""
-    data = {"maid_id": maid_id, "profile": profile}
+def snapshot(maid_id, timeout_ms, profile="auto", detail="brief"):
+    """现取一份她身边的快照。返回 (数据, 错误说明)；出错时数据是 None。
+
+    detail = map 时模组会多画一张近细远粗的小图；默认 brief，只有玩家问路才要。
+    """
+    data = {"maid_id": maid_id, "profile": profile, "detail": detail}
     response, error = ask({"type": LOOK_AROUND_TOOL, "data": data}, timeout_ms)
     if error:
         return None, error
@@ -37,39 +42,18 @@ def snapshot(maid_id, timeout_ms, profile="auto"):
     return response.get("data") or {}, ""
 
 
-def carry_text(data):
-    """一份快照 → 一句「角色此刻的处境」，附在玩家的发言后面。
-
-    只挑此刻要紧的说：脚下与头顶、玩家在不在身边、附近有什么活物。正前方那一眼留给
-    工具那句——玩家问起来才需要那么细，每句话都带上就成了噪音。
-    帧里没有 owner 字段说明这压根不是快照（多半是别的东西回了信），那就什么都不带。
-    """
-    if "owner" not in data:
-        return ""
-    maid, player = names()
-    parts = []
-    foot = _footing_phrase(data)
-    if foot:
-        parts.append(foot)
-    parts.append(owner_phrase(data.get("owner") or {}, maid, player))
-    creatures = creature_phrase(data)
-    if creatures:
-        parts.append(creatures)
-    return f"（{maid}此刻：" + "；".join(parts) + "）"
-
-
 def creature_phrase(data):
     """附近有哪些活物，一句话的中间那半截（「附近有近处的僵尸」）。
 
     出事那一刻（她挨打、血量告急）跟着事件旁白一起给她——怪物另记一条有 2 分钟防抖
-    挡着，但「她刚挨了一下，旁边站着谁」是当下最要紧的处境，不该等到玩家下次说话。
+    挡着，但「她刚挨了一下，旁边站着谁」是当下最要紧的处境，不该等到下次采样。
 
     看得见的按距离档报；看不见的不报「被挡着」，只汇总成「听到僵尸和蜘蛛的声音」——
     隔墙知道具体是哪一只、离多远，读起来像透视，也不像她真有的感官。
 
-    只看最近几只：按需查询现在能列十几只，全念出来会把玩家那句话挤成一份清单。
+    只看最近几只：按需查询现在能列十几只，全念出来会把那句旁白挤成一份清单。
     """
-    nearby = (data.get("nearby") or [])[:CARRY_CREATURE_LIMIT]
+    nearby = (data.get("nearby") or [])[:CREATURE_LIMIT]
     if not nearby:
         return ""
     seen = [one for one in nearby if one.get("visible")]
@@ -88,23 +72,38 @@ def creature_text(data):
     return f"{phrase}。" if phrase else ""
 
 
-def _footing_phrase(data):
-    """脚下踩着哪。「近/中/远」的档位在这句里没意义，所以单独拎出来。"""
-    foot = name_of(BLOCK_NAMES, (data.get("standing_on") or {}).get("id"), "")
-    if not foot:
-        return ""
-    # 下界与末地没有天空，「头顶有没有遮挡」在那里无从谈起
-    roof = ""
-    if data.get("has_sky"):
-        roof = "，头顶有遮挡" if data.get("sheltered") else "，头顶是露天的"
-    return f"脚下是{foot}{roof}"
+def remembered_text(ones):
+    """刚才在附近见过、现在不在了的活物（模组的两分钟记忆）。
+
+    用来回答「刚才那只僵尸呢」：说清它已经不在了，以及死在谁手里。只当过去的事说，
+    不并进此刻的视野——活着的那些本来就会出现在附近那份清单里。
+    """
+    maid, player = names()
+    parts = []
+    for one in ones:
+        who = who_of(one.get("category"), one.get("type"))
+        if not one.get("dead"):
+            parts.append(f"{who}已经不在附近了")
+            continue
+        by = (one.get("killed_by") or "").strip()
+        if by == "maid":
+            parts.append(f"{who}已经被{maid}打倒了")
+        elif by == "owner":
+            parts.append(f"{who}已经被{player}打死了")
+        elif by == "other":
+            raw = (one.get("killed_by_type") or "").strip()
+            killer = "另一个人" if raw == "minecraft:player" else name_of(MOB_NAMES, raw, "别的生物")
+            parts.append(f"{who}已经被{killer}打死了")
+        else:
+            parts.append(f"{who}已经死了")
+    return f"刚才在附近见过、现在不在了的：{'、'.join(parts)}。" if parts else ""
 
 
 def owner_phrase(owner, maid=None, player=None):
     """主人在不在她身边（`OWNER_NEAR` 之内），不带句号。
 
-    只说在不在，不给格数，也不问视线：两条路（工具与开口时携带）共用这一句，
-    说法只有一处。调用方已经取过名字时传进来，省一次宿主往返。
+    只说在不在，不给格数，也不问视线：工具回执共用这一句，说法只有一处。
+    调用方已经取过名字时传进来，省一次宿主往返。
     """
     if maid is None or player is None:
         maid, player = names()

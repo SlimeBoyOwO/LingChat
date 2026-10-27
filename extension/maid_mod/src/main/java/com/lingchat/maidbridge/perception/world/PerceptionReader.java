@@ -2,6 +2,7 @@ package com.lingchat.maidbridge.perception.world;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.core.MaidActuator;
+import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.nearby.SurroundingsDiff;
 import com.lingchat.maidbridge.perception.nearby.SurroundingsReader;
 import net.minecraft.server.level.ServerPlayer;
@@ -52,6 +53,7 @@ public final class PerceptionReader {
                 playerMaxHealth,
                 maid.getName().getString(),
                 maid.getHealth(),
-                maid.getMaxHealth());
+                maid.getMaxHealth(),
+                MaidQueries.posture(maid));
     }
 }

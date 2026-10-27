@@ -7,41 +7,33 @@
 //! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
 //! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
 
+mod backfill;
+mod post;
+mod pre;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use sea_orm::DatabaseConnection;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
-use crate::ai_service::god_agent::capabilities::{
-    affection::{self as god_affection, NpcAffectionView},
-    speaker::{self as god_speaker, SpeakerView},
-    tool_hint::{self as god_tool_hint, ToolHintView},
-};
+use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
 use crate::ai_service::llm::LlmClient;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::processor::{
-    EmotionSegment, MessageProcessor, UserMessageOutcome,
-};
+use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
 use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
-use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage, ToolDefinition};
-use crate::api::data_dir;
-use crate::config::AppConfig;
+use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::{
-    PromptRole, REPETITION_MIN_ROUNDS, RoundReply, correction_texts, repetition_text,
-    scan_reply_shape,
-};
+use crate::utils::prompt::{RoundReply, scan_reply_shape};
 
 /// MessageGenerator 的业务调用来源。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -83,6 +75,9 @@ pub struct GeneratorDeps {
     /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
     /// 不写入角色记忆，从源头控制上下文/缓存占用。
     pub transient_image: Option<String>,
+    /// 本轮 user 行的下标。提示行在 `process_message` 之前写好的路径由调用方传入，
+    /// 普通聊天保持 None。
+    pub round_anchor_hint: Option<usize>,
 }
 
 /// `process_message` 各步骤间传递的用户消息上下文。
@@ -119,18 +114,40 @@ impl MessageGenerator {
         // 1.5. 场景变化检测
         self.detect_scene_change().await?;
 
+        // 1.6. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
+        // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
+        let recent_anchor_hint = user_ctx.line_index.or(self.deps.round_anchor_hint);
+
         // 2. 上帝 Agent 预处理：用户发消息时，先决定谁回应
         if user_message.is_some() {
             self.god_agent_pre_select().await?;
         }
 
-        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
-        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一。
+        // 没有玩家发言时（主动对话）只取上一轮回复后暂存的那份。
         let tool_hint = if user_message.is_some() {
             self.tool_hint(user_message.as_deref().unwrap_or_default())
                 .await
         } else {
-            None
+            self.pending_tool_hint().await
+        };
+        // 推荐内容按临时记忆注入：与提示行同一个信封，只进本轮请求，不写台词表。
+        // 工具名另走参数并进本轮工具集，两半不拆。
+        if let Some(hint) = &tool_hint {
+            self.deps
+                .game_status
+                .lock()
+                .await
+                .queue_temporary_memory(TemporaryMemory {
+                    text: hint.text.clone(),
+                    placement: TemporaryPlacement::IntoUser,
+                });
+        }
+
+        // 本轮新落台词的起点：回复后推荐只取这之后的助手行，用户行与场景旁白都应排除。
+        let reply_start = {
+            let gs = self.deps.game_status.lock().await;
+            gs.line_list.len()
         };
 
         // 3. 生成循环（God Agent 激活时可能多轮）
@@ -197,13 +214,21 @@ impl MessageGenerator {
 
         // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
         // 不阻塞本轮回复的呈现。
-        self.maybe_evaluate_affection().await;
+        self.maybe_evaluate_affection(recent_anchor_hint).await;
 
-        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚插入的提示混进评估快照）：
+        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚排队的提示混进评估快照）：
         // 新增的回复后处理一律加在 `maybe_correct_reply_shape` 旁边——轻量动作
-        // （插台词等）直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
+        // 直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
         // 绝不能影响已经呈现给用户的回复。
         self.maybe_correct_reply_shape(&round_replies).await;
+
+        // 回复后工具推荐：模型先说「我去看看你屏幕」却没调用工具的场合，下一轮
+        // 前置推荐未必还能从玩家的话里看出这个意图，这里拿本轮正文与动作补一次。
+        self.maybe_recommend_tools_after_reply(reply_start).await;
+
+        // 近期记忆落位：等这一轮所有写入结束再做，避免中段插入打乱流式行号。
+        // 调用方（非剧本路径）已持有 generation_lock，这里只锁 game_status。
+        self.flush_recent_memories().await;
 
         Ok(accumulated)
     }
@@ -212,6 +237,8 @@ impl MessageGenerator {
     /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
     #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
+        // 调用方（后台工具通知）持有 generation_lock；先把待落位的近期记忆写回历史。
+        self.flush_recent_memories().await;
         let mut context = self.get_current_context(None).await?;
         if context.is_empty() {
             return Ok(String::new());
@@ -221,127 +248,8 @@ impl MessageGenerator {
     }
 
     // ============================================================
-    // 子步骤
+    // 生成管线（生成前的准备见 `pre.rs`，生成后的收尾见 `post.rs`）
     // ============================================================
-
-    /// Step 1: 预处理用户消息，构建 USER Line 并写入 GameStatus。
-    ///
-    /// 返回 `UserMessageContext` 供后续步骤使用。
-    async fn handle_user_message(&self, raw: Option<&str>) -> Result<UserMessageContext> {
-        let Some(raw) = raw else {
-            return Ok(UserMessageContext {
-                processed: String::new(),
-                temp: None,
-                line_index: None,
-                seq: None,
-            });
-        };
-
-        let UserMessageOutcome { main, temp } = self.deps.processor.append_user_message(raw).await;
-
-        let mut gs = self.deps.game_status.lock().await;
-        let user_name = gs.player.user_name.clone();
-        let line = LineBase {
-            content: main.clone(),
-            attribute: LineAttributeExt(LineAttribute::User),
-            display_name: Some(user_name),
-            sender_role_id: Some(0),
-            ..Default::default()
-        };
-        gs.add_line(&self.deps.db, line).await?;
-        let line_index = Some(gs.line_list.len().saturating_sub(1));
-        let seq = Some(
-            gs.line_list
-                .iter()
-                .filter(|l| {
-                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
-                })
-                .count() as u32,
-        );
-
-        Ok(UserMessageContext {
-            processed: main,
-            temp,
-            line_index,
-            seq,
-        })
-    }
-
-    /// Step 1.5: 检测场景变化，若场景切换则添加系统旁白台词。
-    async fn detect_scene_change(&self) -> Result<()> {
-        let mut gs = self.deps.game_status.lock().await;
-        if !gs.scene_awareness_enabled
-            || gs.current_scene_id.is_none()
-            || gs.current_scene_id == gs.last_processed_scene_id
-        {
-            return Ok(());
-        }
-
-        let scene_id = gs.current_scene_id.clone().unwrap();
-        let store = SceneStore::new(&data_dir());
-        if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
-            if !scene.description.trim().is_empty() {
-                let text = format!(
-                    "你们一起去了新的场景 - \"{}\"，\"{}\"",
-                    scene.name, scene.description
-                );
-                let prompt = PromptRole::Narrator.build_prompt(&text);
-                let line = LineBase {
-                    content: prompt,
-                    attribute: LineAttributeExt(LineAttribute::User),
-                    display_name: Some("系统".to_string()),
-                    ..Default::default()
-                };
-                let _ = gs.add_line(&self.deps.db, line).await;
-            }
-        }
-        gs.last_processed_scene_id = gs.current_scene_id.clone();
-        Ok(())
-    }
-
-    /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
-    async fn get_current_context(&self, user_input: Option<&str>) -> Result<Vec<LlmMessage>> {
-        let mut gs = self.deps.game_status.lock().await;
-        let Some(rid) = gs.current_role_id else {
-            tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok(Vec::new());
-        };
-        // 今日首聊天气先入列，再取 memory，保证本轮上下文就能看到这条提醒
-        self.inject_weather_first_talk(&mut gs).await;
-        let role = gs.get_role(&self.deps.db, rid).await?;
-        // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
-        let mut context = role.memory.clone();
-        // 世界书注入（上游）：随本轮上下文进，不写回记忆
-        if let Some(book) = &role.worldbook {
-            book.inject(&mut context, user_input);
-        }
-        drop(gs);
-        Ok(context)
-    }
-
-    /// 今日首次对话时，往 game_status 添加一条「系统」天气台词。
-    ///
-    /// 以 `add_line` 入列（User 属性，不产生第二条 system 消息）；
-    /// 剧本系来源与编辑器试玩不注入，其余由 `first_talk_reminder`
-    /// 的"每日一次 + 配置开关 + 缓存有货"三重门决定。
-    async fn inject_weather_first_talk(&self, gs: &mut GameStatus) {
-        let script_source = matches!(
-            self.deps.source,
-            GeneratorSource::ScriptAiDialogue | GeneratorSource::ScriptFreeDialogue
-        );
-        let allowed = !script_source && !self.deps.is_preview;
-        if let Some(reminder) =
-            crate::ai_service::tools::weather::first_talk_reminder(&self.deps.app, gs, allowed)
-        {
-            let line = LineBase {
-                content: PromptRole::Narrator.build_prompt(&reminder),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            };
-            let _ = gs.add_line(&self.deps.db, line).await;
-        }
-    }
 
     /// Step 3: 启动 LLM 流管道，统一处理 thinking emit 与错误分发。
     async fn execute_pipeline(
@@ -372,346 +280,6 @@ impl MessageGenerator {
                 }
                 Err(e)
             },
-        }
-    }
-
-    /// Step 4: 后处理 — 若存在 temp_message，将 user 行中的 temp 段清理后重建记忆。
-    async fn cleanup_temp_message(&self, ctx: &UserMessageContext) -> Result<()> {
-        let (Some(temp), Some(idx)) = (ctx.temp.as_deref(), ctx.line_index) else {
-            return Ok(());
-        };
-        let mut gs = self.deps.game_status.lock().await;
-        gs.role_manager.invalidate_memory_history();
-        if let Some(line) = gs.line_list.get_mut(idx) {
-            line.base.content = ctx.processed.replace(temp, "");
-        }
-        gs.refresh_memories(&self.deps.db).await?;
-        Ok(())
-    }
-
-    // ============================================================
-    // 上帝 Agent 集成
-    // ============================================================
-
-    /// 预处理：用户发消息时，上帝 Agent 决定哪个角色先回应。
-    ///
-    /// 视图必须在锁内取完并释放锁再调用——发言权的切换由 `select_next_speaker`
-    /// 工具内部完成，它会再取 game_status 锁，持锁调用会自死锁。
-    async fn god_agent_pre_select(&self) -> Result<()> {
-        let Some(god) = &self.deps.god_agent else {
-            return Ok(());
-        };
-
-        let view = {
-            let gs = self.deps.game_status.lock().await;
-            if !god.should_activate(&gs) {
-                return Ok(());
-            }
-            SpeakerView::capture(&gs, god.config_snapshot().recent_window)
-        };
-
-        let decision = god_speaker::decide_next_speaker(god, &view, &self.deps.app).await?;
-        if decision.role_id == 0 {
-            return Ok(()); // 选择玩家，保持现状
-        }
-
-        tracing::info!(
-            "[GodAgent] pre-select: role_id={}, name={:?}, reason={}",
-            decision.role_id,
-            decision.name,
-            decision.reason
-        );
-        Ok(())
-    }
-
-    /// 预处理：本轮推荐几件工具。
-    ///
-    /// 三种模式见 `ToolRecommendMode`。两种推荐都只产出「临时提示 + 本轮并进工具集的
-    /// 名字」——命中的工具在工具闭环里并入本轮定义（不然模型看得见名字也调不了），
-    /// 不写台词表、不进记忆，下一轮重新算。
-    async fn tool_hint(&self, user_text: &str) -> Option<god_tool_hint::ToolHint> {
-        if self.deps.is_preview {
-            return None;
-        }
-        let mode = self
-            .deps
-            .app
-            .state::<crate::AppState>()
-            .tool_settings
-            .get()
-            .tool_recommend_mode;
-        match mode {
-            ToolRecommendMode::Off => None,
-            ToolRecommendMode::Agent => self.agent_tool_hint().await,
-            ToolRecommendMode::Rag => self.rag_tool_hint(user_text).await,
-        }
-    }
-
-    /// 推荐用的公共前置：当前角色的显示名与它可调用的全部工具定义。
-    ///
-    /// 剧本模式的工具列表是冻结快照，推荐没有意义；元工具（`tool_search`）也不在
-    /// 候选里——推荐检索入口等于让模型再绕一圈。
-    async fn tool_hint_context(&self) -> Option<(Option<String>, Vec<ToolDefinition>)> {
-        let role_name = {
-            let mut gs = self.deps.game_status.lock().await;
-            if gs.script_status.is_some() {
-                return None;
-            }
-            let role_id = gs.current_role_id?;
-            gs.get_role(&self.deps.db, role_id)
-                .await
-                .ok()
-                .and_then(|role| role.display_name.clone())
-        };
-        let base_allowed = self
-            .deps
-            .tool_registry
-            .allowed_tools(self.deps.source, role_name.as_deref());
-        let mut definitions = self
-            .deps
-            .tool_registry
-            .definitions_for_allowed(&base_allowed);
-        definitions.retain(|def| {
-            def.function.name != crate::ai_service::tools::tool_rag::TOOL_SEARCH_NAME
-        });
-        Some((role_name, definitions))
-    }
-
-    /// 上帝 Agent 推荐：读最近的对话再挑（多一次小模型调用）。
-    async fn agent_tool_hint(&self) -> Option<god_tool_hint::ToolHint> {
-        let god = self.deps.god_agent.as_ref()?;
-        let (_, definitions) = self.tool_hint_context().await?;
-
-        // 视图在锁内取完就放锁：按需 LLM 调用不能攥着 game_status。
-        let view = {
-            let gs = self.deps.game_status.lock().await;
-            ToolHintView::capture(&gs, god.config_snapshot().recent_window)
-        };
-        // 只把「这个角色真能调用」的工具交给上帝 Agent 挑，否则会推一批调不动的名字。
-        let tools: Vec<(String, String)> = definitions
-            .into_iter()
-            .map(|def| (def.function.name, def.function.description))
-            .collect();
-        let view = view.with_tools(tools);
-
-        match god_tool_hint::recommend(god, &view, &self.deps.app).await {
-            Ok(hint) => {
-                if let Some(hint) = &hint {
-                    tracing::info!("[GodAgent] 本轮推荐工具: {:?}", hint.names);
-                }
-                hint
-            },
-            // 推荐是锦上添花，失败不能拖累这一轮回复。
-            Err(error) => {
-                tracing::warn!("[GodAgent] 工具推荐失败: {error:#}");
-                None
-            },
-        }
-    }
-
-    /// 静默检索推荐：拿玩家这句话检索一次工具，分数过阈值的才推荐。
-    ///
-    /// 不额外调用模型，只多一次本地向量计算；命中项照常进激活缓存，后续轮次一直可见
-    /// 直到被 LRU 淘汰。
-    async fn rag_tool_hint(&self, user_text: &str) -> Option<god_tool_hint::ToolHint> {
-        // 只取第一句：多行输入（比如桥接插件在正文后追加的场景旁白）不代表玩家的意图。
-        let query = user_text
-            .lines()
-            .map(str::trim)
-            .find(|line| !line.is_empty())?;
-        let (role_name, candidates) = self.tool_hint_context().await?;
-        if candidates.is_empty() {
-            return None;
-        }
-        let rag = self.deps.app.state::<crate::AppState>().tool_rag.clone();
-        match god_tool_hint::recommend_by_rag(&rag, role_name.as_deref(), query, &candidates).await
-        {
-            Ok(hint) => {
-                if let Some(hint) = &hint {
-                    tracing::info!("[ToolRAG] 本轮推荐工具: {:?}", hint.names);
-                }
-                hint
-            },
-            Err(error) => {
-                tracing::warn!("[ToolRAG] 自动推荐失败: {error:#}");
-                None
-            },
-        }
-    }
-
-    /// 后处理：消息生成完毕后，上帝 Agent 决定下一个说话者。
-    ///
-    /// 返回 `(should_continue, next_role_id)`：
-    /// - `should_continue=true` 表示应继续循环（NPC 说话）
-    /// - `should_continue=false` 表示应停止（交还玩家或 God Agent 未激活）
-    async fn god_agent_post_select(&self, consecutive_npc_rounds: usize) -> Result<(bool, i32)> {
-        let Some(god) = &self.deps.god_agent else {
-            return Ok((false, 0));
-        };
-
-        // 检查是否超过连续 NPC 轮数上限
-        if !god.within_npc_budget(consecutive_npc_rounds) {
-            tracing::info!(
-                "[GodAgent] 连续 {} 轮 NPC 发言，强制返回玩家",
-                consecutive_npc_rounds
-            );
-            return Ok((false, 0));
-        }
-
-        let view = {
-            let gs = self.deps.game_status.lock().await;
-            if !god.should_activate(&gs) {
-                return Ok((false, 0));
-            }
-            SpeakerView::capture(&gs, god.config_snapshot().recent_window)
-        };
-
-        let decision = god_speaker::decide_next_speaker(god, &view, &self.deps.app).await?;
-        if decision.role_id == 0 {
-            // 交还玩家
-            return Ok((false, 0));
-        }
-
-        tracing::info!(
-            "[GodAgent] post-select: role_id={}, name={:?}, reason={}",
-            decision.role_id,
-            decision.name,
-            decision.reason
-        );
-        Ok((true, decision.role_id))
-    }
-
-    /// 好感度定期评估：真实对话每累计 `affection_eval_interval` 段，spawn 一个
-    /// 上帝 Agent 评估任务在后台调整在场 NPC 的六维好感度。
-    ///
-    /// 不阻塞本轮回复：触发判定与视图快照在锁内取、LLM 调用与落地在锁外。
-    /// 调整结果由 `update_affection` 工具写角色文件、广播 `affection:changed`
-    /// 并补写旁白台词。游标先推进，即使评估失败也不会形成重试风暴。
-    async fn maybe_evaluate_affection(&self) {
-        let Some(god) = &self.deps.god_agent else {
-            return;
-        };
-        // 好感度系统总开关（高级设置）：关闭后不评估、不写旁白台词。
-        // config 可被 save_settings 热更新，这里取快照保证读到最新值。
-        let god_config = god.config_snapshot();
-        if !god_config.affection_enabled {
-            return;
-        }
-
-        let snapshot = {
-            let mut gs = self.deps.game_status.lock().await;
-            // 剧本模式下的对话不进好感度评估（剧本事件接口另行扩展）。
-            if gs.script_status.is_some() {
-                None
-            } else {
-                let interval = god_config.affection_eval_interval.max(1);
-                let real_count = gs
-                    .line_list
-                    .iter()
-                    .filter(|l| crate::ai_service::game_system::auto_save::is_real_dialogue(l))
-                    .count();
-                if real_count < gs.affection_eval_cursor + interval {
-                    None
-                } else {
-                    gs.affection_eval_cursor = real_count;
-                    let (npcs, lines) =
-                        NpcAffectionView::capture_all(&gs, god_config.recent_window);
-                    if npcs.is_empty() {
-                        None
-                    } else {
-                        Some((npcs, lines))
-                    }
-                }
-            }
-        };
-        let Some((npcs, lines)) = snapshot else {
-            return;
-        };
-
-        let god = Arc::clone(god);
-        let app = self.deps.app.clone();
-        tauri::async_runtime::spawn(async move {
-            // 后台任务：失败只记日志，不影响已经呈现给用户的回复。
-            if let Err(e) = god_affection::evaluate_affection(&god, &npcs, &lines, &app).await {
-                tracing::warn!("[Affection] 好感度评估失败: {e:#}");
-            }
-        });
-    }
-
-    /// 回复纠偏：上一轮回复的格式要素（情绪标签 / 正文 / 日语翻译）缺失、
-    /// 台词数量越界、动作分布异常或情绪标签过长时，各插一条系统提示台词，
-    /// 提醒模型下一轮修正。
-    ///
-    /// 只对自由对话 / 主动对话生效：入场问候天然只有一两句，会被「正常」档误判过短；
-    /// 剧本模式的节奏由剧本作者控制，不插提示（判据与好感度评估一致）。
-    /// 这里只追加台词，直接 await；插台词失败只记日志，不能反向报错。
-    async fn maybe_correct_reply_shape(&self, round_replies: &[RoundReply]) {
-        if !matches!(
-            self.deps.source,
-            GeneratorSource::UserChat | GeneratorSource::Proactive
-        ) {
-            return;
-        }
-
-        // 角色系统的第二语言输出开关决定系统提示词里有没有「日语翻译」那一行，
-        // 缺了它才是格式错误（配置读取与天气首聊同款，每轮一次、代价可忽略）
-        let expect_translation = AppConfig::load(&self.deps.app)
-            .map(|config| config.llm_output_sec_lang)
-            .unwrap_or(false);
-
-        let mut gs = self.deps.game_status.lock().await;
-        if gs.script_status.is_some() {
-            return;
-        }
-
-        // 每类问题只取首个命中的轮次（多人模式下一次回复含多个角色的输出，
-        // 逐轮插入会把提示堆一片）；什么都没产出的轮次（模型只调了工具）不参与判据。
-        let mode = gs.reply_length_mode();
-        let mut texts = round_replies
-            .iter()
-            .filter(|round| round.landed_lines > 0 || !round.shapes.is_empty())
-            .find_map(|round| {
-                let texts = correction_texts(mode, round, expect_translation);
-                (!texts.is_empty()).then_some(texts)
-            })
-            .unwrap_or_default();
-
-        // 台词条数连续多轮一模一样：条数可能仍在允许区间内，但每轮同长很机械。
-        // 已经越界时交给上面的数量纠偏，不再叠一条「要有变化」；本轮没落下台词时
-        // 不检查，否则会拿上一轮的结论重复插同一条提示。
-        let produced_lines = round_replies.iter().any(|round| round.landed_lines > 0);
-        if produced_lines {
-            if let Some((count, streak)) = same_length_streak(&gs.line_list) {
-                let in_range = match mode.accepted_range() {
-                    Some((min, max)) => (min..=max).contains(&count),
-                    None => true,
-                };
-                if streak >= REPETITION_MIN_ROUNDS && in_range {
-                    texts.push(repetition_text(streak, count));
-                }
-            }
-        }
-
-        // 同一条提示紧邻重复就不再插：跨过本轮刚产出的台词回头看一行，
-        // 命中即说明上一轮已经提醒过同样的问题（隔轮重复是有意的：模型不听就该再提醒）
-        let lookback = round_replies
-            .iter()
-            .map(|round| round.landed_lines)
-            .sum::<usize>()
-            + 2;
-        for text in texts {
-            let content = PromptRole::System.build_prompt(&text);
-            let duplicated =
-                gs.line_list.iter().rev().take(lookback).any(|l| {
-                    matches!(l.attribute(), LineAttribute::User) && l.base.content == content
-                });
-            if duplicated {
-                continue;
-            }
-
-            if let Err(e) = gs.add_system_hint_line(&self.deps.db, &text).await {
-                tracing::warn!("[ReplyShape] 写入回复形态纠偏提示失败: {e:#}");
-            }
         }
     }
 
@@ -753,13 +321,10 @@ impl MessageGenerator {
         } else {
             context
         };
-        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
-        let context = if let Some(hint) = tool_hint {
-            let mut ctx = context;
-            ctx.insert(0, LlmMessage::system(hint.text.clone()));
-            ctx
-        } else {
-            context
+        // 台词额度按整回合算：工具闭环每轮都会问一句「还能说几句」
+        let reply_mode = {
+            let gs = self.deps.game_status.lock().await;
+            gs.reply_length_mode()
         };
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
@@ -769,11 +334,10 @@ impl MessageGenerator {
             role_name,
             &self.deps.app,
             tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
+            reply_mode,
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
-        // 先记下回填位置（当前台词末尾，即本轮助手回复写入之前），
-        // 待流消费完毕后统一插入，保持「用户 → 工具消息 → 助手回复」的顺序。
         let tool_insert_pos = {
             let gs = self.deps.game_status.lock().await;
             gs.line_list.len()
@@ -791,8 +355,7 @@ impl MessageGenerator {
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // 句子序号 → 台词表行下标。工具闭环回填时用它抹掉「前导台词」先落的行：
-        // 同一段原文已经在带 tool_call 的助手行里，留着就是同一句话说两遍。
+        // 句子序号 → 台词表行下标。回填时按它定位每轮前导行：
         let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
 
         // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
@@ -895,65 +458,41 @@ impl MessageGenerator {
         // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
         let published_final = publisher.await.unwrap_or(false);
 
-        // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
-        let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
-        let completed_turn = published_final || (!output.sent_final && !tool_msgs.is_empty());
-        if !tool_msgs.is_empty() {
+        // 流已消费完毕：每轮工具消息与前导组都完整了，按组回填。
+        let tool_rounds = std::mem::take(&mut *tool_messages.lock().await);
+        let completed_turn = published_final || (!output.sent_final && !tool_rounds.is_empty());
+        // 栅栏中止时工具轮可能为空，但前导行还在，仍需要按句子序号重排
+        if !tool_rounds.is_empty() || !output.preamble_groups.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
             if gs.preview_generation == self.deps.generation {
                 gs.role_manager.invalidate_memory_history();
-                let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+                let ledger = sentence_lines.lock().await.clone();
+                let plan = backfill::plan_tool_backfill(
+                    &gs.line_list,
+                    tool_insert_pos,
+                    &ledger,
+                    &output.preamble_groups,
+                    &tool_rounds,
+                    &perceived,
+                );
 
-                if !output.preamble_indices.is_empty() {
-                    let doomed: Vec<usize> = {
-                        let ledger = sentence_lines.lock().await;
-                        ledger
-                            .iter()
-                            .filter(|(sentence, _)| output.preamble_indices.contains(sentence))
-                            .map(|(_, line)| *line)
-                            .collect()
-                    };
-                    // 从后往前删，前面的下标才不会被自己挤动
-                    for index in doomed.into_iter().rev() {
-                        if index < gs.line_list.len() {
-                            gs.line_list.remove(index);
-                        }
+                // 先重排前导行（只换同一批槽位，不改变长度），再打轮次标识，
+                // 最后倒序插入各轮工具块（块位置仍是原始坐标）。
+                for (slot, line) in plan.reorders {
+                    if let Some(target) = gs.line_list.get_mut(slot) {
+                        *target = line;
                     }
                 }
-
-                for msg in tool_msgs.iter().rev() {
-                    let (attribute, content, tool_call) = match msg.role.as_str() {
-                        "assistant" => {
-                            let tool_call = msg
-                                .tool_calls
-                                .as_ref()
-                                .map(|calls| serde_json::to_string(calls).unwrap_or_default());
-                            (LineAttribute::Assistant, msg.content.clone(), tool_call)
-                        },
-                        "tool" => (
-                            LineAttribute::Tool,
-                            serde_json::to_string(&serde_json::json!({
-                                "tool_call_id": msg.tool_call_id,
-                                "result": serde_json::from_str::<serde_json::Value>(&msg.content)
-                                    .unwrap_or(serde_json::Value::String(msg.content.clone())),
-                            }))
-                            .unwrap_or_default(),
-                            None,
-                        ),
-                        _ => continue,
-                    };
-                    let line = LineBase {
-                        content,
-                        tool_call,
-                        attribute: LineAttributeExt(attribute),
-                        sender_role_id: None,
-                        display_name: None,
-                        ..Default::default()
-                    };
-                    gs.line_list
-                        .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+                for (slot, round_id) in plan.round_ids {
+                    if let Some(target) = gs.line_list.get_mut(slot) {
+                        target.base.round_id = Some(round_id);
+                    }
+                }
+                for (pos, block) in plan.blocks.into_iter().rev() {
+                    let pos = pos.min(gs.line_list.len());
+                    gs.line_list.splice(pos..pos, block);
                 }
                 gs.refresh_memories(&self.deps.db).await?;
             }
@@ -990,45 +529,6 @@ impl MessageGenerator {
 
         Ok(acc)
     }
-}
-
-// ============================================================
-// 回复条数趋势
-// ============================================================
-
-/// 最近台词条数一致的趋势，返回（最后一轮的台词条数，与它相同的连续轮数）。
-fn same_length_streak(lines: &[GameLine]) -> Option<(usize, usize)> {
-    let mut rounds: Vec<(i32, usize)> = Vec::new();
-    let mut current: Option<(i32, usize)> = None;
-    for line in lines {
-        // assistant 行才是台词；工具调用回填的前缀行 sender 为空，与玩家发言、旁白、
-        // 提示、工具行一样结束一轮
-        let role_id = match line.attribute() {
-            LineAttribute::Assistant => line.sender_role_id(),
-            _ => None,
-        };
-        let Some(role_id) = role_id else {
-            rounds.extend(current.take());
-            continue;
-        };
-        if current.is_some_and(|(sender, _)| sender == role_id) {
-            if let Some((_, count)) = current.as_mut() {
-                *count += 1;
-            }
-        } else {
-            rounds.extend(current.take());
-            current = Some((role_id, 1));
-        }
-    }
-    rounds.extend(current);
-
-    let (sender, count) = *rounds.last()?;
-    let streak = rounds
-        .iter()
-        .rev()
-        .take_while(|(round_sender, round_count)| *round_sender == sender && *round_count == count)
-        .count();
-    Some((count, streak))
 }
 
 // ============================================================

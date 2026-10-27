@@ -15,14 +15,13 @@ use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::ChatComponents;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::tools::registry::ToolRegistry;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
 use activity_monitor::UserActivityMonitor;
@@ -66,12 +65,18 @@ pub struct ProactiveSystem {
     plugin_request: Option<PendingPluginRequest>,
     /// 上一次插件主动对话的投放时刻，用于冷却。
     plugin_last_delivery: Option<Instant>,
+    /// 上一次插件主动对话已经投放、但还没听到「这一轮播完了」。
+    plugin_await_playback_end: bool,
+    /// 这一轮插件主动对话播完的时刻：从那之后还要再静一会儿才说下一轮。
+    plugin_playback_end: Option<Instant>,
 }
 
 /// 一条排着队的插件主动对话请求。
 struct PendingPluginRequest {
     raw: String,
     queued_at: Instant,
+    /// 紧急请求（她死了、主人死了这类）不吃冷却与静默期，空闲就投。
+    urgent: bool,
 }
 
 /// 排队的插件请求最多等这么久；超时就丢掉，避免半小时后突然自己开口。
@@ -79,6 +84,12 @@ const PLUGIN_REQUEST_TTL: Duration = Duration::from_secs(120);
 
 /// 两次插件主动对话之间的最短间隔。战斗里事件密集时，这就是「别一直说」的闸门。
 const PLUGIN_COOLDOWN: Duration = Duration::from_secs(20);
+
+/// 上一轮台词播完之后还要再静这么久，才允许插件再请一轮。
+///
+/// 冷却算的是「投放时刻」，而一轮台词往往要播十几二十秒：不另算这一段的话，上一句刚
+/// 说完下一轮就顶上，听感上就是她一个人喋喋不休。
+const PLUGIN_QUIET_GAP: Duration = Duration::from_secs(10);
 
 impl ProactiveSystem {
     pub fn new(
@@ -117,6 +128,8 @@ impl ProactiveSystem {
             pending_intents: Vec::new(),
             plugin_request: None,
             plugin_last_delivery: None,
+            plugin_await_playback_end: false,
+            plugin_playback_end: None,
         }
     }
 
@@ -255,6 +268,11 @@ impl ProactiveSystem {
             val
         );
         self.can_deliver = val;
+        // 投放出去的那一轮播完了：记下结束时刻，之后要静一会儿才说下一轮
+        if val && self.plugin_await_playback_end {
+            self.plugin_await_playback_end = false;
+            self.plugin_playback_end = Some(Instant::now());
+        }
     }
 
     // ============================================================
@@ -276,6 +294,7 @@ impl ProactiveSystem {
             let svc = self.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
             gs.flush_pending_prompt_lines(&self.db).await;
+            gs.flush_recent_memories(&self.db).await;
         }
         let generator = self.prepare_delivery(Some(prompt), transient_image).await?;
         let _ = generator.process_message(None).await;
@@ -285,10 +304,12 @@ impl ProactiveSystem {
     /// 外部（插件）请求一次主动对话：先进队列，等这一轮台词播完、冷却也过了再投放。
     ///
     /// 同时最多攒一条——战斗里每挨一下来一次，逐个投放会把台词表与记忆搅在一起。
-    /// 事件本身已经记进台词表，合并掉多余的请求不会丢信息。
+    /// 事件本身已经记进台词表，合并掉多余的请求不会丢信息。`urgent` 的那些（她死了、
+    /// 主人死了）顶掉排队中的普通请求，投放时也不吃冷却与静默期。
     pub async fn request_deliver(
         system: Arc<Mutex<Self>>,
         raw: String,
+        urgent: bool,
     ) -> Result<(), &'static str> {
         {
             let Ok(mut this) = system.try_lock() else {
@@ -297,12 +318,20 @@ impl ProactiveSystem {
             if !this.config.enable_proactive_system {
                 return Err("proactive_disabled");
             }
-            if this.plugin_request.is_none() {
+            let replace = match &this.plugin_request {
+                None => true,
+                Some(pending) => urgent && !pending.urgent,
+            };
+            if replace {
                 this.plugin_request = Some(PendingPluginRequest {
                     raw,
                     queued_at: Instant::now(),
+                    urgent,
                 });
-                tracing::info!("[ProactiveSystem] 插件主动对话已排队");
+                // 插件让她开口了：原版兴趣清零。不清的话，排队期间轮询攒够兴趣，
+                // 会紧接着再投一条原版主动对话，同一件事被说两遍
+                this.interest_manager.clear_interest();
+                tracing::info!(urgent, "[ProactiveSystem] 插件主动对话已排队");
             } else {
                 tracing::debug!("[ProactiveSystem] 插件主动对话已在队列中，合并本次请求");
             }
@@ -325,14 +354,14 @@ impl ProactiveSystem {
         tracing::info!("[ProactiveSystem] Delivering proactive dialogue...");
         events::emit_thinking(&self.app, true);
 
-        let generator = {
+        let mut deps = {
             let (game_status, preview_generation) = {
                 let svc = self.ai_service.lock().await;
                 let gs = svc.game_status.clone();
                 let gen = gs.lock().await.preview_generation;
                 (gs, gen)
             };
-            let deps = GeneratorDeps {
+            GeneratorDeps {
                 source: GeneratorSource::Proactive,
                 app: self.app.clone(),
                 db: self.db.clone(),
@@ -355,8 +384,8 @@ impl ProactiveSystem {
                 is_preview: false,
                 // 屏幕感知原生识图时，把截图当轮直发给对话模型（不写记忆，省上下文/缓存）
                 transient_image,
-            };
-            MessageGenerator::new(deps)
+                round_anchor_hint: None,
+            }
         };
 
         if let Some(prompt) = prompt {
@@ -365,22 +394,23 @@ impl ProactiveSystem {
             let written = gs
                 .add_line(
                     &self.db,
-                    LineBase {
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        content: prompt,
-                        sender_role_id: None,
-                        display_name: Some(PromptRole::System.display_name().to_string()),
-                        ..Default::default()
-                    },
+                    PromptLine::formatted(PromptRole::System, prompt).into_base(),
                 )
                 .await;
             if let Err(e) = written {
                 events::emit_thinking(&self.app, false);
                 return Err(e);
             }
+            // 本轮 user 块就是刚写的提示行，评估结果之后挂回它。
+            deps.round_anchor_hint = gs.line_list.len().checked_sub(1);
+        } else {
+            // 空提示的主动对话没有新写提示行：本轮开头刚 flush 的插件旁白就是 user 块。
+            let svc = self.ai_service.lock().await;
+            let gs = svc.game_status.lock().await;
+            deps.round_anchor_hint = gs.last_user_line_index();
         }
 
-        Ok(generator)
+        Ok(MessageGenerator::new(deps))
     }
 
     /// 遍历暂存队列，尝试投放一个合适的意图。
@@ -651,15 +681,36 @@ async fn flush_plugin_request(system: Arc<Mutex<ProactiveSystem>>) -> bool {
             tracing::info!("[ProactiveSystem] 排队的插件主动对话已过期，丢弃");
             return false;
         }
-        let cooling = this
-            .plugin_last_delivery
-            .is_some_and(|last| last.elapsed() < PLUGIN_COOLDOWN);
-        if !this.can_deliver || cooling || this.generation_lock.try_lock().is_err() {
+        let cooling = !request.urgent
+            && this
+                .plugin_last_delivery
+                .is_some_and(|last| last.elapsed() < PLUGIN_COOLDOWN);
+        // 上一轮刚播完还要再静一会儿：光等它播完，她上一句刚收尾下一句就顶上
+        let quiet_left = if request.urgent {
+            None
+        } else {
+            this.plugin_playback_end
+                .filter(|end| end.elapsed() < PLUGIN_QUIET_GAP)
+                .map(|end| PLUGIN_QUIET_GAP.saturating_sub(end.elapsed()))
+        };
+        let busy = this.generation_lock.try_lock().is_err();
+        if !this.can_deliver || cooling || quiet_left.is_some() || busy {
             // 还没到投放时机：放回去，等下一次前端空闲通知或 30 秒轮询
             this.plugin_request = Some(request);
+            if let (Some(left), false) = (quiet_left, cooling) {
+                // 只差静默期就自己到点再来一次，不必干等到下一轮 cycle
+                let next = system.clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(left).await;
+                    ProactiveSystem::notify_can_deliver(next);
+                });
+            }
             return false;
         }
         this.plugin_last_delivery = Some(Instant::now());
+        this.plugin_await_playback_end = true;
+        // 真正开口这一刻再清一次：排队可能等了几十秒，这期间原版兴趣已经攒起来了
+        this.interest_manager.clear_interest();
         request
     };
     tauri::async_runtime::spawn(async move {
@@ -708,6 +759,7 @@ async fn deliver_when_idle(
             let svc = this.ai_service.lock().await;
             let mut gs = svc.game_status.lock().await;
             gs.flush_pending_prompt_lines(&this.db).await;
+            gs.flush_recent_memories(&this.db).await;
         }
         // 提示语由插件给（那是策略，改它不该重编宿主），信封由宿主包——
         // 与 add_prompt_line 同一个原则：插件伪造不出旁白的形状。空提示语表示

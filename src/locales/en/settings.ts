@@ -26,7 +26,7 @@ export default {
     switchFailTitle: "Failed to switch identity",
     transition: {
       title: 'Switch to "{name}"',
-      hint: "Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard \"left / joined the conversation\" lines and the departure notes are always added, and they only affect the current save.",
+      hint: 'Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard "left / joined the conversation" lines and the departure notes are always added, and they only affect the current save.',
       exitLabel: "Exit style (optional)",
       exitPlaceholder: "e.g. walked away in the rain without looking back",
       enterLabel: "Entrance style (optional)",
@@ -400,6 +400,9 @@ export default {
     envHint: "Environment variables (read from the process):",
     envFromProcess: "from process env",
     saveConfig: "Save",
+    reload: "Rescan plugins",
+    reloadHint:
+      "After editing a plugin's manifest or swapping files in data/plugins, reload here — no app restart needed.",
     empty: "No plugins found. Put a plugin folder in data/plugins/",
     delete: "Delete",
     deleteConfirm: 'Delete plugin "{name}"? This removes the plugin folder and cannot be undone.',

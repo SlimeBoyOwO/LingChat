@@ -262,23 +262,4 @@ const {
   right: 20px;
   z-index: 1000;
 }
-.scene-controls {
-  position: fixed;
-  bottom: 80px; /* 根据聊天输入框高度调整 */
-  left: 20px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 8px 12px;
-  border-radius: 20px;
-  backdrop-filter: blur(5px);
-  z-index: 100;
-}
-
-.scene-indicator {
-  color: #fff;
-  font-size: 14px;
-  margin-left: 8px;
-}
 </style>

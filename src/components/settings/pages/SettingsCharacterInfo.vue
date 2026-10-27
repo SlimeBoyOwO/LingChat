@@ -85,6 +85,14 @@
               >
                 {{ t("settings.characterInfo.draft.hint") }}
               </p>
+              <WorldbookEditor
+                v-if="editId"
+                v-show="activeTab === 'worldbook'"
+                ref="worldbookEditor"
+                v-model="worldbook"
+                :baseline="worldbookBaseline"
+                :load-error="worldbookError"
+              />
               <PetLayoutEditor
                 v-if="activeTab === 'pet' && props.roleId"
                 v-model="localSettings"
@@ -441,6 +449,8 @@ import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
 import AvatarManager from "../character/AvatarManager.vue";
+import WorldbookEditor from "../character/WorldbookEditor.vue";
+import { readCharacterWorldbook, type Worldbook } from "@/api/services/character";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
 import PetLayoutEditor from "../character/PetLayoutEditor.vue";
@@ -483,13 +493,23 @@ const editRoleId = ref<number>();
 const resourceBusy = ref(0);
 const resourceRevision = ref(0);
 const baseline = ref("");
+const worldbook = ref<Worldbook | null>(null);
+const worldbookBaseline = ref<Worldbook | null>(null);
+const worldbookError = ref("");
+const worldbookEditor = ref<InstanceType<typeof WorldbookEditor>>();
+const worldbookChanged = computed(
+  () => JSON.stringify(worldbook.value) !== JSON.stringify(worldbookBaseline.value),
+);
 const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
 const clothesLoading = ref(false);
 let clothesSequence = 0;
 let loadSequence = 0;
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
-  () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
+  () =>
+    worldbookChanged.value ||
+    resourceRevision.value > 0 ||
+    JSON.stringify(localSettings.value) !== baseline.value,
 );
 async function refreshDraftClothes() {
   const id = editId.value;
@@ -609,6 +629,7 @@ const relationsEditor = ref<InstanceType<typeof CharacterRelationsEditor> | null
 const tabs = computed(() => [
   { id: "basic", label: t("settings.characterInfo.tabs.basic") },
   { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
+  { id: "worldbook", label: t("settings.worldbook.title") },
   { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
   { id: "avatars", label: t("settings.avatars.title") },
   { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
@@ -796,6 +817,20 @@ watch(
           await discardCharacterEdit(roleId, draft.edit_id);
           return;
         }
+        let loadedBook: Worldbook | null = null;
+        let bookError = "";
+        try {
+          loadedBook = await readCharacterWorldbook(roleId, draft.edit_id);
+        } catch (error) {
+          bookError = String(error);
+        }
+        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+          await discardCharacterEdit(roleId, draft.edit_id);
+          return;
+        }
+        worldbook.value = loadedBook;
+        worldbookBaseline.value = structuredClone(loadedBook);
+        worldbookError.value = bookError;
         editId.value = draft.edit_id;
         editRoleId.value = roleId;
         resourceRevision.value = 0;
@@ -921,6 +956,10 @@ async function persistSettings(): Promise<boolean> {
   if (!confirmed) return false;
   saving.value = true;
   try {
+    if (worldbookChanged.value && !(await worldbookEditor.value?.validate())) {
+      activeTab.value = "worldbook";
+      return false;
+    }
     // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
     await relationsEditor.value?.submit(true);
     // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
@@ -929,7 +968,12 @@ async function persistSettings(): Promise<boolean> {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
     }
-    await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
+    await commitCharacterEdit(
+      props.roleId,
+      editId.value,
+      localSettings.value,
+      worldbookChanged.value ? { book: worldbook.value } : undefined,
+    );
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();

@@ -26,6 +26,12 @@ impl Tool for SceneList {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "都有哪些能去地方",
+            "这里能去什么地方",
+            "列出所有地点",
+            "有什么场景可以选",
+        ])
     }
 
     async fn execute(
@@ -89,6 +95,12 @@ impl Tool for SceneSwitch {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "我们去别的地方吧",
+            "要去别的地方看看吗",
+            "走一起去公园吧！",
+            "带我去你说的地方",
+        ])
     }
 
     async fn execute(

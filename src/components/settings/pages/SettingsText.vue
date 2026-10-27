@@ -10,16 +10,13 @@
             v-model="fontFamily"
             class="max-w-48 min-w-32 flex-none cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none focus:border-(--accent-color)"
             @change="onFontChange"
+            @focus="ensureSystemFonts"
+            @pointerdown="ensureSystemFonts"
             :title="$t('settings.text.font.selectHint')"
           >
             <option value="">{{ $t("settings.text.font.default") }}</option>
             <optgroup v-if="importedFonts.length > 0" :label="$t('settings.text.font.imported')">
-              <option
-                v-for="f in importedFonts"
-                :key="f.name"
-                :value="f.name"
-                :style="{ fontFamily: `'${f.name}'` }"
-              >
+              <option v-for="f in importedFonts" :key="f.name" :value="f.name">
                 {{ f.name }}
               </option>
             </optgroup>
@@ -27,9 +24,7 @@
             <option v-if="fontsLoading" value="" disabled>
               {{ $t("settings.text.font.loading") }}
             </option>
-            <option v-for="f in systemFonts" :key="f" :value="f" :style="{ fontFamily: `'${f}'` }">
-              {{ f }}
-            </option>
+            <option v-for="f in systemFonts" :key="f" :value="f">{{ f }}</option>
           </select>
           <button
             class="flex flex-none cursor-pointer items-center justify-center rounded-lg border border-white/20 bg-white/10 px-[0.6rem] py-[0.35rem] text-white transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
@@ -526,6 +521,7 @@ import {
   Wifi,
   Zap,
 } from "@lucide/vue";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
@@ -553,6 +549,10 @@ const ttsOrphanFiles = ref(0);
 const ttsOrphanSize = ref("0 B");
 const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null);
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null;
+/** 「对话长度」档位变化事件监听句柄，卸载时解绑 */
+let unlistenReplyLength: UnlistenFn | null = null;
+/** 读取档位期间若收到变化事件，旧响应不能把新档位盖回去 */
+let replyLengthSeq = 0;
 
 // ─── Codex 额度 ────────────────────────────────────────────────
 // 只有「对话模型」选择了 Codex 提供商时才显示额度卡片并轮询；
@@ -850,11 +850,19 @@ const handleClearHistory = async () => {
 };
 
 onMounted(async () => {
+  // 先挂档位事件：本页被 KeepAlive 缓存，插件连上 MC 改档位时 onMounted 不会再跑，
+  // 只能靠后端广播把显示同步过来。
+  unlistenReplyLength = await listen<{ mode: ReplyLengthMode }>("reply-length:changed", (event) => {
+    const mode = event.payload?.mode;
+    if (mode === "short" || mode === "normal" || mode === "free") {
+      replyLengthSeq += 1;
+      replyLengthMode.value = mode;
+    }
+  });
   loadConfig();
   checkTtsCache();
   loadLastTtsCleanup();
-  // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
-  void loadSystemFonts();
+  // 系统字体列表改为展开下拉时再加载：几百个 option 在页面首次布局时会明显拖慢
   // 加载已导入字体列表
   void loadImportedFonts();
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
@@ -902,6 +910,8 @@ onUnmounted(() => {
     ttsCacheRefreshTimer = null;
   }
   stopCodexQuotaPolling();
+  unlistenReplyLength?.();
+  unlistenReplyLength = null;
 });
 
 function loadLastTtsCleanup() {
@@ -977,11 +987,14 @@ const replyLengthMode = ref<ReplyLengthMode | null>(null);
 const replyLengthSaving = ref(false);
 
 async function loadReplyLengthMode() {
+  const seq = replyLengthSeq;
   try {
-    replyLengthMode.value = await invoke<ReplyLengthMode | null>("get_reply_length_mode");
+    const mode = await invoke<ReplyLengthMode | null>("get_reply_length_mode");
+    // 读取期间若收到过档位变化事件，以事件为准，别让旧快照盖回去
+    if (seq === replyLengthSeq) replyLengthMode.value = mode;
   } catch (e) {
     console.warn("读取回复台词数量档位失败:", e);
-    replyLengthMode.value = null;
+    if (seq === replyLengthSeq) replyLengthMode.value = null;
   }
 }
 
@@ -1027,6 +1040,14 @@ async function loadSystemFonts() {
   } finally {
     fontsLoading.value = false;
   }
+}
+
+// 系统字体列表只在用户要展开下拉时才枚举，避免设置页首屏渲染几百个 option
+let systemFontsRequested = false;
+function ensureSystemFonts() {
+  if (systemFontsRequested) return;
+  systemFontsRequested = true;
+  void loadSystemFonts();
 }
 
 // ─── 导入字体 ───────────────────────────────────────────────

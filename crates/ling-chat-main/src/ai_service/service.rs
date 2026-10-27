@@ -205,6 +205,9 @@ impl AIService {
         // 好感度会话边界：存档全局变量里的 `affection.{role_id}` 是「上一个会话/存档」
         gs.global_variables.clear();
         gs.affection_eval_cursor = 0;
+        gs.clear_pending_recent_memories();
+        gs.clear_pending_temporary_memories();
+        gs.clear_pending_tool_hint();
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
     }
@@ -223,6 +226,9 @@ impl AIService {
         {
             let mut gs = self.game_status.lock().await;
             gs.role_manager.invalidate_memory_history();
+            gs.clear_pending_recent_memories();
+            gs.clear_pending_temporary_memories();
+            gs.clear_pending_tool_hint();
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);

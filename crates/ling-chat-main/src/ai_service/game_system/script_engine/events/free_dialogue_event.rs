@@ -16,11 +16,12 @@ use crate::ai_service::game_system::script_engine::responses::{
     event_names::{SCRIPT_FREE_DIALOGUE, SCRIPT_INPUT},
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events::emit;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
-use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::ai_service::types::LineAttributeExt;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptRole, replace_placeholder};
 
@@ -136,6 +137,7 @@ impl ScriptEvent for FreeDialogueEvent {
                 generation: ctx.game_status.lock().await.preview_generation,
                 is_preview: ctx.is_preview,
                 transient_image: None,
+                round_anchor_hint: None,
             };
             MessageGenerator::new(deps)
         };
@@ -210,12 +212,7 @@ impl ScriptEvent for FreeDialogueEvent {
             // ---- 添加系统旁白提示消息 ----
             // TODO: 这里的 prompt 是暂时的，应该标记为临时 prompt，并且在代码逻辑中在AI回复后清除这部分提示词。
             if !selected_prompt.is_empty() {
-                let sys_line = LineBase {
-                    content: PromptRole::Plot.build_prompt(selected_prompt),
-                    attribute: LineAttributeExt(LineAttribute::User),
-                    display_name: Some("旁白".to_string()),
-                    ..Default::default()
-                };
+                let sys_line = PromptLine::new(PromptRole::Plot, selected_prompt).into_base();
                 ctx.game_status
                     .lock()
                     .await

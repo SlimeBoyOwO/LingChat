@@ -5,6 +5,22 @@
         <Icon icon="package" :size="20" />
       </template>
 
+      <!-- 改过 manifest 或往 data/plugins 里换过文件：重新扫描一次就生效，不用重启应用 -->
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <p class="text-[11px] leading-relaxed text-white/40">
+          {{ $t("settings.plugins.reloadHint") }}
+        </p>
+        <button
+          type="button"
+          class="flex shrink-0 items-center gap-1.5 rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-xs text-white/70 transition-colors hover:bg-white/10 hover:text-white disabled:opacity-50"
+          :disabled="reloading"
+          @click="handleReload"
+        >
+          <RotateCw :size="13" :class="reloading ? 'animate-spin' : ''" />
+          {{ $t("settings.plugins.reload") }}
+        </button>
+      </div>
+
       <!-- 错误提示 -->
       <div
         v-if="error"
@@ -285,7 +301,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, reactive } from "vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { ChevronDown, PackageOpen } from "@lucide/vue";
+import { ChevronDown, PackageOpen, RotateCw } from "@lucide/vue";
 import { MenuPage, MenuItem } from "../../ui";
 import { Button } from "../../base";
 import Icon from "@/components/base/widget/Icon.vue";
@@ -297,6 +313,7 @@ import { usePluginImport } from "@/composables/usePluginImport";
 import type { PluginConflictPolicy } from "@/api/services/plugins";
 import {
   listPlugins,
+  reloadPlugins,
   setPluginEnabled,
   savePluginConfig,
   deletePlugin,
@@ -313,6 +330,7 @@ import {
 const plugins = ref<PluginInfo[]>([]);
 const error = ref("");
 const saving = ref(false);
+const reloading = ref(false);
 const formState = reactive<Record<string, Record<string, unknown>>>({});
 const dialogStore = useDialogStore();
 
@@ -411,12 +429,29 @@ const keepResource = async (id: string, res: PluginResourceEntry) => {
   }
 };
 
+/** 用已保存的值与 manifest 默认值初始化表单；secret 不回填，保存时由后端保留旧值。 */
+const initFormState = (plugin: PluginInfo) => {
+  const values: Record<string, unknown> = {};
+  for (const field of plugin.config_schema) {
+    if (field.kind === "secret") continue;
+    const saved = plugin.config?.[field.key];
+    if (saved !== undefined && saved !== null) {
+      values[field.key] = saved;
+    } else if (field.default !== undefined) {
+      values[field.key] = field.default;
+    } else if (field.kind === "boolean") {
+      values[field.key] = false;
+    }
+  }
+  return values;
+};
+
 const load = async () => {
   try {
     plugins.value = await listPlugins();
     for (const plugin of plugins.value) {
       if (!formState[plugin.id]) {
-        formState[plugin.id] = {};
+        formState[plugin.id] = initFormState(plugin);
       }
       // 声明了资源且面板已展开的，刷新条目
       if (plugin.resources.length && expandedResources[plugin.id]) {
@@ -425,6 +460,21 @@ const load = async () => {
     }
   } catch (e) {
     error.value = String(e);
+  }
+};
+
+/** 重新扫描插件目录：改过 manifest、或往 data/plugins 里换过文件时用，不用重启应用。 */
+const handleReload = async () => {
+  if (reloading.value) return;
+  reloading.value = true;
+  error.value = "";
+  try {
+    await reloadPlugins();
+    await load();
+  } catch (e) {
+    error.value = String(e);
+  } finally {
+    reloading.value = false;
   }
 };
 

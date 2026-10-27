@@ -1,3 +1,4 @@
+import { ref } from "vue";
 import { useGameStore } from "../../stores/modules/game";
 import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
@@ -11,6 +12,14 @@ export class EventQueue {
   private paused = true;
   private currentEvent: ScriptEventType | null = null;
   private currentResolve: (() => void) | null = null;
+  /**
+   * 队列状态的版本号：收下事件、处理完一轮时递增。
+   *
+   * currentStatus 会被思考结束、状态复位这些时机提前打回 input，未必跟着队列走；
+   * 「这一轮真的播完了吗」的判定（主动对话投放条件）得同时看队列，就需要一个
+   * 能 watch 的信号。
+   */
+  public readonly version = ref(0);
 
   addEvent(event: ScriptEventType) {
     if ((event.type === "error" || event.type === "status_reset") && this.currentResolve) {
@@ -50,6 +59,7 @@ export class EventQueue {
     }
 
     this.queue.push(event);
+    this.version.value++;
     if (!this.isProcessing && !this.paused) {
       this.processQueue();
     }
@@ -79,6 +89,8 @@ export class EventQueue {
       if (this.currentEvent?.isFinal) {
         this.resetToInputState();
       }
+      // 队列处理告一段落：外部据此重判「这一轮是不是播完了」
+      this.version.value++;
     }
   }
 
@@ -156,6 +168,7 @@ export class EventQueue {
     this.paused = true;
     this.currentResolve = null;
     this.resetToInputState();
+    this.version.value++;
   }
 
   /** 恢复事件队列消费（MainChat 就绪后调用） */

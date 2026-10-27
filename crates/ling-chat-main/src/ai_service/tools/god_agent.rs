@@ -17,11 +17,7 @@ use tauri::{Emitter, Manager};
 
 use crate::AppState;
 use crate::ai_service::affection::{self, AffectionChangedPayload, AffectionState};
-use crate::ai_service::types::{
-    AffectionVector, LineAttributeExt, LineBase, NegativeVector, ToolDefinition,
-};
-use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::PromptRole;
+use crate::ai_service::types::{AffectionVector, NegativeVector, ToolDefinition};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
 use super::game_status_handle;
@@ -245,7 +241,6 @@ impl Tool for UpdateAffection {
         }
 
         let app = context.require_app()?;
-        let state = app.state::<AppState>();
         let game_status = game_status_handle(&app).await;
         let mut gs = game_status.lock().await;
 
@@ -290,38 +285,22 @@ impl Tool for UpdateAffection {
         );
         let _ = app.emit("affection:changed", payload);
 
-        // 变化结果以旁白台词写入历史（复用换装/场景同款 add_line 台词工具），
-        // 随记忆构建进入后续上下文；不做每轮注入，避免每次思维链都携带情感状态。
+        // 旁白文本交给评估能力层排入近期记忆，后台任务不直接改台词表。
         let name = gs
             .role_manager
             .get_loaded(role_id)
             .and_then(|r| r.display_name.clone())
             .unwrap_or_else(|| format!("角色{role_id}"));
         let player_name = gs.player.user_name.clone();
-        let text = affection::describe_change_for_line(&name, &player_name, &values, &negative);
-        let line = LineBase {
-            content: PromptRole::Narrator.build_prompt(&text),
-            attribute: LineAttributeExt(LineAttribute::User),
-            sender_role_id: Some(0),
-            display_name: Some("系统".to_string()),
-            ..Default::default()
-        };
-        // 插到玩家最近一次发言之后，而不是追加到末尾：评估在整轮回复结束后才跑，
-        // 此时末尾已经是助手回复，追加会让人误以为变化是助手那几句话引发的。
-        let insert_at = gs
-            .line_list
-            .iter()
-            .rposition(|l| matches!(l.attribute(), LineAttribute::User))
-            .map_or(gs.line_list.len(), |i| i + 1);
-        if let Err(e) = gs.insert_line(&state.db, insert_at, line).await {
-            tracing::warn!("[Affection] 写入好感度旁白台词失败: {e:#}");
-        }
+        let line_text =
+            affection::describe_change_for_line(&name, &player_name, &values, &negative);
 
         Ok(json!({
             "ok": true,
             "role_id": role_id,
             "average": values.average(),
             "reason": reason,
+            "line_text": line_text,
         }))
     }
 }

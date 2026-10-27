@@ -2,13 +2,21 @@ package com.lingchat.maidbridge.perception.nearby;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.maid.MaidQueries;
+import com.lingchat.maidbridge.perception.spatial.BlockSight;
+import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
+import com.lingchat.maidbridge.perception.spatial.SightLine;
+import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
 import com.lingchat.maidbridge.perception.world.PerceptionReader;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.core.registries.Registries;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
@@ -16,11 +24,14 @@ import net.minecraft.world.entity.EntityType;
 import net.minecraft.world.entity.LivingEntity;
 import net.minecraft.world.entity.decoration.ArmorStand;
 import net.minecraft.world.entity.monster.Enemy;
+import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.entity.projectile.ProjectileUtil;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -54,12 +65,25 @@ public final class SurroundingsReader {
         Level level = maid.level();
         BlockPos pos = maid.blockPosition();
 
+        // 坐在船、矿车这类载具里时她脚下没有「地」：那格不是河床就是空气，说了只会误导。
+        // 被玩家抱着（Carry On）也走这一条，那不算她踩在什么上。
+        Entity vehicle = maid.getVehicle();
+        String vehicleId = vehicle == null || vehicle instanceof Player ? "" : typeId(vehicle);
         // 脚下：泡在液体里时她踩着的那格是河床，要说的是她泡着的东西
         BlockState inside = level.getBlockState(pos);
-        String feetBlock = blockId(inside.getFluidState().isEmpty() ? level.getBlockState(pos.below()) : inside);
+        String feetBlock = vehicle != null
+                ? ""
+                : blockId(inside.getFluidState().isEmpty() ? level.getBlockState(pos.below()) : inside);
+        // 泡没泡在液体里看她自己这一格，不看脚下：跨进水里时脚下还是河床。
+        // 坐在船里、被抱着时不算——那时候她在水面上或别人怀里，不是自己泡着
+        String liquid = vehicle != null ? "" : fluidId(inside.getFluidState());
+        // 头也埋在同一种液体里才算游泳；眼睛那一格比她脚下高，两处分开读
+        boolean submerged =
+                !liquid.isEmpty() && liquid.equals(fluidId(level.getFluidState(BlockPos.containing(maid.getEyePosition()))));
 
         ServerPlayer owner = MaidQueries.owner(maid);
         List<Surroundings.Nearby> raw = new ArrayList<>();
+        long tick = level.getGameTime();
         double radius = Math.max(profile.visibleRadius(), profile.heardRadius());
         AABB box = new AABB(pos).inflate(radius);
         for (LivingEntity other : level.getEntitiesOfClass(
@@ -70,12 +94,15 @@ public final class SurroundingsReader {
             if (distance > radius) {
                 continue;
             }
+            // 她看见过的活物都要留下一条短期记忆：追打落空时，只有它能说清对方去哪了
+            CreatureMemory.observe(other, maid, tick);
             raw.add(new Surroundings.Nearby(
                     typeId(other),
                     categoryOf(other),
                     distance,
                     Surroundings.direction(maid.getYRot(), other.getX() - maid.getX(), other.getZ() - maid.getZ()),
-                    maid.hasLineOfSight(other)));
+                    maid.hasLineOfSight(other),
+                    other instanceof ServerPlayer player ? player.getName().getString() : ""));
         }
         List<Surroundings.Nearby> eligible = Surroundings.eligible(raw, profile);
         List<Surroundings.Nearby> nearby = Surroundings.trimmed(eligible, profile.limit());
@@ -88,10 +115,37 @@ public final class SurroundingsReader {
                 GroundKind.of(feetBlock),
                 level.canSeeSky(pos),
                 level.dimensionType().hasSkyLight(),
+                OverheadScan.read(level, pos),
                 level.getMaxLocalRawBrightness(pos),
                 ownerView(maid, owner),
                 nearby,
-                eligible.size() > nearby.size());
+                eligible.size() > nearby.size(),
+                vehicleId,
+                structureAt(maid, level),
+                MaidQueries.posture(maid),
+                liquid,
+                submerged);
+    }
+
+    /**
+     * 她所在的结构（村庄、矿井、要塞这类）；不在任何结构里给空串。
+     *
+     * <p>用「这一格落在这个结构的某个部件里」判定，因此村庄边缘的农田也算在村里。
+     * 结构数据跟着区块一起生成，采样时不会额外触发世界生成。
+     */
+    private static String structureAt(EntityMaid maid, Level level) {
+        if (!(level instanceof ServerLevel server)) {
+            return "";
+        }
+        StructureStart start = server.structureManager()
+                .getStructureWithPieceAt(maid.blockPosition(), holder -> true);
+        if (start == null || !start.isValid()) {
+            return "";
+        }
+        ResourceLocation id = server.registryAccess()
+                .registryOrThrow(Registries.STRUCTURE)
+                .getKey(start.getStructure());
+        return id == null ? "" : id.toString();
     }
 
     /**
@@ -100,40 +154,88 @@ public final class SurroundingsReader {
      * <p>不列空气、液体、没有碰撞体积的东西（草、花、火把）和挖不动的方块。只给注册表 id，
      * 中文名在插件。范围与挖方块那侧的「附近」同口径，这样模型看到的和 {@code maid_mine}
      * 会去找的是同一片。
+     *
+     * <p>竖直只从她脚下那一层往上，且只列露在外面的方块：埋在地下、四面被石头包住的矿石
+     * 她看不见（2026-10-20 真机：站在沙地上，清单里却列着十几格深的地下的煤矿）。
+     *
+     * <p>露出来只是候选：真正进清单的，要么此刻从她眼睛看得见，要么半分钟内看见过
+     * （{@link TerrainMemory}）。看不见又没记过的方块不说——玩家问「你周围有什么」，
+     * 答的应该是她知道的东西，不是一份透视扫描。
+     *
+     * <p>地形快照由调用方读好再传进来：这一处与挖矿找目标读的是同一种快照，不再自己扫世界。
      */
-    public static List<String> blocksNearby(
-            EntityMaid maid, BlockPos center, int radius, int vertical, int limit) {
-        if (!(maid.level() instanceof ServerLevel level)) {
+    public static List<BlockSight> blocksNearby(
+            EntityMaid maid, BlockPos center, LocalTerrain terrain, int limit) {
+        if (limit <= 0) {
             return List.of();
         }
-        Map<String, Double> nearest = new HashMap<>();
+        Level level = maid.level();
+        Map<String, Candidate> nearest = new HashMap<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dx = -radius; dx <= radius; dx++) {
-            for (int dz = -radius; dz <= radius; dz++) {
-                for (int dy = -vertical; dy <= vertical; dy++) {
-                    pos.set(center.getX() + dx, center.getY() + dy, center.getZ() + dz);
-                    if (!level.isLoaded(pos)) {
-                        continue;
-                    }
-                    BlockState state = level.getBlockState(pos);
-                    if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
-                        continue;
-                    }
-                    if (state.getCollisionShape(level, pos).isEmpty()) {
-                        continue;
-                    }
-                    if (state.getDestroySpeed(level, pos) < 0.0F) {
-                        continue;
-                    }
-                    nearest.merge(blockId(state), center.distSqr(pos), Math::min);
+        BlockPos.MutableBlockPos side = new BlockPos.MutableBlockPos();
+        terrain.forEachLoaded((x, y, z, state) -> {
+            if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
+                return;
+            }
+            pos.set(x, y, z);
+            if (state.getCollisionShape(level, pos).isEmpty()) {
+                return;
+            }
+            if (state.getDestroySpeed(level, pos) < 0.0F) {
+                return;
+            }
+            if (!exposed(level, pos, side)) {
+                return;
+            }
+            String id = blockId(state);
+            double distance = center.distSqr(pos);
+            Candidate old = nearest.get(id);
+            if (old == null || distance < old.distance()) {
+                nearest.put(id, new Candidate(pos.immutable(), distance));
+            }
+        });
+
+        List<Map.Entry<String, Candidate>> ordered = new ArrayList<>(nearest.entrySet());
+        ordered.sort(Comparator.comparingDouble(entry -> entry.getValue().distance()));
+
+        long tick = level.getGameTime();
+        Vec3 eye = maid.getEyePosition();
+        List<BlockSight> found = new ArrayList<>();
+        for (Map.Entry<String, Candidate> entry : ordered) {
+            String id = entry.getKey();
+            Candidate candidate = entry.getValue();
+            if (SightLine.sees(level, eye, candidate.pos(), maid)) {
+                TerrainMemory.remember(maid, id, candidate.pos(), tick);
+                found.add(new BlockSight(id, true, candidate.pos()));
+            } else {
+                TerrainMemory.Remembered remembered = TerrainMemory.recall(maid, id, tick);
+                if (remembered != null) {
+                    found.add(new BlockSight(id, false, remembered.pos()));
                 }
             }
+            if (found.size() >= limit) {
+                break;
+            }
         }
-        return nearest.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue())
-                .limit(limit)
-                .map(Map.Entry::getKey)
-                .toList();
+        return found;
+    }
+
+    /** 一种方块离扫描中心最近的那一格。 */
+    private record Candidate(BlockPos pos, double distance) {
+    }
+
+    /** 六面里有一面不是实心遮挡就算露出来了：空腔、草、液体后面的方块都算看得见。 */
+    private static boolean exposed(Level level, BlockPos pos, BlockPos.MutableBlockPos side) {
+        for (Direction direction : Direction.values()) {
+            side.setWithOffset(pos, direction);
+            if (!level.isLoaded(side)) {
+                continue;
+            }
+            if (!level.getBlockState(side).canOcclude()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /** 视线正前方第一个命中的东西：方块与实体各打一条射线，取更近的那条。 */
@@ -197,6 +299,11 @@ public final class SurroundingsReader {
 
     private static String blockId(BlockState state) {
         return BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+    }
+
+    /** 流体 id；没有液体时给空串。 */
+    private static String fluidId(FluidState state) {
+        return state.isEmpty() ? "" : BuiltInRegistries.FLUID.getKey(state.getType()).toString();
     }
 
     /** 同上：注册表 id 也只有这一处口径。 */

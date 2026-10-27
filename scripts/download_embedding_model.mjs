@@ -5,6 +5,9 @@
 //
 // 模型与 tokenizer 都不进 git（.gitignore 的 `data/**` 排除整个 data 目录），
 // 靠本脚本获取，与情绪模型同一策略。
+//
+// 由 `pnpm run init` 调用。与 ensure-onnxruntime.mjs 一样不要挂到
+// beforeDevCommand/beforeBuildCommand，避免每次启动都做资源检查。
 import { promises as fs } from "fs";
 import path from "path";
 import { createHash } from "crypto";
@@ -34,6 +37,16 @@ const BASE_URL =
 
 // 是否启用交互式确认（可通过环境变量控制）
 const INTERACTIVE = process.env.INTERACTIVE !== "false";
+
+/** 文件是否存在 */
+async function fileExists(filePath) {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 /** 计算文件的 SHA-256 哈希值 */
 async function calculateSha256(filePath) {
@@ -82,11 +95,16 @@ async function main() {
 
   await fs.mkdir(TARGET_DIR, { recursive: true });
 
-  const modelPath = path.join(TARGET_DIR, "model.onnx");
-  const modelExists = await calculateSha256(modelPath);
+  // 逐个检查，半途中断留下的残缺目录也能补齐
+  const missing = [];
+  for (const file of FILES) {
+    if (!(await fileExists(path.join(TARGET_DIR, file.local)))) {
+      missing.push(file);
+    }
+  }
 
-  if (modelExists) {
-    console.log(`✅ 目录中已存在 model.onnx`);
+  if (missing.length === 0) {
+    console.log(`✅ 目录中已存在全部分件`);
 
     console.log(`🔍 正在下载远程 config.json 进行版本对比...`);
     let remoteConfigContent;
@@ -135,13 +153,14 @@ async function main() {
       return;
     }
   } else {
-    console.log(`📁 未找到 model.onnx，开始下载...`);
+    console.log(`📁 缺少 ${missing.length}/${FILES.length} 个文件，开始下载...`);
   }
 
-  console.log(`📥 开始并行下载 ${FILES.length} 个文件...`);
+  const pending = missing.length === 0 ? FILES : missing;
+  console.log(`📥 开始并行下载 ${pending.length} 个文件...`);
 
   const results = await Promise.allSettled(
-    FILES.map(async ({ remote, local }) => {
+    pending.map(async ({ remote, local }) => {
       const content = await downloadFileContent(remote);
       await fs.writeFile(path.join(TARGET_DIR, local), content);
       console.log(`✅ 已下载: ${local} (${remote})`);

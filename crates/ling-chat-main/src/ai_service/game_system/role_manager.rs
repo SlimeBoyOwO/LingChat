@@ -627,6 +627,19 @@ impl GameRoleManager {
         true
     }
 
+    /// 仅替换目标角色的世界书；下一轮组装上下文时读取，已生成的请求副本不变。
+    pub fn update_role_worldbook(
+        &mut self,
+        role_id: i32,
+        book: Option<crate::ai_service::worldbook::Worldbook>,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            return false;
+        };
+        role.worldbook = book;
+        true
+    }
+
     /// 刷新已加载角色的形象配置和主对话立绘、气泡布局。
     ///
     /// 这些字段必须一起拷：内存里的 `role.settings` 是之后
@@ -660,7 +673,11 @@ impl GameRoleManager {
     }
 
     /// 刷新已加载角色的提示词/称呼相关字段；返回是否发生了实际变化。
-    pub fn update_role_prompt_settings(&mut self, role_id: i32, settings: &CharacterSettings) -> bool {
+    pub fn update_role_prompt_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
         let Some(role) = self.loaded_roles.get_mut(&role_id) else {
             return false;
         };

@@ -52,6 +52,79 @@ BIOME_NAMES = {
     "minecraft:small_end_islands": "末地小岛",
 }
 
+# 结构的中文名。她走进一片村庄、矿井、要塞时才会用到；表里没有的退回 id 后半段。
+STRUCTURE_NAMES = {
+    "minecraft:village_plains": "平原村庄",
+    "minecraft:village_desert": "沙漠村庄",
+    "minecraft:village_savanna": "热带草原村庄",
+    "minecraft:village_snowy": "雪原村庄",
+    "minecraft:village_taiga": "针叶林村庄",
+    "minecraft:mineshaft": "废弃矿井",
+    "minecraft:mineshaft_mesa": "恶地废弃矿井",
+    "minecraft:stronghold": "要塞",
+    "minecraft:monument": "海底神殿",
+    "minecraft:mansion": "林地府邸",
+    "minecraft:desert_pyramid": "沙漠神殿",
+    "minecraft:jungle_temple": "丛林神庙",
+    "minecraft:swamp_hut": "女巫小屋",
+    "minecraft:igloo": "雪屋",
+    "minecraft:ocean_ruin_cold": "海底废墟",
+    "minecraft:ocean_ruin_warm": "海底废墟",
+    "minecraft:shipwreck": "沉船",
+    "minecraft:shipwreck_beached": "搁浅的沉船",
+    "minecraft:buried_treasure": "埋藏的宝藏",
+    "minecraft:pillager_outpost": "掠夺者前哨站",
+    "minecraft:ancient_city": "远古城市",
+    "minecraft:trail_ruins": "古迹废墟",
+    "minecraft:trial_chambers": "试炼密室",
+    "minecraft:ruined_portal": "废弃传送门",
+    "minecraft:ruined_portal_nether": "废弃传送门",
+    "minecraft:ruined_portal_desert": "废弃传送门",
+    "minecraft:ruined_portal_jungle": "废弃传送门",
+    "minecraft:ruined_portal_swamp": "废弃传送门",
+    "minecraft:ruined_portal_mountain": "废弃传送门",
+    "minecraft:ruined_portal_ocean": "废弃传送门",
+    "minecraft:nether_fortress": "下界要塞",
+    "minecraft:bastion_remnant": "堡垒遗迹",
+    "minecraft:end_city": "末地城",
+}
+
+# 载具的中文名。她坐进船、矿车这类东西时用；坐在生物身上（马、骆驼）也算。
+VEHICLE_NAMES = {
+    # 不分木种的裸 id：有些整合包的船实体就叫 boat，说「船」比念 id 强
+    "minecraft:boat": "船",
+    "minecraft:chest_boat": "运输船",
+    "minecraft:oak_boat": "橡木船",
+    "minecraft:spruce_boat": "云杉木船",
+    "minecraft:birch_boat": "白桦木船",
+    "minecraft:jungle_boat": "丛林木船",
+    "minecraft:acacia_boat": "金合欢木船",
+    "minecraft:dark_oak_boat": "深色橡木船",
+    "minecraft:mangrove_boat": "红树木船",
+    "minecraft:cherry_boat": "樱花木船",
+    "minecraft:oak_chest_boat": "橡木运输船",
+    "minecraft:spruce_chest_boat": "云杉木运输船",
+    "minecraft:birch_chest_boat": "白桦木运输船",
+    "minecraft:jungle_chest_boat": "丛林木运输船",
+    "minecraft:acacia_chest_boat": "金合欢木运输船",
+    "minecraft:dark_oak_chest_boat": "深色橡木运输船",
+    "minecraft:mangrove_chest_boat": "红树木运输船",
+    "minecraft:cherry_chest_boat": "樱花木运输船",
+    "minecraft:bamboo_raft": "竹筏",
+    "minecraft:bamboo_chest_raft": "竹制运输筏",
+    "minecraft:minecart": "矿车",
+    "minecraft:chest_minecart": "运输矿车",
+    "minecraft:furnace_minecart": "动力矿车",
+    "minecraft:hopper_minecart": "漏斗矿车",
+    "minecraft:tnt_minecart": "TNT 矿车",
+    "minecraft:horse": "马",
+    "minecraft:donkey": "驴",
+    "minecraft:mule": "骡",
+    "minecraft:camel": "骆驼",
+    "minecraft:pig": "猪",
+    "minecraft:strider": "炽足兽",
+}
+
 # 常见生物的中文名。
 MOB_NAMES = {
     "minecraft:zombie": "僵尸",
@@ -533,6 +606,7 @@ ITEM_NAMES = {
     "minecraft:bone_meal": "骨粉",
     "minecraft:sugar": "糖",
     "minecraft:egg": "鸡蛋",
+    "minecraft:snowball": "雪球",
     "minecraft:cocoa_beans": "可可豆",
     "minecraft:ink_sac": "墨囊",
     "minecraft:glow_ink_sac": "荧光墨囊",
@@ -619,9 +693,15 @@ _TASK_BY_NAME = {name: ident for ident, name in TASK_NAMES.items()}
 ATTACK_ALIASES = {
     "owner": "owner",
     "master": "owner",
-    "player": "owner",
     "主人": "owner",
-    "玩家": "owner",
+    "other_player": "other_player",
+    "player": "other_player",
+    "玩家": "other_player",
+    "另一个玩家": "other_player",
+    "另一个人": "other_player",
+    "其他玩家": "other_player",
+    "别的玩家": "other_player",
+    "别人": "other_player",
     "hostile": "hostile",
     "monster": "hostile",
     "敌对": "hostile",
@@ -697,6 +777,13 @@ ATTACK_STYLES = {
     "打倒": "fight",
 }
 
+# 死亡与昏迷状态的标记。写在状态旁白里，插件靠台词表里最后一条这样的旁白判断她还在不在
+# 这个状态（插件没有跨调用状态，历史本身就是状态）。昏迷不是死亡，醒来也不等于复活。
+DEAD_STATE_MARK = "现在在MC里处于死亡状态"
+REVIVE_STATE_MARK = "已经在MC里复活了"
+UNCONSCIOUS_STATE_MARK = "现在在MC里处于昏迷状态"
+RECOVERED_STATE_MARK = "已经从昏迷中醒过来了"
+
 # 「近」与「中」的分界（格）。再远一律说「远」。
 NEAR_CLOSE = 5.0
 NEAR_MID = 10.0
@@ -705,22 +792,48 @@ NEAR_MID = 10.0
 CATEGORY_NAMES = {"player": "另一个人", "maid": "另一位女仆", "living": ""}
 
 # 说不清是谁打的时候，用伤害类型兜个底（模组给的是伤害类型的 msg id）。
+# 措辞接在名字后面读：主人在旁边、生物点名都轮不上时才用得到这一张表。
 DAMAGE_HINTS = {
+    # 环境
     "fall": "从高处摔了下来",
+    "fly_into_wall": "撞到了墙上",
+    "in_wall": "被墙磕了一下",
+    "cramming": "被挤得喘不上气",
     "lava": "碰到了岩浆",
+    "hot_floor": "踩到了岩浆块",
     "in_fire": "被火烧到了",
     "on_fire": "身上着火了",
+    "campfire": "被营火烧了",
     "drown": "溺水了",
     "starve": "饿得不行",
     "cactus": "被仙人掌扎了",
+    "sweet_berry_bush": "被甜浆果丛扎了",
     "freeze": "被冻伤了",
     "lightning_bolt": "被雷劈了",
-    "magic": "被魔法击中",
-    "wither": "中了凋零",
-    "hot_floor": "踩到了岩浆块",
-    "sweet_berry_bush": "被甜浆果丛扎了",
-    "fly_into_wall": "撞到了墙上",
     "out_of_world": "掉进了虚空",
+    "outside_border": "被世界边界推挤",
+    # 掉落物与投掷物
+    "falling_block": "被掉下来的方块砸了",
+    "falling_anvil": "被铁砧砸了",
+    "falling_stalactite": "被钟乳石砸了",
+    "stalagmite": "被石笋扎了",
+    "arrow": "中了箭",
+    "trident": "被三叉戟扎了",
+    "thrown": "被丢过来的东西砸了",
+    "fireball": "被火球砸了",
+    "fireworks": "被烟花炸了",
+    "sting": "被蜂蛰了",
+    "explosion": "被炸了",
+    "explosion.player": "被炸了",
+    "bad_respawn_point": "被炸了",
+    # 魔法与特殊攻击
+    "magic": "被魔法击中",
+    "indirect_magic": "被魔法击中",
+    "wither": "中了凋零",
+    "wither_skull": "被凋零头炸了",
+    "dragon_breath": "被龙息烧了",
+    "sonic_boom": "被音波轰了",
+    "thorns": "被反伤扎了",
 }
 
 
@@ -730,6 +843,15 @@ def name_of(names, raw, default="未知的地方"):
     if not identifier:
         return default
     return names.get(identifier) or identifier.split(":")[-1].replace("_", " ")
+
+
+def blocker_phrase(one):
+    """关系里的「隔着两块石头」：挡路的块数与第一种挡路的方块；没挡着给空串。"""
+    count = as_int(one.get("blockers"), 0)
+    if count <= 0:
+        return ""
+    blocker = name_of(BLOCK_NAMES, one.get("blocker"), "方块")
+    return f"隔着{count}块{blocker}"
 
 
 def item_name(raw):
@@ -809,9 +931,12 @@ def attack_style(raw):
 
 
 def attack_target(raw):
-    """攻击目标：活物的中文名、英文短名、完整 id，或 owner / hostile / animal。
+    """攻击目标：活物的中文名、英文短名、完整 id、另一个玩家的名字，
+    或 owner / other_player / hostile / animal。
 
-    owner 是她主人（她可以真的打玩家）；hostile / animal 让模组按生物类别挑最近的一只。
+    owner 是她主人（她可以真的打玩家）；other_player 是另一个玩家，hostile / animal
+    让模组按生物类别挑最近的一只。另一个玩家在感知里只有名字，所以这里不把认不出的
+    英文写法硬补成 minecraft: ——模组会先按实体 id 认，再按玩家名认。
     认不出的给空串，由工具报错——瞎猜一个目标打出去比报错更糟。
     """
     text = (raw or "").strip()
@@ -821,14 +946,20 @@ def attack_target(raw):
     alias = ATTACK_ALIASES.get(lowered) or ATTACK_ALIASES.get(text)
     if alias:
         return alias
+    # 模型可能把感知里的整段称呼抄回来：「另一个玩家 Layeray」只取名字
+    for prefix in ("另一个玩家", "别的玩家", "其他玩家", "玩家"):
+        if text.startswith(prefix) and text[len(prefix):].strip():
+            text = text[len(prefix):].strip()
+            lowered = text.lower()
+            break
     known = _MOB_BY_NAME.get(text)
     if known:
         return known
     if ":" in lowered and " " not in lowered:
         return lowered
     if lowered.isascii() and lowered.replace("_", "").isalnum():
-        # 英文短名按原版实体认；模组实体请写全命名空间
-        return "minecraft:" + lowered
+        # 英文短名与玩家名都原样交给模组：它先试 minecraft:<名字>，再试玩家名
+        return lowered
     return ""
 
 
@@ -928,8 +1059,21 @@ def sighting(one):
     复述出来（「左前方 10.5 格有只蜘蛛」），而玩家并不需要知道这些。
     被挡住的实体不走这句：看不见就只剩声音，统一由调用方汇总成「听到…的声音」。
     """
-    who = who_of(one.get("category"), one.get("type"))
+    who = nearby_name(one)
     return f"{nearness_place(one.get('distance'))}的{who}"
+
+
+def nearby_name(one):
+    """身边那只活物叫什么：玩家用他在 MC 里的名字（她只叫得出这个），其余用生物名。
+
+    别的活物的显示名在专用服务端上是翻译键，所以协议里只有玩家带 name 字段。玩家的名字
+    前面缀一句「另一个玩家」，模型才分得清这是人而不是某种生物。
+    """
+    if (one.get("category") or "") == "player":
+        name = (one.get("name") or "").strip()
+        if name:
+            return f"另一个玩家 {name}"
+    return who_of(one.get("category"), one.get("type"))
 
 
 def heard_sounds(ones):
@@ -940,7 +1084,7 @@ def heard_sounds(ones):
     """
     names = []
     for one in ones:
-        name = who_of(one.get("category"), one.get("type"))
+        name = nearby_name(one)
         if name not in names:
             names.append(name)
     return f"{'和'.join(names)}的声音" if names else ""
@@ -963,6 +1107,26 @@ def nearness(distance):
 def nearness_place(distance):
     """同上，但给的是「近处」/「不远处」/「远处」这种能直接塞进句子的说法。"""
     return {"近": "近处", "中": "不远处", "远": "远处"}[nearness(distance)]
+
+
+# 相对她身体朝向的方位说法。模组给 front / front_left 这类 token，这里只翻中文。
+DIRECTION_NAMES = {
+    "front": "正前方",
+    "front_right": "右前方",
+    "right": "右边",
+    "back_right": "右后方",
+    "back": "背后",
+    "back_left": "左后方",
+    "left": "左边",
+    "front_left": "左前方",
+}
+
+
+# 光线跨档的旁白说法。档位由模组判定（SurroundingsDiff.lightBand），这里只负责中文。
+LIGHT_PLACES = {"dark": "很黑的地方", "dim": "光线昏暗的地方", "bright": "光线明亮的地方"}
+
+# 头顶那块遮挡物离她多高。模组只给 low / high 两档（OverheadScan），不报具体格数。
+OVERHEAD_PLACES = {"low": "头顶", "high": "头顶很高处"}
 
 
 def as_int(value, default=0):

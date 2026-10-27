@@ -7,12 +7,15 @@ use ling_chat_plugins as plugins;
 pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wry> {
     // 注册所有 API 命令
     builder.invoke_handler(tauri::generate_handler![
+        api::character::editor::read_character_worldbook,
+        api::character::editor::preview_character_worldbook,
         utils::log_bridge::get_log_history,
         utils::log_bridge::open_log_window,
         utils::log_bridge::is_log_window_open,
         plugins::commands::plugin_list,
         plugins::commands::plugin_set_enabled,
         plugins::commands::plugin_save_config,
+        plugins::commands::plugin_voice_playback_active,
         plugins::commands::plugin_line_shown,
         plugins::commands::plugin_reload,
         plugins::commands::plugin_delete,
@@ -20,8 +23,8 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         plugins::commands::plugin_resource_hide,
         plugins::commands::plugin_resource_restore,
         plugins::commands::plugin_resource_keep,
-        plugins::commands::import_plugin_from_path,
-        plugins::commands::cancel_plugin_import,
+        plugins::commands::import::import_plugin_from_path,
+        plugins::commands::import::cancel_plugin_import,
         api::settings::get_settings_tree,
         api::settings::save_settings,
         api::settings::get_setting_by_key,

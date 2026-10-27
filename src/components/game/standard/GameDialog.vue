@@ -29,7 +29,7 @@
               </div>
               <div
                 v-show="!uiStore.isNarrowScreen"
-                class="font-[inherit] text-xl font-bold text-[#6eb4ff] text-shadow-[inherit]"
+                class="font-[inherit] text-xl font-bold whitespace-nowrap text-[#6eb4ff] text-shadow-[inherit]"
               >
                 <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
               </div>

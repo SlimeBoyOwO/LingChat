@@ -53,6 +53,11 @@ def current_names() -> Dict[str, Any]:
 def set_auto_mode(enabled: bool) -> Dict[str, Any]:
     """切换主界面的「自动模式」（自动逐句推进对话）。不落盘，断开不还原。成功 {ok}。"""
 
+def set_reply_length_mode(mode: str) -> Dict[str, Any]:
+    """切换回复台词数量档位：short（1~2 句）/ normal（3~5 句）/ free（不限制）。
+    要求已经进入对话。档位没变时不写台词，重复调用安全。
+    成功 {ok, mode}；失败 {ok: False, error}。"""
+
 def read_context(
     *,
     start: Optional[int] = ...,
@@ -85,12 +90,18 @@ def add_prompt_line(
     挨打）只保留最严重的一条。带有效期的调用返回 {ok, queued: True, pending: N}，
     pending 是队列里还有效的条目数。"""
 
-def trigger_proactive(text: str) -> Dict[str, Any]:
+def trigger_proactive(text: str, *, urgent: bool = ...) -> Dict[str, Any]:
     """请求宿主主动开一次口（主动对话系统的一次投放）。需 manifest 声明
     trigger_proactive = true。请求只排队：等这一轮台词播完、再过冷却才投放；
     同一时刻最多攒一条，连发会合并。{ok, triggered: True} = 已受理/已合并；
     proactive_disabled / system_busy 见指南。
-    text 为空 = 只开口、不往台词表写提示行。"""
+    text 为空 = 只开口、不往台词表写提示行。
+    urgent = 死亡这类必须马上开口的事：顶掉排队中的普通请求，也不吃冷却与静默期。"""
+
+def set_voice_playback_available(available: bool) -> Dict[str, Any]:
+    """报告外部程序此刻能不能播这句语音（用于 [voice_playback] 接管期间）。
+    女仆倒下、模组找不到播放目标，就传 False，宿主下一句改回本机播放；
+    复活或重连时再传 True。返回 {ok}。"""
 
 def compress_context() -> Dict[str, Any]:
     """触发并等待一次永久记忆压缩。返回 {ok, triggered}。"""

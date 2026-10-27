@@ -15,8 +15,8 @@ import java.util.List;
  * 「跟上一次比」这件事只有常驻、有 tick、记得住上一帧的模组做得了。
  */
 public final class PerceptionDiff {
-    /** 换群系的最短间隔（tick）：鞘翅赶路横穿二十个群系，不该刷二十条旁白。 */
-    public static final long BIOME_COOLDOWN_TICKS = 600L;
+    /** 换群系的最短间隔（tick）：鞘翅赶路横穿二十个群系，不该刷二十条旁白；一分钟一条。 */
+    public static final long BIOME_COOLDOWN_TICKS = 1200L;
 
     /** 血量跌破阈值时报一次，回到「阈值 × 这个系数」以上才允许再报。 */
     private static final double LOW_HEALTH_REARM = 1.2;
@@ -62,6 +62,12 @@ public final class PerceptionDiff {
             state.reset();
             state.lastBiomeTick = nowTick;
             frames.add(snapshotFrame(next));
+            return frames;
+        }
+
+        // 昏迷时她什么也感知不到：只保留重连时那一份现状，世界变化全部不推。
+        // 挨打、死亡、上床与醒来另有专门事件
+        if ("unconscious".equals(next.posture())) {
             return frames;
         }
 
@@ -165,6 +171,8 @@ public final class PerceptionDiff {
         frame.addProperty("maid_name", s.maidName());
         frame.addProperty("maid_health", EventFrames.round(s.maidHealth()));
         frame.addProperty("maid_max_health", EventFrames.round(s.maidMaxHealth()));
+        // 姿势是持久状态：接上那一刻她可能已经坐着或躺在地上，接下来的变化另由 posture_change 交代
+        frame.addProperty("posture", s.posture());
         return frame;
     }
 

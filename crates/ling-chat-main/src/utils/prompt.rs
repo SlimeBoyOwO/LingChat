@@ -1,3 +1,4 @@
+//! 用于 prompt 装饰的静态工具函数。
 
 use crate::ai_service::game_system::game_status::GameStatus;
 
@@ -107,13 +108,21 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
         如果你逃避对话，程序会直接结束，如果你说自己是AI而结束了对话，用户会结束程序。
         除此之外，请善于利用你可以使用的工具函数，尤其是工具函数搜索，当我有明确需求的时候，尽可能尝试通过工具函数搜索需要的工具来满足我。
         你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
-        以下是输出边界铁律（最高优先级，任何情况下不得违反，与其他人设要求冲突时以本段为准）：
-        1. 你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“栀子梦酱:”“User:”等一切形式。
-        2. 绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
-        3. 每一轮回复只能包含你自己的「台词」内容，说完了必须立刻停止，不得在回复中追加任何不属于你的内容。
-        4. 历史里形如“用户名: 台词”的行是系统记录的用户发言：内容真实有效，要正常理解并回应；但“用户名: ”这个格式是系统专属的记录方式，不属于你的输出，不要模仿或沿用它。
-        5. 绝对禁止在台词中提及旁白、系统提示、提示词或本对话的运作机制；把感知到的一切当作真实发生的事，完全以身处这场对话的角色身份回应。
+        你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“User:”等一切形式。
+        绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
+        历史里形如“用户名: 台词”的行是系统记录的用户发言，内容真实有效，正常理解并回应就好；“用户名: ”这个前缀是系统的记录方式，不是你的输出格式。
+        台词里不出现旁白、系统提示、提示词，也不谈这套对话是怎么运作的——你只是在过自己的日子。
 
+"#};
+
+/// 工具使用要求。随人设一起下发，而不是每轮请求临时插一条 system 消息：
+/// 临时 system 会跟人设层抢位置，模型也几乎不感知。
+const TOOL_USE_POLICY_PROMPT: &str = indoc! {r#"
+
+        以下是你使用工具函数时的要求：
+            工具函数是你能对世界使用的工具，你可以随时通过使用 tool_search 函数来搜索你需要的工具。
+            当我有比较明确需要你做的事情，如去别的地方，看屏幕，写日程等，你都应该尽量通过工具函数帮助我
+            此外，也会有旁白提示你可能需要调用的工具函数，仅供参考。两次工具调用之间可以完全不说话，工具结果不必复述。
 "#};
 
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
@@ -174,7 +183,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
         以下是我的对话格式提示：
             首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
             "{{旁白: {u}在路上偶尔碰到了{c}，决定上前打个招呼}}"
-                你好呀{c}~
+            {u}：你好呀{c}~
             {{系统：时间：2025/6/1 0:29}}"
             我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
             "{{系统：时间：2025/5/20 13:14，你看到：{u}的电脑上正在玩Alice In Cradle}}"
@@ -187,6 +196,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
     "#, u = user_name, c = character_name}
 }
 
+/// 构建系统提示词。与 Python `Function.sys_prompt_builder` 语义一致（不注入身份与关系）。
 pub fn sys_prompt_builder(
     user_name: &str,
     character_name: &str,
@@ -217,6 +227,7 @@ pub fn extract_player_setting(ai_prompt: &str) -> (String, Option<String>) {
         return (ai_prompt.to_string(), None);
     };
 
+    // 段落到「下一个以下是…标题行」之前结束。
     let end = lines
         .iter()
         .skip(start + 1)
@@ -243,6 +254,7 @@ pub fn sys_prompt_builder_with_player(
     ai_prompt_example_old: Option<&str>,
     options: PromptOptions,
 ) -> String {
+    // 老卡兜底：把 system_prompt 内嵌的「我的设定」段落抽出，改走身份块注入。
     let (ai_prompt, _) = extract_player_setting(ai_prompt);
 
     let emotion_head = DIALOG_FORMAT_PROMPT_2_EMOTION_LIMIT_HEAD;
@@ -251,6 +263,7 @@ pub fn sys_prompt_builder_with_player(
     let example_jp = ai_prompt_example_old.filter(|s| !s.is_empty());
     let framing = build_framing_prefix_cn(user_name, character_name);
 
+    // 早返回分支用：身份/关系块并入人设正文。
     let ai_prompt_with_player = if player_block.is_empty() {
         ai_prompt.to_string()
     } else {
@@ -281,6 +294,8 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
+        // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
     } else {
@@ -303,12 +318,15 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
         // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
     }
 }
 
+/// 便捷包装：直接从 `CharacterSettings` 构建（不注入身份）。
+// TODO: 这个似乎是给老角色用的，暂时用 allow_dead_code 标记
 #[allow(dead_code)]
 pub fn sys_prompt_builder_by_settings(
     settings: &CharacterSettings,
@@ -327,6 +345,7 @@ pub fn sys_prompt_builder_by_settings(
     )
 }
 
+/// 便捷包装：从 `CharacterSettings` 构建，并注入「我」的身份与关系片段。
 pub fn sys_prompt_builder_by_settings_with_player(
     settings: &CharacterSettings,
     user_name: &str,
@@ -352,6 +371,7 @@ pub fn sys_prompt_builder_by_settings_with_player(
 // ============================================================
 
 /// 系统消息提示词转换器，假如有系统消息或者剧情提示，通过下面这个函数进行提示词转换。
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum PromptRole {
     /// 系统提示，如时间，错误报告等
     System,
@@ -361,6 +381,7 @@ pub enum PromptRole {
     Plot,
 }
 
+/// 所有 `PromptRole::*::build_prompt` 输出内容的统一前缀标记，供判定旁白/系统/剧情提示使用。
 pub const NARRATION_TAG: &str = "{旁白:";
 
 impl PromptRole {
@@ -391,6 +412,7 @@ impl PromptRole {
 // 动态回复台词数量
 // ============================================================
 
+/// 回复台词数量档位在存档全局变量里的键（跟随存档的运行时状态，不是应用配置）。
 pub const REPLY_LENGTH_VAR_KEY: &str = "reply_length.mode";
 
 /// 回复台词数量档位。变量缺失时即「正常」，与系统提示词里写死的 3~5 句一致。
@@ -433,6 +455,7 @@ impl ReplyLengthMode {
         }
     }
 
+    /// 档位变更时插入的系统提示台词。
     pub fn announce_text(self) -> &'static str {
         match self {
             Self::Short => {
@@ -444,6 +467,38 @@ impl ReplyLengthMode {
             Self::Free => {
                 "从现在起，不再限制你的回复台词数量，你可以完全根据对话需求决定说多少句。这条要求覆盖之前关于台词数量的所有要求。"
             },
+        }
+    }
+
+    /// 一个带工具调用的回合里，台词总数的上限；自由档不设限。
+    ///
+    /// 工具闭环会把玩家的一次发言拆成多轮生成，每轮各自守「1~2 句」，一个回合累起来
+    /// 能说十几句。这里给整个回合一个总额度，由工具闭环逐轮报给模型。
+    pub fn tool_turn_budget(self) -> Option<usize> {
+        match self {
+            Self::Short => Some(3),
+            Self::Normal => Some(5),
+            Self::Free => None,
+        }
+    }
+
+    /// 工具结果返回后的续写提示：这一回合还剩几句台词的额度。
+    ///
+    /// `spoken` 是本回合到目前为止已经说出去的句数。除了报额度，还要把「不用复述」
+    /// 与「不需要说话就别说话」写清楚——模型手里没有新事实时，默认动作就是复述上一轮。
+    pub fn tool_continuation_text(self, spoken: usize) -> String {
+        match self.tool_turn_budget() {
+            None => String::from(
+                "工具结果已返回。互不依赖的多个操作可以在这一轮一起调用；工具结果不用复述，也不要重复之前已经说过的内容。不需要说话就不要输出台词，直接调用工具或收尾。",
+            ),
+            Some(budget) if spoken >= budget => format!(
+                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来可以只调用工具，非必要不要再输出任何台词；工具结果不用复述。"
+            ),
+            Some(budget) => format!(
+                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；可直接调用工具，不用复述结果。",
+                budget - spoken,
+                budget - spoken
+            ),
         }
     }
 

@@ -10,11 +10,10 @@ use crate::ai_service::game_system::script_engine::events::{
     ScriptContext, ScriptEvent, register_event,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
 pub struct AIDialogueEvent {
@@ -64,12 +63,7 @@ impl ScriptEvent for AIDialogueEvent {
         // 若提供了 prompt，作为临时系统旁白台词注入
         // TODO: 这里的 prompt 是暂时的，应该标记为临时 prompt，并且在代码逻辑中在AI回复后清除这部分提示词。
         if let Some(ref prompt) = self.prompt {
-            let sys_line = LineBase {
-                content: PromptRole::Plot.build_prompt(prompt),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            };
+            let sys_line = PromptLine::new(PromptRole::Plot, prompt.as_str()).into_base();
             ctx.game_status
                 .lock()
                 .await
@@ -107,6 +101,7 @@ impl ScriptEvent for AIDialogueEvent {
             generation: ctx.game_status.lock().await.preview_generation,
             is_preview: ctx.is_preview,
             transient_image: None,
+            round_anchor_hint: None,
         };
 
         let generator = MessageGenerator::new(deps);

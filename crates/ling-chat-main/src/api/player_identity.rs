@@ -1,4 +1,3 @@
-
 use std::collections::HashMap;
 
 use tauri::{AppHandle, Manager};
@@ -10,10 +9,10 @@ use crate::ai_service::game_system::player_identity::{
     effective_user_alias, ensure_identity_switchable, relation_ready_all, resolve_relation,
     role_relations, runtime_relations,
 };
-use crate::ai_service::types::{LineAttributeExt, LineBase};
+use crate::ai_service::game_system::status_ops::PromptLine;
+use crate::ai_service::types::LineBase;
 use crate::api::game::{WebInitData, build_web_init_data};
 use crate::config::AppConfig;
-use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{PromptOptions, PromptRole};
@@ -24,12 +23,9 @@ fn store() -> IdentityStore {
 
 /// 系统旁白台词（不归属任何身份）。
 fn narrator_line(text: String) -> LineBase {
-    LineBase {
-        content: PromptRole::Narrator.build_prompt(&text),
-        attribute: LineAttributeExt(LineAttribute::User),
-        display_name: Some("系统".to_string()),
-        ..Default::default()
-    }
+    PromptLine::new(PromptRole::Narrator, text)
+        .display_name("系统")
+        .into_base()
 }
 
 #[tauri::command]
@@ -254,7 +250,8 @@ pub async fn set_current_player_identity(
                         )
                         .map(|v| crate::ai_service::affection::tier_label(v.clamp(-100, 100)))
                     });
-                    let mut note = format!("离场注记（{role_name} 视角）：刚才离开的「{old_name}」");
+                    let mut note =
+                        format!("离场注记（{role_name} 视角）：刚才离开的「{old_name}」");
                     let prompt = old_prompt.trim();
                     if !prompt.is_empty() {
                         note.push_str(&format!("，基础设定是：{prompt}"));
@@ -437,7 +434,6 @@ pub async fn check_relation_ready(
     let ready = roles.iter().all(|s| s.role_side && s.identity_side);
     Ok(RelationReadyStatus { ready, roles })
 }
-
 
 async fn current_identity(app: &AppHandle) -> Result<PlayerIdentity, String> {
     let state = app.state::<AppState>();

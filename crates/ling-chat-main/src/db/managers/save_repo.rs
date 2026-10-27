@@ -265,6 +265,7 @@ impl SaveRepo {
                         thinking: db_line.thinking,
                         audio_file: db_line.audio_file,
                         tool_call: db_line.tool_call,
+                        round_id: db_line.round_id,
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
@@ -294,6 +295,7 @@ fn same_line_fields(db_line: &line::Model, input_line: &GameLine) -> bool {
         && db_line.action_content == input_line.base.action_content
         && db_line.display_name == input_line.base.display_name
         && db_line.tool_call == input_line.base.tool_call
+        && db_line.round_id == input_line.base.round_id
 }
 
 impl SaveRepo {
@@ -339,6 +341,7 @@ impl SaveRepo {
                         active.display_name = Set(input_line.base.display_name.clone());
                         active.identity_id = Set(input_line.base.identity_id.clone());
                         active.tool_call = Set(input_line.base.tool_call.clone());
+                        active.round_id = Set(input_line.base.round_id.clone());
                     }
                     continue;
                 }
@@ -425,6 +428,7 @@ impl SaveRepo {
                 || db_line.action_content != input_line.base.action_content
                 || db_line.display_name != input_line.base.display_name
                 || db_line.tool_call != input_line.base.tool_call
+                || db_line.round_id != input_line.base.round_id
             {
                 let mut active: line::ActiveModel = db_line.clone().into();
                 active.content = Set(input_line.base.content.clone());
@@ -438,6 +442,7 @@ impl SaveRepo {
                 active.thinking = Set(input_line.base.thinking.clone());
                 active.display_name = Set(input_line.base.display_name.clone());
                 active.tool_call = Set(input_line.base.tool_call.clone());
+                active.round_id = Set(input_line.base.round_id.clone());
                 active.update(&txn).await.map_err(|e| anyhow!("{e}"))?;
             }
 
@@ -490,6 +495,7 @@ impl SaveRepo {
                     audio_file: Set(input_line.base.audio_file.clone()),
                     thinking: Set(input_line.base.thinking.clone()),
                     tool_call: Set(input_line.base.tool_call.clone()),
+                    round_id: Set(input_line.base.round_id.clone()),
                     save_id: Set(save_id),
                     parent_line_id: Set(parent_id),
                     ..Default::default()
@@ -692,7 +698,6 @@ impl SaveRepo {
             .map_err(|e| anyhow!("{e}"))?;
         Ok(())
     }
-
 
     pub async fn upsert_save_identity(
         db: &DatabaseConnection,

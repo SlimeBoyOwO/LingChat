@@ -1,6 +1,5 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use chrono::{DateTime, Local};
@@ -9,9 +8,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::ai_service::game_system::role_manager::GameRoleManager;
-use crate::ai_service::types::{
-    GameLine, GameRole, LineAttributeExt, LineBase, Player, ScriptStatus,
-};
+use crate::ai_service::game_system::status_ops::{Pending, PromptLine, RequestScoped};
+use crate::ai_service::types::{GameLine, GameRole, LineBase, Player, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
 
@@ -72,134 +70,11 @@ pub struct GameStatus {
     /// 场景感知开关（关闭后切换场景不再触发旁白）
     pub scene_awareness_enabled: bool,
 
-    /// 生成进行中由插件攒下的旁白，等这一轮收尾、下一轮开头再按顺序落进台词表。
-    ///
-    /// 生成期间直接 `add_prompt_line` 会往流式任务算好的行号后面插队（它按位置回填
-    /// 助手台词），事件一多就会与正在生成的这一轮搅在一起。排队到下一轮开头写，
-    /// 既保住行号，也让「这一轮生成时发生的事」完整地出现在下一轮上下文里。
-    /// 不参与存档：换会话时随 `GameStatus` 一起丢弃。
-    pending_prompt_lines: Vec<QueuedPromptLine>,
-}
+    /// 等下一轮落位的暂存：插件旁白与近期记忆（见 `status_ops`）。
+    pub pending: Pending,
 
-/// 一条等下一轮开头再写的插件旁白。
-pub struct QueuedPromptLine {
-    role: PromptRole,
-    text: String,
-    /// 进队时刻，用来判「轮到时还值不值得说」。
-    queued_at: Instant,
-    /// 有效期；`None` = 不参与时效判定（入场提示这类，写进去就一直算数）。
-    ttl: Option<Duration>,
-    /// 同一类事件的合并键（如受伤）。队列里已有同键条目时保留更严重的一条。
-    key: Option<String>,
-    /// 严重度，同键合并时用；越大越值得留下。
-    severity: i64,
-}
-
-/// 排队上限。战斗里每挨一下都可能攒一条，上限到了丢最早的：最近发生的事更重要。
-const MAX_PENDING_PROMPT_LINES: usize = 200;
-
-/// 排队旁白接成一行的长度上限；再长就另起一行（与插件侧的合并口径各自兜底）。
-const MAX_QUEUED_LINE_CHARS: usize = 600;
-
-/// 丢掉超过有效期（`ttl`）的排队旁白。只动队列，不碰台词表。
-fn drop_expired_prompt_lines(queue: &mut Vec<QueuedPromptLine>, now: Instant) -> usize {
-    let before = queue.len();
-    queue.retain(|line| {
-        let Some(ttl) = line.ttl else {
-            return true;
-        };
-        now.saturating_duration_since(line.queued_at) <= ttl
-    });
-    let dropped = before - queue.len();
-    if dropped > 0 {
-        tracing::info!("[GameStatus] 丢弃已过期的插件旁白 {dropped} 条");
-    }
-    dropped
-}
-
-/// 入队一条旁白，处理「同类事件只留最严重的一条」与「连续旁白接成一行」。
-fn enqueue_prompt_line(
-    queue: &mut Vec<QueuedPromptLine>,
-    role: PromptRole,
-    text: String,
-    ttl: Option<Duration>,
-    key: Option<String>,
-    severity: i64,
-    now: Instant,
-) {
-    let key = key.filter(|value| !value.trim().is_empty());
-    if let Some(key) = key.as_deref() {
-        // 同一件事的连续报告只留最严重的一条：连着挨三下不该记成三条旁白，
-        // 但也不能因为最后一次挨得轻就把前面那下重的抹掉。
-        if let Some(existing) = queue
-            .iter_mut()
-            .find(|line| line.key.as_deref() == Some(key))
-        {
-            if severity >= existing.severity {
-                existing.text = text;
-                existing.queued_at = now;
-                existing.ttl = ttl;
-                existing.severity = severity;
-            }
-            return;
-        }
-    }
-
-    if ttl.is_none() {
-        if let Some(last) = queue.last_mut() {
-            if matches!(
-                (&last.role, &role),
-                (PromptRole::Narrator, PromptRole::Narrator)
-            ) && last.ttl.is_none()
-                && last.key.is_none()
-                && last.text.len() + text.len() < MAX_QUEUED_LINE_CHARS
-            {
-                last.text.push('\n');
-                last.text.push_str(&text);
-                return;
-            }
-        }
-    }
-    if queue.len() >= MAX_PENDING_PROMPT_LINES {
-        queue.remove(0);
-        tracing::warn!(
-            "[GameStatus] 插件旁白积压到上限（{} 条），丢弃最早的一条",
-            MAX_PENDING_PROMPT_LINES
-        );
-    }
-    queue.push(QueuedPromptLine {
-        role,
-        text,
-        queued_at: now,
-        ttl,
-        key,
-        severity,
-    });
-}
-
-/// 队列里带时效（游戏事件）的条目数；入场提示这类不计数。
-fn timed_prompt_count(queue: &[QueuedPromptLine]) -> usize {
-    queue.iter().filter(|line| line.ttl.is_some()).count()
-}
-
-/// 把队列排成待写的行：连续的 narrator 旁白用换行接成一行，其余各占一条。
-fn take_prompt_batches(queue: Vec<QueuedPromptLine>) -> Vec<(PromptRole, String)> {
-    let mut batches: Vec<(PromptRole, String)> = Vec::new();
-    for line in queue {
-        if let Some(last) = batches.last_mut() {
-            if matches!(
-                (&last.0, &line.role),
-                (PromptRole::Narrator, PromptRole::Narrator)
-            ) && last.1.len() + line.text.len() < MAX_QUEUED_LINE_CHARS
-            {
-                last.1.push('\n');
-                last.1.push_str(&line.text);
-                continue;
-            }
-        }
-        batches.push((line.role, line.text));
-    }
-    batches
+    /// 下一次请求取走的暂存：临时记忆与工具推荐名字（见 `status_ops`）。
+    pub request: RequestScoped,
 }
 
 impl GameStatus {
@@ -227,66 +102,9 @@ impl GameStatus {
             entry_greeting_done: false,
             affection_eval_cursor: 0,
             scene_awareness_enabled: true,
-            pending_prompt_lines: Vec::new(),
+            pending: Pending::default(),
+            request: RequestScoped::default(),
         }
-    }
-
-    /// 攒一条插件旁白，等下一轮开头由 [`Self::flush_pending_prompt_lines`] 写进台词表。
-    ///
-    /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目**不会立刻进台词表**，等到真的
-    /// 要开口那一刻再判一次——已经过期的直接丢掉，不让一分钟前捡起一块木头这种事
-    /// 混进此刻的对话。`key` 相同的条目（比如连着挨打）只留 `severity` 最大的那条。
-    ///
-    /// 连着来的旁白会先接成一行（换行隔开）：同一批事件拆成好几行落进台词表，
-    /// 模型会把它们当成好几件先后发生的事来复述。系统 / 剧情提示不并。
-    ///
-    /// 返回队列里还有效的带时效条目数，插件用它判「攒够几条了」。
-    pub fn queue_prompt_line(
-        &mut self,
-        role: PromptRole,
-        text: impl Into<String>,
-        ttl: Option<Duration>,
-        key: Option<String>,
-        severity: i64,
-    ) -> usize {
-        let now = Instant::now();
-        drop_expired_prompt_lines(&mut self.pending_prompt_lines, now);
-        enqueue_prompt_line(
-            &mut self.pending_prompt_lines,
-            role,
-            text.into(),
-            ttl,
-            key,
-            severity,
-            now,
-        );
-        timed_prompt_count(&self.pending_prompt_lines)
-    }
-
-    /// 把攒下的插件旁白按顺序写进台词表。
-    ///
-    /// **必须在持有 `generation_lock` 之后、构建本轮上下文之前调用**，否则又会和
-    /// 流式写入抢行号。写之前先按有效期筛一遍：过期的游戏事件直接丢掉，不进台词表；
-    /// 连续的 narrator 旁白仍接成一行（换行隔开）。
-    /// 返回实际写入的条数（写入失败的条目不阻塞后面的）。
-    pub async fn flush_pending_prompt_lines(&mut self, db: &DatabaseConnection) -> usize {
-        drop_expired_prompt_lines(&mut self.pending_prompt_lines, Instant::now());
-        if self.pending_prompt_lines.is_empty() {
-            return 0;
-        }
-        let queued = std::mem::take(&mut self.pending_prompt_lines);
-        let batches = take_prompt_batches(queued);
-        let mut written = 0;
-        for (role, text) in batches {
-            match self.add_prompt_line(db, role, &text).await {
-                Ok(_) => written += 1,
-                Err(e) => tracing::warn!("[GameStatus] 补写插件旁白失败：{e}"),
-            }
-        }
-        if written > 0 {
-            tracing::info!("[GameStatus] 补写排队中的插件旁白 {written} 条");
-        }
-        written
     }
 
     pub async fn get_role<'a>(
@@ -311,104 +129,18 @@ impl GameStatus {
         Ok(role)
     }
 
-    pub fn overlay_affections_for_identity(&mut self, identity_id: Option<&str>) {
-        self.role_manager
-            .overlay_affections_from_vars(&self.global_variables, identity_id);
-    }
-
-    /// 按（角色 × 身份）播种初始好感：该身份已有专属值、或旧档共享默认值存在时不覆盖。
-    /// 播种成功且非默认值时，补写一条「感情档位」旁白——好感度不做逐轮注入，缺这条
-    /// 旁白时角色要等第一次评估才知道自己的感情，设定完的初始值就不会体现在第一轮。
-    pub async fn seed_identity_affection(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-        identity_id: Option<&str>,
-    ) -> Result<()> {
-        let (init, role_name) = {
-            let Some(role) = self.role_manager.get_loaded(role_id) else {
-                return Ok(());
-            };
-            (
-                crate::ai_service::affection::effective_initial_affection(
-                    &role.settings,
-                    identity_id,
-                ),
-                role.display_name
-                    .clone()
-                    .unwrap_or_else(|| role.settings.ai_name.clone()),
-            )
-        };
-        let Some(init) = init else {
-            return Ok(());
-        };
-        let key = crate::ai_service::affection::var_key_for(role_id, identity_id);
-        if self.global_variables.contains_key(&key) {
-            return Ok(());
-        }
-        if identity_id.is_some()
-            && self
-                .global_variables
-                .contains_key(&crate::ai_service::affection::var_key(role_id))
-        {
-            return Ok(());
-        }
-        self.set_identity_affection_initial(role_id, identity_id, init);
-        if init != 0 {
-            self.add_affection_state_narration(db, &role_name, init)
-                .await?;
-        }
-        Ok(())
-    }
-
-    pub async fn add_affection_state_narration(
-        &mut self,
-        db: &DatabaseConnection,
-        role_name: &str,
-        value: i32,
-    ) -> Result<()> {
-        let v = value.clamp(-100, 100);
-        let vector = crate::ai_service::affection::uniform_vector(v);
-        let text = crate::ai_service::affection::describe_change_for_line(
-            role_name,
-            &self.player.user_name,
-            &vector,
-            &crate::ai_service::types::NegativeVector::default(),
-        );
-        let line = LineBase {
-            content: PromptRole::Narrator.build_prompt(&text),
-            attribute: LineAttributeExt(LineAttribute::User),
-            sender_role_id: Some(0),
-            display_name: Some("系统".to_string()),
-            ..Default::default()
-        };
-        self.add_line(db, line).await
-    }
-
-    pub fn set_identity_affection_initial(
-        &mut self,
-        role_id: i32,
-        identity_id: Option<&str>,
-        init: i32,
-    ) {
-        let vector = crate::ai_service::affection::uniform_vector(init);
-        self.set_variable(
-            &crate::ai_service::affection::var_key_for(role_id, identity_id),
-            crate::ai_service::affection::state_to_value(
-                &crate::ai_service::affection::state_from_vector(vector),
-            ),
-        );
-        self.overlay_affections_for_identity(identity_id);
-    }
-
     /// 已绑档时把内存台词表同步落库一次；失败只告警。
     pub async fn persist_lines_if_bound(&self, db: &DatabaseConnection) {
         let Some(save_id) = self.active_save_id else {
             return;
         };
-        if let Err(e) =
-            crate::db::managers::save_repo::SaveRepo::sync_lines(db, save_id, &self.line_list, false)
-                .await
+        if let Err(e) = crate::db::managers::save_repo::SaveRepo::sync_lines(
+            db,
+            save_id,
+            &self.line_list,
+            false,
+        )
+        .await
         {
             tracing::warn!("同步存档失败: {e}");
         }
@@ -440,25 +172,6 @@ impl GameStatus {
         Ok(())
     }
 
-    /// 把台词插入到第 `index` 条之前（下标基于 `line_list`，越界夹到末尾），
-    /// 用于把内容挂到「较近但非最新」的位置
-    pub async fn insert_line(
-        &mut self,
-        db: &DatabaseConnection,
-        index: usize,
-        line: LineBase,
-    ) -> Result<()> {
-        let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
-        let game_line = GameLine::from_base(line, perceived);
-        // 中段插入会平移其后的下标，先让进行中的后台摘要作废，避免过期结果落库
-        //（与工具消息回填、edit_context_lines 的处理一致）。
-        self.role_manager.invalidate_memory_history();
-        self.line_list
-            .insert(index.min(self.line_list.len()), game_line);
-        self.refresh_memories(db).await?;
-        Ok(())
-    }
-
     pub async fn refresh_memories(&mut self, db: &DatabaseConnection) -> Result<()> {
         self.role_manager
             .sync_memories(db, &self.line_list, None, false, &self.player)
@@ -476,20 +189,7 @@ impl GameStatus {
             .await
     }
 
-    // ── 台词历史（上下文源）的区间查看 / 编辑 ──
-    //
-    // 「第 start~end 条」一律指 `line_list` 的下标：**从 1 开始、闭区间**，第 1 条
-    // 通常就是 role system 的人设行；越界会被夹到可用范围。这里操作的是台词行
-    // （`GameLine`，全字段），**不是**渲染后发给 LLM 的 `LlmMessage`——渲染会按角色
-    // 合并/过滤，两者不是同一套下标空间。
-    //
-    // 参数名用 `start`/`end` 而非 `from`/`to`：与插件侧同名 API 对齐（Python 里
-    // `from` 是关键字，用不了）。
-
-    /// 读取第 `start`~`end` 条台词（含两端，1 起）的完整运行时行。
-    ///
-    /// 返回的 `GameLine` 携带全部字段（情绪、动作、TTS、音频、thinking、tool_call、
-    /// 感知集合等），可改后原样回传给 [`Self::edit_context_lines`]；只读，无副作用。
+    // ── 台词历史（上下文源）的区间查看 / 编辑，下标 1 开始，左开右闭 ──
     pub fn read_context_lines(&self, start: usize, end: usize) -> Vec<GameLine> {
         match Self::clamp_line_range(self.line_list.len(), start, end) {
             Some((lo, hi)) => self.line_list[lo..hi].to_vec(),
@@ -499,19 +199,6 @@ impl GameStatus {
 
     /// 用 `replacement` 替换第 `start`~`end` 条台词（含两端，1 起），并让改动真正
     /// 落进上下文。`replacement` 条数不限：空 = 删除该区间，多条 = 展开。
-    ///
-    /// 依次做：
-    /// - 生成进行中直接拒绝（`generation_lock` 被占），避免改历史与流式写入打架；
-    /// - System 人设行可编辑/删除：删掉后相应角色的上下文失去 system 前缀，只记
-    ///   一条 warn，不拦截；
-    /// - `replacement` 中未带 id 的行按位置继承被替换行的 id，保住存档链锚点
-    ///   （否则 `SaveRepo::sync_lines` 可能因「首行分歧」拒绝覆盖）；
-    /// - 回拨所有角色的压缩指针到编辑起点（仅当指针在其之后），使被编辑的早期
-    ///   内容重新进入窗口、下次压缩重新摘要；
-    /// - `invalidate_memory_history` + `refresh_memories`。
-    ///
-    /// 返回被替换掉的条数。**落库不在这里**，由调用方走正常存盘流程
-    /// （`SaveRepo::sync_lines`）持久化。
     pub async fn edit_context_lines(
         &mut self,
         db: &DatabaseConnection,
@@ -646,16 +333,8 @@ impl GameStatus {
         role: PromptRole,
         text: &str,
     ) -> Result<usize> {
-        self.add_line(
-            db,
-            LineBase {
-                content: role.build_prompt(text),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some(role.display_name().to_string()),
-                ..Default::default()
-            },
-        )
-        .await?;
+        self.add_line(db, PromptLine::new(role, text).into_base())
+            .await?;
         Ok(self.line_list.len())
     }
 
@@ -690,78 +369,6 @@ impl GameStatus {
     pub fn offstage_role(&mut self, role_id: i32) {
         self.onstage_role_ids.retain(|id| *id != role_id);
         self.present_role_ids.remove(&role_id);
-    }
-
-    pub async fn add_character_clothes_change_line(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-        clothes_name: &str,
-    ) -> Result<()> {
-        let role = self
-            .role_manager
-            .get_loaded_mut(role_id)
-            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
-
-        role.current_clothes = clothes_name.to_string();
-
-        let ai_name = role.settings.ai_name.clone();
-        let clothes_prompt = role
-            .settings
-            .clothes
-            .as_ref()
-            .and_then(|list| {
-                list.iter().find_map(|item| {
-                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name) {
-                        item.get("prompt").cloned()
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or_default();
-
-        let prompt = format!(
-            "{}换上了新服装：{}，{}",
-            ai_name, clothes_name, clothes_prompt
-        );
-
-        self.add_line(
-            db,
-            LineBase {
-                content: PromptRole::Narrator.build_prompt(&prompt),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("添加换装台词失败: {}", e))?;
-
-        Ok(())
-    }
-
-    /// 切换角色服装并生成旁白台词。
-    /// 若已是目标服装则跳过。返回是否实际切换。
-    pub async fn on_character_change_clothes(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-        clothes_name: &str,
-    ) -> Result<bool> {
-        let role = self
-            .role_manager
-            .get_loaded_mut(role_id)
-            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
-
-        if role.current_clothes == clothes_name {
-            return Ok(false);
-        }
-
-        self.add_character_clothes_change_line(db, role_id, clothes_name)
-            .await?;
-
-        Ok(true)
     }
 
     pub fn reactivate_all_voice_makers(&self) {
@@ -842,98 +449,4 @@ fn default_background_music() -> String {
 }
 fn default_background_effect() -> String {
     "none".into()
-}
-
-#[cfg(test)]
-mod queue_tests {
-    use super::*;
-
-    fn event(
-        text: &str,
-        ttl_secs: u64,
-        key: &str,
-        severity: i64,
-        now: Instant,
-    ) -> QueuedPromptLine {
-        QueuedPromptLine {
-            role: PromptRole::Narrator,
-            text: text.to_string(),
-            queued_at: now,
-            ttl: Some(Duration::from_secs(ttl_secs)),
-            key: (!key.is_empty()).then(|| key.to_string()),
-            severity,
-        }
-    }
-
-    #[test]
-    fn expired_events_are_dropped_from_the_queue() {
-        let now = Instant::now();
-        let mut queue = vec![
-            event("捡起了木头", 5, "", 0, now),
-            event("挨了僵尸一下", 60, "", 0, now),
-        ];
-        let later = now + Duration::from_secs(10);
-        assert_eq!(drop_expired_prompt_lines(&mut queue, later), 1);
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "挨了僵尸一下");
-    }
-
-    #[test]
-    fn no_ttl_entries_never_expire() {
-        let now = Instant::now();
-        let mut queue = vec![QueuedPromptLine {
-            role: PromptRole::Narrator,
-            text: "进入 MC 的提示".into(),
-            queued_at: now,
-            ttl: None,
-            key: None,
-            severity: 0,
-        }];
-        drop_expired_prompt_lines(&mut queue, now + Duration::from_secs(3600));
-        assert_eq!(queue.len(), 1);
-        assert_eq!(timed_prompt_count(&queue), 0);
-    }
-
-    #[test]
-    fn same_key_keeps_the_most_severe_line() {
-        let now = Instant::now();
-        let mut queue = vec![event("伤得不轻", 60, "hurt", 800, now)];
-        // 轻的一下不该覆盖重的
-        enqueue_prompt_line(
-            &mut queue,
-            PromptRole::Narrator,
-            "受了点轻伤".into(),
-            Some(Duration::from_secs(60)),
-            Some("hurt".into()),
-            100,
-            now + Duration::from_secs(1),
-        );
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "伤得不轻");
-        // 更重的一下替换掉原来的
-        enqueue_prompt_line(
-            &mut queue,
-            PromptRole::Narrator,
-            "伤得很重".into(),
-            Some(Duration::from_secs(60)),
-            Some("hurt".into()),
-            1500,
-            now + Duration::from_secs(2),
-        );
-        assert_eq!(queue.len(), 1);
-        assert_eq!(queue[0].text, "伤得很重");
-    }
-
-    #[test]
-    fn consecutive_narrator_events_become_one_line() {
-        let now = Instant::now();
-        let mut queue = vec![
-            event("天黑了", 300, "", 0, now),
-            event("开始下雨了", 300, "", 0, now),
-        ];
-        let batches = take_prompt_batches(queue.split_off(0));
-        assert_eq!(batches.len(), 1);
-        assert!(matches!(batches[0].0, PromptRole::Narrator));
-        assert_eq!(batches[0].1, "天黑了\n开始下雨了");
-    }
 }

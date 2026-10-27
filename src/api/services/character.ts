@@ -282,7 +282,41 @@ export const commitCharacterEdit = (
   roleId: number,
   editId: string,
   settings: Record<string, any>,
-) => invoke<void>("commit_character_edit", { roleId, editId, settings });
+  worldbookPatch?: { book: Worldbook | null },
+) => invoke<void>("commit_character_edit", { roleId, editId, settings, worldbookPatch });
+
+export type WorldbookKey = string | { type: "regex"; pattern: string; case_sensitive: boolean };
+export interface WorldbookEntry {
+  id: string;
+  name: string | null;
+  enabled: boolean;
+  priority: number;
+  activation: { type: "always" } | { type: "keyword"; keys: WorldbookKey[] };
+  content: string;
+}
+export interface Worldbook {
+  name: string | null;
+  entries: WorldbookEntry[];
+}
+export interface WorldbookIssue {
+  entry_index: number | null;
+  key_index: number | null;
+  message: string;
+}
+export interface WorldbookMatch {
+  entry_index: number;
+  id: string;
+  status: "always" | "matched" | "disabled" | "empty_content" | "invalid" | "unmatched";
+  matched_keys: number[];
+}
+export interface WorldbookPreview {
+  issues: WorldbookIssue[];
+  entries: WorldbookMatch[];
+}
+export const readCharacterWorldbook = (roleId: number, editId: string) =>
+  invoke<Worldbook | null>("read_character_worldbook", { roleId, editId });
+export const previewCharacterWorldbook = (book: Worldbook, input: string) =>
+  invoke<WorldbookPreview>("preview_character_worldbook", { book, input });
 
 /** 把角色的形象切回静态立绘（Live2D 模型文件缺失时的自动回退，会落盘） */
 export const setRoleAvatarStatic = (roleId: number) =>
