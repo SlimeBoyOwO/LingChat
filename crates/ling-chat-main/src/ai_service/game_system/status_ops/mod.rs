@@ -32,7 +32,7 @@ use pending::{init_insert_index, recent_insert_index, resolve_recent_index};
 impl GameStatus {
     /// 攒一条插件旁白，等下一轮开头由 [`Self::flush_pending_prompt_lines`] 写进台词表。
     ///
-    /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目**不会立刻进台词表**，等到真的
+    /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目不会立刻进台词表，等到真的
     /// 要开口那一刻再判一次——已经过期的直接丢掉。
     /// `key` 相同的条目（比如连着挨打）只留 `severity` 最大的那条。
     pub fn queue_prompt_line(
