@@ -3,14 +3,11 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-/// 词库唯一键从全局 `text` 改为「分类内唯一」。
+/// 词库唯一键从全局 `text` 改为分类内唯一：旧约束下同一个词无法放进两个分类。
 ///
-/// 旧约束让同一个词无法同时放进两个分类——第二个分类保存时会被归并掉。
-/// SQLite 的复合唯一索引对 `NULL` 不生效（NULL 互不相等），所以未分类词条
-/// 另建一条只覆盖 `category_id IS NULL` 的部分唯一索引。
-///
-/// 旧库不可能存在跨分类同名词（受旧的 `UNIQUE(text)` 限制），直接搬行即可。
-/// 整段脚本显式开事务：SQLite 的 DDL 逐条自动提交，中途失败会留下 `_new` 半成品。
+/// SQLite 的复合唯一索引对 NULL 不生效，未分类词条另建只覆盖 `category_id IS NULL`
+/// 的部分唯一索引。旧库受 `UNIQUE(text)` 限制不可能有跨分类同名词，直接搬行即可。
+/// 脚本显式开事务：SQLite 的 DDL 逐条提交，中途失败会留下 `_new` 半成品。
 const RAW_SQL: &str = "\
 BEGIN;
 CREATE TABLE library_hotword_new (

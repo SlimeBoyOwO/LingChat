@@ -3,21 +3,11 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-/// 三张热词表去 `lang` 列 + 唯一键去掉 `lang`。
+/// 三张热词表去掉 `lang` 列，唯一键同步去掉 `lang`。
 ///
-/// SQLite 的 `ALTER TABLE ... DROP COLUMN` **不能删被 UNIQUE 约束引用的列**
-/// （实测报 `error in table ... after drop column: no such column: lang`），故重建表。
-///
-/// 整段脚本自带 `BEGIN; ... COMMIT;`：SQLite 的 DDL 逐条自动提交，而 sea-orm 1.x 只给
-/// Postgres 的迁移开事务（`migrator.rs` 的 `exec_with_connection`），中途失败会留下
-/// `*_new` 半成品，下次启动重跑时撞名卡死。显式事务让整个重建要么全成要么全退。
-///
-/// ⚠️ **归并写法不要改成 `SELECT MIN(id), category_id, ..., MAX(weight) ... GROUP BY text`**：
-/// 裸列取值无保证，实测 `category_id` 会取到 MAX(weight) 那一行而不是首现行。
-/// 下面的 `WHERE id = (SELECT MIN(id) ...)` + 标量子查询与 GROUP BY 等价但结果确定。
-///
-/// 三张表的暴露面不同：`role_hotword`（分组内 `role_id` 必然同值）与 `global_hotword`
-/// （无第三列）取哪行都一样；**只有 `library_hotword` 会静默挂错分类**，故它的测试最关键。
+/// SQLite 不能删被 UNIQUE 约束引用的列，故重建表。脚本自带事务：sea-orm 1.x 不为
+/// SQLite 迁移开事务，中途失败会留下 `_new` 半成品。归并用 `WHERE id = (SELECT MIN(id) ...)`
+/// 取首现行，不要改成裸列 GROUP BY（裸列取值不确定）。
 const RAW_SQL: &str = "\
 BEGIN;
 CREATE TABLE role_hotword_new (

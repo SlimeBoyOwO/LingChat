@@ -18,8 +18,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261004_000001_create_role_hotword::Migration),
             Box::new(m20261005_000001_create_global_hotword::Migration),
             Box::new(m20261009_000001_create_hotword_library::Migration),
-            // 与 asr-hotword-base 的库兼容：该分支已应用过这三条迁移。当前分支的
-            // 建表迁移虽已不带 lang/asr_config，仍须保留文件供 SeaORM 对账，不能删。
+            // 建表迁移已不带 lang/asr_config，但这三条迁移仍须保留供 SeaORM 对账。
             Box::new(m20261010_000001_drop_hotword_lang::Migration),
             Box::new(m20261011_000001_remove_asr_language::Migration),
             Box::new(m20261012_000001_normalize_hotword_weight::Migration),
