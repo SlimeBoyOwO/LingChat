@@ -31,7 +31,7 @@ pub struct QwenAsrProvider {
 
 impl QwenAsrProvider {
     pub const ID: &'static str = "qwen-asr";
-    pub const DISPLAY: &'static str = "Qwen ASR（阿里云百炼）";
+    pub const DISPLAY: &'static str = "阿里云百炼";
 
     pub fn new(http: reqwest::Client, cred: ProviderCredentials) -> Result<Self, AsrError> {
         if !cred.has_api_key() {
