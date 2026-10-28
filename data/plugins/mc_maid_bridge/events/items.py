@@ -1,8 +1,8 @@
-"""物品的来去：她捡起来的东西、背包里多出来、喂她吃、她自己吃。"""
+"""物品的来去：她捡起来的、背包里多出来或少了、喂她吃、她自己吃，以及主人拿出她最爱吃的。"""
 
 from events.spec import EventSpec
 from naming import names
-from wording import BLOCK_NAMES, MOB_NAMES, as_int, item_name, name_of
+from wording import BLOCK_NAMES, ITEM_NAMES, MOB_NAMES, as_int, item_name, name_of
 
 
 def item_pickup(data):
@@ -36,6 +36,14 @@ SLOT_PHRASES = {
 }
 PACK_BACKPACK = "往{maid}的背包里放了{items}"
 
+# 拿走时的说法，与上面那组对称
+SLOT_TAKE_PHRASES = {
+    "hand": "把{maid}手里的{items}拿走了",
+    "armor": "把{maid}身上的{items}脱了下来",
+    "bauble": "把{maid}戴着的{items}取了下来",
+}
+PACK_TAKE = "从{maid}的背包里拿走了{items}"
+
 
 def item_received(data):
     """她身上多出东西。界面那条路没有事件可挂，模组只能前后比一次。
@@ -60,6 +68,24 @@ def item_received(data):
     return f"{player}{'，'.join(clauses)}。"
 
 
+def item_taken(data):
+    """她身上少了东西：玩家在女仆界面里拿走了。
+
+    模组只在主人贴身（8 格内）、她自己又没在干活时报——不然农场播种、拉弓射箭吃掉的那些
+    也会算成被人拿走。她自己吃掉与交给主人的那几件事先记过账，也走不到这里。
+
+    少了哪儿由模组按格子差分判（`slot`），说法与「放进来」那组对称。
+    """
+    maid, player = names()
+    clauses = []
+    for slot, items in _by_slot(data.get("items")):
+        phrase = SLOT_TAKE_PHRASES.get(slot) or PACK_TAKE
+        clauses.append(phrase.format(maid=maid, items=items))
+    if not clauses:
+        return f"{player}从{maid}的背包里拿走了{_item_list(data.get('items'))}。"
+    return f"{player}{'，'.join(clauses)}。"
+
+
 def _by_slot(items):
     """[(slot, 物品串), ...]：同一处的合成一句，顺序按第一次出现的先后。"""
     order = []
@@ -76,15 +102,42 @@ def _by_slot(items):
 
 
 def item_fed(data):
-    """玩家喂她吃了东西（潜行右键食物）。连喂几口由模组合成一条。"""
+    """玩家喂她吃了东西（潜行右键食物）。连喂几口由模组合成一条。
+
+    带汤带碗的食物吃完会剩下容器，模组把那一份也放在 `leftover` 里；碗是车万女仆
+    自己收进她背包的，旁白里顺带说一句，免得模型对背包里的碗来路不明。
+    """
     maid, player = names()
-    return f"{player}喂{maid}吃了{_item_list(data.get('items'))}。"
+    return f"{player}喂{maid}吃了{_item_list(data.get('items'))}{_leftover(data)}。"
 
 
 def maid_ate(data):
     """她自己从背包里找东西吃了（车万女仆的进食系统）。"""
     maid, _ = names()
-    return f"{maid}自己吃了{_item_list(data.get('items'))}。"
+    return f"{maid}自己吃了{_item_list(data.get('items'))}{_leftover(data)}。"
+
+
+def favorite_food(data):
+    """主人手里拿着她最爱吃的东西，她凑过去讨。
+
+    模组只在她真的讨起来（车万女仆的讨食姿态已经翻过去）时推，所以不用再判距离：
+    这条说的就是她看得见、也走得到跟前的那一刻。模组食物多半没有中文名，认不出时
+    只说「最爱吃的东西」——绝不能把 id 或英文名塞进旁白，模型会照着原样念出来。
+    """
+    maid, player = names()
+    raw = (data.get("item") or "").strip()
+    name = ITEM_NAMES.get(raw) or BLOCK_NAMES.get(raw) or ""
+    if name:
+        return f"{player}手里拿着{maid}最爱吃的{name}，{maid}凑到跟前眼巴巴地看着。"
+    return f"{player}手里拿着{maid}最爱吃的东西{raw}（物品id，不要照着念），{maid}凑到跟前眼巴巴地看着。"
+
+
+def _leftover(data):
+    """吃完剩下的容器：有就补一句，没有就空串。"""
+    leftover = data.get("leftover") or []
+    if not leftover:
+        return ""
+    return f"，吃完剩下{_item_list(leftover)}"
 
 
 def _item_list(items):
@@ -106,6 +159,9 @@ SPECS = {
         urgent_when=lambda data: bool(data.get("from_owner")),
     ),
     "item_received": EventSpec(item_received, urgent=True, ttl=30),
+    "item_taken": EventSpec(item_taken, urgent=True, ttl=30),
     "item_fed": EventSpec(item_fed, urgent=True, ttl=30),
     "maid_ate": EventSpec(maid_ate, ttl=60),
+    # 和挨打一档：主人把她最爱吃的拿出来了，她这会儿正凑上去讨
+    "favorite_food": EventSpec(favorite_food, urgent=True, ttl=60, snapshot=True),
 }

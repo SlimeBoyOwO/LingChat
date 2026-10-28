@@ -45,6 +45,8 @@ export interface ToolSettings {
   tool_rag: boolean;
   /** 工具推荐方式；两种推荐都只是临时提示，不写台词表也不进记忆。 */
   tool_recommend_mode: ToolRecommendMode;
+  /** 每个角色同时保留多少个检索激活的工具（不含 tool_search 与 web_search）。 */
+  tool_cache_capacity: number;
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */

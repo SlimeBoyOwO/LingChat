@@ -9,9 +9,7 @@ export default {
   },
   identity: {
     title: "My Identity",
-    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and relationships with each character. You can switch identity at any time; the conversation history is kept (except while a scenario is running).',
-    lockedHint:
-      "This playthrough is bound to a save (auto-saves included), so the identity cannot be changed in place — start a new conversation instead.",
+    hint: 'Decides who "I" am: name, subtitle, the identity prompt injected into chat, and your relationship with each character (how you see them). You can switch identity at any time; the conversation history is kept (except while a scenario is running).',
     scriptBlocked:
       "A scenario is running, so the identity cannot be changed. Finish the scenario first.",
     newGame: "New chat with this identity",
@@ -28,7 +26,7 @@ export default {
     switchFailTitle: "Failed to switch identity",
     transition: {
       title: 'Switch to "{name}"',
-      hint: "Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard \"left / joined the conversation\" lines and the departure notes are always added, and they only affect the current save.",
+      hint: 'Optionally describe how they exit and enter (both fields may be left blank; a blank field generates no description narration). The standard "left / joined the conversation" lines and the departure notes are always added, and they only affect the current save.',
       exitLabel: "Exit style (optional)",
       exitPlaceholder: "e.g. walked away in the rain without looking back",
       enterLabel: "Entrance style (optional)",
@@ -38,7 +36,7 @@ export default {
       confirm: "Confirm switch",
     },
     saveConfirm:
-      'This save updates the identity card: if you edited the identity currently in use (name / subtitle / identity prompt / relationships), the current save "{save}" will change accordingly; editing other identities does not affect the current save. Save now?',
+      'This save updates the identity card: if you edited the identity currently in use (name / subtitle / identity prompt / relationship with each party), the current save "{save}" will change accordingly; editing other identities does not affect the current save. Save now?',
     saveConfirmNoSave:
       "This save updates the identity card: there is no ongoing save, so only the card itself will be updated. Save now?",
     empty: "No identity cards yet. Create one below — or just keep using the default identity.",
@@ -48,16 +46,16 @@ export default {
     create: "New identity",
     cancel: "Cancel",
     save: "Save",
-    addRelation: "+ Add relationship",
+    addRelation: "+ Add impression",
     fieldName: "Name",
     fieldSubtitle: "Subtitle",
     fieldPrompt: 'Identity prompt (injected into chat; describes who "I" am)',
-    fieldRelations: "Relationships",
+    fieldRelations: "Relationship / how you see them",
     relationsHint:
-      'Describe how I relate to a character or to another of my identities. If left empty, the other side\'s card is used as "what you already know about them" rather than as an established relationship.',
+      'Describe how "I" see each party (relationship) — write a full sentence with the other person as "them": e.g. "They are my childhood friend." Each identity is separate; in-game changes are stored in the save and never modify the identity card.',
     targetAi: "AI character",
     targetMe: "My identity",
-    relationCount: "{n} relationship(s)",
+    relationCount: "{n} impression(s)",
     msg: {
       nameRequired: "Please enter a name first",
       savedTitle: "Identity saved",
@@ -402,6 +400,9 @@ export default {
     envHint: "Environment variables (read from the process):",
     envFromProcess: "from process env",
     saveConfig: "Save",
+    reload: "Rescan plugins",
+    reloadHint:
+      "After editing a plugin's manifest or swapping files in data/plugins, reload here — no app restart needed.",
     empty: "No plugins found. Put a plugin folder in data/plugins/",
     delete: "Delete",
     deleteConfirm: 'Delete plugin "{name}"? This removes the plugin folder and cannot be undone.',
@@ -459,7 +460,7 @@ export default {
       subtitle: "Edit the character's detailed settings",
     },
     saveConfirm:
-      'This save updates the character card: if your edits include "persona & address terms", "relationships", or "initial affection", the corresponding content in the current save "{save}" will change as well; edits to visuals, voice, title, bio, etc. only update the card itself. Save now?',
+      'This save updates the character card: if your edits include "persona & address terms", "relationship / how they see you", or "initial affection", the corresponding content in the current save "{save}" will change as well; edits to visuals, voice, title, bio, etc. only update the card itself. Save now?',
     saveConfirmNoSave:
       "This save updates the character card: there is no ongoing save, so only the card itself will be updated. Save now?",
     tabs: {
@@ -474,24 +475,18 @@ export default {
       hotword: "Speech Recognition Hotwords",
     },
     relations: {
-      title: "Relationships",
-      hint: "Describe how this character sees the others (e.g. childhood friend, rival). Stored in relations.yml inside the character folder, so it survives overwriting the character settings.",
-      save: "Save relationships",
+      title: "Relationship / how they see them",
+      hint: 'Describe how this character sees each party (relationship) — write a full sentence with the other person as "them": e.g. "They are my childhood friend." Each character keeps an independent view; changes are stored in the save and never modify the character card.',
       missing: "Target no longer exists ({key})",
       msg: {
-        savedTitle: "Relationships saved",
-        savedMsg: "This character's relationships have been updated",
-        saveFailTitle: "Failed to save relationships",
+        savedTitle: "Impression saved",
+        savedMsg: "This character's impression (relationship) has been updated",
         loadFailTitle: "Failed to load relationships",
       },
     },
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
-      userName: 'How this character addresses "me"',
-      userNameHint: "Falls back to the identity card's name (Settings → Character → My Identity)",
-      userSubtitle: 'Subtitle this character uses for "me"',
-      userSubtitleHint: "Falls back to the identity card's subtitle",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",

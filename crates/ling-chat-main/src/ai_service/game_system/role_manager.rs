@@ -9,12 +9,13 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::{
     MemorySectionLimits, MemorySystemSnapshot, PersistentMemorySystem,
 };
+use crate::ai_service::game_system::player_identity::effective_user_alias;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{
     AffectionVector, CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage,
-    NegativeVector, Player,
+    NegativeVector, Player, UserAlias,
 };
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -279,18 +280,23 @@ impl GameRoleManager {
         Some((role.affection, role.negative))
     }
 
-    /// 用存档全局变量中的好感度覆盖所有已加载角色的内存值（读档恢复用）。
-    pub fn overlay_affections_from_vars(&mut self, vars: &HashMap<String, serde_json::Value>) {
+    pub fn overlay_affections_from_vars(
+        &mut self,
+        vars: &HashMap<String, serde_json::Value>,
+        identity_id: Option<&str>,
+    ) {
         for role in self.loaded_roles.values_mut() {
             let Some(rid) = role.role_id else {
                 continue;
             };
-            if let Some(state) = vars
-                .get(&crate::ai_service::affection::var_key(rid))
+            if let Some(state) = crate::ai_service::affection::resolve_var(vars, rid, identity_id)
                 .and_then(crate::ai_service::affection::state_from_value)
             {
                 role.affection = state.vector;
                 role.negative = state.negative;
+            } else {
+                role.affection = Default::default();
+                role.negative = Default::default();
             }
         }
     }
@@ -431,11 +437,13 @@ impl GameRoleManager {
                 }
             }
 
-            let alias = self
-                .loaded_roles
-                .get(&rid)
-                .filter(|_| !player.user_name.trim().is_empty())
-                .map(|_| player.user_name.clone());
+            let alias = self.loaded_roles.get(&rid).map(|role| {
+                effective_user_alias(
+                    &role.settings,
+                    player.identity_id.as_deref(),
+                    &player.user_name,
+                )
+            });
             let built = MemoryBuilder::new(rid)
                 .with_continue_user(self.memory_inject_continue_user)
                 .with_player_alias(alias)
@@ -619,6 +627,19 @@ impl GameRoleManager {
         true
     }
 
+    /// 仅替换目标角色的世界书；下一轮组装上下文时读取，已生成的请求副本不变。
+    pub fn update_role_worldbook(
+        &mut self,
+        role_id: i32,
+        book: Option<crate::ai_service::worldbook::Worldbook>,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            return false;
+        };
+        role.worldbook = book;
+        true
+    }
+
     /// 刷新已加载角色的形象配置和主对话立绘、气泡布局。
     ///
     /// 这些字段必须一起拷：内存里的 `role.settings` 是之后
@@ -649,6 +670,38 @@ impl GameRoleManager {
         role.settings.clothes_name = settings.clothes_name.clone();
         role.settings.body_part = settings.body_part.clone();
         true
+    }
+
+    /// 刷新已加载角色的提示词/称呼相关字段；返回是否发生了实际变化。
+    pub fn update_role_prompt_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            return false;
+        };
+        let changed = role.settings.ai_name != settings.ai_name
+            || role.settings.ai_subtitle != settings.ai_subtitle
+            || role.settings.user_name != settings.user_name
+            || role.settings.user_subtitle != settings.user_subtitle
+            || alias_signature(&role.settings.user_aliases)
+                != alias_signature(&settings.user_aliases)
+            || role.settings.system_prompt != settings.system_prompt
+            || role.settings.system_prompt_example != settings.system_prompt_example
+            || role.settings.system_prompt_example_old != settings.system_prompt_example_old;
+        if changed {
+            role.settings.ai_name = settings.ai_name.clone();
+            role.settings.ai_subtitle = settings.ai_subtitle.clone();
+            role.settings.user_name = settings.user_name.clone();
+            role.settings.user_subtitle = settings.user_subtitle.clone();
+            role.settings.system_prompt = settings.system_prompt.clone();
+            role.settings.system_prompt_example = settings.system_prompt_example.clone();
+            role.settings.system_prompt_example_old = settings.system_prompt_example_old.clone();
+        }
+        role.settings.user_aliases = settings.user_aliases.clone();
+        role.settings.initial_affection = settings.initial_affection;
+        changed
     }
 
     /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
@@ -843,6 +896,17 @@ mod memory_context_tests {
         assert_eq!(output[2].content, "历史资料");
         assert_eq!(output[3].content, "当前消息");
     }
+}
+
+/// `user_aliases` 中「影响人设行」的部分签名：称呼 + 副标题，忽略初始好感度覆写
+/// （后者不进提示词，改它不该触发人设行重建）。
+fn alias_signature(map: &HashMap<String, UserAlias>) -> Vec<(String, String, String)> {
+    let mut items: Vec<(String, String, String)> = map
+        .iter()
+        .map(|(id, alias)| (id.clone(), alias.name.clone(), alias.subtitle.clone()))
+        .collect();
+    items.sort();
+    items
 }
 
 /// 根据 `CharacterSettings.tts_type` 与 `voice_models` 构造角色的 `VoiceMaker`。

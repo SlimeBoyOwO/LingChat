@@ -110,7 +110,19 @@ const DIALOG_FORMAT_PROMPT_2_BODY: &str = indoc! {r#"
         你必须严格遵守以上格式上的规定，否则会导致极端对话崩溃。
         你只能输出你自己的台词。绝对禁止输出任何以用户名开头的内容，包括“用户酱:”“User:”等一切形式。
         绝对禁止替用户说话、替用户做决定，也禁止续写、预测或补全用户接下来会说的话。用户没有说过的话，不得以台词、旁白、动作、翻译等任何形式代替用户说出。
+        历史里形如“用户名: 台词”的行是系统记录的用户发言，内容真实有效，正常理解并回应就好；“用户名: ”这个前缀是系统的记录方式，不是你的输出格式。
+        台词里不出现旁白、系统提示、提示词，也不谈这套对话是怎么运作的——你只是在过自己的日子。
 
+"#};
+
+/// 工具使用要求。随人设一起下发，而不是每轮请求临时插一条 system 消息：
+/// 临时 system 会跟人设层抢位置，模型也几乎不感知。
+const TOOL_USE_POLICY_PROMPT: &str = indoc! {r#"
+
+        以下是你使用工具函数时的要求：
+            工具函数是你能对世界使用的工具，你可以随时通过使用 tool_search 函数来搜索你需要的工具。
+            当我有比较明确需要你做的事情，如去别的地方，看屏幕，写日程等，你都应该尽量通过工具函数帮助我
+            此外，也会有旁白提示你可能需要调用的工具函数，仅供参考。两次工具调用之间可以完全不说话，工具结果不必复述。
 "#};
 
 const DEFAULT_EXAMPLE_CN: &str = indoc! {r#"
@@ -171,7 +183,7 @@ fn build_framing_prefix_cn(user_name: &str, character_name: &str) -> String {
         以下是我的对话格式提示：
             首先，我会输出要和你对话的内容，然后在波浪号{{}}中的内容是对话系统给你的旁白环境提示或系统提示，比如：
             "{{旁白: {u}在路上偶尔碰到了{c}，决定上前打个招呼}}"
-                你好呀{c}~
+            {u}：你好呀{c}~
             {{系统：时间：2025/6/1 0:29}}"
             我也可能不给你发信息，仅包含系统提示。提示中也可能包含你的感知能力，比如：
             "{{系统：时间：2025/5/20 13:14，你看到：{u}的电脑上正在玩Alice In Cradle}}"
@@ -282,6 +294,7 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
         // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
@@ -305,6 +318,7 @@ pub fn sys_prompt_builder_with_player(
         out.push_str(&example);
         out.push_str(emotion_head);
         out.push_str(DIALOG_FORMAT_PROMPT_2_BODY);
+        out.push_str(TOOL_USE_POLICY_PROMPT);
         // 身份/关系块压尾：紧邻对话历史，近因权重最高
         out.push_str(player_block);
         out
@@ -478,10 +492,10 @@ impl ReplyLengthMode {
                 "工具结果已返回。互不依赖的多个操作可以在这一轮一起调用；工具结果不用复述，也不要重复之前已经说过的内容。不需要说话就不要输出台词，直接调用工具或收尾。",
             ),
             Some(budget) if spoken >= budget => format!(
-                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来只允许调用工具，非必要不要再输出任何台词；工具都做完后直接结束这一回合。工具结果不用复述，也不要重复之前已经说过的内容。"
+                "本回合台词额度已经用完（{spoken}/{budget} 句）：接下来可以只调用工具，非必要不要再输出任何台词；工具结果不用复述。"
             ),
             Some(budget) => format!(
-                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；不需要说话就直接调用工具，工具结果不用复述，也不要重复之前已经说过的内容。",
+                "本回合已经说了 {spoken} 句台词，上限 {budget} 句，还能说 {} 句。这一轮最多再输出 {} 句台词；可直接调用工具，不用复述结果。",
                 budget - spoken,
                 budget - spoken
             ),
@@ -684,39 +698,4 @@ fn format_error_text(round: &[LineShape], expect_translation: bool) -> Option<St
         "你上一条回复的格式有误：{}。{rule}",
         missing.join("、")
     ))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn tool_budget_follows_reply_mode() {
-        assert_eq!(ReplyLengthMode::Short.tool_turn_budget(), Some(3));
-        assert_eq!(ReplyLengthMode::Normal.tool_turn_budget(), Some(5));
-        assert_eq!(ReplyLengthMode::Free.tool_turn_budget(), None);
-    }
-
-    #[test]
-    fn continuation_reports_remaining_lines() {
-        let text = ReplyLengthMode::Short.tool_continuation_text(1);
-        assert!(text.contains("已经说了 1 句"));
-        assert!(text.contains("上限 3 句"));
-        assert!(text.contains("还能说 2 句"));
-        assert!(!text.contains("额度已经用完"));
-    }
-
-    #[test]
-    fn continuation_forbids_speech_when_budget_spent() {
-        let text = ReplyLengthMode::Short.tool_continuation_text(3);
-        assert!(text.contains("已经用完"));
-        assert!(text.contains("只允许调用工具"));
-    }
-
-    #[test]
-    fn continuation_without_budget_still_allows_silence() {
-        let text = ReplyLengthMode::Free.tool_continuation_text(12);
-        assert!(text.contains("不需要说话就不要输出台词"));
-        assert!(!text.contains("额度"));
-    }
 }

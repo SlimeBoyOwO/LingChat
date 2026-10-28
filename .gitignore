@@ -80,6 +80,8 @@ src-tauri/bundled_resources/
 src-tauri/.bundled_resources/
 # 外部二进制：onnxruntime.dll / DirectML.dll 由 scripts/ensure-onnxruntime.mjs 下载
 src-tauri/binaries/
+# Linux 运行期动态库：由 scripts/prepare-linux-libs.mjs 从 target/ 收集
+src-tauri/linux-libs/
 ~/.tauri/
 frontend_vue/
 .tsbuildinfo

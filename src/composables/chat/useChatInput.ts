@@ -7,6 +7,7 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
 import { useScreenshot } from "@/composables/useScreenshot";
 import { setInputHasText } from "@/composables/useCanDeliver";
+import { useRelationGuard } from "@/composables/chat/useRelationGuard";
 import {
   ASR_DISPLAY_MS,
   lockAsrForDisplay,
@@ -110,6 +111,10 @@ export function useChatInput(o?: UseChatInputOptions): UseChatInputApi {
       }).catch((error) => {
         console.error("发送消息失败:", error);
         gameStore.currentStatus = "input";
+        // 后端关系就绪门兜底拦下：标记未就绪并弹引导
+        if (String(error).includes("RELATION_NOT_READY")) {
+          useRelationGuard().block(gameStore.mainRoleId);
+        }
       });
     }
 

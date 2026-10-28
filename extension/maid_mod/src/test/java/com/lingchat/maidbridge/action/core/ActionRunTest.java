@@ -9,7 +9,7 @@ import org.junit.jupiter.api.Test;
  * 动作状态机：这部分是纯逻辑，能脱开游戏跑。
  *
  * <p>要守住的是「什么时候算成、什么时候如实认输」：到位阈值两侧、卡在床边、走不过去、
- * 躺下之后被自己叫起来、看向玩家到时收尾，以及「她不见了」优先于其他一切判定。
+ * 躺下之后被打断、看向玩家到时收尾，以及「她不见了」优先于其他一切判定。
  */
 class ActionRunTest {
 
@@ -29,7 +29,7 @@ class ActionRunTest {
                 ActionRun.Interrupt.NONE);
     }
 
-    private static ActionRun.Observation lying(ActionRun.Interrupt interrupt) {
+    private static ActionRun.Observation holding(ActionRun.Interrupt interrupt) {
         return new ActionRun.Observation(true, false, false, true, false, 0, 0.0, interrupt);
     }
 
@@ -126,8 +126,8 @@ class ActionRunTest {
             outcome = tick(run, still(ActionRun.NEAR_ENOUGH));
         }
 
-        assertTrue(outcome.finished());
-        assertEquals("done", outcome.status());
+        assertFalse(outcome.finished(), "贴到床边只是走到，接下来要躺下");
+        assertEquals(ActionRun.Command.LIE, outcome.command());
     }
 
     @Test
@@ -161,36 +161,38 @@ class ActionRunTest {
         assertEquals("maid_gone", outcome.reasonCode());
     }
 
+    /** 床上躺下和就地躺下一样：到了就不再收尾，一直躺着直到被打断。 */
     @Test
-    void lyingDownWalksThenSleeps() {
+    void lyingDownWalksToTheBedThenHoldsThePose() {
         ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.BED));
 
         assertEquals(ActionRun.Command.WALK, tick(run, still(6)).command());
 
         ActionRun.Outcome reachedBed = tick(run, still(2));
         assertFalse(reachedBed.finished(), "贴到床边只是走到，还没躺下");
-        assertEquals(ActionRun.Command.SLEEP, reachedBed.command());
+        assertEquals(ActionRun.Command.LIE, reachedBed.command());
+        assertTrue(run.lying());
 
         ActionRun.Observation asleep = observation(true, true, true, true, 1);
-        ActionRun.Outcome outcome = null;
-        for (int i = 0; i < ActionRun.SLEEP_CONFIRM_TICKS; i++) {
-            outcome = tick(run, asleep);
+        for (int i = 0; i < 400; i++) {
+            ActionRun.Outcome outcome = tick(run, asleep);
+            assertFalse(outcome.finished());
+            assertEquals(ActionRun.Command.LIE, outcome.command());
         }
-
-        assertTrue(outcome.finished());
-        assertEquals("done", outcome.status());
     }
 
-    /** 日程不在睡觉时段时，车万女仆下一 tick 就会把她叫起来——这时要如实说「现在不困」。 */
+    /** 床上被叫醒也要如实说是怎么醒的，而不是当成「没做成」。 */
     @Test
-    void standingBackUpIsReportedAsNotSleepTime() {
+    void wakingUpInTheBedEndsTheRunWithTheReason() {
         ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.BED));
         tick(run, still(2));
 
-        ActionRun.Outcome outcome = tick(run, observation(true, false, false, true, 2));
+        ActionRun.Outcome outcome =
+                tick(run, holding(new ActionRun.Interrupt("woken", "自己爬了起来")));
 
-        assertEquals("failed", outcome.status());
-        assertEquals("not_sleep_time", outcome.reasonCode());
+        assertTrue(outcome.finished());
+        assertEquals("done", outcome.status());
+        assertEquals("woken", outcome.reasonCode());
     }
 
     @Test
@@ -224,19 +226,46 @@ class ActionRunTest {
         ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.GROUND));
 
         for (int i = 0; i < 400; i++) {
-            ActionRun.Outcome outcome = tick(run, lying(ActionRun.Interrupt.NONE));
+            ActionRun.Outcome outcome = tick(run, holding(ActionRun.Interrupt.NONE));
             assertFalse(outcome.finished());
             assertEquals(ActionRun.Command.LIE, outcome.command());
         }
+    }
+
+    /** 探路是持续状态：没有时长也没有到位线，不被打断就一直跟着主人换点。 */
+    @Test
+    void scoutingHoldsUntilSomethingStopsIt() {
+        ActionRun run = new ActionRun(action(MaidAction.Kind.SCOUT, null));
+
+        for (int i = 0; i < 400; i++) {
+            ActionRun.Outcome outcome = tick(run, holding(ActionRun.Interrupt.NONE));
+            assertFalse(outcome.finished());
+            assertEquals(ActionRun.Command.SCOUT, outcome.command());
+        }
+    }
+
+    /** 血不多、被抱走、跟主人走散都按「自己停下来」收尾，并且要说是哪件事。 */
+    @Test
+    void scoutingStopsWhenSheCannotKeepItUp() {
+        ActionRun run = new ActionRun(action(MaidAction.Kind.SCOUT, null));
+        tick(run, holding(ActionRun.Interrupt.NONE));
+
+        ActionRun.Outcome outcome =
+                tick(run, holding(new ActionRun.Interrupt("low_health", "血不多了")));
+
+        assertTrue(outcome.finished());
+        assertEquals("done", outcome.status());
+        assertEquals("low_health", outcome.reasonCode());
+        assertEquals("血不多了", outcome.reason());
     }
 
     /** 她躺不住时收尾要如实说是哪件事让她起来的，而不是当成失败。 */
     @Test
     void gettingUpEndsTheLyingRunWithTheReason() {
         ActionRun run = new ActionRun(action(MaidAction.Kind.LIE_DOWN, MaidAction.Target.GROUND));
-        tick(run, lying(ActionRun.Interrupt.NONE));
+        tick(run, holding(ActionRun.Interrupt.NONE));
 
-        ActionRun.Outcome outcome = tick(run, lying(new ActionRun.Interrupt("hurt", "挨了一下")));
+        ActionRun.Outcome outcome = tick(run, holding(new ActionRun.Interrupt("hurt", "挨了一下")));
 
         assertTrue(outcome.finished());
         assertEquals("done", outcome.status());

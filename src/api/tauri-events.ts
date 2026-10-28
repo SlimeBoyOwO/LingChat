@@ -288,6 +288,18 @@ export function initializeTauriEventListeners() {
     },
   );
 
+  // 插件的对外连接（游戏桥接这类）连上了：给一句提示，省得玩家自己去插件页确认。
+  // 只认女仆桥接插件，其余插件的连接不打扰界面。
+  mainWindow?.listen<{ pluginId?: string; event?: string }>("plugin:ws-state", (event) => {
+    const { pluginId, event: state } = event.payload ?? {};
+    if (pluginId !== "mc_maid_bridge" || state !== "connect") return;
+    useUIStore().showNotification({
+      type: "success",
+      title: i18n.global.t("ui.notification.mcMaidConnected"),
+      skipTipsCheck: true,
+    });
+  });
+
   // === ASR events ===
 
   listen<VadEvent>("asr://speech_started", () => {
@@ -353,6 +365,18 @@ export function initializeTauriEventListeners() {
       title: i18n.global.t("api.events.autoSave.title"),
       message: i18n.global.t("api.events.autoSave.message", { time: payload.timestamp }),
       duration: 2500,
+      skipTipsCheck: true,
+    });
+  });
+
+  listen("save:auto-save-failed", (event) => {
+    const payload = event.payload as { message: string; timestamp: string };
+    console.log("[Tauri] 收到 save:auto-save-failed", payload);
+    useUIStore().showNotification({
+      type: "warning",
+      title: i18n.global.t("api.events.autoSaveFailed.title"),
+      message: i18n.global.t("api.events.autoSaveFailed.message", { time: payload.timestamp }),
+      duration: 4000,
       skipTipsCheck: true,
     });
   });

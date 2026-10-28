@@ -1,14 +1,17 @@
-//! 生成后的收尾：临时消息清理、上帝 Agent 后选、好感度评估、近期记忆落位与回复纠偏。
+//! 生成后的收尾：临时消息清理、上帝 Agent 后选、好感度评估、近期记忆落位、
+//! 回复纠偏与回复后工具推荐。
 
 use std::sync::Arc;
 
 use anyhow::Result;
+use tauri::Manager;
 
 use crate::ai_service::god_agent::capabilities::{
     affection::{self as god_affection, NpcAffectionView},
     speaker::{self as god_speaker, SpeakerView},
+    tool_hint as god_tool_hint,
 };
-use crate::ai_service::memory_injection::{TemporaryMemory, TemporaryPlacement};
+use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::GameLine;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
@@ -155,11 +158,7 @@ impl MessageGenerator {
     }
 
     /// 回复纠偏：上一轮回复的格式要素（情绪标签 / 正文 / 日语翻译）缺失、
-    /// 台词数量越界、动作分布异常或情绪标签过长时，各排一条临时记忆，
-    /// 只在下一轮请求里出现一次，不写进台词表。
-    ///
-    /// 只对自由对话 / 主动对话生效：入场问候天然只有一两句，会被「正常」档误判过短；
-    /// 剧本模式的节奏由剧本作者控制，不插提示（判据与好感度评估一致）。
+    /// 台词数量越界、动作分布异常或情绪标签过长时，各写一条系统提示台词。
     pub(super) async fn maybe_correct_reply_shape(&self, round_replies: &[RoundReply]) {
         if !matches!(
             self.deps.source,
@@ -207,14 +206,93 @@ impl MessageGenerator {
             }
         }
 
-        // 各条提示排队给下一轮；同一条已排队时 queue_temporary_memory 会跳过
+        // 各条提示写进台词表；写失败只记一笔，不影响已经呈现给玩家的回复
         for text in texts {
-            gs.queue_temporary_memory(TemporaryMemory {
-                text: PromptRole::System.build_prompt(&text),
-                placement: TemporaryPlacement::TrailingUser,
-            });
+            if let Err(error) = gs
+                .add_prompt_line(&self.deps.db, PromptRole::System, &text)
+                .await
+            {
+                tracing::warn!("[Correction] 纠偏提示写入失败: {error:#}");
+            }
         }
     }
+
+    /// 回复后推荐：拿本轮落地的助手台词（正文 + 动作）静默检索一次工具。
+    pub(super) async fn maybe_recommend_tools_after_reply(&self, turn_start: usize) {
+        if self.deps.is_preview
+            || !matches!(
+                self.deps.source,
+                GeneratorSource::UserChat | GeneratorSource::Proactive
+            )
+        {
+            return;
+        }
+        let settings = self.deps.app.state::<crate::AppState>().tool_settings.get();
+        // Tool RAG 关闭时全量下发，推荐在工具集上没有意义。
+        if !settings.tool_rag || settings.tool_recommend_mode == ToolRecommendMode::Off {
+            return;
+        }
+
+        let (query, tool_called) = {
+            let gs = self.deps.game_status.lock().await;
+            let turn = gs.line_list.iter().skip(turn_start);
+            // 本轮已经调用过工具的，说明模型想做的事已经做了；再推一遍容易让它
+            // 下一轮把同一件事又做一次。
+            let tool_called = turn
+                .clone()
+                .any(|line| matches!(line.attribute(), LineAttribute::Tool));
+            (reply_query(turn), tool_called)
+        };
+        if tool_called || query.is_empty() {
+            return;
+        }
+        let Some((role_name, candidates)) = self.tool_hint_context().await else {
+            return;
+        };
+        if candidates.is_empty() {
+            return;
+        }
+        let rag = self.deps.app.state::<crate::AppState>().tool_rag.clone();
+        if !rag.is_enabled() {
+            return;
+        }
+        match god_tool_hint::recommend_by_rag(&rag, role_name.as_deref(), &query, &candidates).await
+        {
+            Ok(Some(hint)) => {
+                tracing::info!("[ToolRAG] 回复后推荐工具: {:?}", hint.names);
+                self.deps
+                    .game_status
+                    .lock()
+                    .await
+                    .set_pending_tool_hint(hint.names);
+            },
+            Ok(None) => {},
+            Err(error) => tracing::warn!("[ToolRAG] 回复后推荐失败: {error:#}"),
+        }
+    }
+}
+
+/// 本轮落地的助手台词拼成检索查询：正文在前、动作在后。
+///
+/// 只认有发送者的 assistant 行：工具结果与空内容载体行不是「AI 说过的话」。
+fn reply_query<'a>(lines: impl Iterator<Item = &'a GameLine>) -> String {
+    let mut parts: Vec<&str> = Vec::new();
+    for line in lines {
+        if !matches!(line.attribute(), LineAttribute::Assistant) || line.sender_role_id().is_none()
+        {
+            continue;
+        }
+        let content = line.base.content.trim();
+        if !content.is_empty() {
+            parts.push(content);
+        }
+        if let Some(action) = line.base.action_content.as_deref().map(str::trim) {
+            if !action.is_empty() {
+                parts.push(action);
+            }
+        }
+    }
+    parts.join("\n")
 }
 
 // ============================================================

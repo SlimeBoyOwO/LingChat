@@ -1,4 +1,4 @@
-"""动作工具：走到玩家/床边、坐下、站起、躺下。"""
+"""动作工具：走到玩家/床边、坐下、站起、躺下、到主人前面探路。"""
 
 from bridge import ask, ready
 from naming import names, narrate
@@ -15,8 +15,9 @@ TARGET_DEFAULTS = {"go_to": "player", "lie_down": "bed"}
 PENDING_TEXT = {
     ("go_to", "player"): "{maid}开始动身往{player}那边去中",
     ("go_to", "bed"): "{maid}开始朝床边走去",
-    ("lie_down", "bed"): "{maid}开始朝床边走去",
+    ("lie_down", "bed"): "{maid}开始朝床边走去，走到就会躺下睡着；躺在床上歇着，{maid}会慢慢回血。",
     ("lie_down", "ground"): "{maid}就地躺了下来，安安静静待着。",
+    ("scout", ""): "{maid}正在往{player}前面走，走到就在头里带着路了。",
 }
 
 # 受理即完成的动作给模型的话。
@@ -87,4 +88,5 @@ TOOLS = {
     "maid_sit_down": action_tool("sit"),
     "maid_stand_up": action_tool("stand"),
     "maid_lie_down": action_tool("lie_down"),
+    "maid_scout": action_tool("scout"),
 }

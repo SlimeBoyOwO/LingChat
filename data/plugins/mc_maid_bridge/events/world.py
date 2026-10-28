@@ -8,6 +8,7 @@ from wording import (
     BLOCK_NAMES,
     DIMENSION_NAMES,
     LIGHT_PLACES,
+    OVERHEAD_PLACES,
     STRUCTURE_NAMES,
     UNCONSCIOUS_STATE_MARK,
     VEHICLE_NAMES,
@@ -85,11 +86,27 @@ def low_health(data):
 
 
 def shelter_change(data):
-    """头顶从露天变成有遮挡，或反过来。模组只在这件事真的翻转时推。"""
+    """头顶换了档：露天 / 半遮（树荫、屋檐、洞口）/ 屋内（房间、洞穴）。
+
+    模组三档都推，这里只挑说法；老模组只给 `sheltered` 一个布尔，退回原来那两句。
+    """
     maid, _ = names()
-    if data.get("sheltered"):
-        return f"{maid}走进了有遮挡的地方，头顶看不到天了。"
-    return f"{maid}走出了遮挡，头顶又见天了。"
+    kind = (data.get("overhead") or "").strip()
+    if not kind:
+        if data.get("sheltered"):
+            return f"{maid}走进了有遮挡的地方，头顶看不到天了。"
+        return f"{maid}走出了遮挡，头顶又见天了。"
+    if kind == "open":
+        return f"{maid}走出了遮挡，头顶又见天了。"
+    cover = name_of(BLOCK_NAMES, data.get("overhead_cover"), "")
+    place = OVERHEAD_PLACES.get((data.get("overhead_band") or "").strip(), "头顶")
+    if kind == "partial":
+        if cover:
+            return f"{maid}走到{cover}下面，头顶只遮着一部分，还能看见天。"
+        return f"{maid}走进一片遮挡里，头顶只遮着一部分，还能看见天。"
+    if cover:
+        return f"{maid}走到了一处头顶封着的地方，{place}是{cover}，看不到天了。"
+    return f"{maid}走到了一处头顶封着的地方，看不到天了。"
 
 
 def light_change(data):
@@ -130,7 +147,11 @@ def player_proximity(data):
 
 
 def ground_change(data):
-    """脚下换了一种值得说的地。走在石头、泥土、木板上不报，所以这里可以直说。"""
+    """脚下换了一种值得说的地。走在石头、泥土、木板上不报，所以这里可以直说。
+
+    水里、岩浆里另走 `liquid_change`：那是「她泡进去」而不是「脚下踩着哪」。
+    这里的水 / 岩浆两条只留给还没升级的老模组。
+    """
     maid, _ = names()
     kind = (data.get("kind") or "").strip()
     phrases = {
@@ -145,7 +166,33 @@ def ground_change(data):
     if kind in phrases:
         return phrases[kind]
     block = name_of(BLOCK_NAMES, data.get("block"), "另一种地面")
-    return f"{maid}脚下换成了{block}。"
+    return f"{maid}脚下现在是{block}。"
+
+
+LIQUID_NAMES = {"minecraft:water": "水", "minecraft:lava": "岩浆"}
+
+
+def liquid_change(data):
+    """她泡进了液体里，或者从里面出来；头也埋进去就是游泳。
+
+    模组看的是她自己那一格有没有液体，不看脚下：站在河里时脚下仍是河床，这里说的才是
+    「她泡在水里」。液体 id 认不出时退回方块表，再认不出就说「液体」。
+    """
+    maid, _ = names()
+    liquid = (data.get("liquid") or "").strip()
+    if not liquid:
+        came = _liquid_name(data.get("from_liquid"))
+        return f"{maid}从{came}里出来了。" if came else f"{maid}离开了液体。"
+    if data.get("swimming") and liquid == "minecraft:water":
+        return f"{maid}整个人泡进了水里，正在游泳。"
+    return f"{maid}泡进了{_liquid_name(liquid)}里。"
+
+
+def _liquid_name(raw):
+    liquid = (raw or "").strip()
+    if not liquid:
+        return ""
+    return LIQUID_NAMES.get(liquid) or BLOCK_NAMES.get(liquid) or "液体"
 
 
 def vehicle_change(data):
@@ -244,6 +291,13 @@ SPECS = {
         ground_change,
         ttl=90,
         urgent_when=lambda data: (data.get("kind") or "") in ("lava", "fire"),
+    ),
+    # 泡进液体里与埋头游泳：模组看她自己那一格有没有液体，一分钟最多一条。
+    # 岩浆烧在身上，值得当场开口
+    "liquid_change": EventSpec(
+        liquid_change,
+        ttl=90,
+        urgent_when=lambda data: (data.get("liquid") or "") == "minecraft:lava",
     ),
     # 边上的岩浆与火：不紧急（她还没踩进去），同键合并时留最近的那一处。
     # 模组只在「这一种原来不在她眼里」时报，沿着岩浆湖走不会一步一句

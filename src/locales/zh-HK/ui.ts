@@ -92,6 +92,7 @@ export default {
   notification: {
     titlePlaceholder: "[通知標題]",
     messagePlaceholder: "[通知內容]",
+    mcMaidConnected: "已連接 MC 的女僕(*^▽^*)",
   },
   settingItem: {
     multilineHint: "支援多行輸入",
@@ -162,6 +163,10 @@ export default {
     toolRagTitle: "工具按需檢索",
     toolRagHint:
       "每次請求只下發常用工具，模型需要時先用一句話檢索出合適嘅工具再調用，慳返全部工具說明佔用嘅上下文。關閉後每次請求都下發全部已授權工具。",
+    toolCacheCapacityTitle: "工具緩存容量",
+    toolCacheCapacityHint:
+      "同時記住幾多個檢索到嘅工具（唔包檢索入口同聯網搜尋），範圍 {min}–{max}。推薦 10 個以下。",
+    toolCacheCapacityUnit: "個",
     toolRecommendTitle: "工具推薦",
     toolRecommendHint:
       "模型經常諗唔起調用工具。喺呢度揀每輪發言之前點樣提佢一聲：推薦只係臨時提示，唔會寫入台詞表；推薦嘅工具會跟住呢一輪請求一齊下發。",
@@ -325,8 +330,8 @@ export default {
       schedule: "日程同待辦（查日程、加/改/刪待辦）",
       memory: "筆記同記憶（ta 自己嘅小本本）",
       character: "角色切換（列出/切換在場角色）",
-      scene: "場景切換（列出/切換場景）",
-      status: "狀態查詢（目前狀態/場景狀態）",
+      scene: "場景切換（列出/切換場景、切換背景特效）",
+      status: "狀態查詢（目前狀態/場景狀態/天氣）",
       clock: "目前時間（查詢裝置本地時間）",
       skills: "技能庫（等ta讀取技能指令，學會新技能）",
       media: "媒體識別（用視覺模型讀取圖片同影片）",

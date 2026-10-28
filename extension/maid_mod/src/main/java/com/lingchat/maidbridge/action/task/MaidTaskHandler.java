@@ -14,6 +14,7 @@ import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -77,6 +78,7 @@ public class MaidTaskHandler implements MessageHandler {
         // 换工作与追打、挖掘会互相抢寻路，先把还没做完的收掉
         MaidAttackController.cancel();
         MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
         String replaced = MaidActionController.cancelCurrent(server);
         boolean stoodUp = MaidActuator.standUp(maid);
         if (changed) {

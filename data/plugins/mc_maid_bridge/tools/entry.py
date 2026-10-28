@@ -9,11 +9,21 @@ from tools.combat import TOOLS as COMBAT_TOOLS
 from tools.headwear import TOOLS as HEADWEAR_TOOLS
 from tools.item import TOOLS as ITEM_TOOLS
 from tools.mine import TOOLS as MINE_TOOLS
+from tools.place import TOOLS as PLACE_TOOLS
 from tools.query import TOOLS as QUERY_TOOLS
 from tools.task import TOOLS as TASK_TOOLS
 
 TOOLS = {}
-for _part in (ACTION_TOOLS, TASK_TOOLS, COMBAT_TOOLS, MINE_TOOLS, ITEM_TOOLS, HEADWEAR_TOOLS, QUERY_TOOLS):
+for _part in (
+    ACTION_TOOLS,
+    TASK_TOOLS,
+    COMBAT_TOOLS,
+    MINE_TOOLS,
+    PLACE_TOOLS,
+    ITEM_TOOLS,
+    HEADWEAR_TOOLS,
+    QUERY_TOOLS,
+):
     TOOLS.update(_part)
 
 

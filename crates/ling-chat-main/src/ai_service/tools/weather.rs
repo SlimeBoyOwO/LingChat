@@ -354,6 +354,13 @@ impl Tool for WeatherTool {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "外面天气如何",
+            "明天会下雨吗",
+            "出门要不要带伞",
+            "需要穿外套吗",
+            "上海今天天气怎么样",
+        ])
     }
 
     async fn execute(

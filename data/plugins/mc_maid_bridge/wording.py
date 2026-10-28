@@ -606,6 +606,7 @@ ITEM_NAMES = {
     "minecraft:bone_meal": "骨粉",
     "minecraft:sugar": "糖",
     "minecraft:egg": "鸡蛋",
+    "minecraft:snowball": "雪球",
     "minecraft:cocoa_beans": "可可豆",
     "minecraft:ink_sac": "墨囊",
     "minecraft:glow_ink_sac": "荧光墨囊",
@@ -791,22 +792,48 @@ NEAR_MID = 10.0
 CATEGORY_NAMES = {"player": "另一个人", "maid": "另一位女仆", "living": ""}
 
 # 说不清是谁打的时候，用伤害类型兜个底（模组给的是伤害类型的 msg id）。
+# 措辞接在名字后面读：主人在旁边、生物点名都轮不上时才用得到这一张表。
 DAMAGE_HINTS = {
+    # 环境
     "fall": "从高处摔了下来",
+    "fly_into_wall": "撞到了墙上",
+    "in_wall": "被墙磕了一下",
+    "cramming": "被挤得喘不上气",
     "lava": "碰到了岩浆",
+    "hot_floor": "踩到了岩浆块",
     "in_fire": "被火烧到了",
     "on_fire": "身上着火了",
+    "campfire": "被营火烧了",
     "drown": "溺水了",
     "starve": "饿得不行",
     "cactus": "被仙人掌扎了",
+    "sweet_berry_bush": "被甜浆果丛扎了",
     "freeze": "被冻伤了",
     "lightning_bolt": "被雷劈了",
-    "magic": "被魔法击中",
-    "wither": "中了凋零",
-    "hot_floor": "踩到了岩浆块",
-    "sweet_berry_bush": "被甜浆果丛扎了",
-    "fly_into_wall": "撞到了墙上",
     "out_of_world": "掉进了虚空",
+    "outside_border": "被世界边界推挤",
+    # 掉落物与投掷物
+    "falling_block": "被掉下来的方块砸了",
+    "falling_anvil": "被铁砧砸了",
+    "falling_stalactite": "被钟乳石砸了",
+    "stalagmite": "被石笋扎了",
+    "arrow": "中了箭",
+    "trident": "被三叉戟扎了",
+    "thrown": "被丢过来的东西砸了",
+    "fireball": "被火球砸了",
+    "fireworks": "被烟花炸了",
+    "sting": "被蜂蛰了",
+    "explosion": "被炸了",
+    "explosion.player": "被炸了",
+    "bad_respawn_point": "被炸了",
+    # 魔法与特殊攻击
+    "magic": "被魔法击中",
+    "indirect_magic": "被魔法击中",
+    "wither": "中了凋零",
+    "wither_skull": "被凋零头炸了",
+    "dragon_breath": "被龙息烧了",
+    "sonic_boom": "被音波轰了",
+    "thorns": "被反伤扎了",
 }
 
 
@@ -1097,6 +1124,9 @@ DIRECTION_NAMES = {
 
 # 光线跨档的旁白说法。档位由模组判定（SurroundingsDiff.lightBand），这里只负责中文。
 LIGHT_PLACES = {"dark": "很黑的地方", "dim": "光线昏暗的地方", "bright": "光线明亮的地方"}
+
+# 头顶那块遮挡物离她多高。模组只给 low / high 两档（OverheadScan），不报具体格数。
+OVERHEAD_PLACES = {"low": "头顶", "high": "头顶很高处"}
 
 
 def as_int(value, default=0):

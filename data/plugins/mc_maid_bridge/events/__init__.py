@@ -30,10 +30,10 @@ def format_event(data):
     return spec.format(data), spec.is_urgent(data)
 
 
-def event_ttl(kind):
-    """这类事件值多少秒。"""
+def event_ttl(kind, data=None):
+    """这类事件值多少秒；登记成函数的（受伤分档）要看数据。"""
     spec = SPECS.get(kind)
-    return spec.ttl if spec else DEFAULT_EVENT_TTL
+    return spec.ttl_of(data or {}) if spec else DEFAULT_EVENT_TTL
 
 
 def event_key(kind):

@@ -15,14 +15,13 @@ use tokio::sync::{Mutex, OwnedMutexGuard, RwLock};
 use tokio::task::JoinHandle;
 
 use crate::ChatComponents;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
 };
 use crate::ai_service::service::SharedAIService;
 use crate::ai_service::tools::registry::ToolRegistry;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
 use activity_monitor::UserActivityMonitor;
@@ -329,6 +328,9 @@ impl ProactiveSystem {
                     queued_at: Instant::now(),
                     urgent,
                 });
+                // 插件让她开口了：原版兴趣清零。不清的话，排队期间轮询攒够兴趣，
+                // 会紧接着再投一条原版主动对话，同一件事被说两遍
+                this.interest_manager.clear_interest();
                 tracing::info!(urgent, "[ProactiveSystem] 插件主动对话已排队");
             } else {
                 tracing::debug!("[ProactiveSystem] 插件主动对话已在队列中，合并本次请求");
@@ -392,13 +394,7 @@ impl ProactiveSystem {
             let written = gs
                 .add_line(
                     &self.db,
-                    LineBase {
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        content: prompt,
-                        sender_role_id: None,
-                        display_name: Some(PromptRole::System.display_name().to_string()),
-                        ..Default::default()
-                    },
+                    PromptLine::formatted(PromptRole::System, prompt).into_base(),
                 )
                 .await;
             if let Err(e) = written {
@@ -713,6 +709,8 @@ async fn flush_plugin_request(system: Arc<Mutex<ProactiveSystem>>) -> bool {
         }
         this.plugin_last_delivery = Some(Instant::now());
         this.plugin_await_playback_end = true;
+        // 真正开口这一刻再清一次：排队可能等了几十秒，这期间原版兴趣已经攒起来了
+        this.interest_manager.clear_interest();
         request
     };
     tauri::async_runtime::spawn(async move {

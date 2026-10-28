@@ -42,6 +42,7 @@ impl Tool for PluginTool {
         let parameters = serde_json::from_str(&self.spec.parameters)
             .unwrap_or_else(|_| serde_json::json!({ "type": "object" }));
         ToolDefinition::new(self.name.clone(), self.spec.description.clone(), parameters)
+            .with_rag_examples(self.spec.examples.clone())
     }
 
     fn timeout_hint(&self) -> Option<Duration> {

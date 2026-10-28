@@ -30,6 +30,7 @@ import java.util.List;
  * @param footing 脚下属于哪一类地，见 {@link SurroundingsDiff#groundKind}
  * @param skyAbove 她头顶能不能看到天（在洞里、屋里为假）
  * @param hasSky 这个维度有没有天空；下界与末地没有，那里不谈「露天」
+ * @param overhead 头顶这一层是三档里的哪一档，见 {@link Overhead}
  * @param light 她所在位置的光照等级 0-15
  * @param owner 主人；没有主人或不在同一维度时见 {@link Owner}
  * @param nearby 附近的活物，按距离升序、已截断，且不含主人与她自己
@@ -38,6 +39,8 @@ import java.util.List;
  * @param structure 她所在结构（村庄、矿井这类）的 id；不在结构里时为空串
  * @param posture 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
  *                / {@code unconscious}
+ * @param liquid 她自己这一格里的液体 id（水、岩浆或模组液体）；没泡在液体里时为空串
+ * @param submerged 头也浸在同一种液体里，也就是在水下游泳
  */
 public record Surroundings(
         String entityId,
@@ -47,18 +50,34 @@ public record Surroundings(
         String footing,
         boolean skyAbove,
         boolean hasSky,
+        Overhead overhead,
         int light,
         Owner owner,
         List<Nearby> nearby,
         boolean nearbyTruncated,
         String vehicle,
         String structure,
-        String posture) {
+        String posture,
+        String liquid,
+        boolean submerged) {
 
     /** 一次视线命中的结果：{@code kind} 取 {@code block} / {@code entity} / {@code none}。 */
     public record Gaze(String kind, String id, double distance) {
         public static Gaze none() {
             return new Gaze("none", "", -1.0);
+        }
+    }
+
+    /**
+     * 头顶这一层：{@code kind} 取 {@code open}（露天）/ {@code partial}（树荫、屋檐、洞口）
+     * / {@code enclosed}（房间、洞穴）；没有天空的维度为空串，整项不谈。
+     *
+     * <p>{@code cover} 是头顶第一块挡路的方块 id，认不出材质时为空串；{@code band} 只说它
+     * 离她头顶是 {@code low}（压得低）还是 {@code high}，不报具体格数。
+     */
+    public record Overhead(String kind, String cover, String band) {
+        public static Overhead none() {
+            return new Overhead("", "", "");
         }
     }
 
@@ -187,6 +206,9 @@ public record Surroundings(
         data.add("standing_on", standing);
         data.addProperty("sheltered", !s.skyAbove());
         data.addProperty("has_sky", s.hasSky());
+        data.addProperty("overhead", s.overhead().kind());
+        data.addProperty("overhead_cover", s.overhead().cover());
+        data.addProperty("overhead_band", s.overhead().band());
         data.addProperty("light", s.light());
 
         JsonObject owner = new JsonObject();

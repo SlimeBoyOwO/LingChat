@@ -1,7 +1,7 @@
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
-/// 存档 → 「我的身份」的绑定。一个存档一条，中途不更换。
+/// 存档 → 「我的身份」的绑定。一个存档一条；原地切换身份时改写这一条。
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "save_identity")]
 pub struct Model {

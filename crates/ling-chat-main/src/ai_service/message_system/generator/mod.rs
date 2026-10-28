@@ -20,6 +20,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
 use crate::ai_service::llm::LlmClient;
@@ -122,13 +123,31 @@ impl MessageGenerator {
             self.god_agent_pre_select().await?;
         }
 
-        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
-        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一。
+        // 没有玩家发言时（主动对话）只取上一轮回复后暂存的那份。
         let tool_hint = if user_message.is_some() {
             self.tool_hint(user_message.as_deref().unwrap_or_default())
                 .await
         } else {
-            None
+            self.pending_tool_hint().await
+        };
+        // 推荐内容按临时记忆注入：与提示行同一个信封，只进本轮请求，不写台词表。
+        // 工具名另走参数并进本轮工具集，两半不拆。
+        if let Some(hint) = &tool_hint {
+            self.deps
+                .game_status
+                .lock()
+                .await
+                .queue_temporary_memory(TemporaryMemory {
+                    text: hint.text.clone(),
+                    placement: TemporaryPlacement::IntoUser,
+                });
+        }
+
+        // 本轮新落台词的起点：回复后推荐只取这之后的助手行，用户行与场景旁白都应排除。
+        let reply_start = {
+            let gs = self.deps.game_status.lock().await;
+            gs.line_list.len()
         };
 
         // 3. 生成循环（God Agent 激活时可能多轮）
@@ -202,6 +221,10 @@ impl MessageGenerator {
         // 直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
         // 绝不能影响已经呈现给用户的回复。
         self.maybe_correct_reply_shape(&round_replies).await;
+
+        // 回复后工具推荐：模型先说「我去看看你屏幕」却没调用工具的场合，下一轮
+        // 前置推荐未必还能从玩家的话里看出这个意图，这里拿本轮正文与动作补一次。
+        self.maybe_recommend_tools_after_reply(reply_start).await;
 
         // 近期记忆落位：等这一轮所有写入结束再做，避免中段插入打乱流式行号。
         // 调用方（非剧本路径）已持有 generation_lock，这里只锁 game_status。
@@ -294,14 +317,6 @@ impl MessageGenerator {
                 )
             };
             ctx.push(LlmMessage::user_with_image(marker, image));
-            ctx
-        } else {
-            context
-        };
-        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
-        let context = if let Some(hint) = tool_hint {
-            let mut ctx = context;
-            ctx.insert(0, LlmMessage::system(hint.text.clone()));
             ctx
         } else {
             context

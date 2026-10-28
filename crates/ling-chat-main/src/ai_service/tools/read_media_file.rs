@@ -108,6 +108,12 @@ impl Tool for ReadMediaFileTool {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "看看这张图里是什么",
+            "帮我识别一下这个视频",
+            "这张截图写了什么",
+            "分析一下这张照片",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {

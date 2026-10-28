@@ -52,7 +52,6 @@ public final class MaidBridgeConfig {
         HEARD_RADIUS = builder
                 .comment("看不见的活物只在这个距离内按声音感知（格）。看得见的另按工作范围算。")
                 .defineInRange("heardRadius", 6, 0, 16);
-
         builder.pop();
         SPEC = builder.build();
     }

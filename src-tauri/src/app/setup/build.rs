@@ -123,6 +123,10 @@ pub(super) fn build_service_graph(
     }
 
     rt.block_on(ai_service.init_game_status(character_id, prompt_options))?;
+    // 冷启动直接恢复上次角色，不经过 select_character，这里补播种初始好感度（与切角色同构）。
+    if let Some(cid) = character_id {
+        rt.block_on(ai_service.seed_initial_affection(cid))?;
+    }
 
     tracing::info!("AIService 初始化完成");
 
@@ -186,6 +190,7 @@ pub(super) fn build_service_graph(
         ling_chat_main::utils::onnx::onnx_available(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
+    tool_rag.set_capacity(tool_settings.get().cache_capacity());
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用

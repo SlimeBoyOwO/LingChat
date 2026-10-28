@@ -10,6 +10,7 @@ from wording import (
     REVIVE_STATE_MARK,
     UNCONSCIOUS_STATE_MARK,
     as_int,
+    item_name,
     name_of,
     nearness_place,
     who_of,
@@ -23,7 +24,7 @@ HURT_WORST = "伤得很重"
 
 # 挨完这一波之后的身体状态，按剩余血量比例切档。只给状态不给数字：数字一进上下文，
 # 模型就会照着念「还剩 12 点血」。档位与模组的 lowHealthRatio（0.30）对得上。
-HURT_STATES = ((0.0, "被这一下打死了"), (0.35, "已经奄奄一息了"), (0.7, "身体有点扛不住了"))
+HURT_STATES = ((0.0, "被这一下打晕了"), (0.35, "已经奄奄一息了"), (0.7, "身体有点扛不住了"))
 HURT_OK = "不过仍然感觉良好"
 
 
@@ -52,6 +53,67 @@ def maid_hurt(data):
     if state:
         body = f"{body}，{state}"
     return f"{body}。"
+
+
+def projectile_hit(data):
+    """没伤害的投掷物砸到她：雪球、鸡蛋这类。
+
+    挨打那条只收掉血的情况——零伤害的投掷物在游戏里根本不算受伤，砸中了也一直没人
+    说。这里不含伤势，只交代是谁扔的、扔了什么，砸中了几下交给「连着几下」带过。
+    """
+    maid, player = names()
+    what = item_name(data.get("item"))
+    times = "连着几下，" if as_int(data.get("count"), 1) > 1 else ""
+    if data.get("thrower_owner"):
+        who = player
+    elif (data.get("thrower_type") or "").strip():
+        who = name_of(MOB_NAMES, data.get("thrower_type"), "什么东西")
+    elif (data.get("thrower") or "").strip():
+        who = "另一个人"
+    else:
+        return f"{times}不知从哪飞来的{what}砸到了{maid}身上。"
+    return f"{times}{maid}被{who}扔的{what}砸中了。"
+
+
+def attack_failed(data):
+    """她没能把要打的那个活物打完：它先死了、跑远了，或者她被抱走了。
+
+    追打是常驻的，插件不会守在那儿等结果；失败只能靠这条事件补一句。不补的话模型
+    一直以为她还在打，玩家再问「打完了吗」就答不出来。
+    """
+    maid, player = names()
+    target = data.get("target") or {}
+    who = _target_name(target, player)
+    code = (data.get("reason_code") or "").strip()
+    if code == "killed_by_owner":
+        return f"{maid}没能打完{who}：{who}已经被{player}打死了。"
+    if code == "killed_by_other":
+        return f"{maid}没能打完{who}：{who}已经被{_killer(data)}打死了。"
+    if code == "killed_unknown":
+        return f"{maid}没能打完{who}：{who}已经死了。"
+    if code == "maid_carried":
+        return f"{maid}被抱了起来，只好停下追打{who}。"
+    if code == "timeout":
+        return f"{maid}追了{who}很久也没能打倒它，先停手了。"
+    return f"{maid}没能追上{who}：它已经不在附近了。"
+
+
+def _target_name(target, player):
+    """攻击目标怎么称呼：主人用名字，别的玩家用游戏里的名字，其余用生物名。"""
+    if target.get("owner"):
+        return player
+    if (target.get("category") or "") == "player":
+        name = (target.get("name") or "").strip()
+        return f"另一个玩家 {name}" if name else "另一个玩家"
+    return name_of(MOB_NAMES, target.get("type"), "那个活物")
+
+
+def _killer(data):
+    """死在谁手里：认得出就点名（骷髅、僵尸、另一个人），认不出说「别的生物」。"""
+    raw = (data.get("killed_by_type") or "").strip()
+    if raw == "minecraft:player":
+        return "另一个人"
+    return name_of(MOB_NAMES, raw, "别的生物")
 
 
 def creature_death(data):
@@ -94,13 +156,13 @@ def maid_unconscious(data):
     cause = _down_cause(data)
     if data.get("on_bed"):
         return (
-            f"{maid}{cause}，昏倒在床上，只剩一口气，身边开始冒出爱心。"
+            f"{maid}{cause}，昏倒在床上，只剩一口气。"
             f"在床上连续躺满一分钟，{maid}就会醒过来。"
             f"{maid}{UNCONSCIOUS_STATE_MARK}。"
         )
     return (
-        f"{maid}{cause}，倒在地上昏了过去，只剩一口气。"
-        f"把{maid}抱到床上（普通床或女仆床）连续躺一分钟，{maid}就会醒过来。"
+        f"{maid}{cause}，撑不住了，开始晕倒失去意识..."
+        f"把{maid}抱到床上（普通床或女仆床）休息一会，{maid}就会醒过来。"
         f"{maid}{UNCONSCIOUS_STATE_MARK}。"
     )
 
@@ -108,7 +170,7 @@ def maid_unconscious(data):
 def maid_recovering(data):
     """她被放到床上，开始计时恢复。"""
     maid, _ = names()
-    return f"{maid}躺到了床上，呼吸慢慢平稳下来，身边冒起了爱心。"
+    return f"{maid}躺到了床上，身体开始慢慢恢复。"
 
 
 def maid_recovered(data):
@@ -239,15 +301,35 @@ def _hurt_severity(data):
         return 0
 
 
+# 挨这一下值多少秒：擦破皮的事等她下一次开口时早就不算数了，重伤则要一直记着。
+HURT_TTLS = ((1.0, 2), (5.0, 20))
+HURT_TTL = 60
+
+
+def _hurt_ttl(data):
+    """受伤事件的有效期按伤势分档；掉血量给不出来时按中等伤算。"""
+    try:
+        lost = float(data.get("damage"))
+    except (TypeError, ValueError):
+        return HURT_TTLS[1][1]
+    for threshold, ttl in HURT_TTLS:
+        if lost <= threshold:
+            return ttl
+    return HURT_TTL
+
+
 SPECS = {
     "maid_hurt": EventSpec(
         maid_hurt,
         urgent=True,
-        ttl=60,
+        ttl=_hurt_ttl,
         snapshot=True,
         merge_key="hurt",
         severity=_hurt_severity,
     ),
+    # 雪球、鸡蛋这类不值钱的东西砸在身上也该有反应：和挨打同档当场开口，
+    # 但十秒之后就已经不算数了——被砸一下本来就该说完就过去。
+    "projectile_hit": EventSpec(projectile_hit, urgent=True, ttl=10),
     "creature_death": EventSpec(
         creature_death,
         ttl=45,
@@ -267,4 +349,6 @@ SPECS = {
     # 复活同样重要：她得知道自己又能动了，才不会继续按「已经死了」说话
     "maid_revive": EventSpec(maid_revive, urgent=True, ttl=120),
     "threat_near": EventSpec(threat_near, urgent=True, ttl=60, snapshot=True),
+    # 追打没能打完：不紧急，但模型得知道她手上这一仗已经停了，理由也一并交代
+    "attack_failed": EventSpec(attack_failed, ttl=60),
 }

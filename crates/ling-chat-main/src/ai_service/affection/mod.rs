@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ai_service::types::{AffectionVector, NegativeVector};
+use crate::ai_service::types::{AffectionVector, CharacterSettings, NegativeVector};
 
 /// 存档全局变量键前缀：`affection.{role_id}`。
 pub const VAR_KEY_PREFIX: &str = "affection.";
@@ -35,6 +35,62 @@ pub struct AffectionState {
 /// 角色在存档全局变量里的键。
 pub fn var_key(role_id: i32) -> String {
     format!("{VAR_KEY_PREFIX}{role_id}")
+}
+
+/// （角色 × 身份）专属键：`affection.{role_id}.{identity_id}`；没有身份时回落旧键。
+pub fn var_key_for(role_id: i32, identity_id: Option<&str>) -> String {
+    match identity_id.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => format!("{VAR_KEY_PREFIX}{role_id}.{id}"),
+        None => var_key(role_id),
+    }
+}
+
+/// 按（角色 × 身份）解析存档里的好感度值：优先该身份专属键，其次旧档共享键
+/// （旧键是「全身份共享默认」，某身份写过专属值后各走各的）。
+pub fn resolve_var<'a>(
+    vars: &'a HashMap<String, serde_json::Value>,
+    role_id: i32,
+    identity_id: Option<&str>,
+) -> Option<&'a serde_json::Value> {
+    let key = var_key_for(role_id, identity_id);
+    if let Some(v) = vars.get(&key) {
+        return Some(v);
+    }
+    if key != var_key(role_id) {
+        return vars.get(&var_key(role_id));
+    }
+    None
+}
+
+/// 某身份的有效初始好感度：该身份覆写优先，回落卡片默认；都没有返回 None。
+pub fn effective_initial_affection(
+    settings: &CharacterSettings,
+    identity_id: Option<&str>,
+) -> Option<i32> {
+    identity_id
+        .and_then(|id| settings.user_aliases.get(id))
+        .and_then(|alias| alias.initial_affection)
+        .or(settings.initial_affection)
+}
+
+pub fn uniform_vector(value: i32) -> AffectionVector {
+    let v = value.clamp(-100, 100);
+    AffectionVector {
+        fondness: v,
+        trust: v,
+        intimacy: v,
+        rapport: v,
+        interest: v,
+        longing: v,
+    }
+}
+
+pub fn state_from_vector(vector: AffectionVector) -> AffectionState {
+    AffectionState {
+        total: vector.average(),
+        vector,
+        negative: NegativeVector::default(),
+    }
 }
 
 /// 状态 → 可存入存档全局变量的 JSON；写入前把 `total` 同步为六维平均。
