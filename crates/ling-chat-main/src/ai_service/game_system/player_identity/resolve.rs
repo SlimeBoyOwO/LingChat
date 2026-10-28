@@ -127,27 +127,25 @@ pub fn build_player_block(
     };
     let has_diff = roster.iter().any(|e| e.alias != identity_name) || alias != identity_name;
 
-    let mut out = String::from("\n\n【本局必须遵守：正在与你对话的「我」】\n");
-    out.push_str(
-        "（本节优先于上面人设、历史台词与记忆里关于这个人的任何写法；因为此处相当于现实的基础设定，所以两者冲突时以本节为主）\n",
-    );
+    let mut out = format!("\n\n以下是我（{identity_name}）的身份\n");
+    out.push_str("（以下是现实的基础设定）\n");
 
     if has_diff {
         out.push_str(&format!(
-            "名字：{identity_name}（旁白与系统提示里会用这个名字称呼 ta）\n"
+            "我的名字：{identity_name}（旁白与系统提示里会用这个名字称呼我）\n"
         ));
         if !roster.is_empty() {
-            out.push_str("在场各角色对 ta 的称呼：\n");
+            out.push_str(&format!("在场所有人对我（{identity_name}）的称呼\n"));
             for entry in roster {
                 if entry.is_self {
-                    out.push_str(&format!("- 你（{}）：{}\n", entry.name, entry.alias));
+                    out.push_str(&format!("- 你（{}）叫我{}\n", entry.name, entry.alias));
                 } else {
-                    out.push_str(&format!("- {}：{}\n", entry.name, entry.alias));
+                    out.push_str(&format!("- {}叫我{}\n", entry.name, entry.alias));
                 }
             }
         }
     } else if !identity_name.is_empty() {
-        out.push_str(&format!("名字：{identity_name}\n"));
+        out.push_str(&format!("我的名字：{identity_name}\n"));
     }
     if !prompt.is_empty() {
         out.push_str(&format!(
@@ -173,7 +171,7 @@ pub fn build_player_block(
         let text = text.trim();
         if !text.is_empty() {
             out.push_str(&format!(
-                "我对你的认知（你怎么看我；这是我对你的私人认知，同样不一定与事实相符）：{text}\n"
+                "我对你的认知（这是我对你的私人认知，同样不一定与事实相符）：{text}\n"
             ));
         }
     }
