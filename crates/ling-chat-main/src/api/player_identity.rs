@@ -5,7 +5,8 @@ use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
 use crate::ai_service::game_system::player_identity::{
-    IdentityStore, PlayerIdentity, PlayerIdentitySummary, ensure_identity_switchable,
+    IdentityStore, PlayerIdentity, PlayerIdentitySummary, RelationEndpoint, RoleRelationStatus,
+    effective_user_alias, ensure_identity_switchable, relation_ready_all, resolve_relation,
     role_relations, runtime_relations,
 };
 use crate::ai_service::game_system::status_ops::PromptLine;
@@ -139,12 +140,22 @@ pub async fn delete_player_identity(app: AppHandle, id: String) -> Result<(), St
 pub async fn set_current_player_identity(
     app: AppHandle,
     id: String,
+    exit_desc: Option<String>,
+    enter_desc: Option<String>,
 ) -> Result<WebInitData, String> {
     let state = app.state::<AppState>();
 
     let identity = store()
         .find_by_id(&id)
         .ok_or_else(|| "身份不存在".to_string())?;
+
+    // 转场描述（可选）：去空白、限长 200 字符；留空视为不生成对应描述旁白。
+    let clean_desc = |s: Option<String>| -> Option<String> {
+        s.map(|t| t.trim().chars().take(200).collect::<String>())
+            .filter(|t| !t.is_empty())
+    };
+    let exit_desc = clean_desc(exit_desc);
+    let enter_desc = clean_desc(enter_desc);
 
     let service = state.ai_service.lock().await;
     {
@@ -154,11 +165,20 @@ pub async fn set_current_player_identity(
         let old_name = gs.player.user_name.clone();
         // 同身份短路：跳过切换（不重建、不加旁白），直接走绑定与界面刷新。
         if gs.player.identity_id.as_deref() != Some(identity.id.as_str()) {
+            let old_identity_id = gs.player.identity_id.clone();
+            let old_prompt = gs.player.user_prompt.clone();
             gs.player.user_name = identity.display_name().to_string();
             gs.player.user_subtitle = identity.subtitle.clone();
             gs.player.user_prompt = identity.prompt.clone();
             gs.player.identity_id = Some(identity.id.clone());
             gs.player.relations = identity.relations.clone();
+
+            for rid in gs.onstage_role_ids.iter().copied().collect::<Vec<_>>() {
+                gs.seed_identity_affection(&state.db, rid, Some(identity.id.as_str()))
+                    .await
+                    .map_err(|e| format!("播种好感度失败: {e}"))?;
+            }
+            gs.overlay_affections_for_identity(Some(identity.id.as_str()));
 
             let app_config = AppConfig::load(&app).unwrap_or_default();
             let data_dir = crate::api::data_dir();
@@ -171,18 +191,101 @@ pub async fn set_current_player_identity(
             .await
             .map_err(|e| format!("换身份后重建人设行失败: {e}"))?;
 
-            // 换身份旁白：与角色上下场同款（display_name=系统），双方名字都非空时才加。
+            // 顺序：退场描述（如有）→「A离开了对话」→ 离场注记×N →「B加入了对话」→ 出场描述（如有）；
+            // 描述留空则该句完全不生成，标准旁白与注记无论填不填都照常。
             let new_name = identity.display_name().to_string();
             let has_old = !old_name.trim().is_empty();
             let has_new = !new_name.trim().is_empty();
+
+            if has_old {
+                if let Some(desc) = exit_desc.as_deref() {
+                    gs.add_line(&state.db, narrator_line(format!("{old_name}{desc}")))
+                        .await
+                        .map_err(|e| format!("添加退场描述旁白失败: {e}"))?;
+                }
+            }
 
             if has_old && has_new {
                 gs.add_line(&state.db, narrator_line(format!("{}离开了对话", old_name)))
                     .await
                     .map_err(|e| format!("添加换身份旁白失败: {e}"))?;
+            }
+
+            // 离场注记：对每个在场角色各投递一条只有该角色看得到的注记，保留旧身份的
+            // 设定/称呼/关系认知（感知列表只含该角色自己），防止换身份后各角色视角失忆；
+            // 上面/下面两条旁白仍是全员可见的公共提示。
+            if has_old {
+                let mut notes: Vec<(i32, String)> = Vec::new();
+                for rid in gs.onstage_role_ids.iter().copied() {
+                    let Some(role) = gs.role_manager.get_loaded(rid) else {
+                        continue;
+                    };
+                    let role_name = role
+                        .display_name
+                        .clone()
+                        .unwrap_or_else(|| role.settings.ai_name.clone());
+                    let folder = role.settings.character_folder.clone();
+                    let alias =
+                        effective_user_alias(&role.settings, old_identity_id.as_deref(), &old_name);
+                    let speaker_relations =
+                        runtime_relations::load_effective(&data_dir, &folder, &gs);
+                    let relation = resolve_relation(
+                        &RelationEndpoint::Ai(folder),
+                        &RelationEndpoint::Me(old_identity_id.clone().unwrap_or_default()),
+                        &speaker_relations,
+                        &HashMap::new(),
+                        None,
+                    );
+                    let affection_tier = crate::ai_service::affection::resolve_var(
+                        &gs.global_variables,
+                        rid,
+                        old_identity_id.as_deref(),
+                    )
+                    .and_then(crate::ai_service::affection::state_from_value)
+                    .map(|state| crate::ai_service::affection::tier_label(state.vector.average()))
+                    .or_else(|| {
+                        crate::ai_service::affection::effective_initial_affection(
+                            &role.settings,
+                            old_identity_id.as_deref(),
+                        )
+                        .map(|v| crate::ai_service::affection::tier_label(v.clamp(-100, 100)))
+                    });
+                    let mut note =
+                        format!("离场注记（{role_name} 视角）：刚才离开的「{old_name}」");
+                    let prompt = old_prompt.trim();
+                    if !prompt.is_empty() {
+                        note.push_str(&format!("，基础设定是：{prompt}"));
+                    }
+                    note.push('。');
+                    note.push_str(&format!("{role_name} 称呼 ta 为「{alias}」"));
+                    if let Some(r) = relation {
+                        note.push_str(&format!("，{role_name} 对 ta 的认知（关系）是：{}", r.text));
+                    }
+                    if let Some(tier) = affection_tier {
+                        note.push_str(&format!("，好感度：{tier}"));
+                    }
+                    note.push_str("。这些认知不会因 ta 离开对话而改变。");
+                    notes.push((rid, note));
+                }
+                for (rid, note) in notes {
+                    gs.add_line_perceived(&state.db, narrator_line(note), vec![rid])
+                        .await
+                        .map_err(|e| format!("添加离场注记失败: {e}"))?;
+                }
+            }
+
+            if has_old && has_new {
                 gs.add_line(&state.db, narrator_line(format!("{}加入了对话", new_name)))
                     .await
                     .map_err(|e| format!("添加换身份旁白失败: {e}"))?;
+            }
+
+            if has_new {
+                if let Some(desc) = enter_desc.as_deref() {
+                    gs.add_line(&state.db, narrator_line(format!("{new_name}{desc}")))
+                        .await
+                        .map_err(|e| format!("添加出场描述旁白失败: {e}"))?;
+                }
             }
 
             gs.persist_lines_if_bound(&state.db).await;
@@ -248,6 +351,13 @@ pub async fn start_new_game_with_identity(
         .init_game_status(character_id, prompt_options)
         .await
         .map_err(|e| format!("开始新对话失败: {e}"))?;
+    if let Some(cid) = character_id {
+        service
+            .seed_initial_affection(cid)
+            .await
+            .map_err(|e| format!("初始化初始好感度失败: {e}"))?;
+    }
+
     let result = build_web_init_data(&service, &app).await;
     drop(service);
     result
@@ -297,6 +407,32 @@ pub async fn save_role_relations(
         gs.persist_lines_if_bound(&state.db).await;
     }
     Ok(())
+}
+
+#[derive(serde::Serialize)]
+pub struct RelationReadyStatus {
+    pub ready: bool,
+    pub roles: Vec<RoleRelationStatus>,
+}
+
+#[tauri::command]
+pub async fn check_relation_ready(
+    app: AppHandle,
+    role_id: i32,
+) -> Result<RelationReadyStatus, String> {
+    let state = app.state::<AppState>();
+    let service = state.ai_service.lock().await;
+    let gs = service.game_status.lock().await;
+    let identity_id = gs.player.identity_id.clone().unwrap_or_default();
+    let data_dir = crate::api::data_dir();
+
+    let mut role_ids = gs.onstage_role_ids.clone();
+    if role_ids.is_empty() {
+        role_ids.push(role_id);
+    }
+    let roles = relation_ready_all(&gs, &data_dir, &identity_id, &role_ids);
+    let ready = roles.iter().all(|s| s.role_side && s.identity_side);
+    Ok(RelationReadyStatus { ready, roles })
 }
 
 async fn current_identity(app: &AppHandle) -> Result<PlayerIdentity, String> {

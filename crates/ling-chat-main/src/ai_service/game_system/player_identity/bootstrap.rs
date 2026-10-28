@@ -3,8 +3,8 @@
 use std::path::Path;
 
 use super::{
-    IdentityStore, PlayerIdentity, RelationEndpoint, build_player_block, resolve_relation,
-    runtime_relations,
+    AliasEntry, IdentityStore, PlayerIdentity, RelationEndpoint, build_player_block,
+    effective_user_alias, resolve_relation, runtime_relations,
 };
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::CharacterSettings;
@@ -13,16 +13,16 @@ use crate::ai_service::types::CharacterSettings;
 pub struct PlayerBootstrap {
     identity: PlayerIdentity,
     effective_prompt: String,
-    /// 该角色眼里的有效称呼，同时是提示词里的人名
-    pub user_name: String,
+    /// 该角色对「我」的有效称呼，同时是提示词里的人名
+    pub alias: String,
     /// 压到该角色 SYSTEM 人设末尾的注入块
     pub player_block: String,
 }
 
 impl PlayerBootstrap {
-    /// 把身份写回本局状态。
+    /// 把身份写回本局状态。玩家名记身份名，称呼差异只体现在各角色的注入块里。
     pub fn apply_to(self, gs: &mut GameStatus) {
-        gs.player.user_name = self.user_name;
+        gs.player.user_name = self.identity.display_name().to_string();
         gs.player.user_subtitle = self.identity.subtitle.clone();
         gs.player.user_prompt = self.effective_prompt;
         gs.player.identity_id = if self.identity.id.trim().is_empty() {
@@ -70,18 +70,40 @@ pub fn resolve_player_bootstrap(
         Some(effective_prompt.as_str()),
     );
 
-    let user_name = identity.display_name().to_string();
+    let identity_id = if identity.id.trim().is_empty() {
+        None
+    } else {
+        Some(identity.id.as_str())
+    };
+    let alias = effective_user_alias(settings, identity_id, &identity.name);
+
+    // 开场只有本角色一行称呼；其他角色入场时由 persona 重建把他们的称呼补进来
+    let roster = vec![AliasEntry {
+        name: settings.ai_name.clone(),
+        alias: alias.clone(),
+        is_self: true,
+    }];
+
+    // 「我」对该角色的私人认知，取自身份卡里的 ai:<角色文件夹> 条目
+    let player_view = identity
+        .relations
+        .get(&speaker.key())
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty());
+
     let player_block = build_player_block(
-        &user_name,
-        &identity.subtitle,
+        identity.display_name(),
+        &alias,
         &effective_prompt,
         relation.as_ref(),
+        player_view.as_deref(),
+        &roster,
     );
 
     PlayerBootstrap {
         identity,
         effective_prompt,
-        user_name,
+        alias,
         player_block,
     }
 }

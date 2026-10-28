@@ -112,10 +112,12 @@ impl GameStatus {
         db: &DatabaseConnection,
         role_id: i32,
     ) -> Result<&'a mut GameRole> {
-        let var = self
-            .global_variables
-            .get(&crate::ai_service::affection::var_key(role_id))
-            .cloned();
+        let var = crate::ai_service::affection::resolve_var(
+            &self.global_variables,
+            role_id,
+            self.player.identity_id.as_deref(),
+        )
+        .cloned();
         let role = self.role_manager.get_role(db, role_id).await?;
         if let Some(state) = var
             .as_ref()
@@ -155,7 +157,16 @@ impl GameStatus {
             line.identity_id = self.player.identity_id.clone();
         }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
-        let game_line = GameLine::from_base(line, perceived);
+        self.add_line_perceived(db, line, perceived).await
+    }
+
+    pub async fn add_line_perceived(
+        &mut self,
+        db: &DatabaseConnection,
+        line: LineBase,
+        perceived_role_ids: Vec<i32>,
+    ) -> Result<()> {
+        let game_line = GameLine::from_base(line, perceived_role_ids);
         self.line_list.push(game_line);
         self.refresh_memories(db).await?;
         Ok(())
@@ -360,73 +371,6 @@ impl GameStatus {
         self.present_role_ids.remove(&role_id);
     }
 
-    pub async fn add_character_clothes_change_line(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-        clothes_name: &str,
-    ) -> Result<()> {
-        let role = self
-            .role_manager
-            .get_loaded_mut(role_id)
-            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
-
-        role.current_clothes = clothes_name.to_string();
-
-        let ai_name = role.settings.ai_name.clone();
-        let clothes_prompt = role
-            .settings
-            .clothes
-            .as_ref()
-            .and_then(|list| {
-                list.iter().find_map(|item| {
-                    if item.get("name").map(|s| s.as_str()) == Some(clothes_name) {
-                        item.get("prompt").cloned()
-                    } else {
-                        None
-                    }
-                })
-            })
-            .unwrap_or_default();
-
-        let prompt = format!(
-            "{}换上了新服装：{}，{}",
-            ai_name, clothes_name, clothes_prompt
-        );
-
-        self.add_line(
-            db,
-            PromptLine::new(PromptRole::Narrator, prompt).into_base(),
-        )
-        .await
-        .map_err(|e| anyhow::anyhow!("添加换装台词失败: {}", e))?;
-
-        Ok(())
-    }
-
-    /// 切换角色服装并生成旁白台词。
-    /// 若已是目标服装则跳过。返回是否实际切换。
-    pub async fn on_character_change_clothes(
-        &mut self,
-        db: &DatabaseConnection,
-        role_id: i32,
-        clothes_name: &str,
-    ) -> Result<bool> {
-        let role = self
-            .role_manager
-            .get_loaded_mut(role_id)
-            .ok_or_else(|| anyhow::anyhow!("角色 {} 未加载", role_id))?;
-
-        if role.current_clothes == clothes_name {
-            return Ok(false);
-        }
-
-        self.add_character_clothes_change_line(db, role_id, clothes_name)
-            .await?;
-
-        Ok(true)
-    }
-
     pub fn reactivate_all_voice_makers(&self) {
         self.role_manager.reactivate_all_voice_makers();
     }
@@ -466,8 +410,10 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
-        self.role_manager
-            .overlay_affections_from_vars(&self.global_variables);
+        self.role_manager.overlay_affections_from_vars(
+            &self.global_variables,
+            self.player.identity_id.as_deref(),
+        );
     }
 }
 

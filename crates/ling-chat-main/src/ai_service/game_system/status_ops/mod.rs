@@ -8,7 +8,9 @@
 //! 「排队」不是第四种口径，而是前两种在生成进行中不能写入时的延迟形态：插件旁白
 //! 排的是第一种，好感度旁白排的是第二种。
 
+pub mod affection;
 pub mod line;
+pub mod narration;
 pub mod pending;
 pub mod request;
 
@@ -30,7 +32,7 @@ use pending::{init_insert_index, recent_insert_index, resolve_recent_index};
 impl GameStatus {
     /// 攒一条插件旁白，等下一轮开头由 [`Self::flush_pending_prompt_lines`] 写进台词表。
     ///
-    /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目**不会立刻进台词表**，等到真的
+    /// `ttl` 与 `key` 是给游戏事件用的：有有效期的条目不会立刻进台词表，等到真的
     /// 要开口那一刻再判一次——已经过期的直接丢掉。
     /// `key` 相同的条目（比如连着挨打）只留 `severity` 最大的那条。
     pub fn queue_prompt_line(

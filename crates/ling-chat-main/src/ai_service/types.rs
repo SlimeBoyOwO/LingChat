@@ -523,6 +523,18 @@ fn default_live2d_gain() -> f64 {
     1.0
 }
 
+/// 某个身份下，该角色对「我」的称呼与副标题。
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct UserAlias {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub subtitle: String,
+    /// 该身份专属的初始好感度覆写；None 表示用卡片默认 `initial_affection`。
+    #[serde(default)]
+    pub initial_affection: Option<i32>,
+}
+
 /// 角色设定模型，对应 Python `CharacterSettings`。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CharacterSettings {
@@ -534,6 +546,9 @@ pub struct CharacterSettings {
     pub user_name: String,
     #[serde(default)]
     pub user_subtitle: Option<String>,
+    /// per-身份的「该角色对我（用户）的称呼/副标题」覆写，键为身份卡 id。
+    #[serde(default)]
+    pub user_aliases: HashMap<String, UserAlias>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -589,6 +604,9 @@ pub struct CharacterSettings {
     pub system_prompt_example: Option<String>,
     #[serde(default)]
     pub system_prompt_example_old: Option<String>,
+
+    #[serde(default)]
+    pub initial_affection: Option<i32>,
 
     #[serde(default)]
     pub live2d: Option<Live2dSettings>,
@@ -653,6 +671,7 @@ impl Default for CharacterSettings {
             ai_subtitle: Some(String::new()),
             user_name: default_user_name(),
             user_subtitle: Some(String::new()),
+            user_aliases: HashMap::new(),
             title: None,
             info: None,
             body_part: None,
@@ -677,6 +696,7 @@ impl Default for CharacterSettings {
             system_prompt: None,
             system_prompt_example: None,
             system_prompt_example_old: None,
+            initial_affection: None,
             live2d: None,
             character_folder: String::new(),
             resource_path: None,
