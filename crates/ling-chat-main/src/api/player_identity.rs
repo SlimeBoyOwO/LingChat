@@ -173,7 +173,9 @@ pub async fn set_current_player_identity(
             gs.player.identity_id = Some(identity.id.clone());
             gs.player.relations = identity.relations.clone();
 
-            for rid in gs.onstage_role_ids.iter().copied().collect::<Vec<_>>() {
+            // 循环内要为每个角色改写状态，先取出在场名单，避免与 gs 的可变借用冲突。
+            let onstage_ids = gs.onstage_role_ids.clone();
+            for rid in onstage_ids {
                 gs.seed_identity_affection(&state.db, rid, Some(identity.id.as_str()))
                     .await
                     .map_err(|e| format!("播种好感度失败: {e}"))?;

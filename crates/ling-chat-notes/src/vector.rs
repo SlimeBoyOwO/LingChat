@@ -23,7 +23,11 @@ static REGISTER_EXTENSION: Once = Once::new();
 /// 调用；重复调用是幂等的。
 fn register_extension() {
     REGISTER_EXTENSION.call_once(|| unsafe {
-        let entry = std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ());
+        // sqlite-vec 的 Rust 绑定把入口声明成无参 extern fn，这里补回真实的
+        // sqlite3 扩展初始化签名，再交给 auto_extension 注册。
+        let entry = std::mem::transmute::<*const (), rusqlite::auto_extension::RawAutoExtension>(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        );
         rusqlite::ffi::sqlite3_auto_extension(Some(entry));
     });
 }

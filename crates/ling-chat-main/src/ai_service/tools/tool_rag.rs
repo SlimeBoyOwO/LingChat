@@ -53,6 +53,9 @@ type EmbeddingEntry = (u64, Vec<Arc<[f32]>>);
 /// 一条待写回缓存的语料向量：工具名、指纹、向量。
 type ComputedEntry = (String, EmbeddingEntry);
 
+/// 静默检索的诊断快照：查询文本与过滤前的前三名（工具名、分数）。
+type ProbeSnapshot = (String, Vec<(String, f32)>);
+
 pub struct ToolRag {
     engine: Arc<dyn Embedder>,
     /// 工具名 -> (语料指纹, 归一化向量)。指纹变化或工具消失时自动失效，
@@ -60,9 +63,9 @@ pub struct ToolRag {
     embeddings: RwLock<HashMap<String, EmbeddingEntry>>,
     /// 角色名 -> 激活工具。下标 0 为最近激活，用于 LRU 淘汰。
     activated: Mutex<HashMap<String, Vec<String>>>,
-    /// 最近一次静默检索的诊断快照：查询与过滤前的前三名。
+    /// 最近一次静默检索的诊断快照。
     /// 只给「查看推荐工具」解释「为什么没推荐」，不参与任何判断。
-    last_probe: Mutex<Option<(String, Vec<(String, f32)>)>>,
+    last_probe: Mutex<Option<ProbeSnapshot>>,
     /// 每个角色同时保留的普通工具数量，随工具设置热更新。
     capacity: AtomicUsize,
 }
