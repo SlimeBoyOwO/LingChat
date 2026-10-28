@@ -71,9 +71,7 @@
       <!-- 输入方式 -->
       <AsrSectionCard :title="t('settings.asr.sections.inputMethod')" :icon="Keyboard">
         <div class="space-y-4">
-          <!-- 语音快捷键（按住说话 / 单击 toggle / auto_listen 模式开时切换自动监听）。
-               移动端不做快捷键：无 OS 级全局快捷键（移动端后端不编译），
-               前端 keydown 监听也未注册（蓝牙键盘会触发）——整块隐藏 -->
+          <!-- 语音快捷键；移动端无全局快捷键，前端 keydown 也易被蓝牙键盘误触，整块隐藏 -->
           <div v-if="!isMobileView">
             <div class="mb-1.5 flex items-center justify-between">
               <label class="text-sm font-medium">{{ t("settings.asr.pttKey") }}</label>
@@ -196,8 +194,7 @@
             </option>
           </select>
 
-          <!-- 热词能力：判据走模型能力位，不硬编码模型清单；本地服务的 prompt
-            偏置没有条数上限，只提示能力、不显示数字。 -->
+          <!-- 热词能力：判据走模型能力位；本地服务无条数上限，只提示能力 -->
           <p v-if="hotwordCapabilityText" class="mt-1.5 text-sm text-gray-300">
             {{ hotwordCapabilityText }}
           </p>
@@ -213,8 +210,7 @@
               >
                 <label class="mb-1.5 block text-sm font-medium">
                   {{ field.label }}
-                  <!-- 分地域的字段标出当前地域：切到没配过的地域时框会变空，
-                 不写清是哪个地域的 Key 容易被误读成"Key 丢了" -->
+                  <!-- 分地域字段标出当前地域，避免切地域后的空框被误读成 Key 丢失 -->
                   <span v-if="field.kind === 'password_map' && activeRegion" class="text-gray-400">
                     （{{ activeRegion.label }}）
                   </span>
@@ -226,8 +222,7 @@
             再索引（v-model 需要可写）。
             field.kind 与后端 ConfigFieldKind 对齐：text / password / number / boolean。
           -->
-                <!-- 模型块：清单非空用下拉；为空时退化为文本输入并保留已填模型。
-                刷新按钮只给动态清单（本地服务） -->
+                <!-- 模型块：清单非空用下拉，否则退化为文本输入并保留已填模型；刷新按钮只给动态清单 -->
                 <div v-if="field.key === 'model'" class="flex gap-2">
                   <select
                     v-if="currentModels.length > 0"
@@ -261,8 +256,7 @@
                   v-model="providerCfgRecord[field.key]"
                   class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200 focus:ring-2 focus:outline-none"
                 />
-                <!-- 按地域分存的密码框（API Key）：只显示当前地域的那一个，
-               值绑定到 provider_configs[id].api_keys[当前地域] -->
+                <!-- 按地域分存的 API Key，只显示当前地域的值 -->
                 <input
                   v-else-if="field.kind === 'password_map'"
                   type="password"
@@ -305,8 +299,7 @@
                   :placeholder="field.placeholder"
                   class="shadow-glass focus:border-brand focus:ring-brand/20 w-full rounded-lg border border-white/10 bg-white/10 px-3 py-2.5 text-sm text-white transition-all duration-200 focus:ring-2 focus:outline-none"
                 />
-                <!-- 字段说明：后端每个 config_field 都带 hint，此前模板从未渲染（一直不可见）。
-               地域、端点这类「不看说明一定填错」的字段依赖它 -->
+                <!-- 后端 config_field 的 hint，地域、端点等字段依赖它 -->
                 <p
                   v-if="field.hint && shouldShowFieldHint(field)"
                   class="mt-1.5 block text-sm text-gray-300"
@@ -462,9 +455,7 @@
           </div>
         </div>
 
-        <!-- 详细 VAD 能量检测日志（调试）：开启后逐帧打印 frame/prob/len，默认关闭。
-             归 AsrSettings，保存走本页既有的 debounce → asr_set_settings（后端在该命令里
-             同步给 asr::debug_log 的原子量，无需额外的 store 事件通路） -->
+        <!-- 详细 VAD 能量检测日志：逐帧打印 frame/prob/len，默认关闭，随本页自动保存 -->
         <div class="mt-4 border-t border-white/10 pt-4">
           <Toggle
             :checked="localSettings.vad_debug_log"
@@ -566,8 +557,7 @@ const saveStateClass = computed(() => {
   return "text-gray-300";
 });
 
-/** 当前生效的快捷键绑定：解析策略统一走 parsePttBinding（与 useAsrInput
- *  运行判定同款；Enter / 非法 JSON 回退裸 F8，显示与实际行为一致） */
+/** 当前快捷键绑定：与 useAsrInput 同用 parsePttBinding，Enter / 非法 JSON 回退 F8 */
 const pttBinding = computed<ShortcutBinding>(
   () => parsePttBinding(localSettings.value.ptt_key) ?? { key: "f8" },
 );
@@ -599,9 +589,7 @@ function startPttCapture() {
     }
     let binding: ShortcutBinding;
     if (result.kind === "blocked") {
-      // 无修饰的字母/数字/空格：PTT 允许单键绑定（用户不强制组合键）。
-      // captureFromEvent 的 blocked 是为剧本编辑器打字冲突准备的，
-      // 这里直接构造无修饰绑定；聊天输入时同时触发由提示语说明、用户自担
+      // 无修饰字母/数字允许单键绑定；聊天输入时同时触发的问题由提示语说明
       binding = { key: e.key.toLowerCase() };
     } else {
       binding = result.binding;
@@ -638,9 +626,7 @@ const pttGlobalError = ref("");
 let unlistenGlobalStatus: (() => void) | null = null;
 onMounted(async () => {
   unlistenGlobalStatus = await listen<PttGlobalStatus>("asr:ptt-global-status", (e) => {
-    // 只有真正注册失败才提示。`inactive`（关闭开关 / 不在聊天界面）是正常状态
-    // 且 reason 为空 —— 按「非 ok 即失败」判断会把它渲染成「全局快捷键注册失败：」。
-    // 非失败时置空，顺带让关闭开关后残留的旧提示消失。
+    // 只有 failed 才提示；inactive（关开关 / 不在聊天界面）是正常状态，reason 为空
     pttGlobalError.value =
       e.payload.state === "failed"
         ? t("settings.asr.pttGlobalError", { reason: e.payload.reason })
@@ -653,8 +639,8 @@ onUnmounted(() => {
   endPttCapture();
 });
 
-// 设置抽屉用 v-show 隐藏（KeepAlive 不触发 onUnmounted）——抽屉关闭时主动
-// 退出捕获，防止 window 监听器残留导致聊天打字被吞并静默改写快捷键
+// 设置抽屉用 v-show 隐藏（KeepAlive 不触发 onUnmounted），关闭时主动退出捕获，
+// 否则 window 监听器会残留并吞掉聊天按键
 watch(
   () => uiStore.showSettings,
   (open) => {
@@ -711,13 +697,9 @@ const activeProviderInfo = computed<ProviderInfo | undefined>(() =>
   asrStore.providers.find((p) => p.id === localSettings.value.active_provider),
 );
 
-// ProviderConfig 是后端约定的具名键（api_key / endpoint / model / region），
-// 而 config_field.key 是动态字符串，需要做 Record 桥接才能用 v-model 写入任意键。
-// 只读：写路径走 ensureProviderConfig + debounce save。
-//
-// **声明位置必须在这里（靠前）**：下面的地域辅助函数与 provider/地域 watch 都要读
-// 它，而模板渲染与 `immediate: true` 的 watch 都会在 setup 阶段求值 —— 声明得比
-// 使用点晚会命中 TDZ 抛 ReferenceError，整个 <script setup> 失败、设置页空白。
+// config_field.key 是动态字符串，需桥接成 Record 才能用 v-model 写入任意键；
+// 写路径走 ensureProviderConfig + debounce save。
+// 声明必须靠前：模板与 immediate watch 在 setup 阶段求值，晚声明会命中 TDZ 导致整页空白。
 const providerCfg = computed(() => {
   const id = localSettings.value.active_provider;
   return localSettings.value.provider_configs[id] ?? { api_key: "", endpoint: "" };
@@ -726,10 +708,8 @@ const providerCfgRecord = computed(() => providerCfg.value as unknown as Record<
 
 // ── 两级选择：服务（asrStore.providers）+ 该服务的模型清单 ──
 
-/** 当前表单所选服务的模型清单。
- *
- *  直接读 modelsByProvider[localSettings.active_provider]，不用 store 里跟随
- *  已保存设置的那个 getter——500ms 自动保存窗口内会短暂串到上一个服务的清单。 */
+/** 当前表单所选服务的模型清单：直接读 modelsByProvider，
+ *  避免 500ms 保存窗口内串到上一个服务的清单。 */
 const currentModels = computed<ModelInfo[]>(
   () => asrStore.modelsByProvider[localSettings.value.active_provider] ?? [],
 );
@@ -796,27 +776,13 @@ const activeRegion = computed<AsrRegionInfo | undefined>(() => {
   return regions.find((r) => r.id === (providerCfg.value.region ?? "")) ?? regions[0];
 });
 
-/** 当前 provider 的**原始**配置记录（未做缺省兜底）。
- *
- *  不走 `providerCfg`：那是给模板用的带兜底的 computed，返回值是联合类型，
- *  取不到 `api_keys` 这类可选字段；写配置也不该写进那个临时兜底对象。 */
+/** provider 的原始配置记录（不做缺省兜底），写配置时用它取 `api_keys` 等可选字段。 */
 function currentProviderCfg(): ProviderConfig | undefined {
   return localSettings.value.provider_configs[localSettings.value.active_provider];
 }
 
-/**
- * 当前地域的 API Key（读写）。
- *
- * Key 在**存储上按地域分开**（`api_keys[地域 id]`），UI 只显示当前地域的这一个
- * 框——切地域时框里的内容随之切换，另一个地域的 Key 不受影响，这是本次改动的
- * 全部意义。后端在 `ProviderConfig::effective_api_key` 用同样的键读取。
- *
- * 地域 id 取自 `activeRegion`，它与后端 `DashScopeRegion::parse` 的回退规则一致
- * （缺失/未知 → 第一个地域）：两边必须认同一个键，否则会出现「端点按北京派生、
- * Key 却查不到」而静默变空。
- *
- * 该地域没配过时返回空串，而不是回退到另一个地域的 Key——让用户看出这里还没填。
- */
+/** 当前地域的 API Key：存储上按 `api_keys[地域 id]` 分开，UI 只显示当前地域的这一个。
+ *  地域 id 与后端 `DashScopeRegion::parse` 的回退规则一致；没配过时返回空串，不回退到其他地域。 */
 const activeApiKey = computed({
   get(): string {
     const region = activeRegion.value;
@@ -839,8 +805,7 @@ function isKnownRegionEndpoint(value: string): boolean {
 /**
  * 把两个端点字段指向当前地域的默认值。
  *
- * 覆盖规则：**只改写「空」或「恰好等于某个地域默认端点」的值**——用户手填的
- * 业务空间专属域名 / 自建代理一律不动。没有这条规则，切地域会吃掉用户的配置。
+ * 只改写空值或恰好等于某个地域默认端点的值，用户手填的域名与代理不动。
  */
 function applyRegionEndpoints() {
   const region = activeRegion.value;
@@ -859,14 +824,10 @@ function applyRegionEndpoints() {
 }
 
 /**
- * 校验当前模型在（新的）地域下是否可用，不可用则回退为该地域的默认模型。
+ * 校验当前模型在新地域下是否可用，不可用则回退为该地域的默认模型。
  *
- * 模型清单是地域相关的，留着一个该地域不存在的模型名会让后端请求直接 400。
- * 目前两个地域的清单恰好一致，但机制仍在（模型表里带 `region` 过滤），且这里
- * 还是**已下线模型**的兜底：清单里没有了的历史模型（见 provider.rs 的
- * `listed: false`）会在打开设置页时被换成地域默认。
- * 清单为空（拉取失败）时不改，避免网络问题误清用户配置；模型为空也不改
- * ——后端本就会回退地域默认。
+ * 模型清单与地域相关，留着该地域不存在的模型名会让请求直接 400；清单或模型为空时
+ * 不改，避免网络问题误清用户配置。
  */
 function ensureModelValid() {
   const models = currentModels.value;
@@ -896,9 +857,8 @@ const modelListError = ref("");
 async function loadModels(id: string): Promise<boolean> {
   modelListError.value = "";
   try {
-    // 传表单里当前的地域而非让后端读配置：改地域后保存要等 500ms debounce
-    // 才落盘，而这行在保存之前就发出去了——不传就会拿到**旧地域**的清单，
-    // 表现为切地域后列表少/多一个模型，且要重开设置页才恢复
+    // 传表单当前地域而不是让后端读配置：保存有 500ms debounce，
+    // 不传会拿到旧地域的清单，切地域后要多一次重开设置页才恢复
     await asrStore.reloadModels(id, localSettings.value.provider_configs[id]?.region);
     return true;
   } catch (e) {
@@ -982,9 +942,8 @@ const streamHint = computed(() => {
   return t("settings.asr.streamModeHint");
 });
 
-// 切到不支持流式的模型 → 自动关闭流式开关（避免录音时后端报错）。
-// 本地服务的关闭由 provider 切换显式处理，不走这里：服务没起时模型清单为空，
-// activeModel 拿不到，不能依赖模型能力判定
+// 切到不支持流式的模型时自动关闭流式开关；本地服务由 provider 切换显式关闭，
+// 此处不能依赖模型能力判定（服务没起时清单为空）
 watch(activeModel, (m) => {
   if (isLocalProvider.value) return;
   if (!m?.supports_streaming && localSettings.value.stream_enabled) {
@@ -992,10 +951,8 @@ watch(activeModel, (m) => {
   }
 });
 
-// 流式开关 ↔ 模型自动同步：打开流式 → 切到流式模型；关闭 → 切到非流式模型。
-// 模型与协议强绑定（流式模型只能走 WebSocket 端点，反之亦然），
-// 设置层保持一致，后端回退兜底。切模型用 applyAsrPreset（endpoint 同步填入）。
-// 本地服务没有流式/非流式之分，强制关闭时不应触发切模型
+// 流式开关与模型同步：两者强绑定，切模型走 applyAsrPreset 同步端点；
+// 本地服务无流式之分，强制关闭时不触发切模型
 watch(
   () => localSettings.value.stream_enabled,
   (on) => {
@@ -1021,9 +978,7 @@ function ensureProviderConfig(id: string) {
     extra: {},
   };
   localSettings.value.provider_configs[id] = cfg;
-  // 后端 default_value 兜底空字段（如 llama-asr 的 endpoint/model 默认值）：
-  // 用户不填也能开箱即用；已有值不覆盖（输入框渲染只用了 placeholder，
-  // 从未落过 default_value，这里补上——qwen 的默认 endpoint 同理受益）
+  // 后端 default_value 兜底空字段（不覆盖已有值），让本地服务与云端开箱即用
   const record = cfg as unknown as Record<string, string>;
   const info = asrStore.providers.find((p) => p.id === id);
   info?.config_fields.forEach((f) => {
@@ -1032,18 +987,13 @@ function ensureProviderConfig(id: string) {
     }
   });
 }
-// provider / 地域变更的统一入口。
-//
-// **必须是一个 watch、且内部顺序固定**（先 ensureProviderConfig 再
-// applyRegionEndpoints）：拆成两个 watch 会依赖注册顺序——若默认值先被填成
-// 另一地域的地址，随后又因「不等于任何地域默认端点」被判为用户手填而拒绝改写，
-// 就会留下错误的端点。
+// provider / 地域变更的统一入口：必须是一个 watch 且顺序固定（先 ensureProviderConfig
+// 再 applyRegionEndpoints），拆开会依赖注册顺序并留下错误的端点。
 watch(
   [() => localSettings.value.active_provider, () => providerCfg.value.region],
   async ([id]) => {
-    // 本地服务（无地域概念）暂不支持流式识别：按新 provider 的 regions 判定后
-    // 显式关闭。不能依赖 activeModel 的 watcher——服务没起时模型清单为空，
-    // 拿不到 activeModel，开关会停留在云端时的打开状态
+    // 本地服务暂不支持流式识别：切换 provider 时显式关闭，不能依赖 activeModel
+    // 的 watcher（服务没起时清单为空）
     if (isLocalProvider.value && localSettings.value.stream_enabled) {
       localSettings.value.stream_enabled = false;
     }
@@ -1082,9 +1032,7 @@ onMounted(async () => {
   // 否则每次重启都会带着一个本地不可用的开关状态
   const forceStreamOff = isLocalProvider.value && localSettings.value.stream_enabled;
   if (forceStreamOff) localSettings.value.stream_enabled = false;
-  // 初始化赋值不算"用户更改"：赋值在前、置位在后，sync watch 回调在赋值瞬间
-  // 同步执行时 initialized 仍为 false 而被跳过——避免每次打开设置页都触发一次
-  // 无意义的 asr_set_settings（后端重应用静音计时 + 重建 provider 并刷日志）
+  // 初始化赋值不算用户更改：赋值时 initialized 仍为 false，跳过一次无意义的保存
   initialized = true;
   if (forceStreamOff) void persistSettings();
   // 查询式获取 VAD 状态：asr://vad_ready 事件在启动早期发射，前端监听器注册
@@ -1104,10 +1052,8 @@ onMounted(async () => {
 watch(
   localSettings,
   () => {
-    // 初始化赋值（onMounted 的 spread 拷贝）不触发保存——打开设置页不改任何值
-    // 不应该向后端重写设置（asr_set_settings 会重应用 VAD 计时并重建 provider）。
-    // flush:'sync' 保证回调同步执行：onMounted 赋值时 initialized 仍是 false 被跳过，
-    // 置位后用户的实际修改才走保存。
+    // 打开设置页不改值时不向后端重写设置；flush:'sync' 保证 onMounted 赋值时
+    // initialized 仍为 false 被跳过
     if (!initialized) return;
     // 用户改动设置：旧注册失败提示不再相关，清除（保存后若仍失败，
     // asr:ptt-global-status 事件会带 state=failed 重新显示新原因）
