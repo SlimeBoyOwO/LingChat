@@ -3,9 +3,8 @@ use sea_orm_migration::prelude::*;
 #[derive(DeriveMigrationName)]
 pub struct Migration;
 
-/// 两张表都刻意**不写** `FOREIGN KEY`：`library_hotword.category_id` 的级联靠应用层
-/// （`replace_library` 整表重建），与本仓库其余热词表同一取舍。
-/// `category_id` 可空 = 未分类：加词的摩擦不该大于现有热词表。
+/// 两张表都不写 `FOREIGN KEY`：`library_hotword.category_id` 的级联靠应用层
+/// （`replace_library` 整表重建）。`category_id` 可空 = 未分类。
 const RAW_SQL: &str = "\
 CREATE TABLE IF NOT EXISTS hotword_category (
     id   INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

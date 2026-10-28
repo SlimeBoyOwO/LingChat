@@ -59,13 +59,10 @@ impl QwenAsrProvider {
     }
 }
 
-/// 按容量截断：保留**前 `max` 个**（整词丢弃、丢尾部）。
+/// 按容量截断：保留前 `max` 个（整词丢弃、丢尾部）。
 ///
-/// ⚠️ **能力位为 false 的模型走另一条路**（整条 warn + 不发），不经过这里——
-/// 「不支持」与「支持但超容量」是两回事，别把它们合成一个分支。
-///
-/// **两个落点共用这一份**（`build_batch_body` 与 `registry::build_stream_params`）：
-/// 截断规则只有一条，各写一份就是两处真相（容量设计 §4.4 的同一理由）。
+/// 支持但超容量时走这里；能力位为 false 的模型由调用方另行 warn 且不发。
+/// 同步与流式两个落点共用本函数，保持截断规则一致。
 pub(crate) fn take_within_capacity<'a>(
     hotwords: &'a [Hotword],
     max: usize,

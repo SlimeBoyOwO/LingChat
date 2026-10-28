@@ -114,7 +114,7 @@
                     </button>
                   </li>
                 </ul>
-                <!-- 与词条数上限同一套提示样式；超限时后端整表拒绝，保存只会回一句 saveFailed -->
+                <!-- 超限时后端整表拒绝，保存只会提示失败 -->
                 <p
                   v-if="tooManyCategories"
                   class="mx-2 mb-2 rounded-xl border border-red-400/30 bg-red-500/10 px-3 py-2 text-[12px] text-red-200"
@@ -228,7 +228,7 @@
                         ×
                       </button>
                     </div>
-                    <!-- 超长条目会被后端整表拒；提示按字符数 / 片段数两套口径走。 -->
+                    <!-- 超长条目会被后端整表拒绝；字符数和片段数的提示分开显示 -->
                     <p
                       v-if="hotwordLimitKind(word.text) !== 'ok'"
                       class="mt-1 text-[12px] text-red-300"
@@ -349,8 +349,7 @@ watch(
     selected.value = "all";
     search.value = "";
     try {
-      // 保存是整表替换，读失败必须让弹窗打不开——草稿默认是空表，若放行，
-      // 用户随手点一次「保存」就会静默清空整个词库
+      // 保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空整个词库
       draft.value = await getHotwordLibrary();
     } catch (e) {
       console.error("[HotwordLibraryDialog] 读取热词库失败:", e);
@@ -402,7 +401,6 @@ const deleteCategory = async (index: number) => {
     t("settings.asr.hotwordLibrary.dialog.categories.deleteConfirm", { count }),
   );
   if (!confirmed) return;
-  // 重排 + 级联删除 + 再次去重全在纯函数里
   removeCategory(draft.value, index);
   selected.value = "all";
   invalidCategory.value = null;
@@ -415,10 +413,9 @@ const commitCategoryName = (index: number) => {
 };
 
 const addWord = () => {
-  // 清空搜索：新行是空词条，留着关键词会被过滤掉，用户以为按钮没反应
+  // 清空搜索，否则新空行会被过滤掉，看起来像按钮没反应
   search.value = "";
   draft.value.words.push({
-    // 选中「全部」时默认未分类
     category_index: typeof selected.value === "number" ? selected.value : null,
     text: "",
     weight: HOTWORD_DEFAULT_WEIGHT,
@@ -445,8 +442,7 @@ const categoryNameErrorKeys: Record<string, string> = {
 };
 
 const save = async () => {
-  // 前端先拦分类名问题：后端也会拒，但那是整个库回滚 + 一句「保存失败」，
-  // 用户定位不到是哪一行
+  // 前端先拦分类名问题，否则后端整库回滚只回一句「保存失败」，用户定位不到行
   for (let i = 0; i < draft.value.categories.length; i += 1) {
     const reason = isCategoryNameValid(draft.value, i);
     if (reason === "ok") continue;

@@ -12,8 +12,7 @@ use crate::api::asr::HotwordInput;
 use crate::db::entities::{global_hotword, role_hotword};
 use crate::db::managers::hotword_repo::HotwordRepo;
 
-/// 热词的对外表示。与 provider 侧的 `Hotword`（只有 text/weight）是两个类型：
-/// 这个带 `role_id`（DB 概念）。
+/// 热词的对外表示；比 provider 侧的 `Hotword` 多一个 `role_id`（DB 概念）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RoleHotword {
     pub text: String,
@@ -24,9 +23,8 @@ pub struct RoleHotword {
 
 impl RoleHotword {
     /// weight 走实体层的离散归一（`[1, 5] ∪ {50}`）。
-    ///
-    /// **读侧也要归一**：DDL 的 `CHECK` 只兜底写入路径，而 LAN 镜像会把对端
-    /// 旧二进制写下的非法值原样送进来；直接 `as u8` 更糟——999 会静默回绕成 231。
+    /// 读侧也要归一：DDL 的 `CHECK` 只兜底写入，LAN 镜像会送来旧的非法值，
+    /// 直接 `as u8` 还会静默回绕。
     fn from_parts(text: String, weight: i32, role_id: i32) -> Self {
         Self {
             text,
@@ -45,7 +43,7 @@ impl RoleHotword {
     }
 }
 
-/// 词库词条。读写共用——**无 id**：拷贝式下没有任何东西引用词库行 id。
+/// 词库词条，读写共用。无 id：没有任何东西引用词库行 id。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LibraryWord {
     /// `None` = 未分类。
@@ -62,10 +60,10 @@ pub struct HotwordLibrary {
     pub words: Vec<LibraryWord>,
 }
 
-/// 场景级热词：主角 → present 顺序 → 组内插入顺序（id），不去重。
+/// 场景级热词：主角 → present 顺序 → 组内 id 顺序。
 ///
-/// `-1`（尚未选定主角的哨兵）与 `0`（User，玩家本体）不是热词归属角色，两个入口都滤掉；
-/// 主角通常也在 present 里，已排在最前，不再重复追加。
+/// `-1`（未选主角的哨兵）与 `0`（User）不是热词归属角色，会被滤掉；
+/// 主角已在最前，不重复追加。
 async fn scene_hotwords(
     db: &DatabaseConnection,
     main_role_id: Option<i32>,
@@ -81,7 +79,7 @@ async fn scene_hotwords(
         }
     }
 
-    // list_by_roles 是 IN 查询，角色维度的返回顺序未定义 → 按 role_ids 自己重组。
+    // IN 查询的返回顺序未定义，按 role_ids 重新分组。
     let mut by_role: HashMap<i32, Vec<role_hotword::Model>> = HashMap::new();
     for row in HotwordRepo::list_by_roles(db, &role_ids).await? {
         by_role.entry(row.role_id).or_default().push(row);
@@ -125,8 +123,8 @@ pub async fn get_scene_hotwords(
         .map_err(|e| format!("查询场景热词失败: {e}"))
 }
 
-/// 命令层入参 → 存储二元组 `(text, weight)`：weight 缺省 4。
-/// 本函数不校验——两条链路各自归一：存储路径在 `replace_for_role`，发送路径在 `build_options`。
+/// 命令层入参转存储二元组 `(text, weight)`，weight 缺省 4。
+/// 不在此校验，存储与发送两条链路各自归一。
 fn to_rows(hotwords: Vec<HotwordInput>) -> Vec<(String, i32)> {
     hotwords
         .into_iter()
@@ -139,7 +137,7 @@ fn to_rows(hotwords: Vec<HotwordInput>) -> Vec<(String, i32)> {
         .collect()
 }
 
-/// 保存内核：单事务包 `replace_for_role`；校验失败整体回滚，不会留下半套热词。
+/// 保存内核：单事务包 `replace_for_role`，校验失败整体回滚。
 async fn save_settings(
     db: &DatabaseConnection,
     role_id: i32,
@@ -151,7 +149,7 @@ async fn save_settings(
     Ok(())
 }
 
-/// 保存角色的热词：单事务提交，弹窗底部「保存」一次写入。
+/// 保存角色的热词，单事务提交。
 #[tauri::command]
 pub async fn save_role_hotwords(
     app: AppHandle,
@@ -166,7 +164,7 @@ pub async fn save_role_hotwords(
         .map_err(|e| format!("保存角色热词失败: {e}"))
 }
 
-// ── 全局热词（与场景角色热词取并集参与识别） ─────────────────
+// 全局热词（与场景角色热词取并集参与识别）
 
 /// 全局热词。绝不写进 `role_hotword`——那里的 `role_id = 0` 是 User 的真实数据。
 async fn global_hotwords(db: &DatabaseConnection) -> Result<Vec<RoleHotword>, anyhow::Error> {
@@ -207,13 +205,13 @@ pub async fn save_global_hotwords(
         .map_err(|e| format!("保存全局热词失败: {e}"))
 }
 
-// ── 词库（素材库，不参与识别） ────────────────────────────────
+// 词库（素材库，不参与识别）
 
-/// 读内核：把两表拼成读写形态。`category_id` → 分类数组下标（悬空归 `None`）。
+/// 把两张表拼成读写形态，`category_id` 转分类数组下标（悬空归 `None`）。
 async fn library(db: &DatabaseConnection) -> Result<HotwordLibrary, anyhow::Error> {
     let (categories, words) = HotwordRepo::list_library(db).await?;
 
-    // id → 下标。id 由 AUTOINCREMENT 分配，不保证从 1 连续，必须查表而非减一。
+    // id 由 AUTOINCREMENT 分配，不保证从 1 连续，必须查表而非减一。
     let index_of: HashMap<i32, usize> = categories
         .iter()
         .enumerate()
@@ -225,7 +223,7 @@ async fn library(db: &DatabaseConnection) -> Result<HotwordLibrary, anyhow::Erro
         words: words
             .into_iter()
             .map(|row| LibraryWord {
-                // 悬空 category_id（理论不会发生，防御旧设备 / 手改 payload）归未分类
+                // 悬空 category_id（防御旧设备或手改 payload）归未分类
                 category_index: row.category_id.and_then(|id| index_of.get(&id).copied()),
                 text: row.text,
                 weight: crate::db::entities::hotword_weight::normalize_weight(row.weight) as u8,
@@ -250,8 +248,7 @@ async fn save_library(
     Ok(())
 }
 
-/// 读取整个词库。**无缓存**：选择器 / 管理弹窗每次打开都现读
-/// （数据量小；识别链路不读它，无需失效机制）。
+/// 读取整个词库。不做缓存：数据量小，识别链路也不读它。
 #[tauri::command]
 pub async fn get_hotword_library(app: AppHandle) -> Result<HotwordLibrary, String> {
     let state = app.state::<AppState>();

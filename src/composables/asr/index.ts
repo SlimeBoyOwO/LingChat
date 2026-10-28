@@ -261,8 +261,7 @@ function ensureInit() {
     },
     { immediate: true },
   );
-  // 场景热词缓存（识别时注入）：主角或在场角色变化即重取。
-  // 比较合成键而非数组引用：原地增删在场角色同样要触发
+  // 场景热词：主角或在场角色变化即重取（比较合成键，原地增删也会触发）
   watch(
     () => {
       const game = runtime.gameStore;

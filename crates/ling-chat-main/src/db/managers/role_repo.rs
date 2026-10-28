@@ -212,7 +212,7 @@ impl RoleRepo {
         // 5. 清该角色全部 memory_bank
         MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
 
-        // 6. 清该角色的热词（此函数刻意在 FK 关闭下手写清理，故用裸 DELETE 而非 repo）
+        // 6. 清该角色的热词（表无外键；此处 FK 已关闭，用裸 DELETE）
         role_hotword::Entity::delete_many()
             .filter(role_hotword::Column::RoleId.eq(role_id))
             .exec(db)

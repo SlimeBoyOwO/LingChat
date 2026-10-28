@@ -143,13 +143,12 @@ export async function start(source: AsrSource) {
     if (source === "button") {
       runtime.baseText = runtime.inputBridge?.getText() ?? "";
     }
-    // 录音开始时的热词快照：流式在这里就下发；llama 流式与非流式
-    // 在 doRecognize 用同一份——录音期间场景变化不重读，两条路拿到的是同一份
+    // 录音开始时取热词快照：流式在此下发，其余复用同一份
     const snapshot = takeHotwordSnapshot();
     runtime.hotwordSnapshot = snapshot;
     // 流式：先建 WebSocket（互斥由后端 stream 检查 + start_listening 的 active 检查双层保证）。
     // llama-asr 结果流式不建 WS（stop 时整段上传），仅 qwen WS 真流式走这里。
-    // 快照与下发之间没有 await，无需 generation 校验（校验在 doRecognize）
+    // 快照到下发之间无 await，无需 generation 校验（校验在 doRecognize）
     if (isStreamEnabled() && !isLlamaStream()) {
       await asrStartStreaming({
         providerId: runtime.asrStore?.settings.active_provider ?? "qwen-asr",
@@ -299,8 +298,7 @@ async function doRecognize(source: AsrSource, captured: number[]) {
       return;
     }
     const providerId = runtime.asrStore?.settings.active_provider ?? "qwen-asr";
-    // 热词取**录音开始时**的快照（与非流式统一）。录音期间场景
-    // 变过（generation 已变）→ 本次不带热词：宁可不加偏置，也不用错角色的词表
+    // 热词取录音开始时的快照；场景已变则不附带，宁可无偏置也不用错角色的词表
     const snap = runtime.hotwordSnapshot;
     const validSnap = snap !== null && isHotwordSnapshotCurrent(snap) ? snap : null;
     const result = isLlamaStream()

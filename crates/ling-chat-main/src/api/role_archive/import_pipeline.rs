@@ -20,8 +20,8 @@ use crate::utils::yaml_file::resolve_settings_file;
 
 use super::{HOTWORD_SIDECAR_VERSION, HotwordSidecar, ImportResult};
 
-/// 旁挂文件体积上限：超过即判非法，**不 parse**。`do_import` 对压缩包
-/// 本身不设绝对大小限制，高压缩比的巨型 JSON 会先把内存吃满。
+/// 旁挂文件体积上限，超过即判非法且不 parse：压缩包本身不限大小，
+/// 高压缩比的巨型 JSON 会先把内存吃满。
 const MAX_SIDECAR_BYTES: u64 = 1024 * 1024;
 
 pub(super) async fn do_import(
@@ -264,7 +264,7 @@ pub(super) async fn do_import(
     })
 }
 
-/// 导入收尾的热词旁挂处理：**已停用**，当前无调用点，保留签名供将来恢复。
+/// 导入收尾的热词旁挂处理，已停用；保留签名供将来恢复。
 #[allow(dead_code)] // 保留供将来恢复旁挂读取
 async fn restore_hotwords_for_import(
     _db: &DatabaseConnection,
@@ -278,8 +278,7 @@ async fn restore_hotwords_for_import(
     );
 }
 
-/// 旁挂文件的读取、校验与写库。`None` = 文件不存在（跳过）；`Some(warnings)` =
-/// 处理过（无论成败）。
+/// 旁挂文件的读取、校验与写库。`None` = 文件不存在，`Some` = 已处理（含失败）。
 #[allow(dead_code)] // 保留供将来恢复旁挂读取
 async fn read_sidecar_into_db(
     db: &DatabaseConnection,
@@ -291,7 +290,7 @@ async fn read_sidecar_into_db(
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
         Err(e) => return Some(vec![format!("热词旁挂文件读取失败: {e}")]),
     };
-    // 体积闸门必须在 parse 之前。
+    // 体积闸门须在 parse 之前。
     if meta.len() > MAX_SIDECAR_BYTES {
         return Some(vec![format!(
             "热词旁挂文件过大 ({} 字节 > {MAX_SIDECAR_BYTES})，已跳过",
@@ -313,7 +312,7 @@ async fn read_sidecar_into_db(
         )]);
     }
 
-    // 校验与归一全部交给 replace_for_role，口径与保存路径同一份。
+    // 校验与归一交给 replace_for_role，与保存路径同口径。
     let rows: Vec<(String, i32)> = sidecar
         .hotwords
         .into_iter()

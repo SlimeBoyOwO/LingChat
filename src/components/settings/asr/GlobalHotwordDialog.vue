@@ -125,8 +125,7 @@ watch(
     if (!visible) return;
     loading.value = true;
     try {
-      // 保存是整表替换，读失败必须让弹窗打不开——草稿默认是空表，若放行，
-      // 用户随手点一次「保存」就会静默清空全局热词
+      // 保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空全局热词
       const hotwords = await getGlobalHotwords();
       draft.value = { hotwords };
     } catch (e) {

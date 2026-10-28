@@ -1,11 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 
-/**
- * 角色热词与全局热词（后端 `api/hotword.rs`）。
- *
- * 错误不在这里包一层：命令返回的已经是中文可读信息，调用方（角色设置弹窗）
- * 自己决定怎么提示，与 `character.ts` 里 `importLive2d` 那批直连 invoke 一致。
- */
+/** 角色热词与全局热词（后端 api/hotword.rs）。错误直接透传，由调用方决定提示。 */
 
 export interface RoleHotword {
   text: string;
@@ -15,32 +10,25 @@ export interface RoleHotword {
   role_id: number;
 }
 
-/**
- * 角色热词草稿：热词 tab 的编辑态。由弹窗（父组件）持有，编辑只进内存，
- * 随底部「保存」与其余角色设置一次提交；「取消」即丢弃。
- */
+/** 角色热词草稿：弹窗持有，编辑只进内存，随角色设置一次提交。 */
 export interface RoleHotwordDraft {
   hotwords: RoleHotword[];
 }
 
-/** 热词的 wire 契约（保存与识别两条链路同一份，`asr.ts` 直接用它）：
- *  与后端 `HotwordInput::Weighted` 同形。`RoleHotword` 多一个 `role_id`（后端忽略）。 */
+/** 热词的 wire 契约，与后端 HotwordInput::Weighted 同形（RoleHotword 多出的 role_id 后端忽略）。 */
 export interface HotwordInput {
   text: string;
   weight: number;
 }
 
-/** 单条词条的长度判据，与后端 `hotword_repo.rs` 的 `validate_text_len` 对齐：
- *  **两套判据，按是否含非 ASCII 分流**——含非 ASCII 时按总字符数，纯 ASCII 时按
- *  空格切分的片段数。⚠️ 两者不是同一个数的变体（`DeepSeek-harness` 16 字符却合规）。 */
+/** 单条词条的长度判据，与后端 validate_text_len 对齐：含非 ASCII 按字符数，纯 ASCII 按空白片段数。 */
 export const MAX_HOTWORD_CHARS = 15;
 export const MAX_HOTWORD_SEGMENTS = 7;
 
 /** 每角色条数上限，与后端 `hotword_repo.rs` 的 `MAX_ROWS_PER_ROLE` 对齐。 */
 export const MAX_HOTWORDS_PER_ROLE = 200;
 
-/** 按**码点**计数，与后端 `chars().count()` 同口径——`String.length` 数的是
- *  UTF-16 码元，会把 emoji 等代理对算成 2，与后端的拒收边界不一致。 */
+/** 按码点计数，与后端 chars().count() 同口径（String.length 按 UTF-16 码元，会算错代理对）。 */
 export const hotwordCharCount = (text: string) => [...text].length;
 
 /** 按空白切分的片段数，与后端 `split_whitespace().count()` 同口径。 */
@@ -49,7 +37,7 @@ export const hotwordSegmentCount = (text: string) => text.split(/\s+/).filter(Bo
 /** 是否纯 ASCII（判据分流依据），与后端 `str::is_ascii` 同口径。 */
 export const hotwordTextIsAscii = (text: string) => /^[\x00-\x7F]*$/.test(text);
 
-/** 词条触犯了哪条判据；`"ok"` = 合规。口径与后端一致：**先 trim**，尾随空白不算。 */
+/** 词条触犯的判据；ok = 合规。与后端一致先 trim，尾随空白不算。 */
 export function hotwordLimitKind(text: string): "ok" | "chars" | "segments" {
   const t = text.trim();
   if (hotwordTextIsAscii(t)) {
@@ -78,7 +66,7 @@ export const getGlobalHotwords = () => invoke<RoleHotword[]>("get_global_hotword
 export const saveGlobalHotwords = (hotwords: HotwordInput[]) =>
   invoke<void>("save_global_hotwords", { hotwords });
 
-/** 词库词条。读写共用——无行 id（拷贝式下没有引用者）。 */
+/** 词库词条（无行 id，读写共用）。 */
 export interface LibraryWord {
   /** `null` = 未分类。 */
   category_index: number | null;
@@ -97,10 +85,9 @@ export const MAX_LIBRARY_ROWS = 2000;
 export const MAX_LIBRARY_CATEGORIES = 100;
 export const MAX_CATEGORY_NAME_CHARS = 30;
 
-/** 读取整个词库。**无缓存**：每次打开弹窗/选择器都现读。 */
+/** 读取整个词库（无缓存，每次现读）。 */
 export const getHotwordLibrary = () => invoke<HotwordLibrary>("get_hotword_library");
 
-/** 保存整个词库（整表替换，两表一个事务，失败即整体回滚）。
- *  参数名是 `categories` / `words`：无分隔符词名不做 camelCase 变换，原样传。 */
+/** 保存整个词库（整表替换，两表一个事务）。 */
 export const saveHotwordLibrary = (categories: string[], words: LibraryWord[]) =>
   invoke<void>("save_hotword_library", { categories, words });

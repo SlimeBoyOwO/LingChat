@@ -9,8 +9,7 @@ pub struct Model {
     pub role_id: i32,
     #[sea_orm(column_type = "Text")]
     pub text: String,
-    /// 用 `i32` 而非 `u8`：库里可能有越界存量，`u8` 读回会直接报错。
-    /// 取值口径见 [`super::hotword_weight`]。
+    /// 用 `i32` 存越界存量（`u8` 读回会报错），取值口径见 [`super::hotword_weight`]。
     pub weight: i32,
 }
 

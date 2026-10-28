@@ -24,16 +24,8 @@ export const countWords = (draft: LibraryDraft, filter: CategoryFilter): number 
     ? draft.words.length
     : draft.words.filter((w) => w.category_index === (filter === "none" ? null : filter)).length;
 
-/**
- * 删除分类。
- *
- * 词条只存下标不存名字，所以删掉 `index` 后必须：
- *   ① 丢弃挂在该分类下的词条；② 把 `> index` 的下标各减 1；③ 从数组里移掉分类。
- * 漏掉 ② 会让后面的词静默挂到别的分类下——不报错、不崩溃，只有用户看得出来。
- *
- * 重排后可能撞键（两条被删分类之外的词条归并到同一 text），
- * 再跑一次去重兜底：否则后端 `UNIQUE(text)` 会让整个保存失败。
- */
+/** 删除分类：丢弃该分类词条、后续下标减 1、移出分类数组。
+ *  重排后可能撞键，需再去重一次，否则后端 UNIQUE(text) 会让保存失败。 */
 export function removeCategory(draft: LibraryDraft, index: number): void {
   draft.words = draft.words.filter((w) => w.category_index !== index);
   for (const w of draft.words) {

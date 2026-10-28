@@ -6,22 +6,15 @@ use sea_orm::{
 use crate::db::entities::hotword_weight::normalize_weight;
 use crate::db::entities::{global_hotword, hotword_category, library_hotword, role_hotword};
 
-/// 每作用域条数上限（角色与全局同一口径）：几百条会撞服务端上限，且 llama 的 prompt 按字符预算整体截断。
+/// 每作用域条数上限（角色与全局同一口径）。
 const MAX_ROWS_PER_ROLE: usize = 200;
-/// 单条词条的长度判据（**两套，按是否含非 ASCII 分流**，厂商文档口径）：
-/// 含非 ASCII 时按**总字符数** ≤ [`MAX_TEXT_CHARS`]；纯 ASCII 时按**空格切分的片段数**
-/// ≤ [`MAX_TEXT_SEGMENTS`]。
-///
-/// ⚠️ **两者不是同一个数的变体**：`DeepSeek-harness` 有 16 字符却合规（1 片段），
-/// 而 `厄洛替尼盐酸盐` 只有 7 字符也走字符数分支。**不要压成一个上限。**
+/// 含非 ASCII 时按总字符数计，纯 ASCII 时按空格切分的片段数计；两者不是同一个上限。
 const MAX_TEXT_CHARS: usize = 15;
 const MAX_TEXT_SEGMENTS: usize = 7;
 
-/// 调用方侧的长度判据：先 `trim`、再判空、最后校验，校验的是 `trim` 后的值，
-/// 未通过则返回原因（供调用方记日志并丢弃该行）。
+/// `trim` 后判空并校验长度，校验的是 `trim` 后的值。
 ///
-/// 必须在调用方（而不是塞进 [`validate_text_len`]）做，因为 `text` 是归并/唯一键，
-/// 未 `trim` 就入库会让同一个词出现两个 key（镜像路径尤其需要）。
+/// `text` 是归并/唯一键，未 `trim` 就入库会让同一个词占两个 key。
 pub(crate) fn validate_and_trim(text: &mut String) -> Result<(), anyhow::Error> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
@@ -34,13 +27,9 @@ pub(crate) fn validate_and_trim(text: &mut String) -> Result<(), anyhow::Error> 
     Ok(())
 }
 
-/// 按是否含非 ASCII 分流校验单条词条长度。
+/// 按是否含非 ASCII 分流校验单条词条长度，`lan_sync` 镜像导入复用同一判据。
 ///
-/// `pub` 供 `lan_sync` 的镜像导入复用：那条路径原先只归一 `weight`、不做任何校验，
-/// 于是「本地拒了、镜像放行」。两侧必须同一份判据。
-///
-/// ⚠️ **调用方须先 `trim` 并自行丢弃空串**（本仓用 [`validate_and_trim`] 包一层）：
-/// 本函数只判长度，纯空白串在 ASCII 分支是 0 片段、会照常放行。
+/// 调用方须先 `trim` 并丢弃空串：本函数只判长度，纯空白串会放行。
 pub fn validate_text_len(text: &str) -> Result<(), anyhow::Error> {
     if text.is_ascii() {
         let segments = text.split_whitespace().count();
@@ -58,26 +47,23 @@ pub fn validate_text_len(text: &str) -> Result<(), anyhow::Error> {
     Ok(())
 }
 
-/// 词库条数上限：库不上行给 provider（不受服务端限制），上限只为有界
-/// ——LAN payload 可控在几十 KB、UI 规模可预期。
+/// 词库条数上限：词库不上行给 provider，上限只为让 LAN payload 和 UI 规模有界。
 pub const MAX_ROWS_PER_LIBRARY: usize = 2000;
 /// 词库分类数上限。
 pub const MAX_CATEGORIES: usize = 100;
 /// 分类名字符数上限（按字符计）。
 pub const MAX_CATEGORY_NAME_CHARS: usize = 30;
 
-/// 归并内核的单行产出。`first_index` = 该行在**入参**中的首现下标
-/// （词库侧据此取回 `category_index`；角色/全局侧用 `..` 忽略）。
+/// 归并内核的单行产出；`first_index` 是该行在入参中的首现下标
+/// （词库侧据此取回 `category_index`，角色/全局侧忽略）。
 pub struct MergedRow {
     pub first_index: usize,
     pub text: String,
     pub weight: i32,
 }
 
-/// 校验 + 归并内核：trim、丢空、查超限/超长，按 `text` 归并取 max、保留首现位置。
-/// 角色 / 全局 / 词库三处共用，只差 `max_rows`（200 vs 2000）。
-///
-/// 归并键是 `text`（不含语言）：与发送层 `build_options` 同口径，两处终于一致。
+/// 校验并归并：trim、丢空、查超限/超长，按 `text` 归并取 max、保留首现位置。
+/// 角色 / 全局 / 词库三处共用，只差 `max_rows`。归并键与发送层 `build_options` 同为 `text`。
 fn validate_and_merge(
     rows: &[(String, i32)],
     max_rows: usize,
@@ -90,11 +76,11 @@ fn validate_and_merge(
     for (index, (text, weight)) in rows.iter().enumerate() {
         let text = text.trim();
         if text.is_empty() {
-            continue; // 纯空白条目丢弃
+            continue;
         }
         validate_text_len(text)?;
         let weight = normalize_weight(*weight);
-        // 归并键与唯一键同形：避免入参自撞唯一键让整个事务失败。
+        // 归并键与唯一键同形，避免入参自撞唯一键让事务失败。
         match merged.iter_mut().find(|r| r.text == text) {
             Some(exist) => exist.weight = exist.weight.max(weight),
             None => merged.push(MergedRow {
@@ -139,11 +125,9 @@ impl HotwordRepo {
             .map_err(|e| anyhow!(e))
     }
 
-    /// 整表替换（delete + insert）。入参内按 trim 后的 `text` 归并取 max weight，
-    /// 保留首次出现的位置。
-    ///
-    /// 全部校验通过后才动库：任一条不合格直接 `Err`，整表保持原样。
-    /// 事务由调用方开启——在事务里必须传 `&txn`（SQLite 单连接池，传 `&db` 会自锁）。
+    /// 整表替换（delete + insert），入参按 trim 后的 `text` 归并取 max weight。
+    /// 全部校验通过后才动库。事务由调用方开启，有事务时必须传 `&txn`
+    /// （SQLite 单连接池，传 `&db` 会自锁）。
     pub async fn replace_for_role<C: ConnectionTrait>(
         db: &C,
         role_id: i32,
@@ -201,7 +185,7 @@ impl HotwordRepo {
             .map_err(|e| anyhow!(e))
     }
 
-    /// 词库两张表，**皆按 id 升序 = 插入顺序**（整表替换按序插入，两者同序）。
+    /// 词库两张表，皆按 id 升序 = 插入顺序（整表替换按序插入）。
     pub async fn list_library<C: ConnectionTrait>(
         db: &C,
     ) -> Result<(Vec<hotword_category::Model>, Vec<library_hotword::Model>), anyhow::Error> {
@@ -218,17 +202,14 @@ impl HotwordRepo {
         Ok((categories, words))
     }
 
-    /// 词库整表替换（两表一起重建）。`categories` 的顺序 = 插入顺序；
+    /// 词库整表替换（两表一起重建）。`categories` 的顺序 = 插入顺序，
     /// `words` 的 `category_index` 是 `categories` 的下标（None = 未分类）。
-    ///
-    /// 全部校验通过后才动库：任一条不合格直接 `Err`，整库保持原样。
-    /// 事务由调用方开启，`&txn` 的原因见 `replace_for_role`。
+    /// 全部校验通过后才动库；事务由调用方开启，`&txn` 的原因见 `replace_for_role`。
     pub async fn replace_library<C: ConnectionTrait>(
         db: &C,
         categories: &[String],
         words: &[(Option<usize>, String, i32)],
     ) -> Result<(), anyhow::Error> {
-        // ── 校验先行 ──────────────────────────────────────────
         if categories.len() > MAX_CATEGORIES {
             return Err(anyhow!(
                 "分类数超限：{} > {MAX_CATEGORIES}",
@@ -268,7 +249,6 @@ impl HotwordRepo {
             .collect();
         let merged = validate_and_merge(&projection, MAX_ROWS_PER_LIBRARY)?;
 
-        // ── 写入 ──────────────────────────────────────────────
         library_hotword::Entity::delete_many()
             .exec(db)
             .await
@@ -278,7 +258,7 @@ impl HotwordRepo {
             .await
             .map_err(|e| anyhow!(e))?;
 
-        // 按序插分类，收集新 id（id 由 AUTOINCREMENT 重分配，无外部引用者）
+        // 按序插分类并收集新 id（AUTOINCREMENT 重分配，无外部引用者）
         let mut ids: Vec<i32> = Vec::with_capacity(names.len());
         for name in names {
             let inserted = hotword_category::ActiveModel {
@@ -291,7 +271,7 @@ impl HotwordRepo {
             ids.push(inserted.id);
         }
 
-        // 归并后按首现下标取回原入参的分类；越界已在上面挡过
+        // 归并后按首现下标取回原入参的分类（越界已在上方校验）
         for row in merged {
             let category_id = words[row.first_index].0.map(|index| ids[index]);
             library_hotword::ActiveModel {

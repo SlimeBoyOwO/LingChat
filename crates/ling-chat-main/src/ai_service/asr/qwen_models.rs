@@ -31,10 +31,8 @@ struct QwenModelSpec {
     /// 历史 Fun-ASR-Realtime 走的是旧格式。一刀切替换会让老配置从「能用」变成
     /// 「未知错误」，故按模型分流。
     use_legacy_audio_content: bool,
-    /// 一次请求可接受的即时热词条数上限（`None` = 不发即时热词，容量无意义）。
-    ///
-    /// 与 [`Self::supports_inline_vocabulary`] **同进同退**：给一个根本不发 vocabulary
-    /// 的模型显示「能装 2000 条」，会与角色热词页的「配了不生效」警告直接打架。
+    /// 一次请求可接受的即时热词条数上限（`None` = 不发即时热词）。
+    /// 与 [`Self::supports_inline_vocabulary`] 同进同退。
     max_hotword_count: Option<usize>,
     /// 该模型可用的地域。
     regions: &'static [DashScopeRegion],
@@ -186,8 +184,7 @@ pub fn qwen_is_streaming_model(model: &str) -> bool {
 /// 文档明确仅 qwen-audio-3.x 系支持；对 fun-asr-realtime / paraformer 系发这个
 /// 参数很可能直接 400，所以必须门控而不是「有热词就发」。
 ///
-/// ⚠️ **当前无生产调用点**：发送链路已改为按容量门控（`qwen_max_hotword_count`），
-/// 本函数仅测试使用，故显式 `allow`。
+/// 当前无生产调用点，仅测试使用（发送链路按容量门控）。
 #[allow(dead_code)]
 pub fn qwen_supports_inline_vocabulary(model: &str) -> bool {
     qwen_model_spec(model).is_some_and(|s| s.supports_inline_vocabulary)
@@ -195,10 +192,8 @@ pub fn qwen_supports_inline_vocabulary(model: &str) -> bool {
 
 /// 该模型一次请求可接受的即时热词条数上限；`None` = 不发即时热词。
 ///
-/// 2000 来自百炼《提升识别准确率》「热词限制与计费」（2026-10-12 第一手文档）：
-/// Qwen-Audio-3.x-ASR-Flash-Streaming / Filetrans / Flash 三者同档。
-/// 超限时服务端**静默随机丢弃**（不是报错）——随机丢弃会摧毁「顺序即优先级」，
-/// 所以本地必须按这个数截断，让请求永不触达该分支。
+/// 2000 来自百炼文档（Qwen-Audio-3.x-ASR-Flash 系同档）；超限时服务端会随机
+/// 丢弃，本地按此数截断以保留「顺序即优先级」。
 pub fn qwen_max_hotword_count(model: &str) -> Option<usize> {
     qwen_model_spec(model).and_then(|s| s.max_hotword_count)
 }
@@ -284,7 +279,6 @@ mod tests {
 
     #[test]
     fn streaming_models_are_flagged_by_the_table() {
-        // 取代原来写死的 matches!(model, "paraformer-realtime-v2")
         assert!(qwen_is_streaming_model("paraformer-realtime-v2"));
         assert!(qwen_is_streaming_model("fun-asr-realtime-2026-02-28"));
         assert!(!qwen_is_streaming_model("qwen-audio-3.0-asr-flash"));
@@ -294,10 +288,7 @@ mod tests {
 
     #[test]
     fn hidden_models_are_unlisted_but_still_resolvable() {
-        // 两条 Fun-ASR-Realtime 都已从设置页移除：同名不同协议，摆在一起会被
-        // 误选。但**规格必须保留**——老配置里可能存着这些名字，查不到就会按
-        // 非流式处理（流式的那个会被发到同步端点，DashScope 直接 400），
-        // 或者静默换掉同步 body 格式（fun-asr-realtime 走旧 content 格式）。
+        // 两条 Fun-ASR-Realtime 不在清单中，但规格仍可解析，保证老配置行为不变。
         for id in ["fun-asr-realtime", "fun-asr-realtime-2026-02-28"] {
             for r in DashScopeRegion::ALL.iter().copied() {
                 assert!(
@@ -316,9 +307,7 @@ mod tests {
 
     #[test]
     fn listed_models_are_available_in_every_region() {
-        // 目前两地清单应完全一致——唯一的北京独有模型（fun-asr-realtime-2026-02-28）
-        // 已下线。将来若新增地域专属模型，这条会失败，而那正是需要停下来确认
-        // 「设置页切地域后列表会变、模型可能失效」的时刻。
+        // 两地清单应一致；新增地域专属模型时需复查设置页切地域后的模型失效问题。
         let cn: Vec<String> = qwen_models(DashScopeRegion::CnBeijing)
             .into_iter()
             .map(|m| m.id)
@@ -333,9 +322,7 @@ mod tests {
 
     #[test]
     fn hidden_legacy_model_is_unlisted_but_still_resolvable() {
-        // 历史 fun-asr-realtime 在哪个地域都不出现。
-        // 断言用「成员/属性」而非数量——数量会随每次加模型而失效，
-        // 那样这个测试就沦为改一次模型改一次断言，失去防回归的意义。
+        // 历史 fun-asr-realtime 不出现在任何地域，但规格仍可解析。
         for r in DashScopeRegion::ALL.iter().copied() {
             let ids: Vec<_> = qwen_models(r).into_iter().map(|m| m.id).collect();
             assert!(
@@ -352,8 +339,7 @@ mod tests {
             );
         }
 
-        // 但规格必须仍能查到——否则老配置（model: "fun-asr-realtime"）会静默换
-        // body 格式，从「能用」变成「未知错误」。这是本次最容易漏的回归点。
+        // 规格保留，避免老配置静默换 body 格式。
         assert!(!qwen_is_streaming_model("fun-asr-realtime"));
         assert!(!qwen_supports_inline_vocabulary("fun-asr-realtime"));
         assert!(qwen_uses_legacy_audio_content("fun-asr-realtime"));

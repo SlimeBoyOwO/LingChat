@@ -41,11 +41,11 @@ export interface ModelInfo {
   supports_streaming: boolean;
   /** 支持即时热词 `parameters.vocabulary`（qwen-audio-3.x 系专属）。 */
   supports_inline_vocabulary: boolean;
-  /** 热词经 `prompt` 上下文偏置生效（llama-asr；权重被忽略，词条仍会发出）。
-   *  与上面那位同为「热词会不会被用上」的判定输入：两者都 false 时模型静默丢弃热词。 */
+  /** 热词经 prompt 上下文偏置生效（llama-asr；权重被忽略，词条仍会发出）。
+   *  以上两位都 false 时模型静默丢弃热词。 */
   supports_prompt_bias: boolean;
-  /** 一次请求可接受的即时热词条数上限；null/缺省 = 不发即时热词或没有条数上限。
-   *  ⚠️ null 有**两种**含义，不能一律读成「不支持」——判据是上面那两个能力位。 */
+  /** 一次请求可接受的即时热词条数上限；null 可能是「不发即时热词」或「无上限」，
+   *  是否支持看上面两个能力位。 */
   max_hotword_count?: number | null;
   is_default: boolean;
   /**
@@ -54,14 +54,6 @@ export interface ModelInfo {
    * null = 不干预端点（本地 llama-asr 的地址与模型无关）。
    */
   endpoint_kind?: EndpointKind | null;
-}
-
-/** 与后端 region.rs 的 AsrRegionInfo 对齐：某地域的端点默认值 */
-export interface AsrRegionInfo {
-  id: string;
-  label: string;
-  http_endpoint: string;
-  ws_endpoint: string;
 }
 
 /** 与后端 region.rs 的 AsrRegionInfo 对齐：某地域的端点默认值 */
@@ -146,8 +138,7 @@ export const asrStopListening = (source: AsrSource) =>
 
 export const asrVadProcessChunk = (pcm: number[]) => invoke<void>("asr_vad_process_chunk", { pcm });
 
-/** `hotwords` 是热词的**唯一入口**（ASR 设置页已无热词设置）：热词逐角色、
- *  存数据库，由 `composables/asr` 在录音开始时快照后传入，provider 侧无需改动。 */
+/** `hotwords` 是热词的唯一入口：逐角色存库，由 `composables/asr` 在录音开始时快照后传入。 */
 export const asrRecognizeWav = (params: {
   providerId: string;
   wavBytes: number[];

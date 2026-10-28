@@ -27,7 +27,7 @@ const DB_RECORDS_FILE: &str = "db_records.json";
 // ─── 表操作顺序（按外键依赖） ─────────────────────────────────
 
 /// DELETE 顺序：先删子表再删父表，避免 FK 约束冲突。
-/// 三张 global / 词库表无外键，位置只为可读性（紧跟角色热词）。
+/// 热词相关的三张表无外键，位置只为可读性。
 const DELETE_ORDER: [&str; 11] = [
     "line_perception",
     "memory_bank",
@@ -42,11 +42,7 @@ const DELETE_ORDER: [&str; 11] = [
     "role",
 ];
 
-// INSERT 顺序在 apply_staged_db_records 中按序调用：
-// role → role_hotword → global_hotword
-// → hotword_category → library_hotword
-// → save → running_script → adventure_unlock → line → memory_bank → line_perception
-// 其中三张热词表走 import_rows_normalized（入口归一），其余走 import_rows! 宏。
+// INSERT 顺序为父表 → 子表；三张热词表走 import_rows_normalized 做入口归一。
 
 /// 导入宏：将 JSON 数组反序列化为 Entity Model，转为 ActiveModel 逐行 INSERT。
 ///
@@ -68,19 +64,17 @@ macro_rules! import_rows {
     }};
 }
 
-/// 热词行归一：`weight` 归一到 `[1, 5] ∪ {50}`，`text` 按本地保存同一判据处理，
-/// 不合格返回原因（该行丢弃）。`text` 是归并/唯一键，未 `trim` 会拆成两个 key。
+/// 热词行归一：`weight` 归一到 `[1, 5] ∪ {50}`，`text` 按本地保存的判据 trim。
+/// 不合格时返回原因，调用方丢弃该行。
 fn normalize_hotword_row(text: &mut String, weight: &mut i32) -> Result<(), String> {
     *weight = normalize_weight(*weight);
     crate::db::managers::hotword_repo::validate_and_trim(text).map_err(|e| e.to_string())
 }
 
-/// 与 `import_rows!` 同形，但每行先过 `normalize` 再 INSERT；闭包返回 `Err` 表示**丢弃该行**。
+/// 与 `import_rows!` 同形，但每行先过 `normalize` 再 INSERT；闭包返回 `Err` 表示丢弃该行。
 ///
-/// 三张热词表专用：对端 payload 里的脏值必须在此归一（与本地保存同一口径）——
-/// 越界 `weight` 会让 DDL 的 CHECK 拒掉**整批**镜像，是用户看不见的静默失效。
-/// 但**单行**未通过校验（空词、超长）只丢该行：同步是整台设备的镜像，
-/// 一行坏数据不该让整批镜像回滚。
+/// 三张热词表专用：越界 `weight` 会被 DDL 的 CHECK 拒掉整批镜像，故入口归一并
+/// 只丢弃校验失败的单行。
 async fn import_rows_normalized<E, M, F>(
     db: &impl ConnectionTrait,
     rows: &[Value],
@@ -260,10 +254,8 @@ pub fn load_staged_db_records(data_dir: &Path) -> Option<DbRecords> {
 ///
 /// 在 `db::init_db()` 调用之后执行（此时表结构已就绪）。
 ///
-/// 应用阶段的失败不上抛（否则启动 panic，而暂存文件因未提交而残留，
-/// 下次启动重蹈覆辙）：记录 warn、把暂存文件改名为 `.bad`，并返回 `Ok(0)`。
-///
-/// 返回导入的总行数，如果无暂存记录或应用失败则返回 0。
+/// 应用失败不上抛：记录 warn、暂存文件改名为 `.bad` 并返回 `Ok(0)`，避免下次启动
+/// 重复失败。返回导入的总行数；无暂存记录或应用失败时为 0。
 pub async fn apply_staged_db_records(
     db: &DatabaseConnection,
     data_dir: &Path,
@@ -300,9 +292,8 @@ pub async fn apply_staged_db_records(
 
 /// 在单个事务中应用记录：按依赖顺序 DELETE 全部行、再重新 INSERT。
 ///
-/// 注意：下方 `PRAGMA foreign_keys = OFF` 在事务内是 no-op，
-/// **导入期间外键实际是开启的**，所以 DELETE_ORDER 与 INSERT 的先后顺序是硬约束。
-/// 失败即回滚（事务随 drop 丢弃）。
+/// 事务内 `PRAGMA foreign_keys = OFF` 不生效，导入期间外键仍开启，因此
+/// DELETE_ORDER 与 INSERT 顺序是硬约束。失败即回滚。
 async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u64, String> {
     // 在事务中执行全部操作
     let txn = db.begin().await.map_err(|e| format!("开始事务失败: {e}"))?;
@@ -402,8 +393,7 @@ mod tests {
     use super::*;
     use sea_orm::{ActiveModelTrait, Set};
 
-    /// 畸形 payload 在应用阶段失败时不应上抛 `Err`（否则整段同步被跳过），
-    /// 且暂存文件应改名为 `.bad`，避免下次启动重复失败。
+    /// 畸形 payload 应用失败时不上抛 `Err`，且暂存文件改名为 `.bad`。
     #[tokio::test]
     async fn malformed_payload_does_not_fail_startup() {
         let tmp = tempfile::tempdir().expect("创建临时目录失败");
@@ -413,8 +403,7 @@ mod tests {
             .await
             .expect("初始化数据库失败");
 
-        // roles 中一行 name 类型非法：行本身只是 Value，能通过 load_staged_db_records，
-        // 但在 import_rows! 反序列化为 role::Model 时失败（应用阶段）。
+        // roles 里 name 类型非法：加载阶段不报错，导入反序列化时失败。
         let records = DbRecords {
             device_id: "test-device".to_string(),
             roles: vec![serde_json::json!({ "id": 7, "name": 123 })],

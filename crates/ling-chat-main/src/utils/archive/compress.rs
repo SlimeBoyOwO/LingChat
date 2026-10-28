@@ -1,9 +1,7 @@
 //! 把目录压缩为 zip / 7z 归档（导出功能）。
 //!
-//! 两种入口：
-//! - [`compress`]：通用压缩，支持把内存条目（`extra_entries`）一并写入，并可按
-//!   **归档内条目名**（相对 `src_dir`、`/` 分隔，含子目录路径）排除磁盘文件
-//! - [`compress_excluding_root_entries`]：只按**第一层名字**排除，不改动嵌套内容
+//! [`compress`] 支持写入内存条目，并按归档内条目名（相对 `src_dir`、`/` 分隔）排除
+//! 磁盘文件；[`compress_excluding_root_entries`] 只按第一层名字排除。
 //!
 //! macOS metadata（`__MACOSX/`、`._*`、`.DS_Store`）一律自动跳过。
 
@@ -15,9 +13,8 @@ use super::{ArchiveError, ArchiveFormat, EntryEvent, map_sevenz_err};
 
 /// 压缩 `src_dir` 到 `out`，并把 `extra_entries` 作为内存条目一并写入归档。
 ///
-/// `extra_entries` 的 `(条目名, 内容)` 与磁盘文件同名时**以内存条目为准**（磁盘那份被
-/// 剔除）；`exclude_names` 里的磁盘文件一律不进归档（调用方按需传入，本模块不关心语义）。
-/// 两者的条目名都与磁盘文件的相对路径同口径：相对 `src_dir`、`/` 分隔。
+/// 条目名与磁盘文件同名时以内存条目为准，磁盘那份被剔除；`exclude_names` 命中
+/// （相对 `src_dir`、`/` 分隔）的磁盘文件不写入。
 pub fn compress(
     src_dir: &Path,
     format: ArchiveFormat,
@@ -28,8 +25,7 @@ pub fn compress(
 ) -> Result<(), ArchiveError> {
     let mut files = Vec::new();
     collect_files(src_dir, &mut files, &[])?;
-    // 内存条目与磁盘文件同名时剔除磁盘那份，另外剔除排除名单里的文件。
-    // 放在 `retain` 而非逐条目 `continue`，让 `total` 与实际写出的条目数一致。
+    // 先筛掉被内存条目顶掉和排除名单里的文件，保证 total 与实际写出一致。
     files.retain(|path| should_pack(path, src_dir, extra_entries, exclude_names));
     compress_files(src_dir, format, out, &files, extra_entries, on_entry)
 }
@@ -47,9 +43,8 @@ pub fn compress_excluding_root_entries(
     compress_files(src_dir, format, out, &files, &[], on_entry)
 }
 
-// 递归收集目录下所有文件。`excluded` 只作用于**本层**（递归时清空），因此调用方
-// 传进来的名字只能排除源目录第一层的条目——这是与 `compress` 的 `exclude_names`
-// （按完整相对路径匹配）的区别。
+// 递归收集目录下所有文件。`excluded` 只作用于本层（递归时清空），因此只能排除
+// 源目录第一层；`compress` 的 `exclude_names` 按完整相对路径匹配。
 fn collect_files(dir: &Path, out: &mut Vec<PathBuf>, excluded: &[&str]) -> io::Result<()> {
     for entry in std::fs::read_dir(dir)? {
         let entry = entry?;
@@ -78,8 +73,7 @@ fn entry_name(path: &Path, src_dir: &Path) -> String {
     rel.to_string_lossy().replace('\\', "/")
 }
 
-// 磁盘文件是否该写进归档：被内存条目顶掉、或命中排除名单的都不写。
-// 两者都精确匹配 `entry_name`（含子目录路径），不做后缀/子串匹配。
+// 磁盘文件是否写入归档：被内存条目顶掉或命中排除名单，均精确匹配完整条目名。
 fn should_pack(
     path: &Path,
     src_dir: &Path,
@@ -91,7 +85,7 @@ fn should_pack(
         && !exclude_names.contains(&name.as_str())
 }
 
-// 按已筛好的文件表写归档：要不要内存条目、怎么排除，都由调用方在进来之前定好。
+// 按已筛好的文件表写归档。
 fn compress_files(
     src_dir: &Path,
     format: ArchiveFormat,

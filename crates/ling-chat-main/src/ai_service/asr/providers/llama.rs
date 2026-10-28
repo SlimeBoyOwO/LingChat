@@ -109,7 +109,6 @@ impl AsrProvider for LlamaAsrProvider {
             );
         // 热词接口：作为 prompt 上下文偏置传入
         //（偏置非强制——提升特定词命中概率，不保证一定识别为热词）
-        // 记账用字符口径：llama 的容量是**字符预算**，不是条数
         if let Some(p) = llama_prompt_from_hotwords(&opts.hotwords) {
             if p.dropped > 0 {
                 debug!(
@@ -203,27 +202,19 @@ impl AsrProvider for LlamaAsrProvider {
 }
 
 /// 热词文本的总字符上限。
-///
-/// ⚠️ 口径存疑：部署包文档 `API接入文档.md` 的建议是**按条数** ≤ 20~30 个
-/// （「过多会稀释偏置效果」），而这里按字符 200——中文词 2~8 字，200 字符可塞
-/// 25~100 个词，容易远超文档建议的条数。修复时一并改按条数。
+/// 部署文档建议按条数限制在 20~30 个，当前按字符计。
 const LLAMA_PROMPT_MAX_CHARS: usize = 200;
 
-/// 实现实际使用的预算。
-///
-/// ⚠️ 这个值会随 prefix/suffix 变化——修复「prompt 被回吐」那个缺陷时会把它们删掉，
-/// 预算随之变成满额。将来补断言时别写死数字，读本函数。
+/// 扣除前缀/后缀后的实际字符预算。
 pub(crate) fn llama_prompt_capacity() -> usize {
     LLAMA_PROMPT_MAX_CHARS
         .saturating_sub(PROMPT_PREFIX.chars().count() + PROMPT_SUFFIX.chars().count())
 }
 
-/// ⚠️ 这两行是 `4ca2e79c` 引入的回归点：裸逗号列表才是部署包文档验证过的形式。
-/// 修的时候连 prefix/suffix 一起去掉，并同步预算算法。
 const PROMPT_PREFIX: &str = "热词：";
 const PROMPT_SUFFIX: &str = "。";
 
-/// 一次 prompt 偏置的构造结果：文本 + **保留与丢弃的计数**。
+/// 一次 prompt 偏置的构造结果。
 pub(crate) struct LlamaPrompt {
     /// 实际写进 multipart `prompt` 字段的文本。
     pub text: String,
@@ -235,21 +226,10 @@ pub(crate) struct LlamaPrompt {
 
 /// 热词 → llama-server 的 `prompt` 偏置文本。
 ///
-/// `prompt` 是 llama-server `/v1/audio/transcriptions` **唯一**的热词通道——
-/// 它没有 qwen 那种结构化的 `parameters.vocabulary`，只能把词塞进前文上下文。
+/// `prompt` 是 `/v1/audio/transcriptions` 唯一的热词通道，没有结构化的
+/// `parameters.vocabulary`，只能把词放进前文上下文。发送前做去重与长度上限。
 ///
-/// 保留的两项处理（原实现直接 `join(", ")`，都没有）：
-/// - **去重**：同一角色可能重复配置，重复词只会挤占窗口
-/// - **长度上限**：见上，口径待改（要改按条数）
-///
-/// ⚠️ **已知缺陷（未修复）：音频过短 / 无有效人声时，本函数的返回值会被模型当成
-/// 已完成的转录原样回吐**，用户拿到的成了词表而不是自己说的话。
-///
-/// 成因是上面那个成句形式（`热词：A、B。`）——它读起来像一句待续的转录文本，
-/// 而被整体回吐的正是这一串字符。修复方向：回到文档验证过的裸逗号列表形式，
-/// 保留去重与长度上限；另可在调用点加「返回值 == 下发文本则判为无结果」的兜底。
-///
-/// 排查时注意：那两处记账日志是 `debug!`，需显式调高日志级别才看得到。
+/// 音频过短或无有效人声时，返回值可能被模型当成转录原样回吐，调用方需自行校验。
 fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<LlamaPrompt> {
     let mut seen = std::collections::HashSet::new();
     let mut words: Vec<&str> = Vec::new();
@@ -291,10 +271,8 @@ fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<LlamaPrompt> {
 
 /// 解析 llama-server 转写响应文本。
 ///
-/// 实测格式：`{"text": "language <lang><asr_text><转写文本>"}`（无语音时
-/// `<lang>` 为 `None`、文本为空）。切 `<asr_text>` 取后半的文本；前段的
-/// `language <lang>` 标记一并丢弃。供整句识别与 SSE 结果流式
-///（provider_stream_llama.rs）共用。
+/// 实测格式 `{"text": "language <lang><asr_text><转写文本>"}`，切 `<asr_text>`
+/// 取文本并丢弃语言标记，无语音时文本为空。整句识别与 SSE 流式共用。
 pub(crate) fn parse_llama_text(body: &str) -> Option<String> {
     let value: JsonValue = serde_json::from_str(body).ok()?;
     let text = value.get("text").and_then(|t| t.as_str())?;

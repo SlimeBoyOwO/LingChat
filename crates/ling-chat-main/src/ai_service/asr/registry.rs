@@ -56,8 +56,7 @@ pub fn build_stream_params(model: &str, opts: &AsrOptions) -> super::provider_st
     let vocabulary = if hotwords.is_empty() {
         None
     } else if let Some(max) = qwen_max_hotword_count(model) {
-        // 截断与真正发出的字节同源（本函数就是构造 vocabulary 的地方）；
-        // 规则本身与同步落点共用 `take_within_capacity`
+        // 截断规则与同步落点共用 `take_within_capacity`
         Some(hotwords_to_vocabulary_json(take_within_capacity(
             hotwords,
             max,
@@ -177,7 +176,7 @@ async fn llama_models(
     Ok(llama_model_infos(names))
 }
 
-/// 模型名 → ModelInfo。与网络调用分离，纯映射。
+/// 模型名 → ModelInfo。
 fn llama_model_infos(names: Vec<String>) -> Vec<ModelInfo> {
     names
         .into_iter()
@@ -187,11 +186,10 @@ fn llama_model_infos(names: Vec<String>) -> Vec<ModelInfo> {
             // 结果流式（SSE）：音频整段上传、结果增量返回。与 qwen WS 真流式
             // 语义不同，但前端流式开关可用（录音结束出 partial 而非边录边出）
             supports_streaming: true,
-            // 热词经 `prompt` 偏置生效（权重被忽略），不是「配了不生效」。
+            // 热词经 `prompt` 偏置生效（权重被忽略）。
             supports_inline_vocabulary: false,
             supports_prompt_bias: true,
-            // llama 的热词走 `prompt` 上下文偏置，没有条数上限（真机限制是
-            // 部署参数 `-c 4096` token，prompt 与音频共享），故不声明容量。
+            // llama 的热词无条数上限（`-c 4096` token 由 prompt 与音频共享），故不声明容量。
             max_hotword_count: None,
             is_default: i == 0,
             // 端点与模型无关（本地服务地址固定）

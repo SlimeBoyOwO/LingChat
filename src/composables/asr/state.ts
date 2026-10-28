@@ -12,8 +12,7 @@ export interface AsrInputBridge {
   setText: (v: string) => void;
 }
 
-/** 一次录音的热词快照：录音开始时取（hotwords.ts），识别时下发。
- *  `generation` 为取快照时的缓存版本，下发前校验——变了说明场景已变，本次不带热词。 */
+/** 一次录音的热词快照：取快照时的缓存版本，下发前校验，变了则本次不带热词。 */
 export interface HotwordSnapshot {
   generation: number;
   hotwords: RoleHotword[];
@@ -58,16 +57,12 @@ export const runtime = {
   inputBridge: null as AsrInputBridge | null,
   /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
   baseText: "",
-  /** 场景热词缓存：场景角色词 + 全局词（hotwords.ts 的 refreshSceneHotwords 写入） */
+  /** 场景热词缓存：角色词 + 全局词（hotwords.ts 刷新） */
   hotwords: [] as RoleHotword[],
-  /** 角色名热词（主角名 + 在场角色名，「在场即注入」）。
-   *
-   *  **为什么不并进 `hotwords`**：`hotwords` 是异步 DB 往返的结果、会因刷新失败
-   *  而复位成空表（见 hotwords.ts 的文件头）；角色名是**同步派生**的，不该被
-   *  一次 DB 读失败连带清掉。分开存，快照时再拼。 */
+  /** 角色名热词（主角名 + 在场角色名）。同步派生，与异步读库的 `hotwords` 分开存，
+   *  快照时拼接。 */
   roleNameHotwords: [] as RoleHotword[],
-  /** 热词缓存版本：每次刷新**开始时** +1（旧缓存同时作废）。读取方据此判断
-   *  快照是否已被后续刷新取代（写入是异步的、读取是同步的，见 hotwords.ts） */
+  /** 热词缓存版本：每次刷新开始时 +1，用于判断快照是否已被后续刷新取代。 */
   hotwordsGeneration: 0,
   /** 本次录音的热词快照（录音开始时取，与 baseText 同类） */
   hotwordSnapshot: null as HotwordSnapshot | null,

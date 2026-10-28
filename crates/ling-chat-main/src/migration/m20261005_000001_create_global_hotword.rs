@@ -4,8 +4,7 @@ use sea_orm_migration::prelude::*;
 pub struct Migration;
 
 /// `CHECK` 与 `UNIQUE` 无法用 `ColumnDef` builder 表达，只能走原始 SQL。
-///
-/// 刻意**不写** `FOREIGN KEY`：无归属对象，且与 `role_hotword` 表同一取舍。
+/// 不写 `FOREIGN KEY`：无归属对象，与 `role_hotword` 表同一取舍。
 const RAW_SQL: &str = "\
 CREATE TABLE IF NOT EXISTS global_hotword (
     id     INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,

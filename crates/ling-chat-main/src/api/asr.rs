@@ -29,16 +29,15 @@ fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_code(s).ok_or_else(|| format!("invalid source: {s}"))
 }
 
-/// 命令层的热词入参，兼容两种 JSON 形态：
+/// 命令层的热词入参，兼容纯词表与带权重两种 JSON 形态：
 ///
 /// ```json
-/// ["量子计算", "Anthropic"]                    // 纯词表，用默认权重
-/// [{"text": "量子计算", "weight": 5}]          // 带权重
+/// ["量子计算", "Anthropic"]
+/// [{"text": "量子计算", "weight": 5}]
 /// ```
 ///
-/// **这是热词的唯一入口**：ASR 设置页已不再有热词设置，热词归角色
-/// （每个角色独立、存数据库），前端在录音开始时快照场景热词后经此参数传入
-/// （`composables/asr/hotwords.ts`），**provider 侧零改动**。
+/// 热词归角色，前端录音时快照场景热词经此参数传入
+/// （`composables/asr/hotwords.ts`）。
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 pub enum HotwordInput {
@@ -47,10 +46,8 @@ pub enum HotwordInput {
 }
 
 impl HotwordInput {
-    /// 拆成 `(text, weight)`，并把权重归一到 `[1, 5] ∪ {50}`。
-    ///
-    /// 归一放在**入参口**而不是下游：`build_options` 的归并要按 `text` 取 max，
-    /// 而 max 必须在同一口径下比较才有意义（9 与 5 谁大，取决于 9 是否合法）。
+    /// 拆成 `(text, weight)` 并把权重归一到 `[1, 5] ∪ {50}`。
+    /// 归一必须在入参口做，`build_options` 按 `text` 取 max 需在同一口径下比较。
     fn into_parts(self) -> (String, u8) {
         let raw = match self {
             Self::Text(text) => (text, Hotword::DEFAULT_WEIGHT),
@@ -61,12 +58,10 @@ impl HotwordInput {
     }
 }
 
-/// 组装一次识别调用的参数。权重已在 [`HotwordInput::into_parts`] 归一；热词过三道漏斗：
-/// 丢弃空词条（含纯空白）→ 按 trim 后的 `text` 归并取 max（保留首现位置）→
-/// 超级词条数超 `SUPER_COUNT_LIMIT` 时把超出的降级（见 [`demote_excess_super`]）。
+/// 组装一次识别调用的参数。空词条丢弃，按 trim 后的 `text` 归并取 max，
+/// 超级词条超限时由 [`demote_excess_super`] 降级。
 fn build_options(hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
-    // 归并键是 `text`。归并**不是可选优化**——provider 侧按先出现者建词表
-    //（qwen 的 `or_insert_with`），不归并就会保留先出现的权重，违背 §6.3 的 max 语义。
+    // provider 按先出现者建词表（qwen 的 `or_insert_with`），不归并会保留先出现的权重。
     let mut merged: Vec<(String, u8)> = Vec::new();
     for (text, weight) in hotwords
         .unwrap_or_default()
@@ -93,13 +88,10 @@ fn build_options(hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
     }
 }
 
-/// 超级热词（`weight == SUPER_WEIGHT`）一次请求最多 [`SUPER_COUNT_LIMIT`] 个。
+/// 超级热词（`weight == SUPER_WEIGHT`）一次请求最多 [`SUPER_COUNT_LIMIT`] 个，
+/// 超出的降级为普通档上界而非丢弃，避免连带丢掉后面的普通热词。
 ///
-/// 超出的**降级**为普通档上界而不是丢弃：顺序即优先级，丢尾部会连带
-/// 丢掉排在它后面的普通热词；而权重只是「偏好强度」，降一档不会让词消失。
-///
-/// ⚠️ 这是**发送层**的兜底，不是保存时的校验——各作用域各自合规也拦不住并集超限
-/// （3 个角色各 50 个就是 150）；保存时不限制超级热词数量。
+/// 这是发送层的兜底，不是保存校验：各作用域各自合规也可能并集超限。
 fn demote_excess_super(hotwords: Vec<Hotword>) -> Vec<Hotword> {
     use hotword_weight::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP};
 

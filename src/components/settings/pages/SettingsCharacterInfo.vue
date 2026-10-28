@@ -228,8 +228,7 @@
                 :character-folder="String(localSettings.character_folder || '')"
               />
 
-              <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
-                   分类仍回退到上面的 gsv_voice_filename / gsv_voice_text -->
+              <!-- GSV 六情绪参考语音：填全的分类按情绪切换，未填全的仍回退到 gsv_voice_filename / gsv_voice_text -->
               <div
                 v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
                 class="space-y-4"
@@ -579,10 +578,7 @@ const {
   gsvEmoField,
 } = useVoiceResources(localSettings);
 
-/**
- * 热词 tab 的草稿：编辑只进内存，随底部「保存」与其余设置一次提交，
- * 「取消」即丢弃。
- */
+/** 热词草稿：随底部保存一次提交，取消即丢弃。 */
 const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
 
 /** 传给热词 tab 的模型能力（与全局热词弹窗共用同一判定）。 */
@@ -625,7 +621,6 @@ const handleDelete = async () => {
   try {
     await deleteCharacterApi(props.roleId, true);
 
-    // 删除成功
     uiStore.showSuccess({
       title: t("settings.characterInfo.delete.successTitle"),
       message: t("settings.characterInfo.delete.successMessage", {
@@ -633,7 +628,6 @@ const handleDelete = async () => {
       }),
     });
 
-    // 通知父组件刷新列表 + 关闭弹窗
     emit("saved");
     emit("close");
   } catch (error: any) {
@@ -690,14 +684,12 @@ const schemas = computed(() =>
 
 const currentTabConfig = computed(() => schemas.value[activeTab.value]);
 
-// voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
   const fields = currentTabConfig.value || [];
-  // 过滤掉当前不可见的字段
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-// --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
+// GSV 六情绪参考语音：自定义 UI，只写草稿，由底部保存统一提交
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
@@ -875,8 +867,7 @@ watch(
         }
         baseline.value = JSON.stringify(localSettings.value);
         draftClothes.value = [...(props.clothes ?? [])];
-        // 热词：保存是整表替换，读失败必须让弹窗打不开——草稿默认是
-        // 空表，若放行，用户随手点一次「保存」就会静默清空该角色的热词
+        // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
         const roleHotwords = await getRoleHotwords(props.roleId);
         hotwordDraft.value = { hotwords: roleHotwords };
       } catch (e) {
@@ -889,7 +880,7 @@ watch(
   },
 );
 
-// Refresh local voices when the voice tab is shown while the dialog is visible.
+// 打开语音 tab 时刷新本地音色
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
@@ -954,8 +945,7 @@ function applySettingsToRuntime() {
     runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
     // /chat 与 /pet 互斥，靠这次内存热更避免后端 re-init
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 角色名参与识别热词：store 里的 roleName 不改，
-    // 改名要等重启才生效——热更正是为了避免它。这里与其它字段一并热更。
+    // store 里的 roleName 不会自行更新，热更后改名才能立即用于识别热词
     if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
       runtimeRole.roleName = localSettings.value.ai_name.trim();
     }
@@ -966,7 +956,7 @@ function applySettingsToRuntime() {
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
-/** 保存前校验：实际会被加载的那个 variant 的模型文件是否还在。走 getLive2dFilePath 是为了让草稿里的模型按 editId 解析。 */
+/** 校验实际加载的 variant 模型文件是否还在（按 editId 解析草稿模型） */
 async function isLive2dModelAvailable(): Promise<boolean> {
   const live2d = localSettings.value.live2d;
   if (!live2d) return false;
@@ -996,8 +986,7 @@ async function persistSettings(): Promise<boolean> {
     }
     // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
     await relationsEditor.value?.submit(true);
-    // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
-    // WebGL 上下文、失败之后才退回静态
+    // Live2D 模型文件取不到时改回静态立绘，避免运行时先建 WebGL 上下文再失败
     if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
@@ -1016,10 +1005,8 @@ async function persistSettings(): Promise<boolean> {
       props.roleId,
       hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
     );
-    // 运行时缓存与库同步（识别时注入的就是这份）：保存成功后重取。
-    // ⚠️ 必须排在 applySettingsToRuntime 里那次 `roleName` 热更**之后**：
-    // refreshSceneHotwords 会**同步**派生角色名热词，放在前面派生出的
-    // 是旧名字，改名就不能立即生效了。
+    // 必须排在 applySettingsToRuntime 的角色名热更之后，
+    // refreshSceneHotwords 会同步派生角色名热词，放在前面会派生出旧名字
     void refreshSceneHotwords();
     return true;
   } catch (e) {

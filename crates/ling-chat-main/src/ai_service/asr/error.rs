@@ -64,8 +64,6 @@ impl AsrError {
     }
 }
 
-// ─── reqwest 错误映射 ─────────────────────────────────────────
-
 /// reqwest 的网络/超时/协议错误统一归类为 provider 错误；上层无需关心细节。
 pub(crate) fn map_reqwest_error(e: reqwest::Error) -> AsrError {
     if e.is_timeout() {

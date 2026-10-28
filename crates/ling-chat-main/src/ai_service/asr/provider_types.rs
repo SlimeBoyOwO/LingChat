@@ -165,17 +165,10 @@ pub struct ModelInfo {
     /// 是否支持即时热词 `parameters.vocabulary`（qwen-audio-3.x 系专属）。
     pub supports_inline_vocabulary: bool,
     /// 热词是否经 `prompt` 上下文偏置生效（llama-asr；权重被忽略，词条仍会发出）。
-    ///
-    /// 与 [`Self::supports_inline_vocabulary`] 是两条并列的「热词会不会被用上」
-    /// 链路，**两个都为 false 时该模型会静默丢弃热词**——前端角色设置页据此显示
-    /// 警告条。不合并成单个「支持热词」位：两者是
-    /// provider 侧两套不同的协议能力，各自的门控仍分开判定。
+    /// 与 [`Self::supports_inline_vocabulary`] 都为 false 时模型会静默丢弃热词。
     pub supports_prompt_bias: bool,
     /// 一次请求可接受的即时热词条数上限；`None` = 不发即时热词或没有条数上限。
-    ///
-    /// ⚠️ 两种情形都可能是 `None`，前端**不能**把 `None` 一律读成「不支持」：
-    /// qwen 的不支持模型（能力位 false）与 llama 的 prompt 偏置（无上限）都是 `None`。
-    /// 判据是能力位，容量只是展示。
+    /// `None` 不能视为不支持，判据是能力位，容量仅供展示。
     pub max_hotword_count: Option<usize>,
     /// 是否默认模型（`provider_configs[id].model` 为空时生效）。
     pub is_default: bool,

@@ -81,8 +81,7 @@
           ×
         </button>
       </div>
-      <!-- 超长条目保存必被后端拒（整表回滚）；在点保存前就标出来。两套判据各自的
-           计数口径不同（字符数 vs 片段数），提示文案必须跟着分支走。 -->
+      <!-- 超长条目会被后端整表拒绝，提前标出；字符数和片段数的提示分开显示 -->
       <p v-if="hotwordLimitKind(item.text) !== 'ok'" class="mt-1 text-[12px] text-red-300">
         {{
           hotwordLimitKind(item.text) === "segments"
@@ -146,8 +145,7 @@ const props = defineProps<{
   modelValue: RoleHotwordDraft;
 }>();
 
-// v-model 的草稿**就地编辑**（与 clothes 那段的 `v-model="item.name"` 同款）：父组件
-// 的 ref 是深响应式的，嵌套变更会同步回去；不需要回传事件，提交由父组件把握。
+// 草稿就地编辑：父组件的 ref 是深响应式的，嵌套变更会同步回去，提交由父组件负责
 const draft = computed(() => props.modelValue);
 
 const { t } = useI18n();
@@ -173,8 +171,7 @@ const weightLabel = (w: number) =>
 
 const showPicker = ref(false);
 
-/** 从词库添加：追加到列表尾部，`role_id` 沿用宿主给的值（角色侧是真实 roleId，
- *  全局侧是 0 占位——绝不能在角色侧用 0，那是 User 的真实 role_id）。 */
+/** 从词库添加：role_id 沿用宿主值；全局侧 0 是占位，角色侧 0 是 User 的真实 ID，不能混用 */
 const appendFromLibrary = (words: LibraryWord[]) => {
   for (const word of words) {
     props.modelValue.hotwords.push({
@@ -183,8 +180,7 @@ const appendFromLibrary = (words: LibraryWord[]) => {
       role_id: props.roleId,
     });
   }
-  // 并入后可能与草稿里已有的撞键（选择器挡的是**打开那一刻**的状态，词条期间可能被改）。
-  // 复用共享的整表去重（泛型签名同时吃 `RoleHotword` 与 `LibraryWord`）。
+  // 并入后可能与草稿已有词条撞键，选择器只挡打开那一刻的状态，需再整表去重
   dedupeRows(props.modelValue.hotwords);
 };
 </script>

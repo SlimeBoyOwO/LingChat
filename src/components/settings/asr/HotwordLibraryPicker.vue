@@ -211,7 +211,7 @@ const toggle = (word: LibraryWord) => {
   picked.value = next;
 };
 
-/** 全选 / 清空：只作用于**当前过滤结果**里可勾选的那些。 */
+/** 全选 / 清空只作用于当前过滤结果里可勾选的词条。 */
 const toggleAll = () => {
   const next = new Set(picked.value);
   for (const row of selectable.value) {
@@ -246,7 +246,7 @@ watch(
 
 const handleClose = () => emit("close");
 
-/** 确认：把**副本**交给宿主（拷贝式语义，库中后续改动不回传）。 */
+/** 确认：拷贝一份交给宿主，库中后续改动不回传。 */
 const confirm = () => {
   emit(
     "add",
