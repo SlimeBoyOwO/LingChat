@@ -1460,15 +1460,16 @@ export default {
 
   asr: {
     title: "Speech Recognition",
-    pttKey: "Voice Hotkey",
+    sections: { inputMethod: "Input method" },
+    pttKey: "Hold-to-talk hotkey",
     pttKeyHint:
-      "Hold to talk, tap to toggle recording; toggles auto-listen when auto voice recognition is on. Single keys work (typing in chat will also trigger them — function keys or combos recommended)",
+      "Hold this key to talk and release to stop recording. Avoid single letter keys while typing in chat. This hotkey has high priority; if it conflicts with another key, set a key combination.",
     pttKeyCapture: "Press new hotkey… (Esc to cancel)",
     pttKeyInvalid: "This key cannot be bound: Enter is used to send messages",
     pttKeyReset: "Reset to default",
-    pttGlobal: "Hotkey works when unfocused",
+    pttGlobal: "Global hotkey",
     pttGlobalHint:
-      "Hotkey stays active when the window is not in focus (global shortcut). Binding bare letter/digit keys will intercept that key in other apps — use at your own risk",
+      "Also triggers voice input when another app is in the foreground; requires system-level key permission",
     pttGlobalError: "Global hotkey registration failed: {reason}",
     pttGlobalNotRegistered: "The key may be taken by another app — the global hotkey is not active",
     status: {
@@ -1481,11 +1482,21 @@ export default {
       vadLoaded: "VAD model",
       vadLoadedOk: "Loaded",
       vadLoadedNo: "Not loaded",
+      service: "Recognition service",
+      serviceOk: "OK",
+      serviceError: "Error",
+      serviceUnchecked: "Not checked",
+      hotkey: "Global hotkey",
+      hotkeyOk: "Registered",
+      hotkeyMissing: "Not registered",
     },
     voiceInput: "Voice input",
-    voiceInputHint: "Master switch: when off, voice input is fully disabled (auto and manual mic)",
-    autoListen: "Enable automatic speech recognition",
-    autoListenHint: "Auto-listen to microphone and convert user speech to text",
+    voiceInputHint:
+      "When enabled, you can use hold-to-talk, the global hotkey, or auto-listen for voice input",
+    voiceInputHintMobile: "When enabled, you can use hold-to-talk or auto-listen for voice input",
+    autoListen: "Auto-listen",
+    autoListenHint:
+      "Continuously monitors ambient sound, starts recording when speech is detected, and stops automatically when you finish",
     vadSilence: "Silence timeout (ms)",
     vadSilenceHint:
       "Wait this long after you stop speaking before ending the recording (default 800ms; higher values are less likely to cut off mid-sentence)",
@@ -1497,13 +1508,29 @@ export default {
       "Write per-frame speech probability (frame/prob/len) to the log page, for diagnosing speech recognition that never triggers. Off by default; about 1 line per second while recording",
     sendMode: {
       title: "After recognition",
-      fillOnly: "Fill input box (recommended)",
-      autoSend: "Auto send",
+      fillOnly: "Fill input box",
+      autoSend: "Send directly",
+      fillOnlyHint: "The recognition result is written into the input box",
+      autoSendHint: "Sends the recognition result as a message immediately",
     },
+    hotwords: {
+      sectionTitle: "Hotwords",
+      description:
+        "Hotwords improve recognition accuracy for proper nouns. Global hotwords apply to all roles; the library is categorized source material and is maintained independently once copied; role hotwords are managed in Role Settings → Speech Recognition Hotwords.",
+    },
+    refreshStatus: "Refresh status",
+    refreshing: "Refreshing…",
+    save: {
+      saving: "Saving…",
+      saved: "Saved",
+      failed: "Save failed",
+    },
+    manage: "Manage",
     globalHotword: {
       title: "Global Hotwords",
       open: "Manage global hotwords",
       hint: "Sent with every recognition and merged with scene role hotwords (higher weight wins)",
+      rowHint: "Shared by all roles and appended to the end of the word list during recognition",
       dialog: {
         title: "Global Hotwords",
         subtitle: "Shared by all roles and appended to the end of the word list",
@@ -1519,6 +1546,7 @@ export default {
       title: "Hotword Library",
       open: "Manage hotword library",
       hint: "Store words by category and pick them for any role or the global list; adding copies the entry, so the two stay independent afterwards",
+      rowHint: "Categorized source words that can be copied to role or global hotwords",
       dialog: {
         title: "Hotword Library",
         subtitle: "Organize words by category for roles and the global list",
@@ -1573,6 +1601,11 @@ export default {
         empty: "The library is empty — add words in “Manage hotword library” first",
       },
     },
+    advanced: {
+      title: "Advanced & diagnostics",
+      description:
+        "These parameters affect recording segmentation and debugging; the defaults suit most cases.",
+    },
     streamMode: "Streaming Recognition",
     streamModeHint: "Shows recognized text in real time while speaking",
     streamModeHintLocal:
@@ -1582,14 +1615,16 @@ export default {
       title: "Speech Recognition",
       providerSelect: "Service",
       modelRefresh: "Refresh model list",
+      modelSelect: "Model",
       modelListFailed: "Failed to load model list: {err}",
-      test: "Test connection",
+      test: "Test connection (4s recording)",
       testing: "Recording… please speak (4s)",
       testingStop: "Stop & recognize",
-      testSuccess: "Connected",
+      testSuccess: "Voice test: {text}",
       testResult: "Recognized: {text}",
       testNoSpeech: "No speech detected, please retry",
       testFailed: "Failed: {err}",
+      streamNotSupportedLocal: "Streaming recognition is not yet supported locally",
       presetHint: "Selecting a model auto-fills the endpoint; only the API Key is required",
       inlineHotwordLimit: "Inline hotwords: up to about {count} (estimate)",
       promptBiasNoLimit: "Hotwords are applied via prompt context bias — no count limit",

@@ -1444,15 +1444,16 @@ export default {
 
   asr: {
     title: "音声認識",
-    pttKey: "音声ショートカット",
+    sections: { inputMethod: "入力方法" },
+    pttKey: "押して話すショートカット",
     pttKeyHint:
-      "押して話す、クリックで録音切替。自動音声認識オン時は自動リスニングを切替。単独キーも可（チャット入力時にも反応します。ファンクションキーか組合せ推奨）",
+      "このキーを押している間だけ話し、離すと録音を終了します。チャット入力中は単独の英字キーを使用しないでください。ショートカットの優先度が高く、キーが奪われる場合は組合せキーを設定してください。",
     pttKeyCapture: "新しいキーを押してください…（Escでキャンセル）",
     pttKeyInvalid: "このキーはバインドできません：Enter はメッセージ送信に使用されます",
     pttKeyReset: "デフォルトに戻す",
-    pttGlobal: "フォーカス喪失時もショートカット有効",
+    pttGlobal: "グローバルショートカット",
     pttGlobalHint:
-      "ウィンドウがフォーカスを失ってもショートカットが有効（グローバルショートカット）。英字・数字などの単独キーを割り当てると他のアプリでそのキーが奪われます。自己責任でご利用ください",
+      "他のアプリが前面にあるときも音声入力を発動できます。システムレベルのキー権限が必要です",
     pttGlobalError: "グローバルショートカットの登録に失敗しました：{reason}",
     pttGlobalNotRegistered:
       "キーが他のアプリに使用されている可能性があり、グローバルショートカットが有効になっていません",
@@ -1466,11 +1467,21 @@ export default {
       vadLoaded: "VAD モデル",
       vadLoadedOk: "読込済み",
       vadLoadedNo: "未読込",
+      service: "認識サービス",
+      serviceOk: "正常",
+      serviceError: "異常",
+      serviceUnchecked: "未確認",
+      hotkey: "グローバルショートカット",
+      hotkeyOk: "登録済み",
+      hotkeyMissing: "未登録",
     },
     voiceInput: "音声入力",
-    voiceInputHint: "マスタースイッチ：オフにすると音声入力がすべて無効（自動・手動マイクとも）",
-    autoListen: "自動音声認識を有効化",
-    autoListenHint: "マイクを自動監視し、ユーザーの発話をテキストに変換",
+    voiceInputHint:
+      "オンにすると、押して話す・グローバルショートカット・自動リスニングで音声入力できます",
+    voiceInputHintMobile: "オンにすると、押して話す・自動リスニングで音声入力できます",
+    autoListen: "自動リスニング",
+    autoListenHint:
+      "環境音を常時監視し、発話を検出すると自動で録音を開始、話し終わると自動で終了します",
     vadSilence: "無音タイムアウト（ms）",
     vadSilenceHint:
       "発話停止後、この時間だけ無音が続いたら録音を終了します（デフォルト 800ms。大きいほど発話途中で切れにくくなります）",
@@ -1482,13 +1493,29 @@ export default {
       "フレームごとの音声確率（frame/prob/len）をログページに出力します。音声認識が発火しない原因の調査用。デフォルトはオフ、録音中は毎秒約 1 行",
     sendMode: {
       title: "認識後",
-      fillOnly: "入力欄に挿入（推奨）",
-      autoSend: "自動送信",
+      fillOnly: "入力欄に挿入",
+      autoSend: "直接送信",
+      fillOnlyHint: "認識結果を入力欄に書き込みます",
+      autoSendHint: "認識完了後すぐにメッセージとして送信します",
     },
+    hotwords: {
+      sectionTitle: "ホットワード",
+      description:
+        "ホットワードは固有名詞の認識精度を高めます。グローバルホットワードはすべてのキャラクターに適用されます。ライブラリは分類された素材で、コピー後は独立して管理されます。キャラクターホットワードは「キャラクター設定 → 音声認識ホットワード」で管理します。",
+    },
+    refreshStatus: "状態を更新",
+    refreshing: "更新中…",
+    save: {
+      saving: "保存中…",
+      saved: "保存済み",
+      failed: "保存に失敗しました",
+    },
+    manage: "管理",
     globalHotword: {
       title: "グローバルホットワード",
       open: "グローバルホットワードを管理",
       hint: "毎回の認識で送信され、シーンのキャラクターホットワードと統合されます（同じ語は高い重みを採用）",
+      rowHint: "すべてのキャラクターで共用され、認識時に単語表の末尾へ追加されます",
       dialog: {
         title: "グローバルホットワード",
         subtitle: "すべてのキャラクターで共用し、認識時に単語表の末尾へ追加されます",
@@ -1504,6 +1531,7 @@ export default {
       title: "ホットワードライブラリ",
       open: "ホットワードライブラリを管理",
       hint: "よく使う単語を分類して保存し、各キャラクターや全体のホットワードに追加できます。追加はコピーなので、その後は互いに影響しません",
+      rowHint: "素材の単語を分類して整理し、キャラクターやグローバルのホットワードへコピーできます",
       dialog: {
         title: "ホットワードライブラリ",
         subtitle: "単語を分類して、キャラクターと全体のホットワードに提供します",
@@ -1559,6 +1587,11 @@ export default {
           "ライブラリに単語がありません。先に「ホットワードライブラリを管理」で追加してください",
       },
     },
+    advanced: {
+      title: "詳細と診断",
+      description:
+        "以下のパラメータは録音の分割とデバッグに影響します。通常はデフォルト値で問題ありません。",
+    },
     streamMode: "ストリーム認識",
     streamModeHint: "話している間に認識テキストをリアルタイム表示",
     streamModeHintLocal:
@@ -1568,14 +1601,16 @@ export default {
       title: "音声認識",
       providerSelect: "サービス",
       modelRefresh: "モデルリストを更新",
+      modelSelect: "モデル",
       modelListFailed: "モデルリストの取得に失敗しました：{err}",
-      test: "接続テスト",
+      test: "接続テスト（4 秒録音）",
       testing: "録音中…話してください（4秒）",
       testingStop: "停止して認識",
-      testSuccess: "接続成功",
+      testSuccess: "音声テスト：{text}",
       testResult: "認識結果：{text}",
       testNoSpeech: "音声を検出できませんでした。もう一度お試しください",
       testFailed: "失敗：{err}",
+      streamNotSupportedLocal: "現在、ローカルではストリーム認識に対応していません",
       presetHint: "モデル選択でエンドポイントが自動入力されます。API キーのみ必要です",
       inlineHotwordLimit: "インラインホットワード：上限 約 {count} 件（推定値）",
       promptBiasNoLimit:
