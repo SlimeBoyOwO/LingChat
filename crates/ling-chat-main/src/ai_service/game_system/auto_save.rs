@@ -20,9 +20,7 @@ const ENTER_GRACE_SECS: u64 = 60;
 
 /// 一行是否属于「真实对话」——玩家发言或角色回复。
 /// 人设 system 行、旁白/系统/剧情提示（内容以 [`NARRATION_TAG`] 开头）一律不计，
-/// 因此主菜单（仅有占位/旁白行）算不出内容，自动存档不会误触发覆盖旧档。
-/// 用内容前缀而非 display_name 判旁白：剧本作者可给旁白事件自定义展示名，会绕过 display_name。
-/// 已知边角：试玩会话（`preview_generation`）期间若正好 tick，预览台词会被计为真实对话写进主槽，本次不处理。
+/// TODO+钦灵：这地方好像把自动存档中的辅助台词给删了？日后我检查一下
 pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
         // 角色回复：assistant 且归属某角色（工具调用的空内容载体行 sender 为空，排除）

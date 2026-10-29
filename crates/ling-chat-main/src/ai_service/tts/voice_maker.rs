@@ -112,11 +112,6 @@ fn gsv_prompt_language(prompt_text: &str) -> &'static str {
 }
 
 /// 解析单个六情绪分类的完整参考配置：(音频路径, 文本, 文本语言)。
-///
-/// 文本与音频文件名都非空才返回 `Some` —— `check_tts_availability` 与
-/// `set_tts_settings` 共用本函数，保证“判定可用”与“合成可用”的条件一致。
-/// 参考音频路径按上游约定**原样透传**，由 GPT-SoVITS 服务器按其自身
-/// 文件系统解析（可能是远程机器），不做本地目录拼接。
 fn resolve_gsv_category(cfg: &VoiceModel, cat: &str) -> Option<(String, String, String)> {
     let text = cfg
         .gsv_emo_texts

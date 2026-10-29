@@ -165,8 +165,7 @@ impl AIService {
         Ok(())
     }
 
-    /// 播种初始好感：把（该身份覆写 → 卡片默认）的 initial_affection 写进本局全局变量。
-    /// 已有值（该身份专属值或旧档共享默认）不覆盖。
+    /// 播种初始好感
     pub async fn seed_initial_affection(&mut self, cid: i32) -> Result<()> {
         let mut gs = self.game_status.lock().await;
         let identity_id = gs.player.identity_id.clone();

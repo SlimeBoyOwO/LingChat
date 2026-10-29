@@ -3,9 +3,6 @@
 //! 这里是各能力共用的基础设施：LLM 槽位、配置、工具注册表，加上「该不该激活」
 //! 与「NPC 轮数还有没有额度」。具体能力（选人、好感度）各自在自己的模块里，
 //! 副作用的落地在 `ai_service::tools::god_agent` 的工具里。
-//!
-//! 任务一律在**锁外**运行——决策工具内部会自己取 `game_status`，tokio 的 Mutex
-//! 不可重入，持锁调用会自死锁。调用方负责先快照、再调用本模块。
 
 use std::collections::HashMap;
 use std::sync::Arc;
