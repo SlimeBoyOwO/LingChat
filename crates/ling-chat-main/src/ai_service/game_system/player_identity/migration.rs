@@ -14,13 +14,13 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
-    ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter,
-    QuerySelect, Set, TransactionTrait,
+    ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
+    EntityTrait, PaginatorTrait, QueryFilter, QuerySelect, Set, Statement, TransactionTrait,
 };
 use serde_json::{Map, Value};
 
 use super::bootstrap::legacy_player_prompt;
-use super::{IdentityStore, PlayerIdentity, RelationEndpoint, role_relations};
+use super::{IdentityStore, PlayerIdentity, RelationEndpoint, role_relations, runtime_relations};
 use crate::ai_service::types::{CharacterSettings, LegacyIdentity};
 use crate::api::resolve_role_dir_in;
 use crate::db::entities::role::RoleType;
@@ -158,12 +158,36 @@ async fn migrate_a(
     Ok(report)
 }
 
+/// B 类迁移前用 VACUUM INTO 做一致备份；失败返回 Err，让迁移中止。
+async fn backup_database(db: &DatabaseConnection, data_dir: &Path) -> Result<()> {
+    let stamp = chrono::Local::now().format("%Y%m%d-%H%M%S");
+    let mut path = data_dir.join(format!("game_database.db.bak-{stamp}"));
+    // 秒级时间戳可能重名，加序号保证不覆盖已有备份。
+    let mut seq = 1;
+    while path.exists() {
+        path = data_dir.join(format!("game_database.db.bak-{stamp}-{seq}"));
+        seq += 1;
+    }
+    // SQL 字面量里的单引号需要翻倍转义。
+    let escaped = path.to_string_lossy().replace('\'', "''");
+    db.execute(Statement::from_string(
+        DatabaseBackend::Sqlite,
+        format!("VACUUM INTO '{escaped}'"),
+    ))
+    .await
+    .context("备份数据库失败")?;
+    tracing::info!("玩家身份迁移前已备份数据库: {}", path.display());
+    Ok(())
+}
+
 async fn migrate_b(
     data_dir: &Path,
     db: &DatabaseConnection,
     store: &IdentityStore,
     now: &str,
 ) -> Result<MigrationReport> {
+    // 会改写数据库引用，先备份；备份失败就中止，不拿旧数据冒险。
+    backup_database(db, data_dir).await?;
     let cards = store.list();
     let mut primary = store
         .current()
@@ -342,7 +366,7 @@ async fn rewrite_identity_refs(
     for model in saves {
         let Ok(mut value) = serde_json::from_str::<Value>(&model.status) else {
             tracing::warn!(
-                "存档 {} 的 status 不是合法 JSON，跳过好感度键改写",
+                "存档 {} 的 status 不是合法 JSON，跳过存档身份键改写",
                 model.id
             );
             continue;
@@ -360,8 +384,8 @@ async fn rewrite_identity_refs(
     Ok(stats)
 }
 
-/// 改写 `global_variables` 里的 `affection.{role_id}.{old_id}`（兼容旧文档口径的 `aff.`），
-/// 其余键与存档状态字段保持不变；目标键已存在时保留原值。
+/// 改写 `global_variables` 里的身份键：好感度 `affection.{role_id}.{old_id}`（兼容旧文档
+/// 口径的 `aff.`）与运行时关系层 `relations`；其余键与存档状态字段保持不变。
 fn rewrite_status_identity_keys(
     status: &mut Value,
     old_ids: &HashSet<String>,
@@ -374,6 +398,17 @@ fn rewrite_status_identity_keys(
         return false;
     };
 
+    let affection_changed = rewrite_affection_keys(globals, old_ids, primary_id);
+    let relations_changed = rewrite_relation_keys(globals, old_ids, primary_id);
+    affection_changed || relations_changed
+}
+
+/// 好感度键：目标键已存在时保留原值。
+fn rewrite_affection_keys(
+    globals: &mut Map<String, Value>,
+    old_ids: &HashSet<String>,
+    primary_id: &str,
+) -> bool {
     let mut renames: Vec<(String, String)> = Vec::new();
     for key in globals.keys() {
         let Some((prefix, role_id, identity_id)) = parse_affection_key(key) else {
@@ -394,6 +429,119 @@ fn rewrite_status_identity_keys(
         }
     }
     true
+}
+
+/// 运行时关系层是两层对象：外层说话者 key、内层目标 key，两者都只改 `me:<old_id>`。
+fn rewrite_relation_keys(
+    globals: &mut Map<String, Value>,
+    old_ids: &HashSet<String>,
+    primary_id: &str,
+) -> bool {
+    let Some(relations) = globals
+        .get_mut(runtime_relations::VAR_KEY)
+        .and_then(Value::as_object_mut)
+    else {
+        return false;
+    };
+
+    // 先改内层目标键，这样后面外层合并搬过来的数据已经是干净的。
+    let mut changed = false;
+    for layer in relations.values_mut() {
+        if let Some(layer) = layer.as_object_mut() {
+            changed |= rewrite_relation_targets(layer, old_ids, primary_id);
+        }
+    }
+
+    let renames = relation_key_renames(relations.keys(), old_ids, primary_id);
+    for (old_key, new_key) in renames {
+        let Some(old_layer) = relations.remove(&old_key) else {
+            continue;
+        };
+        changed = true;
+        match relations.get_mut(&new_key) {
+            // 主身份已有该说话者：主身份的值优先，旧值只补空位。
+            Some(existing) => {
+                let merged = match (existing.as_object_mut(), &old_layer) {
+                    (Some(layer), Value::Object(old_layer)) => {
+                        merge_relation_layer(layer, old_layer);
+                        true
+                    },
+                    _ => false,
+                };
+                if !merged {
+                    merge_relation_value(existing, &old_layer);
+                }
+            },
+            None => {
+                relations.insert(new_key, old_layer);
+            },
+        }
+    }
+    changed
+}
+
+fn rewrite_relation_targets(
+    layer: &mut Map<String, Value>,
+    old_ids: &HashSet<String>,
+    primary_id: &str,
+) -> bool {
+    let renames = relation_key_renames(layer.keys(), old_ids, primary_id);
+    if renames.is_empty() {
+        return false;
+    }
+    for (old_key, new_key) in renames {
+        let Some(old_value) = layer.remove(&old_key) else {
+            continue;
+        };
+        match layer.get_mut(&new_key) {
+            Some(existing) => merge_relation_value(existing, &old_value),
+            None => {
+                layer.insert(new_key, old_value);
+            },
+        }
+    }
+    true
+}
+
+/// 收集需要改名的 `me:<old_id>` 关系键；`ai:<folder>` 与主身份键不动。
+fn relation_key_renames<'a>(
+    keys: impl Iterator<Item = &'a String>,
+    old_ids: &HashSet<String>,
+    primary_id: &str,
+) -> Vec<(String, String)> {
+    keys.filter_map(|key| {
+        let id = key.strip_prefix("me:")?;
+        (id != primary_id && old_ids.contains(id))
+            .then(|| (key.clone(), format!("me:{primary_id}")))
+    })
+    .collect()
+}
+
+/// 同一说话者下的关系合并：目标键冲突时主身份已有内容优先，旧值只补空位。
+fn merge_relation_layer(target: &mut Map<String, Value>, old: &Map<String, Value>) {
+    for (key, value) in old {
+        match target.get_mut(key) {
+            Some(existing) => merge_relation_value(existing, value),
+            None => {
+                target.insert(key.clone(), value.clone());
+            },
+        }
+    }
+}
+
+/// 已有值为空（null 或空白串）时才用旧值补。
+fn merge_relation_value(existing: &mut Value, old: &Value) {
+    if is_blank_relation_value(existing) && !is_blank_relation_value(old) {
+        *existing = old.clone();
+    }
+}
+
+fn is_blank_relation_value(value: &Value) -> bool {
+    match value {
+        Value::Null => true,
+        Value::String(text) => text.trim().is_empty(),
+        _ => false,
+    }
 }
 
 fn parse_affection_key(key: &str) -> Option<(&'static str, &str, &str)> {
@@ -610,4 +758,80 @@ fn main_character_folders(data_dir: &Path) -> Vec<String> {
     }
     folders.sort();
     folders
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    fn ids(list: &[&str]) -> HashSet<String> {
+        list.iter().map(|id| id.to_string()).collect()
+    }
+
+    #[test]
+    fn rewrite_relations_moves_old_speaker_into_primary() {
+        let mut status = json!({
+            "global_variables": {
+                "relations": {
+                    "me:old": {
+                        "ai:alice": "旧外层",
+                        "me:old": "旧内层",
+                        "me:p": ""
+                    },
+                    "me:p": {
+                        "ai:alice": "",
+                        "me:old": "主身份内层"
+                    }
+                },
+                "affection.alice.old": 42,
+                "weather": "晴"
+            },
+            "player": { "name": "玩家" }
+        });
+
+        assert!(rewrite_status_identity_keys(
+            &mut status,
+            &ids(&["old"]),
+            "p"
+        ));
+        assert_eq!(
+            status,
+            json!({
+                "global_variables": {
+                    "relations": {
+                        "me:p": {
+                            "ai:alice": "旧外层",
+                            "me:p": "主身份内层"
+                        }
+                    },
+                    "affection.alice.p": 42,
+                    "weather": "晴"
+                },
+                "player": { "name": "玩家" }
+            })
+        );
+    }
+
+    #[test]
+    fn rewrite_relations_keeps_unknown_ids() {
+        let mut status = json!({
+            "global_variables": {
+                "relations": { "me:other": { "me:other": "关系" } }
+            }
+        });
+        assert!(!rewrite_status_identity_keys(
+            &mut status,
+            &ids(&["old"]),
+            "p"
+        ));
+        assert_eq!(
+            status,
+            json!({
+                "global_variables": {
+                    "relations": { "me:other": { "me:other": "关系" } }
+                }
+            })
+        );
+    }
 }
