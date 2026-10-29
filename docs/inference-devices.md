@@ -384,11 +384,14 @@ NDK、没有 cmake）则回落到官方预编译包（CPU）。要显式走 CPU 
   `src-tauri/gen/android/app/src/main/jniLibs/<abi>/`（Gradle 打 APK 时收进去，该目录已
   `.gitignore`）。同一份 `libonnxruntime.so` 也供应用的情绪模型/嵌入模型（`ort` crate）
   使用 —— Android 上 `.cargo/config.toml` 允许未定义符号，运行期由它解析。
-- Linux：`scripts/stage-desktop-runtime-libs.mjs` 按可执行文件的 `DT_NEEDED` 把库暂存到
-  `src-tauri/.runtime-libs/`，再由 `tauri.conf.json` 的 `bundle.linux.*.files` 映射到
-  `/usr/lib`。**不能放在可执行文件旁边**：`cargo:rustc-link-arg` 加的 `$ORIGIN` rpath
-  到不了最终二进制（实测无 RPATH/RUNPATH），而加载器不搜可执行文件所在目录。目前 Linux
-  只需要暂存 ort WebGPU 用到的 `libwebgpu_dawn.so`（sherpa 是静态 CPU 库）。
+- Linux：`scripts/stage-desktop-runtime-libs.mjs` 按可执行文件/已暂存库的 `DT_NEEDED`
+  闭包把库暂存到 `src-tauri/.runtime-libs/`，再由 `tauri.conf.json` 的
+  `bundle.linux.*.files` 映射到 `/usr/lib`。**不能放在可执行文件旁边**：
+  `cargo:rustc-link-arg` 加的 `$ORIGIN` rpath 到不了最终二进制（实测无 RPATH/RUNPATH），
+  而加载器不搜可执行文件所在目录。除 ort WebGPU 的 `libwebgpu_dawn.so` 外，还要带上
+  Linux sherpa shared 包的 `libsherpa-onnx-c-api.so` 及其依赖的 `libonnxruntime.so`：
+  Linux 的 sherpa 用官方 shared CPU 包（而非静态），这样它的 ORT 在动态库里、不进
+  可执行文件的静态符号表，与 ort 静态链接的 ORT(1.28.0) 错开，避免 multiple definition。
 - macOS / iOS：核心库静态链接，无需暂存。
 
 ### 9.4 历史：已移除的 Linux CUDA 变体

@@ -113,12 +113,10 @@ jobs:
           # `-static-MT-`（/MT 静态 CRT），而 Rust / cc 默认 /MD，链接时报
           # `/failifmismatch: RuntimeLibrary`。
           # 注意：RUSTFLAGS 是 block scalar，里面不能写 # 注释（会被当成 rustc 参数）。
-          # Linux：mold 对 ort 与 sherpa 各自静态链接的 ORT 目标文件更严格，
-          # 需要 --allow-multiple-definition 才能接受重复的 onnx-ml.pb.cc.o /
-          # data_types.cc.o / logging.cc.o。两套 ORT 仍会同时进二进制，先用它
-          # 验证构建；运行期若有问题再回到 shared + load-dynamic。
+          # Linux：sherpa 用官方 shared 包（其 ORT 在 .so 里，与 ort 静态链接的 ORT
+          # 错开，不再 multiple definition），保留 mold 加速链接。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition' || '' }}
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle

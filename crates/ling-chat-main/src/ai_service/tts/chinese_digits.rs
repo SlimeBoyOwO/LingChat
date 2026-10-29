@@ -3,7 +3,7 @@
 //! 中文模型**只有在模型目录里带规则 FST 时**才由 sherpa 自己改写数字
 //! （matcha-zh 的 `number.fst`、kokoro 的 `number-zh.fst`，见适配器里的
 //! `with_rule_files`）。zipvoice / supertonic 的实现压根不读 `rule_fsts`
-//! （sherpa-onnx 1.13.5 的 `offline-tts-{zipvoice,supertonic}-impl.h` 里没有
+//! （sherpa-onnx 2.0.1 的 `offline-tts-{zipvoice,supertonic}-impl.h` 里没有
 //! `tn_list_`），别的中文模型也可能没随包带 FST。这些模型下数字的读法都不对：
 //!
 //! - matcha/vits 这类走 CharacterLexicon 的，非汉字直接丢词——日志里是
