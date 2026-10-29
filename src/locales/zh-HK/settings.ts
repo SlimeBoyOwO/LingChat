@@ -429,6 +429,7 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - 配置編輯",
+      untitled: "角色",
       subtitle: "修改角色嘅詳細設定",
     },
     saveConfirm:

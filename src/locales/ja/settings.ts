@@ -438,6 +438,7 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - 設定編集",
+      untitled: "キャラクター",
       subtitle: "キャラクターの詳細設定を変更します",
     },
     saveConfirm:

@@ -695,6 +695,7 @@ export default {
     },
     header: {
       title: "{title} - 配置编辑",
+      untitled: "角色",
       subtitle: "修改角色的详细设置",
     },
     saveConfirm:

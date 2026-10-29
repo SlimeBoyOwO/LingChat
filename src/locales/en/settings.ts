@@ -457,6 +457,7 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - Edit Config",
+      untitled: "Character",
       subtitle: "Edit the character's detailed settings",
     },
     saveConfirm:
