@@ -398,7 +398,7 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let prompt_options = PromptOptions::from_config(&app_config);
 
     // 6b. 恢复本存档使用的「我的身份」；必须放在 `init_game_status` 之前。
-    // 老存档没有绑定记录时保持当前身份（开局引导可能刚按角色卡迁移过一张）。
+    // 老存档没有绑定记录时保持开局引导解析出的主身份。
     let save_identity_id = {
         let identity_store = IdentityStore::new(&crate::api::data_dir());
         match SaveRepo::get_save_identity(db, save_id).await {

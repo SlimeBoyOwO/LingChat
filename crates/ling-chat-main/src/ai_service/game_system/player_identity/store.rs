@@ -1,9 +1,7 @@
 //! 身份卡的磁盘存储：`<data_dir>/game_data/player_identities/`。
 
-use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result};
 
@@ -11,7 +9,7 @@ use super::PlayerIdentity;
 
 const IDENTITY_FILE: &str = "identity.yml";
 const CURRENT_FILE: &str = "_current.json";
-const BINDINGS_FILE: &str = "_character_bindings.json";
+const PRIMARY_FILE: &str = "_primary_identity.json";
 const TRASH_DIR: &str = ".trash";
 const IDENTITY_DIR: &str = "player_identities";
 
@@ -19,6 +17,19 @@ const IDENTITY_DIR: &str = "player_identities";
 struct CurrentPointer {
     #[serde(default)]
     identity_id: String,
+}
+
+/// 主身份稳定标记：`_primary_identity.json`。
+#[derive(Clone, Debug, Default, serde::Serialize, serde::Deserialize)]
+pub struct PrimaryIdentityMarker {
+    #[serde(default)]
+    pub version: u32,
+    #[serde(default)]
+    pub primary_identity_id: String,
+    #[serde(default)]
+    pub migrated_at: String,
+    #[serde(default)]
+    pub mode: String,
 }
 
 pub struct IdentityStore {
@@ -82,115 +93,102 @@ impl IdentityStore {
         Ok(())
     }
 
-    /// 读取「当前身份」；从未设置过时按老规则合成一张并立即落盘。
-    pub fn current_or_synthesize(
-        &self,
-        fallback_name: &str,
-        fallback_subtitle: &str,
-    ) -> PlayerIdentity {
-        if let Some(existing) = self.current() {
-            return existing;
-        }
-
-        let name = fallback_name.trim();
-        let card = PlayerIdentity {
-            id: String::new(),
-            name: if name.is_empty() {
-                "用户".to_string()
-            } else {
-                name.to_string()
-            },
-            subtitle: fallback_subtitle.trim().to_string(),
-            prompt: String::new(),
-            avatar: None,
-            relations: HashMap::new(),
-        };
-
-        match self.save(&card) {
-            Ok(saved) => {
-                if let Err(e) = self.set_current_id(&saved.id) {
-                    tracing::warn!("记录当前身份失败: {e}");
-                }
-                tracing::info!(
-                    "已按角色卡合成默认身份并落盘: id={} name={}",
-                    saved.id,
-                    saved.name
-                );
-                saved
-            },
+    /// 读取主身份标记；文件缺失或解析失败返回 None。
+    pub fn primary_marker(&self) -> Option<PrimaryIdentityMarker> {
+        let path = self.root.join(PRIMARY_FILE);
+        let raw = fs::read_to_string(&path).ok()?;
+        match serde_json::from_str(&raw) {
+            Ok(marker) => Some(marker),
             Err(e) => {
-                tracing::warn!("合成默认身份落盘失败，本次仅在内存中使用: {e}");
-                card
+                tracing::warn!("解析主身份标记失败 {:?}: {}", path, e);
+                None
             },
         }
     }
 
-    /// 按名字找身份卡；老角色卡迁移时用来复用同名卡，避免重复创建。
-    pub fn find_by_name(&self, name: &str) -> Option<PlayerIdentity> {
-        let name = name.trim();
-        if name.is_empty() {
-            return None;
+    /// 主身份：标记文件指向的卡优先；标记丢失时扫 `is_primary: true` 兜底。
+    pub fn primary_identity(&self) -> Option<PlayerIdentity> {
+        if let Some(marker) = self.primary_marker() {
+            if let Some(mut card) = self.find_by_id(&marker.primary_identity_id) {
+                card.is_primary = true;
+                return Some(card);
+            }
         }
+        self.flagged_primary()
+    }
+
+    /// 扫描带 `is_primary: true` 的身份卡（标记文件丢失时的兜底）。
+    pub fn flagged_primary(&self) -> Option<PlayerIdentity> {
         self.scan()
             .into_iter()
             .map(|(_, identity)| identity)
-            .find(|identity| identity.name.trim() == name)
+            .find(|identity| identity.is_primary)
+            .map(|mut card| {
+                card.is_primary = true;
+                card
+            })
     }
 
-    /// 角色目录绑定的默认身份；绑定失效（卡被删）时返回 None。
-    pub fn bound_identity(&self, character_folder: &str) -> Option<PlayerIdentity> {
-        let folder = character_folder.trim();
-        if folder.is_empty() {
-            return None;
-        }
-        let id = self.read_bindings().get(folder).cloned()?;
-        self.find_by_id(&id)
+    /// 把一张身份卡保存为主身份（`is_primary = true`）。
+    pub fn set_primary(&self, identity: &PlayerIdentity) -> Result<PlayerIdentity> {
+        let mut card = identity.clone();
+        card.is_primary = true;
+        self.save(&card)
     }
 
-    /// 把角色目录绑定到某张身份卡；关系引导和换身份都靠它记住用户选择。
-    pub fn bind_character(&self, character_folder: &str, identity_id: &str) -> Result<()> {
-        let folder = character_folder.trim();
-        let identity_id = identity_id.trim();
-        if folder.is_empty() || identity_id.is_empty() {
-            return Ok(());
-        }
-        let mut bindings = self.read_bindings();
-        if bindings.get(folder).map(String::as_str) == Some(identity_id) {
-            return Ok(());
-        }
-        bindings.insert(folder.to_string(), identity_id.to_string());
-        self.write_bindings(&bindings)
-    }
-
-    /// 删除身份卡时清掉指向它的角色绑定，避免下次加载读到悬空 id。
-    pub fn remove_bindings_for_identity(&self, identity_id: &str) -> Result<()> {
-        let identity_id = identity_id.trim();
-        if identity_id.is_empty() {
-            return Ok(());
-        }
-        let mut bindings = self.read_bindings();
-        let before = bindings.len();
-        bindings.retain(|_, id| id.as_str() != identity_id);
-        if bindings.len() != before {
-            self.write_bindings(&bindings)?;
-        }
-        Ok(())
-    }
-
-    fn read_bindings(&self) -> HashMap<String, String> {
-        fs::read_to_string(self.root.join(BINDINGS_FILE))
-            .ok()
-            .and_then(|raw| serde_json::from_str(&raw).ok())
-            .unwrap_or_default()
-    }
-
-    fn write_bindings(&self, bindings: &HashMap<String, String>) -> Result<()> {
+    /// 写主身份标记；迁移在最后一步调用，失败时下次启动靠 `is_primary` 兜底。
+    pub fn write_primary_marker(&self, identity_id: &str, mode: &str) -> Result<()> {
         self.ensure_root()?;
-        let raw = serde_json::to_string_pretty(bindings)?;
-        fs::write(self.root.join(BINDINGS_FILE), raw).with_context(|| {
-            format!("写入角色身份绑定失败: {:?}", self.root.join(BINDINGS_FILE))
-        })?;
+        let marker = PrimaryIdentityMarker {
+            version: 1,
+            primary_identity_id: identity_id.trim().to_string(),
+            migrated_at: now_rfc3339(),
+            mode: mode.trim().to_string(),
+        };
+        let raw = serde_json::to_string_pretty(&marker)?;
+        fs::write(self.root.join(PRIMARY_FILE), raw)
+            .with_context(|| format!("写入主身份标记失败: {:?}", self.root.join(PRIMARY_FILE)))?;
         Ok(())
+    }
+
+    /// 删除主身份卡时同步清掉标记，避免下次启动读到悬空 id。
+    pub fn clear_primary_marker(&self) {
+        let _ = fs::remove_file(self.root.join(PRIMARY_FILE));
+    }
+
+    /// 把除主身份外的所有身份卡移入 `.trash/pre-primary-<时间>/`，返回移动数量。
+    pub fn archive_except(&self, keep_id: &str) -> Result<usize> {
+        let keep_id = keep_id.trim();
+        if keep_id.is_empty() {
+            anyhow::bail!("主身份 id 为空，拒绝归档其他身份");
+        }
+        let cards: Vec<(PathBuf, PlayerIdentity)> = self
+            .scan()
+            .into_iter()
+            .filter(|(_, card)| card.id != keep_id)
+            .collect();
+        if cards.is_empty() {
+            return Ok(0);
+        }
+
+        let batch = self
+            .root
+            .join(TRASH_DIR)
+            .join(format!("pre-primary-{}", now_stamp()));
+        fs::create_dir_all(&batch).with_context(|| format!("创建身份回收站失败: {:?}", batch))?;
+
+        let mut moved = 0;
+        for (dir, _) in cards {
+            let folder_name = dir
+                .file_name()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let target = unique_dir(&batch, &folder_name);
+            fs::rename(&dir, &target)
+                .with_context(|| format!("归档身份卡失败: {:?} -> {:?}", dir, target))?;
+            moved += 1;
+        }
+        Ok(moved)
     }
 
     pub fn save(&self, identity: &PlayerIdentity) -> Result<PlayerIdentity> {
@@ -242,7 +240,13 @@ impl IdentityStore {
         if self.current_id().as_deref() == Some(id) {
             let _ = fs::remove_file(self.root.join(CURRENT_FILE));
         }
-        let _ = self.remove_bindings_for_identity(id);
+        if self
+            .primary_marker()
+            .map(|marker| marker.primary_identity_id == id)
+            .unwrap_or(false)
+        {
+            self.clear_primary_marker();
+        }
 
         Ok(true)
     }
@@ -328,6 +332,22 @@ impl IdentityStore {
     }
 }
 
+/// 在目标目录里取一个不重名的名字；重名时追加 `-2`、`-3`。
+fn unique_dir(parent: &Path, folder_name: &str) -> PathBuf {
+    let base = if folder_name.trim().is_empty() {
+        "identity".to_string()
+    } else {
+        folder_name.to_string()
+    };
+    let mut candidate = parent.join(&base);
+    let mut index = 2;
+    while candidate.exists() {
+        candidate = parent.join(format!("{base}-{index}"));
+        index += 1;
+    }
+    candidate
+}
+
 fn sanitize_folder(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -348,10 +368,18 @@ fn sanitize_folder(name: &str) -> String {
 }
 
 fn now_millis() -> u128 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis())
         .unwrap_or(0)
+}
+
+fn now_rfc3339() -> String {
+    chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+}
+
+fn now_stamp() -> String {
+    chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
 
 fn new_identity_id() -> String {
