@@ -19,9 +19,9 @@ use crate::AppState;
 use crate::ai_service::affection::{self, AffectionChangedPayload, AffectionState};
 use crate::ai_service::types::{AffectionVector, NegativeVector, ToolDefinition};
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::game_status_handle;
-use super::registry::ToolRegistry;
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::game_status_handle;
+use crate::ai_service::tools::registry::ToolRegistry;
 
 pub const SELECT_NEXT_SPEAKER: &str = "select_next_speaker";
 pub const UPDATE_AFFECTION: &str = "update_affection";

@@ -24,9 +24,9 @@ use crate::ai_service::skill_agent::file_tools::{
 use crate::ai_service::skill_agent::skills;
 use crate::ai_service::types::ToolDefinition;
 
-use super::background_command;
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::settings::SharedToolSettings;
+use crate::ai_service::tools::background_command;
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::settings::SharedToolSettings;
 
 const SKILL_TOOL_TIMEOUT: Duration = Duration::from_secs(5);
 const FILE_TOOL_TIMEOUT: Duration = Duration::from_secs(15);

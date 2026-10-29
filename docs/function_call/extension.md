@@ -8,7 +8,7 @@
 
 ```text
 ① 实现 Tool trait（定义 + 执行）      → 新文件，如 tools/my_tool.rs
-② 在 built_in_registry 里注册          → tools/mod.rs 一行
+② 在 built_in_registry 里注册          → tools/builtin/mod.rs 一行
 ③ 给角色/场景配置权限                  → 编辑 tool_permissions.toml（或用权限 API）
 ```
 
@@ -16,7 +16,7 @@
 
 ## 2. 第一步：实现 `Tool` trait
 
-把 `crates/ling-chat-main/src/ai_service/tools/clock.rs` 当模板（它就是内置示例工具 `get_current_time`）：
+把 `crates/ling-chat-main/src/ai_service/tools/builtin/clock.rs` 当模板（它就是内置示例工具 `get_current_time`）：
 
 ```rust
 use async_trait::async_trait;
@@ -95,7 +95,7 @@ pub trait Tool: Send + Sync {
 
 ## 3. 第二步：注册
 
-在 `tools/mod.rs::built_in_registry` 里加一行：
+在 `tools/builtin/mod.rs::built_in_registry` 里加一行：
 
 ```rust
 pub fn built_in_registry(role_names: ...) -> Result<ToolRegistry> {

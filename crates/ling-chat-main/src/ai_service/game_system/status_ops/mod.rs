@@ -120,7 +120,7 @@ impl GameStatus {
                 memory
                     .anchor
                     .as_ref()
-                    .map_or(true, |anchor| anchor.session == self.preview_generation)
+                    .is_none_or(|anchor| anchor.session == self.preview_generation)
             })
             .collect();
         if pending.is_empty() {

@@ -11,8 +11,8 @@ use tauri::Emitter;
 
 use crate::ai_service::types::ToolDefinition;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::game_status_handle;
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::game_status_handle;
 
 /// set_background_effect：设置背景粒子特效。
 pub struct SetBackgroundEffect;

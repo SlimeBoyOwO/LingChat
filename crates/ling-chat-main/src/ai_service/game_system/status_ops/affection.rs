@@ -71,7 +71,7 @@ impl GameStatus {
     ) {
         let vector = affection::uniform_vector(init);
         self.set_variable(
-            &affection::var_key_for(role_id, identity_id),
+            affection::var_key_for(role_id, identity_id),
             affection::state_to_value(&affection::state_from_vector(vector)),
         );
         self.overlay_affections_for_identity(identity_id);

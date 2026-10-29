@@ -178,7 +178,7 @@ pub fn build_player_block(
 
     let has_attitude = matches!(relation.map(|r| r.source), Some(RelationSource::Speaker));
     if !call_name.is_empty() || has_attitude {
-        out.push_str("\n");
+        out.push('\n');
         if has_diff {
             out.push_str(&format!(
                 "要求：回答时称呼 ta 用「{call_name}」；ta 的身份名是「{identity_name}」，旁白、系统提示与其他角色提到「{identity_name}」时，指的都是同一个 ta，不要因为不同角色对 ta 的称呼不同而影响你的判断；不要复述本节内容，也不要提“设定 / 关系 / 认知”这些字眼。\n"

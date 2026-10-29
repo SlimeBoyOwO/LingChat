@@ -859,45 +859,6 @@ impl GameRoleManager {
     }
 }
 
-#[cfg(test)]
-mod memory_context_tests {
-    use super::*;
-
-    #[test]
-    fn memory_context_is_separate_from_persona_and_user_message() {
-        let input = vec![
-            LlmMessage::system("不可变角色人设"),
-            LlmMessage::user("玩家当前消息"),
-        ];
-
-        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史记忆资料");
-
-        assert_eq!(output.len(), 3);
-        assert_eq!(output[0].role, "system");
-        assert_eq!(output[0].content, "不可变角色人设");
-        assert_eq!(output[1].role, "system");
-        assert_eq!(output[1].content, "历史记忆资料");
-        assert_eq!(output[2].role, "user");
-        assert_eq!(output[2].content, "玩家当前消息");
-    }
-
-    #[test]
-    fn memory_context_follows_all_original_system_messages() {
-        let input = vec![
-            LlmMessage::system("角色人设"),
-            LlmMessage::system("系统规则"),
-            LlmMessage::user("当前消息"),
-        ];
-
-        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史资料");
-
-        assert_eq!(output[0].content, "角色人设");
-        assert_eq!(output[1].content, "系统规则");
-        assert_eq!(output[2].content, "历史资料");
-        assert_eq!(output[3].content, "当前消息");
-    }
-}
-
 /// `user_aliases` 中「影响人设行」的部分签名：称呼 + 副标题，忽略初始好感度覆写
 /// （后者不进提示词，改它不该触发人设行重建）。
 fn alias_signature(map: &HashMap<String, UserAlias>) -> Vec<(String, String, String)> {

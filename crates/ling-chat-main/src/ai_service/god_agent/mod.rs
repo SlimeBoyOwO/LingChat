@@ -9,7 +9,7 @@
 //! 共用部分：[`core`] 是基础设施（LLM 槽位、配置、工具注册表、激活判定），
 //! 一次决策被抽象为「任务」——system_prompt + 工具集 + 数据载荷，由
 //! `ai_service::tools::agent` 无头运行。能力的副作用（切发言者、改好感度）
-//! 则是 `ai_service::tools::god_agent` 里的真实工具。
+//! 则是 `ai_service::tools::builtin::god_agent` 里的真实工具。
 
 pub mod capabilities;
 pub mod config;

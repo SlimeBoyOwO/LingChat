@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use crate::ai_service::types::ToolDefinition;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
 
 /// 查询运行设备本地时间的内置工具。
 pub struct CurrentTimeTool;

@@ -147,6 +147,8 @@ impl Drop for ToolCallProgressEndGuard {
 /// 闭环是**惰性**的：决策轮次在返回的流内部驱动，内容/思考块实时透传给下游
 /// （前端思考字数、句子切分保持流式体验）；工具消息累积进 `ToolMessageSink`，
 /// 待流消费完毕后由调用方读取并回填台词。
+// 入参就是本轮工具闭环需要的全部上下文，拆结构体只会多一层转手，这里接受 8 个参数。
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_with_tool_loop(
     llm: &Arc<LlmClient>,
     registry: &Arc<ToolRegistry>,

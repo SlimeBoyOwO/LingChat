@@ -584,40 +584,6 @@ impl PersistentMemorySystem {
         }
     }
 
-    // ── 内部方法 ──
-
-    #[cfg(test)]
-    fn build_compression_plan(
-        &self,
-        all_lines: &[GameLine],
-        last_idx: usize,
-    ) -> Option<CompressionPlan> {
-        self.build_compression_plan_with_completed_tail(all_lines, last_idx, false)
-    }
-
-    #[cfg(test)]
-    fn build_compression_plan_with_completed_tail(
-        &self,
-        all_lines: &[GameLine],
-        last_idx: usize,
-        allow_completed_tail_archive: bool,
-    ) -> Option<CompressionPlan> {
-        let visible_count = all_lines[last_idx..]
-            .iter()
-            .filter(|line| line_visible_to_role(line, self.role_id))
-            .count();
-        self.plan_compression(
-            all_lines,
-            last_idx,
-            if allow_completed_tail_archive {
-                all_lines.len()
-            } else {
-                0
-            },
-            visible_count >= self.update_interval,
-        )
-    }
-
     fn plan_compression(
         &self,
         all_lines: &[GameLine],

@@ -5,8 +5,8 @@ use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::data_dir;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::{ensure_no_args, game_status_handle};
 
 /// status_get_current：查询当前角色的运行时状态快照。
 pub struct CurrentStatus;

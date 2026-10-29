@@ -576,6 +576,16 @@ export default {
   },
   plugins: {
     title: "插件",
+    status: {
+      enabled: "已启用",
+      disabled: "已停用",
+    },
+    configure: "配置",
+    tabs: {
+      config: "配置",
+      resources: "资源",
+      details: "详情",
+    },
     envHint: "环境变量（从进程读取）：",
     envFromProcess: "来自进程环境",
     saveConfig: "保存",
@@ -583,9 +593,17 @@ export default {
     reloadHint:
       "改过插件的 manifest、或往 data/plugins 里换过文件后，点这里重新加载，不用重启应用。",
     empty: "未找到插件。可将插件文件夹放入 data/plugins/ 目录，或用下方「从压缩包导入插件」",
-    delete: "删除",
+    noConfig: "该插件没有可配置项",
+    configApplyHint:
+      "配置保存后立即用于工具调用与事件处理；WebSocket 地址与启动阶段读取的配置需重新扫描插件后生效。",
+    secretKeepHint: "已保存的值不会回显，留空则保持原值",
+    saveFailed: "保存配置失败：{error}",
+    cancel: "取消",
+    discardTitle: "放弃修改",
+    discardMessage: "有未保存的配置修改，关闭后将全部放弃。确定关闭吗？",
+    delete: "删除插件",
     deleteConfirm:
-      "将删除插件「{name}」本体，已保留的资源不受影响。可先在下方「携带资源」区保留需要的资源。",
+      "将删除插件「{name}」本体，已保留的资源不受影响。可先在「资源」页保留需要的资源。",
     resourcesTitle: "携带资源",
     resourcesEmpty: "该插件未提供可识别的资源，或资源目录为空。",
     resourceConflict: "冲突",
@@ -605,6 +623,14 @@ export default {
       connecting: "连接中",
       connected: "已连接",
       error: "错误",
+    },
+    wsMode: {
+      client: "客户端（连出）",
+      server: "服务端（监听）",
+    },
+    details: {
+      tools: "工具",
+      empty: "该插件未声明工具、环境变量或连接",
     },
     enableFailedTitle: "无法启用插件",
     errors: {
