@@ -84,6 +84,7 @@ impl Tool for MemorySearch {
         }
         let config = AppConfig::load(&app).unwrap_or_default();
         let store = NotesStore::new(crate::api::data_dir());
+        // 检索服务与自动回忆共用索引和缓存，模型不能自行扩大搜索范围。
         let snapshot = state
             .memory_recall
             .retrieve(

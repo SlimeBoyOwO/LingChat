@@ -17,7 +17,7 @@ use futures_util::StreamExt;
 use tauri::AppHandle;
 use tokio::sync::{Mutex, mpsc, oneshot};
 
-use crate::ai_service::game_system::memory_recall::RecallStamp;
+use crate::ai_service::game_system::memory::recall::RecallStamp;
 use crate::ai_service::llm::LlmChunk;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generated_text};

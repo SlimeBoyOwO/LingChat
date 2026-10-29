@@ -23,7 +23,7 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use ling_chat_main::ai_service::emotion::EmotionClassifier;
-use ling_chat_main::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use ling_chat_main::ai_service::game_system::memory::persistent::MemorySectionLimits;
 use ling_chat_main::ai_service::god_agent::GodAgentCore;
 use ling_chat_main::ai_service::god_agent::config::resolve_god_agent_provider;
 use ling_chat_main::ai_service::llm::LlmSlot;
@@ -197,7 +197,7 @@ pub(super) fn build_service_graph(
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
     tool_rag.set_capacity(tool_settings.get().cache_capacity());
-    let memory_recall = ai_service::game_system::memory_recall::MemoryRecall::new(local_embedding);
+    let memory_recall = ai_service::game_system::memory::recall::MemoryRecall::new(local_embedding);
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用

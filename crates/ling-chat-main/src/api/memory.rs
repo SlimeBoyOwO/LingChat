@@ -13,14 +13,14 @@ use serde::Serialize;
 use tauri::Manager;
 
 use crate::AppState;
-use crate::ai_service::game_system::persistent_memory_system::MemorySystemSnapshot;
+use crate::ai_service::game_system::memory::persistent::MemorySystemSnapshot;
 use crate::ai_service::types::LlmMessage;
 
 /// 只展示仍属于当前角色、存档和来源版本的检索结果。
 #[tauri::command]
 pub async fn get_memory_recall_snapshot(
     app: tauri::AppHandle,
-) -> Result<Option<crate::ai_service::game_system::memory_recall::RecallDebugSnapshot>, String> {
+) -> Result<Option<crate::ai_service::game_system::memory::recall::RecallDebugSnapshot>, String> {
     let state = app.state::<AppState>();
     let snapshot = state.memory_recall.debug_snapshot();
     let status = {
@@ -33,7 +33,7 @@ pub async fn get_memory_recall_snapshot(
     };
     if let Some(snapshot) = &snapshot {
         if let Some(response) = &snapshot.response {
-            let scope = crate::ai_service::game_system::memory_scope::MemoryScopeSnapshot::load(
+            let scope = crate::ai_service::game_system::memory::scope::MemoryScopeSnapshot::load(
                 &state.db,
                 &ling_chat_notes::NotesStore::new(crate::api::data_dir()),
                 response.scope_key.save_id,

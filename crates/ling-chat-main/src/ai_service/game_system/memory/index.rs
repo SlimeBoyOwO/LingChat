@@ -16,7 +16,7 @@ use crate::ai_service::embedding::EmbeddingEngine;
 use crate::db::entities::line::LineAttribute;
 use crate::db::managers::memory_index_repo::MemoryIndexRepo;
 
-use super::memory_scope::{MemoryScopeSnapshot, ScopedMemoryLine};
+use super::scope::{MemoryScopeSnapshot, ScopedMemoryLine};
 
 /// 隔离模型调用，让索引与检索共用同一套版本、分词和嵌入规则。
 pub trait MemoryEncoder: Send + Sync {
@@ -84,6 +84,7 @@ impl MemoryIndexer {
         mode: IndexMode,
     ) -> Result<MemoryIndexReport> {
         ensure!(self.token_budget > 2, "模型 token 上限不足");
+        // 先固定这次要处理的历史和笔记，后面提交前还会再取一次确认。
         let scope =
             MemoryScopeSnapshot::load(db, store, save_id, role_id, role_display_name).await?;
         let encoder = self.encoder.clone();
@@ -205,6 +206,7 @@ fn prepare_index(
                 continue;
             }
         }
+        // 普通对话可以拆成小段；涉及工具调用时要保留完整的一组内容。
         let chunks = match chunk_document(&document, budget, atomic, |text| {
             encoder
                 .count_tokens(text)
@@ -221,6 +223,7 @@ fn prepare_index(
             chunks: vec![],
         };
         for chunk in chunks {
+            // 文档有变化也不代表所有段落都变了，相同分块的向量仍可复用。
             let cached = if mode == IndexMode::Incremental {
                 previous
                     .filter(|item| item.chunking_version == indexed.chunking_version)

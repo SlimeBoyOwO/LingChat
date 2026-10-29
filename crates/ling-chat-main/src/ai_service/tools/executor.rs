@@ -25,7 +25,7 @@ pub struct ToolContext {
     pub app: Option<AppHandle>,
     /// 本轮固定的角色与存档范围，也用于共享历史引用预算。
     pub memory_session:
-        Option<std::sync::Arc<crate::ai_service::game_system::memory_recall::RecallSession>>,
+        Option<std::sync::Arc<crate::ai_service::game_system::memory::recall::RecallSession>>,
 }
 
 impl ToolContext {
@@ -59,7 +59,7 @@ impl ToolContext {
 
     pub fn with_memory_session(
         mut self,
-        session: std::sync::Arc<crate::ai_service::game_system::memory_recall::RecallSession>,
+        session: std::sync::Arc<crate::ai_service::game_system::memory::recall::RecallSession>,
     ) -> Self {
         self.memory_session = Some(session);
         self

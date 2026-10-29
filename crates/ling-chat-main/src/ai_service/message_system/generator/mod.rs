@@ -22,7 +22,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::memory_recall::{RecallSession, RecallStamp};
+use crate::ai_service::game_system::memory::recall::{RecallSession, RecallStamp};
 use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;

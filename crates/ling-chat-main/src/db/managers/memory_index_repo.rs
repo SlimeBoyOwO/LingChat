@@ -10,7 +10,7 @@ use ling_chat_notes::memory::{
 use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
 
 use super::save_repo::SaveRepo;
-use crate::ai_service::game_system::memory_scope::MemoryScopeSnapshot;
+use crate::ai_service::game_system::memory::scope::MemoryScopeSnapshot;
 
 #[derive(Debug)]
 pub struct MemoryIndexSnapshot {

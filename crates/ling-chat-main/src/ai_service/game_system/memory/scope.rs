@@ -13,7 +13,7 @@ use crate::ai_service::types::GameLine;
 use crate::db::entities::{line::LineAttribute, role};
 use crate::db::managers::save_repo::SaveRepo;
 
-use super::persistent_memory_system::{line_visible_to_role, tool_call_ids, tool_result_call_id};
+use super::persistent::{line_visible_to_role, tool_call_ids, tool_result_call_id};
 
 #[derive(Clone, Debug)]
 pub struct ScopedMemoryLine {
@@ -49,6 +49,7 @@ impl MemoryScopeSnapshot {
             !role_display_name.trim().is_empty(),
             "必须提供宿主解析的角色展示名"
         );
+        // 角色检查和历史读取使用同一事务，避免读取期间数据库变化造成不一致。
         let transaction = db.begin().await?;
         ensure!(
             role::Entity::find_by_id(role_id)
@@ -75,6 +76,7 @@ impl MemoryScopeSnapshot {
         role_display_name: &str,
         mut history: Vec<GameLine>,
     ) -> Result<Self> {
+        // 版本覆盖整条历史，真正返回的台词再按当前角色的感知范围筛选。
         let history_version = Self::history_version_for(save_id, role_id, &mut history)?;
         let lines = visible_history(&history, role_id)?;
         let line_positions = lines
@@ -161,6 +163,7 @@ impl MemoryScopeSnapshot {
     }
 
     fn allows_sources(&self, sources: &[MemorySource]) -> bool {
+        // 工具调用和返回是一组：只剩其中一半时，不能把它当作完整经历引用。
         sources.iter().all(|source| {
             let MemorySource::Line { line_id, .. } = source else {
                 return false;

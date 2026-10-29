@@ -8,7 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::ai_service::config::AIServiceConfig;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use crate::ai_service::game_system::memory::persistent::MemorySectionLimits;
 use crate::ai_service::game_system::player_identity::bootstrap::resolve_player_bootstrap;
 use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::script_engine::ScriptManager;

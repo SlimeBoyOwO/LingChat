@@ -66,7 +66,7 @@ pub struct InnerAppState {
     pub embedding_warming: Arc<ai_service::embedding_remote::WarmingTask>,
     /// Tool RAG：检索工具并维护按角色的激活缓存。
     pub tool_rag: Arc<ai_service::tools::tool_rag::ToolRag>,
-    pub memory_recall: Arc<ai_service::game_system::memory_recall::MemoryRecall>,
+    pub memory_recall: Arc<ai_service::game_system::memory::recall::MemoryRecall>,
     /// 插件资源只读来源（由插件侧的 `PluginManager` 实现，宿主经窄接口读取）。
     pub plugin_resources: Arc<dyn PluginResourceSource>,
     pub proactive_system:

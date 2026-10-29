@@ -18,9 +18,9 @@ use sha2::{Digest, Sha256};
 
 use crate::db::managers::memory_index_repo::{MemoryIndexRepo, MemoryIndexSnapshot};
 
-use super::memory_cache::{CacheUsage, MemoryCacheConfig, MemoryCacheStats, MemoryCaches};
-use super::memory_index::MemoryEncoder;
-use super::memory_scope::MemoryScopeSnapshot;
+use super::cache::{CacheUsage, MemoryCacheConfig, MemoryCacheStats, MemoryCaches};
+use super::index::MemoryEncoder;
+use super::scope::MemoryScopeSnapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -83,6 +83,7 @@ impl MemorySearcher {
         recent_context: &str,
         settings: &SearchSettings,
     ) -> Result<MemorySearchResponse> {
+        // 先确定本次查询的范围和模型，缓存及结果都要与这份快照对应。
         let settings_version = settings.version()?;
         let query = SearchQuery::new(query, recent_context)?;
         let scope =
@@ -113,6 +114,7 @@ impl MemorySearcher {
                 ))?;
                 let mut cache = CacheUsage::default();
                 if let Some(cached) = caches.get::<CachedResult>(false, &result_key) {
+                    // 缓存只记录命中的身份，取回时仍从当前索引还原正文。
                     if let Some(result) = cached.restore(&snapshot.documents, &settings) {
                         cache.result_hit = true;
                         return Ok((
@@ -210,6 +212,7 @@ fn query_vector(
         return (None, QueryVectorStatus::EmptyQuery);
     }
     if !has_vectors {
+        // 索引里没有可用向量时仍可继续按关键词和标签查找。
         return (None, QueryVectorStatus::NoIndexedVectors);
     }
     if let Some(vector) = caches.get::<Vec<f32>>(true, key) {

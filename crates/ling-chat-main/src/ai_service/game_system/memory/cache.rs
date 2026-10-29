@@ -131,6 +131,7 @@ impl BoundedLru {
     fn insert(&mut self, key: String, payload: Vec<u8>) {
         let entry = Entry { key, payload };
         let bytes = entry.bytes();
+        // 单条数据太大时直接跳过缓存，不让一次查询占满整个空间。
         if self.limits.max_entries == 0
             || bytes > self.limits.max_entry_bytes
             || bytes > self.limits.max_bytes
@@ -194,6 +195,7 @@ impl MemoryCaches {
         match serde_json::from_slice(&payload) {
             Ok(value) => Some(value),
             Err(_) => {
+                // 读不出来的缓存没有继续保留的意义，下次按正常流程重新计算。
                 self.remove(vector, key);
                 None
             },

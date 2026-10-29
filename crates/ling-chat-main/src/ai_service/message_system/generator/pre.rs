@@ -6,7 +6,7 @@ use anyhow::Result;
 use tauri::Manager;
 
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::memory_recall::{
+use crate::ai_service::game_system::memory::recall::{
     RecallSession, RecallStamp, inject_references,
 };
 use crate::ai_service::game_system::scene_store::SceneStore;

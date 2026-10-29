@@ -72,7 +72,7 @@ PR #523 的目标：
 | `llm/providers/genai_provider.rs` | genai（OpenAI 兼容）流式工具调用：`with_capture_tool_calls`、流结束时 yield `ToolCalls`           |
 | `llm/providers/kimi_code.rs`      | Kimi Code 非流式 `complete_with_tools`（Anthropic `tool_use` 格式，供 God Agent 用）              |
 | `message_system/generator.rs`     | `GeneratorSource` / `GeneratorDeps` / `run_pipeline`：调用工具循环、把 `tool_messages` 写入台词表 |
-| `game_system/memory_builder.rs`   | `MemoryBuilder`：把工具行还原成 OpenAI 格式 `LlmMessage`（含旧版兼容）                            |
+| `game_system/memory/builder.rs`   | `MemoryBuilder`：把工具行还原成 OpenAI 格式 `LlmMessage`（含旧版兼容）                            |
 | `game_system/role_manager.rs`     | `sync_memories`：按台词表重建每个角色的 `role.memory`                                             |
 
 **数据 / 配置**

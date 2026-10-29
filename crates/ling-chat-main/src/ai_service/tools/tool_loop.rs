@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
-use crate::ai_service::game_system::memory_recall::{
+use crate::ai_service::game_system::memory::recall::{
     EPHEMERAL_MEMORY_RESULT, RECALL_POLICY, RecallSession, RecallStamp,
 };
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};

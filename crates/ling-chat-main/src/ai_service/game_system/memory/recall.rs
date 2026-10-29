@@ -15,11 +15,11 @@ use serde::Serialize;
 use tokio::sync::Semaphore;
 
 use super::{
-    game_status::GameStatus,
-    memory_index::{IndexMode, MemoryEncoder, MemoryIndexer},
-    memory_scope::MemoryScopeSnapshot,
-    memory_search::{MemorySearchResponse, MemorySearcher},
+    index::{IndexMode, MemoryEncoder, MemoryIndexer},
+    scope::MemoryScopeSnapshot,
+    search::{MemorySearchResponse, MemorySearcher},
 };
+use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::{GameLine, LlmMessage};
 use crate::db::managers::save_repo::SaveRepo;
 
@@ -118,6 +118,7 @@ impl std::fmt::Debug for RecallSession {
 
 impl RecallSession {
     pub fn new(stamp: RecallStamp, messages: &[LlmMessage]) -> Arc<Self> {
+        // 保存注入检索资料之前的上下文，笔记修改后才能撤掉旧引用并继续对话。
         Arc::new(Self {
             stamp: RwLock::new(stamp),
             budget: Mutex::new(RecallBudget::default()),
@@ -127,6 +128,7 @@ impl RecallSession {
     }
 
     fn recent(messages: &[LlmMessage]) -> String {
+        // 只截取少量近期对话，供“那次”“它”这类指代查询补充线索。
         let recent = messages
             .iter()
             .rev()
@@ -239,6 +241,7 @@ impl RecallSession {
                 (stamp.clone(), budget.scope.clone(), budget.sources.clone())
             };
             let Some(expected) = expected else {
+                // 本轮还没有引用资料，就没有来源需要复核。
                 return Ok(());
             };
             ensure!(
@@ -258,6 +261,7 @@ impl RecallSession {
                 continue;
             }
             if current.key() != &expected {
+                // 笔记变化先停止使用旧资料；历史只追加时还要逐条检查已引用来源。
                 ensure!(
                     current.key().notes_version == expected.notes_version,
                     "笔记已变化，取消旧请求"
@@ -459,6 +463,7 @@ impl MemoryRecall {
                             tracing::warn!("记忆检索任务失败: {error}");
                             snapshot.status = "unavailable".into();
                         },
+                        // 等待超时后不再使用这次结果，后台任务结束后才释放许可。
                         Err(_) => snapshot.status = "timeout".into(),
                     }
                 } else {
