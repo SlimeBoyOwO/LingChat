@@ -176,9 +176,11 @@ impl MessageGenerator {
             GeneratorSource::ScriptAiDialogue | GeneratorSource::ScriptFreeDialogue
         );
         let allowed = !script_source && !self.deps.is_preview;
-        if let Some(reminder) =
-            crate::ai_service::tools::weather::first_talk_reminder(&self.deps.app, gs, allowed)
-        {
+        if let Some(reminder) = crate::ai_service::tools::builtin::weather::first_talk_reminder(
+            &self.deps.app,
+            gs,
+            allowed,
+        ) {
             let line = PromptLine::new(PromptRole::Narrator, reminder)
                 .display_name("系统")
                 .into_base();

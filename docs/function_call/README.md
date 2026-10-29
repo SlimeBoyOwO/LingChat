@@ -59,14 +59,15 @@ PR #523 的目标：
 
 | 文件                              | 职责                                                                                              |
 | --------------------------------- | ------------------------------------------------------------------------------------------------- |
-| `tools/mod.rs`                    | 模块入口；`built_in_registry()` 创建注册表 + 加载权限配置 + 初始化角色归属                        |
+| `tools/mod.rs`                    | 工具系统入口：模块声明与共享辅助（`game_status_handle` / `ensure_no_args` / `atomic_replace`）    |
+| `tools/builtin/mod.rs`            | `built_in_registry()`：注册全部内置聊天工具 + 加载权限配置 + 初始化角色归属                       |
 | `tools/registry.rs`               | `ToolRegistry`：注册 / 查找 / 按权限裁剪工具定义                                                  |
 | `tools/executor.rs`               | `Tool` trait、`ToolContext`、`ToolExecutor`（权限校验 → 查找 → 解析 → 2s 超时 → 稳定错误编码）    |
 | `tools/tool_loop.rs`              | `stream_with_tool_loop`：流式工具闭环（最多 3 轮）                                                |
 | `tools/agent.rs`                  | `run_tool_agent`：无头非流式运行器（God Agent 决策用，`max_rounds = 1`，不产前端事件）            |
-| `tools/god_agent.rs`              | God Agent 的两个决策工具 + `god_agent_registry()`（独立注册表，不进权限页）                       |
+| `tools/builtin/god_agent.rs`      | God Agent 的两个决策工具 + `god_agent_registry()`（独立注册表，不进权限页）                       |
 | `tools/permissions.rs`            | `ToolPermissionConfig`：「场景组 × 角色组」权限矩阵、`tool_permissions.toml` 读写                 |
-| `tools/clock.rs`                  | 内置示例工具 `CurrentTimeTool`（`get_current_time`）                                              |
+| `tools/builtin/clock.rs`          | 内置示例工具 `CurrentTimeTool`（`get_current_time`）；其余内置工具同样在 `tools/builtin/` 下      |
 | `llm/mod.rs`                      | `LlmChunk`（含 `ToolCalls`）、`LlmClient`（`complete_stream_with_tools` / `complete_with_tools`） |
 | `llm/provider.rs`                 | `LlmProvider` trait：三组工具方法，默认 fallback 行为                                             |
 | `llm/providers/genai_provider.rs` | genai（OpenAI 兼容）流式工具调用：`with_capture_tool_calls`、流结束时 yield `ToolCalls`           |

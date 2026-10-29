@@ -20,7 +20,7 @@ use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::tools::agent::AgentTask;
-use crate::ai_service::tools::god_agent::RECOMMEND_TOOLS;
+use crate::ai_service::tools::builtin::god_agent::RECOMMEND_TOOLS;
 use crate::ai_service::tools::tool_rag::{AUTO_RECOMMEND_MIN_SCORE, AUTO_RECOMMEND_TOP_K, ToolRag};
 use crate::ai_service::types::{GameLine, ToolDefinition};
 use crate::utils::prompt::PromptRole;

@@ -7,7 +7,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tauri::Manager;
 
-use super::{
+use super::super::{
     executor::{Tool, ToolContext, ToolError, ToolResult},
     game_status_handle,
 };

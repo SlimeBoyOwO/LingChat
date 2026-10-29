@@ -11,8 +11,8 @@ use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::{ensure_no_args, game_status_handle};
 
 /// character_list：列出所有可用角色的 ID、名称与角色标题。
 pub struct CharacterList;

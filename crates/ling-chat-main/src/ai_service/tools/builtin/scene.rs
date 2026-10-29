@@ -7,8 +7,8 @@ use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::data_dir;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::{ensure_no_args, game_status_handle};
 
 /// scene_list：列出所有可用场景。
 pub struct SceneList;

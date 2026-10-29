@@ -2,7 +2,7 @@
 //!
 //! 这里是各能力共用的基础设施：LLM 槽位、配置、工具注册表，加上「该不该激活」
 //! 与「NPC 轮数还有没有额度」。具体能力（选人、好感度）各自在自己的模块里，
-//! 副作用的落地在 `ai_service::tools::god_agent` 的工具里。
+//! 副作用的落地在 `ai_service::tools::builtin::god_agent` 的工具里。
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -16,7 +16,7 @@ use crate::ai_service::game_system::player_identity::{RelationEndpoint, resolve_
 use crate::ai_service::god_agent::config::GodAgentConfig;
 use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
-use crate::ai_service::tools::god_agent::god_agent_registry;
+use crate::ai_service::tools::builtin::god_agent::god_agent_registry;
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::GameLine;
 use crate::db::entities::line::LineAttribute;
