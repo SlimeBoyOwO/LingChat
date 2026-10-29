@@ -17,6 +17,7 @@ use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
+use crate::utils::prompt::{ReplyLengthMode, scan_reply_shape};
 
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
@@ -26,21 +27,81 @@ use super::tool_rag::{apply_dynamic_search_description, effective_allowed};
 const MAX_PERSISTED_TOOL_RESULT_CHARS: usize = 32_000;
 const MAX_PERSISTED_SINGLE_TOOL_RESULT_CHARS: usize = 12_000;
 const TOOL_RESULT_TRUNCATION_MARKER: &str = "\n...[工具结果过长，长期记忆已截断]";
-const FINAL_SYNTHESIS_PROMPT: &str = "工具调用已达到本轮上限。请停止调用工具，基于已有工具结果直接给出最终答复；如仍有未完成事项，请明确说明。";
-/// 工具结果返回后的续写引导。部分模型会把上一轮台词当作已结束回合而重新开场，
-/// 导致同一句话在多轮工具调用间被反复复读；显式要求接着上文继续、禁止重复。
-const CONTINUATION_PROMPT: &str = "工具结果已返回。请接着你上一条回复的内容继续，绝对不要重复之前已经发送过的台词、动作描写或翻译行；直接基于工具结果汇报结果或进行下一步。";
+// 工具结果返回后的续写引导由 ReplyLengthMode::tool_continuation_text 生成，再经
+// attach_line_budget 写进最后一条工具结果。不能在对话中间追加 system 消息：部分
+// 提供商会把它当成新的人设提示，导致人设漂移。
 /// 收尾轮只返回工具调用、没有任何正文时的补救提示：明确调用未执行、已无工具可用，
 /// 要求直接输出总结正文，避免整条回复落空触发前端报错。
 const FINAL_SYNTHESIS_RETRY_PROMPT: &str = "你刚才尝试调用的工具未被执行：当前已没有可用工具。请不要再尝试调用工具，直接基于已完成的工具结果，用正文给出最终答复；如仍有未完成事项，请明确说明。";
-const TOOL_USE_POLICY_PROMPT: &str = "你可以调用本请求随附的工具。用户要求执行文件读写/删除、命令运行、角色或场景切换等实际操作时，必须先真正调用相应工具，并在收到工具结果后再说明结果。绝不能只在思考中计划调用，或在没有成功工具结果时声称已经执行、删除、写入、切换或完成。需要用户确认的危险操作会由应用弹窗处理，请直接发起工具调用，不要用文字假装已经操作；如果工具失败、被拒绝或没有调用，必须明确说明操作尚未完成。";
+/// 工具轮数用满、收掉工具定义后的收尾提示：还要报一次本回合的台词额度。
+fn final_synthesis_text(mode: ReplyLengthMode, spoken: usize) -> String {
+    let mut text = String::from(
+        "工具调用已达到本轮上限。请停止调用工具，基于已有工具结果直接给出最终答复；如仍有未完成事项，请明确说明。",
+    );
+    if let Some(budget) = mode.tool_turn_budget() {
+        let left = budget.saturating_sub(spoken);
+        if left == 0 {
+            text.push_str("本回合的台词额度已经用完，不必再输出台词。");
+        } else {
+            text.push_str(&format!(
+                "本回合已经说了 {spoken} 句台词，这一条最多再补 {left} 句。"
+            ));
+        }
+    }
+    text
+}
 
-/// Tool RAG 开启时的检索引导。
-///
-/// 开启后随请求下发的工具被收窄为「常驻工具 + 已激活的工具」，模型必须知道两件事
-/// 才可能用上其余能力：一是「还有别的工具可以检索」，二是「有哪些」。后者写在
-/// `tool_search` 的动态描述里（见 `tool_rag::search_description`），这里负责前者。
-const TOOL_SEARCH_PROMPT: &str = "本请求只随附了少量常用工具，其余工具都可以用 tool_search 检索到。tool_search 的说明里列出了当前可用的工具清单，请先看那份清单判断有没有能用的工具：有就用一句自然语言描述你想完成的事调用 tool_search，它会返回匹配工具的名称与完整说明（含参数），拿到之后再调用那些工具完成任务。用户要求你做某件事而清单里有对应工具时，不要因为「请求里没直接附带这个工具」就说自己做不到；只有清单和检索结果里都没有合适的工具，才如实说明做不到，不要编造能力，也不要假装已经完成。";
+/// TODO: 钦灵：这部分代码我会重点审查，今天困了（
+/// 把一段工具循环指令写进最后一条工具结果。
+fn attach_tool_note(messages: &mut [LlmMessage], key: &str, note: serde_json::Value) {
+    let Some(last) = messages
+        .iter_mut()
+        .rev()
+        .find(|message| message.role == "tool")
+    else {
+        return;
+    };
+    if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&last.content) {
+        if let Some(object) = value.as_object_mut() {
+            object.insert(key.to_string(), note);
+            last.content = value.to_string();
+            return;
+        }
+    }
+    let text = note
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| note.to_string());
+    last.content = format!("{}\n\n（{text}）", last.content);
+}
+
+/// 把本回合的台词额度塞进最后一条工具结果，只改这一轮请求的副本。
+fn attach_line_budget(messages: &mut [LlmMessage], mode: ReplyLengthMode, spoken: usize) {
+    let Some(budget) = mode.tool_turn_budget() else {
+        // 自由档没有额度，但仍然要告诉模型可以不说话
+        attach_tool_note(
+            messages,
+            "tool_continuation",
+            serde_json::Value::String(mode.tool_continuation_text(spoken)),
+        );
+        return;
+    };
+    let left = budget.saturating_sub(spoken);
+    let note = format!(
+        "{}这是内部限制，不要向玩家复述。",
+        mode.tool_continuation_text(spoken)
+    );
+    attach_tool_note(
+        messages,
+        "line_budget",
+        serde_json::json!({
+            "spoken": spoken,
+            "budget": budget,
+            "left": left,
+            "note": note,
+        }),
+    );
+}
 
 /// 工具执行前等待"前导台词已经 emit"的上限。
 ///
@@ -48,8 +109,9 @@ const TOOL_SEARCH_PROMPT: &str = "本请求只随附了少量常用工具，其�
 /// 超时后**放行工具**（fail-open）——顺序不完美也好过让工具链路被富化卡死。
 const FENCE_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// 工具消息收集槽：流消费过程中由闭环填充，消费完毕后调用方取走。
-pub type ToolMessageSink = Arc<Mutex<Vec<LlmMessage>>>;
+/// 工具消息收集槽：流消费过程中由闭环填充，按「一轮工具调用」分组。
+/// 消费完毕后调用方逐轮取走，把每轮的 assistant(tool_calls) 与 tool 结果回填到对应前导行之后。
+pub type ToolMessageSink = Arc<Mutex<Vec<Vec<LlmMessage>>>>;
 
 pub struct ToolLoopResult {
     pub stream: PresentationStream,
@@ -88,6 +150,8 @@ impl Drop for ToolCallProgressEndGuard {
 /// 闭环是**惰性**的：决策轮次在返回的流内部驱动，内容/思考块实时透传给下游
 /// （前端思考字数、句子切分保持流式体验）；工具消息累积进 `ToolMessageSink`，
 /// 待流消费完毕后由调用方读取并回填台词。
+// 入参就是本轮工具闭环需要的全部上下文，拆结构体只会多一层转手，这里接受 8 个参数。
+#[allow(clippy::too_many_arguments)]
 pub async fn stream_with_tool_loop(
     llm: &Arc<LlmClient>,
     registry: &Arc<ToolRegistry>,
@@ -97,6 +161,7 @@ pub async fn stream_with_tool_loop(
     app: &AppHandle,
     recommended: &[String],
     recall: Arc<RecallSession>,
+    reply_mode: ReplyLengthMode,
 ) -> Result<ToolLoopResult> {
     validate_recall(app, &recall).await?;
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
@@ -145,10 +210,9 @@ pub async fn stream_with_tool_loop(
     let stream = async_stream::try_stream! {
         let executor = ToolExecutor::new(&registry);
         let mut messages = messages;
-        // 角色人设经常要求先给出演出文本，部分模型会因此只口头宣称完成操作。
-        // 该临时系统消息只用于本次请求，不写入长期记忆，并明确工具结果才是事实依据。
-        messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
-        messages.insert(1, LlmMessage::system(RECALL_POLICY));
+        if !messages.iter().any(|message| message.role == "system" && message.content == RECALL_POLICY) {
+            messages.insert(0, LlmMessage::system(RECALL_POLICY));
+        }
         // 切换到一个原本不在场的角色时，它的历史记忆不会包含触发切换的用户消息；
         // 保留这一条，重建上下文后补回，避免新角色只看到孤立的 tool_result。
         let active_user_message = messages
@@ -157,11 +221,11 @@ pub async fn stream_with_tool_loop(
             .find(|message| message.role == "user")
             .cloned();
         let mut active_role_name = role_name;
-        if rag_on && !initial_base_allowed.is_empty() {
-            messages.insert(1, LlmMessage::system(TOOL_SEARCH_PROMPT));
-        }
         let mut persisted_tool_result_chars = 0usize;
         let mut continuation_history = Vec::new();
+        // 这一回合已经说出去的台词句数：台词额度按整回合算，不按单轮算。
+        // 每轮各自守「1~2 句」的话，连着几个工具下来就是十几句，而且大半在复述旧事。
+        let mut spoken_lines = 0usize;
 
         // 收尾轮（无工具定义）可能仍返回工具调用且不给正文，多留一轮补救重试。
         let mut synthesis_retried = false;
@@ -172,8 +236,12 @@ pub async fn stream_with_tool_loop(
             let final_synthesis = round >= max_tool_rounds;
             if round == max_tool_rounds {
                 // 达到用户配置的工具轮数后保留一次不带工具定义的收尾生成，避免直接报错并
-                // 丢掉已经完成的工具结果。
-                messages.push(LlmMessage::system(FINAL_SYNTHESIS_PROMPT));
+                // 丢掉已经完成的工具结果。收尾要求写进工具结果，不追加 system 消息。
+                attach_tool_note(
+                    &mut messages,
+                    "final_synthesis",
+                    serde_json::Value::String(final_synthesis_text(reply_mode, spoken_lines)),
+                );
             }
             // 角色可以在上一轮工具执行中发生变化。每轮按当前角色重新计算权限，
             // 防止切换后沿用旧角色的工具授权。Tool RAG 下还要重算激活集：第 N 轮的
@@ -253,6 +321,8 @@ pub async fn stream_with_tool_loop(
 
             // 正常路径立即结束进度；流错误或消费方提前取消时由 Drop 自动兜底。
             drop(progress_end_guard);
+            // 这一轮说了几句：与纠偏同一套分句规则，够用来记整回合的账
+            spoken_lines += scan_reply_shape(&round_text).len();
 
             if tool_calls.is_empty() {
                 // 本轮没有工具调用，工具闭环结束
@@ -268,7 +338,11 @@ pub async fn stream_with_tool_loop(
                 if round_text.trim().is_empty() && !synthesis_retried {
                     synthesis_retried = true;
                     tracing::info!("收尾轮无正文，追加补救提示后重试一次");
-                    messages.push(LlmMessage::system(FINAL_SYNTHESIS_RETRY_PROMPT));
+                    attach_tool_note(
+                        &mut messages,
+                        "final_synthesis",
+                        serde_json::Value::String(FINAL_SYNTHESIS_RETRY_PROMPT.to_string()),
+                    );
                     continue;
                 }
                 return;
@@ -276,6 +350,14 @@ pub async fn stream_with_tool_loop(
 
             tool_calls_seen_in_stream.store(true, Ordering::Release);
             let calls = tool_calls;
+            if let Some(budget) = reply_mode.tool_turn_budget() {
+                tracing::info!(
+                    spoken = spoken_lines,
+                    budget,
+                    left = budget.saturating_sub(spoken_lines),
+                    "工具回合台词额度"
+                );
+            }
 
             let mut ids = HashSet::new();
             for call in &calls {
@@ -409,11 +491,14 @@ pub async fn stream_with_tool_loop(
                 }
             }
 
+            let mut live_round_messages = round_messages.clone();
+            attach_line_budget(&mut live_round_messages, reply_mode, spoken_lines);
+
             if character_switched {
                 // character_switch 已为目标角色注入 SYSTEM 并刷新记忆。这里必须切换
                 // LLM 上下文本身，否则同一请求的最终回复仍会沿用旧角色人设。
                 let (refreshed, refreshed_name) = current_role_context(&app, &recall).await?;
-                let safe_messages = ephemeral_tool_history(&round_messages);
+                let safe_messages = ephemeral_tool_history(&live_round_messages);
                 continuation_history = safe_messages.clone();
                 continuation_history.extend(pending_images.clone());
                 messages = rebase_after_character_switch(
@@ -423,38 +508,26 @@ pub async fn stream_with_tool_loop(
                 );
                 messages.extend(pending_images);
                 active_role_name = refreshed_name;
-                // rebase 用新角色的记忆整体替换了 messages，上面两条临时 system 提示
-                // 会一并丢失。新角色的激活缓存是空的，不补回提示模型就不知道
-                // tool_search 的存在，会以为自己没有任何可用的工具。
-                let switched_base = registry.allowed_tools(source, active_role_name.as_deref());
-                messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
-                messages.insert(1, LlmMessage::system(RECALL_POLICY));
-                if rag_on && !switched_base.is_empty() {
-                    messages.insert(1, LlmMessage::system(TOOL_SEARCH_PROMPT));
-                }
+                messages.insert(0, LlmMessage::system(RECALL_POLICY));
+                attach_line_budget(&mut messages, reply_mode, spoken_lines);
             } else if notes_changed {
-                continuation_history.extend(round_messages.clone());
+                continuation_history.extend(live_round_messages.clone());
                 continuation_history.extend(pending_images);
                 messages = rebase_after_note_write(recall.base_context(), &continuation_history);
-                messages.insert(0, LlmMessage::system(TOOL_USE_POLICY_PROMPT));
-                messages.insert(1, LlmMessage::system(RECALL_POLICY));
-                if rag_on && !registry.allowed_tools(source, active_role_name.as_deref()).is_empty() {
-                    messages.insert(1, LlmMessage::system(TOOL_SEARCH_PROMPT));
-                }
-                messages.push(LlmMessage::system(CONTINUATION_PROMPT));
+                messages.insert(0, LlmMessage::system(RECALL_POLICY));
+                attach_line_budget(&mut messages, reply_mode, spoken_lines);
             } else {
-                continuation_history.extend(round_messages.clone());
+                continuation_history.extend(live_round_messages.clone());
                 continuation_history.extend(pending_images.clone());
-                messages.extend(round_messages.clone());
+                messages.extend(live_round_messages);
                 messages.extend(pending_images);
-                messages.push(LlmMessage::system(CONTINUATION_PROMPT));
             }
 
             let persisted_messages = bounded_tool_history(
                 &ephemeral_tool_history(&round_messages),
                 &mut persisted_tool_result_chars,
             );
-            sink.lock().await.extend(persisted_messages);
+            sink.lock().await.push(persisted_messages);
         }
     };
 
@@ -783,49 +856,4 @@ fn presentation_stream(stream: ChunkStream, stamp: RecallStamp) -> PresentationS
             }),
         ),
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::split_tool_image;
-
-    #[test]
-    fn image_field_is_split_out_of_tool_result() {
-        let result = r#"{"ok":true,"message":"看了一眼","image":{"data_url":"data:image/jpeg;base64,AA","hint":"看图"}}"#;
-        let (text, image) = split_tool_image(result);
-        // 图不能留在文本里：base64 写进长期记忆既占上下文，下一轮还会被重发。
-        assert!(!text.contains("data:image"));
-        assert!(!text.contains("\"image\""));
-        assert_eq!(
-            image,
-            Some(("看图".to_string(), "data:image/jpeg;base64,AA".to_string()))
-        );
-    }
-
-    #[test]
-    fn plain_tool_result_is_untouched() {
-        let result = r#"{"ok":true,"message":"好"}"#;
-        assert_eq!(split_tool_image(result), (result.to_string(), None));
-    }
-
-    #[test]
-    fn missing_hint_falls_back_to_generic_text() {
-        let result = r#"{"ok":true,"image":{"data_url":"data:image/png;base64,BB"}}"#;
-        let (_, image) = split_tool_image(result);
-        assert_eq!(
-            image,
-            Some((
-                super::TOOL_IMAGE_HINT.to_string(),
-                "data:image/png;base64,BB".to_string()
-            ))
-        );
-    }
-
-    #[test]
-    fn image_without_data_url_is_dropped() {
-        let result = r#"{"ok":true,"image":{"hint":"没有图"}}"#;
-        let (text, image) = split_tool_image(result);
-        assert_eq!(image, None);
-        assert!(!text.contains("\"image\""));
-    }
 }

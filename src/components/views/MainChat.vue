@@ -15,7 +15,19 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
-    <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
+    <GameDialog
+      ref="gameDialogRef"
+      :relation-ready="relationReady"
+      @player-continued="manualTriggerContinue"
+    />
+
+    <RelationGuardModal
+      :visible="relationModalVisible"
+      :roles="blockedRoleList"
+      :me-name="meName"
+      @close="closeRelationModal"
+      @goto-edit="gotoRelationEdit"
+    />
 
     <!-- 菜单按钮 -->
     <div id="menu-panel" ref="menuPanelRef">
@@ -69,8 +81,10 @@ import LoadingTransition from "./LoadingTransition.vue";
 
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
 import ImageSourcePicker from "@/components/ui/ImageSourcePicker.vue";
+import RelationGuardModal from "@/components/ui/RelationGuardModal.vue";
 import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
+import { useRelationGuard } from "@/composables/chat/useRelationGuard";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
@@ -140,6 +154,52 @@ const runInitialization = async () => {
   }
 };
 
+// 关系就绪门：未就绪时禁用输入框、输入区上方提示条 + 引导模态
+const {
+  ready: relationReady,
+  missingSide: relationMissingSide,
+  blockedRoleId,
+  blockedRoles,
+  modalVisible: relationModalVisible,
+  refresh: refreshRelationReady,
+  closeModal: closeRelationModal,
+} = useRelationGuard();
+
+const blockedRoleList = computed(() =>
+  blockedRoles.value.map((item) => ({
+    name: gameStore.getGameRole(item.roleId)?.roleName || uiStore.showCharacterTitle,
+    missingSide: item.missingSide,
+  })),
+);
+
+const meName = computed(() => gameStore.userName || "我");
+
+watch(
+  [() => gameStore.mainRoleId, () => gameStore.playerIdentityId],
+  ([roleId]) => void refreshRelationReady(roleId),
+  { immediate: true },
+);
+
+// 关闭设置后重新判定：用户很可能刚去补关系
+watch(
+  () => uiStore.showSettings,
+  (open) => {
+    if (!open) void refreshRelationReady(gameStore.mainRoleId);
+  },
+);
+
+// 「去填写」：记录待处理意图（缺哪一侧），打开设置并定位到角色列表页
+const gotoRelationEdit = () => {
+  const roleId = blockedRoleId.value;
+  if (roleId && roleId > 0) {
+    const kind = relationMissingSide.value === "identity" ? "identity" : "role";
+    uiStore.setPendingRelationGuide({ kind, roleId });
+  }
+  closeRelationModal();
+  uiStore.toggleSettings(true);
+  uiStore.setSettingsTab("character");
+};
+
 // 初始化游戏信息
 onMounted(() => {
   if (!showLoading.value) {
@@ -201,24 +261,5 @@ const {
   top: calc(15px + var(--safe-area-inset-top));
   right: 20px;
   z-index: 1000;
-}
-.scene-controls {
-  position: fixed;
-  bottom: 80px; /* 根据聊天输入框高度调整 */
-  left: 20px;
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  background: rgba(0, 0, 0, 0.5);
-  padding: 8px 12px;
-  border-radius: 20px;
-  backdrop-filter: blur(5px);
-  z-index: 100;
-}
-
-.scene-indicator {
-  color: #fff;
-  font-size: 14px;
-  margin-left: 8px;
 }
 </style>

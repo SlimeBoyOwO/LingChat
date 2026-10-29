@@ -52,6 +52,11 @@ public final class HurtReporter {
         if (monitored.isEmpty() || !monitored.equals(maid.getStringUUID())) {
             return;
         }
+        // 她已经倒下：致命那一下也是 LivingDamageEvent，与死亡事件的先后不保证。
+        // 死亡分支会清一次累计，这里再挡一下，免得倒下的那一击又在十 tick 后补报出来。
+        if (MonitoredMaidHandler.isDead() || !maid.isAlive()) {
+            return;
+        }
         BridgeServer bridge = LingChatMaidBridge.server();
         if (bridge == null || !bridge.hasClients()) {
             return;

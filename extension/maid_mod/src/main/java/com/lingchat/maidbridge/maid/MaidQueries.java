@@ -5,6 +5,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import java.util.ArrayList;
 import java.util.List;
@@ -15,6 +16,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.Entity;
+import net.minecraft.world.entity.Pose;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.phys.BlockHitResult;
@@ -41,6 +43,30 @@ public final class MaidQueries {
     }
 
     /**
+     * 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
+     * / {@code unconscious}。
+     *
+     * <p>昏迷优先于普通睡姿：昏迷时写入睡眠位置是为了闭眼，但对外说的状态是「不省人事」，
+     * 不是「睡着了」。地上躺下与昏迷一样按了一个脚下的睡位（语义是闭眼与躺姿），所以
+     * 判断顺序是昏迷、桥接的躺地动作、床、坐、躺。
+     */
+    public static String posture(EntityMaid maid) {
+        if (MaidCondition.isUnconscious(maid)) {
+            return "unconscious";
+        }
+        if (MaidActionController.isGroundLying(maid)) {
+            return "lying";
+        }
+        if (maid.isSleeping()) {
+            return "sleeping";
+        }
+        if (maid.isMaidInSittingPose()) {
+            return "sitting";
+        }
+        return maid.hasPose(Pose.SLEEPING) ? "lying" : "standing";
+    }
+
+    /**
      * 请求里点名的那只女仆；服务端没就绪、或她此刻不在已加载的区块里都给 null。
      *
      * <p>四个 handler 都从这一步开始，理由与错误措辞都收在这里，免得各写一套。
@@ -63,17 +89,27 @@ public final class MaidQueries {
     }
 
     /**
+     * 玩家准星射线的完整命中（方块、面与位置）；没指着方块时给 null。
+     *
+     * <p>挖掘要的是落点那一格，放置还要知道点的是哪一面，所以两条都从这里取。
+     */
+    public static BlockHitResult gazeHit(ServerPlayer player, double distance) {
+        if (player == null) {
+            return null;
+        }
+        HitResult hit = player.pick(distance, 1.0F, false);
+        return hit.getType() == HitResult.Type.BLOCK ? (BlockHitResult) hit : null;
+    }
+
+    /**
      * 玩家准星射线的落点，最多 distance 格；没指着方块时给 null。
      *
      * <p>挖掘拿它当区域锚点，「看一眼周围」拿它决定方块清单以哪片为中心；两边问的是
      * 同一件事，所以放在这里，不让感知去依赖挖掘的实现。
      */
     public static BlockPos gazeAt(ServerPlayer player, double distance) {
-        if (player == null) {
-            return null;
-        }
-        HitResult hit = player.pick(distance, 1.0F, false);
-        return hit.getType() == HitResult.Type.BLOCK ? ((BlockHitResult) hit).getBlockPos() : null;
+        BlockHitResult hit = gazeHit(player, distance);
+        return hit == null ? null : hit.getBlockPos();
     }
 
     /** 只拿得到已加载的女仆；女仆走远到区块卸载后就查不到了。 */
@@ -96,8 +132,10 @@ public final class MaidQueries {
         if (server == null || maidId == null || maidId.isEmpty()) {
             return null;
         }
+        // 复活出来的是新实体，而插件配置里还是倒下那一只：所有请求统一在这里换成现在这只
+        String resolved = MonitoredMaidHandler.resolve(maidId);
         try {
-            UUID uuid = UUID.fromString(maidId);
+            UUID uuid = UUID.fromString(resolved);
             for (ServerLevel level : server.getAllLevels()) {
                 if (level.getEntity(uuid) instanceof EntityMaid maid) {
                     return maid;
@@ -107,7 +145,7 @@ public final class MaidQueries {
             // 插件也可能传来名字之类的东西，退回下面的遍历匹配
         }
         for (EntityMaid maid : getAllMaids(server)) {
-            if (maid.getStringUUID().equals(maidId)) {
+            if (maid.getStringUUID().equals(resolved)) {
                 return maid;
             }
         }
@@ -130,6 +168,9 @@ public final class MaidQueries {
         result.addProperty("dimension", maid.level().dimension().location().toString());
         result.addProperty("is_sitting", maid.isMaidInSittingPose());
         result.addProperty("is_following", !maid.isHomeModeEnable());
+        result.addProperty("unconscious", MaidCondition.isUnconscious(maid));
+        result.addProperty(
+                "on_bed", MaidCondition.isUnconscious(maid) && MaidCondition.isOnBed(maid));
 
         IMaidTask task = maid.getTask();
         result.addProperty("task", task == null ? "" : task.getUid().toString());

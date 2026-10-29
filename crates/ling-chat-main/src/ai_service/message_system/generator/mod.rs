@@ -6,7 +6,10 @@
 //! 3. 启动 StreamProducer 从 LLM 流中切句子，送入 consumer 并行处理（情绪解析 + 翻译 + TTS）。
 //! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
 //! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
+//!
+//! 钦灵：这一模块是整个 LC 的核心模块，务必保证设计合理
 
+mod backfill;
 mod post;
 mod pre;
 
@@ -20,6 +23,7 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::memory_recall::{RecallSession, RecallStamp};
+use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
 use crate::ai_service::llm::LlmClient;
@@ -30,7 +34,7 @@ use crate::ai_service::message_system::responses::{ReplyResponse, event_names};
 use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
-use crate::ai_service::types::{GameLine, LineAttributeExt, LineBase, LlmMessage};
+use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{RoundReply, scan_reply_shape};
@@ -123,13 +127,31 @@ impl MessageGenerator {
             self.god_agent_pre_select().await?;
         }
 
-        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
-        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一。
+        // 没有玩家发言时（主动对话）只取上一轮回复后暂存的那份。
         let tool_hint = if user_message.is_some() {
             self.tool_hint(user_message.as_deref().unwrap_or_default())
                 .await
         } else {
-            None
+            self.pending_tool_hint().await
+        };
+        // 推荐内容按临时记忆注入：与提示行同一个信封，只进本轮请求，不写台词表。
+        // 工具名另走参数并进本轮工具集，两半不拆。
+        if let Some(hint) = &tool_hint {
+            self.deps
+                .game_status
+                .lock()
+                .await
+                .queue_temporary_memory(TemporaryMemory {
+                    text: hint.text.clone(),
+                    placement: TemporaryPlacement::IntoUser,
+                });
+        }
+
+        // 本轮新落台词的起点：回复后推荐只取这之后的助手行，用户行与场景旁白都应排除。
+        let reply_start = {
+            let gs = self.deps.game_status.lock().await;
+            gs.line_list.len()
         };
 
         // 3. 生成循环（God Agent 激活时可能多轮）
@@ -204,24 +226,21 @@ impl MessageGenerator {
         }
 
         // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
-        // 不阻塞本轮回复的呈现。
         self.maybe_evaluate_affection(recent_anchor_hint).await;
 
-        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚排队的提示混进评估快照）：
-        // 新增的回复后处理一律加在 `maybe_correct_reply_shape` 旁边——轻量动作
-        // 直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
-        // 绝不能影响已经呈现给用户的回复。
+        // 回复后处理扩展点
         self.maybe_correct_reply_shape(&round_replies).await;
 
-        // 近期记忆落位：等这一轮所有写入结束再做，避免中段插入打乱流式行号。
-        // 调用方（非剧本路径）已持有 generation_lock，这里只锁 game_status。
+        // 回复后工具推荐
+        self.maybe_recommend_tools_after_reply(reply_start).await;
+
+        // 近期记忆落位
         self.flush_recent_memories().await;
 
         Ok(accumulated)
     }
 
     /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
-    /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
     #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
         // 调用方持有生成锁，先把待落位的近期记忆写回历史。
@@ -301,8 +320,7 @@ impl MessageGenerator {
                 .clone()
         };
         // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
-        // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
-        // 让模型把图片与最近的用户语境关联起来。
+        // 仅本次请求可见，不回写记忆。放在末尾
         let context = if let Some(image) = self.deps.transient_image.clone() {
             let mut ctx = context;
             let gs_guard = self.deps.game_status.lock().await;
@@ -323,15 +341,10 @@ impl MessageGenerator {
         } else {
             context
         };
-        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
-        let context = if let Some(hint) = tool_hint {
-            let mut ctx = context;
-            let message = LlmMessage::system(hint.text.clone());
-            recall.prepend_context(message.clone());
-            ctx.insert(0, message);
-            ctx
-        } else {
-            context
+        // 台词额度按整回合算：工具闭环每轮都会问一句「还能说几句」
+        let reply_mode = {
+            let gs = self.deps.game_status.lock().await;
+            gs.reply_length_mode()
         };
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
@@ -342,11 +355,10 @@ impl MessageGenerator {
             &self.deps.app,
             tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
             recall.clone(),
+            reply_mode,
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。
-        // 先记下回填位置（当前台词末尾，即本轮助手回复写入之前），
-        // 待流消费完毕后统一插入，保持「用户 → 工具消息 → 助手回复」的顺序。
         let tool_insert_pos = {
             let gs = self.deps.game_status.lock().await;
             gs.line_list.len()
@@ -364,8 +376,7 @@ impl MessageGenerator {
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // 句子序号 → 台词表行下标。工具闭环回填时用它抹掉「前导台词」先落的行：
-        // 同一段原文已经在带 tool_call 的助手行里，留着就是同一句话说两遍。
+        // 句子序号 → 台词表行下标。回填时按它定位每轮前导行：
         let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
 
         // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
@@ -484,65 +495,41 @@ impl MessageGenerator {
         // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
         let published_final = publisher.await.unwrap_or(false);
 
-        // 流已消费完毕，工具消息收集完整：回填到助手回复之前的位置
-        let tool_msgs = std::mem::take(&mut *tool_messages.lock().await);
-        let completed_turn = published_final || (!output.sent_final && !tool_msgs.is_empty());
-        if !tool_msgs.is_empty() {
+        // 流已消费完毕：每轮工具消息与前导组都完整了，按组回填。
+        let tool_rounds = std::mem::take(&mut *tool_messages.lock().await);
+        let completed_turn = published_final || (!output.sent_final && !tool_rounds.is_empty());
+        // 栅栏中止时工具轮可能为空，但前导行还在，仍需要按句子序号重排
+        if !tool_rounds.is_empty() || !output.preamble_groups.is_empty() {
             let mut gs = self.deps.game_status.lock().await;
             // 试玩代号守卫：试玩中止后丢弃迟到回填，与 add_assistant_line 行为一致
             if gs.preview_generation == self.deps.generation && recall.matches(&gs) {
                 gs.role_manager.invalidate_memory_history();
-                let insert_pos = tool_insert_pos.min(gs.line_list.len());
                 let perceived: Vec<i32> = gs.present_role_ids.iter().copied().collect();
+                let ledger = sentence_lines.lock().await.clone();
+                let plan = backfill::plan_tool_backfill(
+                    &gs.line_list,
+                    tool_insert_pos,
+                    &ledger,
+                    &output.preamble_groups,
+                    &tool_rounds,
+                    &perceived,
+                );
 
-                if !output.preamble_indices.is_empty() {
-                    let doomed: Vec<usize> = {
-                        let ledger = sentence_lines.lock().await;
-                        ledger
-                            .iter()
-                            .filter(|(sentence, _)| output.preamble_indices.contains(sentence))
-                            .map(|(_, line)| *line)
-                            .collect()
-                    };
-                    // 从后往前删，前面的下标才不会被自己挤动
-                    for index in doomed.into_iter().rev() {
-                        if index < gs.line_list.len() {
-                            gs.line_list.remove(index);
-                        }
+                // 先重排前导行（只换同一批槽位，不改变长度），再打轮次标识，
+                // 最后倒序插入各轮工具块（块位置仍是原始坐标）。
+                for (slot, line) in plan.reorders {
+                    if let Some(target) = gs.line_list.get_mut(slot) {
+                        *target = line;
                     }
                 }
-
-                for msg in tool_msgs.iter().rev() {
-                    let (attribute, content, tool_call) = match msg.role.as_str() {
-                        "assistant" => {
-                            let tool_call = msg
-                                .tool_calls
-                                .as_ref()
-                                .map(|calls| serde_json::to_string(calls).unwrap_or_default());
-                            (LineAttribute::Assistant, msg.content.clone(), tool_call)
-                        },
-                        "tool" => (
-                            LineAttribute::Tool,
-                            serde_json::to_string(&serde_json::json!({
-                                "tool_call_id": msg.tool_call_id,
-                                "result": serde_json::from_str::<serde_json::Value>(&msg.content)
-                                    .unwrap_or(serde_json::Value::String(msg.content.clone())),
-                            }))
-                            .unwrap_or_default(),
-                            None,
-                        ),
-                        _ => continue,
-                    };
-                    let line = LineBase {
-                        content,
-                        tool_call,
-                        attribute: LineAttributeExt(attribute),
-                        sender_role_id: None,
-                        display_name: None,
-                        ..Default::default()
-                    };
-                    gs.line_list
-                        .insert(insert_pos, GameLine::from_base(line, perceived.clone()));
+                for (slot, round_id) in plan.round_ids {
+                    if let Some(target) = gs.line_list.get_mut(slot) {
+                        target.base.round_id = Some(round_id);
+                    }
+                }
+                for (pos, block) in plan.blocks.into_iter().rev() {
+                    let pos = pos.min(gs.line_list.len());
+                    gs.line_list.splice(pos..pos, block);
                 }
                 gs.refresh_memories(&self.deps.db).await?;
             }
@@ -565,11 +552,6 @@ impl MessageGenerator {
                 &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
             );
         } else if !published_final {
-            // 有正文、但没有一条 `is_final` 的回复成功落地——前端队列只认 is_final 或
-            // status:reset 来复位，缺了它界面会永远停在等待态。工具闭环下这条是可达的：
-            // 呈现栅栏已经把前导缓冲清空，工具后模型若不再产出正文，EOF 就没有可提升为
-            // 终句的内容（旧行为会重放前导，但那会让用户看到同一句话两次）。
-            // 这里只做温和复位：不重放、不弹错误提示。
             tracing::warn!(
                 sent_final = output.sent_final,
                 "本轮没有成功发布收尾句，仅复位前端状态"
@@ -586,10 +568,6 @@ impl MessageGenerator {
 // ============================================================
 
 /// 投递到 publisher 的工作项。
-///
-/// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
-/// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
-/// `ai:reply` 已 emit"严格先于"工具事件 emit"。
 #[allow(clippy::large_enum_variant)]
 pub(super) enum PublishItem {
     Reply {

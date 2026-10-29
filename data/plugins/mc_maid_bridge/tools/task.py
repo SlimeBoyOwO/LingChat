@@ -42,20 +42,20 @@ def _task_text(frame):
     maid, player = names()
     name = task_name(frame.get("task"), frame.get("summary"))
     if frame.get("changed"):
-        parts = [f"{maid}已经切换到「{name}」了。"]
+        parts = [f"{maid}把活计换成了「{name}」。"]
     else:
-        parts = [f"{maid}本来就在「{name}」。"]
+        parts = [f"{maid}本来就在干「{name}」。"]
     switch = (frame.get("switch_result") or "").strip()
     if switch == "MISSING_REQUIRED_ITEM":
-        parts.append(f"不过{maid}手上和背包里都没有要用的东西（锄头、剪刀、钓竿这类），得先给{maid}。")
+        parts.append(f"只是{maid}手上和背包里都没有要用的家伙（锄头、剪刀、钓竿这类），得先给她。")
     elif switch == "PARTIAL_OK":
-        parts.append("不过工具不全，只有一部分活能干。")
+        parts.append("工具不全，只能干其中一部分。")
     if frame.get("work_time") is False:
-        parts.append(f"不过现在是{maid}的休息时间，到了工作时间才会去干。")
+        parts.append(f"现在正赶上{maid}的休息时段，到了工作时间才会动手。")
     elif frame.get("home_mode") is False:
         parts.append(
-            f"不过{maid}还在跟随模式：干活的时候{player}走远了不会把{maid}拽回来，"
-            "活会接着干，叫一声就回来。"
+            f"不过{maid}还跟着{player}：干活的时候{player}走远了不会把{maid}拽回来，"
+            "活会接着干，喊一声就回去。"
         )
     return "".join(parts)
 

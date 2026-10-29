@@ -19,6 +19,7 @@ import {
   interruptToolActivities,
   pushToolCallRecord,
   toolDisplayName,
+  type EmbeddingAlertPayload,
   type ToolActivityEvent,
 } from "./services/tool-settings";
 import { useDialogStore } from "../stores/modules/ui/dialog";
@@ -288,6 +289,18 @@ export function initializeTauriEventListeners() {
     },
   );
 
+  // 插件的对外连接（游戏桥接这类）连上了：给一句提示，省得玩家自己去插件页确认。
+  // 只认女仆桥接插件，其余插件的连接不打扰界面。
+  mainWindow?.listen<{ pluginId?: string; event?: string }>("plugin:ws-state", (event) => {
+    const { pluginId, event: state } = event.payload ?? {};
+    if (pluginId !== "mc_maid_bridge" || state !== "connect") return;
+    useUIStore().showNotification({
+      type: "success",
+      title: i18n.global.t("ui.notification.mcMaidConnected"),
+      skipTipsCheck: true,
+    });
+  });
+
   // === ASR events ===
 
   listen<VadEvent>("asr://speech_started", () => {
@@ -311,6 +324,7 @@ export function initializeTauriEventListeners() {
     console.log("[Tauri] 收到 adventure:unlocked", payload);
     const adventureStore = useAdventureStore();
     if (payload?.adventure_folder) {
+      adventureStore.markAdventureUnlocked(payload.adventure_folder);
       adventureStore.unlockNotifications.push(payload);
     }
   });
@@ -353,6 +367,18 @@ export function initializeTauriEventListeners() {
       title: i18n.global.t("api.events.autoSave.title"),
       message: i18n.global.t("api.events.autoSave.message", { time: payload.timestamp }),
       duration: 2500,
+      skipTipsCheck: true,
+    });
+  });
+
+  listen("save:auto-save-failed", (event) => {
+    const payload = event.payload as { message: string; timestamp: string };
+    console.log("[Tauri] 收到 save:auto-save-failed", payload);
+    useUIStore().showNotification({
+      type: "warning",
+      title: i18n.global.t("api.events.autoSaveFailed.title"),
+      message: i18n.global.t("api.events.autoSaveFailed.message", { time: payload.timestamp }),
+      duration: 4000,
       skipTipsCheck: true,
     });
   });
@@ -546,6 +572,23 @@ export function initializeTauriEventListeners() {
   // 也不会因为插件断开而自动还原，插件要还原得自己再请求一次。
   listen<{ enabled: boolean }>("plugin:auto-mode", (event) => {
     useUIStore().autoMode = !!event.payload?.enabled;
+  });
+
+  // 云端向量化熔断：本轮及后续检索不再做向量化（笔记全量返回、工具全量下发），
+  // 让用户知道原因与恢复方式，避免误以为是检索本身坏了。
+  listen<EmbeddingAlertPayload>("embedding:alert", (event) => {
+    const payload = event.payload;
+    console.warn("[Tauri] 收到 embedding:alert", payload);
+    useUIStore().showNotification({
+      type: "warning",
+      title: i18n.global.t("ui.toolCalls.embedding.alertTitle"),
+      message: i18n.global.t("ui.toolCalls.embedding.alertMessage", {
+        backend: payload?.backend ?? "cloud",
+        reason: payload?.reason ?? "",
+      }),
+      duration: 10000,
+      skipTipsCheck: true,
+    });
   });
 
   console.log(

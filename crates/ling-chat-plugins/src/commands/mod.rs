@@ -60,6 +60,14 @@ pub async fn plugin_save_config(
     manager(&app).save_config(&id, config).await
 }
 
+/// 当前是否有插件接管了台词语音的播放（前端据此把本机语音静音）。
+///
+/// 断线、禁用插件或关掉设置项后自动变回 false，下一次播放就回到本机。
+#[tauri::command]
+pub async fn plugin_voice_playback_active(app: AppHandle) -> Result<bool, String> {
+    Ok(manager(&app).voice_playback_owner().await.is_some())
+}
+
 /// 主界面开始展示某句台词时由前端调用：派发给订阅了 `line_shown` 的插件。
 #[tauri::command]
 pub async fn plugin_line_shown(app: AppHandle, line: JsonValue) -> Result<(), String> {

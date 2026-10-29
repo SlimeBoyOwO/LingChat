@@ -9,14 +9,6 @@ use super::{LlmClient, LlmConfig};
 use crate::utils::tls::build_tls_config;
 
 /// 构建共享 reqwest Client。
-///
-/// reqwest 0.13 的 `rustls` feature 默认使用 `rustls-platform-verifier`
-/// （验证操作系统证书）。这在 Android 上要求启动时显式初始化（JVM + Context +
-/// ClassLoader），未初始化时 TLS 握手会 panic，导致 LLM 请求崩溃。
-///
-/// 这里改用 webpki-roots（内置 Mozilla CA 根证书）构造 rustls ClientConfig
-/// 注入 reqwest（见 `utils::tls::build_tls_config`），绕开 platform-verifier
-/// —— 全平台一致，无需任何初始化。
 pub fn build_http_client(timeout_secs: u64) -> Result<Client> {
     let tls_config = build_tls_config().map_err(anyhow::Error::msg)?;
     Client::builder()

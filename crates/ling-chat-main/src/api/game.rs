@@ -7,8 +7,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
-use crate::ai_service::game_system::player_identity::runtime_relations;
+use crate::ai_service::game_system::player_identity::{effective_user_alias, runtime_relations};
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -368,6 +369,10 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
             .init_game_status(Some(character_id), prompt_options)
             .await
             .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
+        service
+            .seed_initial_affection(character_id)
+            .await
+            .map_err(|e| format!("初始化初始好感度失败: {}", e))?;
     }
 
     // 3b. 换角色等于开新一局：起算自动存档冷却（此刻不持 ai_service 锁）
@@ -692,10 +697,15 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
                 &role.settings.character_folder,
                 &gs,
             );
-            let alias = gs.player.user_name.clone();
+            let alias = effective_user_alias(
+                &role.settings,
+                gs.player.identity_id.as_deref(),
+                &gs.player.user_name,
+            );
             let player_block =
                 crate::ai_service::game_system::player_identity::persona::player_block_for(
                     &gs,
+                    role_id,
                     &role.settings,
                     &alias,
                     &speaker_relations,
@@ -734,6 +744,11 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
 
+        let identity_id = gs.player.identity_id.clone();
+        gs.seed_identity_affection(db, role_id, identity_id.as_deref())
+            .await
+            .map_err(|e| format!("播种好感度失败: {}", e))?;
+
         // 阵容变了 → 在场角色人设行里的「你眼里的其他角色」全部过期，重建后刷新记忆。
         crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
             &mut gs,
@@ -753,18 +768,12 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        let prompt = PromptRole::Narrator.build_prompt(&format!("{}加入了对话", role_name));
-        gs.add_line(
-            db,
-            LineBase {
-                content: prompt,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加系统台词失败: {}", e))?;
+        let line = PromptLine::new(PromptRole::Narrator, format!("{role_name}加入了对话"))
+            .display_name("系统")
+            .into_base();
+        gs.add_line(db, line)
+            .await
+            .map_err(|e| format!("添加系统台词失败: {}", e))?;
     }
 
     Ok(serde_json::json!({"success": true, "message": format!("{} 已加入对话", role_name)}))
@@ -851,18 +860,12 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
         let svc = state.ai_service.lock().await;
         let mut gs = svc.game_status.lock().await;
 
-        let prompt = PromptRole::Narrator.build_prompt(&format!("{}离开了对话", role_name));
-        gs.add_line(
-            db,
-            LineBase {
-                content: prompt,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            },
-        )
-        .await
-        .map_err(|e| format!("添加系统台词失败: {}", e))?;
+        let line = PromptLine::new(PromptRole::Narrator, format!("{role_name}离开了对话"))
+            .display_name("系统")
+            .into_base();
+        gs.add_line(db, line)
+            .await
+            .map_err(|e| format!("添加系统台词失败: {}", e))?;
     }
 
     Ok(serde_json::json!({"success": true, "message": format!("{} 已离开对话", role_name)}))
@@ -923,15 +926,9 @@ pub async fn notify_player_entry(app: AppHandle) -> Result<(), String> {
             .replace(' ', "");
         let greeting_with_time = format!("{}，{}", greeting, time_info);
 
-        let prompt = PromptRole::Narrator.build_prompt(&greeting_with_time);
         gs.add_line(
             &state.db,
-            LineBase {
-                content: prompt,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
+            PromptLine::new(PromptRole::Narrator, greeting_with_time.as_str()).into_base(),
         )
         .await
         .map_err(|e| format!("添加入场问候台词失败: {}", e))?;

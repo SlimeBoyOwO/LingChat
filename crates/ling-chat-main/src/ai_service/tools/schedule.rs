@@ -135,6 +135,12 @@ impl Tool for GetAllSchedule {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "今天有什么安排",
+            "我都有哪些待办",
+            "最近的日程是什么",
+            "帮我看看还要做什么",
+        ])
     }
 
     async fn execute(
@@ -175,6 +181,12 @@ impl Tool for AddTodo {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "明天提醒我交作业",
+            "记一下我要买牛奶",
+            "帮我加个待办",
+            "后天下午有件事别忘了",
+        ])
     }
 
     async fn execute(
@@ -257,6 +269,12 @@ impl Tool for UpdateTodo {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "这个待办我做完了",
+            "把那条任务标记成完成",
+            "改一下待办的内容",
+            "这件事先不做了，标记一下",
+        ])
     }
 
     async fn execute(
@@ -347,6 +365,12 @@ impl Tool for DeleteTodo {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "把那条待办删掉",
+            "这个任务不用了",
+            "删掉我记的那件事",
+            "清理一下待办",
+        ])
     }
 
     async fn execute(

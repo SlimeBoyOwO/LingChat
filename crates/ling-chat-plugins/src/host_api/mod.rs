@@ -2,7 +2,7 @@
 //!
 //! 按能力分文件：HTTP 在 `http`，角色/界面控制在 `character`，上下文在 `context`，
 //! 读素材在 `assets`，送消息/抓屏/主动开口在 `conversation`，WS 控制在 `websocket`。
-//! 本文件保留 `#[pymodule]` 导出面——19 个 `#[pyfunction]` 只做签名与转发，插件作者
+//! 本文件保留 `#[pymodule]` 导出面——20 个 `#[pyfunction]` 只做签名与转发，插件作者
 //! 看到的仍是一个 `plugin_host` 模块。
 //!
 //! 新增宿主能力时：实现写进对应能力文件，在下面的 `plugin_host` 里挂一行转发。
@@ -287,14 +287,32 @@ mod plugin_host {
     ///
     /// 用法：`trigger_proactive("")` —— 把要说的先记成旁白，再空提示请求开口；
     /// 传提示语则会被包成 `{旁白: （系统提示：…）}` 写进台词表（截图转述这类要用）。
+    /// `urgent=True` 用于死亡这类必须马上开口的事：顶掉排队中的普通请求，
+    /// 投放时也不吃冷却与上一轮的静默期（仍要等当前这轮生成结束）。
     ///
     /// 请求只会**排队**：等这一轮台词播完、前端空闲下来才投放；同时最多攒一条，
     /// 短时间连发多次会合并成一次（战斗里每挨一下来一次也不会叠出好几轮）。
     ///
     /// 返回：`{ "ok": true, "triggered": true }`（已受理/已合并）
     #[pyfunction]
-    fn trigger_proactive(text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
-        super::conversation::trigger_proactive(text, vm)
+    fn trigger_proactive(
+        text: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::conversation::trigger_proactive(text, kwargs, vm)
+    }
+
+    /// 报告「游戏里此刻能不能播这句语音」，用于 `[voice_playback]` 接管期间。
+    ///
+    /// 用法：`set_voice_playback_available(False)` —— 外部程序找不到播放目标
+    ///（女仆倒下了、模组没连上）就播不出来；恢复或重新连上时再报 `True`。
+    /// 宿主据此决定下一句是交给插件还是本机播放，玩家不用去关设置页的开关。
+    ///
+    /// 返回 `{ "ok": true }`。
+    #[pyfunction]
+    fn set_voice_playback_available(available: bool, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        super::conversation::set_voice_playback_available(available, vm)
     }
 
     /// 触发并等待一次永久记忆压缩；只压达到阈值的角色。

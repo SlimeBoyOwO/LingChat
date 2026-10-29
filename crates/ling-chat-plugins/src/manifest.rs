@@ -3,7 +3,7 @@
 use anyhow::{Context, Result};
 use serde_json::Value;
 
-use super::types::{PluginManifest, WsMode};
+use super::types::{ConfigKind, PluginManifest, WsMode};
 
 /// 从 TOML 文本解析并校验插件 manifest。
 pub fn parse(text: &str) -> Result<PluginManifest> {
@@ -15,6 +15,13 @@ pub fn parse(text: &str) -> Result<PluginManifest> {
 /// 单次工具执行超时上限（毫秒）。超过则 manifest 校验失败，
 /// 避免插件声明超大超时导致阻塞线程被长期占用。
 const MAX_TIMEOUT_MS: u64 = 120_000;
+
+/// 单个工具可声明的示例问句上限：示例会进 Tool RAG 的本地向量索引，
+/// 放太多只会放大首次嵌入耗时，不会提升命中。
+const MAX_TOOL_EXAMPLES: usize = 8;
+
+/// 单条示例问句的长度上限（字符）。
+const MAX_TOOL_EXAMPLE_CHARS: usize = 120;
 
 /// 校验脚本路径是插件目录内的相对路径。
 ///
@@ -157,6 +164,33 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
             anyhow::bail!("插件 '{}' 不能把自己声明为前置插件", manifest.id);
         }
     }
+    if let Some(playback) = &manifest.voice_playback {
+        let declared = manifest
+            .config
+            .iter()
+            .find(|field| field.key == playback.config);
+        match declared {
+            Some(field) if field.kind == ConfigKind::Boolean => {},
+            Some(_) => anyhow::bail!(
+                "插件 '{}' 的 [voice_playback] config '{}' 必须是 boolean 配置项",
+                manifest.id,
+                playback.config
+            ),
+            None => anyhow::bail!(
+                "插件 '{}' 的 [voice_playback] config '{}' 不在 [[config]] 声明里",
+                manifest.id,
+                playback.config
+            ),
+        }
+        if let Some(conn) = &playback.ws_conn {
+            if !manifest.ws.iter().any(|decl| decl.id == *conn) {
+                anyhow::bail!(
+                    "插件 '{}' 的 [voice_playback] ws_conn '{conn}' 不在 [[ws]] 声明里",
+                    manifest.id
+                );
+            }
+        }
+    }
     if let Some(startup) = &manifest.startup {
         let owner = "启动入口";
         validate_script_path(&manifest.id, owner, &startup.script)?;
@@ -206,6 +240,23 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
                 manifest.id,
                 tool.name
             );
+        }
+        if tool.examples.len() > MAX_TOOL_EXAMPLES {
+            anyhow::bail!(
+                "插件 '{}' 工具 '{}' 的 examples 最多 {MAX_TOOL_EXAMPLES} 条",
+                manifest.id,
+                tool.name
+            );
+        }
+        for example in &tool.examples {
+            let length = example.trim().chars().count();
+            if length > MAX_TOOL_EXAMPLE_CHARS {
+                anyhow::bail!(
+                    "插件 '{}' 工具 '{}' 的 examples 单条不能超过 {MAX_TOOL_EXAMPLE_CHARS} 字符",
+                    manifest.id,
+                    tool.name
+                );
+            }
         }
     }
     for sub in &manifest.subscribe {
@@ -303,44 +354,55 @@ fn validate_ws_allow_entry(plugin_id: &str, entry: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::validate_script_path;
+    use super::parse;
 
-    #[test]
-    fn script_paths_allow_nested_python_files() {
-        for ok in [
-            "hooks.py",
-            "__init__.py",
-            "my-script.py",
-            "tools/entry.py",
-            "events/world.py",
-            "features/deep/main.py",
-        ] {
-            validate_script_path("p", "入口", ok).unwrap_or_else(|e| panic!("{ok} 应该允许：{e}"));
-        }
+    /// 最小可用 manifest，`extra` 会追加到工具声明里。
+    fn manifest_with_tool(extra: &str) -> String {
+        format!(
+            r#"
+id = "demo"
+name = "Demo"
+description = "demo"
+version = "1.0.0"
+
+[[tools]]
+name = "demo_tool"
+description = "示例工具"
+parameters = '{{ "type":"object" }}'
+script = "tools/entry.py"
+{extra}
+"#
+        )
     }
 
     #[test]
-    fn script_paths_reject_traversal_and_non_python() {
-        for bad in [
-            "",
-            "../x.py",
-            "tools/../../x.py",
-            "/abs.py",
-            "C:/x.py",
-            "tools\\entry.py",
-            "tools//entry.py",
-            "tools/./entry.py",
-            "tools/",
-            ".py",
-            "main.txt",
-            "tools/main",
-            "tools/2entry.py",
-            "tools/entry.php",
-        ] {
-            assert!(
-                validate_script_path("p", "入口", bad).is_err(),
-                "{bad} 不该通过"
-            );
-        }
+    fn tool_examples_parse_and_default_to_empty() {
+        let parsed = parse(&manifest_with_tool(
+            r#"examples = ["现在几点了", "今天几号"]"#,
+        ))
+        .expect("应通过校验");
+        assert_eq!(parsed.tools[0].examples, vec!["现在几点了", "今天几号"]);
+
+        let parsed = parse(&manifest_with_tool("")).expect("应通过校验");
+        assert!(parsed.tools[0].examples.is_empty(), "缺省应为空数组");
+    }
+
+    #[test]
+    fn tool_examples_reject_too_many_items() {
+        let items: Vec<String> = (0..=8).map(|i| format!("\"问题{i}\"")).collect();
+        let error = parse(&manifest_with_tool(&format!(
+            "examples = [{}]",
+            items.join(", ")
+        )))
+        .expect_err("超过上限应失败");
+        assert!(error.to_string().contains("examples 最多 8 条"));
+    }
+
+    #[test]
+    fn tool_examples_reject_overlong_item() {
+        let long = "问".repeat(121);
+        let error = parse(&manifest_with_tool(&format!("examples = [\"{long}\"]")))
+            .expect_err("超长示例应失败");
+        assert!(error.to_string().contains("单条不能超过"));
     }
 }

@@ -5,6 +5,9 @@
 //
 // 模型与 tokenizer 都不进 git（.gitignore 的 `data/**` 排除整个 data 目录），
 // 靠本脚本获取，与情绪模型同一策略。
+//
+// 由 `pnpm run init` 调用。与 ensure-onnxruntime.mjs 一样不要挂到
+// beforeDevCommand/beforeBuildCommand，避免每次启动都做资源检查。
 import { promises as fs } from "fs";
 import path from "path";
 import { createHash, randomUUID } from "crypto";

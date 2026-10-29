@@ -94,6 +94,7 @@ export default {
   notification: {
     titlePlaceholder: "[通知タイトル]",
     messagePlaceholder: "[通知内容]",
+    mcMaidConnected: "Minecraft のメイドと接続しました(*^▽^*)",
   },
   settingItem: {
     multilineHint: "複数行の入力に対応",
@@ -166,6 +167,10 @@ export default {
     toolRagTitle: "ツールのオンデマンド検索",
     toolRagHint:
       "各リクエストにはよく使うツールだけを送り、必要になったときモデルが一文でツールを検索してから呼び出します。すべてのツール説明が占めていたコンテキストを節約できます。オフにすると毎回すべての許可済みツールを送信します。",
+    toolCacheCapacityTitle: "ツールキャッシュ数",
+    toolCacheCapacityHint:
+      "キャラクターごとに保持する検索済みツールの数です。検索入口とウェブ検索は常時送信されるため含みません。範囲 {min}～{max}。10 個以下を推奨します。",
+    toolCacheCapacityUnit: "個",
     toolRecommendTitle: "ツールの提案",
     toolRecommendHint:
       "モデルはツールの存在を忘れがちです。毎ターンの発言前にどう知らせるかを選べます。提案は一時的なヒントで台詞表には書き込まれず、提案されたツールはそのターンのリクエストに含まれます。",
@@ -319,6 +324,31 @@ export default {
     },
     otherToolsHint:
       "オンにすると、あの子がチャット中にこれらのツールを自分で使えるようになるよ（保存後に有効）",
+    embedding: {
+      cloudToggle: "クラウドのベクトル化モデルを使う（より賢くなる）",
+      cloudToggleHint:
+        "既定ではローカルの小型モデルを使うのでオフラインでも動くよ。オンにすると、ノートとツールのベクトルを下のクラウドモデルで計算する。",
+      privacyNotice: "オンにすると、ノートの内容が第三者モデルのサービスに送られて処理されるよ。",
+      provider: "プロバイダー",
+      providerOpenai: "OpenAI 互換（独自エンドポイント含む）",
+      providerGemini: "Gemini",
+      model: "モデル名",
+      modelPlaceholder: "例：text-embedding-3-small、bge-m3",
+      baseUrl: "Base URL（空なら公式を使う）",
+      baseUrlPlaceholder: "例：https://api.siliconflow.cn/v1",
+      apiKey: "API Key",
+      timeout: "1回のタイムアウト（秒）",
+      test: "接続テスト",
+      rebuild: "ベクトルを再構築",
+      testSuccess: "接続OK：{backend}、次元 {dimension}、{elapsed} ms",
+      testFailed: "テスト失敗：{message}",
+      rebuildStarted: "バックグラウンドで準備を開始したよ。進捗は自動で更新される",
+      warmingProgress: "ベクトル化中 {done}/{total}、失敗 {failed}",
+      warmingFinished: "ベクトル化が完了、失敗 {failed} 件",
+      alertTitle: "ノートのセマンティック検索を一時停止したよ",
+      alertMessage:
+        "クラウドのベクトル化（{backend}）が連続で失敗：{reason}。再起動するか設定を保存し直せば復帰するよ。",
+    },
     fileOpsAllowAnyPath: "サンドボックス外へのアクセスを許可（data/ 以外も読み書き可能に）",
     fileOpsAllowAnyPathHint:
       "⚠ 有効にするとPC上の任意のファイルを読み書きできます。信頼できるキャラ/モデルのみで使ってね",
@@ -351,8 +381,8 @@ export default {
       schedule: "スケジュールと ToDo（確認・追加・更新・削除）",
       memory: "メモと記憶（あの子のひみつノート）",
       character: "キャラクター切替（一覧・切替）",
-      scene: "シーン切替（一覧・切替）",
-      status: "ステータス確認（現在/シーンの状態）",
+      scene: "シーン切替（一覧・切替、背景エフェクト）",
+      status: "ステータス確認（現在/シーンの状態、天気）",
       clock: "現在時刻（デバイスのローカル時刻）",
       skills: "スキル（スキル指示を読み込んで新しいことができるように）",
       media: "メディア認識（ビジョンモデルで画像と動画を読み取る）",

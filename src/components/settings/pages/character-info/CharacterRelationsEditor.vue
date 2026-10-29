@@ -1,25 +1,12 @@
 <template>
   <div id="relation-block-role" class="space-y-3 rounded-xl border border-white/10 bg-black/20 p-4">
-    <div class="flex items-start justify-between gap-3">
-      <div class="min-w-0">
-        <h3 class="text-sm font-bold text-white/80">
-          {{ $t("settings.characterInfo.relations.title") }}
-        </h3>
-        <p class="mt-1 text-[11px] leading-relaxed text-white/40">
-          {{ $t("settings.characterInfo.relations.hint") }}
-        </p>
-      </div>
-      <button
-        class="btn-sm btn-sm-ghost shrink-0"
-        :disabled="relationsSaving || relationsLoading"
-        @click="saveRelations"
-      >
-        {{
-          relationsSaving
-            ? $t("settings.shared.loading")
-            : $t("settings.characterInfo.relations.save")
-        }}
-      </button>
+    <div class="min-w-0">
+      <h3 class="text-sm font-bold text-white/80">
+        {{ $t("settings.characterInfo.relations.title") }}
+      </h3>
+      <p class="mt-1 text-[11px] leading-relaxed text-white/40">
+        {{ $t("settings.characterInfo.relations.hint") }}
+      </p>
     </div>
     <div v-if="relationsLoading" class="text-xs text-white/40">
       {{ $t("settings.shared.loading") }}
@@ -27,11 +14,11 @@
 
     <template v-else>
       <div v-for="(row, idx) in relationRows" :key="idx" class="flex items-center gap-2">
-        <SelectMenu v-model="row.target" class="w-44 shrink-0" :options="relationOptionsFor(row)" />
+        <SelectMenu v-model="row.target" class="w-44 shrink-0" :options="optionsFor(row)" />
         <ExpandableInput v-model="row.text" class="glass-input flex-1" />
-        <button class="btn-sm btn-sm-ghost" @click="removeRelationRow(idx)">×</button>
+        <button class="btn-sm btn-sm-ghost" @click="removeRow(idx)">×</button>
       </div>
-      <button class="btn-sm btn-sm-ghost" @click="addRelationRow">
+      <button class="btn-sm btn-sm-ghost" @click="addRow()">
         {{ $t("settings.identity.addRelation") }}
       </button>
     </template>
@@ -52,6 +39,7 @@ import {
   type PlayerIdentitySummary,
 } from "@/api/services/player-identity";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import { useRelationEditor, type RelationTargetOption } from "@/composables/useRelationEditor";
 import SelectMenu from "../../../ui/SelectMenu.vue";
 import ExpandableInput from "../../../ui/ExpandableInput.vue";
 
@@ -61,46 +49,25 @@ const props = defineProps<{
   characterFolder: string;
 }>();
 
-interface RelationTarget {
-  value: string;
-  label: string;
-  group: "ai" | "me";
-}
-
 const { t } = useI18n();
 const uiStore = useUIStore();
 
-const relationTargets = ref<RelationTarget[]>([]);
-/** 编辑中的关系行（目标 + 文本）；保存时折成 {关系键: 文本} 映射 */
-const relationRows = ref<{ target: string; text: string }[]>([]);
+const relationTargets = ref<RelationTargetOption[]>([]);
+const {
+  rows: relationRows,
+  syncRows,
+  addRow,
+  removeRow,
+  fold,
+  optionsFor,
+} = useRelationEditor(relationTargets, (key) =>
+  t("settings.characterInfo.relations.missing", { key }),
+);
+
 const relationsLoading = ref(false);
 const relationsSaving = ref(false);
-
-/** 目标已不存在时保留原值并标注 */
-const isMissingTarget = (target: string) =>
-  !!target && !relationTargets.value.some((item) => item.value === target);
-
-/** 下拉选项：其他行已选过的目标置灰不可再选（本行当前值除外） */
-const relationOptionsFor = (row: { target: string }) => {
-  const used = new Set(relationRows.value.map((r) => r.target).filter(Boolean));
-  const options: { label: string; value: string; group?: string; disabled: boolean }[] =
-    relationTargets.value.map((item) => ({
-      label: item.label,
-      value: item.value,
-      group:
-        item.group === "ai" ? t("settings.identity.targetAi") : t("settings.identity.targetMe"),
-      disabled: item.value !== row.target && used.has(item.value),
-    }));
-  // 目标已被删除时保留原值，避免静默丢数据
-  if (isMissingTarget(row.target)) {
-    options.unshift({
-      label: t("settings.characterInfo.relations.missing", { key: row.target }),
-      value: row.target,
-      disabled: false,
-    });
-  }
-  return options;
-};
+/** 关系是否已成功加载；未成功时提交跳过，避免把关系清空 */
+const relationsLoaded = ref(false);
 
 /** 下拉要覆盖全部角色，不只当前分页。 */
 const fetchAllRelationCharacters = async (): Promise<ApiCharacter[]> => {
@@ -135,20 +102,19 @@ const loadRelations = async (roleId: number) => {
         .map((c) => ({
           value: aiKey(c.resource_folder as string),
           label: c.name,
-          group: "ai" as const,
+          group: t("settings.identity.targetAi"),
         })),
       ...identities.map((i) => ({
         value: meKey(i.id),
         label: i.name,
-        group: "me" as const,
+        group: t("settings.identity.targetMe"),
       })),
     ];
 
     const saved = await getRoleRelations(roleId);
     if (seq !== loadSeq) return;
-    relationRows.value = Object.entries(saved || {})
-      .filter(([target, text]) => !!target && !!text)
-      .map(([target, text]) => ({ target, text }));
+    syncRows(saved);
+    relationsLoaded.value = true;
   } catch (e: any) {
     if (seq !== loadSeq) return;
     console.error("读取角色关系失败:", e);
@@ -157,42 +123,30 @@ const loadRelations = async (roleId: number) => {
       message: typeof e === "string" ? e : e?.message || "",
     });
     relationRows.value = [];
+    relationsLoaded.value = false;
   } finally {
     if (seq === loadSeq) relationsLoading.value = false;
   }
 };
 
-const addRelationRow = () => {
-  // 目标默认留空（不预选角色）；保存时空目标的行走丢弃逻辑
-  relationRows.value.push({ target: "", text: "" });
-};
-
-const removeRelationRow = (idx: number) => {
-  relationRows.value.splice(idx, 1);
-};
-
-const saveRelations = async () => {
+/** 由外部保存流程调用：设置保存会重建人设行，必须先把关系落盘。 */
+const submit = async (silent = false): Promise<void> => {
+  if (!relationsLoaded.value || !props.roleId) return;
   relationsSaving.value = true;
   try {
-    // 空目标 / 空文本直接丢弃（后端也会再过滤一次）
-    const map: Record<string, string> = {};
-    for (const row of relationRows.value) {
-      if (row.target && row.text.trim()) map[row.target] = row.text.trim();
+    await saveRoleRelations(props.roleId, fold());
+    if (!silent) {
+      uiStore.showSuccess({
+        title: t("settings.characterInfo.relations.msg.savedTitle"),
+        message: t("settings.characterInfo.relations.msg.savedMsg"),
+      });
     }
-    await saveRoleRelations(props.roleId, map);
-    uiStore.showSuccess({
-      title: t("settings.characterInfo.relations.msg.savedTitle"),
-      message: t("settings.characterInfo.relations.msg.savedMsg"),
-    });
-  } catch (e: any) {
-    uiStore.showError({
-      title: t("settings.characterInfo.relations.msg.saveFailTitle"),
-      message: typeof e === "string" ? e : e?.message || "",
-    });
   } finally {
     relationsSaving.value = false;
   }
 };
+
+defineExpose({ submit, relationsSaving });
 
 // roleId 决定取哪张卡的关系，characterFolder 决定要不要排除自己；两者变化都要重读
 watch(

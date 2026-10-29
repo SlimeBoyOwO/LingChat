@@ -57,8 +57,8 @@ def _give_text(frame, maid, player):
     given = as_int(frame.get("count"), 1)
     wanted = as_int(frame.get("requested"), given)
     if given < wanted:
-        return f"{maid}身上只有{given}个{name}，都交给{player}了。"
-    return f"{maid}把{given}个{name}交给了{player}。"
+        return f"{maid}身上只剩{given}个{name}，索性一股脑都塞给了{player}。"
+    return f"{maid}把{given}个{name}递到了{player}手里。"
 
 
 def _give_error(frame, maid):
@@ -71,7 +71,7 @@ def _give_error(frame, maid):
         f"{item_name(one.get('item'))}（{one.get('item')}）×{as_int(one.get('count'), 1)}"
         for one in available
     )
-    return f"{reason}。{maid}背包里有：{listed}。要哪件就按 id 再说。"
+    return f"{reason}。{maid}的背包里装着：{listed}。"
 
 
 TOOLS = {

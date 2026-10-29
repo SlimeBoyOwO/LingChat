@@ -80,6 +80,7 @@ fn line_fingerprints(lines: &[GameLine]) -> Result<Vec<String>> {
                 line.attribute(),
                 line.sender_role_id(),
                 &line.base.identity_id,
+                &line.base.round_id,
                 &line.base.display_name,
                 line.content(),
                 &line.base.action_content,

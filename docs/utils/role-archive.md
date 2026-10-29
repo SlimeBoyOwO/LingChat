@@ -125,12 +125,12 @@ idle─┤     └─► error ─► (dismiss)
 
 ### 6.1 模块拆分（`crates/ling-chat-main/src/api/role_archive/`）
 
-| 文件                 | 职责                                                                                                                                              |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`             | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出                                                                                 |
-| `state.rs`           | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例                  |
-| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`parse_format`、`parse_policy` |
-| `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                     |
+| 文件                 | 职责                                                                                                                                                                |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出                                                                                                   |
+| `state.rs`           | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例                                    |
+| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`restore_backup`、`parse_format`、`parse_policy` |
+| `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                                       |
 
 ### 6.2 归档工具（`crates/ling-chat-main/src/utils/archive/`）
 
@@ -154,15 +154,16 @@ idle─┤     └─► error ─► (dismiss)
 
 ## 8. 安全策略
 
-| 风险                                              | 防御位置                            | 行为                                           |
-| ------------------------------------------------- | ----------------------------------- | ---------------------------------------------- |
-| zip-slip（`../`、绝对路径、Windows UNC）          | `sanitize_entry_name` + `safe_join` | 拒绝写入，抛 `PathTraversal`                   |
-| macOS metadata（`__MACOSX/`、`._*`、`.DS_Store`） | `sanitize_entry_name`               | 跳过 entry，记 warning                         |
-| 单归档条目过多                                    | `check_entry_safety`                | `> MAX_ENTRY_COUNT (1000)` 抛 `TooManyEntries` |
-| 单条解压炸弹（已解压 / 压缩 > 100）               | `check_entry_safety`                | 抛 `CompressionRatio`                          |
-| 加密压缩包                                        | `ArchiveError::PasswordProtected`   | 提示用户先在外部解密                           |
-| 控制字符文件名                                    | `sanitize_role_folder_name`         | 替换非法字符为 `_`，保留字母数字 + `-` + `.`   |
-| 冲突目录                                          | `resolve_target` + `ConflictPolicy` | `skip` / `rename` / `overwrite` 三策略         |
+| 风险                                              | 防御位置                            | 行为                                                                              |
+| ------------------------------------------------- | ----------------------------------- | --------------------------------------------------------------------------------- |
+| zip-slip（`../`、绝对路径、Windows UNC）          | `sanitize_entry_name` + `safe_join` | 拒绝写入，抛 `PathTraversal`                                                      |
+| macOS metadata（`__MACOSX/`、`._*`、`.DS_Store`） | `sanitize_entry_name`               | 跳过 entry，记 warning                                                            |
+| 单归档条目过多                                    | `check_entry_safety`                | `> MAX_ENTRY_COUNT (1000)` 抛 `TooManyEntries`                                    |
+| 单条解压炸弹（已解压 / 压缩 > 100）               | `check_entry_safety`                | 抛 `CompressionRatio`                                                             |
+| 加密压缩包                                        | `ArchiveError::PasswordProtected`   | 提示用户先在外部解密                                                              |
+| 控制字符文件名                                    | `sanitize_role_folder_name`         | 替换非法字符为 `_`，保留字母数字 + `-` + `.`                                      |
+| 冲突目录                                          | `resolve_target` + `ConflictPolicy` | `skip` / `rename` / `overwrite` 三策略                                            |
+| 坏包覆盖导致原角色丢失                            | `do_import`                         | 设定文件在 staging 内先校验；旧目录改名成同级隐藏备份，失败即还原，全程成功才删除 |
 
 ## 9. 错误处理
 

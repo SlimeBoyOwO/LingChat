@@ -43,14 +43,47 @@ public final class ChatPushListener {
 
     /** 监控中的女仆，且它的主人必须正好是说话的这个玩家。 */
     private static EntityMaid monitoredOwnerMaid(ServerPlayer player) {
-        String maidId = MonitoredMaidHandler.get();
-        if (player == null || maidId.isEmpty() || player.getServer() == null) {
+        if (player == null || player.getServer() == null) {
             return null;
         }
-        EntityMaid maid = MaidQueries.findMaidById(player.getServer(), maidId);
+        String maidId = MonitoredMaidHandler.get();
+        EntityMaid maid = maidId.isEmpty() ? null : MaidQueries.findMaidById(player.getServer(), maidId);
+        if (maid == null) {
+            // 插件连上的那一刻她可能还没被召唤出来，绑定就没发出去；之后聊天帧缺绑定
+            // 根本到不了插件，也就没有下一次补发。另一种是死后用胶片复活：胶片不存 uuid，
+            // 复活出来是新的一只，旧绑定永远查不到。两种情况都在第一句发言里改认她的女仆。
+            maid = ownerMaid(player);
+            if (maid == null) {
+                return null;
+            }
+            MonitoredMaidHandler.adopt(maid);
+        }
         if (maid == null || maid.getOwner() == null) {
             return null;
         }
         return maid.getOwner().getUUID().equals(player.getUUID()) ? maid : null;
+    }
+
+    /** 说话玩家自己的女仆里最近的那一只；优先同一维度。 */
+    private static EntityMaid ownerMaid(ServerPlayer player) {
+        EntityMaid nearest = null;
+        EntityMaid elsewhere = null;
+        double best = Double.MAX_VALUE;
+        for (EntityMaid maid : MaidQueries.getAllMaids(player.getServer())) {
+            if (!maid.isAlive() || maid.getOwner() == null
+                    || !maid.getOwner().getUUID().equals(player.getUUID())) {
+                continue;
+            }
+            if (maid.level() != player.level()) {
+                elsewhere = elsewhere == null ? maid : elsewhere;
+                continue;
+            }
+            double distance = maid.distanceToSqr(player);
+            if (distance < best) {
+                best = distance;
+                nearest = maid;
+            }
+        }
+        return nearest != null ? nearest : elsewhere;
     }
 }

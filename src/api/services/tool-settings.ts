@@ -27,6 +27,18 @@ export interface MediaFileSettings {
   default_prompt: string;
 }
 
+/** 云端向量化配置（与后端 EmbeddingSettings 对应，字段保持 snake_case）。 */
+export interface EmbeddingSettings {
+  /** 本地 ONNX ↔ 云端的总开关 */
+  cloud_enabled: boolean;
+  /** "openai"（OpenAI 兼容，含第三方 base_url）| "gemini" */
+  provider: string;
+  base_url: string;
+  api_key: string;
+  model: string;
+  timeout_secs: number;
+}
+
 export type ToolAccessMode = "manual" | "auto_approve" | "full_access";
 
 /** 每轮发言前的工具推荐方式：不推荐 / 上帝 Agent 挑 / 静默检索。 */
@@ -35,6 +47,8 @@ export type ToolRecommendMode = "off" | "agent" | "rag";
 export interface ToolSettings {
   web_search: WebSearchSettings;
   media_file: MediaFileSettings;
+  /** 笔记语义检索与 Tool RAG 的向量化后端 */
+  embedding: EmbeddingSettings;
   /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
   groups: Record<string, boolean>;
   /** 文件修改与命令执行的统一审批模式。 */
@@ -45,6 +59,8 @@ export interface ToolSettings {
   tool_rag: boolean;
   /** 工具推荐方式；两种推荐都只是临时提示，不写台词表也不进记忆。 */
   tool_recommend_mode: ToolRecommendMode;
+  /** 每个角色同时保留多少个检索激活的工具（不含 tool_search 与 web_search）。 */
+  tool_cache_capacity: number;
 }
 
 /** 全局访问模式快照，供主界面的完全访问警告即时响应设置保存。 */
@@ -296,4 +312,37 @@ export function getToolRuntimeInfo(): Promise<ToolRuntimeInfo> {
 /** 直接执行一次网页搜索；失败时 Promise reject 携带后端错误信息。 */
 export function testWebSearch(query: string): Promise<string> {
   return invoke<string>("test_web_search", { query });
+}
+
+/** 嵌入自检结果：生效后端、维度与耗时。 */
+export interface EmbeddingTestResult {
+  backend: string;
+  cloud: boolean;
+  dimension: number;
+  elapsedMs: number;
+}
+
+/** 嵌入一句固定文本，验证云端配置是否可用。 */
+export function testEmbedding(): Promise<EmbeddingTestResult> {
+  return invoke<EmbeddingTestResult>("test_embedding");
+}
+
+/** 手动触发一次向量化预热（保存影响向量的配置后后端会自动触发）。 */
+export function rebuildEmbeddings(): Promise<void> {
+  return invoke<void>("rebuild_embeddings");
+}
+
+/** 预热进度事件载荷。 */
+export interface EmbeddingWarmingProgress {
+  backend: string;
+  done: number;
+  total: number;
+  failed: number;
+  finished: boolean;
+}
+
+/** 云端向量化熔断告警载荷。 */
+export interface EmbeddingAlertPayload {
+  backend: string;
+  reason: string;
 }

@@ -29,7 +29,7 @@
               </div>
               <div
                 v-show="!uiStore.isNarrowScreen"
-                class="font-[inherit] text-xl font-bold text-[#6eb4ff] text-shadow-[inherit]"
+                class="font-[inherit] text-xl font-bold whitespace-nowrap text-[#6eb4ff] text-shadow-[inherit]"
               >
                 <div id="character-sub">{{ uiStore.showCharacterSubtitle }}</div>
               </div>
@@ -210,6 +210,15 @@
         <!-- 分割线：青蓝色发光线条，亮段从左向右流动（同源桌宠外框 sweep-glow-ring） -->
         <div class="dialog-divider-glow my-1.5"></div>
 
+        <!-- 关系未填时的提示条：位于输入区上方，点击打开引导模态 -->
+        <button
+          v-if="!relationGuardReady"
+          class="mx-auto mb-1.5 block cursor-pointer rounded-full border border-amber-300/40 bg-amber-900/60 px-4 py-1.5 text-xs font-medium text-amber-100 backdrop-blur-md transition-colors hover:bg-amber-800/70"
+          @click="openRelationModal"
+        >
+          {{ relationTipText }}
+        </button>
+
         <!-- 输入区 -->
         <div
           class="my-1.25 flex min-h-10 w-full resize-none flex-col border-none bg-transparent text-xl font-bold whitespace-pre-line text-white transition-all duration-300 outline-none"
@@ -241,7 +250,7 @@
             v-model="inputMessage"
             @keydown.enter.exact.prevent="sendOrContinue"
             @paste="onPasteImage"
-            :readonly="!isInputEnabled"
+            :readonly="!inputEnabled"
           ></textarea>
         </div>
       </div>
@@ -249,7 +258,7 @@
       <button
         id="sendButton"
         class="absolute right-0 bottom-0 translate-x-full cursor-pointer rounded-[5px] border-none bg-transparent px-2 py-2 font-[inherit] text-sm font-bold text-[#04bcff] transition-all duration-300 text-shadow-[inherit] hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:cursor-not-allowed disabled:bg-[#333] disabled:opacity-70"
-        :disabled="isSending"
+        :disabled="isSending || !relationReady"
         @click="sendOrContinue"
       >
         ▼
@@ -266,6 +275,7 @@ import { X } from "@lucide/vue";
 import { useTypeWriter } from "../../../composables/ui/useTypeWriter";
 import { setMobileMenuOpen, useAsrInput } from "../../../composables/asr";
 import { useChatInput } from "../../../composables/chat/useChatInput";
+import { useRelationGuard } from "../../../composables/chat/useRelationGuard";
 import { useDialogAdvance } from "../../../composables/chat/useDialogAdvance";
 import { useDialogStatus } from "../../../composables/chat/useDialogStatus";
 import { useDialogInteraction } from "../../../composables/useDialogInteraction";
@@ -284,6 +294,13 @@ import { Button } from "../../base";
 import ScreenshotButton from "./ScreenshotButton.vue";
 
 const { t } = useI18n();
+// 关系未就绪（角色卡或身份卡的关系栏为空）时输入框只读、发送按钮置灰
+const props = withDefaults(
+  defineProps<{
+    relationReady?: boolean;
+  }>(),
+  { relationReady: true },
+);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const inlineDisplayRef = ref<HTMLDivElement | null>(null);
 const gameStore = useGameStore();
@@ -591,6 +608,26 @@ const { placeholderState, isInputEnabled } = useDialogStatus({
       uiStore.showCharacterLine = "";
     }
   },
+});
+
+// 关系未就绪时输入框一并锁住（与 ASR 占用输入框同一层语义）
+const inputEnabled = computed(() => isInputEnabled.value && props.relationReady);
+
+// 关系就绪门提示条：搬到输入区上方，文案列出所有缺关系的角色
+const {
+  ready: relationGuardReady,
+  blockedRoles: relationBlockedRoles,
+  openModal: openRelationModal,
+} = useRelationGuard();
+
+const relationTipText = computed(() => {
+  const names = relationBlockedRoles.value
+    .map((item) => gameStore.getGameRole(item.roleId)?.roleName)
+    .filter((name): name is string => !!name);
+  if (!names.length) {
+    return t("game.relationGuard.tipBar", { name: uiStore.showCharacterTitle });
+  }
+  return t("game.relationGuard.tipBarMulti", { names: names.join("、") });
 });
 
 // 占位符：状态判定来自共享的 useDialogStatus，这里只负责主界面自己的文案

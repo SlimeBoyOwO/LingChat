@@ -20,6 +20,8 @@ package com.lingchat.maidbridge.perception.world;
  * @param maidName 女仆名
  * @param maidHealth 女仆血量
  * @param maidMaxHealth 女仆血量上限
+ * @param posture 她此刻的姿势：{@code standing} / {@code sitting} / {@code sleeping} / {@code lying}
+ *                / {@code unconscious}
  */
 public record PerceptionSnapshot(
         String entityId,
@@ -34,5 +36,6 @@ public record PerceptionSnapshot(
         double playerMaxHealth,
         String maidName,
         double maidHealth,
-        double maidMaxHealth) {
+        double maidMaxHealth,
+        String posture) {
 }

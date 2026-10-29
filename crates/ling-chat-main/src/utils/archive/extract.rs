@@ -268,14 +268,9 @@ pub fn extract_sevenz(
             Ok(p) => p,
             Err(_) => continue,
         };
-        if entry.is_directory() || size == 0 {
-            std::fs::create_dir_all(&out_path).ok();
-        } else {
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-            let _ = File::create(&out_path);
-        }
+        // 7-Zip 把空文件记成无数据流、非目录、size 为 0。
+        // 这里如果照 size == 0 去建目录，.gitkeep / empty.json 会变成目录。
+        write_unstreamed_entry(entry.is_directory(), &out_path)?;
     }
 
     on_entry(EntryEvent {
@@ -287,4 +282,127 @@ pub fn extract_sevenz(
     });
     summary.bytes_extracted = bytes_done;
     Ok(summary)
+}
+
+/// 补建没有数据流的条目。只有目录建目录，空文件必须落成文件。
+fn write_unstreamed_entry(is_directory: bool, out_path: &Path) -> io::Result<()> {
+    if is_directory {
+        return std::fs::create_dir_all(out_path);
+    }
+    if let Some(parent) = out_path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    File::create(out_path)?;
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs::File;
+    use std::io::Cursor;
+
+    use sevenz_rust2::{ArchiveEntry, ArchiveReader, ArchiveWriter, Password};
+    use tokio_util::sync::CancellationToken;
+
+    use super::{extract_sevenz, write_unstreamed_entry};
+
+    /// 写出和 7-Zip 相同的空文件条目：无数据流、非目录。
+    fn push_empty_file(writer: &mut ArchiveWriter<File>, name: &str) {
+        writer
+            .push_archive_entry(ArchiveEntry::new_file(name), None::<File>)
+            .unwrap();
+    }
+
+    fn write_fixture(path: &std::path::Path) {
+        let file = File::create(path).unwrap();
+        let mut writer = ArchiveWriter::new(file).unwrap();
+        writer
+            .push_archive_entry(ArchiveEntry::new_directory("keep"), None::<File>)
+            .unwrap();
+        push_empty_file(&mut writer, ".gitkeep");
+        push_empty_file(&mut writer, "keep/empty.json");
+        writer
+            .push_archive_entry(
+                ArchiveEntry::new_file("readme.txt"),
+                Some(Cursor::new(b"hello")),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+    }
+
+    fn entry_flags(archive: &std::path::Path, name: &str) -> (bool, bool, u64) {
+        let reader =
+            ArchiveReader::new(File::open(archive).unwrap(), Password::empty()).unwrap();
+        let entry = reader
+            .archive()
+            .files
+            .iter()
+            .find(|entry| entry.name() == name)
+            .unwrap_or_else(|| panic!("missing entry {name}"));
+        (entry.has_stream(), entry.is_directory(), entry.size())
+    }
+
+    #[test]
+    fn 七zip空文件解压后仍是文件() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("fixture.7z");
+        write_fixture(&archive);
+
+        assert_eq!(entry_flags(&archive, ".gitkeep"), (false, false, 0));
+        assert_eq!(entry_flags(&archive, "keep/empty.json"), (false, false, 0));
+        assert_eq!(entry_flags(&archive, "keep"), (false, true, 0));
+
+        let dest = root.path().join("out");
+        extract_sevenz(&archive, &dest, &CancellationToken::new(), &|_| {}).unwrap();
+
+        let gitkeep = dest.join(".gitkeep");
+        let empty_json = dest.join("keep/empty.json");
+        assert!(gitkeep.is_file(), ".gitkeep 应是空文件");
+        assert!(!gitkeep.is_dir());
+        assert_eq!(std::fs::read(&gitkeep).unwrap(), b"");
+        assert!(dest.join("keep").is_dir());
+        assert!(empty_json.is_file(), "empty.json 应是空文件");
+        assert!(!empty_json.is_dir());
+        assert_eq!(std::fs::read(&empty_json).unwrap(), b"");
+        assert_eq!(
+            std::fs::read_to_string(dest.join("readme.txt")).unwrap(),
+            "hello"
+        );
+    }
+
+    #[test]
+    fn 尚不存在的空文件会创建成文件() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("keep/empty.json");
+
+        write_unstreamed_entry(false, &path).unwrap();
+
+        assert!(path.is_file(), "空文件不应变成目录");
+        assert!(!path.is_dir());
+        assert_eq!(std::fs::read(&path).unwrap(), b"");
+        assert!(root.path().join("keep").is_dir());
+    }
+
+    #[test]
+    fn 目录条目仍然创建目录() {
+        let root = tempfile::tempdir().unwrap();
+        let path = root.path().join("keep");
+
+        write_unstreamed_entry(true, &path).unwrap();
+
+        assert!(path.is_dir());
+    }
+
+    #[test]
+    fn 父路径是文件时返回错误而不是吞掉() {
+        let root = tempfile::tempdir().unwrap();
+        let blocker = root.path().join("not-a-dir");
+        std::fs::write(&blocker, b"x").unwrap();
+
+        let err = write_unstreamed_entry(false, &blocker.join(".gitkeep")).unwrap_err();
+
+        assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
+        assert!(blocker.is_file());
+        assert!(!blocker.join(".gitkeep").exists());
+    }
 }

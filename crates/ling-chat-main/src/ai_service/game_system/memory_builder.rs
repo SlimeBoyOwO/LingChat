@@ -198,7 +198,7 @@ impl MemoryBuilder {
         let mut has_system_for_target = false;
 
         for line in lines {
-            // system 消息处理逻辑保持不变...
+            // 只有目标角色自己的第一条人设会成为 system 消息；
             if matches!(line.attribute(), LineAttribute::System) {
                 if line.sender_role_id() == Some(self.target_role_id) {
                     flush(&mut memory, &mut buffer, &mut buffer_kind, self);
@@ -227,20 +227,50 @@ impl MemoryBuilder {
                     .unwrap_or(false);
 
                 if has_tool_call {
-                    // 新版：tool_call 存 JSON，content 纯文本
+                    // 新版：tool_call 存 JSON，content 纯文本。
+                    // 带 round_id 的载体行只合并同轮标识的前导台词；标识之前的行
+                    // 属于上一轮回复，先按普通 assistant 消息 flush。
                     if let Ok(tool_calls) =
                         serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(
                             line.base.tool_call.as_deref().unwrap_or(""),
                         )
                     {
-                        flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                        let split_at = line.base.round_id.as_deref().and_then(|round_id| {
+                            if matches!(buffer_kind, Some(BufferKind::TargetAssistant)) {
+                                buffer
+                                    .iter()
+                                    .position(|l| l.base.round_id.as_deref() == Some(round_id))
+                            } else {
+                                None
+                            }
+                        });
+                        let content = if let Some(split_at) = split_at {
+                            let suffix = buffer.split_off(split_at);
+                            flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                            buffer = suffix;
+                            let merged: String = buffer
+                                .iter()
+                                .map(|l| self.format_content_with_extras(&l.base))
+                                .collect();
+                            buffer.clear();
+                            buffer_kind = None;
+                            merged.trim_end().to_string()
+                        } else {
+                            flush(&mut memory, &mut buffer, &mut buffer_kind, self);
+                            line.base.content.clone()
+                        };
                         memory.push(LlmMessage {
                             role: "assistant".into(),
-                            content: line.base.content.clone(),
+                            content,
                             tool_calls: Some(tool_calls),
                             tool_call_id: None,
                             image_data_url: None,
                         });
+                        continue;
+                    }
+                    // 空载体行解析失败时直接跳过，避免被当成 OtherBlock 混进上下文
+                    if line.base.content.trim().is_empty() {
+                        tracing::warn!("工具调用载体行的 tool_call 无法解析，已跳过");
                         continue;
                     }
                 } else if !line.base.content.is_empty() {
@@ -359,13 +389,7 @@ impl MemoryBuilder {
         out
     }
 
-    /// 工具调用配对清洗（上游 issue #774）：窗口裁剪可能把 `assistant(tool_calls) → tool`
-    /// 拦腰切断，存档对话链断裂时也会静默丢行，留下没有声明者的孤儿 tool 消息，provider
-    /// 校验失败直接返回 HTTP 400（genai 不做任何规范化，原样下发）。
-    ///
-    /// - assistant 的 `tool_calls` 只保留确实有 tool 结果回应的项；全被剪掉时，正文也为空
-    ///   的纯工具占位行整条丢弃，有正文的降级为普通 assistant；
-    /// - tool 消息只有其 `tool_call_id` 被前面 assistant 声明过才保留，孤儿一律丢弃。
+    /// 工具调用配对清洗
     fn sanitize_tool_pairing(&self, messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
         let answered: HashSet<String> = messages
             .iter()

@@ -13,9 +13,6 @@ use std::sync::{Mutex, MutexGuard, Once};
 use rusqlite::{Connection, params};
 use thiserror::Error;
 
-/// 与 embedding 模块的句向量引擎（bge-small-zh-v1.5）输出维度一致。
-pub const EMBEDDING_DIM: usize = 512;
-
 const TABLE: &str = "vector_entries";
 
 static REGISTER_EXTENSION: Once = Once::new();
@@ -26,7 +23,11 @@ static REGISTER_EXTENSION: Once = Once::new();
 /// 调用；重复调用是幂等的。
 fn register_extension() {
     REGISTER_EXTENSION.call_once(|| unsafe {
-        let entry = std::mem::transmute(sqlite_vec::sqlite3_vec_init as *const ());
+        // sqlite-vec 的 Rust 绑定把入口声明成无参 extern fn，这里补回真实的
+        // sqlite3 扩展初始化签名，再交给 auto_extension 注册。
+        let entry = std::mem::transmute::<*const (), rusqlite::auto_extension::RawAutoExtension>(
+            sqlite_vec::sqlite3_vec_init as *const (),
+        );
         rusqlite::ffi::sqlite3_auto_extension(Some(entry));
     });
 }
@@ -57,34 +58,41 @@ pub enum VectorError {
 /// 单文件、进程内共享的向量库。
 ///
 /// `rusqlite::Connection` 不是 `Sync`，这里用互斥锁串行化访问；当前的数据规模
-/// 与调用频率下不需要连接池。
+/// 与调用频率下不需要连接池。维度在建库时固定：vec0 表的 DDL 依赖它，同一库文件
+/// 里不允许出现两种维度。
 pub struct VectorStore {
     conn: Mutex<Connection>,
+    dimension: usize,
 }
 
 impl VectorStore {
-    /// 打开或创建指定路径的向量库，并确保 vec0 表存在。
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, VectorError> {
+    /// 打开或创建指定路径、指定维度的向量库，并确保 vec0 表存在。
+    pub fn open(path: impl AsRef<Path>, dimension: usize) -> Result<Self, VectorError> {
+        if dimension == 0 {
+            return Err(VectorError::Dimension {
+                expected: 0,
+                actual: 0,
+            });
+        }
         register_extension();
         let conn = Connection::open(path).map_err(VectorError::Open)?;
+        // 预热与检索可能同时写同一个角色的库，短暂争用等一等而不是直接报 locked。
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(VectorError::Sqlite)?;
         conn.execute_batch(&format!(
             "CREATE VIRTUAL TABLE IF NOT EXISTS {TABLE} USING vec0(\
              id TEXT PRIMARY KEY, \
-             embedding FLOAT[{EMBEDDING_DIM}] distance_metric=cosine)"
+             embedding FLOAT[{dimension}] distance_metric=cosine)"
         ))?;
         Ok(Self {
             conn: Mutex::new(conn),
+            dimension,
         })
     }
 
-    /// 在数据目录下打开 vector_index.db。
-    ///
-    /// 索引可由笔记 / 记忆重新生成，因此和 game_data 目录分开存放，避免被资源
-    /// 同步覆盖。
-    pub fn open_in_data_dir(data_dir: impl AsRef<Path>) -> Result<Self, VectorError> {
-        let data_dir = data_dir.as_ref();
-        std::fs::create_dir_all(data_dir)?;
-        Self::open(data_dir.join("vector_index.db"))
+    /// 本库的向量维度。
+    pub fn dimension(&self) -> usize {
+        self.dimension
     }
 
     /// 写入或覆盖一条向量。外部 ID 相同的旧向量会被替换。
@@ -107,7 +115,7 @@ impl VectorStore {
                 "INSERT INTO {TABLE}(id, embedding) VALUES (?1, ?2)"
             ))?;
             for (id, vector) in items {
-                let blob = vector_to_blob(vector)?;
+                let blob = self.vector_to_blob(vector)?;
                 delete.execute([id])?;
                 insert.execute(params![id, blob])?;
             }
@@ -153,7 +161,7 @@ impl VectorStore {
         if top_k == 0 {
             return Ok(Vec::new());
         }
-        let blob = vector_to_blob(query)?;
+        let blob = self.vector_to_blob(query)?;
         let conn = self.conn()?;
         let mut stmt = conn.prepare(&format!(
             "SELECT id, distance FROM {TABLE} WHERE embedding MATCH ?1 AND k = ?2"
@@ -170,31 +178,35 @@ impl VectorStore {
     fn conn(&self) -> Result<MutexGuard<'_, Connection>, VectorError> {
         self.conn.lock().map_err(|_| VectorError::Lock)
     }
-}
 
-fn vector_to_blob(vector: &[f32]) -> Result<Vec<u8>, VectorError> {
-    if vector.len() != EMBEDDING_DIM {
-        return Err(VectorError::Dimension {
-            expected: EMBEDDING_DIM,
-            actual: vector.len(),
-        });
+    /// 按本库维度校验并序列化为 sqlite-vec 的 float BLOB。
+    fn vector_to_blob(&self, vector: &[f32]) -> Result<Vec<u8>, VectorError> {
+        if vector.len() != self.dimension {
+            return Err(VectorError::Dimension {
+                expected: self.dimension,
+                actual: vector.len(),
+            });
+        }
+        // sqlite-vec 直接按 float 解释 BLOB；所有目标平台都是小端。
+        Ok(vector.iter().flat_map(|v| v.to_le_bytes()).collect())
     }
-    // sqlite-vec 直接按 float 解释 BLOB；所有目标平台都是小端。
-    Ok(vector.iter().flat_map(|v| v.to_le_bytes()).collect())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    /// 库维度由调用方指定，测试用小维度即可覆盖建表与校验逻辑。
+    const DIM: usize = 8;
+
     fn temp_store() -> (tempfile::TempDir, VectorStore) {
         let dir = tempfile::tempdir().unwrap();
-        let store = VectorStore::open(dir.path().join("vector_index.db")).unwrap();
+        let store = VectorStore::open(dir.path().join("vector_index.db"), DIM).unwrap();
         (dir, store)
     }
 
     fn axis(index: usize) -> Vec<f32> {
-        let mut vector = vec![0.0; EMBEDDING_DIM];
+        let mut vector = vec![0.0; DIM];
         vector[index] = 1.0;
         vector
     }
@@ -238,14 +250,14 @@ mod tests {
     #[test]
     fn rejects_invalid_input_and_rolls_back_batch() {
         let (_dir, store) = temp_store();
-        assert!(store.search(&axis(0), 8).unwrap().is_empty());
+        assert!(store.search(&axis(0), DIM).unwrap().is_empty());
         assert!(store.search(&axis(0), 0).unwrap().is_empty());
 
         let error = store.upsert("a", &[1.0, 0.0]).unwrap_err();
         assert!(matches!(
             error,
             VectorError::Dimension {
-                expected: EMBEDDING_DIM,
+                expected: DIM,
                 actual: 2
             }
         ));
@@ -256,10 +268,29 @@ mod tests {
         assert!(matches!(
             error,
             VectorError::Dimension {
-                expected: EMBEDDING_DIM,
+                expected: DIM,
                 actual: 2
             }
         ));
-        assert!(store.search(&axis(0), 8).unwrap().is_empty());
+        assert!(store.search(&axis(0), DIM).unwrap().is_empty());
+    }
+
+    /// 维度是建库时固定的：不同维度各自成库，互不串味。
+    #[test]
+    fn dimension_is_per_store() {
+        let dir = tempfile::tempdir().unwrap();
+        let small = VectorStore::open(dir.path().join("small.db"), 4).unwrap();
+        let large = VectorStore::open(dir.path().join("large.db"), 16).unwrap();
+        assert_eq!(small.dimension(), 4);
+        assert_eq!(large.dimension(), 16);
+
+        small.upsert("a", &[1.0, 0.0, 0.0, 0.0]).unwrap();
+        assert!(matches!(
+            large.upsert("a", &[1.0, 0.0, 0.0, 0.0]).unwrap_err(),
+            VectorError::Dimension {
+                expected: 16,
+                actual: 4
+            }
+        ));
     }
 }

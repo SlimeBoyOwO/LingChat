@@ -3,16 +3,16 @@
 //! 这里是各能力共用的基础设施：LLM 槽位、配置、工具注册表，加上「该不该激活」
 //! 与「NPC 轮数还有没有额度」。具体能力（选人、好感度）各自在自己的模块里，
 //! 副作用的落地在 `ai_service::tools::god_agent` 的工具里。
-//!
-//! 任务一律在**锁外**运行——决策工具内部会自己取 `game_status`，tokio 的 Mutex
-//! 不可重入，持锁调用会自死锁。调用方负责先快照、再调用本模块。
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use anyhow::{Result, anyhow};
 use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::player_identity::resolve::RelationSource;
+use crate::ai_service::game_system::player_identity::{RelationEndpoint, resolve_relation};
 use crate::ai_service::god_agent::config::GodAgentConfig;
 use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
@@ -85,14 +85,14 @@ impl GodAgentCore {
 }
 
 /// 取台词列表末尾 `window` 条，按由旧到新返回。各能力的视图快照共用。
-///
-/// 跳过 System 行：多人场景下每个角色的人设 prompt 都存在 line_list 的 System 行
-/// 里，几千字符塞进决策上下文既浪费 token 又淹没对话信号；角色摘要已由视图的
-/// subtitle/info 提供。旁白行（User 属性）保留。
 pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
     gs.line_list
         .iter()
-        .filter(|l| !matches!(l.attribute(), LineAttribute::System))
+        .filter(|l| {
+            !matches!(l.attribute(), LineAttribute::System)
+                && !(matches!(l.attribute(), LineAttribute::Assistant)
+                    && l.base.content.trim().is_empty())
+        })
         .rev()
         .take(window)
         .cloned()
@@ -100,4 +100,38 @@ pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
         .into_iter()
         .rev()
         .collect()
+}
+
+/// 一位在场成员（供上帝 Agent 解析角色之间的认知）。
+pub(super) struct PeerMember {
+    pub folder: String,
+    pub name: String,
+    pub relations: HashMap<String, String>,
+}
+
+/// 角色之间的一条认知：(对方展示名, 文本, 是否来自对方自述)。
+pub(super) type PeerNote = (String, String, bool);
+
+/// 该成员对在场其他人的认知（说话者侧优先、对方侧回退；两边都没写则跳过）。
+pub(super) fn peer_notes(members: &[PeerMember], self_idx: usize) -> Vec<PeerNote> {
+    let mut out = Vec::new();
+    let Some(me) = members.get(self_idx) else {
+        return out;
+    };
+    for (idx, other) in members.iter().enumerate() {
+        if idx == self_idx {
+            continue;
+        }
+        if let Some(view) = resolve_relation(
+            &RelationEndpoint::Ai(me.folder.clone()),
+            &RelationEndpoint::Ai(other.folder.clone()),
+            &me.relations,
+            &other.relations,
+            None,
+        ) {
+            let counterparty = matches!(view.source, RelationSource::Counterparty);
+            out.push((other.name.clone(), view.text, counterparty));
+        }
+    }
+    out
 }

@@ -60,8 +60,10 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
-    /// 文本嵌入引擎（Tool RAG 的工具语义检索；将来记忆检索复用同一实例）。
-    pub embedding: Arc<ai_service::embedding::EmbeddingEngine>,
+    /// 文本嵌入后端（本地 ONNX 与云端的统一入口，内部含选路与熔断）。
+    pub embedding: Arc<ai_service::embedding_remote::EmbeddingSelector>,
+    /// 向量化预热任务句柄，同一时刻只允许一个在跑。
+    pub embedding_warming: Arc<ai_service::embedding_remote::WarmingTask>,
     /// Tool RAG：检索工具并维护按角色的激活缓存。
     pub tool_rag: Arc<ai_service::tools::tool_rag::ToolRag>,
     pub memory_recall: Arc<ai_service::game_system::memory_recall::MemoryRecall>,

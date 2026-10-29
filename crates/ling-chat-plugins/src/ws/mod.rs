@@ -25,7 +25,7 @@ use std::sync::atomic::{AtomicU8, Ordering};
 
 use base64::Engine as _;
 use serde_json::{Value, json};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::sync::{mpsc, oneshot};
 
 use super::PluginManager;
@@ -145,6 +145,9 @@ pub(super) async fn emit(
 }
 
 /// 生命周期事件（`connect` / `disconnect` / `error`）的便捷派发：不带数据帧。
+///
+/// 除了给插件自己派发 `ws_message`，也向前端发一条 `plugin:ws-state`：界面据此提示
+/// 「已连上游戏」这类连接变化。前端只知道插件 id 与连接 id，不参与连接管理。
 pub(super) async fn emit_conn(
     plugin_id: &str,
     conn_id: &str,
@@ -153,6 +156,13 @@ pub(super) async fn emit_conn(
     error: Option<String>,
 ) {
     emit(plugin_id, conn_id, mode, event, None, false, error).await;
+    let Some(app) = crate::app_handle() else {
+        return;
+    };
+    let _ = app.emit(
+        "plugin:ws-state",
+        json!({ "pluginId": plugin_id, "connId": conn_id, "event": event }),
+    );
 }
 
 /// 文本帧的数据载荷：能解析成 JSON 就给结构化值，否则原样字符串。

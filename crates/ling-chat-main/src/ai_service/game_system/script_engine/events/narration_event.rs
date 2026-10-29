@@ -10,9 +10,8 @@ use crate::ai_service::game_system::script_engine::events::{
 use crate::ai_service::game_system::script_engine::responses::{
     NarrationPayload, event_names::SCRIPT_NARRATION,
 };
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events::emit;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
-use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
 pub struct NarrationEvent {
@@ -58,14 +57,15 @@ impl ScriptEvent for NarrationEvent {
         }
 
         // Add as ASSISTANT line (keep the original text with newlines)
-        let line = LineBase {
-            content: PromptRole::Narrator.build_prompt(&self.text.clone()),
-            attribute: LineAttributeExt(LineAttribute::User),
-            display_name: self.display_name.clone().or_else(|| Some("旁白".into())),
-            sender_role_id: Some(0),
-            ..Default::default()
-        };
-        ctx.game_status.lock().await.add_line(ctx.db, line).await?;
+        let mut line = PromptLine::new(PromptRole::Narrator, self.text.as_str()).sender(Some(0));
+        if let Some(name) = self.display_name.clone() {
+            line = line.display_name(name);
+        }
+        ctx.game_status
+            .lock()
+            .await
+            .add_line(ctx.db, line.into_base())
+            .await?;
 
         Ok(None)
     }

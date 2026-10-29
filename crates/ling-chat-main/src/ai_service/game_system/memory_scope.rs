@@ -244,11 +244,12 @@ fn line_visible_to_memory(line: &GameLine, role_id: i32) -> bool {
 
 fn line_version(line: &GameLine) -> Result<String> {
     Ok(memory_version(&(
-        "line-v3",
+        "line-v4",
         line.base.id,
         line.attribute(),
         line.sender_role_id(),
         &line.base.identity_id,
+        &line.base.round_id,
         &line.base.display_name,
         line.content(),
         &line.base.action_content,

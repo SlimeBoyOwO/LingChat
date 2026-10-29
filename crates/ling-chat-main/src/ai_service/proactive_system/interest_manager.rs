@@ -32,12 +32,6 @@ fn growth_bounds(mean_growth: f64) -> (f64, f64) {
 }
 
 /// 求「每轮兴趣增长均值为 mean_growth」时，从兴趣归零到触发主动对话的期望轮数。
-///
-/// 每轮兴趣增加 U[a, b]（b = 2a、均值 mean_growth）并截断在上限 100，随后以
-/// p = clamp((interest + status_mod - 50) / 50, 0, 1) 的概率掷骰触发。
-/// 记 E[x] 为当前兴趣为 x 时的期望剩余轮数：
-///     E[x] = 1 + E_g[(1 - p(y)) * E[min(y, 100)]],  y = x + g
-/// y >= x 恒成立，所以从上限往下逐点回代即可解出整张表（无需迭代收敛）。
 fn expected_cycles(mean_growth: f64, status_mod: f64) -> f64 {
     let (growth_min, growth_max) = growth_bounds(mean_growth);
 
@@ -80,10 +74,6 @@ fn interpolate(table: &[f64], index: f64) -> f64 {
 }
 
 /// 由「期望间隔（分钟）」反推每轮兴趣增长的随机范围，返回 (下限, 上限)。
-///
-/// 校正点取兴趣上限 100、状态修正 0（即用户刚发过言、兴趣归零、一天里的首次
-/// 主动搭话）。状态修正在运行时由用户活动决定：打游戏/冲浪会把间隔压短约
-/// 三成，挂机/工作会拉长约两成，这里的校正点取的是中性场景。
 pub fn growth_range_for_interval(minutes: f64) -> (f64, f64) {
     let target_cycles = clamp_expected_interval(minutes) * 60.0 / LOOP_INTERVAL_SECS;
     growth_bounds(solve_mean_growth(target_cycles))
@@ -205,6 +195,11 @@ impl InterestManager {
         self.interest = 0.0;
         self.proactive_times += 1;
         self.decay_max_interest_cap();
+    }
+
+    /// 她已经因为别的原因开过口了（插件推的主动对话）：兴趣清零，从头再攒。
+    pub fn clear_interest(&mut self) {
+        self.interest = 0.0;
     }
 
     pub fn decay_max_interest_cap(&mut self) {

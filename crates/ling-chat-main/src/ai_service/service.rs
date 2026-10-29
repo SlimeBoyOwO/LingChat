@@ -113,7 +113,7 @@ impl AIService {
         let boot = resolve_player_bootstrap(&self.data_dir, &gs, &settings);
 
         let ai_prompt = sys_prompt_builder_with_player(
-            &boot.user_name,
+            &boot.alias,
             &settings.ai_name.clone(),
             &boot.player_block,
             &settings.system_prompt.clone().unwrap_or(default_prompt),
@@ -165,6 +165,15 @@ impl AIService {
         Ok(())
     }
 
+    /// 播种初始好感
+    pub async fn seed_initial_affection(&mut self, cid: i32) -> Result<()> {
+        let mut gs = self.game_status.lock().await;
+        let identity_id = gs.player.identity_id.clone();
+        gs.seed_identity_affection(&self.db, cid, identity_id.as_deref())
+            .await?;
+        Ok(())
+    }
+
     pub async fn reset_game_status(&mut self) -> Result<()> {
         self.clear_game_status().await;
         let prompt_options = match self.prompt_options {
@@ -176,6 +185,9 @@ impl AIService {
         };
         self.init_game_intro_character(self.init_character_id, prompt_options)
             .await?;
+        if let Some(cid) = self.init_character_id {
+            self.seed_initial_affection(cid).await?;
+        }
         Ok(())
     }
 
@@ -194,6 +206,7 @@ impl AIService {
         gs.affection_eval_cursor = 0;
         gs.clear_pending_recent_memories();
         gs.clear_pending_temporary_memories();
+        gs.clear_pending_tool_hint();
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
     }
@@ -214,6 +227,7 @@ impl AIService {
             gs.role_manager.invalidate_memory_history();
             gs.clear_pending_recent_memories();
             gs.clear_pending_temporary_memories();
+            gs.clear_pending_tool_hint();
             gs.line_list = lines;
             gs.preview_generation = gs.preview_generation.wrapping_add(1);
             if let Some(sid) = save_id {

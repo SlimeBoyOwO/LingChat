@@ -5,3 +5,5 @@
 
 ACTION_TIMEOUT_MS = 8000
 LOOK_TIMEOUT_MS = 8000
+# 工具自己问一句「她现在醒着吗」：本机回环，正常是毫秒级，别让一次查询拖住工具。
+STATE_TIMEOUT_MS = 800

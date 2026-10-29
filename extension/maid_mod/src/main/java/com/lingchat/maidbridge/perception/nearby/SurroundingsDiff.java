@@ -29,19 +29,27 @@ public final class SurroundingsDiff {
     public static final double BAND_MARGIN = 2.0;
     /** 敌对生物多近算「靠过来了」；更远那一档只报「出现了」。 */
     public static final double THREAT_CLOSE = 6.0;
-    /** 同类变化的最短间隔。 */
+    /** 同类变化的最短间隔。环境类一律一分钟：这些事变得比旁白能说的还快。 */
     public static final long PROXIMITY_COOLDOWN_TICKS = 100L;
     public static final long SIGHT_COOLDOWN_TICKS = 200L;
-    public static final long SHELTER_COOLDOWN_TICKS = 400L;
-    public static final long GROUND_COOLDOWN_TICKS = 600L;
+    public static final long SHELTER_COOLDOWN_TICKS = 1200L;
+    public static final long GROUND_COOLDOWN_TICKS = 1200L;
+    /** 进出结构的最短重报间隔：在村子边上走来走去不该反复说。 */
+    public static final long STRUCTURE_COOLDOWN_TICKS = 1200L;
+    /** 光线跨档的最短重报间隔：洞里来回走、点灭火把不该反复说。 */
+    public static final long LIGHT_COOLDOWN_TICKS = 1200L;
+    /** 泡进液体与埋头游泳的最短重报间隔，与环境类一致：一分钟。 */
+    public static final long LIQUID_COOLDOWN_TICKS = 1200L;
+    /** 光照分档阈值：0-3 很黑，4-7 昏暗，8 以上明亮。 */
+    public static final int LIGHT_DARK_MAX = 3;
+    public static final int LIGHT_DIM_MAX = 7;
 
     /**
      * 敌对生物的最短重报间隔：两分钟。
      *
      * <p>报过一次「有东西靠过来了」之后，这两分钟里新出现的、又走近的都不再另记一条——
      * 夜里围上来一群僵尸，玩家要的是知道有危险，不是每一只都来一句。这期间她身边站着谁
-     * 另有交代：玩家开口时随消息带过去（插件侧），出事（挨打、血量告急、动作收尾）那条
-     * 旁白后面也会缀一句眼前的活物。
+     * 另有交代：出事那条旁白（挨打、血量告急、动作收尾）后面会缀一句眼前的活物（插件侧）。
      */
     public static final long THREAT_COOLDOWN_TICKS = 2400L;
     public static final long LIVING_COOLDOWN_TICKS = 1200L;
@@ -104,6 +112,7 @@ public final class SurroundingsDiff {
         private final StableValue proximity = new StableValue();
         private final StableValue sight = new StableValue();
         private final StableValue shelter = new StableValue();
+        private final StableValue light = new StableValue();
         /** 已经报出去的威胁档；被冷静期压掉时不更新，好让下一次接着试。 */
         private String threatBand;
         private long lastThreatTick = Long.MIN_VALUE;
@@ -111,16 +120,25 @@ public final class SurroundingsDiff {
         private long lastSurfaceTick = Long.MIN_VALUE;
         /** 活物种类 → 上次为它写过旁白的 tick。 */
         private final KeyedCooldown living = new KeyedCooldown();
+        /** 上次报结构变化的时间：在村子边上反复进出不该刷屏。 */
+        private long lastStructureTick = Long.MIN_VALUE;
+        /** 已报出的液体状态：空串 = 没泡着，否则是液体 id，埋头时再缀 {@code |swim}。 */
+        private String liquid = "";
+        private long lastLiquidTick = Long.MIN_VALUE;
 
         /** 换了监控对象、重新接上、或女仆离开已加载区块时清掉，免得拿旧世界的状态去比。 */
         public void reset() {
             proximity.reset();
             sight.reset();
             shelter.reset();
+            light.reset();
             threatBand = null;
             lastThreatTick = Long.MIN_VALUE;
             lastSurfaceTick = Long.MIN_VALUE;
             living.reset();
+            lastStructureTick = Long.MIN_VALUE;
+            liquid = "";
+            lastLiquidTick = Long.MIN_VALUE;
         }
     }
 
@@ -134,7 +152,9 @@ public final class SurroundingsDiff {
             state.proximity.baseline(proximityBand(null, next));
             state.sight.baseline(sightValue(next));
             state.shelter.baseline(shelterValue(next));
+            state.light.baseline(lightBand(next.light()));
             state.threatBand = threatBand(nearestHostile(next));
+            state.liquid = liquidValue(next);
             return frames;
         }
 
@@ -143,7 +163,12 @@ public final class SurroundingsDiff {
         addThreat(frames, next, state, nowTick);
         addLiving(frames, prev, next, state, nowTick);
         addShelter(frames, prev, next, state, nowTick);
+        addLight(frames, next, state, nowTick);
+        addVehicle(frames, prev, next);
+        addStructure(frames, prev, next, state, nowTick);
+        addLiquid(frames, prev, next, state, nowTick);
         addGround(frames, prev, next, state, nowTick);
+        addPosture(frames, prev, next);
         return frames;
     }
 
@@ -243,7 +268,7 @@ public final class SurroundingsDiff {
         return false;
     }
 
-    /** 露天与遮蔽之间来回。没有天空的维度（下界、末地）不谈这件事。 */
+    /** 头顶换了档：露天 / 半遮 / 屋内。没有天空的维度（下界、末地）不谈这件事。 */
     private static void addShelter(
             List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
         if (!prev.hasSky() || !next.hasSky()) {
@@ -255,17 +280,119 @@ public final class SurroundingsDiff {
         state.lastSurfaceTick = nowTick;
         JsonObject frame = EventFrames.base("shelter_change", next.entityId());
         frame.addProperty("sheltered", !next.skyAbove());
+        frame.addProperty("overhead", next.overhead().kind());
+        frame.addProperty("overhead_cover", next.overhead().cover());
+        frame.addProperty("overhead_band", next.overhead().band());
+        // 同一段时间里先进树荫又走出来时，两句并排记下来读着像来回折腾。插件按这个
+        // tick 把同键的合成一条，只留最后那次（数值大的胜出）。
+        frame.addProperty("tick", nowTick);
         frames.add(frame);
+    }
+
+    /**
+     * 光线跨了一档：很黑 / 昏暗 / 明亮。进洞、天黑、点起火把都会走到这里。
+     *
+     * <p>只报跨档，不报数值；和遮蔽一样要连续两次采样才认，洞口来回走不会反复说。
+     */
+    private static void addLight(List<JsonObject> frames, Surroundings next, State state, long nowTick) {
+        String band = lightBand(next.light());
+        if (!state.light.observe(band, nowTick, LIGHT_COOLDOWN_TICKS)) {
+            return;
+        }
+        JsonObject frame = EventFrames.base("light_change", next.entityId());
+        frame.addProperty("band", band);
+        frames.add(frame);
+    }
+
+    /** 光照等级 → 档位；阈值与插件的旁白说法一一对应。 */
+    public static String lightBand(int light) {
+        if (light <= LIGHT_DARK_MAX) {
+            return "dark";
+        }
+        return light <= LIGHT_DIM_MAX ? "dim" : "bright";
+    }
+
+    /** 上去或下来了：船、矿车这类载具。坐在里面的时候脚下没有「地」可说。 */
+    private static void addVehicle(List<JsonObject> frames, Surroundings prev, Surroundings next) {
+        if (prev.vehicle().equals(next.vehicle())) {
+            return;
+        }
+        JsonObject frame = EventFrames.base("vehicle_change", next.entityId());
+        frame.addProperty("vehicle", next.vehicle());
+        frame.addProperty("from_vehicle", prev.vehicle());
+        frames.add(frame);
+    }
+
+    /** 走进或离开一处结构（村庄、矿井这类）。只在真的换了结构时报，且有冷静期。 */
+    private static void addStructure(
+            List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
+        if (prev.structure().equals(next.structure())) {
+            return;
+        }
+        if (nowTick < state.lastStructureTick + STRUCTURE_COOLDOWN_TICKS) {
+            return;
+        }
+        state.lastStructureTick = nowTick;
+        JsonObject frame = EventFrames.base("structure_change", next.entityId());
+        frame.addProperty("structure", next.structure());
+        frame.addProperty("from_structure", prev.structure());
+        frames.add(frame);
+    }
+
+    /**
+     * 泡进液体里：水、岩浆或模组液体，以及头也浸进去的游泳。
+     *
+     * <p>与脚下那层分开：那里的白名单说的是「踩着什么样的地」，泡在液体里是另一件事——
+     * 跨进水里时脚下还是河床，所以她这一格有没有液体才是判据。埋头与抬头也算一次变化。
+     * 与环境类一样一分钟最多报一次，浅滩里踩进踩出不会一句接一句。
+     */
+    private static void addLiquid(
+            List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
+        // 坐在船里、矿车里时她在水面之上，不是自己泡着：上下船那一下不当作进水出水
+        if (!next.vehicle().isEmpty() || !prev.vehicle().isEmpty()) {
+            return;
+        }
+        String value = liquidValue(next);
+        if (value.equals(state.liquid)) {
+            return;
+        }
+        state.liquid = value;
+        // 冷静期内换了液体（浅滩里踩进踩出、岸边被浪打一下）不补报
+        if (nowTick < state.lastLiquidTick + LIQUID_COOLDOWN_TICKS) {
+            return;
+        }
+        state.lastLiquidTick = nowTick;
+        JsonObject frame = EventFrames.base("liquid_change", next.entityId());
+        frame.addProperty("liquid", next.liquid());
+        frame.addProperty("from_liquid", prev.liquid());
+        frame.addProperty("swimming", next.submerged());
+        frames.add(frame);
+    }
+
+    /** 液体状态的比较口径：没泡着为空串，泡着是液体 id，埋头再缀一个标记。 */
+    private static String liquidValue(Surroundings s) {
+        if (s.liquid().isEmpty()) {
+            return "";
+        }
+        return s.submerged() ? s.liquid() + "|swim" : s.liquid();
     }
 
     /** 脚下换了种地。只在「值得说」的几种之间变时报，走在石头路上不报。 */
     private static void addGround(
             List<JsonObject> frames, Surroundings prev, Surroundings next, State state, long nowTick) {
+        // 坐在载具里脚下没有地：上下车那一下不当作「踩进了水里/沙地上」
+        if (!next.vehicle().isEmpty() || !prev.vehicle().isEmpty()) {
+            return;
+        }
+        // 泡在液体里的那一步交给 liquid_change，脚下那块地这时说不说都一样
+        if (!next.liquid().isEmpty() || !prev.liquid().isEmpty()) {
+            return;
+        }
         String kind = GroundKind.of(next.feetBlock());
         if (kind.isEmpty() || kind.equals(GroundKind.of(prev.feetBlock()))) {
             return;
         }
-        // 踩进水里、岩浆里、火里要立刻说，不被刚刚报过的遮蔽或脚下挡住
+        // 踩进岩浆、火里要立刻说，不被刚刚报过的遮蔽或脚下挡住；水只算换了种地
         if (!GroundKind.isUrgent(kind) && nowTick < state.lastSurfaceTick + GROUND_COOLDOWN_TICKS) {
             return;
         }
@@ -273,6 +400,27 @@ public final class SurroundingsDiff {
         JsonObject frame = EventFrames.base("ground_change", next.entityId());
         frame.addProperty("block", next.feetBlock());
         frame.addProperty("kind", kind);
+        frames.add(frame);
+    }
+
+    /**
+     * 她换了姿势：坐下、站起、就地躺下、上床睡着、醒过来。
+     *
+     * <p>这是离散动作，不是需要回滞的连续量：变了就报，不设冷静期。首帧仍由外层统一
+     * 建基线，所以重连不会把当前姿势再念一遍。
+     */
+    private static void addPosture(
+            List<JsonObject> frames, Surroundings prev, Surroundings next) {
+        // 昏倒与醒来由专门事件交代；这里不再说成「躺着/睡着」
+        if ("unconscious".equals(prev.posture()) || "unconscious".equals(next.posture())) {
+            return;
+        }
+        if (prev.posture().equals(next.posture())) {
+            return;
+        }
+        JsonObject frame = EventFrames.base("posture_change", next.entityId());
+        frame.addProperty("posture", next.posture());
+        frame.addProperty("from_posture", prev.posture());
         frames.add(frame);
     }
 
@@ -301,7 +449,9 @@ public final class SurroundingsDiff {
     }
 
     private static String shelterValue(Surroundings s) {
-        return s.skyAbove() ? "open" : "sheltered";
+        String kind = s.overhead().kind();
+        // 老数据或没扫出结果时退回布尔，三档字段照样能空着走
+        return kind.isEmpty() ? (s.skyAbove() ? "open" : "sheltered") : kind;
     }
 
     /** 远近档。{@code before} 是已认可的档位，用它做回滞；没有基线时按严格阈值判。 */

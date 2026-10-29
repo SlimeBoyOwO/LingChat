@@ -1,5 +1,7 @@
 //! 送消息、抓屏与请求主动开口。
 
+use std::sync::Arc;
+
 use rustpython_vm::{PyObjectRef, PyResult, VirtualMachine, function::KwArgs};
 use tauri::{AppHandle, Manager};
 
@@ -10,15 +12,17 @@ use super::guard::{
     current_capture_allow, current_plugin, current_proactive_allow, current_send_allow,
 };
 use super::{err_json, kwargs_map, no_host, py_to_value, runtime, value_to_pyobject};
+use crate::PluginManager;
 
 /// 请求宿主主动开一次口（主动对话系统的一次投放）。
 ///
 /// `text` 为空表示只开一次口、不写任何提示行：要说的内容由插件自己记成旁白，
 /// 再补一句「该注意什么、该不该开口」等于替角色拿主意。
+/// `urgent` 用于死亡这类必须马上开口的事：不吃冷却与上一轮的静默期。
 ///
 /// 每次都往宿主日志留一行：拒绝原因只回给插件，而插件的 print 不进日志文件，
 /// 于是「什么都没发生」时这里是唯一的线索。
-async fn trigger_proactive_impl(app: AppHandle, text: String) -> serde_json::Value {
+async fn trigger_proactive_impl(app: AppHandle, text: String, urgent: bool) -> serde_json::Value {
     let text = text.trim().to_string();
     let plugin = current_plugin().unwrap_or_else(|| "未知插件".to_string());
     let head = if text.is_empty() {
@@ -30,13 +34,13 @@ async fn trigger_proactive_impl(app: AppHandle, text: String) -> serde_json::Val
         tracing::warn!(plugin = %plugin, "插件请求主动开口被拒：主动对话系统未初始化");
         return serde_json::json!({ "ok": false, "error": "主动对话系统未初始化" });
     };
-    match ProactiveSystem::request_deliver(proactive, text).await {
+    match ProactiveSystem::request_deliver(proactive, text, urgent).await {
         Ok(()) => {
-            tracing::info!(plugin = %plugin, "插件请求主动开口已受理：{head}");
+            tracing::info!(plugin = %plugin, urgent, "插件请求主动开口已受理：{head}");
             serde_json::json!({ "ok": true, "triggered": true })
         },
         Err(reason) => {
-            tracing::info!(plugin = %plugin, reason, "插件请求主动开口被拒：{head}");
+            tracing::info!(plugin = %plugin, reason, urgent, "插件请求主动开口被拒：{head}");
             serde_json::json!({ "ok": true, "triggered": false, "reason": reason })
         },
     }
@@ -126,7 +130,11 @@ pub(super) fn capture_screen(
     Ok(value_to_pyobject(vm, &result))
 }
 
-pub(super) fn trigger_proactive(text: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+pub(super) fn trigger_proactive(
+    text: String,
+    kwargs: KwArgs<PyObjectRef>,
+    vm: &VirtualMachine,
+) -> PyResult<PyObjectRef> {
     if !current_proactive_allow() {
         tracing::warn!(
             plugin = %current_plugin().unwrap_or_default(),
@@ -140,6 +148,27 @@ pub(super) fn trigger_proactive(text: String, vm: &VirtualMachine) -> PyResult<P
     let Some(app) = crate::app_handle() else {
         return Ok(no_host(vm));
     };
-    let result = runtime().block_on(trigger_proactive_impl(app, text));
+    let urgent = kwargs_map(kwargs)
+        .get("urgent")
+        .map(|v| py_to_value(vm, v).as_bool().unwrap_or(false))
+        .unwrap_or(false);
+    let result = runtime().block_on(trigger_proactive_impl(app, text, urgent));
     Ok(value_to_pyobject(vm, &result))
+}
+
+/// 插件报告外部程序此刻能不能播这句语音：女仆死了，模组找不到她就播不出来，
+/// 宿主下一句改回本机播放，不必玩家去关开关。
+pub(super) fn set_voice_playback_available(
+    available: bool,
+    vm: &VirtualMachine,
+) -> PyResult<PyObjectRef> {
+    let Some(app) = crate::app_handle() else {
+        return Ok(no_host(vm));
+    };
+    let Some(plugin) = current_plugin() else {
+        return Ok(err_json(vm, "宿主不知道当前是哪个插件"));
+    };
+    let manager = app.state::<Arc<PluginManager>>().inner().clone();
+    manager.set_voice_playback_available(&plugin, available);
+    Ok(value_to_pyobject(vm, &serde_json::json!({ "ok": true })))
 }

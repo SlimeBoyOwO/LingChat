@@ -20,12 +20,10 @@ const ENTER_GRACE_SECS: u64 = 60;
 
 /// 一行是否属于「真实对话」——玩家发言或角色回复。
 /// 人设 system 行、旁白/系统/剧情提示（内容以 [`NARRATION_TAG`] 开头）一律不计，
-/// 因此主菜单（仅有占位/旁白行）算不出内容，自动存档不会误触发覆盖旧档。
-/// 用内容前缀而非 display_name 判旁白：剧本作者可给旁白事件自定义展示名，会绕过 display_name。
-/// 已知边角：试玩会话（`preview_generation`）期间若正好 tick，预览台词会被计为真实对话写进主槽，本次不处理。
+/// TODO+钦灵：这地方好像把自动存档中的辅助台词给删了？日后我检查一下
 pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
-        // 角色回复：assistant 且归属某角色（工具调用回填的前缀行 sender 为空，排除）
+        // 角色回复：assistant 且归属某角色（工具调用的空内容载体行 sender 为空，排除）
         LineAttribute::Assistant => line.base.sender_role_id.is_some(),
         // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
         LineAttribute::User => {
@@ -67,6 +65,12 @@ struct AutoSaveEventPayload {
     save_id: i32,
     title: String,
     timestamp: String,
+}
+
+#[derive(Clone, serde::Serialize)]
+pub struct AutoSaveFailedPayload {
+    pub message: String,
+    pub timestamp: String,
 }
 
 pub struct AutoSaveManager {
@@ -210,35 +214,54 @@ impl AutoSaveManager {
             return Ok(());
         }
 
-        // 3. 解析自动存档位。已存在的档位此刻只取 id 不写库：标题/主角/时间戳要等
-        //    台词写成功之后再刷（见 4b），否则写失败会把旧档刷新成"刚刚存过"的样子。
-        let save_id = self.resolve_slot().await?;
+        // 3. 解析写目标（方案 A）：已绑档优先，否则解析自动存档位。
+        //    已存在的档位此刻只取 id 不写库：标题/主角/时间戳要等台词写成功之后再刷
+        //    （见 4b），否则写失败会把旧档刷新成"刚刚存过"的样子。
+        let (bound, lines, main_id) = {
+            let service = self.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            (gs.active_save_id, gs.line_list.clone(), gs.main_role_id)
+        };
+        let (save_id, bound_target) = self.resolve_save_target(bound, &lines).await?;
 
         // 4. Perform the actual save
         let mut service = self.ai_service.lock().await;
-        let (lines, main_id) = {
-            let gs = service.game_status.lock().await;
-            (gs.line_list.clone(), gs.main_role_id)
-        };
 
         // 4a. Sync lines (smart diff)。自动存档位只跟踪当前这一局，允许在无共同锚点
         //     （切过角色、开过新档）时整体接管重建，而不是永久拒绝写入。
-        SaveRepo::sync_lines(&self.db, save_id, &lines, true)
-            .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
+        if let Err(e) = SaveRepo::sync_lines(&self.db, save_id, &lines, true).await {
+            let _ = self.app.emit(
+                "save:auto-save-failed",
+                AutoSaveFailedPayload {
+                    message: e.to_string(),
+                    timestamp: Local::now().format("%H:%M:%S").to_string(),
+                },
+            );
+            return Err(format!("同步台词失败: {}", e));
+        }
 
-        // 4b. 台词落库成功后再刷新档位元数据，与内容同进同退
+        // 4b. 台词落库成功后再刷新档位元数据，与内容同进同退；
+        //     写的是绑定档时保持用户自己的标题与主角（与快速存档一致）。
         let now = Local::now();
         let title = format!("{} {}", AUTO_SAVE_PREFIX, now.format("%Y-%m-%d %H:%M:%S"));
-        SaveRepo::update_save_title(&self.db, save_id, &title)
-            .await
-            .map_err(|e| format!("更新自动存档标题失败: {}", e))?;
-        SaveRepo::update_save_main_role(&self.db, save_id, main_id)
-            .await
-            .map_err(|e| format!("设置主角失败: {}", e))?;
+        if !bound_target {
+            SaveRepo::update_save_title(&self.db, save_id, &title)
+                .await
+                .map_err(|e| format!("更新自动存档标题失败: {}", e))?;
+            SaveRepo::update_save_main_role(&self.db, save_id, main_id)
+                .await
+                .map_err(|e| format!("设置主角失败: {}", e))?;
+        }
 
         // 4c. Set active save
-        service.game_status.lock().await.active_save_id = Some(save_id);
+        {
+            let mut gs = service.game_status.lock().await;
+            gs.active_save_id = Some(save_id);
+            // 回填行 id：让后续锚点按 id 命中（重建人设行后仍能安全落档）。
+            if let Err(e) = SaveRepo::bind_line_ids(&self.db, save_id, &mut gs.line_list).await {
+                tracing::warn!("[AutoSave] 回填台词行 id 失败: {e}");
+            }
+        }
 
         // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
         {
@@ -341,6 +364,25 @@ impl AutoSaveManager {
         let service = self.ai_service.lock().await;
         let lines = &service.game_status.lock().await.line_list;
         hash_of_real_lines(lines)
+    }
+
+    /// 解析自动存档写目标（方案 A）：已绑档优先——绑定档可安全写入时直接写用户
+    /// 自己的档，不改标题、不改 main_role（与快速存档一致）；否则走上游的自动存档
+    /// 位解析（已存在的槽只取 id，新建空白档期写标题与主角）。返回 (档 id, 是否绑定档)。
+    async fn resolve_save_target(
+        &mut self,
+        bound: Option<i32>,
+        lines: &[GameLine],
+    ) -> Result<(i32, bool), String> {
+        if let Some(id) = bound {
+            let ok = SaveRepo::can_sync_into(&self.db, id, lines)
+                .await
+                .map_err(|e| format!("检查存档可写性失败: {e}"))?;
+            if ok {
+                return Ok((id, true));
+            }
+        }
+        Ok((self.resolve_slot().await?, false))
     }
 
     /// 解析自动存档位：已有档位直接返回其 id，不动它的任何元数据（标题、主角、

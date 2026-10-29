@@ -17,6 +17,7 @@ use crate::db::managers::role_repo::RoleRepo;
 
 use ling_chat_notes::Note;
 use ling_chat_notes::NotesStore;
+use ling_chat_notes::embedding::Embedder;
 use ling_chat_notes::retrieval::{DEFAULT_TOP_K, MAX_TOP_K, NotesVectorIndex};
 
 use super::executor::{Tool, ToolContext, ToolError, ToolResult};
@@ -130,6 +131,12 @@ impl Tool for GetCurrentMemory {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "你还记得关于我的什么",
+            "你记着我哪些事",
+            "说说你对我的印象",
+            "我们之前聊过什么",
+        ])
     }
 
     async fn execute(
@@ -211,6 +218,12 @@ impl Tool for GetNotes {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "还记得我的生日是几号吗？",
+            "我想看看你记得我的事情",
+            "看看你给我记的笔记",
+            "有没有关于睡前的记录",
+        ])
     }
 
     fn timeout_hint(&self) -> Option<Duration> {
@@ -256,7 +269,7 @@ impl Tool for GetNotes {
         let engine = state.embedding.clone();
         if !engine.is_enabled() {
             if !self.warned_disabled.swap(true, Ordering::Relaxed) {
-                tracing::warn!("文本嵌入引擎未启用，memory_get_notes 回退为全量返回");
+                tracing::warn!("文本嵌入后端未启用，memory_get_notes 回退为全量返回");
             }
             return Ok(Self::full_result(notes));
         }
@@ -266,7 +279,13 @@ impl Tool for GetNotes {
         let notes_for_search = notes.clone();
         let query_for_search = query.clone();
         let search = tokio::task::spawn_blocking(move || {
-            index.search(&engine, &role, &notes_for_search, &query_for_search, top_k)
+            index.search(
+                engine.as_ref(),
+                &role,
+                &notes_for_search,
+                &query_for_search,
+                top_k,
+            )
         })
         .await;
 
@@ -313,6 +332,12 @@ impl Tool for AddNote {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "记住我喜欢吃草莓",
+            "要记住我的生日哦",
+            "别忘了我不吃香菜",
+            "把这个记到小本本上",
+        ])
     }
 
     async fn execute(
@@ -361,6 +386,12 @@ impl Tool for UpdateNote {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "把那条笔记改一下",
+            "更正一下你记的内容",
+            "我搬家了，更新一下地址",
+            "那件事记得不对，改改",
+        ])
     }
 
     async fn execute(
@@ -423,6 +454,12 @@ impl Tool for DeleteNote {
                 "additionalProperties": false
             }),
         )
+        .with_rag_examples([
+            "把那条笔记删了",
+            "这件事不用记了",
+            "忘掉你记的那个",
+            "删掉关于我的那条记录",
+        ])
     }
 
     async fn execute(

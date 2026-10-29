@@ -45,8 +45,10 @@ class MaidActionTest {
         assertEquals(MaidAction.Kind.GO_TO, parse(" GO_TO ", null).kind());
         assertEquals(MaidAction.Target.BED, parse("go_to", " BED ").target());
         assertEquals(MaidAction.Target.BED, parse("LIE_DOWN", null).target(), "省略目标时躺下默认去床边");
-        assertEquals(MaidAction.Target.BED, parse("lie_down", "player").target(), "躺下只认床");
+        assertEquals(MaidAction.Target.BED, parse("lie_down", "player").target(), "躺下只认床与地面");
+        assertEquals(MaidAction.Target.GROUND, parse("lie_down", "ground").target());
         assertEquals(MaidAction.Target.PLAYER, parse("go_to", "chair").target(), "认不出的目标退回默认");
+        assertEquals(MaidAction.Target.PLAYER, parse("go_to", "ground").target(), "地面只对躺下有意义");
     }
 
     @Test
@@ -54,6 +56,7 @@ class MaidActionTest {
         assertNull(parse("sit", "bed").target());
         assertNull(parse("stand", "player").target());
         assertNull(parse("look_at", "bed").target());
+        assertNull(parse("scout", "bed").target());
         assertEquals("", parse("sit", "bed").targetId());
     }
 
@@ -80,6 +83,7 @@ class MaidActionTest {
         assertFalse(parse("sit", null).hasCompletionEvent());
         assertFalse(parse("stand", null).hasCompletionEvent());
         assertFalse(parse("look_at", null).hasCompletionEvent());
+        assertTrue(parse("scout", null).hasCompletionEvent(), "探路收尾时要说清她怎么停下的");
     }
 
     @Test
@@ -87,13 +91,25 @@ class MaidActionTest {
         assertEquals(3, parse("go_to", "player").arriveDistance());
         assertEquals(2, parse("go_to", "bed").arriveDistance());
         assertEquals(2, parse("lie_down", null).arriveDistance());
+        assertEquals(0, parse("lie_down", "ground").arriveDistance(), "就地躺下不走过去");
     }
 
     @Test
     void onlyWalkingActionsAreRestrictedByHomeRadius() {
         assertTrue(parse("go_to", "player").walks());
         assertTrue(parse("lie_down", null).walks());
+        assertFalse(parse("lie_down", "ground").walks());
         assertFalse(parse("sit", null).walks());
         assertFalse(parse("look_at", null).walks());
+        assertTrue(parse("scout", null).walks(), "探路要走路，居家模式的范围也得跟着查");
+    }
+
+    /** 就地躺下也是耗时动作：她躺着的时候要用收尾事件说清她怎么起来的。 */
+    @Test
+    void groundLyingReportsItsEndToo() {
+        MaidAction action = parse("lie_down", "ground");
+        assertTrue(action.isGroundLie());
+        assertTrue(action.hasCompletionEvent());
+        assertFalse(parse("lie_down", null).isGroundLie());
     }
 }

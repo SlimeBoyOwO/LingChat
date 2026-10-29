@@ -126,6 +126,10 @@ jobs:
               cp "target/release/$dll" "${{ runner.temp }}/dist/"
             fi
           done
+          # 同理，Linux x86_64 的 WebGPU EP 依赖 Dawn 动态库，放 exe 同目录由 RPATH 的 $ORIGIN 命中
+          if [ "${{ runner.os }}" = "Linux" ] && [ -e "target/release/libwebgpu_dawn.so" ]; then
+            cp -L "target/release/libwebgpu_dawn.so" "${{ runner.temp }}/dist/"
+          fi
 
       - name: 上传 artifact
         uses: actions/upload-artifact@v4

@@ -48,7 +48,7 @@ brew install xcodegen
 rustup target add aarch64-apple-ios      # 真机目标
 rustup target add aarch64-apple-ios-sim  # 模拟器（可选，本流程默认只打真机包）
 pnpm install
-pnpm run init        # 生成图标 + 下载情绪模型（ONNX）到 data/third_party
+pnpm run init        # 生成图标 + 下载情绪与嵌入模型（ONNX）到 data/third_party
 ```
 
 ## 模拟器开发调试（tauri ios dev）

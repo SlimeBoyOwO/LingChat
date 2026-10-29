@@ -304,7 +304,13 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
 
 /** 将 Rust GameLineInit 转换为前端 GameMessage 列表 */
 export function convertInitLines(lines: GameLineInit[]): GameMessage[] {
-  const filtered = lines.filter((line) => line.attribute !== "system" && line.attribute !== "tool");
+  // 工具调用载体行（content 为空 + tool_call）只承载协议，不显示，也不参与 isFinal 判定
+  const filtered = lines.filter(
+    (line) =>
+      line.attribute !== "system" &&
+      line.attribute !== "tool" &&
+      !(line.attribute === "assistant" && line.content.trim() === ""),
+  );
 
   return filtered.map((line, index, array) => {
     const filteredContent = line.content.replace(/\{[\s\S]*?\}/g, "").trim();

@@ -12,7 +12,7 @@ mod store;
 mod tools;
 mod websocket;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
@@ -24,7 +24,7 @@ use ling_chat_main::plugin_contract::PluginResourceEntry;
 
 use super::python_backend;
 use super::signal::SignalRegistry;
-use super::types::{PluginInfo, PluginRunEnv, ResourceKind};
+use super::types::{PluginInfo, PluginRunEnv, ResourceKind, WsState};
 use crate::manager::deps::{dependency_error, unmet_dependencies};
 use crate::manager::store::PluginStore;
 use crate::manager::websocket::{WsHub, ws_open_input};
@@ -50,6 +50,10 @@ pub struct PluginManager {
     cancels: Mutex<HashMap<String, CancellationToken>>,
     /// 插件声明的 WS 连接。
     ws: WsHub,
+    /// 报告过「此刻播不了语音」的插件（女仆倒下，外部程序找不到播放目标）。
+    ///
+    /// 缺省视为能播：插件得在自己的脚本里明确报一次，才轮到它影响接管。
+    voice_blocked: RwLock<HashSet<String>>,
 }
 
 impl PluginManager {
@@ -63,6 +67,7 @@ impl PluginManager {
             signals: RwLock::new(SignalRegistry::new()),
             cancels: Mutex::new(HashMap::new()),
             ws: WsHub::new(),
+            voice_blocked: RwLock::new(HashSet::new()),
         };
         manager.store.sync_state_file();
         manager.reload();
@@ -149,6 +154,68 @@ impl PluginManager {
             capture_screen: record.manifest.capture_screen,
             trigger_proactive: record.manifest.trigger_proactive,
         }
+    }
+
+    /// 插件报告外部程序此刻能不能播这句语音。播不了（女仆倒下）时 `voice_playback_owner`
+    /// 跳过它，前端下一句就改回本机播放。
+    pub fn set_voice_playback_available(&self, plugin_id: &str, available: bool) {
+        let mut blocked = self
+            .voice_blocked
+            .write()
+            .unwrap_or_else(|e| e.into_inner());
+        let changed = if available {
+            blocked.remove(plugin_id)
+        } else {
+            blocked.insert(plugin_id.to_string())
+        };
+        if changed {
+            tracing::info!(plugin = %plugin_id, available, "插件报告游戏内语音可用性");
+        }
+    }
+
+    /// 是否有插件正在接管台词语音的播放。
+    ///
+    /// 条件：已启用、加载无错、manifest 声明了 `[voice_playback]`、对应的布尔配置为真；
+    /// 声明了 `ws_conn` 时该连接还必须处于 Connected（断线回落到本机播放）；
+    /// 插件自己没报告过「游戏里播不了」（女仆死了）。多个插件声明时先到先得，返回插件 id。
+    pub async fn voice_playback_owner(&self) -> Option<String> {
+        let records = self.store.lock().await;
+        for record in records.values() {
+            if !record.state.enabled || record.error.is_some() {
+                continue;
+            }
+            let Some(playback) = &record.manifest.voice_playback else {
+                continue;
+            };
+            let enabled = record
+                .state
+                .config
+                .get(&playback.config)
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+            if !enabled {
+                continue;
+            }
+            if self
+                .voice_blocked
+                .read()
+                .unwrap_or_else(|e| e.into_inner())
+                .contains(&record.manifest.id)
+            {
+                continue;
+            }
+            if let Some(conn) = &playback.ws_conn {
+                let connected = self
+                    .ws
+                    .state_of(&record.manifest.id, conn)
+                    .is_some_and(|state| state == WsState::Connected);
+                if !connected {
+                    continue;
+                }
+            }
+            return Some(record.manifest.id.clone());
+        }
+        None
     }
 
     /// 列表（供前端）。
@@ -244,16 +311,24 @@ impl PluginManager {
         let record = records
             .get_mut(id)
             .ok_or_else(|| format!("插件 '{id}' 不存在"))?;
-        let mut cleaned: HashMap<String, serde_json::Value> = HashMap::new();
+        // 以旧值为底：secret 字段不回传前端、表单里也就没有，替换式保存会把它们抹掉。
+        let mut next = record.state.config.clone();
         for field in &record.manifest.config {
             let Some(value) = config.get(&field.key) else {
                 continue;
             };
             if let Some(v) = store::coerce_config_value(&field.kind, value) {
-                cleaned.insert(field.key.clone(), v);
+                next.insert(field.key.clone(), v);
             }
         }
-        record.state.config = cleaned;
+        let declared: HashSet<&str> = record
+            .manifest
+            .config
+            .iter()
+            .map(|field| field.key.as_str())
+            .collect();
+        next.retain(|key, _| declared.contains(key.as_str()));
+        record.state.config = next;
         self.store.persist_state(id, &record.state);
         Ok(())
     }

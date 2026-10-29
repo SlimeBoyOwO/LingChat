@@ -201,6 +201,73 @@
       </div>
     </MenuItem>
 
+    <!-- 转场描述弹窗：退场/出场方式都可留空；留空则该句描述旁白完全不生成，
+         「离开了/加入了对话」与离场注记照常生成（只影响当前存档） -->
+    <Teleport to="body">
+      <div
+        v-if="transitionTarget"
+        class="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 backdrop-blur-sm"
+      >
+        <div
+          class="w-[92vw] max-w-md rounded-2xl border border-white/10 bg-[#14141f]/95 p-4 text-white shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+        >
+          <h3 class="m-0 text-sm font-semibold tracking-wide">
+            {{ $t("settings.identity.transition.title", { name: transitionTarget.name }) }}
+          </h3>
+          <p class="mt-1 text-[11px] leading-relaxed text-white/45">
+            {{ $t("settings.identity.transition.hint") }}
+          </p>
+
+          <div class="mt-3 flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.transition.exitLabel")
+            }}</label>
+            <input
+              v-model="transitionExit"
+              maxlength="200"
+              class="identity-input"
+              :placeholder="$t('settings.identity.transition.exitPlaceholder')"
+            />
+          </div>
+          <div class="mt-3 flex flex-col gap-1.5">
+            <label class="text-xs font-medium text-white/60">{{
+              $t("settings.identity.transition.enterLabel")
+            }}</label>
+            <input
+              v-model="transitionEnter"
+              maxlength="200"
+              class="identity-input"
+              :placeholder="$t('settings.identity.transition.enterPlaceholder')"
+            />
+          </div>
+
+          <div class="mt-4 flex justify-end gap-2">
+            <button
+              class="identity-btn"
+              :disabled="transitionBusy"
+              @click="transitionTarget = null"
+            >
+              {{ $t("settings.identity.transition.cancel") }}
+            </button>
+            <button
+              class="identity-btn"
+              :disabled="transitionBusy"
+              @click="confirmSwitchIdentity(false)"
+            >
+              {{ $t("settings.identity.transition.skip") }}
+            </button>
+            <button
+              class="identity-btn-primary"
+              :disabled="transitionBusy"
+              @click="confirmSwitchIdentity(true)"
+            >
+              {{ $t("settings.identity.transition.confirm") }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </Teleport>
+
     <RoleArchiveProgress />
     <NewCharacterModal
       :visible="newCharacterVisible"
@@ -273,7 +340,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw, User } from "@lucide/vue";
@@ -290,6 +357,7 @@ import {
   useRelationEditor,
   type RelationTargetOption,
 } from "../../../composables/useRelationEditor";
+import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import {
   deletePlayerIdentity,
   emptyPlayerIdentity,
@@ -550,6 +618,12 @@ const submitIdentity = async () => {
     return;
   }
 
+  const confirmed = await confirmSaveEffect(
+    (save) => t("settings.identity.saveConfirm", { save }),
+    t("settings.identity.saveConfirmNoSave"),
+  );
+  if (!confirmed) return;
+
   const relations = foldRelationRows();
 
   savingIdentity.value = true;
@@ -609,13 +683,33 @@ const startNewGame = async (item: PlayerIdentitySummary) => {
   }
 };
 
+/** 转场描述弹窗：确认切换后、执行前，让用户（可选地）描述退场/出场方式（都可留空） */
+const transitionTarget = ref<PlayerIdentitySummary | null>(null);
+const transitionExit = ref("");
+const transitionEnter = ref("");
+const transitionBusy = ref(false);
+
 const switchIdentity = async (item: PlayerIdentitySummary) => {
   const confirmed = await dialogStore.confirm(
     t("settings.identity.switchConfirm", { name: item.name }),
   );
   if (!confirmed) return;
+  transitionExit.value = "";
+  transitionEnter.value = "";
+  transitionTarget.value = item;
+};
+
+const confirmSwitchIdentity = async (withDesc: boolean) => {
+  const item = transitionTarget.value;
+  if (!item || transitionBusy.value) return;
+  transitionBusy.value = true;
   try {
-    const gameInfo = await setCurrentPlayerIdentity(item.id);
+    const gameInfo = await setCurrentPlayerIdentity(
+      item.id,
+      withDesc ? transitionExit.value : "",
+      withDesc ? transitionEnter.value : "",
+    );
+    transitionTarget.value = null;
     await finishIdentityChange(
       gameInfo,
       t("settings.identity.switchDoneTitle"),
@@ -626,6 +720,8 @@ const switchIdentity = async (item: PlayerIdentitySummary) => {
       title: t("settings.identity.switchFailTitle"),
       message: typeof e === "string" ? e : e.message || t("settings.identity.switchFailTitle"),
     });
+  } finally {
+    transitionBusy.value = false;
   }
 };
 
@@ -656,5 +752,40 @@ watch(
     currentPage.value = 1;
     loadCharacters();
   },
+);
+
+function scrollToRelationAnchor(id: string, attempts = 12) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    return;
+  }
+  if (attempts > 0) setTimeout(() => scrollToRelationAnchor(id, attempts - 1), 100);
+}
+
+// 关系门「去填写」的意图：由聊天页写入，这里定位到对应编辑位置后清空
+watch(
+  () => uiStore.pendingRelationGuide,
+  async (guide) => {
+    if (!guide) return;
+    if (guide.kind === "role") {
+      const target = allCharacters.value.find((c) => c.id === guide.roleId);
+      createdCharacter.value = {
+        character_id: guide.roleId,
+        title: target?.title ?? "",
+        resource_folder: target?.resourceFolder ?? "",
+      };
+      createdEditorVisible.value = true;
+      await nextTick();
+      scrollToRelationAnchor("relation-block-role");
+    } else {
+      const identityId = gameStore.playerIdentityId;
+      if (identityId) await editIdentity(identityId);
+      await nextTick();
+      scrollToRelationAnchor("relation-block-identity");
+    }
+    uiStore.setPendingRelationGuide(null);
+  },
+  { immediate: true },
 );
 </script>

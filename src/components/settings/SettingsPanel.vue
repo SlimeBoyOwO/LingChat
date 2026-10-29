@@ -17,7 +17,7 @@
     >
       <Transition :name="transitionName">
         <!-- KeepAlive 缓存设置子页面实例：切换时只激活/停用，不销毁重建，保留状态 -->
-        <KeepAlive>
+        <KeepAlive v-if="contentReady">
           <component
             :is="currentTabComponent"
             :key="uiStore.currentSettingsTab"
@@ -32,7 +32,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onUnmounted, ref, watch, type Component } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch, type Component } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import {
   SettingsAchievement,
@@ -74,6 +74,20 @@ const panelVisible = ref(uiStore.showSettings);
 const panelLeaving = ref(false);
 let leaveTimer: number | null = null;
 
+// 内容页跨两帧渲染：先让面板外壳和导航完成一次布局，再挂内容。
+// 只隔一帧不够：同一帧内排队的多次 DOM 变更会被浏览器合并到帧末统一布局
+const contentReady = ref(false);
+let contentFrame: number | null = null;
+
+onMounted(() => {
+  contentFrame = requestAnimationFrame(() => {
+    contentFrame = requestAnimationFrame(() => {
+      contentFrame = null;
+      contentReady.value = true;
+    });
+  });
+});
+
 function cancelLeave() {
   if (leaveTimer !== null) {
     clearTimeout(leaveTimer);
@@ -93,7 +107,10 @@ function startLeave() {
   }, LEAVE_MS);
 }
 
-onUnmounted(cancelLeave);
+onUnmounted(() => {
+  cancelLeave();
+  if (contentFrame !== null) cancelAnimationFrame(contentFrame);
+});
 
 watch(
   () => uiStore.showSettings,
