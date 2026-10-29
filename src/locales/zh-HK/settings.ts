@@ -456,6 +456,17 @@ export default {
         loadFailTitle: "讀取關係失敗",
       },
     },
+    alias: {
+      identityLabel: "我嘅身份",
+      noneOption: "未選擇身份",
+      nameLabel: "該角色對「我」嘅稱呼",
+      namePlaceholder: "留空就用身份卡嘅名",
+      subtitleLabel: "該角色對「我」嘅副標題",
+      subtitlePlaceholder: "留空就唔顯示副標題",
+      affectionLabel: "該身份嘅初始好感度",
+      affectionPlaceholder: "留空就用卡片預設初始值",
+      hint: "稱呼、副標題同初始好感度按身份分別設定：同一個角色對唔同身份嘅「我」，叫法、副標題同初始好感度都可以唔同。留空就用卡片預設。",
+    },
     fields: {
       aiName: "AI 名稱",
       aiSubtitle: "AI 副標題",

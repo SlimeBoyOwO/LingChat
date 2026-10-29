@@ -484,6 +484,17 @@ export default {
         loadFailTitle: "Failed to load relationships",
       },
     },
+    alias: {
+      identityLabel: "My identity",
+      noneOption: "No identity selected",
+      nameLabel: 'How this character addresses "me"',
+      namePlaceholder: "Leave empty to use the identity's name",
+      subtitleLabel: 'Subtitle this character uses for "me"',
+      subtitlePlaceholder: "Leave empty to hide the subtitle",
+      affectionLabel: "Initial affection for this identity",
+      affectionPlaceholder: "Leave empty to use the card's default",
+      hint: "Address, subtitle and initial affection are set per identity: the same character can address each identity differently, with a different subtitle and starting affection. Leave empty to use the card's default.",
+    },
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
