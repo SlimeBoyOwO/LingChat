@@ -90,8 +90,7 @@ jobs:
             libxi-dev \
             libxtst-dev \
             libwayland-dev \
-            libdbus-1-dev \
-            mold
+            libdbus-1-dev
 
       - name: 创建占位文件和初始化
         shell: bash
@@ -114,7 +113,7 @@ jobs:
           # `/failifmismatch: RuntimeLibrary`。
           # 注意：RUSTFLAGS 是 block scalar，里面不能写 # 注释（会被当成 rustc 参数）。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ runner.os == 'Linux' && '' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
