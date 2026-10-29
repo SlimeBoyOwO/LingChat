@@ -207,7 +207,7 @@ impl SherpaOnnxAdapter {
         let provider = Self::provider_for(use_gpu);
 
         let engine = |provider: Option<&str>| {
-            engine::create_engine(&model_type, model_dir, &language, provider, tuning)
+            engine::create_engine(&model_type, model_dir, provider, tuning)
         };
 
         let tts = match engine(provider) {

@@ -1,7 +1,8 @@
 //! Sherpa-ONNX TTS 输出的「能出声 + 时长随文本增长」回归检查。
 //!
-//! 背景：这类故障不会报错。最典型的是 kokoro 系列——不挂 lexicon 时中文会退到
-//! espeak-ng 音素化，实测只产出 0.2~0.5 秒的噪声甚至纯静音；用户侧表现就是
+//! 背景：这类故障不会报错。最典型的是 kokoro 系列——不挂 lexicon 时中文没有
+//! 音素化入口（sherpa-onnx 2.0 起已移除 espeak-ng），实测只产出 0.2~0.5 秒的噪声
+//! 甚至纯静音；用户侧表现就是
 //! 「日志显示能推理，但合成出来的不到 1 秒、效果极差」。因此这里在输出层面兜底：
 //! 断言峰值非静音，并且长文本的输出时长要按比例增长（防止被截断成一小段）。
 //!
@@ -18,7 +19,7 @@
 //! 不会交给 sherpa）：
 //! ```text
 //! node scripts/build-desktop-sherpa-dml.mjs   # 先把 DML 版库编出来
-//! SHERPA_ONNX_LIB_DIR=target/sherpa-onnx-directml/libs-v1.13.5 \
+//! SHERPA_ONNX_LIB_DIR=target/sherpa-onnx-directml/libs-v2.0.1 \
 //! SHERPA_MODEL_DIR=~/models/matcha-icefall-zh-baker SHERPA_MODEL_TYPE=matcha SHERPA_USE_GPU=1 \
 //!   cargo test -p ling-chat-main --features sherpa-shared --test sherpa_onnx_synthesis \
 //!   -- --ignored --nocapture
