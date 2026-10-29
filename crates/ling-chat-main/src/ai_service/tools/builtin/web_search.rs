@@ -13,8 +13,8 @@ use serde_json::Value;
 use crate::ai_service::llm::provider_config::{LlmProviderConfig, resolve_chat_provider};
 use crate::ai_service::types::ToolDefinition;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::settings::{SharedToolSettings, WebSearchSettings};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::settings::{SharedToolSettings, WebSearchSettings};
 
 /// 独立端点模式的执行超时。
 const SEARCH_TIMEOUT: Duration = Duration::from_secs(15);

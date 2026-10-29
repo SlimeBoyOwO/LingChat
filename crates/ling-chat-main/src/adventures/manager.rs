@@ -1,8 +1,12 @@
 use anyhow::{Result, anyhow};
-use chrono::Utc;
+use chrono::{NaiveDateTime, Utc};
 use sea_orm::*;
+use std::collections::HashMap;
 
 use crate::db::entities::adventure_unlock;
+
+/// 剧本目录名 → (解锁时间, 完成时间)。`completed_at` 为 `None` 表示已解锁未完成。
+pub type AdventureStates = HashMap<String, (Option<NaiveDateTime>, Option<NaiveDateTime>)>;
 
 /// adventure_unlock 表的无状态仓库.
 /// 遵循 SaveRepo 模式 — 函数接收 &DatabaseConnection 参数。
@@ -44,6 +48,19 @@ impl AdventureManager {
             .await
             .map_err(|e| anyhow!("插入冒险解锁记录失败: {e}"))?;
         Ok(())
+    }
+
+    /// 一次性读出全部解锁记录：键为剧本目录名，值为 `(unlocked_at, completed_at)`。
+    /// 列表接口逐个查表太碎，这里给上层做状态判定的批量入口。
+    pub async fn load_all_states(db: &DatabaseConnection) -> Result<AdventureStates> {
+        let rows = adventure_unlock::Entity::find()
+            .all(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+        Ok(rows
+            .into_iter()
+            .map(|r| (r.adventure_folder, (r.unlocked_at, r.completed_at)))
+            .collect())
     }
 
     /// Check if an adventure has been globally completed (completed_at is set).

@@ -324,6 +324,31 @@ export default {
     },
     otherToolsHint:
       "オンにすると、あの子がチャット中にこれらのツールを自分で使えるようになるよ（保存後に有効）",
+    embedding: {
+      cloudToggle: "クラウドのベクトル化モデルを使う（より賢くなる）",
+      cloudToggleHint:
+        "既定ではローカルの小型モデルを使うのでオフラインでも動くよ。オンにすると、ノートとツールのベクトルを下のクラウドモデルで計算する。",
+      privacyNotice: "オンにすると、ノートの内容が第三者モデルのサービスに送られて処理されるよ。",
+      provider: "プロバイダー",
+      providerOpenai: "OpenAI 互換（独自エンドポイント含む）",
+      providerGemini: "Gemini",
+      model: "モデル名",
+      modelPlaceholder: "例：text-embedding-3-small、bge-m3",
+      baseUrl: "Base URL（空なら公式を使う）",
+      baseUrlPlaceholder: "例：https://api.siliconflow.cn/v1",
+      apiKey: "API Key",
+      timeout: "1回のタイムアウト（秒）",
+      test: "接続テスト",
+      rebuild: "ベクトルを再構築",
+      testSuccess: "接続OK：{backend}、次元 {dimension}、{elapsed} ms",
+      testFailed: "テスト失敗：{message}",
+      rebuildStarted: "バックグラウンドで準備を開始したよ。進捗は自動で更新される",
+      warmingProgress: "ベクトル化中 {done}/{total}、失敗 {failed}",
+      warmingFinished: "ベクトル化が完了、失敗 {failed} 件",
+      alertTitle: "ノートのセマンティック検索を一時停止したよ",
+      alertMessage:
+        "クラウドのベクトル化（{backend}）が連続で失敗：{reason}。再起動するか設定を保存し直せば復帰するよ。",
+    },
     fileOpsAllowAnyPath: "サンドボックス外へのアクセスを許可（data/ 以外も読み書き可能に）",
     fileOpsAllowAnyPathHint:
       "⚠ 有効にするとPC上の任意のファイルを読み書きできます。信頼できるキャラ/モデルのみで使ってね",

@@ -327,6 +327,31 @@ export default {
     },
     otherToolsHint:
       "Once enabled, they can use these tools on their own while chatting (applies after saving)",
+    embedding: {
+      cloudToggle: "Use a cloud embedding model (smarter)",
+      cloudToggleHint:
+        "The local small model works offline by default. Turn this on to compute note and tool vectors with the cloud model below.",
+      privacyNotice: "Note contents will be sent to a third-party model service for processing.",
+      provider: "Provider",
+      providerOpenai: "OpenAI compatible (including custom endpoints)",
+      providerGemini: "Gemini",
+      model: "Model",
+      modelPlaceholder: "e.g. text-embedding-3-small, bge-m3",
+      baseUrl: "Base URL (leave empty for the official endpoint)",
+      baseUrlPlaceholder: "e.g. https://api.siliconflow.cn/v1",
+      apiKey: "API Key",
+      timeout: "Timeout per request (seconds)",
+      test: "Test connection",
+      rebuild: "Re-embed everything",
+      testSuccess: "Connection OK: {backend}, dimension {dimension}, {elapsed} ms",
+      testFailed: "Test failed: {message}",
+      rebuildStarted: "Background warm-up started; progress updates automatically",
+      warmingProgress: "Embedding {done}/{total}, {failed} failed",
+      warmingFinished: "Embedding finished, {failed} failed",
+      alertTitle: "Note semantic search is temporarily disabled",
+      alertMessage:
+        "Cloud embedding ({backend}) kept failing: {reason}. Restart or save the settings again to recover.",
+    },
     fileOpsAllowAnyPath:
       "Allow access outside the sandbox (they can read/write files beyond data/)",
     fileOpsAllowAnyPathHint:

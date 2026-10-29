@@ -1,7 +1,5 @@
 //! Script engine — story/script mode execution.
 //!
-//! Replaces Python's `ling_chat/core/ai_service/script_engine/` package.
-//!
 //! Architecture:
 //! - `ScriptManager` — script discovery, lifecycle, chapter orchestration
 //! - `Chapter` — wraps a chapter YAML and runs its events

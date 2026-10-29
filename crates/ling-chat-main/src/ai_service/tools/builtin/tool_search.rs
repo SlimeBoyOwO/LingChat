@@ -13,8 +13,8 @@ use tauri::Manager;
 use crate::AppState;
 use crate::ai_service::types::ToolDefinition;
 
-use super::executor::{Tool, ToolContext, ToolError};
-use super::tool_rag::{SEARCH_TOP_K, TOOL_SEARCH_NAME};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError};
+use crate::ai_service::tools::tool_rag::{SEARCH_TOP_K, TOOL_SEARCH_NAME};
 
 pub struct ToolSearch;
 

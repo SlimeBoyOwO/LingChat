@@ -1,7 +1,7 @@
 //! 好感度评估能力：状态快照 + 评估 prompt + 结果日志。
 //!
 //! 情感维度的调整、存档落点、事件广播与旁白台词由
-//! `tools::god_agent::UpdateAffection` 在执行时完成。
+//! `tools::builtin::god_agent::UpdateAffection` 在执行时完成。
 
 use std::collections::HashMap;
 
@@ -15,8 +15,8 @@ use crate::ai_service::game_system::player_identity::{
 };
 use crate::ai_service::game_system::status_ops::{RecentMemory, RecentMemoryAnchor};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
+use crate::ai_service::tools::builtin::god_agent::UPDATE_AFFECTION;
 use crate::ai_service::tools::game_status_handle;
-use crate::ai_service::tools::god_agent::UPDATE_AFFECTION;
 use crate::ai_service::types::{AffectionVector, GameLine, NegativeVector};
 use crate::utils::prompt::PromptRole;
 

@@ -7,7 +7,7 @@
 //! - `Agent`：上帝 Agent 看一遍最近的对话，按语义挑；
 //! - `Rag`：拿玩家这一句话静默检索一次工具，分数过阈值的才留下。
 //!
-//! 两者都只产出一条**临时记忆**（走 `status_ops::RequestScoped`，只搭本轮请求、
+//! 两者都只产出一条临时记忆（走 `status_ops::RequestScoped`，只搭本轮请求、
 //! 不写台词表、不进记忆），外加几个要并进本轮工具集的名字。推荐不构成授权：命中的
 //! 名字在调用方（`tool_loop::activate_recommended`）还要过一遍权限集才会真正下发。
 //!
@@ -20,7 +20,7 @@ use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::tools::agent::AgentTask;
-use crate::ai_service::tools::god_agent::RECOMMEND_TOOLS;
+use crate::ai_service::tools::builtin::god_agent::RECOMMEND_TOOLS;
 use crate::ai_service::tools::tool_rag::{AUTO_RECOMMEND_MIN_SCORE, AUTO_RECOMMEND_TOP_K, ToolRag};
 use crate::ai_service::types::{GameLine, ToolDefinition};
 use crate::utils::prompt::PromptRole;

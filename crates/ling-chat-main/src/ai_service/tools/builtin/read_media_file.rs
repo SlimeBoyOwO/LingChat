@@ -19,8 +19,8 @@ use crate::ai_service::skill_agent::config::SkillAgentConfig;
 use crate::ai_service::skill_agent::file_tools::FileTools;
 use crate::ai_service::types::ToolDefinition;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::settings::{MediaFileSettings, SharedToolSettings};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::settings::{MediaFileSettings, SharedToolSettings};
 
 const HARD_MAX_MEDIA_BYTES: u64 = 100 * 1024 * 1024;
 const MAX_DECODE_DIMENSION: u32 = 32_768;

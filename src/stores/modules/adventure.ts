@@ -128,5 +128,20 @@ export const useAdventureStore = defineStore("adventure", {
         adventure.completed_at = new Date().toISOString();
       }
     },
+
+    /**
+     * 后端解锁某条羁绊后同步本地列表状态。
+     * 不写这一步的话，面板要等到下次重新拉取才会脱离「锁定」外观，
+     * 玩家会觉得解锁通知弹了但剧本还是点不开。
+     */
+    markAdventureUnlocked(adventureFolder: string) {
+      const adventure = this.currentCharacterAdventures.find(
+        (adv) => adv.adventure_folder === adventureFolder,
+      );
+      if (adventure && adventure.status === "locked") {
+        adventure.status = "unlocked";
+        adventure.unlocked_at = new Date().toISOString();
+      }
+    },
   },
 });

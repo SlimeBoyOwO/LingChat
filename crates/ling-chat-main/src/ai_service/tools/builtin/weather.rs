@@ -7,8 +7,8 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::ToolDefinition;
 use crate::config::AppConfig;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::game_status_handle;
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::game_status_handle;
 
 // ============ 天气上下文缓存 ============
 //
