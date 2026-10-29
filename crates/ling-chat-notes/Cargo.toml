@@ -46,10 +46,9 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
 ] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
-    "download-binaries",
-    "tls-native",
-] }
+# 与主 crate 保持一致：aarch64 的 sherpa 走 shared，ORT 由 sherpa 的
+# libonnxruntime.so 提供；ort 只负责运行期加载，不能再静态链接一份 ORT。
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
