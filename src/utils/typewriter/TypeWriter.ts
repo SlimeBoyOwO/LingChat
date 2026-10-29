@@ -194,7 +194,7 @@ export class TypeWriter {
           //并保留了原本的微量随机偏移设计
           const maxDelay = 200;
           const minDelay = 10;
-          const randomVariation = this.speed * 0.2;
+          const randomVariation = this.speed * 0.02;
           const delay =
             maxDelay -
             ((this.speed - 1) / 99) * (maxDelay - minDelay) +
