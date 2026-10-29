@@ -31,19 +31,34 @@ fn narrator_line(text: String) -> LineBase {
 #[tauri::command]
 pub async fn list_player_identities(app: AppHandle) -> Result<Vec<PlayerIdentitySummary>, String> {
     let store = store();
-    let current_id = store.current_id();
-    let mut items: Vec<PlayerIdentitySummary> = store
-        .list()
-        .iter()
-        .map(|identity| PlayerIdentitySummary::from_identity(identity, current_id.as_deref()))
-        .collect();
+    let list = |store: &IdentityStore| {
+        let current_id = store.current_id();
+        store
+            .list()
+            .iter()
+            .map(|identity| PlayerIdentitySummary::from_identity(identity, current_id.as_deref()))
+            .collect::<Vec<_>>()
+    };
+    let mut items = list(&store);
 
+    // 还没有任何身份卡时，按当前角色卡补一张并落盘，避免设置页只看到未保存的临时身份。
+    // 游戏还没初始化（没有主角）时不合成，避免先落一张叫「用户」的占位卡。
     if items.is_empty() {
-        if let Ok(current) = current_identity(&app).await {
-            items.push(PlayerIdentitySummary::from_identity(
-                &current,
-                Some(&current.id),
-            ));
+        let has_main_role = {
+            let state = app.state::<AppState>();
+            let service = state.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            gs.main_role_id.is_some()
+        };
+        if has_main_role {
+            let current = current_identity(&app).await?;
+            items = list(&store);
+            if items.is_empty() {
+                items.push(PlayerIdentitySummary::from_identity(
+                    &current,
+                    Some(&current.id),
+                ));
+            }
         }
     }
 
@@ -294,12 +309,25 @@ pub async fn set_current_player_identity(
         }
     }
 
-    // 记录全局当前身份 + 同步到当前存档（读档才能恢复到同一个身份）
+    // 记录全局当前身份 + 角色默认绑定 + 同步到当前存档（读档才能恢复到同一个身份）
     store()
         .set_current_id(&identity.id)
         .map_err(|e| format!("记录当前身份失败: {e}"))?;
 
-    let active_save_id = service.game_status.lock().await.active_save_id;
+    let (folder, active_save_id) = {
+        let gs = service.game_status.lock().await;
+        let folder = gs.main_role_id.and_then(|rid| {
+            gs.role_manager
+                .get_loaded(rid)
+                .map(|role| role.settings.character_folder.clone())
+        });
+        (folder, gs.active_save_id)
+    };
+    if let Some(folder) = folder {
+        if let Err(e) = store().bind_character(&folder, &identity.id) {
+            tracing::warn!("记录角色默认身份失败: {e}");
+        }
+    }
     if let Some(save_id) = active_save_id {
         if let Err(e) = SaveRepo::upsert_save_identity(&state.db, save_id, &identity.id).await {
             tracing::warn!("同步存档身份失败: {e}");
@@ -347,6 +375,18 @@ pub async fn start_new_game_with_identity(
     };
     if character_id.is_none() {
         return Err("还没有选择 AI 角色，无法开始新对话。".to_string());
+    }
+
+    // 显式选择的身份要盖过角色默认绑定，否则开局引导会把玩家换回老卡身份。
+    if let Some(cid) = character_id {
+        match role_folder(&state, cid).await {
+            Ok(folder) => {
+                if let Err(e) = store().bind_character(&folder, &identity.id) {
+                    tracing::warn!("记录角色默认身份失败: {e}");
+                }
+            },
+            Err(e) => tracing::warn!("读取角色目录失败，跳过身份绑定: {e}"),
+        }
     }
 
     service
@@ -445,7 +485,7 @@ async fn current_identity(app: &AppHandle) -> Result<PlayerIdentity, String> {
         return Ok(existing);
     }
 
-    let (name, subtitle) = {
+    let (name, subtitle, folder) = {
         let service = state.ai_service.lock().await;
         let gs = service.game_status.lock().await;
         let settings = gs
@@ -453,22 +493,31 @@ async fn current_identity(app: &AppHandle) -> Result<PlayerIdentity, String> {
             .and_then(|rid| gs.role_manager.get_loaded(rid))
             .map(|role| role.settings.clone());
         match settings {
-            Some(s) => (
-                s.user_name.clone(),
-                s.user_subtitle.clone().unwrap_or_default(),
-            ),
-            None => ("用户".to_string(), String::new()),
+            Some(s) => {
+                let name =
+                    if s.user_name.trim().is_empty() || s.user_name.trim() == "user_name未设定" {
+                        "用户".to_string()
+                    } else {
+                        s.user_name.clone()
+                    };
+                (
+                    name,
+                    s.user_subtitle.clone().unwrap_or_default(),
+                    s.character_folder.clone(),
+                )
+            },
+            None => ("用户".to_string(), String::new(), String::new()),
         }
     };
 
-    Ok(PlayerIdentity {
-        id: String::new(),
-        name,
-        subtitle,
-        prompt: String::new(),
-        avatar: None,
-        relations: HashMap::new(),
-    })
+    // 首次打开设置页时也把合成身份落盘，避免只显示一张 id 为空的临时卡。
+    let identity = store.current_or_synthesize(&name, &subtitle);
+    if !identity.id.trim().is_empty() && !folder.trim().is_empty() {
+        if let Err(e) = store.bind_character(&folder, &identity.id) {
+            tracing::warn!("绑定角色默认身份失败: {e}");
+        }
+    }
+    Ok(identity)
 }
 
 async fn role_folder(state: &AppState, role_id: i32) -> Result<String, String> {

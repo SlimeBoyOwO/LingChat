@@ -19,13 +19,23 @@ pub fn relation_side_status_from_maps(
     role_side: &HashMap<String, String>,
     identity_side: &HashMap<String, String>,
     role_folder: &str,
+    identity_id: &str,
 ) -> (bool, bool) {
-    let role_ok = !role_side.is_empty();
-    let key = RelationEndpoint::Ai(role_folder.to_string()).key();
+    let ai_key = RelationEndpoint::Ai(role_folder.to_string()).key();
     let identity_ok = identity_side
-        .get(&key)
+        .get(&ai_key)
         .map(|text| !text.trim().is_empty())
         .unwrap_or(false);
+    // 角色侧必须针对「当前身份」写一条；other identities 的关系不能算数。
+    let role_ok = if identity_id.trim().is_empty() {
+        !role_side.is_empty()
+    } else {
+        let me_key = RelationEndpoint::Me(identity_id.to_string()).key();
+        role_side
+            .get(&me_key)
+            .map(|text| !text.trim().is_empty())
+            .unwrap_or(false)
+    };
     (role_ok, identity_ok)
 }
 
@@ -55,7 +65,7 @@ pub fn relation_ready_all(
         }
         let role_side = load_effective(data_dir, &folder, gs);
         let (role_ok, identity_ok) =
-            relation_side_status_from_maps(&role_side, &identity_side, &folder);
+            relation_side_status_from_maps(&role_side, &identity_side, &folder, identity_id);
         out.push(RoleRelationStatus {
             role_id: *rid,
             role_side: role_ok,

@@ -11,6 +11,7 @@ use super::PlayerIdentity;
 
 const IDENTITY_FILE: &str = "identity.yml";
 const CURRENT_FILE: &str = "_current.json";
+const BINDINGS_FILE: &str = "_character_bindings.json";
 const TRASH_DIR: &str = ".trash";
 const IDENTITY_DIR: &str = "player_identities";
 
@@ -124,6 +125,74 @@ impl IdentityStore {
         }
     }
 
+    /// 按名字找身份卡；老角色卡迁移时用来复用同名卡，避免重复创建。
+    pub fn find_by_name(&self, name: &str) -> Option<PlayerIdentity> {
+        let name = name.trim();
+        if name.is_empty() {
+            return None;
+        }
+        self.scan()
+            .into_iter()
+            .map(|(_, identity)| identity)
+            .find(|identity| identity.name.trim() == name)
+    }
+
+    /// 角色目录绑定的默认身份；绑定失效（卡被删）时返回 None。
+    pub fn bound_identity(&self, character_folder: &str) -> Option<PlayerIdentity> {
+        let folder = character_folder.trim();
+        if folder.is_empty() {
+            return None;
+        }
+        let id = self.read_bindings().get(folder).cloned()?;
+        self.find_by_id(&id)
+    }
+
+    /// 把角色目录绑定到某张身份卡；关系引导和换身份都靠它记住用户选择。
+    pub fn bind_character(&self, character_folder: &str, identity_id: &str) -> Result<()> {
+        let folder = character_folder.trim();
+        let identity_id = identity_id.trim();
+        if folder.is_empty() || identity_id.is_empty() {
+            return Ok(());
+        }
+        let mut bindings = self.read_bindings();
+        if bindings.get(folder).map(String::as_str) == Some(identity_id) {
+            return Ok(());
+        }
+        bindings.insert(folder.to_string(), identity_id.to_string());
+        self.write_bindings(&bindings)
+    }
+
+    /// 删除身份卡时清掉指向它的角色绑定，避免下次加载读到悬空 id。
+    pub fn remove_bindings_for_identity(&self, identity_id: &str) -> Result<()> {
+        let identity_id = identity_id.trim();
+        if identity_id.is_empty() {
+            return Ok(());
+        }
+        let mut bindings = self.read_bindings();
+        let before = bindings.len();
+        bindings.retain(|_, id| id.as_str() != identity_id);
+        if bindings.len() != before {
+            self.write_bindings(&bindings)?;
+        }
+        Ok(())
+    }
+
+    fn read_bindings(&self) -> HashMap<String, String> {
+        fs::read_to_string(self.root.join(BINDINGS_FILE))
+            .ok()
+            .and_then(|raw| serde_json::from_str(&raw).ok())
+            .unwrap_or_default()
+    }
+
+    fn write_bindings(&self, bindings: &HashMap<String, String>) -> Result<()> {
+        self.ensure_root()?;
+        let raw = serde_json::to_string_pretty(bindings)?;
+        fs::write(self.root.join(BINDINGS_FILE), raw).with_context(|| {
+            format!("写入角色身份绑定失败: {:?}", self.root.join(BINDINGS_FILE))
+        })?;
+        Ok(())
+    }
+
     pub fn save(&self, identity: &PlayerIdentity) -> Result<PlayerIdentity> {
         self.ensure_root()?;
 
@@ -173,6 +242,7 @@ impl IdentityStore {
         if self.current_id().as_deref() == Some(id) {
             let _ = fs::remove_file(self.root.join(CURRENT_FILE));
         }
+        let _ = self.remove_bindings_for_identity(id);
 
         Ok(true)
     }
