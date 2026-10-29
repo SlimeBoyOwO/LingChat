@@ -20,8 +20,8 @@ use ling_chat_notes::NotesStore;
 use ling_chat_notes::embedding::Embedder;
 use ling_chat_notes::retrieval::{DEFAULT_TOP_K, MAX_TOP_K, NotesVectorIndex};
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{ensure_no_args, game_status_handle};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::{ensure_no_args, game_status_handle};
 
 // ─── 角色名解析（工具层）：把外部角色名映射到笔记库使用的权威展示名 ───
 

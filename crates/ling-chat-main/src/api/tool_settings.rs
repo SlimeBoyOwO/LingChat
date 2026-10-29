@@ -16,10 +16,10 @@ use crate::AppState;
 use crate::ai_service::embedding_remote::{WarmingProgress, emit_warming};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::skill_agent::command_executor;
+use crate::ai_service::tools::builtin::web_search::WebSearchTool;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
 use crate::ai_service::tools::settings::ToolSettings;
-use crate::ai_service::tools::web_search::WebSearchTool;
 use crate::api::character::read_character_settings;
 use crate::db::managers::role_repo::RoleRepo;
 

@@ -25,7 +25,7 @@ Chat/ChatStream/Embed，全仓零命中），自建 HTTP 的成本与收益要�
 ## 2. 探明的现状（决定了方案的形状）
 
 - 所有嵌入调用都已包在 `tokio::task::spawn_blocking` 闭包内
-  （`ai_service/tools/memory.rs` 检索分支、`ai_service/tools/tool_rag.rs` 批量嵌入分支）。
+  （`ai_service/tools/builtin/memory.rs` 检索分支、`ai_service/tools/tool_rag.rs` 批量嵌入分支）。
   阻塞线程不是 async 上下文，因此**嵌入接口可以保持同步**，云端实现内部用 tokio
   `Handle::block_on` 驱动一次 genai 异步请求即可。整条检索链路的签名、并发模型、
   SQLite 访问模式都不用动。这是本方案最重要的前提。

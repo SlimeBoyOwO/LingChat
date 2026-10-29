@@ -176,7 +176,7 @@ pub(super) fn build_service_graph(
             ling_chat_main::data_dir::get_data_dir(),
         )?,
     );
-    let tool_registry = Arc::new(ai_service::tools::built_in_registry(
+    let tool_registry = Arc::new(ai_service::tools::builtin::built_in_registry(
         role_names,
         tool_settings.clone(),
     )?);

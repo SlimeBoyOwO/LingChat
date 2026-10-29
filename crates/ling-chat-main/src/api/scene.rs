@@ -603,7 +603,7 @@ pub async fn set_weather_city(app: AppHandle, city: String) -> Result<(), String
         .unwrap_or(false);
     if !city.is_empty() && sync_on {
         tauri::async_runtime::spawn(async move {
-            crate::ai_service::tools::weather::fetch_and_apply_now(&app).await;
+            crate::ai_service::tools::builtin::weather::fetch_and_apply_now(&app).await;
         });
     }
     Ok(())
@@ -628,9 +628,9 @@ pub async fn set_weather_auto_sync(app: AppHandle, enabled: bool) -> Result<(), 
     }
     if enabled {
         // 先用缓存立即应用一次（若有），再后台拉最新——两步都不阻塞设置页
-        crate::ai_service::tools::weather::sync_weather_effect(&app).await;
+        crate::ai_service::tools::builtin::weather::sync_weather_effect(&app).await;
         tauri::async_runtime::spawn(async move {
-            crate::ai_service::tools::weather::fetch_and_apply_now(&app).await;
+            crate::ai_service::tools::builtin::weather::fetch_and_apply_now(&app).await;
         });
     }
     Ok(())

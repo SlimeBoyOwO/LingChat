@@ -30,14 +30,15 @@ LLM 层       LlmClient → LlmProvider
 
 **各文件职责：**
 
-| 文件                   | 职责                                                                                                                            |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| `tools/mod.rs`         | 模块入口；`built_in_registry()`：注册内置工具 → 加载/创建权限配置 → 把角色初始化进 `default` 角色组                             |
-| `tools/registry.rs`    | `ToolRegistry`：`register`（重名拒绝）/ `get` / `definitions` / `definitions_for_allowed` / `definitions_for` / `allowed_tools` |
-| `tools/executor.rs`    | `Tool` trait、`ToolContext`、`ToolExecutor`                                                                                     |
-| `tools/tool_loop.rs`   | `stream_with_tool_loop` 工具闭环                                                                                                |
-| `tools/permissions.rs` | `ToolPermissionConfig` 权限矩阵                                                                                                 |
-| `tools/clock.rs`       | 内置示例工具 `get_current_time`                                                                                                 |
+| 文件                     | 职责                                                                                                                            |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------- |
+| `tools/mod.rs`           | 工具系统入口：模块声明与共享辅助                                                                                                |
+| `tools/builtin/mod.rs`   | `built_in_registry()`：注册内置工具 → 加载/创建权限配置 → 把角色初始化进 `default` 角色组                                       |
+| `tools/registry.rs`      | `ToolRegistry`：`register`（重名拒绝）/ `get` / `definitions` / `definitions_for_allowed` / `definitions_for` / `allowed_tools` |
+| `tools/executor.rs`      | `Tool` trait、`ToolContext`、`ToolExecutor`                                                                                     |
+| `tools/tool_loop.rs`     | `stream_with_tool_loop` 工具闭环                                                                                                |
+| `tools/permissions.rs`   | `ToolPermissionConfig` 权限矩阵                                                                                                 |
+| `tools/builtin/clock.rs` | 内置示例工具 `get_current_time`                                                                                                 |
 
 ## 2. 核心类型（types.rs / executor.rs）
 
@@ -105,7 +106,7 @@ pub trait Tool: Send + Sync {
 
 ```rust
 let role_names = RoleRepo::get_all_tool_role_names(&db)?;   // (role.name, ai_name) 列表
-let tool_registry = Arc::new(tools::built_in_registry(role_names)?);
+let tool_registry = Arc::new(tools::builtin::built_in_registry(role_names)?);
 ```
 
 `built_in_registry` 的三件事：
@@ -298,12 +299,12 @@ async fn run_pipeline(&self, context: Vec<LlmMessage>, ...) -> Result<String> {
 
 God Agent 的两个能力（`select_next_speaker` / `update_affection`）现在是本子系统的**真实工具**，实现 `Tool` trait、走同一个 `ToolExecutor`，因而共享 schema 校验、超时与统一的错误编码。差别只在注册表与闭环形态：
 
-|          | 通用聊天工具（PR #523）             | God Agent 决策工具                                       |
-| -------- | ----------------------------------- | -------------------------------------------------------- |
-| 注册     | `built_in_registry()`（含权限页）   | `tools::god_agent::god_agent_registry()`（独立注册表）   |
-| 权限     | 「场景组 × 角色组」矩阵             | 无（不进权限矩阵，也不出现在 `tool_permissions.toml`）   |
-| 入口     | `stream_with_tool_loop`（流式闭环） | `tools::agent::run_tool_agent`（非流式，`max_rounds=1`） |
-| 结果去向 | 台词表 + 记忆                       | 副作用就地落地（切说话者 / 改好感度），不进台词表        |
+|          | 通用聊天工具（PR #523）             | God Agent 决策工具                                              |
+| -------- | ----------------------------------- | --------------------------------------------------------------- |
+| 注册     | `built_in_registry()`（含权限页）   | `tools::builtin::god_agent::god_agent_registry()`（独立注册表） |
+| 权限     | 「场景组 × 角色组」矩阵             | 无（不进权限矩阵，也不出现在 `tool_permissions.toml`）          |
+| 入口     | `stream_with_tool_loop`（流式闭环） | `tools::agent::run_tool_agent`（非流式，`max_rounds=1`）        |
+| 结果去向 | 台词表 + 记忆                       | 副作用就地落地（切说话者 / 改好感度），不进台词表               |
 
 God Agent 的决策是单发的：执行结果不回填给 LLM，因此 `agent.rs` 不需要聊天侧那套 continuation / final-synthesis 提示词，也不产任何前端事件。
 
