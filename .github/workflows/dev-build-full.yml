@@ -133,6 +133,15 @@ jobs:
           if [ "${{ runner.os }}" = "Linux" ] && [ -e "target/release/libwebgpu_dawn.so" ]; then
             cp -L "target/release/libwebgpu_dawn.so" "${{ runner.temp }}/dist/"
           fi
+          # Linux aarch64 的 sherpa 走 shared，ORT 也由同一份 libonnxruntime.so 提供；
+          # 裸二进制运行需要它们和 exe 同目录（$ORIGIN RPATH）。
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            for lib in libsherpa-onnx-c-api.so libonnxruntime.so; do
+              if [ -e "target/release/$lib" ]; then
+                cp -L "target/release/$lib" "${{ runner.temp }}/dist/"
+              fi
+            done
+          fi
 
       - name: 上传 artifact
         uses: actions/upload-artifact@v4

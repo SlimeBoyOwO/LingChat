@@ -6,14 +6,15 @@
 //     DT_NEEDED 里有 `libwebgpu_dawn.so`，而这个库只躺在 target/<profile>/ 里
 //     （ort `copy-dylibs` 的产物），没有任何打包配置带上它 —— deb/rpm 装完一启动
 //     就是 `error while loading shared libraries: libwebgpu_dawn.so`。
-//   - 桌面端的 sherpa-onnx 用**官方 CPU 预编译包 + 静态链接**（GPU 推理只在
-//     Android/iOS 走设备后端，见 docs/inference-devices.md），所以除 Dawn 之外
-//     没有别的动态库要带。
+//   - Linux aarch64 的 sherpa-onnx 用官方 shared CPU 包：可执行文件会依赖
+//     `libsherpa-onnx-c-api.so` 和 `libonnxruntime.so`，而 ort 也通过
+//     `load-dynamic` 复用同一份 ORT。这两个库必须随包，否则启动即缺库。
+//   - Linux x86_64 的 sherpa 仍是静态 CPU 库，除 Dawn 外没有别的动态库要带。
 //
-// 落点：/usr/lib 是加载器的默认搜索目录。实测 cargo 产出的可执行文件里没有
-// RPATH/RUNPATH（依赖 crate 的 build script 用 `cargo:rustc-link-arg` 加的
-// 那套只作用于该 crate 自己的 target），所以「把库放在可执行文件旁边」在 Linux
-// 上行不通。
+// 落点：/usr/lib 是加载器的默认搜索目录。依赖 crate 的 build script 用
+// `cargo:rustc-link-arg` 加的 rpath 只作用于该 crate 自己的 target；桌面 bin 的
+// RPATH 由 src-tauri/build.rs 单独写入（$ORIGIN、$ORIGIN/../lib 等），但安装包
+// 仍统一把库放到 /usr/lib，避免依赖构建机上的绝对路径。
 //   - Linux：由 src-tauri/tauri.conf.json 的 bundle.linux.{deb,rpm,appimage}.files
 //     把 .runtime-libs/ 映射到 /usr/lib（AppImage 里即 AppDir 的 usr/lib）。
 //   - Windows：资源目录就是安装目录（exe 旁边，见 tauri.windows.conf.json 里
@@ -46,6 +47,9 @@ const targetRoot = process.env.CARGO_TARGET_DIR || join(projectRoot, "target");
 
 /** ort 的 WebGPU 后端（wgpu/Dawn），Linux x86_64 可执行文件直接依赖它。 */
 const DAWN_LIB = "libwebgpu_dawn.so";
+
+/** Linux aarch64：sherpa shared 包提供的运行库（ORT 也由它提供给 ort）。 */
+const SHERPA_SHARED_LIB_RE = /^lib(sherpa-onnx-c-api|onnxruntime).*\.so/;
 
 /** 属于「我们自己打包的库」，缺了就是安装包坏了（用来判定必需库是否齐）。 */
 const OWN_LIB_RE = /^(libwebgpu_dawn|libsherpa-onnx|libonnxruntime)/;
@@ -257,6 +261,27 @@ function stageForLinux(log) {
   if (binary && needed) {
     const own = needed.filter((n) => OWN_LIB_RE.test(n));
     if (own.length) log(`可执行文件 ${binary} 直接依赖: ${own.join(", ")}`);
+  }
+
+  // aarch64 的 sherpa 走 shared，ORT 也由同一份 libonnxruntime.so 提供。
+  // 从可执行文件的 DT_NEEDED 出发做闭包，只带真正需要的库；不能扫 target
+  // 目录里的所有 libonnxruntime*，否则旧 CUDA/TensorRT 构建残留会被误打进包。
+  const pending = (needed ?? []).filter((name) => SHERPA_SHARED_LIB_RE.test(name));
+  const stagedShared = new Set();
+  while (pending.length) {
+    const name = pending.shift();
+    if (stagedShared.has(name)) continue;
+    stagedShared.add(name);
+    const src = findArtifact(name);
+    if (!src) continue;
+    copyFileSync(src, join(stageDir, name));
+    staged.push(name);
+    for (const dep of elfNeededLibs(src) ?? []) {
+      if (SHERPA_SHARED_LIB_RE.test(dep)) pending.push(dep);
+    }
+  }
+  if (stagedShared.size) {
+    notes.push(`sherpa shared 运行库随包: ${[...stagedShared].join(", ")}`);
   }
 
   // ort 的 WebGPU 后端（ort-sys 会 emit `rustc-link-lib=webgpu_dawn`）。它是否留在
