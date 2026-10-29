@@ -90,7 +90,8 @@ jobs:
             libxi-dev \
             libxtst-dev \
             libwayland-dev \
-            libdbus-1-dev
+            libdbus-1-dev \
+            mold
 
       - name: 创建占位文件和初始化
         shell: bash
@@ -112,8 +113,12 @@ jobs:
           # `-static-MT-`（/MT 静态 CRT），而 Rust / cc 默认 /MD，链接时报
           # `/failifmismatch: RuntimeLibrary`。
           # 注意：RUSTFLAGS 是 block scalar，里面不能写 # 注释（会被当成 rustc 参数）。
+          # Linux：mold 对 ort 与 sherpa 各自静态链接的 ORT 目标文件更严格，
+          # 需要 --allow-multiple-definition 才能接受重复的 onnx-ml.pb.cc.o /
+          # data_types.cc.o / logging.cc.o。两套 ORT 仍会同时进二进制，先用它
+          # 验证构建；运行期若有问题再回到 shared + load-dynamic。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '' || '' }}
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
@@ -132,15 +137,6 @@ jobs:
           # 同理，Linux x86_64 的 WebGPU EP 依赖 Dawn 动态库，放 exe 同目录由 RPATH 的 $ORIGIN 命中
           if [ "${{ runner.os }}" = "Linux" ] && [ -e "target/release/libwebgpu_dawn.so" ]; then
             cp -L "target/release/libwebgpu_dawn.so" "${{ runner.temp }}/dist/"
-          fi
-          # Linux aarch64 的 sherpa 走 shared，ORT 也由同一份 libonnxruntime.so 提供；
-          # 裸二进制运行需要它们和 exe 同目录（$ORIGIN RPATH）。
-          if [ "${{ runner.os }}" = "Linux" ]; then
-            for lib in libsherpa-onnx-c-api.so libonnxruntime.so; do
-              if [ -e "target/release/$lib" ]; then
-                cp -L "target/release/$lib" "${{ runner.temp }}/dist/"
-              fi
-            done
           fi
 
       - name: 上传 artifact

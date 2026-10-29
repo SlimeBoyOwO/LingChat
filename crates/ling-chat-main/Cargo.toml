@@ -142,15 +142,12 @@ sherpa-onnx = { version = "=1.13.5", default-features = false }
 sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
-# aarch64 不能像 x86_64 那样让 ort 和 sherpa 都静态链接：ort 的
-# `download-binaries` 与 sherpa 的 `linux-aarch64-static-lib` 各带一份
-# libonnxruntime.a，GNU ld 会在 logging.cc.o 等目标文件上报 multiple definition。
-# 这里改用 sherpa 官方 shared CPU 包，并让 ort 走 load-dynamic，二者在运行期
-# 共用同一个 libonnxruntime.so；该库由 stage-desktop-runtime-libs.mjs 随包。
-ort = { version = "=2.0.0-rc.13", default-features = false, features = ["load-dynamic"] }
-# sherpa-onnx 的 sys 包里有 `linux-aarch64-shared-cpu-lib` 的官方预编译包。
-sherpa-onnx = { version = "=1.13.5", default-features = false, features = ["shared"] }
-sherpa-onnx-sys = { version = "=1.13.5", default-features = false, features = ["shared"] }
+# 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
+ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
+# sherpa-onnx 的 sys 包里有 `linux-aarch64-static-lib` 的官方预编译包，之前只在
+# x86_64 / macOS / Android 下声明了依赖，arm64 Linux 构建直接 unresolved import。
+sherpa-onnx = { version = "=1.13.5", default-features = false }
+sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
@@ -174,10 +171,8 @@ sherpa-onnx-sys = { version = "=1.13.5", default-features = false }
 # shared 同时开是硬报错（`Features \`static\` and \`shared\` cannot be enabled at
 # the same time`），所以不能像以前那样在 build.rs 里按环境变量把 static 顶掉。
 #
-#   - 默认（都不开）：上游 build.rs 落回 Static。Windows/Linux x86_64/macOS 的
-#     CPU 构建都是这样（避免运行时缺 DLL/.so）。
-#   - Linux aarch64：不走这个 feature，而是在 target 依赖里直接启用
-#     `sherpa-onnx/shared`，并让 ort 走 `load-dynamic`，避免两份静态 ORT 冲突。
+#   - 默认（都不开）：上游 build.rs 落回 Static。Windows/Linux/macOS 的 CPU 构建
+#     都是这样（避免运行时缺 DLL/.so）。
 #   - Windows DirectML 变体：`--features sherpa-shared`，配合
 #     scripts/build-desktop-sherpa-dml.mjs 导出的 SHERPA_ONNX_LIB_DIR（自编的
 #     DirectML 版动态库；运行期复用应用随包的 onnxruntime.dll）。
