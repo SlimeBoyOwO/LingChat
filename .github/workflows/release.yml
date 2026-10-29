@@ -142,10 +142,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # Linux：mold + --allow-multiple-definition，处理 ort/sherpa 静态 ORT
-          # 目标文件的重复符号；与 dev-build 保持一致。
+          # Linux：sherpa 走官方 shared 包、其 ORT 在 .so 里，与 ort 静态链接的
+          # ORT 错开，不再有重复符号；保留 mold 加速链接。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition' || '' }}
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
@@ -173,8 +173,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # 与 dev-build 保持一致：Linux 用 mold，并允许静态 ORT 的重复定义。
-          RUSTFLAGS: -C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition
+          # 与 dev-build 保持一致：Linux 用 mold（sherpa shared 后无需再允许重复定义）。
+          RUSTFLAGS: -C link-arg=-fuse-ld=mold
         run: |
           cargo build --release
           DAWN=$(find target/release -maxdepth 1 -name "libwebgpu_dawn.so" 2>/dev/null | head -1)

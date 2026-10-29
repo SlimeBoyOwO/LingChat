@@ -21,14 +21,13 @@ use super::{MAX_NUM_SENTENCES, SILENCE_SCALE, SherpaTuning};
 pub(super) fn create_engine(
     model_type: &str,
     model_dir: &Path,
-    language: &str,
     provider: Option<&str>,
     tuning: SherpaTuning,
 ) -> Result<OfflineTts> {
     match model_type {
         "vits" | "fastspeech2" => create_vits_tts(model_dir, provider),
         "matcha" => create_matcha_tts(model_dir, provider),
-        "kokoro" => create_kokoro_tts(model_dir, language, provider),
+        "kokoro" => create_kokoro_tts(model_dir, provider),
         "kitten" => create_kitten_tts(model_dir, provider),
         "zipvoice" => create_zipvoice_tts(model_dir, provider, tuning.guidance_scale),
         "pocket" => create_pocket_tts(model_dir, provider),
@@ -74,8 +73,8 @@ fn create_vits_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTt
         lexicon: find_file_optional(model_dir, &["lexicon.txt"])
             .map(|p| p.to_string_lossy().to_string()),
         tokens: Some(tokens_file.to_string_lossy().to_string()),
-        data_dir: find_dir_optional(model_dir, &["data-dir", "data"])
-            .map(|p| p.to_string_lossy().to_string()),
+        // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
+        data_dir: None,
         noise_scale: 0.667,
         noise_scale_w: 0.8,
         length_scale: 1.0,
@@ -91,11 +90,6 @@ fn create_vits_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTt
         model_dir,
         "VITS",
     )
-}
-
-/// 返回 `espeak-ng-data` 目录路径（即 data_dir 的取值）。
-fn espeak_data_dir(model_dir: &Path) -> Option<PathBuf> {
-    find_dir_optional(model_dir, &["espeak-ng-data"])
 }
 
 /// Matcha：声学模型 + vocoder（22k/16k 的 vocos 或 hifigan）。
@@ -122,7 +116,8 @@ fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
         lexicon: find_file_optional(model_dir, &["lexicon.txt"])
             .map(|p| p.to_string_lossy().to_string()),
         tokens: Some(tokens_file.to_string_lossy().to_string()),
-        data_dir: espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
+        // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
+        data_dir: None,
         noise_scale: 0.667,
         length_scale: 1.0,
         dict_dir: find_dir_optional(model_dir, &["dict"]).map(|p| p.to_string_lossy().to_string()),
@@ -140,12 +135,9 @@ fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
 
 /// Kokoro 多语言：`voices.bin` 选音色，lexicon 决定读得出哪些文字。
 ///
-/// `lang` 只给日文：其余语言交给模型自己判断（见函数内注释）。
-fn create_kokoro_tts(
-    model_dir: &Path,
-    language: &str,
-    provider: Option<&str>,
-) -> Result<OfflineTts> {
+/// sherpa-onnx 2.0 起不再内置 espeak-ng，`data_dir` / `lang` 都被忽略；语言完全由
+/// 模型目录里的 `lexicon*.txt` 决定。因此这里把能找到的词表全部传给 Kokoro。
+fn create_kokoro_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
     let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
     let voices = find_file(model_dir, &["voices.bin"])?;
     // Android/arm64 上 kokoro 的 int8 量化会输出纯静音或钉死的垃圾样本（上游
@@ -163,25 +155,15 @@ fn create_kokoro_tts(
              或其他模型"
         ));
     }
-    // 多语言模型：只有日文需要显式指定——不指定时会被逐字当成中文念（27 字要
-    // 16 秒）。中文/英文/中英混合以及数字都交给模型自行判断即可；显式传 "zh"
-    // 反而会把句子里的英文片段和数字整段丢掉（音素化失败后静默跳过）。
-    // 注意不能传 "auto"：它会让纯英文/日文片段音素化失败并让整次合成直接报错。
-    let lang = match language.trim() {
-        "ja" => Some("ja".to_string()),
-        _ => None,
-    };
-
     let kokoro_config = OfflineTtsKokoroModelConfig {
         model: Some(model.to_string_lossy().to_string()),
         voices: Some(voices.to_string_lossy().to_string()),
         tokens: find_file_optional(model_dir, &["tokens.txt"])
             .map(|p| p.to_string_lossy().to_string()),
-        data_dir: espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
         length_scale: 1.0,
         dict_dir: find_dir_optional(model_dir, &["dict"]).map(|p| p.to_string_lossy().to_string()),
         lexicon: kokoro_lexicons(model_dir),
-        lang,
+        ..Default::default()
     };
 
     build_engine(
@@ -194,7 +176,8 @@ fn create_kokoro_tts(
     )
 }
 
-/// ZipVoice 零样本克隆：encoder/decoder/vocoder + espeak 数据目录 + 音素表。
+/// ZipVoice 零样本克隆：encoder/decoder/vocoder + 音素表（sherpa-onnx 2.0 起
+/// espeak-ng 已移除，不再需要 data_dir）。
 fn create_zipvoice_tts(
     model_dir: &Path,
     provider: Option<&str>,
@@ -204,15 +187,9 @@ fn create_zipvoice_tts(
     let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
     let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
 
-    // data-dir 与 lexicon 都是 sherpa-onnx 的致命依赖：任一为空，原生侧就
-    // `SHERPA_ONNX_EXIT(-1)`（=`_Exit(-1)`，进程以 255 静默退出，Rust 侧捕不到），
-    // 所以先在这里拦成普通错误。
-    let data_dir = zipvoice_data_dir(model_dir).ok_or_else(|| {
-        anyhow!(
-            "ZipVoice 模型缺少 espeak-ng-data（需含 phontab/phondata/phonindex），模型包不完整: {}",
-            model_dir.display()
-        )
-    })?;
+    // sherpa-onnx 2.0 起 espeak-ng 已移除，data-dir 被忽略；ZipVoice 只需要
+    // tokens + lexicon。lexicon 为空时原生侧仍会 `_Exit(-1)`，所以继续在这里
+    // 先拦成普通错误。
     let lexicon = zipvoice_lexicon(model_dir)?;
 
     let zipvoice_config = OfflineTtsZipvoiceModelConfig {
@@ -221,10 +198,8 @@ fn create_zipvoice_tts(
         encoder: Some(encoder.to_string_lossy().to_string()),
         decoder: Some(decoder.to_string_lossy().to_string()),
         vocoder: Some(vocoder.to_string_lossy().to_string()),
-        // ZipVoice 的 data-dir 必须是直接包含 phontab/phondata/phonindex 的目录
-        //（与 Matcha/espeak 的 espeak-ng-data 父目录层级不同）。部分模型把
-        // 这些语音库文件放到 espeak-ng-data/ 下，因此需按 phontab 实际所在目录解析。
-        data_dir: Some(data_dir.to_string_lossy().to_string()),
+        // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
+        data_dir: None,
         lexicon: Some(lexicon.to_string_lossy().to_string()),
         // 默认值必须显式写：sherpa-onnx 的 Rust 绑定这里 `Default` 全是 0.0，
         // 而原生侧要求 feat_scale/target_rms/guidance_scale > 0（0 会被
@@ -261,7 +236,6 @@ fn create_kitten_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
         voices: Some(voices.to_string_lossy().to_string()),
         tokens: find_file_optional(model_dir, &["tokens.txt"])
             .map(|p| p.to_string_lossy().to_string()),
-        data_dir: espeak_data_dir(model_dir).map(|p| p.to_string_lossy().to_string()),
         ..Default::default()
     };
 
@@ -521,8 +495,9 @@ fn find_dir_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
 /// 英文只挂一份：`lexicon-us-en.txt` 与 `lexicon-gb-en.txt` 内容高度重叠，
 /// 同时挂载会刷出上千行 "Duplicated word ... Ignore it" 告警。
 ///
-/// Kokoro 不挂 lexicon 时中文只能退到 espeak-ng 的音素化，实测合成中文几乎出不来
-/// 有效音频（只有 0.2~0.5 秒的噪声或纯静音），因此这里必须显式挂载。
+/// sherpa-onnx 2.0 起不再内置 espeak-ng，lexicon 是唯一的中文/日文音素化入口；
+/// 不挂载时合成几乎出不来有效音频（只有 0.2~0.5 秒的噪声或纯静音），因此这里必须
+/// 显式挂载。
 fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
     const ENGLISH: &[&str] = &["lexicon-us-en.txt", "lexicon-gb-en.txt"];
     const CHINESE: &[&str] = &["lexicon-zh.txt"];
@@ -563,19 +538,6 @@ fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
             .collect::<Vec<_>>()
             .join(","),
     )
-}
-
-/// 定位 ZipVoice 数据目录：该目录需直接包含 phontab/phondata/phonindex。
-/// 优先匹配目录本身或其 `espeak-ng-data` 子目录，其次匹配模型目录。
-fn zipvoice_data_dir(model_dir: &Path) -> Option<PathBuf> {
-    if model_dir.join("phontab").exists() {
-        return Some(model_dir.to_path_buf());
-    }
-    if find_dir_optional(model_dir, &["espeak-ng-data"]).is_some_and(|p| p.join("phontab").exists())
-    {
-        return find_dir_optional(model_dir, &["espeak-ng-data"]);
-    }
-    None
 }
 
 /// 随包的 ZipVoice 中英音素表（`字/词 → 声母0 韵母…`）在 data 目录下的相对路径。

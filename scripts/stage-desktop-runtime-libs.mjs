@@ -6,9 +6,10 @@
 //     DT_NEEDED 里有 `libwebgpu_dawn.so`，而这个库只躺在 target/<profile>/ 里
 //     （ort `copy-dylibs` 的产物），没有任何打包配置带上它 —— deb/rpm 装完一启动
 //     就是 `error while loading shared libraries: libwebgpu_dawn.so`。
-//   - 桌面端的 sherpa-onnx 用**官方 CPU 预编译包 + 静态链接**（GPU 推理只在
-//     Android/iOS 走设备后端，见 docs/inference-devices.md），所以除 Dawn 之外
-//     没有别的动态库要带。
+//   - 桌面端的 sherpa-onnx 在 Linux 用**官方 shared CPU 包（.so 随包）**：它的 ORT
+//     在动态库里、不进可执行文件的静态符号表，从而与 ort 静态链接的 ORT 错开，
+//     避免 multiple definition。sherpa 的 libsherpa-onnx-c-api.so 会 DT_NEEDED
+//     自己那份 libonnxruntime.so，需要一起带上（见 stageForLinux 的闭包逻辑）。
 //
 // 落点：/usr/lib 是加载器的默认搜索目录。实测 cargo 产出的可执行文件里没有
 // RPATH/RUNPATH（依赖 crate 的 build script 用 `cargo:rustc-link-arg` 加的
@@ -46,6 +47,9 @@ const targetRoot = process.env.CARGO_TARGET_DIR || join(projectRoot, "target");
 
 /** ort 的 WebGPU 后端（wgpu/Dawn），Linux x86_64 可执行文件直接依赖它。 */
 const DAWN_LIB = "libwebgpu_dawn.so";
+
+/** Linux：sherpa 官方 shared 包提供的运行库（libsherpa-onnx-c-api.so 与其 ORT）。 */
+const SHERPA_SHARED_LIB_RE = /^lib(sherpa-onnx-c-api|onnxruntime).*\.so/;
 
 /** 属于「我们自己打包的库」，缺了就是安装包坏了（用来判定必需库是否齐）。 */
 const OWN_LIB_RE = /^(libwebgpu_dawn|libsherpa-onnx|libonnxruntime)/;
@@ -257,6 +261,28 @@ function stageForLinux(log) {
   if (binary && needed) {
     const own = needed.filter((n) => OWN_LIB_RE.test(n));
     if (own.length) log(`可执行文件 ${binary} 直接依赖: ${own.join(", ")}`);
+  }
+
+  // Linux 的 sherpa 走 shared，它的 ORT 由 libsherpa-onnx-c-api.so 动态依赖自己
+  // 那份 libonnxruntime.so。从可执行文件/已暂存库的 DT_NEEDED 出发做闭包，只帶
+  // 真正需要的库；不能扫 target 目录里所有 libonnxruntime*，否则旧 CUDA/TensorRT
+  // 构建残留会被误打进包。
+  const pending = (needed ?? []).filter((name) => SHERPA_SHARED_LIB_RE.test(name));
+  const stagedShared = new Set();
+  while (pending.length) {
+    const name = pending.shift();
+    if (stagedShared.has(name)) continue;
+    stagedShared.add(name);
+    const src = findArtifact(name);
+    if (!src) continue;
+    copyFileSync(src, join(stageDir, name));
+    staged.push(name);
+    for (const dep of elfNeededLibs(src) ?? []) {
+      if (SHERPA_SHARED_LIB_RE.test(dep)) pending.push(dep);
+    }
+  }
+  if (stagedShared.size) {
+    notes.push(`sherpa shared 运行库随包: ${[...stagedShared].join(", ")}`);
   }
 
   // ort 的 WebGPU 后端（ort-sys 会 emit `rustc-link-lib=webgpu_dawn`）。它是否留在

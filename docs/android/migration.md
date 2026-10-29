@@ -272,7 +272,7 @@ pnpm tauri android dev --target aarch64
   下载走 `hf-mirror.com`），桌面端保留体积更小的 int8；适配器对 Android 上的 int8
   kokoro 直接报错并提示换模型，已安装的 int8 版本在设置页会被标注「当前平台不可用」。
 
-- **NNAPI 需要自编才会生效**：预编译的 `sherpa-onnx-v1.13.5-android.tar.bz2` 基于 API
+- **NNAPI 需要自编才会生效**：预编译的 `sherpa-onnx-v2.0.1-android.tar.bz2` 基于 API
   level 21 构建，即使把 provider 设为 `nnapi`，C 库也会打印
   `Android NNAPI requires API level >= 27. Current API level 21 Fallback to cpu!`，
   实际后端等于 CPU。现在 `pnpm android:build`（经
