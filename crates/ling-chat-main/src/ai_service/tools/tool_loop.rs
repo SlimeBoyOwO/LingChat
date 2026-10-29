@@ -10,7 +10,7 @@ use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
 use crate::ai_service::game_system::memory::recall::{
-    EPHEMERAL_MEMORY_RESULT, RECALL_POLICY, RecallSession, RecallStamp,
+    EPHEMERAL_MEMORY_RESULT, RecallSession, RecallStamp,
 };
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
@@ -210,9 +210,6 @@ pub async fn stream_with_tool_loop(
     let stream = async_stream::try_stream! {
         let executor = ToolExecutor::new(&registry);
         let mut messages = messages;
-        if !messages.iter().any(|message| message.role == "system" && message.content == RECALL_POLICY) {
-            messages.insert(0, LlmMessage::system(RECALL_POLICY));
-        }
         // 切换到一个原本不在场的角色时，它的历史记忆不会包含触发切换的用户消息；
         // 保留这一条，重建上下文后补回，避免新角色只看到孤立的 tool_result。
         let active_user_message = messages
@@ -508,13 +505,11 @@ pub async fn stream_with_tool_loop(
                 );
                 messages.extend(pending_images);
                 active_role_name = refreshed_name;
-                messages.insert(0, LlmMessage::system(RECALL_POLICY));
                 attach_line_budget(&mut messages, reply_mode, spoken_lines);
             } else if notes_changed {
                 continuation_history.extend(live_round_messages.clone());
                 continuation_history.extend(pending_images);
                 messages = rebase_after_note_write(recall.base_context(), &continuation_history);
-                messages.insert(0, LlmMessage::system(RECALL_POLICY));
                 attach_line_budget(&mut messages, reply_mode, spoken_lines);
             } else {
                 continuation_history.extend(live_round_messages.clone());

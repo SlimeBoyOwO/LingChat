@@ -7,10 +7,14 @@ use ling_chat_notes::memory::{
     EmbeddingVersion, IndexedMemoryChunk, IndexedMemoryDocument, MemoryChunk, MemoryDocument,
     MemoryEmbeddingRecord, MemoryScope, MemoryScopeKey, memory_version,
 };
-use sea_orm::{ConnectionTrait, DatabaseConnection, DbBackend, Statement, TransactionTrait, Value};
+use sea_orm::sea_query::OnConflict;
+use sea_orm::{
+    ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
+};
 
 use super::save_repo::SaveRepo;
 use crate::ai_service::game_system::memory::scope::MemoryScopeSnapshot;
+use crate::db::entities::{memory_chunk, memory_document, memory_embedding, memory_index_state};
 
 #[derive(Debug)]
 pub struct MemoryIndexSnapshot {
@@ -28,89 +32,110 @@ impl MemoryIndexRepo {
         scope: &MemoryScopeSnapshot,
         model: &EmbeddingVersion,
     ) -> Result<MemoryIndexSnapshot> {
-        // 状态、文档和向量在同一快照中读取，避免混用不同次提交的数据。
         let transaction = db.begin().await?;
         let key = scope.key();
-        let generation = generation(&transaction, key).await?;
-        let state = transaction.query_one(statement(
-            "SELECT scope_key,index_version FROM memory_index_state WHERE save_id=? AND role_id=?",
-            vec![key.save_id.into(), key.role_id.into()],
-        )).await?;
-        let (scope_key, index_version) = if let Some(row) = state {
+        let state = memory_index_state::Entity::find_by_id((key.save_id, key.role_id))
+            .one(&transaction)
+            .await?;
+        let generation = state.as_ref().map_or(0, |state| state.generation);
+        let (scope_key, index_version) = if let Some(state) = state {
             (
-                serde_json::from_str(&row.try_get_by_index::<String>(0)?).ok(),
-                Some(row.try_get_by_index(1)?),
+                serde_json::from_str(&state.scope_key).ok(),
+                Some(state.index_version),
             )
         } else {
             (None, None)
         };
-        let rows = transaction.query_all(statement(
-            "SELECT id,version,payload,role_id,save_id,kind,chunking_version FROM memory_document WHERE role_id=? AND (save_id=? OR save_id IS NULL)",
-            vec![key.role_id.into(), key.save_id.into()],
-        )).await?;
+
+        let rows = memory_document::Entity::find()
+            .filter(memory_document::Column::RoleId.eq(key.role_id))
+            .filter(
+                memory_document::Column::SaveId
+                    .eq(key.save_id)
+                    .or(memory_document::Column::SaveId.is_null()),
+            )
+            .all(&transaction)
+            .await?;
         let mut documents = HashMap::new();
-        // 数据库列和正文里的身份必须一致，损坏或过期记录直接跳过。
         for row in rows {
-            let payload: String = row.try_get_by_index(2)?;
-            if let Ok(document) = serde_json::from_str::<MemoryDocument>(&payload) {
+            if let Ok(document) = serde_json::from_str::<MemoryDocument>(&row.payload) {
                 let save_id = match document.scope {
                     MemoryScope::Save { save_id } => Some(save_id),
                     MemoryScope::Role => None,
                 };
-                if document.id == row.try_get_by_index::<String>(0)?
-                    && document.version == row.try_get_by_index::<String>(1)?
-                    && document.role_id == row.try_get_by_index::<i32>(3)?
-                    && save_id == row.try_get_by_index::<Option<i32>>(4)?
-                    && serde_json::to_value(document.kind)?.as_str()
-                        == Some(row.try_get_by_index::<String>(5)?.as_str())
+                if document.id == row.id
+                    && document.version == row.version
+                    && document.role_id == row.role_id
+                    && save_id == row.save_id
+                    && memory_kind_name(document.kind) == row.kind
                     && scope.allows_document(&document)
                 {
                     documents.insert(
                         document.id.clone(),
                         IndexedMemoryDocument {
                             document,
-                            chunking_version: row.try_get_by_index(6)?,
+                            chunking_version: row.chunking_version,
                             chunks: vec![],
                         },
                     );
                 }
             }
         }
-        let rows = transaction.query_all(statement(
-            "SELECT c.id,c.version,c.payload,e.payload,c.document_id,e.chunk_version,e.model_version,c.ordinal FROM memory_chunk c
-             JOIN memory_document d ON d.id=c.document_id
-             LEFT JOIN memory_embedding e ON e.chunk_id=c.id
-             WHERE d.role_id=? AND (d.save_id=? OR d.save_id IS NULL) ORDER BY c.ordinal",
-            vec![key.role_id.into(), key.save_id.into()],
-        )).await?;
-        // 旧模型或旧分块的向量不复用，但仍可保留正文参与词法检索。
+
+        let document_ids: Vec<String> = documents.keys().cloned().collect();
+        let chunks = if document_ids.is_empty() {
+            Vec::new()
+        } else {
+            memory_chunk::Entity::find()
+                .filter(memory_chunk::Column::DocumentId.is_in(document_ids))
+                .order_by_asc(memory_chunk::Column::Ordinal)
+                .all(&transaction)
+                .await?
+        };
+        let chunk_ids: Vec<String> = chunks.iter().map(|chunk| chunk.id.clone()).collect();
+        let embedding_rows = if chunk_ids.is_empty() {
+            Vec::new()
+        } else {
+            memory_embedding::Entity::find()
+                .filter(memory_embedding::Column::ChunkId.is_in(chunk_ids))
+                .all(&transaction)
+                .await?
+        };
+        let embeddings: HashMap<_, _> = embedding_rows
+            .into_iter()
+            .map(|embedding| (embedding.chunk_id.clone(), embedding))
+            .collect();
+
         let expected_model_version = memory_version(model)?;
-        for row in rows {
-            let payload: String = row.try_get_by_index(2)?;
-            let Ok(chunk) = serde_json::from_str::<MemoryChunk>(&payload) else {
+        for row in chunks {
+            let Ok(chunk) = serde_json::from_str::<MemoryChunk>(&row.payload) else {
                 continue;
             };
             let Some(document) = documents.get_mut(&chunk.document_id) else {
                 continue;
             };
-            if chunk.id != row.try_get_by_index::<String>(0)?
-                || chunk.version != row.try_get_by_index::<String>(1)?
-                || chunk.document_id != row.try_get_by_index::<String>(4)?
-                || i64::from(chunk.ordinal) != row.try_get_by_index::<i64>(7)?
+            if chunk.id != row.id
+                || chunk.version != row.version
+                || chunk.document_id != row.document_id
+                || i64::from(chunk.ordinal) != row.ordinal
                 || !scope.allows_chunk(&document.document, &chunk)
             {
                 continue;
             }
-            let stored_chunk_version: Option<String> = row.try_get_by_index(5)?;
-            let stored_model_version: Option<String> = row.try_get_by_index(6)?;
-            let embedding = row
-                .try_get_by_index::<Option<String>>(3)?
-                .and_then(|payload| serde_json::from_str::<MemoryEmbeddingRecord>(&payload).ok())
+            let embedding = embeddings
+                .get(&chunk.id)
+                .and_then(|embedding| {
+                    serde_json::from_str::<MemoryEmbeddingRecord>(&embedding.payload).ok()
+                })
                 .filter(|embedding| {
                     embedding.model == *model
                         && embedding.validate_for(&chunk).is_ok()
-                        && stored_chunk_version.as_ref() == Some(&chunk.version)
-                        && stored_model_version.as_ref() == Some(&expected_model_version)
+                        && embeddings
+                            .get(&chunk.id)
+                            .is_some_and(|stored| stored.chunk_version == chunk.version)
+                        && embeddings
+                            .get(&chunk.id)
+                            .is_some_and(|stored| stored.model_version == expected_model_version)
                 });
             document
                 .chunks
@@ -167,7 +192,6 @@ impl MemoryIndexRepo {
             }
         }
         let transaction = db.begin().await?;
-        // 计算在事务外完成，写入前用代数和历史版本阻止迟到任务覆盖新数据。
         ensure!(
             generation(&transaction, key).await? == expected_generation,
             "索引已被其他任务更新，请重试"
@@ -178,24 +202,24 @@ impl MemoryIndexRepo {
                 == key.history_version,
             "历史已变化，丢弃旧索引任务"
         );
-        let rows = transaction
-            .query_all(statement(
-                "SELECT id FROM memory_document WHERE role_id=? AND (save_id=? OR save_id IS NULL)",
-                vec![key.role_id.into(), key.save_id.into()],
-            ))
+        let rows = memory_document::Entity::find()
+            .filter(memory_document::Column::RoleId.eq(key.role_id))
+            .filter(
+                memory_document::Column::SaveId
+                    .eq(key.save_id)
+                    .or(memory_document::Column::SaveId.is_null()),
+            )
+            .all(&transaction)
             .await?;
         let desired_ids: HashSet<_> = desired
             .iter()
             .map(|item| item.document.id.as_str())
             .collect();
-        // 撤回、删笔记或切换有效历史后，清理不再需要的旧文档。
         for row in rows {
-            let id: String = row.try_get_by_index(0)?;
-            if !desired_ids.contains(id.as_str()) {
-                delete_document(&transaction, &id).await?;
+            if !desired_ids.contains(row.id.as_str()) {
+                delete_document(&transaction, &row.id).await?;
             }
         }
-        // 未变化的文档保持原样，只替换变化文档及其分块、向量。
         for item in desired
             .iter()
             .filter(|item| changed.contains(&item.document.id))
@@ -205,97 +229,137 @@ impl MemoryIndexRepo {
                 MemoryScope::Save { save_id } => Some(save_id),
                 MemoryScope::Role => None,
             };
-            transaction.execute(statement(
-                "INSERT INTO memory_document(id,role_id,save_id,kind,version,payload,chunking_version) VALUES (?,?,?,?,?,?,?)",
-                vec![item.document.id.clone().into(), item.document.role_id.into(), save_id.into(),
-                    serde_json::to_value(item.document.kind)?.as_str().unwrap().to_owned().into(),
-                    item.document.version.clone().into(), serde_json::to_string(&item.document)?.into(),
-                    item.chunking_version.clone().into()],
-            )).await?;
+            memory_document::Entity::insert(memory_document::ActiveModel {
+                id: Set(item.document.id.clone()),
+                role_id: Set(item.document.role_id),
+                save_id: Set(save_id),
+                kind: Set(memory_kind_name(item.document.kind).to_owned()),
+                version: Set(item.document.version.clone()),
+                payload: Set(serde_json::to_string(&item.document)?),
+                chunking_version: Set(item.chunking_version.clone()),
+            })
+            .exec(&transaction)
+            .await?;
             for item_chunk in &item.chunks {
                 let chunk = &item_chunk.chunk;
-                transaction.execute(statement(
-                    "INSERT INTO memory_chunk(id,document_id,ordinal,version,payload) VALUES (?,?,?,?,?)",
-                    vec![chunk.id.clone().into(), chunk.document_id.clone().into(), i64::from(chunk.ordinal).into(),
-                        chunk.version.clone().into(), serde_json::to_string(chunk)?.into()],
-                )).await?;
+                memory_chunk::Entity::insert(memory_chunk::ActiveModel {
+                    id: Set(chunk.id.clone()),
+                    document_id: Set(chunk.document_id.clone()),
+                    ordinal: Set(i64::from(chunk.ordinal)),
+                    version: Set(chunk.version.clone()),
+                    payload: Set(serde_json::to_string(chunk)?),
+                })
+                .exec(&transaction)
+                .await?;
                 if let Some(embedding) = &item_chunk.embedding {
-                    transaction.execute(statement(
-                        "INSERT INTO memory_embedding(chunk_id,chunk_version,model_version,payload) VALUES (?,?,?,?)",
-                        vec![chunk.id.clone().into(), chunk.version.clone().into(), memory_version(&embedding.model)?.into(),
-                            serde_json::to_string(embedding)?.into()],
-                    )).await?;
+                    memory_embedding::Entity::insert(memory_embedding::ActiveModel {
+                        chunk_id: Set(chunk.id.clone()),
+                        chunk_version: Set(chunk.version.clone()),
+                        model_version: Set(memory_version(&embedding.model)?),
+                        payload: Set(serde_json::to_string(embedding)?),
+                    })
+                    .exec(&transaction)
+                    .await?;
                 }
             }
         }
-        transaction.execute(statement(
-            "INSERT INTO memory_index_state(save_id,role_id,generation,scope_key,index_version) VALUES (?,?,?,?,?)
-             ON CONFLICT(save_id,role_id) DO UPDATE SET generation=excluded.generation,scope_key=excluded.scope_key,index_version=excluded.index_version",
-            vec![key.save_id.into(), key.role_id.into(), (expected_generation + 1).into(),
-                serde_json::to_string(key)?.into(), index_version.to_owned().into()],
-        )).await?;
+        memory_index_state::Entity::insert(memory_index_state::ActiveModel {
+            save_id: Set(key.save_id),
+            role_id: Set(key.role_id),
+            generation: Set(expected_generation + 1),
+            scope_key: Set(serde_json::to_string(key)?),
+            index_version: Set(index_version.to_owned()),
+        })
+        .on_conflict(
+            OnConflict::columns([
+                memory_index_state::Column::SaveId,
+                memory_index_state::Column::RoleId,
+            ])
+            .update_columns([
+                memory_index_state::Column::Generation,
+                memory_index_state::Column::ScopeKey,
+                memory_index_state::Column::IndexVersion,
+            ])
+            .to_owned(),
+        )
+        .exec(&transaction)
+        .await?;
         transaction.commit().await?;
         Ok(())
     }
 
     pub(crate) async fn delete_for_role(db: &DatabaseConnection, role_id: i32) -> Result<()> {
-        Self::delete_scope(db, "role_id", role_id).await
+        let transaction = db.begin().await?;
+        let documents = memory_document::Entity::find()
+            .filter(memory_document::Column::RoleId.eq(role_id))
+            .all(&transaction)
+            .await?;
+        for document in documents {
+            delete_document(&transaction, &document.id).await?;
+        }
+        memory_index_state::Entity::delete_many()
+            .filter(memory_index_state::Column::RoleId.eq(role_id))
+            .exec(&transaction)
+            .await?;
+        transaction.commit().await?;
+        Ok(())
     }
 
     pub(crate) async fn delete_for_save(db: &DatabaseConnection, save_id: i32) -> Result<()> {
-        Self::delete_scope(db, "save_id", save_id).await
-    }
-
-    async fn delete_scope(db: &DatabaseConnection, column: &str, identity: i32) -> Result<()> {
         let transaction = db.begin().await?;
-        let rows = transaction
-            .query_all(statement(
-                &format!("SELECT id FROM memory_document WHERE {column}=?"),
-                vec![identity.into()],
-            ))
+        let documents = memory_document::Entity::find()
+            .filter(memory_document::Column::SaveId.eq(save_id))
+            .all(&transaction)
             .await?;
-        for row in rows {
-            delete_document(&transaction, &row.try_get_by_index::<String>(0)?).await?;
+        for document in documents {
+            delete_document(&transaction, &document.id).await?;
         }
-        transaction
-            .execute(statement(
-                &format!("DELETE FROM memory_index_state WHERE {column}=?"),
-                vec![identity.into()],
-            ))
+        memory_index_state::Entity::delete_many()
+            .filter(memory_index_state::Column::SaveId.eq(save_id))
+            .exec(&transaction)
             .await?;
         transaction.commit().await?;
         Ok(())
     }
 }
 
-fn statement(sql: &str, values: Vec<Value>) -> Statement {
-    Statement::from_sql_and_values(DbBackend::Sqlite, sql, values)
+fn memory_kind_name(kind: ling_chat_notes::memory::MemoryKind) -> &'static str {
+    match kind {
+        ling_chat_notes::memory::MemoryKind::Raw => "raw",
+        ling_chat_notes::memory::MemoryKind::Diary => "diary",
+        ling_chat_notes::memory::MemoryKind::Note => "note",
+    }
 }
 
-async fn generation(db: &impl ConnectionTrait, key: &MemoryScopeKey) -> Result<i64> {
-    Ok(db
-        .query_one(statement(
-            "SELECT generation FROM memory_index_state WHERE save_id=? AND role_id=?",
-            vec![key.save_id.into(), key.role_id.into()],
-        ))
-        .await?
-        .map(|row| row.try_get_by_index(0))
-        .transpose()?
-        .unwrap_or(0))
+async fn generation(db: &impl sea_orm::ConnectionTrait, key: &MemoryScopeKey) -> Result<i64> {
+    Ok(
+        memory_index_state::Entity::find_by_id((key.save_id, key.role_id))
+            .one(db)
+            .await?
+            .map(|state| state.generation)
+            .unwrap_or(0),
+    )
 }
 
 // 按依赖顺序显式删除，兼容未启用 SQLite 外键级联的已有连接。
-async fn delete_document(db: &impl ConnectionTrait, id: &str) -> Result<()> {
-    db.execute(statement("DELETE FROM memory_embedding WHERE chunk_id IN (SELECT id FROM memory_chunk WHERE document_id=?)", vec![id.to_owned().into()])).await?;
-    db.execute(statement(
-        "DELETE FROM memory_chunk WHERE document_id=?",
-        vec![id.to_owned().into()],
-    ))
-    .await?;
-    db.execute(statement(
-        "DELETE FROM memory_document WHERE id=?",
-        vec![id.to_owned().into()],
-    ))
-    .await?;
+async fn delete_document(db: &impl sea_orm::ConnectionTrait, id: &str) -> Result<()> {
+    let chunks = memory_chunk::Entity::find()
+        .filter(memory_chunk::Column::DocumentId.eq(id.to_owned()))
+        .all(db)
+        .await?;
+    let chunk_ids: Vec<String> = chunks.into_iter().map(|chunk| chunk.id).collect();
+    if !chunk_ids.is_empty() {
+        memory_embedding::Entity::delete_many()
+            .filter(memory_embedding::Column::ChunkId.is_in(chunk_ids))
+            .exec(db)
+            .await?;
+    }
+    memory_chunk::Entity::delete_many()
+        .filter(memory_chunk::Column::DocumentId.eq(id.to_owned()))
+        .exec(db)
+        .await?;
+    memory_document::Entity::delete_by_id(id.to_owned())
+        .exec(db)
+        .await?;
     Ok(())
 }

@@ -3,6 +3,7 @@ use std::collections::HashSet;
 use crate::ai_service::message_system::processor::truncate_at_turn_end;
 use crate::ai_service::types::{GameLine, LineBase, LlmMessage, ToolCall};
 use crate::db::entities::line::LineAttribute;
+use crate::utils::prompt::ensure_memory_recall_policy;
 
 /// 将 `GameLine` 序列构建成目标角色的 LLM 消息列表。
 pub struct MemoryBuilder {
@@ -211,7 +212,9 @@ impl MemoryBuilder {
                         );
                     } else {
                         has_system_for_target = true;
-                        memory.push(LlmMessage::system(line.content().to_string()));
+                        memory.push(LlmMessage::system(ensure_memory_recall_policy(
+                            line.content().to_string(),
+                        )));
                     }
                 }
                 continue;

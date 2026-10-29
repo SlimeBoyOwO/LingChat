@@ -18,6 +18,7 @@ pub struct TemporaryMemory {
 pub enum TemporaryPlacement {
     /// 并入最后一条 user 消息。
     IntoUser,
+    PrependToUser,
     /// 作为末尾独立的 user 消息。
     TrailingUser,
 }
@@ -85,9 +86,71 @@ pub fn apply_temporary(context: &mut Vec<LlmMessage>, memories: &[TemporaryMemor
                 },
                 _ => context.push(LlmMessage::user(memory.text.clone())),
             },
+            TemporaryPlacement::PrependToUser => match context
+                .iter_mut()
+                .rev()
+                .find(|message| message.role == "user")
+            {
+                Some(last) => {
+                    let mut content = memory.text.clone();
+                    if !last.content.is_empty() {
+                        content.push_str("\n\n");
+                        content.push_str(&last.content);
+                    }
+                    last.content = content;
+                },
+                None => context.push(LlmMessage::user(memory.text.clone())),
+            },
             TemporaryPlacement::TrailingUser => {
                 context.push(LlmMessage::user(memory.text.clone()));
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn prepend_to_user_keeps_one_user_message() {
+        let mut context = vec![LlmMessage::system("persona"), LlmMessage::user("question")];
+        apply_temporary(
+            &mut context,
+            &[TemporaryMemory {
+                text: "{旁白: 历史资料}".into(),
+                placement: TemporaryPlacement::PrependToUser,
+            }],
+        );
+
+        assert_eq!(
+            context
+                .iter()
+                .filter(|message| message.role == "user")
+                .count(),
+            1
+        );
+        assert_eq!(context[1].content, "{旁白: 历史资料}\n\nquestion");
+    }
+
+    #[test]
+    fn prepend_to_user_falls_back_to_one_user_message() {
+        let mut context = vec![LlmMessage::system("persona")];
+        apply_temporary(
+            &mut context,
+            &[TemporaryMemory {
+                text: "{旁白: 历史资料}".into(),
+                placement: TemporaryPlacement::PrependToUser,
+            }],
+        );
+
+        assert_eq!(
+            context
+                .iter()
+                .filter(|message| message.role == "user")
+                .count(),
+            1
+        );
+        assert_eq!(context[1].content, "{旁白: 历史资料}");
     }
 }

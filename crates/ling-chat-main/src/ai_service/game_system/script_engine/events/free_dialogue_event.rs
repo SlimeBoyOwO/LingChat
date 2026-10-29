@@ -149,6 +149,9 @@ impl ScriptEvent for FreeDialogueEvent {
         drop(game_status_guard); // 尽早释放锁
 
         // ---- 主循环（支持无限轮次） ----
+        // generation_lock 与 game_status Mutex 是两层不同粒度的锁：前者串行化整轮
+        // 生成，后者保护共享状态。等待输入前不持 generation_lock；收到输入后一直
+        // 持有到本轮 process_message 返回，确保玩家台词、剧情提示和生成结果顺序稳定。
         let generation_lock = ctx.app.state::<AppState>().generation_lock.clone();
         let mut rounds: i32 = 0;
         loop {
@@ -183,6 +186,7 @@ impl ScriptEvent for FreeDialogueEvent {
             let _ = emit(ctx.app, SCRIPT_INPUT, &payload);
 
             let user_input = rx.await.map_err(|_| anyhow!("用户输入通道已关闭"))?;
+            // 只在收到输入后串行化本轮写入和生成，不把锁带过用户等待阶段。
             let _generation = generation_lock.lock().await;
 
             // ---- 添加用户输入台词先 ----

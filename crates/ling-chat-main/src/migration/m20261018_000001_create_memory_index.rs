@@ -6,52 +6,255 @@ pub struct Migration;
 #[async_trait::async_trait]
 impl MigrationTrait for Migration {
     async fn up(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        // 文档保存来源，分块保存检索正文，向量独立存储以便模型变化后重建。
-        for sql in [
-            "CREATE TABLE memory_document (
-                id TEXT PRIMARY KEY NOT NULL,
-                role_id INTEGER NOT NULL REFERENCES role(id) ON DELETE CASCADE,
-                save_id INTEGER REFERENCES save(id) ON DELETE CASCADE,
-                kind TEXT NOT NULL CHECK (kind IN ('raw','diary','note')),
-                version TEXT NOT NULL, payload TEXT NOT NULL,
-                CHECK ((kind='note' AND save_id IS NULL) OR (kind!='note' AND save_id IS NOT NULL))
-            )",
-            "CREATE INDEX ix_memory_document_scope ON memory_document(role_id,save_id)",
-            "CREATE TABLE memory_chunk (
-                id TEXT PRIMARY KEY NOT NULL,
-                document_id TEXT NOT NULL REFERENCES memory_document(id) ON DELETE CASCADE,
-                ordinal INTEGER NOT NULL, version TEXT NOT NULL, payload TEXT NOT NULL,
-                UNIQUE(document_id,ordinal)
-            )",
-            "CREATE TABLE memory_embedding (
-                chunk_id TEXT PRIMARY KEY NOT NULL REFERENCES memory_chunk(id) ON DELETE CASCADE,
-                chunk_version TEXT NOT NULL, model_version TEXT NOT NULL, payload TEXT NOT NULL
-            )",
-            // 每个存档与角色保留独立版本，防止并发任务互相覆盖索引状态。
-            "CREATE TABLE memory_index_state (
-                save_id INTEGER NOT NULL REFERENCES save(id) ON DELETE CASCADE,
-                role_id INTEGER NOT NULL REFERENCES role(id) ON DELETE CASCADE,
-                generation INTEGER NOT NULL, scope_key TEXT NOT NULL, index_version TEXT NOT NULL,
-                PRIMARY KEY(save_id,role_id)
-            )",
-        ] {
-            manager.get_connection().execute_unprepared(sql).await?;
-        }
+        manager
+            .create_table(
+                Table::create()
+                    .table(MemoryDocument::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MemoryDocument::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(MemoryDocument::RoleId).integer().not_null())
+                    .col(ColumnDef::new(MemoryDocument::SaveId).integer())
+                    .col(ColumnDef::new(MemoryDocument::Kind).text().not_null())
+                    .col(ColumnDef::new(MemoryDocument::Version).text().not_null())
+                    .col(ColumnDef::new(MemoryDocument::Payload).text().not_null())
+                    .check(Expr::col(MemoryDocument::Kind).is_in(["raw", "diary", "note"]))
+                    .check(
+                        Expr::col(MemoryDocument::Kind)
+                            .eq("note")
+                            .and(Expr::col(MemoryDocument::SaveId).is_null())
+                            .or(Expr::col(MemoryDocument::Kind)
+                                .ne("note")
+                                .and(Expr::col(MemoryDocument::SaveId).is_not_null())),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryDocument::Table, MemoryDocument::RoleId)
+                            .to(Role::Table, Role::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryDocument::Table, MemoryDocument::SaveId)
+                            .to(Save::Table, Save::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .create_index(
+                Index::create()
+                    .name("ix_memory_document_scope")
+                    .table(MemoryDocument::Table)
+                    .col(MemoryDocument::RoleId)
+                    .col(MemoryDocument::SaveId)
+                    .if_not_exists()
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(MemoryChunk::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MemoryChunk::Id)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(ColumnDef::new(MemoryChunk::DocumentId).text().not_null())
+                    .col(ColumnDef::new(MemoryChunk::Ordinal).integer().not_null())
+                    .col(ColumnDef::new(MemoryChunk::Version).text().not_null())
+                    .col(ColumnDef::new(MemoryChunk::Payload).text().not_null())
+                    .index(
+                        Index::create()
+                            .unique()
+                            .col(MemoryChunk::DocumentId)
+                            .col(MemoryChunk::Ordinal),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryChunk::Table, MemoryChunk::DocumentId)
+                            .to(MemoryDocument::Table, MemoryDocument::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(MemoryEmbedding::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MemoryEmbedding::ChunkId)
+                            .text()
+                            .not_null()
+                            .primary_key(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryEmbedding::ChunkVersion)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryEmbedding::ModelVersion)
+                            .text()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MemoryEmbedding::Payload).text().not_null())
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryEmbedding::Table, MemoryEmbedding::ChunkId)
+                            .to(MemoryChunk::Table, MemoryChunk::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_table(
+                Table::create()
+                    .table(MemoryIndexState::Table)
+                    .if_not_exists()
+                    .col(
+                        ColumnDef::new(MemoryIndexState::SaveId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryIndexState::RoleId)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(
+                        ColumnDef::new(MemoryIndexState::Generation)
+                            .integer()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(MemoryIndexState::ScopeKey).text().not_null())
+                    .col(
+                        ColumnDef::new(MemoryIndexState::IndexVersion)
+                            .text()
+                            .not_null(),
+                    )
+                    .primary_key(
+                        Index::create()
+                            .col(MemoryIndexState::SaveId)
+                            .col(MemoryIndexState::RoleId),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryIndexState::Table, MemoryIndexState::SaveId)
+                            .to(Save::Table, Save::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .foreign_key(
+                        ForeignKey::create()
+                            .from(MemoryIndexState::Table, MemoryIndexState::RoleId)
+                            .to(Role::Table, Role::Id)
+                            .on_delete(ForeignKeyAction::Cascade),
+                    )
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
-        for table in [
-            "memory_index_state",
-            "memory_embedding",
-            "memory_chunk",
-            "memory_document",
-        ] {
-            manager
-                .get_connection()
-                .execute_unprepared(&format!("DROP TABLE {table}"))
-                .await?;
-        }
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MemoryIndexState::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MemoryEmbedding::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MemoryChunk::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
+        manager
+            .drop_table(
+                Table::drop()
+                    .table(MemoryDocument::Table)
+                    .if_exists()
+                    .to_owned(),
+            )
+            .await?;
         Ok(())
     }
+}
+
+#[derive(DeriveIden)]
+enum Role {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum Save {
+    Table,
+    Id,
+}
+
+#[derive(DeriveIden)]
+enum MemoryDocument {
+    Table,
+    Id,
+    RoleId,
+    SaveId,
+    Kind,
+    Version,
+    Payload,
+}
+
+#[derive(DeriveIden)]
+enum MemoryChunk {
+    Table,
+    Id,
+    DocumentId,
+    Ordinal,
+    Version,
+    Payload,
+}
+
+#[derive(DeriveIden)]
+enum MemoryEmbedding {
+    Table,
+    ChunkId,
+    ChunkVersion,
+    ModelVersion,
+    Payload,
+}
+
+#[derive(DeriveIden)]
+enum MemoryIndexState {
+    Table,
+    SaveId,
+    RoleId,
+    Generation,
+    ScopeKey,
+    IndexVersion,
 }
