@@ -142,12 +142,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          # linuxdeploy 在打 AppImage 时会用 ldd 解析二进制依赖；aarch64 的
-          # sherpa shared / ORT 运行库刚编译到 target/release，还没进 AppDir，
-          # 用 LD_LIBRARY_PATH 让它先能找到（x86_64 的 Dawn 同理）。
-          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && format('{0}/target/release', github.workspace) || '' }}
+          # Linux：mold + --allow-multiple-definition，处理 ort/sherpa 静态 ORT
+          # 目标文件的重复符号；与 dev-build 保持一致。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '' || '' }}
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
@@ -160,10 +158,9 @@ jobs:
       # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` 软链到 target/release。
       #
       # 分发侧由 tauri.linux.conf.json 解决：beforeBundleCommand 调
-      # scripts/prepare-linux-libs.mjs（Dawn）与 scripts/stage-desktop-runtime-libs.mjs
-      # （Dawn，以及 aarch64 的 sherpa shared / ORT 运行库），分别落到
-      # /usr/lib/LingChat/lib 与 /usr/lib；可执行文件的 RPATH 由 src-tauri/build.rs
-      # 写入 $ORIGIN/../lib/LingChat/lib。
+      # scripts/prepare-linux-libs.mjs 与 scripts/stage-desktop-runtime-libs.mjs
+      # （目前只需暂存 Dawn），分别落到 /usr/lib/LingChat/lib 与 /usr/lib；
+      # 可执行文件的 RPATH 由 src-tauri/build.rs 写入 $ORIGIN/../lib/LingChat/lib。
       #
       # 这里额外放到系统库路径，只为让 linuxdeploy 打 AppImage 时能解析该依赖，
       # 否则报 `Could not find dependency: libwebgpu_dawn.so`（裸二进制从资源目录加载，
@@ -176,6 +173,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 与 dev-build 保持一致：Linux 用 mold，并允许静态 ORT 的重复定义。
+          RUSTFLAGS: -C link-arg=-fuse-ld=mold -C link-arg=-Wl,--allow-multiple-definition
         run: |
           cargo build --release
           DAWN=$(find target/release -maxdepth 1 -name "libwebgpu_dawn.so" 2>/dev/null | head -1)
