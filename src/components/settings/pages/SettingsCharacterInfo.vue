@@ -195,6 +195,16 @@
                   />
 
                   <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.subtitleLabel")
+                  }}</label>
+                  <input
+                    v-model="aliasSubtitle"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.alias.subtitlePlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
                     $t("settings.characterInfo.alias.affectionLabel")
                   }}</label>
                   <input
@@ -783,6 +793,15 @@ const aliasName = computed({
   set: (value: string) => {
     const entry = ensureAliasEntry();
     if (entry) entry.name = value;
+  },
+});
+
+/** 副标题只存储/展示，不参与提示词 */
+const aliasSubtitle = computed({
+  get: () => aliasEntry.value?.subtitle ?? "",
+  set: (value: string) => {
+    const entry = ensureAliasEntry();
+    if (entry) entry.subtitle = value;
   },
 });
 
