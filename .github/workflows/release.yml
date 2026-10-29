@@ -142,6 +142,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # linuxdeploy 在打 AppImage 时会用 ldd 解析二进制依赖；aarch64 的
+          # sherpa shared / ORT 运行库刚编译到 target/release，还没进 AppDir，
+          # 用 LD_LIBRARY_PATH 让它先能找到（x86_64 的 Dawn 同理）。
+          LD_LIBRARY_PATH: ${{ runner.os == 'Linux' && format('{0}/target/release', github.workspace) || '' }}
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
@@ -157,8 +161,9 @@ jobs:
       #
       # 分发侧由 tauri.linux.conf.json 解决：beforeBundleCommand 调
       # scripts/prepare-linux-libs.mjs（Dawn）与 scripts/stage-desktop-runtime-libs.mjs
-      # （Dawn + sherpa CUDA 运行库），分别落到 /usr/lib/LingChat/lib 与 /usr/lib；
-      # 可执行文件的 RPATH 由 src-tauri/build.rs 写入 $ORIGIN/../lib/LingChat/lib。
+      # （Dawn，以及 aarch64 的 sherpa shared / ORT 运行库），分别落到
+      # /usr/lib/LingChat/lib 与 /usr/lib；可执行文件的 RPATH 由 src-tauri/build.rs
+      # 写入 $ORIGIN/../lib/LingChat/lib。
       #
       # 这里额外放到系统库路径，只为让 linuxdeploy 打 AppImage 时能解析该依赖，
       # 否则报 `Could not find dependency: libwebgpu_dawn.so`（裸二进制从资源目录加载，
