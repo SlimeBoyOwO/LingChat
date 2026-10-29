@@ -135,11 +135,6 @@ pub fn negative_tier_label(value: i32) -> &'static str {
 
 /// 好感度变化时写入台词历史的旁白正文：复用既有 add_line 台词工具随记忆构建
 /// 自然进入后续上下文，不做每轮注入（避免每次思维链都携带情感状态）。
-///
-/// 只产出旁白正文，外层 `{旁白: ...}` 包装由调用方统一走
-/// `utils::prompt::PromptRole::Narrator::build_prompt`，这里不再自行包裹。
-/// 以角色名作主语、玩家名作宾语（共享台词历史由在场多名角色共读，「你」会指代不明）；
-/// 数值本身不进文案，只经 [`tier_label`] / [`negative_tier_label`] 翻成程度描述。
 pub fn describe_change_for_line(
     name: &str,
     player_name: &str,

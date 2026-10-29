@@ -4,9 +4,6 @@
 //! [`InnerAppState`]；启动建图（`app::setup::build::build_service_graph`）完成后
 //! 一次性填充。`ChatComponents`
 //! 与 `ScreenshotCaptureState` 是其中的组成部分。
-//!
-//! 本模块原先位于 crate 根（`lib.rs`），拆分后由 `lib.rs` 以 `pub use`
-//! 重导出，保持 `crate::AppState` 等路径不变。
 
 use std::sync::Arc;
 
@@ -27,7 +24,6 @@ use crate::{achievements, ai_service, api};
 /// 包含聊天主 LLM 槽位、消息处理器和翻译器。
 pub struct ChatComponents {
     /// 聊天主 LLM 槽位（支持运行时热切换）。
-    /// 槽位本身始终存在，内部值可能为 None（表示尚未配置模型）。
     pub llm: LlmSlot,
     /// 消息处理器，负责处理聊天消息的流转。
     pub processor: Arc<MessageProcessor>,
@@ -60,8 +56,10 @@ pub struct InnerAppState {
     pub tool_registry: Arc<ToolRegistry>,
     /// 聊天工具的用户配置（网页搜索 API Key、代理等），热更新共享句柄。
     pub tool_settings: ai_service::tools::settings::SharedToolSettings,
-    /// 文本嵌入引擎（Tool RAG 的工具语义检索；将来记忆检索复用同一实例）。
-    pub embedding: Arc<ai_service::embedding::EmbeddingEngine>,
+    /// 文本嵌入后端（本地 ONNX 与云端的统一入口，内部含选路与熔断）。
+    pub embedding: Arc<ai_service::embedding_remote::EmbeddingSelector>,
+    /// 向量化预热任务句柄，同一时刻只允许一个在跑。
+    pub embedding_warming: Arc<ai_service::embedding_remote::WarmingTask>,
     /// Tool RAG：检索工具并维护按角色的激活缓存。
     pub tool_rag: Arc<ai_service::tools::tool_rag::ToolRag>,
     /// 插件资源只读来源（由插件侧的 `PluginManager` 实现，宿主经窄接口读取）。
@@ -92,30 +90,15 @@ pub struct InnerAppState {
     /// 主聊天后台命令的并发槽位与任务 ID 分配器。
     pub background_commands: Arc<ai_service::tools::background_command::BackgroundCommandManager>,
     /// 剧本编辑器「试玩」当前在跑的后台任务句柄。
-    ///
-    /// `editor_stop_preview` 会先唤醒被剧本阻塞的通道、把 `is_running` 置 false，
-    /// 再立即 abort 这个句柄并还原共享 `GameStatus`。试玩任务即使被中止，其游离
-    /// 流式任务（publisher/consumer）的迟到写入也会被 `preview_generation` 守卫
-    /// 丢弃，`ai:reply` 则带 `preview_gen` 代号由前端比对丢弃（issue #5）。
     pub preview_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
     /// 当前剧本引擎任务的句柄：读档/新起跑时据此中止旧引擎，防止旧任务污染恢复后的状态。
     pub script_task: Arc<tokio::sync::Mutex<Option<tokio::task::JoinHandle<()>>>>,
-    /// 试玩开始时拍下的会话快照，供收尾时一次性还原。`Option::take` 保证幂等：
-    /// 任务自然结束先还原、`editor_stop_preview` 兜底再 take 一次为空即跳过。
+    /// 试玩开始时拍下的会话快照
     pub pending_preview_restore:
         Arc<tokio::sync::Mutex<Option<api::script_editor::PreviewSession>>>,
 }
 
 /// AppState 在 Tauri 中 manage 的状态句柄。
-///
-/// **Android 修复**: Tauri 在 setup 闭包执行前就已经创建了 webview 窗口（见
-/// `tauri::app::setup()`），前端 JS 一旦加载就会立刻 invoke 命令。如果用户的 setup
-/// 闭包还在执行启动引导时，前端命令 `init_game` 在 IPC runtime worker 上
-/// 被 dispatch 后调用 `state::<AppState>()` 就会 panic with
-/// "state() called before manage()"。
-///
-/// 解决方案：setup 闭包**最开始**就 manage 一个空壳 AppState，
-/// 启动建图完成后用真实值填充。`OnceLock` 提供一次性写入。
 pub struct AppState {
     inner: std::sync::OnceLock<InnerAppState>,
 }
@@ -136,10 +119,6 @@ impl AppState {
     }
 
     /// 直接返回内部数据引用，用于 IDE 补全。
-    ///
-    /// rust-analyzer 无法解析 `State<AppState>` → `AppState` → `InnerAppState`
-    /// 的双重 Deref 链，字段补全会失效。此方法将第二步 Deref 替换为方法调用，
-    /// 通过 `state.data().ai_service` 即可正常触发补全。
     pub fn data(&self) -> &InnerAppState {
         self.inner
             .get()
@@ -147,7 +126,6 @@ impl AppState {
     }
 }
 
-/// 桌面端：简单 Deref，rust-analyzer 可以正确解析。
 /// Android 上的竞态窗口极小（manage → fill 只隔几行代码），桌面端从不触发。
 #[cfg(not(target_os = "android"))]
 impl std::ops::Deref for AppState {
@@ -160,9 +138,6 @@ impl std::ops::Deref for AppState {
 }
 
 /// Android：spin-loop 等待 fill 完成。
-/// Tauri 在 Android 上会在 setup 闭包执行前就创建 webview 窗口，
-/// 前端 JS 一旦加载就会立刻 invoke 命令。如果此时 panic，IPC worker
-/// 线程会把整个进程拖死，所以必须自旋等待而非直接 panic。
 #[cfg(target_os = "android")]
 impl std::ops::Deref for AppState {
     type Target = InnerAppState;

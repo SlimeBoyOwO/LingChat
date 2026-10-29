@@ -1,6 +1,6 @@
 //! 发言者选择能力：状态快照 + 决策 prompt + 结果解读。
 //!
-//! 发言权的实际切换由 `tools::god_agent::SelectNextSpeaker` 在执行时完成，
+//! 发言权的实际切换由 `tools::builtin::god_agent::SelectNextSpeaker` 在执行时完成，
 //! 所以这里的产物只有「谁被选中」这一条信息。
 
 use std::collections::HashMap;
@@ -14,10 +14,12 @@ use crate::ai_service::game_system::player_identity::{
     RelationEndpoint, effective_user_alias, resolve_relation, runtime_relations,
 };
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
-use crate::ai_service::tools::god_agent::SELECT_NEXT_SPEAKER;
+use crate::ai_service::tools::builtin::god_agent::SELECT_NEXT_SPEAKER;
 use crate::ai_service::types::GameLine;
 
-use crate::ai_service::god_agent::core::{GodAgentCore, PeerMember, PeerNote, peer_notes, tail_lines};
+use crate::ai_service::god_agent::core::{
+    GodAgentCore, PeerMember, PeerNote, peer_notes, tail_lines,
+};
 
 // ============================================================
 // 状态快照
@@ -293,15 +295,7 @@ fn build_task(view: &SpeakerView) -> AgentTask {
     }
 }
 
-// ============================================================
-// 结果解读
-// ============================================================
-
 /// 从运行产物解读决策。
-///
-/// 执行器会把一切错误吞成 `{"ok":false,...}`，而调用方依赖「决策失败即终止本轮
-/// 生成」的语义（见 `MessageGenerator::process_message` 的 `?`），所以这里必须把
-/// 失败重新提升为 `Err`，否则会静默退化成「沿用旧发言者」。
 fn parse_output(output: &AgentOutput) -> Result<SpeakerDecision> {
     let Some(call) = output
         .calls

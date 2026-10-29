@@ -10,8 +10,8 @@ use crate::ai_service::proactive_system::types::{TodoGroup, TodoItem, UserSchedu
 use crate::ai_service::types::ToolDefinition;
 use crate::api::data_dir;
 
-use super::executor::{Tool, ToolContext, ToolError, ToolResult};
-use super::{atomic_replace, ensure_no_args};
+use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
+use crate::ai_service::tools::{atomic_replace, ensure_no_args};
 
 fn schedules_path() -> std::path::PathBuf {
     data_dir().join("game_data").join("schedules.json")

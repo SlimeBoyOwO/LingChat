@@ -28,6 +28,92 @@ pub const DEFAULT_MEDIA_IMAGE_MAX_EDGE: u32 = 2000;
 pub const DEFAULT_MEDIA_JPEG_QUALITY: u8 = 85;
 pub const DEFAULT_MEDIA_OUTPUT_TOKENS: u32 = 1024;
 
+/// 云端向量化单次调用的默认超时。
+pub const DEFAULT_EMBEDDING_TIMEOUT_SECS: u64 = 30;
+pub const MIN_EMBEDDING_TIMEOUT_SECS: u64 = 5;
+pub const MAX_EMBEDDING_TIMEOUT_SECS: u64 = 300;
+
+/// 文本嵌入（向量化）后端配置。
+///
+/// 独立于「大模型管理」里的 provider：常见组合是对话用 A 家、向量化用 B 家，
+/// 复用同一份配置会让这种组合无解，代价只是用户多填一次密钥。
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct EmbeddingSettings {
+    /// 本地 ONNX ↔ 云端的总开关，即设置页上的「使用云端向量化模型」。
+    pub cloud_enabled: bool,
+    /// 协议：`openai`（OpenAI 兼容，含第三方 base_url）/ `gemini`。
+    pub provider: String,
+    /// 兼容端点；留空走官方地址。
+    pub base_url: String,
+    pub api_key: String,
+    /// 模型名，如 `text-embedding-3-small`、`bge-m3`。
+    pub model: String,
+    /// 单次调用超时（秒）。
+    pub timeout_secs: u64,
+}
+
+impl Default for EmbeddingSettings {
+    fn default() -> Self {
+        Self {
+            cloud_enabled: false,
+            provider: "openai".to_string(),
+            base_url: String::new(),
+            api_key: String::new(),
+            model: String::new(),
+            timeout_secs: DEFAULT_EMBEDDING_TIMEOUT_SECS,
+        }
+    }
+}
+
+impl EmbeddingSettings {
+    pub fn normalize(&mut self) {
+        self.provider = self.provider.trim().to_lowercase();
+        if self.provider != "gemini" {
+            self.provider = "openai".to_string();
+        }
+        self.base_url = self.base_url.trim().to_string();
+        self.api_key = self.api_key.trim().to_string();
+        self.model = self.model.trim().to_string();
+        self.timeout_secs = self
+            .timeout_secs
+            .clamp(MIN_EMBEDDING_TIMEOUT_SECS, MAX_EMBEDDING_TIMEOUT_SECS);
+    }
+
+    /// 是否达到可用状态。
+    ///
+    /// 自定义 base_url 时允许密钥为空（本地自托管端点），官方端点必须带密钥。
+    pub fn is_ready(&self) -> bool {
+        self.cloud_enabled
+            && !self.model.is_empty()
+            && (!self.base_url.is_empty() || !self.api_key.is_empty())
+    }
+
+    /// 决定向量空间与建库维度的那部分配置。
+    ///
+    /// 只有它变化才需要重建索引 / 后台预热；单纯改超时不应消耗额度。
+    pub fn vector_identity(&self) -> (bool, String, String, String) {
+        (
+            self.cloud_enabled,
+            self.provider.clone(),
+            self.base_url.clone(),
+            self.model.clone(),
+        )
+    }
+
+    /// 选路与熔断的判定依据。比 [`Self::vector_identity`] 多含密钥：
+    /// 只改了密钥也要重建客户端并解除熔断，但不需要重新向量化。
+    pub fn routing_identity(&self) -> (bool, String, String, String, String) {
+        (
+            self.cloud_enabled,
+            self.provider.clone(),
+            self.base_url.clone(),
+            self.model.clone(),
+            self.api_key.clone(),
+        )
+    }
+}
+
 /// 工具分组 → 组内工具注册名。
 /// 设置页按组开关，权限同步时组内工具一起放开/收回。
 /// web_search 不在此列：它有独立的 enabled + 配置就绪判断。
@@ -213,6 +299,8 @@ pub enum ToolAccessMode {
 pub struct ToolSettings {
     pub web_search: WebSearchSettings,
     pub media_file: MediaFileSettings,
+    /// 笔记语义检索与 Tool RAG 的向量化后端。
+    pub embedding: EmbeddingSettings,
     /// 分组开关：组名（见 `TOOL_GROUPS`）→ 是否启用，缺省关闭。
     pub groups: std::collections::HashMap<String, bool>,
     /// 文件修改与命令执行使用的统一审批模式。
@@ -247,6 +335,7 @@ impl Default for ToolSettings {
         Self {
             web_search: WebSearchSettings::default(),
             media_file: MediaFileSettings::default(),
+            embedding: EmbeddingSettings::default(),
             groups: std::collections::HashMap::new(),
             access_mode: ToolAccessMode::default(),
             max_tool_rounds: DEFAULT_TOOL_CALL_ROUND_LIMIT,
@@ -265,6 +354,7 @@ impl Default for ToolSettings {
 impl ToolSettings {
     pub fn normalize(&mut self) {
         self.media_file.normalize();
+        self.embedding.normalize();
         self.max_tool_rounds = self
             .max_tool_rounds
             .clamp(MIN_TOOL_CALL_ROUND_LIMIT, MAX_TOOL_CALL_ROUND_LIMIT);
@@ -417,8 +507,97 @@ impl SharedToolSettings {
         self.0.read().expect("工具配置锁已中毒").clone()
     }
 
+    /// 只取向量化配置。嵌入选路在每次检索时都会读一次，避免为此克隆整份工具配置。
+    pub fn embedding(&self) -> EmbeddingSettings {
+        self.0.read().expect("工具配置锁已中毒").embedding.clone()
+    }
+
     /// 整体替换配置，立即对所有工具生效。
     pub fn update(&self, settings: ToolSettings) {
         *self.0.write().expect("工具配置锁已中毒") = settings;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::EmbeddingSettings;
+
+    #[test]
+    fn embedding_ready_requires_model_and_credential() {
+        // 默认即本地态：没开云端、没配模型。
+        let default = EmbeddingSettings::default();
+        assert!(!default.is_ready());
+
+        let switched = EmbeddingSettings {
+            cloud_enabled: true,
+            ..Default::default()
+        };
+        assert!(!switched.is_ready(), "只有开关、没有模型时不可用");
+
+        let named = EmbeddingSettings {
+            model: "text-embedding-3-small".into(),
+            ..switched.clone()
+        };
+        assert!(!named.is_ready(), "官方端点必须带密钥");
+
+        let keyed = EmbeddingSettings {
+            api_key: "sk-test".into(),
+            ..named.clone()
+        };
+        assert!(keyed.is_ready());
+
+        // 自托管端点允许不带密钥。
+        let self_hosted = EmbeddingSettings {
+            base_url: "http://127.0.0.1:8080/v1".into(),
+            ..named
+        };
+        assert!(self_hosted.is_ready());
+    }
+
+    #[test]
+    fn vector_identity_ignores_timeout() {
+        let config = EmbeddingSettings {
+            cloud_enabled: true,
+            model: "bge-m3".into(),
+            ..Default::default()
+        };
+        let before = config.vector_identity();
+
+        let changed_timeout = EmbeddingSettings {
+            timeout_secs: 120,
+            ..config.clone()
+        };
+        assert_eq!(
+            before,
+            changed_timeout.vector_identity(),
+            "改超时不该触发重新向量化"
+        );
+
+        let changed_model = EmbeddingSettings {
+            model: "bge-large".into(),
+            ..config.clone()
+        };
+        assert_ne!(
+            before,
+            changed_model.vector_identity(),
+            "换模型必须重新向量化"
+        );
+    }
+
+    #[test]
+    fn provider_normalizes_to_known_values() {
+        let mut gemini = EmbeddingSettings {
+            provider: "  Gemini ".into(),
+            ..Default::default()
+        };
+        gemini.normalize();
+        assert_eq!(gemini.provider, "gemini");
+
+        let mut unknown = EmbeddingSettings {
+            provider: "unknown".into(),
+            ..Default::default()
+        };
+        unknown.normalize();
+        assert_eq!(unknown.provider, "openai");
     }
 }

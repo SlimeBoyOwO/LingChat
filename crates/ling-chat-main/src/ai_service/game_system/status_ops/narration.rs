@@ -16,12 +16,6 @@ use super::PromptLine;
 
 impl GameStatus {
     /// 播一条「感情档位」旁白。
-    ///
-    /// 好感度不做逐轮注入，缺这条旁白时角色要等第一次评估才知道自己的感情，
-    /// 设定好的初始值就不会体现在第一轮。
-    ///
-    /// 展示名显式给「系统」：信封是旁白、标签是系统，这是既有约定（见 `line.rs`），
-    /// 不给会变成「旁白」。
     pub async fn add_affection_state_narration(
         &mut self,
         db: &DatabaseConnection,

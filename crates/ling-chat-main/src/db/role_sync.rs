@@ -178,7 +178,6 @@ pub async fn sync_player_identities(db: &DatabaseConnection, data_dir: &Path) ->
                     name: Set(card.name.clone()),
                     subtitle: Set(card.subtitle.clone()),
                     updated_at: Set(now_string()),
-                    ..Default::default()
                 };
                 active.insert(db).await?;
                 inserted += 1;

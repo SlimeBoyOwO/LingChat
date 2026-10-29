@@ -1,0 +1,21 @@
+pkgbase = lingchat
+	pkgdesc = AI Galgame Engine
+	pkgver = 0.5.2
+	pkgrel = 1
+	url = https://github.com/SlimeBoyOwO/LingChat
+	arch = x86_64
+	license = AGPL-3.0-only
+	makedepends = nodejs
+	makedepends = pnpm
+	makedepends = rust
+	makedepends = pkgconf
+	makedepends = clang
+	makedepends = cmake
+	makedepends = libarchive
+	depends = gtk3
+	depends = webkit2gtk-4.1
+	depends = hicolor-icon-theme
+	options = !strip
+	options = !debug
+
+pkgname = lingchat

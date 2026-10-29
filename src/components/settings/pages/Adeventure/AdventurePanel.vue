@@ -192,7 +192,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onActivated, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useAdventureStore } from "@/stores/modules/adventure";
 import type { AdventureInfo } from "@/api/services/adventure";
@@ -372,8 +372,12 @@ const connections = computed<Connection[]>(() => {
   return result;
 });
 
-onMounted(async () => {
-  await fetchAdventures();
+// 设置页子页被 KeepAlive 缓存：首次挂载和每次切回都只触发 activated，
+// 打完剧本回来不重新拉取就会一直显示旧的锁定状态
+onActivated(async () => {
+  if (props.characterFolder) {
+    await fetchAdventures();
+  }
 });
 
 watch(
@@ -473,7 +477,9 @@ const getNodeHint = (adventure: AdventureInfo): string => {
 };
 
 const handleNodeClick = async (adventure: AdventureInfo) => {
-  if (displayStatus(adventure) !== "unlocked") return;
+  // 已通关的羁绊可以重玩：完成后仍保留「已完成」标记，重玩期间按进行中显示
+  const status = displayStatus(adventure);
+  if (status !== "unlocked" && status !== "completed") return;
   try {
     uiStore.showSettings = false;
     gameStore.enterStoryMode(adventure.adventure_folder);

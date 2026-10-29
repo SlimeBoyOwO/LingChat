@@ -126,18 +126,13 @@ export class TypeWriter {
     }
   }
 
-  // ─── Core Typing ─────────────────────────────────────────
-
+  // ─── 核心打字逻辑 ───────────
   /**
-   * Start typing the given text character by character.
-   *
-   * Returns a Promise that resolves when:
-   *   - All characters have been displayed (natural completion), OR
-   *   - The animation is cancelled by a subsequent `start()` call
-   *
-   * Safe to call while a previous animation is still running — the old one
-   * is cancelled cleanly via generation counter before the new one begins.
-   */
+    开始逐字符打出给定文本。
+    返回一个 Promise，在以下情况时 resolve：
+    所有字符都已显示（自然完成），或
+    动画被后续的 start() 调用取消
+  */
   public start(text: string, speed?: number): Promise<void> {
     // Cancel any previous animation and advance generation
     this.stop();
@@ -194,7 +189,7 @@ export class TypeWriter {
           //并保留了原本的微量随机偏移设计
           const maxDelay = 200;
           const minDelay = 10;
-          const randomVariation = this.speed * 0.2;
+          const randomVariation = this.speed * 0.02;
           const delay =
             maxDelay -
             ((this.speed - 1) / 99) * (maxDelay - minDelay) +
@@ -216,11 +211,6 @@ export class TypeWriter {
 
   /**
    * 追加文本到当前打字目标末尾（台词合并：i+1 句到达后接续显示）。
-   *
-   * 若打字仍在进行，目标文本被扩充，运行中的打字循环会自然继续把新增
-   * 字符打出来（读 this.targetText / this.i）；若已自然完成或被点击跳过
-   * （status 为 completed），则复用原循环闭包从 this.i（已在 finish() 中对齐
-   * 全文末尾）恢复续打。被 stop() 中断过（无有效闭包）时退化为直接补全。
    */
   public append(text: string): void {
     this.targetText += text;

@@ -1,7 +1,6 @@
-//! 文本嵌入引擎（ONNX 语义向量）。
+//! 本地 ONNX 句向量引擎（bge-small-zh-v1.5）。
 //!
-//! 接口刻意保持窄：调用方只依赖 [`EmbeddingEngine::embed`] 与
-//! [`super::cosine_similarity`]。ONNX Runtime 的可用性由宿主作为参数传入，
+//! 以 [`Embedder`] 暴露给调用方。ONNX Runtime 的可用性由宿主作为参数传入，
 //! 本 crate 不依赖 tauri，也不负责初始化运行时。
 //!
 //! 模型缺失、ONNX Runtime 不可用、分词或推理失败时一律降级为「禁用态」，
@@ -16,10 +15,9 @@ use ort::session::{Session, SessionInputValue};
 use ort::value::{DynValue, Tensor};
 use tokenizers::{Tokenizer, TruncationParams};
 
-/// `data/third_party/` 下的模型目录名。
-///
-/// 换用别的 embedding 模型时改动集中在这里与下载脚本；后续要做成用户可选，
-/// 把这一处换成配置读取即可。
+use super::{Embedder, l2_normalize};
+
+/// `data/third_party/` 下的模型目录名，同时作为本地向量索引的分库目录。
 pub const MODEL_DIR_NAME: &str = "embedding_model_bge_small_zh";
 
 /// bge-small-zh-v1.5 的句向量维度，仅用于自检与日志。
@@ -112,11 +110,6 @@ impl EmbeddingEngine {
     /// 引擎当前是否可用。模型齐备且未发生过运行期失败时为 true。
     pub fn is_enabled(&self) -> bool {
         self.ready && !self.failed.load(Ordering::Acquire)
-    }
-
-    /// 句向量维度（模型固定输出，见 [`EXPECTED_DIMENSION`]）。
-    pub const fn dimension(&self) -> usize {
-        EXPECTED_DIMENSION
     }
 
     /// 计算文本的 L2 归一化句向量。
@@ -446,15 +439,26 @@ fn build_session(onnx_path: &Path) -> Result<Session> {
         .map_err(|e| anyhow!("加载 ONNX 模型失败 ({}): {e}", onnx_path.display()))
 }
 
-/// L2 归一化；零向量原样返回，避免除零。
-fn l2_normalize(mut vector: Vec<f32>) -> Vec<f32> {
-    let norm = vector.iter().map(|v| v * v).sum::<f32>().sqrt();
-    if norm > f32::EPSILON {
-        for value in vector.iter_mut() {
-            *value /= norm;
-        }
+impl Embedder for EmbeddingEngine {
+    fn is_enabled(&self) -> bool {
+        EmbeddingEngine::is_enabled(self)
     }
-    vector
+
+    fn dimension(&self) -> Option<usize> {
+        Some(EXPECTED_DIMENSION)
+    }
+
+    fn namespace(&self) -> Option<String> {
+        Some(MODEL_DIR_NAME.to_string())
+    }
+
+    fn embed(&self, text: &str) -> Result<Vec<f32>> {
+        EmbeddingEngine::embed(self, text)
+    }
+
+    fn embed_batch(&self, texts: &[String]) -> Result<Vec<Vec<f32>>> {
+        EmbeddingEngine::embed_batch(self, texts)
+    }
 }
 
 #[cfg(test)]
