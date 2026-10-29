@@ -1,9 +1,27 @@
-# ⚠️ 本文件与 src-tauri/.cargo/config.toml 必须保持一致（除本段说明文字外，
-# 两份的配置项应逐项相同）。
+# ⚠️ 仓库里**只应有这一份** `.cargo/config.toml`。
+#
 # Cargo 是「从 cwd 向上查找」配置，不是从 manifest 向上：
-#   在 src-tauri/ 下直接跑 cargo            → 先读 src-tauri/.cargo/config.toml，再读本文件
-#   在仓库根跑 cargo --manifest-path src-tauri/Cargo.toml → 只读本文件
-# 越靠近 cwd 的配置优先级越高。两份都在实际生效。
+#   在仓库根跑 cargo --manifest-path src-tauri/Cargo.toml → 读本文件
+#   在 src-tauri/ 下直接跑 cargo                        → 也会走到本文件
+#
+# ## 为什么不能有第二份（`src-tauri/.cargo/config.toml` 已删除）
+#
+# Cargo 合并配置时，`rustflags` 这类**数组是「拼接」而不是「覆盖」**
+# （其余键是覆盖）。`tauri android build` 会用**两个不同的 cwd** 各跑一趟
+# cargo —— 一趟在仓库根、一趟在 `src-tauri/`。只要 `src-tauri/.cargo/config.toml`
+# 存在，这两趟读到的配置份数就不同：
+#
+#   仓库根那趟  → 1 份 → rustflags = [A, B]
+#   src-tauri 那趟 → 2 份 → rustflags = [A, B, A, B]
+#
+# rustflags 参与 unit hash，于是**同一个 crate 被编两遍**，其中一遍
+# （约 6.5 分钟）纯属浪费。实测证据在 target 的 fingerprint 里：
+#
+#   ...1670da/...  "rustflags": "...allow-shlib-undefined ...ignore-all" ×2
+#   ...30b08e/...  "rustflags": "...allow-shlib-undefined ...ignore-all" ×1
+#
+# 删掉第二份后两趟都只读到本文件，rustflags 完全一致，重复编译消失。
+#
 # 注意：新增的 [profile.dev.package."*"] 之类的 package 覆盖放在
 # 仓库根 Cargo.toml 里（workspace 成员里的 profile 会被静默忽略）。
 

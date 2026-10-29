@@ -1,7 +1,11 @@
 <template>
   <div
-    class="absolute z-30 flex cursor-pointer"
-    :class="[horizontal ? 'w-[85%] flex-col' : 'inset-x-0 justify-center px-2', frameClass]"
+    class="z-30 flex cursor-pointer"
+    :class="[
+      inline ? 'relative w-full' : 'absolute',
+      horizontal ? 'w-[85%] flex-col' : inline ? 'justify-center' : 'inset-x-0 justify-center px-2',
+      frameClass,
+    ]"
     :style="frameStyle"
     @click="emit('advance')"
   >
@@ -33,6 +37,7 @@
     </div>
 
     <div
+      v-if="!inline"
       class="absolute inset-x-0 flex justify-center"
       :class="top ? 'top-full mt-1' : 'bottom-full mb-1'"
       :style="{ maxHeight: 'var(--notify-h)' }"
@@ -43,7 +48,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import type { BubbleAlign, BubbleSide } from "./bubbleMirror";
 import { useTypeWriter } from "@/composables/ui/useTypeWriter";
 import { createCharRevealWriter } from "@/utils/typewriter/charReveal";
@@ -62,6 +67,18 @@ const props = defineProps<{
   side?: BubbleSide;
   align?: BubbleAlign;
   alignInset?: number;
+  /**
+   * **内联模式**：气泡按**文档流**排版，而不是绝对定位铺在整窗上。
+   *
+   * 桌面端气泡独占 `pet_bubble` 窗（那个窗就是为了装这一个气泡而开的），
+   * 所以它 `absolute` + `top/bottom: var(--tail)` 把尾巴的伸出量留出来即可。
+   * Android 悬浮窗里气泡是**内联**在桌宠页的一条「装饰带」里的（见
+   * `PetMode.vue`），必须参与文档流，否则那条带子高度恒为 0、
+   * 窗口也永远长不高。
+   *
+   * 内联模式下由**父容器**负责与宠物之间的间距，这里不再自己偏移。
+   */
+  inline?: boolean;
 }>();
 
 const emit = defineEmits<{ advance: []; drained: [lineId: number] }>();
@@ -71,9 +88,12 @@ const horizontal = computed(() => side.value === "left" || side.value === "right
 const top = computed(() => (horizontal.value ? props.align !== "bottom" : side.value === "below"));
 
 const frameClass = computed(() => [
-  ...(horizontal.value
-    ? [side.value === "left" ? "right-(--tail) items-end" : "left-(--tail) items-start"]
-    : [top.value ? "top-(--tail) items-start" : "bottom-(--tail) items-end"]),
+  ...(props.inline
+    ? // 内联：不做任何绝对定位偏移，间距交给父容器（装饰带的 justify-end / 余量）
+      []
+    : horizontal.value
+      ? [side.value === "left" ? "right-(--tail) items-end" : "left-(--tail) items-start"]
+      : [top.value ? "top-(--tail) items-start" : "bottom-(--tail) items-end"]),
   props.visible ? "" : "pointer-events-none",
 ]);
 
@@ -141,9 +161,13 @@ const shownLine = ref<string | null>(null);
 
 let renderToken = 0;
 
+/** 上一次量高度用的宽度，宽度变了要重算（见下方 ResizeObserver） */
+let measuredWidth = 0;
+
 const applyTextHeight = (line: string) => {
   const el = textRef.value;
   if (!el) return;
+  measuredWidth = el.clientWidth;
   if (!line.trim()) {
     el.style.height = "0px";
     return;
@@ -155,7 +179,8 @@ const applyTextHeight = (line: string) => {
   const measured = clone.offsetHeight;
   clone.remove();
   charReveal.reset();
-  el.style.height = `${Math.min(measured, props.maxHeight)}px`;
+  // 量出 0（挂载时机 / 宽度为 0 时可能发生）就用 auto 兜底，否则文本会被压成一条线
+  el.style.height = measured > 0 ? `${Math.min(measured, props.maxHeight)}px` : "auto";
 };
 
 const clearDisplay = () => {
@@ -193,11 +218,44 @@ const render = async (line: string, instant: boolean) => {
 
   await startTyping(line, props.speed);
   if (token !== renderToken) return;
+  // 兜底：打字机如果一个字都没写进去（首句最容易撞上），直接把整段落上去，
+  // 否则这一句会彻底消失——点一下才跳到下一句。
+  const el = textRef.value;
+  if (el && line.trim() && !(el.textContent ?? "").trim()) {
+    charReveal.renderInstant(el, line);
+  }
   displayEmpty.value = false;
   shownLine.value = line;
   // 自然打完或被 finishTyping 补全（TypeWriter.finish 会收口 start 的 promise）；过期渲染已被 token 挡掉
   if (!isTyping.value) emit("drained", id);
 };
+
+/**
+ * 宽度变化后按新宽度重算文本高度。
+ *
+ * `applyTextHeight` 量出来的是**当时宽度**下的固定像素高度。Android 悬浮窗
+ * 收起 → 展开会改窗口宽度（1/6 → 2/5 屏宽），旧高度要么裁掉后半句、要么留白。
+ * 只在宽度真的变了时重算，避免「设高度 → 触发观察 → 再设高度」的回环。
+ */
+const widthObserver =
+  typeof ResizeObserver === "undefined"
+    ? null
+    : new ResizeObserver(() => {
+        const el = textRef.value;
+        if (!el) return;
+        const width = el.clientWidth;
+        if (!width || width === measuredWidth) return;
+        const line = shownLine.value;
+        if (line) applyTextHeight(line);
+      });
+
+onMounted(() => {
+  if (textRef.value) widthObserver?.observe(textRef.value);
+});
+
+onUnmounted(() => {
+  widthObserver?.disconnect();
+});
 
 watch(
   () => [props.visible, props.line, props.instant] as const,

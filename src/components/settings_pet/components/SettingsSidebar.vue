@@ -1,10 +1,31 @@
 <template>
+  <!--
+    布局随宽度切换，不靠 JS 平台判断：
+
+    · 窄屏（<768px）：四个标签从左侧竖栏变成**顶部横向滚动**的标签条 ——
+      200px 的竖侧栏放在 360dp 的屏上只剩 160px 给内容，减掉 p-6 就只剩 112px，
+      滑块根本没法用。
+    · 宽屏（≥768px，含 1200×800 的桌面窗口）：维持原来的左侧竖栏。
+
+    ★ 用 `min-[768px]:`（显式 px）而**不是** `md:`。
+
+    Tailwind 的 `md:` 是 `48rem`，而本项目的根字号被
+    `html { font-size: clamp(12px, min(2.5vw, 2.5vh), 16px) !important }`
+    缩放过了 —— 手机上是 12px，于是 `48rem = 576px`；桌面 16px 时才是 768px。
+    **同一个 `md:` 在不同设备上落到不同像素**，断点会「漂移」：
+    手机横屏（约 780px）本该按宽屏走，却因为 576px 的门槛过早切换。
+    钉死成 768px 后，判断依据只剩「可用宽度」一个变量，与设备无关。
+
+    为什么不用 `isMobile()`：判断依据是**可用宽度**，不是设备类型
+    （桌面端把窗口拉窄时也该切成横条）。
+  -->
   <aside
-    class="z-10 flex w-[200px] shrink-0 flex-col border-r transition-colors duration-300 md:w-[220px]"
+    class="z-10 flex w-full shrink-0 flex-row overflow-x-auto border-b transition-colors duration-300 min-[768px]:w-[220px] min-[768px]:flex-col min-[768px]:overflow-x-visible min-[768px]:border-r min-[768px]:border-b-0"
     :class="isDarkMode ? 'border-slate-700 bg-slate-800/80' : 'border-slate-200 bg-white/80'"
   >
+    <!-- 品牌区：窄屏隐藏（横条上没地方放，也没必要） -->
     <div
-      class="border-b p-4 transition-colors"
+      class="hidden border-b p-4 transition-colors min-[768px]:block"
       :class="isDarkMode ? 'border-slate-700/50' : 'border-slate-100'"
     >
       <div class="flex items-center gap-3">
@@ -35,13 +56,15 @@
       </div>
     </div>
 
-    <nav class="flex-1 overflow-y-auto py-2">
+    <nav
+      class="flex flex-1 flex-row overflow-x-auto py-2 min-[768px]:flex-col min-[768px]:overflow-x-visible min-[768px]:overflow-y-auto"
+    >
       <button
         v-for="item in tabs"
         :key="item.key"
         type="button"
         @click="$emit('update:activeTab', item.key)"
-        class="group relative flex w-full flex-col items-start overflow-hidden px-5 py-3 transition-all duration-200"
+        class="group relative flex w-auto shrink-0 flex-col items-start overflow-hidden px-4 py-3 transition-all duration-200 min-[768px]:w-full min-[768px]:px-5"
         :class="[
           activeTab === item.key
             ? isDarkMode
@@ -52,12 +75,20 @@
               : 'hover:bg-slate-50',
         ]"
       >
+        <!-- 选中指示条：竖栏在左侧（纵向），横条在底部（横向）——
+             两个方向的 transform 不同，所以拆成两个元素各管一档。 -->
         <div
-          class="absolute top-0 bottom-0 left-0 w-1 origin-left bg-sky-400 transition-transform duration-300"
+          class="absolute right-0 bottom-0 left-0 h-1 origin-bottom bg-sky-400 transition-transform duration-300 min-[768px]:hidden"
+          :class="activeTab === item.key ? 'scale-x-100' : 'scale-x-0'"
+        ></div>
+        <div
+          class="absolute top-0 bottom-0 left-0 hidden w-1 origin-left bg-sky-400 transition-transform duration-300 min-[768px]:block"
           :class="activeTab === item.key ? 'scale-x-100' : 'scale-x-0'"
         ></div>
 
-        <div class="relative z-10 flex items-center gap-3">
+        <div
+          class="relative z-10 flex flex-col items-center gap-1 min-[768px]:flex-row min-[768px]:gap-3"
+        >
           <component
             :is="item.icon"
             :class="[
@@ -69,7 +100,7 @@
               'h-5 w-5 transition-colors',
             ]"
           />
-          <div class="text-left">
+          <div class="text-center min-[768px]:text-left">
             <span
               class="block text-[14px] font-bold transition-colors"
               :class="
@@ -84,8 +115,9 @@
             >
               {{ item.label }}
             </span>
+            <!-- 英文副标题：窄屏隐藏，否则横条会变很高 -->
             <span
-              class="mt-0.5 block font-mono text-[9px] font-bold tracking-wider transition-colors"
+              class="mt-0.5 hidden font-mono text-[9px] font-bold tracking-wider transition-colors min-[768px]:block"
               :class="
                 activeTab === item.key
                   ? 'text-sky-400/70'

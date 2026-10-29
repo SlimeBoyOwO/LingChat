@@ -63,7 +63,7 @@
         <!-- ================= 视图 1：任务分组总览 ================= -->
         <div v-if="activePage === 'todo_groups'" class="space-y-8">
           <!-- 分组卡片栅格 (完美复刻原闲置状态卡片) -->
-          <div class="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div class="grid grid-cols-1 gap-4 min-[768px]:grid-cols-2">
             <div
               v-for="(group, id) in todoGroups"
               :key="'group-' + id"
