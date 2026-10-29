@@ -274,7 +274,6 @@ sherpa-onnx（ZipVoice / Matcha / Kokoro 这些 TTS）与上面 sbv2 那条线�
 | iOS / macOS  | `coreml`     | Apple 上 CoreML 编译期默认开启                                                                                  |
 | Windows      | `dml` 或 CPU | 只有用 `pnpm tauri:build:win` 自编的 DirectML 版才是 `dml`，见 9.1                                              |
 | Linux x86_64 | CPU          | sherpa 在 Linux 上只有 CUDA 一条 GPU 路，代价是 +235 MiB 安装包 / +384 MiB 安装后体积，按体积取舍已移除，见 9.4 |
-| Linux aarch64 | CPU         | 官方 shared CPU 包；`ort` 走 `load-dynamic`，与 sherpa 共用同一份 `libonnxruntime.so` |
 
 编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `nnapi` / `cpu`）由
 `crates/ling-chat-main/build.rs` 发射：它读 `SHERPA_ONNX_LIB_DIR` 里的
@@ -387,10 +386,9 @@ NDK、没有 cmake）则回落到官方预编译包（CPU）。要显式走 CPU 
   使用 —— Android 上 `.cargo/config.toml` 允许未定义符号，运行期由它解析。
 - Linux：`scripts/stage-desktop-runtime-libs.mjs` 按可执行文件的 `DT_NEEDED` 把库暂存到
   `src-tauri/.runtime-libs/`，再由 `tauri.conf.json` 的 `bundle.linux.*.files` 映射到
-  `/usr/lib`。**不能只放在可执行文件旁边**：依赖 crate 的 `cargo:rustc-link-arg` rpath
-  到不了最终二进制；桌面 bin 的 RPATH 由 `src-tauri/build.rs` 单独写入，但安装包仍统一
-  把库放到 `/usr/lib`。x86_64 暂存 ort WebGPU 用到的 `libwebgpu_dawn.so`；aarch64 暂存
-  sherpa shared 的 `libsherpa-onnx-c-api.so` 与 `libonnxruntime.so`（后者同时供 `ort` 使用）。
+  `/usr/lib`。**不能放在可执行文件旁边**：`cargo:rustc-link-arg` 加的 `$ORIGIN` rpath
+  到不了最终二进制（实测无 RPATH/RUNPATH），而加载器不搜可执行文件所在目录。目前 Linux
+  只需要暂存 ort WebGPU 用到的 `libwebgpu_dawn.so`（sherpa 是静态 CPU 库）。
 - macOS / iOS：核心库静态链接，无需暂存。
 
 ### 9.4 历史：已移除的 Linux CUDA 变体
