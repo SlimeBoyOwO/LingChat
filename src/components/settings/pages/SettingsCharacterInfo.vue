@@ -19,7 +19,7 @@
             </div>
             <div>
               <h2 class="m-0 text-xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
-                {{ $t("settings.characterInfo.header.title", { title }) }}
+                {{ $t("settings.characterInfo.header.title", { title: headerTitle }) }}
               </h2>
               <p class="m-0 text-sm text-white/50">
                 {{ $t("settings.characterInfo.header.subtitle") }}
@@ -191,6 +191,16 @@
                     v-model="aliasName"
                     type="text"
                     :placeholder="$t('settings.characterInfo.alias.namePlaceholder')"
+                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                  />
+
+                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
+                    $t("settings.characterInfo.alias.subtitleLabel")
+                  }}</label>
+                  <input
+                    v-model="aliasSubtitle"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.alias.subtitlePlaceholder')"
                     class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
                   />
 
@@ -406,7 +416,7 @@
             </button>
             <button
               class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving || loading || resourceBusy > 0 || !editId"
+              :disabled="saving || loading || resourceBusy > 0 || !loaded || !editId"
               @click="saveSettings"
             >
               <span
@@ -492,11 +502,13 @@ const props = defineProps<{
   clothes?: Array<{ title: string; avatar: string }>;
 }>();
 
-const emit = defineEmits(["close", "saved"]);
+const emit = defineEmits(["close", "saved", "loaded"]);
 
 const activeTab = ref("basic");
 const avatarCostume = ref("default");
 const loading = ref(false);
+/** 表单是否已完成一次成功装载；未装载时禁止保存，避免把空表单写回角色卡 */
+const loaded = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const dialogStore = useDialogStore();
@@ -524,10 +536,18 @@ let loadSequence = 0;
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
   () =>
-    worldbookChanged.value ||
-    resourceRevision.value > 0 ||
-    JSON.stringify(localSettings.value) !== baseline.value ||
-    JSON.stringify(hotwordDraft.value.hotwords) !== hotwordBaseline.value,
+    loaded.value &&
+    (worldbookChanged.value ||
+      resourceRevision.value > 0 ||
+      JSON.stringify(localSettings.value) !== baseline.value ||
+      JSON.stringify(hotwordDraft.value.hotwords) !== hotwordBaseline.value),
+);
+/** 标题兜底：关系引导可能先于角色列表拿到 title，装载后用角色名补上 */
+const headerTitle = computed(
+  () =>
+    props.title?.trim() ||
+    String(localSettings.value.ai_name ?? "").trim() ||
+    t("settings.characterInfo.header.untitled"),
 );
 async function refreshDraftClothes() {
   const id = editId.value;
@@ -797,6 +817,15 @@ const aliasName = computed({
   },
 });
 
+/** 副标题只存储/展示，不参与提示词 */
+const aliasSubtitle = computed({
+  get: () => aliasEntry.value?.subtitle ?? "",
+  set: (value: string) => {
+    const entry = ensureAliasEntry();
+    if (entry) entry.subtitle = value;
+  },
+});
+
 /** 该身份的初始好感度覆写；留空（""）表示用卡片默认值（保存为 null） */
 const aliasInitialAffection = computed<number | "">({
   get: () => aliasEntry.value?.initial_affection ?? "",
@@ -821,70 +850,89 @@ const loadPlayerIdentities = async () => {
 
 watch(
   () => [props.visible, props.roleId] as const,
-  async ([newVal]) => {
+  async ([visible]) => {
     const sequence = ++loadSequence;
-    if (!newVal) {
+    if (!visible) {
+      loading.value = false;
+      loaded.value = false;
       await discardDraft();
+      if (sequence === loadSequence) {
+        localSettings.value = {};
+        baseline.value = "";
+        worldbook.value = null;
+        worldbookBaseline.value = null;
+        worldbookError.value = "";
+      }
       return;
     }
-    if (newVal && props.roleId) {
-      loading.value = true;
-      try {
-        await discardDraft();
-        if (sequence !== loadSequence || !props.visible) return;
-        const roleId = props.roleId;
-        const draft = await beginCharacterEdit(roleId);
-        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
-          await discardCharacterEdit(roleId, draft.edit_id);
-          return;
-        }
-        let loadedBook: Worldbook | null = null;
-        let bookError = "";
-        try {
-          loadedBook = await readCharacterWorldbook(roleId, draft.edit_id);
-        } catch (error) {
-          bookError = String(error);
-        }
-        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
-          await discardCharacterEdit(roleId, draft.edit_id);
-          return;
-        }
-        worldbook.value = loadedBook;
-        worldbookBaseline.value = structuredClone(loadedBook);
-        worldbookError.value = bookError;
-        editId.value = draft.edit_id;
-        editRoleId.value = roleId;
-        resourceRevision.value = 0;
-        localSettings.value = JSON.parse(JSON.stringify(draft.settings));
-        migrateLegacyVoiceModelFields();
-        if (!localSettings.value.voice_lang) {
-          localSettings.value.voice_lang = "ja";
-        }
-        aliasIdentityId.value = gameStore.playerIdentityId ?? "";
-        void loadPlayerIdentities();
-        // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
-        if (!localSettings.value.avatar_mode) {
-          localSettings.value.avatar_mode = "live2d";
-        }
-        if (!localSettings.value.avatar_mode_p) {
-          localSettings.value.avatar_mode_p = "live2d";
-        }
-        baseline.value = JSON.stringify(localSettings.value);
-        draftClothes.value = [...(props.clothes ?? [])];
-        // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
-        const roleHotwords = await getRoleHotwords(roleId);
-        // 读取期间可能已关闭弹窗或切到别的角色，不能把结果写进当前草稿
-        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) return;
-        hotwordDraft.value = { hotwords: roleHotwords };
-        hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
-      } catch (e) {
-        console.error("Failed to load character settings", e);
-        emit("close");
-      } finally {
-        if (sequence === loadSequence) loading.value = false;
+    if (!props.roleId) {
+      loading.value = false;
+      loaded.value = false;
+      return;
+    }
+
+    // 弹窗可能在 visible 已经为 true 时挂载（关系引导先写意图再打开设置页），
+    // 因此这里必须 immediate：否则首帧只渲染空表单，用户点保存有清空角色卡的风险。
+    loading.value = true;
+    loaded.value = false;
+    try {
+      await discardDraft();
+      if (sequence !== loadSequence || !props.visible) return;
+      const roleId = props.roleId;
+      const draft = await beginCharacterEdit(roleId);
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+        await discardCharacterEdit(roleId, draft.edit_id);
+        return;
       }
+      let loadedBook: Worldbook | null = null;
+      let bookError = "";
+      try {
+        loadedBook = await readCharacterWorldbook(roleId, draft.edit_id);
+      } catch (error) {
+        bookError = String(error);
+      }
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+        await discardCharacterEdit(roleId, draft.edit_id);
+        return;
+      }
+      worldbook.value = loadedBook;
+      worldbookBaseline.value = structuredClone(loadedBook);
+      worldbookError.value = bookError;
+      editId.value = draft.edit_id;
+      editRoleId.value = roleId;
+      resourceRevision.value = 0;
+      localSettings.value = JSON.parse(JSON.stringify(draft.settings));
+      migrateLegacyVoiceModelFields();
+      if (!localSettings.value.voice_lang) {
+        localSettings.value.voice_lang = "ja";
+      }
+      aliasIdentityId.value = gameStore.playerIdentityId ?? "";
+      void loadPlayerIdentities();
+      // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
+      if (!localSettings.value.avatar_mode) {
+        localSettings.value.avatar_mode = "live2d";
+      }
+      if (!localSettings.value.avatar_mode_p) {
+        localSettings.value.avatar_mode_p = "live2d";
+      }
+      baseline.value = JSON.stringify(localSettings.value);
+      draftClothes.value = [...(props.clothes ?? [])];
+      // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
+      const roleHotwords = await getRoleHotwords(roleId);
+      // 读取期间可能已关闭弹窗或切到别的角色，不能把结果写进当前草稿
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) return;
+      hotwordDraft.value = { hotwords: roleHotwords };
+      hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
+      loaded.value = true;
+      emit("loaded");
+    } catch (e) {
+      console.error("Failed to load character settings", e);
+      emit("close");
+    } finally {
+      if (sequence === loadSequence) loading.value = false;
     }
   },
+  { immediate: true },
 );
 
 // 打开语音 tab 时刷新本地音色
@@ -990,7 +1038,8 @@ async function isLive2dModelAvailable(): Promise<boolean> {
 
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
-  if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  if (!loaded.value || !props.roleId || !editId.value || resourceBusy.value || saving.value)
+    return false;
   const confirmed = await confirmSaveEffect(
     (save) => t("settings.characterInfo.saveConfirm", { save }),
     t("settings.characterInfo.saveConfirmNoSave"),
@@ -1052,6 +1101,7 @@ async function persistSettings(): Promise<boolean> {
 }
 
 const saveSettings = async () => {
+  if (!loaded.value) return;
   if (await persistSettings()) {
     emit("saved");
     emit("close");
@@ -1067,6 +1117,7 @@ async function onTouchRegionsApply(value: Record<string, unknown>) {
 
 onUnmounted(() => {
   ++loadSequence;
+  loaded.value = false;
   void discardDraft().catch(console.error);
 });
 </script>

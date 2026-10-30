@@ -1,5 +1,6 @@
-//! 开局引导期：从身份卡推导本局的「我」，并组装注入块。
+//! 开局引导期：从主身份卡推导本局的「我」，并组装注入块。
 
+use std::collections::HashMap;
 use std::path::Path;
 
 use super::{
@@ -34,32 +35,33 @@ impl PlayerBootstrap {
     }
 }
 
-/// 开局时确定「我」是谁，并对老角色卡做兜底。
-///
-/// 与 `persona::player_block_for` 的分工：本函数负责在身份尚未落盘时把它定下来，
-/// 后者负责身份已定之后重建某个角色的人设行。
+/// 开局时确定「我」是谁：只解析数据目录的主身份，不再按角色建身份。
 pub fn resolve_player_bootstrap(
     data_dir: &Path,
     gs: &GameStatus,
     settings: &CharacterSettings,
 ) -> PlayerBootstrap {
-    let identity = IdentityStore::new(data_dir).current_or_synthesize(
-        &settings.user_name,
-        settings.user_subtitle.as_deref().unwrap_or_default(),
-    );
+    let store = IdentityStore::new(data_dir);
+    let identity = resolve_primary_identity(&store);
+    if !identity.id.trim().is_empty() {
+        if let Err(e) = store.set_current_id(&identity.id) {
+            tracing::warn!("记录当前身份失败: {e}");
+        }
+    }
 
-    // 老卡兜底：身份卡 prompt 为空时，用角色卡 system_prompt 里抽出的「我的设定」段落补上。
-    let (_, extracted_setting) = crate::utils::prompt::extract_player_setting(
-        settings.system_prompt.as_deref().unwrap_or_default(),
-    );
+    let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
+    let target = RelationEndpoint::Me(identity.id.clone());
+
+    // 迁移已把「我的设定」聚合进身份卡 prompt；只有 prompt 为空（老数据未迁移）时才回退
+    // 到角色卡抽取文本，避免与身份侧关系重复注入。
     let effective_prompt = if identity.prompt.trim().is_empty() {
+        let (_, extracted_setting) = crate::utils::prompt::extract_player_setting(
+            settings.system_prompt.as_deref().unwrap_or_default(),
+        );
         extracted_setting.unwrap_or_default()
     } else {
         identity.prompt.clone()
     };
-
-    let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
-    let target = RelationEndpoint::Me(identity.id.clone());
     let speaker_relations =
         runtime_relations::load_effective(data_dir, &settings.character_folder, gs);
     let relation = resolve_relation(
@@ -105,5 +107,58 @@ pub fn resolve_player_bootstrap(
         effective_prompt,
         alias,
         player_block,
+    }
+}
+
+/// 当前身份优先；没有当前身份时用主身份兜底；都没有则给内存里的占位身份。
+fn resolve_primary_identity(store: &IdentityStore) -> PlayerIdentity {
+    store
+        .current()
+        .or_else(|| store.primary_identity())
+        .unwrap_or_else(|| PlayerIdentity {
+            name: "玩家A（待填写）".to_string(),
+            subtitle: "玩家A（待填写）".to_string(),
+            is_primary: true,
+            relations: HashMap::new(),
+            ..Default::default()
+        })
+}
+
+/// 老卡 system_prompt 里「以下是我的设定」段落的正文。
+pub(crate) fn legacy_player_prompt(settings: &CharacterSettings) -> String {
+    let (_, segment) = crate::utils::prompt::extract_player_setting(
+        settings.system_prompt.as_deref().unwrap_or_default(),
+    );
+    let Some(segment) = segment else {
+        return String::new();
+    };
+    let mut lines = segment.lines();
+    let first = lines.next().unwrap_or_default();
+    let body = if first.trim_start().starts_with("以下是我的设定") {
+        lines.collect::<Vec<_>>().join("\n")
+    } else {
+        segment.clone()
+    };
+    body.trim().to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn legacy_settings() -> CharacterSettings {
+        CharacterSettings {
+            character_folder: "诺一钦灵".to_string(),
+            user_name: "莱姆".to_string(),
+            user_subtitle: Some("Bilibili".to_string()),
+            system_prompt: Some("人设\n以下是我的设定：\n我是莱姆。\n".to_string()),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn extracts_legacy_player_prompt_without_heading() {
+        let settings = legacy_settings();
+        assert_eq!(legacy_player_prompt(&settings), "我是莱姆。");
     }
 }

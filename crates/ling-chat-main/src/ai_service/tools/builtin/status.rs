@@ -16,7 +16,7 @@ impl Tool for CurrentStatus {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition::new(
             "status_get_current",
-            "查询当前角色的运行时状态：玩家名、当前角色、在场/舞台角色、背景、立绘、音乐、特效、当前场景、全局变量等",
+            "查询当前角色的运行时状态：玩家名、当前角色、在场/舞台角色、背景、立绘、音乐、氛围特效、天气特效、当前场景、全局变量等",
             json!({
                 "type": "object",
                 "properties": {},
@@ -54,6 +54,7 @@ impl Tool for CurrentStatus {
             "present_pic": gs.present_pic,
             "background_music": gs.background_music,
             "background_effect": gs.background_effect,
+            "weather_effect": gs.weather_effect,
             "current_scene_id": gs.current_scene_id,
             "scene_awareness_enabled": gs.scene_awareness_enabled,
             "global_variables": gs.global_variables,
