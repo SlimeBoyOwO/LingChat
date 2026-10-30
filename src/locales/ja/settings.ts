@@ -438,6 +438,7 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - 設定編集",
+      untitled: "キャラクター",
       subtitle: "キャラクターの詳細設定を変更します",
     },
     saveConfirm:
@@ -464,6 +465,17 @@ export default {
         savedMsg: "このキャラの認識（関係）を更新しました",
         loadFailTitle: "関係の読み込みに失敗しました",
       },
+    },
+    alias: {
+      identityLabel: "私の身分",
+      noneOption: "身分未選択",
+      nameLabel: "このキャラクターが「私」を呼ぶ名前",
+      namePlaceholder: "空欄なら身分カードの名前を使用",
+      subtitleLabel: "このキャラクターが「私」に使う副題",
+      subtitlePlaceholder: "空欄なら副題を表示しない",
+      affectionLabel: "この身分の初期好感度",
+      affectionPlaceholder: "空欄ならカードの初期値を使用",
+      hint: "呼称・副題・初期好感度は身分ごとに設定します。同じキャラクターでも身分によって呼び方・副題・初期好感度を変えられます。空欄ならカードの初期値を使用します。",
     },
     fields: {
       aiName: "AI 名",

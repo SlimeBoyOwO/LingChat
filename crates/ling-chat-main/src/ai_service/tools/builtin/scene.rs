@@ -1,14 +1,12 @@
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tauri::Emitter;
-use tauri_plugin_store::StoreExt;
 
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::types::ToolDefinition;
 use crate::api::data_dir;
 
+use crate::ai_service::tools::ensure_no_args;
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
-use crate::ai_service::tools::{ensure_no_args, game_status_handle};
 
 /// scene_list：列出所有可用场景。
 pub struct SceneList;
@@ -137,42 +135,10 @@ impl Tool for SceneSwitch {
             return Err(ToolError::Execution(format!("未找到场景: {what}")));
         };
         let scene_id = scene.id.clone();
-        let background = crate::api::scene::resolved_background_of(&scene);
 
-        let gs = game_status_handle(&app).await;
-        let mut gs = gs.lock().await;
-        gs.current_scene_id = Some(scene_id.clone());
-        gs.clear_background_override();
-        gs.sync_background_with_scene(background.clone());
-
-        // 持久化到 store，便于下次启动恢复（与 api/scene.rs select_scene 一致）
-        if let Ok(store) = app.store(crate::config::STORE_FILE) {
-            store.set(
-                crate::config::session::LAST_SCENE_ID.to_string(),
-                serde_json::Value::String(scene_id.clone()),
-            );
-            let _ = store.save();
-        }
-        drop(gs);
-
-        // select_scene 命令由前端自己更新 Pinia；LLM 工具没有这个调用方，必须主动
-        // 广播完整场景资料，否则后端 ID 已变化但画面/背景仍停留在旧场景。
-        let payload = json!({
-            "type": "scene_switch",
-            "scene": {
-                "id": scene.id,
-                "scene_name": scene.name,
-                "scene_description": scene.description,
-                "background": background.map_or(Value::Null, |bg| json!(bg)),
-                "lighting": scene.lighting,
-                "location_type": scene.location_type.map(|l| l.as_str()),
-                "created_at": scene.created_at,
-                "updated_at": scene.updated_at,
-            }
-        });
-        if let Err(e) = app.emit("scene:switch", &payload) {
-            tracing::warn!("emit scene:switch 失败: {e}");
-        }
+        // 状态写入、持久化与广播统一走世界动作层（与手动选场景同一实现）
+        crate::ai_service::game_system::world_actions::switch_scene(&app, Some(scene_id.clone()))
+            .await;
 
         Ok(json!({"ok": true, "scene_id": scene_id}))
     }

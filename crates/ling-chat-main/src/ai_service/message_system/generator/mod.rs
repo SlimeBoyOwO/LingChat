@@ -115,8 +115,10 @@ impl MessageGenerator {
 
         // 1.5. 场景变化检测
         self.detect_scene_change().await?;
+        // 1.6. 天气变化检测：切换时只改状态，到这一轮才补旁白
+        self.detect_weather_change().await?;
 
-        // 1.6. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
+        // 1.7. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
         // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
         let recent_anchor_hint = user_ctx.line_index.or(self.deps.round_anchor_hint);
 

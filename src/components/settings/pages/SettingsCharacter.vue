@@ -279,7 +279,8 @@
       :role-id="createdCharacter?.character_id ?? null"
       :title="createdCharacter?.title"
       source="game"
-      @close="createdEditorVisible = false"
+      @close="closeCreatedEditor"
+      @loaded="onGuideEditorLoaded"
       @saved="handleSettingsSaved"
     />
 
@@ -544,9 +545,9 @@ const identityLoading = ref(false);
 const savingIdentity = ref(false);
 const identityForm = ref<PlayerIdentity | null>(null);
 
-/** 关系目标：在场角色（AI 侧）+ 我的其他身份（我侧） */
+/** 关系目标：全部角色（不只当前分页）+ 我的其他身份（我侧） */
 const relationTargets = computed<RelationTargetOption[]>(() => [
-  ...characters.value
+  ...allCharacters.value
     .filter((c) => !!c.resourceFolder)
     .map((c) => ({
       value: aiKey(c.resourceFolder as string),
@@ -754,13 +755,32 @@ watch(
   },
 );
 
-function scrollToRelationAnchor(id: string, attempts = 12) {
+function scrollToRelationAnchor(id: string, attempts = 20): boolean {
   const el = document.getElementById(id);
   if (el) {
     el.scrollIntoView({ behavior: "smooth", block: "center" });
-    return;
+    return true;
   }
   if (attempts > 0) setTimeout(() => scrollToRelationAnchor(id, attempts - 1), 100);
+  return false;
+}
+
+/** 关系引导要定位的区块；编辑器装载完成后消费，避免滚到空表单 */
+const pendingGuideAnchor = ref<string | null>(null);
+
+function tryScrollGuide() {
+  const id = pendingGuideAnchor.value;
+  if (!id) return;
+  if (scrollToRelationAnchor(id)) pendingGuideAnchor.value = null;
+}
+
+function onGuideEditorLoaded() {
+  void nextTick(tryScrollGuide);
+}
+
+function closeCreatedEditor() {
+  createdEditorVisible.value = false;
+  pendingGuideAnchor.value = null;
 }
 
 // 关系门「去填写」的意图：由聊天页写入，这里定位到对应编辑位置后清空
@@ -769,20 +789,34 @@ watch(
   async (guide) => {
     if (!guide) return;
     if (guide.kind === "role") {
+      // 首次进入设置页时角色列表可能还没回来，先等它，否则标题和目录名都拿不到
+      if (!allCharacters.value.length) await loadCharacters();
       const target = allCharacters.value.find((c) => c.id === guide.roleId);
       createdCharacter.value = {
         character_id: guide.roleId,
-        title: target?.title ?? "",
+        title: target?.title ?? gameStore.getGameRole(guide.roleId)?.roleName ?? "",
         resource_folder: target?.resourceFolder ?? "",
       };
+      pendingGuideAnchor.value = "relation-block-role";
       createdEditorVisible.value = true;
       await nextTick();
-      scrollToRelationAnchor("relation-block-role");
+      tryScrollGuide();
     } else {
-      const identityId = gameStore.playerIdentityId;
-      if (identityId) await editIdentity(identityId);
+      await loadIdentities();
+      const identityId =
+        gameStore.playerIdentityId ??
+        identities.value.find((item) => item.is_current)?.id ??
+        identities.value[0]?.id ??
+        null;
+      if (identityId) {
+        await editIdentity(identityId);
+        if (!identityForm.value) startCreateIdentity();
+      } else {
+        startCreateIdentity();
+      }
+      pendingGuideAnchor.value = "relation-block-identity";
       await nextTick();
-      scrollToRelationAnchor("relation-block-identity");
+      tryScrollGuide();
     }
     uiStore.setPendingRelationGuide(null);
   },

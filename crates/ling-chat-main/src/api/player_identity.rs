@@ -31,15 +31,31 @@ fn narrator_line(text: String) -> LineBase {
 #[tauri::command]
 pub async fn list_player_identities(app: AppHandle) -> Result<Vec<PlayerIdentitySummary>, String> {
     let store = store();
-    let current_id = store.current_id();
+    let primary = store.primary_identity();
+    let current_id = store
+        .current_id()
+        .or_else(|| primary.as_ref().map(|identity| identity.id.clone()));
     let mut items: Vec<PlayerIdentitySummary> = store
         .list()
         .iter()
         .map(|identity| PlayerIdentitySummary::from_identity(identity, current_id.as_deref()))
         .collect();
 
+    // 主身份排在最前；其余卡只可能来自未完成的旧数据迁移。
+    if let Some(primary) = primary.as_ref() {
+        items.sort_by_key(|item| item.id != primary.id);
+    }
+
+    // 还没有任何身份卡时（迁移未跑到），按产品默认文案给一张内存占位，不落盘。
     if items.is_empty() {
-        if let Ok(current) = current_identity(&app).await {
+        let has_main_role = {
+            let state = app.state::<AppState>();
+            let service = state.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            gs.main_role_id.is_some()
+        };
+        if has_main_role {
+            let current = current_identity().await?;
             items.push(PlayerIdentitySummary::from_identity(
                 &current,
                 Some(&current.id),
@@ -59,8 +75,8 @@ pub async fn get_player_identity(
 }
 
 #[tauri::command]
-pub async fn get_current_player_identity(app: AppHandle) -> Result<PlayerIdentity, String> {
-    current_identity(&app).await
+pub async fn get_current_player_identity(_app: AppHandle) -> Result<PlayerIdentity, String> {
+    current_identity().await
 }
 
 #[tauri::command]
@@ -68,7 +84,17 @@ pub async fn save_player_identity(
     app: AppHandle,
     identity: PlayerIdentity,
 ) -> Result<PlayerIdentity, String> {
-    let saved = store()
+    let store = store();
+    let mut identity = identity;
+    // 前端可能不认识 is_primary 字段，保存主身份时强制保留，避免被回写成 false。
+    if store
+        .primary_identity()
+        .map(|primary| primary.id == identity.id)
+        .unwrap_or(false)
+    {
+        identity.is_primary = true;
+    }
+    let saved = store
         .save(&identity)
         .map_err(|e| format!("保存身份失败: {e}"))?;
 
@@ -120,12 +146,20 @@ pub async fn delete_player_identity(app: AppHandle, id: String) -> Result<(), St
         return Err(format!("有 {used} 个存档正在使用这个身份，无法删除。"));
     }
 
-    let removed = store()
+    let store = store();
+    let is_primary = store
+        .primary_identity()
+        .map(|primary| primary.id == id)
+        .unwrap_or(false);
+    let removed = store
         .delete(&id)
         .map_err(|e| format!("删除身份失败: {e}"))?;
 
     if !removed {
         return Err("身份不存在".to_string());
+    }
+    if is_primary {
+        store.clear_primary_marker();
     }
     // 索引表跟随文件更新（被删的卡从索引里移除）。
     if let Err(e) =
@@ -299,7 +333,10 @@ pub async fn set_current_player_identity(
         .set_current_id(&identity.id)
         .map_err(|e| format!("记录当前身份失败: {e}"))?;
 
-    let active_save_id = service.game_status.lock().await.active_save_id;
+    let active_save_id = {
+        let gs = service.game_status.lock().await;
+        gs.active_save_id
+    };
     if let Some(save_id) = active_save_id {
         if let Err(e) = SaveRepo::upsert_save_identity(&state.db, save_id, &identity.id).await {
             tracing::warn!("同步存档身份失败: {e}");
@@ -437,37 +474,24 @@ pub async fn check_relation_ready(
     Ok(RelationReadyStatus { ready, roles })
 }
 
-async fn current_identity(app: &AppHandle) -> Result<PlayerIdentity, String> {
-    let state = app.state::<AppState>();
+async fn current_identity() -> Result<PlayerIdentity, String> {
     let store = store();
-
-    if let Some(existing) = store.current() {
-        return Ok(existing);
+    if let Some(current) = store.current() {
+        return Ok(current);
+    }
+    if let Some(primary) = store.primary_identity() {
+        return Ok(primary);
     }
 
-    let (name, subtitle) = {
-        let service = state.ai_service.lock().await;
-        let gs = service.game_status.lock().await;
-        let settings = gs
-            .main_role_id
-            .and_then(|rid| gs.role_manager.get_loaded(rid))
-            .map(|role| role.settings.clone());
-        match settings {
-            Some(s) => (
-                s.user_name.clone(),
-                s.user_subtitle.clone().unwrap_or_default(),
-            ),
-            None => ("用户".to_string(), String::new()),
-        }
-    };
-
+    // 主身份迁移尚未跑过时的只读兜底：返回产品默认文案，不落盘。
     Ok(PlayerIdentity {
         id: String::new(),
-        name,
-        subtitle,
+        name: "玩家A（待填写）".to_string(),
+        subtitle: "玩家A（待填写）".to_string(),
         prompt: String::new(),
         avatar: None,
         relations: HashMap::new(),
+        is_primary: true,
     })
 }
 
