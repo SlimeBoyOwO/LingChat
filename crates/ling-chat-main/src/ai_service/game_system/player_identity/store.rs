@@ -156,41 +156,6 @@ impl IdentityStore {
         let _ = fs::remove_file(self.root.join(PRIMARY_FILE));
     }
 
-    /// 把除主身份外的所有身份卡移入 `.trash/pre-primary-<时间>/`，返回移动数量。
-    pub fn archive_except(&self, keep_id: &str) -> Result<usize> {
-        let keep_id = keep_id.trim();
-        if keep_id.is_empty() {
-            anyhow::bail!("主身份 id 为空，拒绝归档其他身份");
-        }
-        let cards: Vec<(PathBuf, PlayerIdentity)> = self
-            .scan()
-            .into_iter()
-            .filter(|(_, card)| card.id != keep_id)
-            .collect();
-        if cards.is_empty() {
-            return Ok(0);
-        }
-
-        let batch = self
-            .root
-            .join(TRASH_DIR)
-            .join(format!("pre-primary-{}", now_stamp()));
-        fs::create_dir_all(&batch).with_context(|| format!("创建身份回收站失败: {:?}", batch))?;
-
-        let mut moved = 0;
-        for (dir, _) in cards {
-            let folder_name = dir
-                .file_name()
-                .map(|s| s.to_string_lossy().to_string())
-                .unwrap_or_default();
-            let target = unique_dir(&batch, &folder_name);
-            fs::rename(&dir, &target)
-                .with_context(|| format!("归档身份卡失败: {:?} -> {:?}", dir, target))?;
-            moved += 1;
-        }
-        Ok(moved)
-    }
-
     pub fn save(&self, identity: &PlayerIdentity) -> Result<PlayerIdentity> {
         self.ensure_root()?;
 
@@ -332,22 +297,6 @@ impl IdentityStore {
     }
 }
 
-/// 在目标目录里取一个不重名的名字；重名时追加 `-2`、`-3`。
-fn unique_dir(parent: &Path, folder_name: &str) -> PathBuf {
-    let base = if folder_name.trim().is_empty() {
-        "identity".to_string()
-    } else {
-        folder_name.to_string()
-    };
-    let mut candidate = parent.join(&base);
-    let mut index = 2;
-    while candidate.exists() {
-        candidate = parent.join(format!("{base}-{index}"));
-        index += 1;
-    }
-    candidate
-}
-
 fn sanitize_folder(name: &str) -> String {
     let cleaned: String = name
         .chars()
@@ -376,10 +325,6 @@ fn now_millis() -> u128 {
 
 fn now_rfc3339() -> String {
     chrono::Local::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-}
-
-fn now_stamp() -> String {
-    chrono::Local::now().format("%Y%m%d_%H%M%S").to_string()
 }
 
 fn new_identity_id() -> String {

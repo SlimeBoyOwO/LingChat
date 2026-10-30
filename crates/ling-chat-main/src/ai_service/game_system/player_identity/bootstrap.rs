@@ -52,14 +52,9 @@ pub fn resolve_player_bootstrap(
     let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
     let target = RelationEndpoint::Me(identity.id.clone());
 
-    // 迁移后「我的设定」已写进身份侧关系；只有 prompt 与关系都为空时才回退到角色卡抽取文本，
-    // 否则会重复注入。
-    let identity_relation_empty = identity
-        .relations
-        .get(&speaker.key())
-        .map(|text| text.trim().is_empty())
-        .unwrap_or(true);
-    let effective_prompt = if identity.prompt.trim().is_empty() && identity_relation_empty {
+    // 迁移已把「我的设定」聚合进身份卡 prompt；只有 prompt 为空（老数据未迁移）时才回退
+    // 到角色卡抽取文本，避免与身份侧关系重复注入。
+    let effective_prompt = if identity.prompt.trim().is_empty() {
         let (_, extracted_setting) = crate::utils::prompt::extract_player_setting(
             settings.system_prompt.as_deref().unwrap_or_default(),
         );
