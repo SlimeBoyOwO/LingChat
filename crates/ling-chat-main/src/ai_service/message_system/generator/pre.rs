@@ -5,6 +5,7 @@ use tauri::Manager;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::game_system::status_ops::narration::{weather_change_text, weather_changed};
 use crate::ai_service::game_system::status_ops::{PromptLine, apply_temporary};
 use crate::ai_service::god_agent::capabilities::{
     speaker::{self as god_speaker, SpeakerView},
@@ -91,6 +92,32 @@ impl MessageGenerator {
             }
         }
         gs.last_processed_scene_id = gs.current_scene_id.clone();
+        Ok(())
+    }
+
+    /// Step 1.6: 检测天气层变化。
+    ///
+    /// 切换特效本身不写旁白——设置页、天气同步、模型都可能连续改动，逐次落表
+    /// 会刷屏。统一等到下一轮对话再与上次对话时的天气比对，有变化才补一句。
+    pub(super) async fn detect_weather_change(&self) -> Result<()> {
+        let mut gs = self.deps.game_status.lock().await;
+        // 剧本自己安排演出，试玩不落台词表：只对齐基线，不补旁白
+        if gs.script_status.is_some() || self.deps.is_preview {
+            gs.last_processed_weather_effect = gs.weather_effect.clone();
+            return Ok(());
+        }
+        if !weather_changed(&gs.last_processed_weather_effect, &gs.weather_effect) {
+            return Ok(());
+        }
+
+        let to = gs.weather_effect.clone();
+        let from = std::mem::replace(&mut gs.last_processed_weather_effect, to.clone());
+        if let Some(text) = weather_change_text(&from, &to) {
+            let line = PromptLine::new(PromptRole::Narrator, text)
+                .display_name("系统")
+                .into_base();
+            let _ = gs.add_line(&self.deps.db, line).await;
+        }
         Ok(())
     }
 

@@ -205,18 +205,15 @@ pub async fn sync_weather_effect(app: &tauri::AppHandle) {
         return;
     };
     let effect = weather_effect_for(code);
-    let payload = json!({
-        "type": "ambient_effect",
-        "effect": effect,
-        "duration": Value::Null,
-        "layer": "weather",
-    });
-    use tauri::Emitter;
-    if let Err(e) = app.emit("ambient:effect", &payload) {
-        tracing::warn!("[WeatherSync] emit ambient:effect 失败: {e}");
-    } else {
-        tracing::info!("[WeatherSync] 已同步天气层特效: {effect}（code={code}）");
-    }
+    // 同时写后端天气层状态（Weather 来源只动 weather_effect，不覆盖氛围层）
+    crate::ai_service::game_system::world_actions::apply_effect(
+        app,
+        crate::ai_service::game_system::world_actions::EffectOrigin::Weather,
+        effect,
+        None,
+    )
+    .await;
+    tracing::info!("[WeatherSync] 已同步天气层特效: {effect}（code={code}）");
 }
 
 /// 立即拉取一次天气并同步特效，不等下一个刷新周期。
