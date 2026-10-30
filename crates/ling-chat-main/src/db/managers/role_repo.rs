@@ -15,6 +15,7 @@ use crate::db::entities::line_perception;
 use crate::db::entities::role::{
     self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
 };
+use crate::db::entities::role_hotword;
 use crate::db::entities::running_script;
 use crate::db::entities::save;
 use crate::db::managers::memory_repo::MemoryRepo;
@@ -23,7 +24,7 @@ use crate::db::managers::save_repo::SaveRepo;
 pub struct RoleRepo;
 
 /// 临时关闭 SQLite 外键约束。
-/// 警告：调用方必须在 finally 路径中重新打开（建议用 `with_fk_disabled` 闭包形式）。
+/// 警告：调用方必须在 finally 路径中重新打开（[`FkReEnableGuard`] 已封装该逻辑）。
 async fn disable_fk(db: &DatabaseConnection) -> Result<()> {
     db.execute(Statement::from_string(
         DatabaseBackend::Sqlite,
@@ -163,11 +164,12 @@ impl RoleRepo {
     /// 3. 清理这些存档的 running_script（FK running_script.save_id → save.id 会阻止 save 删除）
     /// 4. 逐个删除存档（级联清 line/line_perception）
     /// 5. 清该角色所有 memory_bank 行（跨存档兜底）
-    /// 6. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
-    /// 7. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
-    /// 8. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
-    /// 9. delete role by id
-    /// 10. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
+    /// 6. 清该角色的热词（表无外键，不会自动级联）
+    /// 7. 防御性清 line_perception.role_id（其他存档里残留的感知记录，NOT NULL FK 不能置 NULL）
+    /// 8. 清空 line.sender_role_id 指向此角色的所有台词 FK 引用（其他存档的台词可能引用此角色作 sender）
+    /// 9. 防御性解绑 save.main_role_id（其他存档引用此角色的情况）
+    /// 10. delete role by id
+    /// 11. 重新打开外键约束（即使中途错误，也由 FkReEnableGuard 兜底）
     ///
     /// 返回是否实际删除了行。
     ///
@@ -210,31 +212,37 @@ impl RoleRepo {
         // 5. 清该角色全部 memory_bank
         MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
 
-        // 6. 防御性清 line_perception（NOT NULL FK，必须删）
+        // 6. 清该角色的热词（表无外键；此处 FK 已关闭，用裸 DELETE）
+        role_hotword::Entity::delete_many()
+            .filter(role_hotword::Column::RoleId.eq(role_id))
+            .exec(db)
+            .await?;
+
+        // 7. 防御性清 line_perception（NOT NULL FK，必须删）
         line_perception::Entity::delete_many()
             .filter(line_perception::Column::RoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 7. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
+        // 8. 清空 line.sender_role_id 指向此角色的引用（保留对话内容，仅失归属）
         line::Entity::update_many()
             .col_expr(line::Column::SenderRoleId, Expr::value(Option::<i32>::None))
             .filter(line::Column::SenderRoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 8. 防御性解绑其他存档的 main_role_id
+        // 9. 防御性解绑其他存档的 main_role_id
         save::Entity::update_many()
             .col_expr(save::Column::MainRoleId, Expr::value(Option::<i32>::None))
             .filter(save::Column::MainRoleId.eq(role_id))
             .exec(db)
             .await?;
 
-        // 9. 删 role 本身
+        // 10. 删 role 本身
         let result = role::Entity::delete_by_id(role_id).exec(db).await?;
         let rows_affected = result.rows_affected > 0;
 
-        // 10. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
+        // 11. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
         enable_fk(db).await?;
         guard.disarm();
 
@@ -324,5 +332,63 @@ impl RoleRepo {
         settings.character_folder = folder;
         settings.resource_path = Some(path.to_string_lossy().into_owned());
         Ok(Some(settings))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::db::entities::role_hotword;
+
+    /// 热词表没有外键，删角色时不会自动级联；不手工清理会留下孤儿行。
+    #[tokio::test]
+    async fn delete_main_role_removes_hotwords() {
+        let tmp = tempfile::tempdir().expect("创建临时目录失败");
+        let db = crate::db::init_db(tmp.path())
+            .await
+            .expect("初始化数据库失败");
+
+        let role_id =
+            RoleRepo::find_or_create_role(&db, "待删角色", RoleType::Main, None, None, None)
+                .await
+                .expect("建角色失败");
+        let kept_id =
+            RoleRepo::find_or_create_role(&db, "保留角色", RoleType::Main, None, None, None)
+                .await
+                .expect("建角色失败");
+
+        for (rid, text) in [(role_id, "张三"), (kept_id, "李四")] {
+            role_hotword::ActiveModel {
+                role_id: Set(rid),
+                text: Set(text.to_string()),
+                weight: Set(4),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .expect("插入热词失败");
+        }
+
+        assert!(
+            RoleRepo::delete_main_role(&db, role_id)
+                .await
+                .expect("删除角色失败")
+        );
+
+        let orphans = role_hotword::Entity::find()
+            .filter(role_hotword::Column::RoleId.eq(role_id))
+            .all(&db)
+            .await
+            .expect("查询热词失败");
+        assert!(orphans.is_empty(), "热词应随角色删除，残留 {orphans:?}");
+
+        // 另一个角色的数据不应被牵连
+        let kept = role_hotword::Entity::find()
+            .filter(role_hotword::Column::RoleId.eq(kept_id))
+            .all(&db)
+            .await
+            .expect("查询热词失败");
+        assert_eq!(kept.len(), 1, "其他角色的热词不应被删除");
+        assert_eq!(kept[0].text, "李四");
     }
 }

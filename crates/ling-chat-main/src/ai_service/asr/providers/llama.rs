@@ -2,13 +2,15 @@
 //!
 //! 结果流式（SSE）实现见 `crate::ai_service::asr::provider_stream_llama`。
 
+use std::sync::Arc;
+
 use async_trait::async_trait;
 use serde_json::Value as JsonValue;
 use tracing::{debug, instrument};
 
 use crate::ai_service::asr::config_fields::llama_asr_config_fields;
 use crate::ai_service::asr::error::{AsrError, map_reqwest_error};
-use crate::ai_service::asr::provider::{AsrProvider, PartialCallback};
+use crate::ai_service::asr::provider::AsrProvider;
 use crate::ai_service::asr::provider_meta::AsrConfigField;
 use crate::ai_service::asr::provider_types::{AsrOptions, AsrResult, Hotword, ProviderCredentials};
 
@@ -90,7 +92,6 @@ impl AsrProvider for LlamaAsrProvider {
         wav_bytes: Vec<u8>,
         opts: &AsrOptions,
     ) -> Result<AsrResult, AsrError> {
-        // llama-server 转写不支持语言提示（模型自动判语言），忽略。
         let endpoint = format!("{}/v1/audio/transcriptions", self.effective_endpoint());
 
         let mut form = reqwest::multipart::Form::new()
@@ -108,12 +109,28 @@ impl AsrProvider for LlamaAsrProvider {
             );
         // 热词接口：作为 prompt 上下文偏置传入
         //（偏置非强制——提升特定词命中概率，不保证一定识别为热词）
-        if let Some(prompt) = llama_prompt_from_hotwords(&opts.hotwords) {
-            debug!(
-                "[ASR] llama-asr prompt 偏置（{} 字符）: {prompt}",
-                prompt.chars().count()
-            );
-            form = form.text("prompt", prompt);
+        if let Some(p) = llama_prompt_from_hotwords(&opts.hotwords) {
+            if p.dropped > 0 {
+                debug!(
+                    "[ASR] llama-asr prompt 偏置 {}/{} 字符（保留 {}/{} 条热词，{} 条超预算未发送）: {}",
+                    p.text.chars().count(),
+                    LLAMA_PROMPT_MAX_CHARS,
+                    p.used,
+                    p.used + p.dropped,
+                    p.dropped,
+                    p.text
+                );
+            } else {
+                debug!(
+                    "[ASR] llama-asr prompt 偏置 {}/{} 字符（保留 {}/{} 条热词）: {}",
+                    p.text.chars().count(),
+                    LLAMA_PROMPT_MAX_CHARS,
+                    p.used,
+                    p.used + p.dropped,
+                    p.text
+                );
+            }
+            form = form.text("prompt", p.text);
         }
 
         let mut req = self.http.post(&endpoint).multipart(form);
@@ -138,15 +155,13 @@ impl AsrProvider for LlamaAsrProvider {
         }
 
         let body_text = resp.text().await.map_err(map_reqwest_error)?;
-        let (text, language) =
-            parse_llama_text(&body_text).ok_or_else(|| AsrError::ProviderApiError {
-                provider: Self::ID.into(),
-                message: format!("无法从响应中提取文本: {body_text}"),
-            })?;
+        let text = parse_llama_text(&body_text).ok_or_else(|| AsrError::ProviderApiError {
+            provider: Self::ID.into(),
+            message: format!("无法从响应中提取文本: {body_text}"),
+        })?;
 
         Ok(AsrResult {
             text,
-            language,
             confidence: None,
             provider_id: Self::ID.into(),
         })
@@ -158,15 +173,27 @@ impl AsrProvider for LlamaAsrProvider {
         &self,
         wav_bytes: Vec<u8>,
         opts: &AsrOptions,
-        on_partial: Option<PartialCallback>,
+        on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
     ) -> Result<AsrResult, AsrError> {
         let prompt = llama_prompt_from_hotwords(&opts.hotwords);
+        if let Some(p) = &prompt {
+            if p.dropped > 0 {
+                debug!(
+                    "[ASR] llama-asr 流式 prompt 偏置 {}/{} 字符（保留 {}/{} 条热词，{} 条超预算未发送）",
+                    p.text.chars().count(),
+                    LLAMA_PROMPT_MAX_CHARS,
+                    p.used,
+                    p.used + p.dropped,
+                    p.dropped
+                );
+            }
+        }
         crate::ai_service::asr::provider_stream_llama::recognize_stream(
             &self.http,
             &self.cred,
             &self.effective_endpoint(),
             &self.effective_model(),
-            prompt,
+            prompt.map(|p| p.text),
             wav_bytes,
             on_partial,
         )
@@ -174,28 +201,36 @@ impl AsrProvider for LlamaAsrProvider {
     }
 }
 
-/// llama-asr 偏置文本的总字符上限（含引导语）。
-///
-/// 约 224 token 的 prompt 有效窗口在中文下大致对应这个量级；保守取 200。
+/// 热词文本的总字符上限。
+/// 部署文档建议按条数限制在 20~30 个，当前按字符计。
 const LLAMA_PROMPT_MAX_CHARS: usize = 200;
+
+/// 扣除前缀/后缀后的实际字符预算。
+pub(crate) fn llama_prompt_capacity() -> usize {
+    LLAMA_PROMPT_MAX_CHARS
+        .saturating_sub(PROMPT_PREFIX.chars().count() + PROMPT_SUFFIX.chars().count())
+}
+
+const PROMPT_PREFIX: &str = "热词：";
+const PROMPT_SUFFIX: &str = "。";
+
+/// 一次 prompt 偏置的构造结果。
+pub(crate) struct LlamaPrompt {
+    /// 实际写进 multipart `prompt` 字段的文本。
+    pub text: String,
+    /// 拼进 `text` 的词数。
+    pub used: usize,
+    /// 因超出字符预算而未发的词数（整词丢弃、丢尾部）。
+    pub dropped: usize,
+}
 
 /// 热词 → llama-server 的 `prompt` 偏置文本。
 ///
-/// 形式：`热词：A、B、C。`——**不是**裸的逗号列表。Qwen3-ASR 的 prompt 偏置是
-/// 「前文上下文」，裸列表容易被当成待续的转录文本；带引导语更接近上游 HF
-/// 文档的推荐用法（`prompt="Vocabulary: ..."`），偏置目标更明确。
+/// `prompt` 是 `/v1/audio/transcriptions` 唯一的热词通道，没有结构化的
+/// `parameters.vocabulary`，只能把词放进前文上下文。发送前做去重与长度上限。
 ///
-/// 两个上限（原实现直接 `join(", ")`，都没有）：
-/// - **去重**：同一角色可能重复配置，重复词只会挤占窗口
-/// - **总长 ≤ [`LLAMA_PROMPT_MAX_CHARS`]**：OpenAI 兼容 `prompt` 的有效窗口约
-///   224 token，超长会被服务端截断，甚至让模型把尾巴的语气当成待续文本而
-///   干扰解码。按 **字符**（非字节）截断，避免切断 UTF-8
-///
-/// ⚠️ **待验证**：`prompt` 是否真被 llama-server 的 `/v1/audio/transcriptions`
-/// 消费尚未证实（上游 llama.cpp 无文档确认；已知 vLLM / omlx 实现了该字段）。
-/// 若服务端忽略它，热词会**静默失效**——排查时先开 `llama-server --verbose`
-/// 看 prompt 是否出现在构造的消息里。
-fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<String> {
+/// 音频过短或无有效人声时，返回值可能被模型当成转录原样回吐，调用方需自行校验。
+fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<LlamaPrompt> {
     let mut seen = std::collections::HashSet::new();
     let mut words: Vec<&str> = Vec::new();
     for h in hotwords {
@@ -210,11 +245,10 @@ fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<String> {
     if words.is_empty() {
         return None;
     }
-    let prefix = "热词：";
-    let suffix = "。";
-    let budget =
-        LLAMA_PROMPT_MAX_CHARS.saturating_sub(prefix.chars().count() + suffix.chars().count());
+    let total = words.len();
+    let budget = llama_prompt_capacity();
     let mut body = String::new();
+    let mut used = 0usize;
     for w in words {
         let sep = if body.is_empty() { "" } else { "、" };
         let extra = sep.chars().count() + w.chars().count();
@@ -223,32 +257,28 @@ fn llama_prompt_from_hotwords(hotwords: &[Hotword]) -> Option<String> {
         }
         body.push_str(sep);
         body.push_str(w);
+        used += 1;
     }
     if body.is_empty() {
         return None;
     }
-    Some(format!("{prefix}{body}{suffix}"))
+    Some(LlamaPrompt {
+        text: format!("{PROMPT_PREFIX}{body}{PROMPT_SUFFIX}"),
+        used,
+        dropped: total - used,
+    })
 }
 
 /// 解析 llama-server 转写响应文本。
 ///
-/// 实测格式：`{"text": "language <lang><asr_text><转写文本>"}`（无语音时
-/// `<lang>` 为 `None`、文本为空）。切 `<asr_text>`：后半是文本，前半是语言。
-/// 供整句识别与 SSE 结果流式（provider_stream_llama.rs）共用。
-pub(crate) fn parse_llama_text(body: &str) -> Option<(String, Option<String>)> {
+/// 实测格式 `{"text": "language <lang><asr_text><转写文本>"}`，切 `<asr_text>`
+/// 取文本并丢弃语言标记，无语音时文本为空。整句识别与 SSE 流式共用。
+pub(crate) fn parse_llama_text(body: &str) -> Option<String> {
     let value: JsonValue = serde_json::from_str(body).ok()?;
     let text = value.get("text").and_then(|t| t.as_str())?;
     match text.split_once("<asr_text>") {
-        Some((lang_part, content)) => {
-            // `language Chinese` → Chinese；`language None` → None
-            let lang = lang_part
-                .strip_prefix("language")
-                .map(str::trim)
-                .filter(|s| !s.is_empty() && *s != "None")
-                .map(str::to_string);
-            Some((content.to_string(), lang))
-        },
-        None => Some((text.to_string(), None)),
+        Some((_, content)) => Some(content.to_string()),
+        None => Some(text.to_string()),
     }
 }
 

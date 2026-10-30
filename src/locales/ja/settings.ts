@@ -454,6 +454,7 @@ export default {
       live2d: "Live2D",
       pet: "デスクトップペット",
       voice: "音声設定",
+      hotword: "音声認識ホットワード",
     },
     relations: {
       title: "関係／相手への認識",
@@ -597,6 +598,22 @@ export default {
       apply: "保存して閉じる",
       discardTitle: "変更を破棄",
       discardMessage: "未適用の変更があります。閉じてもよろしいですか？",
+    },
+    hotword: {
+      modelUnsupported:
+        "現在のモデル {model} は即時ホットワードに対応していないため、設定しても反映されません",
+      listTitle: "ホットワード一覧",
+      add: "ホットワードを追加",
+      empty: "ホットワードがまだありません。「ホットワードを追加」から作成してください",
+      colText: "語句",
+      colWeight: "重み",
+      weight: {
+        super: "50（スーパー）",
+      },
+      delete: "削除",
+      tooLongChars: "長すぎます：{count} 文字（上限 {max} 文字）。保存は拒否されます",
+      tooLongSegments: "語句が多すぎます：{count} 個（上限 {max} 個）。保存は拒否されます",
+      tooMany: "ホットワードが多すぎます：{count} 件（上限 {max} 件）。保存は拒否されます",
     },
     live2d: {
       importDirectory: "モデルフォルダーをインポート",
@@ -1475,6 +1492,69 @@ export default {
       fillOnly: "入力欄に挿入（推奨）",
       autoSend: "自動送信",
     },
+    globalHotword: {
+      title: "グローバルホットワード",
+      open: "グローバルホットワードを管理",
+      hint: "毎回の認識で送信され、シーンのキャラクターホットワードと統合されます（同じ語は高い重みを採用）",
+      dialog: {
+        title: "グローバルホットワード",
+        subtitle: "すべてのキャラクターに適用",
+        loadFailed: "グローバルホットワードの読み込みに失敗しました",
+        saveFailed: "グローバルホットワードの保存に失敗しました",
+        footer: { cancel: "キャンセル", save: "保存", saving: "保存中…" },
+      },
+    },
+    hotwordLibrary: {
+      title: "ホットワードライブラリ",
+      open: "ホットワードライブラリを管理",
+      hint: "よく使う単語を分類して保存し、各キャラクターや全体のホットワードに追加できます。追加はコピーなので、その後は互いに影響しません",
+      dialog: {
+        title: "ホットワードライブラリ",
+        subtitle: "単語を分類して、キャラクターと全体のホットワードに提供します",
+        loadFailed: "ホットワードライブラリの読み込みに失敗しました",
+        saveFailed: "ホットワードライブラリの保存に失敗しました",
+        footer: { cancel: "キャンセル", save: "保存", saving: "保存中…" },
+        categories: {
+          all: "すべて",
+          uncategorized: "未分類",
+          unnamed: "（名称未設定）",
+          new: "分類を追加",
+          delete: "分類を削除",
+          deleteConfirm:
+            "この分類と {count} 件の単語を削除しますか？キャラクターや全体にコピー済みの単語は影響を受けません。",
+          namePlaceholder: "分類名",
+        },
+        words: {
+          add: "単語を追加",
+          searchPlaceholder: "単語を検索",
+          empty: "単語がありません",
+          colCategory: "分類",
+        },
+        validation: {
+          checkForm: "赤く表示された分類名を修正してください",
+          emptyName: "分類名を入力してください",
+          duplicateName: "分類名が重複しています",
+          nameTooLong: "分類名が長すぎます",
+          tooManyWords: "単語数 {count} が上限 {max} を超えています。削除してください",
+          tooManyCategories: "分類数 {count} が上限 {max} を超えています。削除してください",
+        },
+      },
+      pickButton: "ライブラリから追加",
+      picker: {
+        title: "ライブラリから追加",
+        allCategories: "すべての分類",
+        uncategorized: "未分類",
+        searchPlaceholder: "単語を検索",
+        selectAll: "すべて選択",
+        clear: "クリア",
+        existing: "追加済み",
+        selected: "{count} 件選択中",
+        add: "追加",
+        cancel: "キャンセル",
+        empty:
+          "ライブラリに単語がありません。先に「ホットワードライブラリを管理」で追加してください",
+      },
+    },
     streamMode: "ストリーム認識",
     streamModeHint: "話している間に認識テキストをリアルタイム表示",
     streamModeHintLocal:
@@ -1493,6 +1573,9 @@ export default {
       testNoSpeech: "音声を検出できませんでした。もう一度お試しください",
       testFailed: "失敗：{err}",
       presetHint: "モデル選択でエンドポイントが自動入力されます。API キーのみ必要です",
+      inlineHotwordLimit: "インラインホットワード：上限 約 {count} 件（推定値）",
+      promptBiasNoLimit:
+        "ホットワードは prompt の文脈バイアスで反映されるため、件数の上限はありません",
     },
     errors: {
       ASR_MODEL_MISSING: "VAD モデルが見つかりません",

@@ -238,8 +238,7 @@
                 :character-folder="String(localSettings.character_folder || '')"
               />
 
-              <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
-                   分类仍回退到上面的 gsv_voice_filename / gsv_voice_text -->
+              <!-- GSV 六情绪参考语音：填全的分类按情绪切换，未填全的仍回退到 gsv_voice_filename / gsv_voice_text -->
               <div
                 v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
                 class="space-y-4"
@@ -351,6 +350,13 @@
                   {{ $t("settings.characterInfo.touch.open") }}
                 </button>
               </div>
+
+              <HotwordSettings
+                v-if="activeTab === 'hotword' && props.roleId"
+                v-model="hotwordDraft"
+                :role-id="props.roleId"
+                :model-capability="modelCapability"
+              />
             </fieldset>
           </div>
         </div>
@@ -449,6 +455,11 @@ import {
   getLive2dFilePath,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import {
+  getRoleHotwords,
+  saveRoleHotwords,
+  type RoleHotwordDraft,
+} from "../../../api/services/hotword";
 import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services/player-identity";
 import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
@@ -457,7 +468,10 @@ import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
 import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
+import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import { refreshSceneHotwords } from "@/composables/asr/hotwords";
+import { useAsrModelCapability } from "@/composables/asr/modelCapability";
 import AvatarManager from "../character/AvatarManager.vue";
 import WorldbookEditor from "../character/WorldbookEditor.vue";
 import { readCharacterWorldbook, type Worldbook } from "@/api/services/character";
@@ -584,6 +598,12 @@ const {
   gsvEmoField,
 } = useVoiceResources(localSettings);
 
+/** 热词草稿：随底部保存一次提交，取消即丢弃。 */
+const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
+
+/** 传给热词 tab 的模型能力（与全局热词弹窗共用同一判定）。 */
+const modelCapability = useAsrModelCapability();
+
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
   if (!props.roleId)
@@ -621,7 +641,6 @@ const handleDelete = async () => {
   try {
     await deleteCharacterApi(props.roleId, true);
 
-    // 删除成功
     uiStore.showSuccess({
       title: t("settings.characterInfo.delete.successTitle"),
       message: t("settings.characterInfo.delete.successMessage", {
@@ -629,7 +648,6 @@ const handleDelete = async () => {
       }),
     });
 
-    // 通知父组件刷新列表 + 关闭弹窗
     emit("saved");
     emit("close");
   } catch (error: any) {
@@ -657,6 +675,7 @@ const tabs = computed(() => [
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
+  { id: "hotword", label: t("settings.characterInfo.tabs.hotword") },
 ]);
 
 const resolveFieldOptions = (field: FieldSchema) => {
@@ -685,14 +704,12 @@ const schemas = computed(() =>
 
 const currentTabConfig = computed(() => schemas.value[activeTab.value]);
 
-// voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
   const fields = currentTabConfig.value || [];
-  // 过滤掉当前不可见的字段
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-// --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
+// GSV 六情绪参考语音：自定义 UI，只写草稿，由底部保存统一提交
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
@@ -896,6 +913,9 @@ watch(
       }
       baseline.value = JSON.stringify(localSettings.value);
       draftClothes.value = [...(props.clothes ?? [])];
+      // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
+      const roleHotwords = await getRoleHotwords(roleId);
+      hotwordDraft.value = { hotwords: roleHotwords };
       loaded.value = true;
       emit("loaded");
     } catch (e) {
@@ -908,7 +928,7 @@ watch(
   { immediate: true },
 );
 
-// Refresh local voices when the voice tab is shown while the dialog is visible.
+// 打开语音 tab 时刷新本地音色
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
@@ -973,14 +993,18 @@ function applySettingsToRuntime() {
     runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
     // /chat 与 /pet 互斥，靠这次内存热更避免后端 re-init
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 触摸区域热更：TouchAreas 直接读 role.bodyPart
+    // store 里的 roleName 不会自行更新，热更后改名才能立即用于识别热词
+    if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
+      runtimeRole.roleName = localSettings.value.ai_name.trim();
+    }
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
     runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
   }
   const role = gameStore.gameRoles[props.roleId];
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
-/** 保存前校验：实际会被加载的那个 variant 的模型文件是否还在。走 getLive2dFilePath 是为了让草稿里的模型按 editId 解析。 */
+/** 校验实际加载的 variant 模型文件是否还在（按 editId 解析草稿模型） */
 async function isLive2dModelAvailable(): Promise<boolean> {
   const live2d = localSettings.value.live2d;
   if (!live2d) return false;
@@ -1011,8 +1035,7 @@ async function persistSettings(): Promise<boolean> {
     }
     // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
     await relationsEditor.value?.submit(true);
-    // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
-    // WebGL 上下文、失败之后才退回静态
+    // Live2D 模型文件取不到时改回静态立绘，避免运行时先建 WebGL 上下文再失败
     if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
@@ -1026,6 +1049,14 @@ async function persistSettings(): Promise<boolean> {
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();
+    // 热词：后端全量覆盖写热词表。失败与角色设置同样处理：提示且不关窗，重试幂等
+    await saveRoleHotwords(
+      props.roleId,
+      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
+    );
+    // 必须排在 applySettingsToRuntime 的角色名热更之后，
+    // refreshSceneHotwords 会同步派生角色名热词，放在前面会派生出旧名字
+    void refreshSceneHotwords();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);
