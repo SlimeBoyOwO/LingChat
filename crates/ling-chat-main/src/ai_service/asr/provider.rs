@@ -71,7 +71,6 @@ pub use super::providers::{LlamaAsrProvider, QwenAsrProvider};
 #[allow(unused_imports)]
 pub use super::qwen_models::{
     qwen_default_model, qwen_is_streaming_model, qwen_models, qwen_supports_inline_vocabulary,
-    qwen_supports_language_hints,
 };
 #[allow(unused_imports)]
 pub use super::registry::{build_stream_params, get_provider, list_models, list_provider_info};

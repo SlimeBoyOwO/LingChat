@@ -206,6 +206,10 @@ pub async fn fetch_db_records(peer: &PeerInfo) -> Result<super::messages::DbReco
         .map_err(|e| format!("解析数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
 
     let total: usize = records.roles.len()
+        + records.role_hotwords.len()
+        + records.global_hotwords.len()
+        + records.hotword_categories.len()
+        + records.library_hotwords.len()
         + records.saves.len()
         + records.running_scripts.len()
         + records.adventure_unlocks.len()
@@ -223,6 +227,10 @@ pub async fn push_db_records(
 ) -> Result<(), String> {
     let url = format!("http://{}:{}/db-records", peer.host, peer.port);
     let total: usize = records.roles.len()
+        + records.role_hotwords.len()
+        + records.global_hotwords.len()
+        + records.hotword_categories.len()
+        + records.library_hotwords.len()
         + records.saves.len()
         + records.running_scripts.len()
         + records.adventure_unlocks.len()

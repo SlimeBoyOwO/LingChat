@@ -6,18 +6,23 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::tts::local::saf_bridge::{ImportSource, prepare_file_import_source};
 use crate::db::entities::role::{Column, Entity as RoleEntity};
+use crate::db::managers::hotword_repo::HotwordRepo;
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
 };
 use crate::utils::yaml_file::resolve_settings_file;
 
-use super::ImportResult;
+use super::{HOTWORD_SIDECAR_VERSION, HotwordSidecar, ImportResult};
+
+/// 旁挂文件体积上限，超过即判非法且不 parse：压缩包本身不限大小，
+/// 高压缩比的巨型 JSON 会先把内存吃满。
+const MAX_SIDECAR_BYTES: u64 = 1024 * 1024;
 
 pub(super) async fn do_import(
     app: &AppHandle,
@@ -264,14 +269,90 @@ pub(super) async fn do_import(
     // 11. 查询新角色 ID。
     let role_id = find_role_id_by_folder(&db, &resolution.final_name).await?;
 
+    // 11. 热词旁挂导入已停用：不回写、不删文件，`warnings` 原样透传。
+    let warnings = summary.warnings;
+
     Ok(ImportResult {
         role_id,
         role_name: resolution.final_name.clone(),
         conflict_action: resolution.action.into(),
-        warnings: summary.warnings,
+        warnings,
         bytes_extracted: summary.bytes_extracted,
         format,
     })
+}
+
+/// 导入收尾的热词旁挂处理，已停用；保留签名供将来恢复。
+#[allow(dead_code)] // 保留供将来恢复旁挂读取
+async fn restore_hotwords_for_import(
+    _db: &DatabaseConnection,
+    _role_id: Option<i32>,
+    role_dir: &Path,
+    _warnings: &mut Vec<String>,
+) {
+    tracing::warn!(
+        "[RoleArchive] 热词旁挂导入已停用，忽略角色目录下的旁挂文件 (dir={})",
+        role_dir.display()
+    );
+}
+
+/// 旁挂文件的读取、校验与写库。`None` = 文件不存在，`Some` = 已处理（含失败）。
+#[allow(dead_code)] // 保留供将来恢复旁挂读取
+async fn read_sidecar_into_db(
+    db: &DatabaseConnection,
+    role_id: i32,
+    path: &Path,
+) -> Option<Vec<String>> {
+    let meta = match tokio::fs::metadata(path).await {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => return Some(vec![format!("热词旁挂文件读取失败: {e}")]),
+    };
+    // 体积闸门须在 parse 之前。
+    if meta.len() > MAX_SIDECAR_BYTES {
+        return Some(vec![format!(
+            "热词旁挂文件过大 ({} 字节 > {MAX_SIDECAR_BYTES})，已跳过",
+            meta.len()
+        )]);
+    }
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(e) => return Some(vec![format!("热词旁挂文件读取失败: {e}")]),
+    };
+    let sidecar: HotwordSidecar = match serde_json::from_slice(&bytes) {
+        Ok(sidecar) => sidecar,
+        Err(e) => return Some(vec![format!("热词旁挂文件解析失败: {e}")]),
+    };
+    if sidecar.version != HOTWORD_SIDECAR_VERSION {
+        return Some(vec![format!(
+            "热词旁挂文件版本不支持 ({}，本版支持 {HOTWORD_SIDECAR_VERSION})，已跳过",
+            sidecar.version
+        )]);
+    }
+
+    // 校验与归一交给 replace_for_role，与保存路径同口径。
+    let rows: Vec<(String, i32)> = sidecar
+        .hotwords
+        .into_iter()
+        .map(|row| (row.text, row.weight))
+        .collect();
+    if let Err(e) = write_hotwords(db, role_id, &rows).await {
+        tracing::warn!("[RoleArchive] 热词回写失败 (role_id={role_id}): {e}");
+        return Some(vec![format!("热词写入失败: {e}")]);
+    }
+    tracing::info!("[RoleArchive] 热词旁挂文件已回写: role_id={role_id}");
+    Some(Vec::new())
+}
+
+/// 在一个事务里写入；校验失败整体回滚。`&txn` 的原因见 `replace_for_role`。
+async fn write_hotwords(
+    db: &DatabaseConnection,
+    role_id: i32,
+    rows: &[(String, i32)],
+) -> Result<(), anyhow::Error> {
+    let txn = db.begin().await.map_err(|e| anyhow::anyhow!(e))?;
+    HotwordRepo::replace_for_role(&txn, role_id, rows).await?;
+    txn.commit().await.map_err(|e| anyhow::anyhow!(e))
 }
 
 /// 导入失败时把目标位置恢复成导入前的样子。
