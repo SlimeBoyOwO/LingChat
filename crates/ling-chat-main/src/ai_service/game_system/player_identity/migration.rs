@@ -275,11 +275,11 @@ fn sync_roles(
                 if card.identity_relation_changed {
                     outcome.identity_relations_changed = true;
                 }
-                if !card.player_setting.trim().is_empty() {
-                    bodies.push(card.player_setting);
-                }
                 if card.any() {
                     outcome.updated += 1;
+                }
+                if !card.player_setting.trim().is_empty() {
+                    bodies.push(card.player_setting);
                 }
             },
             Err(e) => tracing::warn!("同步角色卡 {folder} 的玩家身份失败: {e}"),
