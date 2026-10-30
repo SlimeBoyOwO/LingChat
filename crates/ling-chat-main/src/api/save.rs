@@ -398,7 +398,8 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let prompt_options = PromptOptions::from_config(&app_config);
 
     // 6b. 恢复本存档使用的「我的身份」；必须放在 `init_game_status` 之前。
-    {
+    // 老存档没有绑定记录时保持开局引导解析出的主身份。
+    let save_identity_id = {
         let identity_store = IdentityStore::new(&crate::api::data_dir());
         match SaveRepo::get_save_identity(db, save_id).await {
             Ok(Some(id)) => {
@@ -406,19 +407,60 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
                     if let Err(e) = identity_store.set_current_id(&id) {
                         tracing::warn!("恢复存档身份失败: {e}");
                     }
+                    Some(id)
                 } else {
                     tracing::warn!("存档引用的身份 {id} 不存在，沿用当前身份");
+                    None
                 }
             },
-            Ok(None) => {},
-            Err(e) => tracing::warn!("读取存档身份失败: {e}"),
+            Ok(None) => None,
+            Err(e) => {
+                tracing::warn!("读取存档身份失败: {e}");
+                None
+            },
         }
-    }
+    };
 
     service
         .init_game_status(Some(main_role_id), prompt_options)
         .await
         .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
+
+    // 开局引导会优先按角色目录的默认身份装配；读档必须以 save_identity 为准，
+    // 这里在载入台词前把本局身份覆盖回来，后续快照/好感度按这个身份解析。
+    if let Some(id) = save_identity_id.as_deref() {
+        let identity_store = IdentityStore::new(&crate::api::data_dir());
+        if let Some(identity) = identity_store.find_by_id(id) {
+            // 身份卡 prompt 为空时，沿用角色卡里抽出的「我的设定」，与开局引导的兜底一致。
+            let fallback_prompt = {
+                let gs = service.game_status.lock().await;
+                gs.role_manager
+                    .get_loaded(main_role_id)
+                    .map(|role| {
+                        let (_, extracted) = crate::utils::prompt::extract_player_setting(
+                            role.settings.system_prompt.as_deref().unwrap_or_default(),
+                        );
+                        extracted.unwrap_or_default()
+                    })
+                    .unwrap_or_default()
+            };
+            {
+                let mut gs = service.game_status.lock().await;
+                gs.player.user_name = identity.display_name().to_string();
+                gs.player.user_subtitle = identity.subtitle.clone();
+                gs.player.user_prompt = if identity.prompt.trim().is_empty() {
+                    fallback_prompt
+                } else {
+                    identity.prompt.clone()
+                };
+                gs.player.identity_id = Some(identity.id.clone());
+                gs.player.relations = identity.relations.clone();
+            }
+            if let Err(e) = identity_store.set_current_id(&identity.id) {
+                tracing::warn!("恢复存档身份失败: {e}");
+            }
+        }
+    }
 
     let _ = service
         .restore_memory_banks(save_id)

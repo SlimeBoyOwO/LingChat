@@ -695,6 +695,7 @@ export default {
     },
     header: {
       title: "{title} - 配置编辑",
+      untitled: "角色",
       subtitle: "修改角色的详细设置",
     },
     saveConfirm:
@@ -726,9 +727,11 @@ export default {
       noneOption: "未选择身份",
       nameLabel: "该角色对「我」的称呼",
       namePlaceholder: "留空则用身份卡的名字",
+      subtitleLabel: "该角色对「我」的副标题",
+      subtitlePlaceholder: "留空则不显示副标题",
       affectionLabel: "该身份的初始好感度",
       affectionPlaceholder: "留空则用卡片默认初始值",
-      hint: "称呼与初始好感度按身份分别设置：同一个角色对不同身份的「我」，可以叫法不同、初始好感度也可以不同。留空则用卡片默认。",
+      hint: "称呼、副标题与初始好感度按身份分别设置：同一个角色对不同身份的「我」，可以叫法不同、副标题与初始好感度也可以不同。留空则用卡片默认。",
     },
     initialAffection: {
       tiers: {
