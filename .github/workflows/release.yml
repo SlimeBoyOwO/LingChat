@@ -118,17 +118,34 @@ jobs:
           cache-on-failure: true
           save-if: ${{ github.ref == 'refs/heads/dev' }}
 
+      # Windows：编 DirectML 版 sherpa-onnx。
+      # 官方预编译包只有 CPU 版，而情绪模型用的 WinML onnxruntime.dll 本身带 DML EP，
+      # 所以这边自编一份「共享库版 sherpa」复用它，GPU 开关才是真的（docs/inference-devices.md §9.1）。
+      # 脚本自己会准备 ORT 依赖（pnpm run init 已跑过）、下 sherpa 源码、编库、暂存 DLL
+      # 并生成 --config；签名/updater 产物照旧由 TAURI_SIGNING_* 环境变量驱动。
+      - name: 构建 Tauri 应用（Windows：自编 DirectML）
+        if: matrix.platform == 'windows-amd64'
+        continue-on-error: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          RUSTFLAGS: -C linker=rust-lld
+        run: pnpm tauri:build:win
+
       # 其它平台：tauri-action 直接构建
       - name: 构建 Tauri 应用
-        if: matrix.platform != 'linux-amd64'
+        if: matrix.platform != 'linux-amd64' && matrix.platform != 'windows-amd64'
         uses: tauri-apps/tauri-action@v1
         continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Linux：sherpa 走官方 shared 包、其 ORT 在 .so 里，与 ort 静态链接的
+          # ORT 错开，不再有重复符号；保留 mold 加速链接。
           RUSTFLAGS: |
-            ${{ runner.os == 'Linux' && '' || '' }}
+            ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
@@ -141,8 +158,8 @@ jobs:
       # 该库随 ort download-binaries 下载，cargo build 后由 ort `copy-dylibs` 软链到 target/release。
       #
       # 分发侧由 tauri.linux.conf.json 解决：beforeBundleCommand 调
-      # scripts/prepare-linux-libs.mjs 把库解引用复制进 src-tauri/linux-libs/，
-      # 作为 bundle 资源落到 /usr/lib/LingChat/lib（deb）与 AppDir/usr/lib/LingChat/lib（AppImage）；
+      # scripts/prepare-linux-libs.mjs 与 scripts/stage-desktop-runtime-libs.mjs
+      # （目前只需暂存 Dawn），分别落到 /usr/lib/LingChat/lib 与 /usr/lib；
       # 可执行文件的 RPATH 由 src-tauri/build.rs 写入 $ORIGIN/../lib/LingChat/lib。
       #
       # 这里额外放到系统库路径，只为让 linuxdeploy 打 AppImage 时能解析该依赖，
@@ -156,6 +173,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 与 dev-build 保持一致：Linux 用 mold（sherpa shared 后无需再允许重复定义）。
+          RUSTFLAGS: -C link-arg=-fuse-ld=mold
         run: |
           cargo build --release
           DAWN=$(find target/release -maxdepth 1 -name "libwebgpu_dawn.so" 2>/dev/null | head -1)

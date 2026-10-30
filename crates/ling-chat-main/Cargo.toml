@@ -67,6 +67,27 @@ sevenz-rust2 = "0.21"
 sha2 = "0.10"
 tempfile = "3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
+# 参考音频导入：sherpa-onnx 只吃 16-bit PCM WAV，用 symphonia 解码任意常见音频后
+# 交给 hound 重编码（见 utils::audio）。只开需要的容器/编码，别把整个 all 拉进来。
+symphonia = { version = "0.5", default-features = false, features = [
+    "aac",
+    "aiff",
+    "alac",
+    "flac",
+    "isomp4",
+    "mp3",
+    "ogg",
+    "pcm",
+    "vorbis",
+    "wav",
+] }
+hound = "3.5"
+# Opus 解码：symphonia 0.5 没有 Opus 解码器，而 `.ogg` / `.opus` 里塞 Opus 极常见
+# （Telegram / WhatsApp 的语音消息）。opusic-sys 默认 bundled：自带 libopus 源码、
+# 用 cmake 编成静态库，不需要预编译产物，也不用往 Android 的 jniLibs 塞 .so
+# （Android 交叉编译靠 ANDROID_NDK_HOME，见 scripts/resolve-android-ndk.mjs）。
+# 许可证 BSD-3-Clause，无 GPL 问题。
+opus = "0.4"
 
 # LAN Sync
 axum = { workspace = true }
@@ -96,6 +117,10 @@ windows = { version = "0.62.2", features = [
     "Win32_Security",
     "Win32_System_Threading",
 ] }
+# Windows：默认静态链接官方 CPU 预编译包（避免运行时缺 DLL）；DirectML 变体走
+# sherpa-shared（见文件末尾的 [features]）。
+sherpa-onnx = { version = "=2.0.1", default-features = false }
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
@@ -110,10 +135,17 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
     "webgpu",
 ] }
 ash = { version = "0.38", default-features = false, features = ["loaded"] }
+# Linux 全面用 official shared CPU 包（.so 随包）：sherpa 的 ORT 在动态库里、不进
+# 可执行文件的静态符号表，与 ort 静态链接的 ORT(1.28.0) 不再撞 multiple definition。
+sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false, features = ["shared"] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
-# 与 x86_64 不同：aarch64 无 AVX2 问题，直接静态链接官方/预编译二进制即可
 ort = { version = "=2.0.0-rc.13", default-features = false, features = ["download-binaries"] }
+# sherpa-onnx 的 sys 包里有 `linux-aarch64-shared-cpu-lib` 的官方预编译包；sherpa 走
+# shared、与其 .so 里的 ORT 分离，避免与 ort 静态链接的 ORT 撞重复符号。
+sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false, features = ["shared"] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
@@ -123,3 +155,31 @@ ort = { version = "=2.0.0-rc.13", default-features = false, features = [
 sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", default-features = false, features = [
     "coreml",
 ] }
+sherpa-onnx = { version = "=2.0.1", default-features = false }
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
+
+# Sherpa-ONNX: Android 只支持 shared 链接（.so）。Linux 也在 target 里显式启用了
+# shared（见上），Windows/macOS 默认 static。
+[target.'cfg(target_os = "android")'.dependencies]
+sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
+sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
+
+[features]
+# 桌面端的链接方式由 Cargo feature 决定：sherpa-onnx-sys 的 build.rs 里 static /
+# shared 同时开是硬报错（`Features \`static\` and \`shared\` cannot be enabled at
+# the same time`），所以只能按 target 分别固定一种方式。
+#
+#   - Windows / macOS 默认（都不开）：上游 build.rs 落回 Static（CPU 预编译包，
+#     避免运行时缺 DLL/.so）。
+#   - Linux 全线（x86_64 + aarch64）在 target 依赖里固定 `sherpa-onnx/shared`：
+#     官方 shared CPU 包随包，sherpa 的 ORT 在 .so 里，与 ort 静态链接的 ORT
+#     不再撞 `multiple definition`。
+#   - Windows DirectML 变体：`--features sherpa-shared`，配合
+#     scripts/build-desktop-sherpa-dml.mjs 导出的 SHERPA_ONNX_LIB_DIR（自编的
+#     DirectML 版动态库；运行期复用应用随包的 onnxruntime.dll）。
+#     `pnpm tauri:build:win` 会把这两步串起来。
+sherpa-shared = ["sherpa-onnx/shared", "sherpa-onnx-sys/shared"]
+
+[dev-dependencies]
+# 测试里自造 OGG/Opus 素材（配合 opus 的编码器），避免提交二进制 fixture。
+ogg = "0.9"

@@ -18,6 +18,18 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     // 应用 LAN 同步暂存文件（必须在 DB 初始化之前，否则 .db 仍被锁定）
     ling_chat_main::lan_sync::staging::apply_staged_files(&data_dir);
 
+    // 启动诊断：迁移失败最难区分的是「schema 不对」还是「文件根本写不了」。
+    // 先把 DB 文件的实际状态写进 logcat（见 platform::early_log）。
+    let db_file = data_dir.join("game_database.db");
+    match std::fs::metadata(&db_file) {
+        Ok(meta) => crate::app::platform::early_log(&format!(
+            "data: db len={} readonly={}",
+            meta.len(),
+            meta.permissions().readonly()
+        )),
+        Err(e) => crate::app::platform::early_log(&format!("data: db 元数据读取失败: {e}")),
+    }
+
     let db = db::init_db(&data_dir).await?;
 
     // 导入 LAN 同步暂存的数据库记录（表结构就绪后才执行）

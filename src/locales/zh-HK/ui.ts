@@ -60,12 +60,21 @@ export default {
     kindImport: "匯入",
     kindExport: "匯出",
     defaultImportTitle: "角色壓縮檔",
+    defaultPluginImportTitle: "插件壓縮包",
     defaultExportTitle: "角色匯出",
     close: "關閉",
     cancel: "取消",
     errors: {
       ARCHIVE_MISSING_SETTINGS_YML:
         "壓縮包缺少 settings.yml\n這可能是舊版角色，請下載新版角色後匯入",
+      PLUGIN_MISSING_MANIFEST:
+        "壓縮包裏沒有 manifest.toml，這不是一個插件包\n插件需要 manifest.toml 位於壓縮包根目錄，或只在唯一一層文件夾內",
+      PLUGIN_BAD_ARCHIVE_LAYOUT:
+        "插件包結構不支持：manifest.toml 只能位於壓縮包根目錄，或位於唯一的一層文件夾內\n請去掉外層的多餘文件夾（或多個插件）後重試",
+      PLUGIN_INVALID_MANIFEST:
+        "manifest.toml 無法解析：缺少必填字段、存在未知字段，或 id 只允許字母、數字、下劃線與連字符",
+      PLUGIN_MISSING_TOOL_SCRIPT: "manifest 聲明的工具腳本在壓縮包裏找不到",
+      PLUGIN_ALREADY_EXISTS: "同名插件已存在，如需替換請把導入方式改為「覆蓋」",
     },
   },
   fontImport: {
@@ -186,7 +195,10 @@ export default {
       },
     },
     accessModes: {
-      manual: { label: "逐次確認", description: "寫入、編輯、刪除檔案同執行命令之前都會問你。" },
+      manual: {
+        label: "逐次確認",
+        description: "寫入、編輯、刪除檔案同執行命令之前都會問你。",
+      },
       auto_approve: {
         label: "自動通過",
         description: "普通寫入、編輯同命令會自動通過；刪除操作仍然會問。",
@@ -226,7 +238,10 @@ export default {
     },
     fileChangeApprovalTitle: "檔案修改請求",
     fileChangeApprovalMessage: "ta 想{action}以下檔案：\n\n{path}\n\n允許嗎？",
-    fileChangeActions: { write: "寫入", edit: "編輯" },
+    fileChangeActions: {
+      write: "寫入",
+      edit: "編輯",
+    },
     androidTitle: "Android 工具說明",
     androidSummary:
       "工具設定會按裝置分開儲存，唔會由 Windows 同步。請喺呢部手機開啟需要嘅工具並儲存；命令執行同桌面插件喺 Android 唔可用。",
