@@ -633,7 +633,18 @@ pub async fn select_clothes(
     role_id: i32,
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
-    let result = select_clothes_inner(app.clone(), role_id, clothes_name).await?;
+    let result = select_clothes_inner(app.clone(), role_id, clothes_name.clone()).await?;
+    // 与 AI 换装走同一事件，让投屏窗口等其它窗口同步；重复收到是无害的赋值
+    let payload = serde_json::json!({
+        "roleId": role_id,
+        "clothesName": clothes_name,
+    });
+    if let Err(e) = app.emit(
+        crate::ai_service::game_system::world_actions::EVENT_CLOTHES_CHANGED,
+        &payload,
+    ) {
+        tracing::warn!("emit character:clothes-changed 失败: {e}");
+    }
     // 手动优先：用户手动选装后，关闭 AI 自动换装（设置页可重新打开）
     crate::config::AppConfig::lock_auto_switch(&app, config::keys::AI_AUTO_CLOTHES);
     Ok(result)

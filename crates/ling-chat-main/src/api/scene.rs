@@ -254,15 +254,6 @@ pub(crate) fn resolved_background_of(scene: &Scene) -> Option<String> {
     model_to_info(scene).background
 }
 
-/// 把 `GameStatus.background` 对齐到某个场景；场景不存在或没有背景时返回 None。
-pub(crate) fn resolved_background_of_id(scene_id: &str) -> Option<String> {
-    SceneStore::new(&data_dir())
-        .find_by_id(scene_id)
-        .ok()
-        .flatten()
-        .and_then(|scene| resolved_background_of(&scene))
-}
-
 fn now_iso() -> String {
     chrono::Utc::now().to_rfc3339()
 }
@@ -935,28 +926,8 @@ pub async fn move_scene_to_category(
 
 #[tauri::command]
 pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<(), String> {
-    // 背景跟随场景，先按 id 把背景解析出来，别在持锁时读盘
-    let background = scene_id.as_deref().and_then(resolved_background_of_id);
-
-    let state = app.state::<AppState>();
-    let service = state.ai_service.lock().await;
-    let mut gs = service.game_status.lock().await;
-    gs.current_scene_id = scene_id.clone();
-
-    // 换了场景，剧本临时背景的记录就此作废（它只保留到新场景更新为止）
-    gs.clear_background_override();
-    gs.sync_background_with_scene(background);
-
-    // 持久化到 store，便于下次启动恢复
-    if let Ok(store) = app.store(crate::config::STORE_FILE) {
-        let val = match &scene_id {
-            Some(id) => serde_json::Value::String(id.clone()),
-            None => serde_json::Value::Null,
-        };
-        store.set(crate::config::session::LAST_SCENE_ID.to_string(), val);
-        let _ = store.save();
-    }
-
+    // 与 AI 工具同一实现；命令侧只保留「取消场景」这一种额外输入
+    crate::ai_service::game_system::world_actions::switch_scene(&app, scene_id).await;
     Ok(())
 }
 
@@ -967,25 +938,26 @@ pub async fn select_scene(app: AppHandle, scene_id: Option<String>) -> Result<()
 /// 工具同一通道），并落下"手动优先"锁。
 #[tauri::command]
 pub async fn select_background_effect(app: AppHandle, effect: String) -> Result<(), String> {
-    {
-        let state = app.state::<AppState>();
-        let service = state.ai_service.lock().await;
-        service.game_status.lock().await.background_effect = effect.clone();
-    }
+    use crate::ai_service::game_system::world_actions::{EffectOrigin, apply_effect};
 
-    let payload = serde_json::json!({
-        "type": "ambient_effect",
-        "effect": effect,
-        // 标记手动选择：前端回声只更新对应层，不清另一层
-        "source": "manual",
-    });
-    if let Err(e) = app.emit("ambient:effect", &payload) {
-        tracing::warn!("emit ambient effect 失败: {e}");
-    }
+    // payload 带 source=manual：前端回声只更新对应层，不清另一层
+    apply_effect(&app, EffectOrigin::Manual, &effect, None).await;
 
     // 手动优先：用户手动选特效后，关闭 AI 自动切特效（设置页可重新打开）
     crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_EFFECT);
 
+    Ok(())
+}
+
+/// 用户手动选择天气层特效（设置-背景页）。
+///
+/// 只同步后端状态并回声到前端天气层，便于下一轮对话检测天气变化；
+/// 与氛围层命令分开，避免「清空」时清错层。
+#[tauri::command]
+pub async fn select_weather_effect(app: AppHandle, effect: String) -> Result<(), String> {
+    use crate::ai_service::game_system::world_actions::{EffectOrigin, apply_effect};
+
+    apply_effect(&app, EffectOrigin::ManualWeather, &effect, None).await;
     Ok(())
 }
 

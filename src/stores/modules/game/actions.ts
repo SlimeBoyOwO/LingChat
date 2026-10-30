@@ -253,6 +253,10 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
     uiStore.applyEffectValue(
       canonicalEffectKey(gameInfo.background_effect) ?? gameInfo.background_effect,
     );
+  // 天气层单独恢复。只在它是一个具体天气时覆盖，旧存档缺这个字段（"None"）时
+  // 保留上面按单值分流的结果，避免把旧档里的天气特效清掉
+  if (gameInfo.weather_effect && !["", "None", "none"].includes(gameInfo.weather_effect))
+    settingsStore.setWeatherEffect(gameInfo.weather_effect);
 
   // 恢复背景音乐：用户上次手动选择优先于场景/剧本设定
   if (gameInfo.last_bgm_track && gameInfo.last_bgm_track !== "None") {

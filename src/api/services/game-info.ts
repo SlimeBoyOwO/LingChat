@@ -69,6 +69,8 @@ export interface WebInitData {
   onstage_roles: CharacterSettings[];
   background: string;
   background_effect: string;
+  /** 天气层特效；与氛围层分开恢复 */
+  weather_effect: string;
   background_music: string;
   current_scene_id: string | null;
   current_scene: SceneInfo | null;

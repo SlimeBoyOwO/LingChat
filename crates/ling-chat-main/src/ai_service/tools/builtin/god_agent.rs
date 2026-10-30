@@ -133,7 +133,10 @@ impl Tool for SelectNextSpeaker {
             "roleId": role_id,
             "characterName": name,
         });
-        if let Err(e) = app.emit("character:switch", &payload) {
+        if let Err(e) = app.emit(
+            crate::ai_service::game_system::world_actions::EVENT_CHARACTER_SWITCH,
+            &payload,
+        ) {
             tracing::warn!("emit character:switch 失败: {e}");
         }
 

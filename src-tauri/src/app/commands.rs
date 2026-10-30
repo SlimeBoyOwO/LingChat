@@ -92,6 +92,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::scene::delete_scene,
         api::scene::select_scene,
         api::scene::select_background_effect,
+        api::scene::select_weather_effect,
         api::scene::set_scene_awareness,
         api::scene::set_scene_location_type,
         api::scene::get_weather_sync_config,

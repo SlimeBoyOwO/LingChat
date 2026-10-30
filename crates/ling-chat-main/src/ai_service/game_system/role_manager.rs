@@ -859,12 +859,12 @@ impl GameRoleManager {
     }
 }
 
-/// `user_aliases` 中「影响人设行」的部分签名：称呼 + 副标题，忽略初始好感度覆写
-/// （后者不进提示词，改它不该触发人设行重建）。
-fn alias_signature(map: &HashMap<String, UserAlias>) -> Vec<(String, String, String)> {
-    let mut items: Vec<(String, String, String)> = map
+/// `user_aliases` 中「影响人设行」的部分签名：只含称呼，忽略副标题与初始好感度覆写
+/// （后两者不进提示词，改它们不该触发人设行重建）。
+fn alias_signature(map: &HashMap<String, UserAlias>) -> Vec<(String, String)> {
+    let mut items: Vec<(String, String)> = map
         .iter()
-        .map(|(id, alias)| (id.clone(), alias.name.clone(), alias.subtitle.clone()))
+        .map(|(id, alias)| (id.clone(), alias.name.clone()))
         .collect();
     items.sort();
     items
