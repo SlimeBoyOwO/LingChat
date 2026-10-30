@@ -117,7 +117,7 @@ pub async fn recognize_stream(
     // provider::llama_prompt_from_hotwords）
     if let Some(p) = prompt {
         debug!(
-            "[ASR/llama-stream] prompt 偏置（{} 字符）: {p}",
+            "[ASR/llama-stream] 带 prompt 偏置（{} 字符）",
             p.chars().count()
         );
         form = form.text("prompt", p);
@@ -149,7 +149,6 @@ pub async fn recognize_stream(
     let mut buf: Vec<u8> = Vec::new();
     let mut bytes = resp.bytes_stream();
     let mut final_text = String::new();
-    let mut final_lang: Option<String> = None;
     while let Some(chunk) = bytes.next().await {
         let chunk = chunk.map_err(map_reqwest_error)?;
         buf.extend_from_slice(&chunk);
@@ -162,21 +161,17 @@ pub async fn recognize_stream(
                     );
                     return Ok(AsrResult {
                         text: final_text,
-                        language: final_lang,
                         confidence: None,
                         provider_id: "llama-asr".into(),
                     });
                 },
                 Some(SseEvent::Text(raw)) => {
                     // OpenAI 兼容语义：data 为当前累积完整转录 → 整体替换视图
-                    if let Some((text, lang)) = parse_llama_text(&raw) {
-                        final_text = text.clone();
-                        if lang.is_some() {
-                            final_lang = lang;
-                        }
+                    if let Some(text) = parse_llama_text(&raw) {
+                        final_text = text;
                         // 空文本（无语音 `language None<asr_text>`）不回调——
                         // 空 partial 会清空输入框的语音追加块
-                        if !text.is_empty() {
+                        if !final_text.is_empty() {
                             if let Some(cb) = &on_partial {
                                 cb(&final_text);
                             }
@@ -195,7 +190,6 @@ pub async fn recognize_stream(
     );
     Ok(AsrResult {
         text: final_text,
-        language: final_lang,
         confidence: None,
         provider_id: "llama-asr".into(),
     })
