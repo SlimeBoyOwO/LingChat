@@ -38,7 +38,6 @@ pub fn collect_peers(gs: &GameStatus, data_dir: &Path, self_folder: &str) -> Vec
 /// 在场各角色对玩家身份的称呼一览（含自身，自身行标 is_self）。
 pub fn alias_roster(gs: &GameStatus, self_role_id: Option<i32>) -> Vec<AliasEntry> {
     let identity_name = gs.player.user_name.clone();
-    let identity_id = gs.player.identity_id.clone();
     let ids: Vec<i32> = gs.onstage_role_ids.to_vec();
     ids.into_iter()
         .filter_map(|role_id| {
@@ -47,7 +46,7 @@ pub fn alias_roster(gs: &GameStatus, self_role_id: Option<i32>) -> Vec<AliasEntr
                     .display_name
                     .clone()
                     .unwrap_or_else(|| role.settings.ai_name.clone()),
-                alias: effective_user_alias(&role.settings, identity_id.as_deref(), &identity_name),
+                alias: effective_user_alias(&role.settings, &identity_name),
                 is_self: Some(role_id) == self_role_id,
             })
         })
@@ -110,11 +109,7 @@ pub async fn rebuild_persona_line(
 
     let speaker = RelationEndpoint::Ai(folder.clone());
     let speaker_relations = runtime_relations::load_effective(data_dir, &folder, gs);
-    let user_alias = effective_user_alias(
-        &settings,
-        gs.player.identity_id.as_deref(),
-        &gs.player.user_name,
-    );
+    let user_alias = effective_user_alias(&settings, &gs.player.user_name);
     let player_block = player_block_for(gs, role_id, &settings, &user_alias, &speaker_relations);
 
     let peers = collect_peers(gs, data_dir, &folder);

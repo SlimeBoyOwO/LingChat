@@ -45,6 +45,26 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
     basic: [
       { key: "ai_name", label: t("settings.characterInfo.fields.aiName"), type: "text" },
       { key: "ai_subtitle", label: t("settings.characterInfo.fields.aiSubtitle"), type: "text" },
+      {
+        key: "user_name",
+        label: t("settings.characterInfo.fields.userName"),
+        type: "text",
+      },
+      {
+        key: "user_subtitle",
+        label: t("settings.characterInfo.fields.userSubtitle"),
+        type: "text",
+      },
+      {
+        key: "initial_affection",
+        label: t("settings.characterInfo.fields.initialAffection"),
+        type: "number",
+        step: "1",
+        min: -100,
+        max: 100,
+        nullable: true,
+        hint: t("settings.characterInfo.fields.initialAffectionHint"),
+      },
       { key: "title", label: t("settings.characterInfo.fields.title"), type: "text" },
       { key: "info", label: t("settings.characterInfo.fields.info"), type: "textarea", rows: 4 },
     ],

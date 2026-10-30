@@ -1,5 +1,6 @@
 //! 身份卡的磁盘存储：`<data_dir>/game_data/player_identities/`。
 
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -216,6 +217,26 @@ impl IdentityStore {
         Ok(true)
     }
 
+    /// 已删除身份（`.trash`）曾绑定的角色文件夹，避免下次启动把它们重新建回来。
+    pub fn deleted_source_folders(&self) -> HashSet<String> {
+        let trash = self.root.join(TRASH_DIR);
+        let Ok(entries) = fs::read_dir(&trash) else {
+            return HashSet::new();
+        };
+        let mut folders = HashSet::new();
+        for entry in entries.flatten() {
+            let path = entry.path().join(IDENTITY_FILE);
+            let Ok(raw) = fs::read_to_string(&path) else {
+                continue;
+            };
+            let Ok(card) = serde_yaml::from_str::<PlayerIdentity>(&raw) else {
+                continue;
+            };
+            folders.extend(card.source_folders);
+        }
+        folders
+    }
+
     fn scan(&self) -> Vec<(PathBuf, PlayerIdentity)> {
         let Ok(entries) = fs::read_dir(&self.root) else {
             return Vec::new();
@@ -328,5 +349,9 @@ fn now_rfc3339() -> String {
 }
 
 fn new_identity_id() -> String {
-    format!("p{}", now_millis())
+    use std::sync::atomic::{AtomicU64, Ordering};
+    // 批量迁移可能在同毫秒连续建卡，追加进程内序号避免 id 撞车后互相覆盖目录。
+    static SEQ: AtomicU64 = AtomicU64::new(0);
+    let seq = SEQ.fetch_add(1, Ordering::Relaxed) % 10_000;
+    format!("p{}{seq:04}", now_millis())
 }

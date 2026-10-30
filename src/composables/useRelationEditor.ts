@@ -4,6 +4,8 @@ import { ref, type Ref } from "vue";
 export interface RelationRow {
   target: string;
   text: string;
+  /** 角色对玩家身份的初始好感度（只有 `me:` 行使用；null = 跟随角色卡默认） */
+  affection?: number | null;
 }
 
 /** 下拉目标项；group 为展示用的分组标题（如「AI 角色」/「我的身份」）。 */
@@ -28,11 +30,21 @@ export function useRelationEditor(
 ) {
   const rows = ref<RelationRow[]>([]);
 
-  /** 用一份 {关系键: 文本} 覆盖行状态（过滤空键空值）。 */
-  const syncRows = (relations: Record<string, string> | undefined) => {
-    rows.value = Object.entries(relations || {})
-      .filter(([target, text]) => !!target && !!text)
-      .map(([target, text]) => ({ target, text }));
+  /** 用一份 {关系键: 文本} 覆盖行状态（过滤空键空值）；给了好感度表时一并带上。 */
+  const syncRows = (
+    relations: Record<string, string> | undefined,
+    affections?: Record<string, number | null>,
+  ) => {
+    const texts = relations ?? {};
+    const affects = affections ?? {};
+    const keys = new Set([...Object.keys(texts), ...Object.keys(affects)]);
+    rows.value = [...keys]
+      .filter((key) => !!key && (!!texts[key]?.trim() || affects[key] != null))
+      .map((key) => ({
+        target: key,
+        text: texts[key] ?? "",
+        affection: affects[key] ?? null,
+      }));
   };
 
   /** 新增一行；默认目标为空串（不预选）。 */
@@ -51,6 +63,24 @@ export function useRelationEditor(
       if (row.target && row.text.trim()) map[row.target] = row.text.trim();
     }
     return map;
+  };
+
+  /** 折成 {关系键: 初始好感度}；只收我的身份行，null 表示恢复角色卡默认。 */
+  const foldAffections = (): Record<string, number | null> => {
+    const map: Record<string, number | null> = {};
+    for (const row of rows.value) {
+      if (row.target.startsWith("me:")) map[row.target] = row.affection ?? null;
+    }
+    return map;
+  };
+
+  /** 输入框写回：空串或非法数字视为未设置。 */
+  const setAffection = (row: RelationRow, value: string) => {
+    const parsed = Number(value);
+    row.affection =
+      value.trim() === "" || Number.isNaN(parsed)
+        ? null
+        : Math.min(100, Math.max(-100, Math.round(parsed)));
   };
 
   /** 下拉选项：其他行已选过的目标置灰不可再选（本行当前值除外）。 */
@@ -72,5 +102,5 @@ export function useRelationEditor(
     return options;
   };
 
-  return { rows, syncRows, addRow, removeRow, fold, optionsFor };
+  return { rows, syncRows, addRow, removeRow, fold, foldAffections, setAffection, optionsFor };
 }

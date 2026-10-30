@@ -15,7 +15,7 @@ use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{
     AffectionVector, CharacterSettings, GameLine, GameMemoryBank, GameRole, LlmMessage,
-    NegativeVector, Player, UserAlias,
+    NegativeVector, Player,
 };
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
@@ -52,6 +52,10 @@ pub struct GameRoleManager {
     memory_inject_continue_user: bool,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
+    /// 角色对玩家身份的关系镜像（DB `role_identity_relation` → 键 `me:<身份id>`），按角色文件夹缓存。
+    identity_relations: HashMap<String, HashMap<String, String>>,
+    /// 角色对各身份的初始好感度覆写（DB 同一张表），按角色文件夹缓存。
+    identity_affections: HashMap<String, HashMap<String, i32>>,
 }
 
 impl GameRoleManager {
@@ -82,6 +86,8 @@ impl GameRoleManager {
             memory_limits,
             memory_inject_continue_user,
             clothes_overrides: HashMap::new(),
+            identity_relations: HashMap::new(),
+            identity_affections: HashMap::new(),
         }
     }
 
@@ -141,6 +147,35 @@ impl GameRoleManager {
     pub fn reset_roles(&mut self) {
         self.loaded_roles.clear();
         self.memory_bank_systems.clear();
+        self.identity_relations.clear();
+        self.identity_affections.clear();
+    }
+
+    /// 该角色对玩家身份的关系（键 `me:<身份 id>`）；未加载时返回 None。
+    pub fn identity_relations_for(&self, role_folder: &str) -> Option<&HashMap<String, String>> {
+        self.identity_relations.get(role_folder)
+    }
+
+    /// 该角色对某身份的初始好感度覆写；没有覆写或角色未加载时返回 None。
+    pub fn identity_affection_of_role(&self, role_id: i32, identity_id: &str) -> Option<i32> {
+        let folder = &self.loaded_roles.get(&role_id)?.settings.character_folder;
+        self.identity_affections
+            .get(folder)
+            .and_then(|map| map.get(identity_id))
+            .copied()
+    }
+
+    /// 设置页保存关系后刷新会话镜像。
+    pub fn set_identity_relations(
+        &mut self,
+        role_folder: &str,
+        relations: HashMap<String, String>,
+        affections: HashMap<String, i32>,
+    ) {
+        self.identity_relations
+            .insert(role_folder.to_string(), relations);
+        self.identity_affections
+            .insert(role_folder.to_string(), affections);
     }
 
     pub fn clear_role_memory(&mut self, role_id: i32) {
@@ -246,6 +281,26 @@ impl GameRoleManager {
             .unwrap_or_else(|| "default".into());
 
         tracing::info!("角色 {} 的服装设置为：{}", role.id, clothes);
+
+        // 角色对玩家身份的关系与初始好感度覆写都存数据库，加载角色时一并取回会话镜像。
+        let identity_rows = RoleRepo::load_identity_relations(db, role.id).await?;
+        let identity_relations = identity_rows
+            .iter()
+            .filter(|(_, value)| !value.text.trim().is_empty())
+            .map(|(identity_id, value)| (format!("me:{identity_id}"), value.text.clone()))
+            .collect::<HashMap<_, _>>();
+        let identity_affections = identity_rows
+            .into_iter()
+            .filter_map(|(identity_id, value)| {
+                value
+                    .initial_affection
+                    .map(|affection| (identity_id, affection))
+            })
+            .collect::<HashMap<_, _>>();
+        self.identity_relations
+            .insert(settings.character_folder.clone(), identity_relations);
+        self.identity_affections
+            .insert(settings.character_folder.clone(), identity_affections);
 
         let new_role = GameRole {
             role_id: Some(role.id),
@@ -437,13 +492,10 @@ impl GameRoleManager {
                 }
             }
 
-            let alias = self.loaded_roles.get(&rid).map(|role| {
-                effective_user_alias(
-                    &role.settings,
-                    player.identity_id.as_deref(),
-                    &player.user_name,
-                )
-            });
+            let alias = self
+                .loaded_roles
+                .get(&rid)
+                .map(|role| effective_user_alias(&role.settings, &player.user_name));
             let built = MemoryBuilder::new(rid)
                 .with_continue_user(self.memory_inject_continue_user)
                 .with_player_alias(alias)
@@ -685,8 +737,6 @@ impl GameRoleManager {
             || role.settings.ai_subtitle != settings.ai_subtitle
             || role.settings.user_name != settings.user_name
             || role.settings.user_subtitle != settings.user_subtitle
-            || alias_signature(&role.settings.user_aliases)
-                != alias_signature(&settings.user_aliases)
             || role.settings.system_prompt != settings.system_prompt
             || role.settings.system_prompt_example != settings.system_prompt_example
             || role.settings.system_prompt_example_old != settings.system_prompt_example_old;
@@ -699,7 +749,6 @@ impl GameRoleManager {
             role.settings.system_prompt_example = settings.system_prompt_example.clone();
             role.settings.system_prompt_example_old = settings.system_prompt_example_old.clone();
         }
-        role.settings.user_aliases = settings.user_aliases.clone();
         role.settings.initial_affection = settings.initial_affection;
         changed
     }
@@ -857,17 +906,6 @@ impl GameRoleManager {
             }
         }
     }
-}
-
-/// `user_aliases` 中「影响人设行」的部分签名：只含称呼，忽略副标题与初始好感度覆写
-/// （后两者不进提示词，改它们不该触发人设行重建）。
-fn alias_signature(map: &HashMap<String, UserAlias>) -> Vec<(String, String)> {
-    let mut items: Vec<(String, String)> = map
-        .iter()
-        .map(|(id, alias)| (id.clone(), alias.name.clone()))
-        .collect();
-    items.sort();
-    items
 }
 
 /// 根据 `CharacterSettings.tts_type` 与 `voice_models` 构造角色的 `VoiceMaker`。

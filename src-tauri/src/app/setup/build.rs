@@ -129,6 +129,17 @@ pub(super) fn build_service_graph(
         tracing::warn!("玩家身份迁移失败，继续使用现有身份: {e}");
     }
 
+    // 冷启动恢复上次角色时，同样启用该角色卡绑定的专属身份（迁移会把 current 重置为主身份）。
+    if let Some(cid) = character_id {
+        if let Err(e) = rt.block_on(
+            ling_chat_main::ai_service::game_system::player_identity::bootstrap::apply_bound_identity_for_role(
+                &db, &data_dir, cid,
+            ),
+        ) {
+            tracing::warn!("冷启动应用绑定身份失败: {e}");
+        }
+    }
+
     rt.block_on(ai_service.init_game_status(character_id, prompt_options))?;
     // 冷启动直接恢复上次角色，不经过 select_character，这里补播种初始好感度（与切角色同构）。
     if let Some(cid) = character_id {

@@ -13,8 +13,8 @@ offset_x: 0.0
 offset_y: 85.0
 clothes_name: default
 clothes:
-  - name: default
-    prompt: 松子穿着深蓝色竖条纹荷叶边连衣裙，胸前保留酒红色饰边、奶白色蝴蝶结和交叉系带，搭配白色高领、宽袖、黑色连裤袜与黑色制服乐福鞋。
+- name: default
+  prompt: 松子穿着深蓝色竖条纹荷叶边连衣裙，胸前保留酒红色饰边、奶白色蝴蝶结和交叉系带，搭配白色高领、宽袖、黑色连裤袜与黑色制服乐福鞋。
 avatar_mode_p: image
 scale_p: 1.0
 offset_x_p: 0.0

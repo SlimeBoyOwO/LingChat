@@ -523,31 +523,6 @@ fn default_live2d_gain() -> f64 {
     1.0
 }
 
-/// 老角色卡迁移到主身份后的记录：只用于判断这张卡是否迁过和展示报告，不参与提示词。
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct LegacyIdentity {
-    #[serde(default)]
-    pub migrated_at: String,
-    #[serde(default)]
-    pub primary_identity_id: String,
-    #[serde(default)]
-    pub user_name: String,
-    #[serde(default)]
-    pub user_subtitle: String,
-}
-
-/// 某个身份下，该角色对「我」的称呼与副标题。
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct UserAlias {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub subtitle: String,
-    /// 该身份专属的初始好感度覆写；None 表示用卡片默认 `initial_affection`。
-    #[serde(default)]
-    pub initial_affection: Option<i32>,
-}
-
 /// 角色设定模型，对应 Python `CharacterSettings`。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CharacterSettings {
@@ -555,16 +530,11 @@ pub struct CharacterSettings {
     pub ai_name: String,
     #[serde(default)]
     pub ai_subtitle: Option<String>,
+    /// 该角色默认对「我」的称呼。
     #[serde(default = "default_user_name")]
     pub user_name: String,
     #[serde(default)]
     pub user_subtitle: Option<String>,
-    /// per-身份的「该角色对我（用户）的称呼/副标题」覆写，键为身份卡 id。
-    #[serde(default)]
-    pub user_aliases: HashMap<String, UserAlias>,
-    /// 老角色卡迁移到主身份时留下的记录；新卡为 None。
-    #[serde(default)]
-    pub legacy_identity: Option<LegacyIdentity>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -687,8 +657,6 @@ impl Default for CharacterSettings {
             ai_subtitle: Some(String::new()),
             user_name: default_user_name(),
             user_subtitle: Some(String::new()),
-            user_aliases: HashMap::new(),
-            legacy_identity: None,
             title: None,
             info: None,
             body_part: None,

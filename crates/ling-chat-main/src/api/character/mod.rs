@@ -20,7 +20,6 @@ use crate::config;
 use crate::config::AppConfig;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::system::open_folder;
 use crate::utils::yaml_file::{resolve_settings_file, write_json_as_yaml};
 
@@ -696,10 +695,13 @@ pub async fn update_role_settings(
         let mut gs = service.game_status.lock().await;
 
         let identity_id = gs.player.identity_id.clone();
+        let affection_override = identity_id
+            .as_deref()
+            .and_then(|id| gs.role_manager.identity_affection_of_role(role_id, id));
         let old_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
             crate::ai_service::affection::effective_initial_affection(
                 &role.settings,
-                identity_id.as_deref(),
+                affection_override,
             )
         });
 
@@ -732,55 +734,14 @@ pub async fn update_role_settings(
         if let Some(old) = old_initial {
             let new_initial = crate::ai_service::affection::effective_initial_affection(
                 &validated,
-                identity_id.as_deref(),
+                affection_override,
             );
             if let Some(init) = new_initial.filter(|v| *v != old) {
-                gs.set_identity_affection_initial(role_id, identity_id.as_deref(), init);
                 // 补发一次变更事件：面板即时刷新新值（本路径不经过上帝 Agent）。
-                let vector = crate::ai_service::affection::uniform_vector(init);
-                let _ = app.emit(
-                    "affection:changed",
-                    crate::ai_service::affection::AffectionChangedPayload {
-                        role_id,
-                        deltas: std::collections::HashMap::new(),
-                        negative_deltas: std::collections::HashMap::new(),
-                        average: vector.average(),
-                        values: vector,
-                        negative: crate::ai_service::types::NegativeVector::default(),
-                        reason: "初始好感度已同步到当前存档".to_string(),
-                    },
-                );
-                if init != 0 {
-                    let role_name = gs
-                        .role_manager
-                        .get_loaded(role_id)
-                        .map(|r| {
-                            r.display_name
-                                .clone()
-                                .unwrap_or_else(|| r.settings.ai_name.clone())
-                        })
-                        .unwrap_or_default();
-                    if !role_name.is_empty() {
-                        if let Err(e) = gs.add_affection_state_narration(db, &role_name, init).await
-                        {
-                            tracing::warn!("写入感情档位旁白失败: {}", e);
-                        } else {
-                            gs.persist_lines_if_bound(db).await;
-                        }
-                    }
-                }
-                if let Some(save_id) = gs.active_save_id {
-                    match serde_json::to_string(&gs.to_snapshot()) {
-                        Ok(snapshot_json) => {
-                            if let Err(e) =
-                                SaveRepo::update_save_status(db, save_id, &snapshot_json).await
-                            {
-                                tracing::warn!("初始好感度同步后落档失败: {}", e);
-                            }
-                        },
-                        Err(e) => tracing::warn!("序列化状态失败: {}", e),
-                    }
-                }
+                let payload = gs
+                    .sync_identity_affection_initial(db, role_id, identity_id.as_deref(), init)
+                    .await;
+                let _ = app.emit("affection:changed", payload);
             }
         }
 

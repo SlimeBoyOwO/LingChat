@@ -43,7 +43,12 @@ pub fn load_effective(
     gs: &GameStatus,
 ) -> HashMap<String, String> {
     let speaker = RelationEndpoint::Ai(role_folder.to_string());
-    merge_runtime(role_relations::load(data_dir, role_folder), gs, &speaker)
+    let mut base = role_relations::load(data_dir, role_folder);
+    // 角色对玩家身份的关系以数据库为真源，会话开始时已镜像到 role_manager。
+    if let Some(identity_relations) = gs.role_manager.identity_relations_for(role_folder) {
+        base.extend(identity_relations.clone());
+    }
+    merge_runtime(base, gs, &speaker)
 }
 
 pub fn identity_relations_effective(
