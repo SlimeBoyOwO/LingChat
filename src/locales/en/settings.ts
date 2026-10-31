@@ -1533,6 +1533,10 @@ export default {
     },
   },
   memoryDebug: {
+    recallTitle: "Historical memory retrieval (RAG)",
+    recallHint:
+      "Shows the latest retrieval status, sources, match explanations and cache use for the current chat. Retrieval requires an active save; snapshots expire when history or the role changes.",
+    recallEmpty: "No valid retrieval snapshot for the current chat.",
     title: "Permanent Memory Debug",
     rolesTitle: "Roles",
     noRoles: "No inspectable role yet (bring a character on stage first)",

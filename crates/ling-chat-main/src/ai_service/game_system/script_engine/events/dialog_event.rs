@@ -150,6 +150,8 @@ impl ScriptEvent for DialogueEvent {
         let sdeps = {
             let state = ctx.app.state::<AppState>();
             SentenceDeps {
+                recall: None,
+                recall_stamp: None,
                 processor: state.chat.processor.clone(),
                 translator: state.chat.translator.clone(),
                 game_status: ctx.game_status.clone(),

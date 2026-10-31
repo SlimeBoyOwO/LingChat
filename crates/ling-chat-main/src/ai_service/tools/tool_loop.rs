@@ -9,6 +9,9 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
+use crate::ai_service::game_system::memory::recall::{
+    EPHEMERAL_MEMORY_RESULT, RecallSession, RecallStamp,
+};
 use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
@@ -157,8 +160,10 @@ pub async fn stream_with_tool_loop(
     role_name: Option<String>,
     app: &AppHandle,
     recommended: &[String],
+    recall: Arc<RecallSession>,
     reply_mode: ReplyLengthMode,
 ) -> Result<ToolLoopResult> {
+    validate_recall(app, &recall).await?;
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let (settings, tool_rag) = {
         let state = app.state::<AppState>();
@@ -184,7 +189,7 @@ pub async fn stream_with_tool_loop(
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
         return Ok(ToolLoopResult {
-            stream: presentation_stream(llm.complete_stream(&messages).await?),
+            stream: presentation_stream(llm.complete_stream(&messages).await?, recall.stamp()),
             tool_messages: Arc::new(Mutex::new(Vec::new())),
             tool_calls_seen: Arc::new(AtomicBool::new(false)),
         });
@@ -214,6 +219,7 @@ pub async fn stream_with_tool_loop(
             .cloned();
         let mut active_role_name = role_name;
         let mut persisted_tool_result_chars = 0usize;
+        let mut continuation_history = Vec::new();
         // 这一回合已经说出去的台词句数：台词额度按整回合算，不按单轮算。
         // 每轮各自守「1~2 句」的话，连着几个工具下来就是十几句，而且大半在复述旧事。
         let mut spoken_lines = 0usize;
@@ -221,6 +227,8 @@ pub async fn stream_with_tool_loop(
         // 收尾轮（无工具定义）可能仍返回工具调用且不给正文，多留一轮补救重试。
         let mut synthesis_retried = false;
         for round in 0..=(max_tool_rounds + 1) {
+            validate_recall(&app, &recall).await?;
+            yield PresentationChunk::Context(recall.stamp());
             tracing::info!(round = round + 1, max_tool_rounds, "开始流式聊天工具决策");
             let final_synthesis = round >= max_tool_rounds;
             if round == max_tool_rounds {
@@ -406,9 +414,26 @@ pub async fn stream_with_tool_loop(
             let context = ToolContext::new(allowed)
                 .with_base_allowed(base_allowed)
                 .with_role_name(active_role_name.clone())
-                .with_app(app.clone());
+                .with_app(app.clone())
+                .with_memory_session(recall.clone());
             let mut character_switched = false;
+            let mut notes_changed = false;
             for call in calls {
+                if character_switched || notes_changed {
+                    round_messages.push(LlmMessage::tool_result(call.id, "{\"ok\":false,\"error\":\"角色或笔记上下文已更新，本批剩余调用未执行；请基于新上下文重新发起。\"}"));
+                    continue;
+                }
+                validate_recall(&app, &recall).await?;
+                // 写笔记可能改变已经引用的资料，先废弃旧引用，再重建后续请求。
+                if is_note_write(&call.function.name) {
+                    let status = super::game_status_handle(&app).await;
+                    let status = status.lock().await;
+                    if !recall.matches(&status) {
+                        Err(anyhow!("写笔记前会话已变化，取消旧请求"))?;
+                    }
+                    recall.invalidate_references();
+                    notes_changed = true;
+                }
                 tracing::info!(tool = call.function.name, call_id = call.id, "执行聊天工具");
 
                 if context.base_allowed.contains(&call.function.name)
@@ -434,6 +459,9 @@ pub async fn stream_with_tool_loop(
                 let result = executor
                     .execute(&call.function.name, &call.function.arguments, &context)
                     .await;
+                if call.function.name != "character_switch" {
+                    validate_recall(&app, &recall).await?;
+                }
                 let succeeded = emit_tool_call_event(
                     &app,
                     &call.id,
@@ -466,21 +494,32 @@ pub async fn stream_with_tool_loop(
             if character_switched {
                 // character_switch 已为目标角色注入 SYSTEM 并刷新记忆。这里必须切换
                 // LLM 上下文本身，否则同一请求的最终回复仍会沿用旧角色人设。
-                let (refreshed, refreshed_name) = current_role_context(&app).await?;
+                let (refreshed, refreshed_name) = current_role_context(&app, &recall).await?;
+                let safe_messages = ephemeral_tool_history(&live_round_messages);
+                continuation_history = safe_messages.clone();
+                continuation_history.extend(pending_images.clone());
                 messages = rebase_after_character_switch(
                     refreshed,
                     active_user_message.as_ref(),
-                    &live_round_messages,
+                    &safe_messages,
                 );
                 messages.extend(pending_images);
                 active_role_name = refreshed_name;
+                attach_line_budget(&mut messages, reply_mode, spoken_lines);
+            } else if notes_changed {
+                continuation_history.extend(live_round_messages.clone());
+                continuation_history.extend(pending_images);
+                messages = rebase_after_note_write(recall.base_context(), &continuation_history);
+                attach_line_budget(&mut messages, reply_mode, spoken_lines);
             } else {
+                continuation_history.extend(live_round_messages.clone());
+                continuation_history.extend(pending_images.clone());
                 messages.extend(live_round_messages);
                 messages.extend(pending_images);
             }
 
             let persisted_messages = bounded_tool_history(
-                &round_messages,
+                &ephemeral_tool_history(&round_messages),
                 &mut persisted_tool_result_chars,
             );
             sink.lock().await.push(persisted_messages);
@@ -553,6 +592,70 @@ fn activate_recommended(
     allowed
 }
 
+async fn validate_recall(app: &AppHandle, recall: &RecallSession) -> Result<()> {
+    let state = app.state::<AppState>();
+    recall
+        .validate(
+            &state.db,
+            &ling_chat_notes::NotesStore::new(crate::api::data_dir()),
+        )
+        .await?;
+    let status = super::game_status_handle(app).await;
+    anyhow::ensure!(
+        recall.matches(&*status.lock().await),
+        "角色、存档或历史已变化，取消旧请求"
+    );
+    Ok(())
+}
+
+fn is_note_write(name: &str) -> bool {
+    matches!(
+        name,
+        "memory_add_note" | "memory_update_note" | "memory_delete_note"
+    )
+}
+
+// 保留当轮提示、图片和完整工具配对，清除旧引用及基于旧引用生成的助手正文。
+fn rebase_after_note_write(mut base: Vec<LlmMessage>, messages: &[LlmMessage]) -> Vec<LlmMessage> {
+    base.extend(
+        ephemeral_tool_history(messages)
+            .into_iter()
+            .map(|mut message| {
+                if message.role == "assistant" {
+                    message.content.clear();
+                }
+                message
+            }),
+    );
+    base
+}
+
+// 只替换记忆检索的返回正文，保留调用 ID，让历史中的工具请求与结果仍然成对。
+fn ephemeral_tool_history(messages: &[LlmMessage]) -> Vec<LlmMessage> {
+    let memory_ids: HashSet<_> = messages
+        .iter()
+        .filter_map(|message| message.tool_calls.as_ref())
+        .flatten()
+        .filter(|call| call.function.name == "memory_search")
+        .map(|call| call.id.as_str())
+        .collect();
+    messages
+        .iter()
+        .cloned()
+        .map(|mut message| {
+            if message.role == "tool"
+                && message
+                    .tool_call_id
+                    .as_deref()
+                    .is_some_and(|id| memory_ids.contains(id))
+            {
+                message.content = EPHEMERAL_MEMORY_RESULT.into();
+            }
+            message
+        })
+        .collect()
+}
+
 /// 当前请求继续使用完整工具结果完成推理；只对写入角色长期记忆的副本做有界裁剪。
 /// 保留每条 tool_call_id 与对应消息，避免破坏 provider 的工具调用配对。
 fn bounded_tool_history(messages: &[LlmMessage], persisted_chars: &mut usize) -> Vec<LlmMessage> {
@@ -584,13 +687,20 @@ fn bounded_tool_history(messages: &[LlmMessage], persisted_chars: &mut usize) ->
 }
 
 /// 读取 character_switch 完成后的角色记忆快照与权限名称。
-async fn current_role_context(app: &AppHandle) -> Result<(Vec<LlmMessage>, Option<String>)> {
+async fn current_role_context(
+    app: &AppHandle,
+    recall: &RecallSession,
+) -> Result<(Vec<LlmMessage>, Option<String>)> {
     let state = app.state::<AppState>();
     let game_status = {
         let service = state.ai_service.lock().await;
         service.game_status.clone()
     };
     let gs = game_status.lock().await;
+    anyhow::ensure!(
+        recall.stamp().matches_history(&gs),
+        "切换角色期间会话已变化，取消旧请求"
+    );
     let role_id = gs
         .current_role_id
         .ok_or_else(|| anyhow!("角色切换后没有 current_role_id"))?;
@@ -598,6 +708,10 @@ async fn current_role_context(app: &AppHandle) -> Result<(Vec<LlmMessage>, Optio
         .role_manager
         .get_loaded(role_id)
         .ok_or_else(|| anyhow!("角色切换后角色 {role_id} 未加载"))?;
+    recall.rebase(
+        RecallStamp::capture(&gs, role.display_name.clone().unwrap_or_default())?,
+        &role.memory,
+    );
     Ok((role.memory.clone(), role.display_name.clone()))
 }
 
@@ -722,15 +836,19 @@ pub(crate) fn emit_tool_call_event(
 }
 
 /// 把 provider chunk 流包装成呈现层流（工具闭环外的路径不插入栅栏）。
-fn presentation_stream(stream: ChunkStream) -> PresentationStream {
-    Box::pin(stream.filter_map(|chunk| async move {
-        match chunk {
-            Ok(LlmChunk::ToolCalls(calls)) => {
-                tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
-                None
-            },
-            Ok(chunk) => Some(Ok(PresentationChunk::Chunk(chunk))),
-            Err(e) => Some(Err(e)),
-        }
-    }))
+fn presentation_stream(stream: ChunkStream, stamp: RecallStamp) -> PresentationStream {
+    Box::pin(
+        futures_util::stream::once(async move { Ok(PresentationChunk::Context(stamp)) }).chain(
+            stream.filter_map(|chunk| async move {
+                match chunk {
+                    Ok(LlmChunk::ToolCalls(calls)) => {
+                        tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
+                        None
+                    },
+                    Ok(chunk) => Some(Ok(PresentationChunk::Chunk(chunk))),
+                    Err(e) => Some(Err(e)),
+                }
+            }),
+        ),
+    )
 }

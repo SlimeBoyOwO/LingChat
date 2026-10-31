@@ -1484,6 +1484,10 @@ export default {
     },
   },
   memoryDebug: {
+    recallTitle: "本輪歷史記憶檢索（RAG）",
+    recallHint:
+      "顯示目前對話最近一次檢索的狀態、來源、匹配依據及快取情況。未綁定存檔時略過檢索；歷史或角色變更後不再顯示舊快照。",
+    recallEmpty: "目前對話暫無有效的檢索快照。",
     title: "永久記憶調試",
     rolesTitle: "角色",
     noRoles: "當前沒有可檢視的角色（先在對話裏讓角色上場）",

@@ -127,6 +127,17 @@ export interface RoleMemorySnapshot {
   context: LlmMessage[];
 }
 
+/** 当前会话最近一次历史检索快照；历史变化后后端返回空值。 */
+export interface MemoryRecallSnapshot {
+  status: string;
+  save_id: number | null;
+  role_id: number;
+  response: unknown;
+}
+
+export const getMemoryRecallSnapshot = (): Promise<MemoryRecallSnapshot | null> =>
+  invoke("get_memory_recall_snapshot");
+
 export const getMemoryDebugOverview = async (): Promise<MemoryDebugOverview> => {
   try {
     return (await invoke("get_memory_debug_overview")) as MemoryDebugOverview;

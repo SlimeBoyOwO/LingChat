@@ -2,6 +2,12 @@
 
 > 记忆构建数据流见 [diagrams/memory.html](diagrams/memory.html)。
 
+> 聊天记忆索引、混合检索和来源校验的设计见 [聊天记忆与检索设计](../聊天记忆与检索设计.md)。
+
+`memory_search` 在当前角色、存档和感知范围内，按关键词／标签／向量搜索历史与笔记；自动回忆与该工具共用服务和缓存。参数为 `query`，可选 `max_hits`（1–5）及 `kinds`（`raw`／`diary`／`note`）。权限由“笔记与记忆”工具组及既有场景／角色矩阵控制，Tool RAG 负责发现。
+
+检索资料是当轮临时数据：持久化时保留工具调用配对，但将 `memory_search` 结果正文替换为临时标记。下面所述其他工具结果持久化语义保持原样。未绑定存档时跳过搜索；目前支持历史与笔记检索，日记自动生成尚未接入。
+
 ## 1. 一句话
 
 **工具调用不是临时数据，而是正式写入系统台词表（`line` 表）的一类台词；每次生成前，`MemoryBuilder` 把台词表按目标角色重建成 OpenAI 格式的 `LlmMessage` 列表（含工具轮次），存入该角色的 `role.memory`。** 存储靠台词表，提取靠 `MemoryBuilder`，构建产物就是给 LLM 的上下文。
@@ -118,7 +124,7 @@ if matches!(line.attribute(), LineAttribute::Tool) {
 两侧一起处理：
 
 - **解析侧**（`message_system/producer.rs`）：逐 chunk 找回合结束边界，命中后本轮剩余内容一律不解析、不进台词表；边界之后确实还有实质内容时后台 `warn!` 一条（含被丢弃内容前 80 字），命中时另有 `info!` 说明是哪条判据。判据两条，先命中者胜：① 一整行是 `user`（可带冒号）；② 连续两个空行。两条都要求边界之前已有正文。工具闭环的栅栏是「一轮生成」的边界，标记在那里重置，工具执行之后的正文不会被误吞。终止信号沿用既有的 `isFinal`，不额外发事件。
-- **记忆侧**（`game_system/memory_builder.rs`）：assistant 回合整体拼完后在末尾多补一个换行，使**回合末尾是两个空行、台词之间只有一个空行** —— 给模型一个能照抄的「本轮到此为止」形状。序列化前还会把每条台词的 content 截到回合结束边界，旧存档里已经存进去的越界内容不会再被喂回去；长期记忆摘要的输入（`persistent_memory_system::format_archive_line`）同样先截断。
+- **记忆侧**（`game_system/memory/builder.rs`）：assistant 回合整体拼完后在末尾多补一个换行，使**回合末尾是两个空行、台词之间只有一个空行** —— 给模型一个能照抄的「本轮到此为止」形状。序列化前还会把每条台词的 content 截到回合结束边界，旧存档里已经存进去的越界内容不会再被喂回去；长期记忆摘要的输入（`persistent::format_archive_line`）同样先截断。
 
 ## 4. 构建（Construction）：`role.memory` 生命周期
 

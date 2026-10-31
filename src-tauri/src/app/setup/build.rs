@@ -23,7 +23,7 @@ use tauri_plugin_store::StoreExt;
 use tokio::sync::Mutex;
 
 use ling_chat_main::ai_service::emotion::EmotionClassifier;
-use ling_chat_main::ai_service::game_system::persistent_memory_system::MemorySectionLimits;
+use ling_chat_main::ai_service::game_system::memory::persistent::MemorySectionLimits;
 use ling_chat_main::ai_service::god_agent::GodAgentCore;
 use ling_chat_main::ai_service::god_agent::config::resolve_god_agent_provider;
 use ling_chat_main::ai_service::llm::LlmSlot;
@@ -209,12 +209,13 @@ pub(super) fn build_service_graph(
     // 本地 / 云端路由器：用户配置了云端就换后端，云端连续失败则熔断并告警，
     // 两条路径都只暴露同一个 Embedder 接口给下游。
     let embedding = ai_service::embedding_remote::EmbeddingSelector::new(
-        local_embedding,
+        local_embedding.clone(),
         tool_settings.clone(),
         app.handle().clone(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
     tool_rag.set_capacity(tool_settings.get().cache_capacity());
+    let memory_recall = ai_service::game_system::memory::recall::MemoryRecall::new(local_embedding);
 
     // 插件系统：确保 data/plugins 目录存在并扫描加载插件（工具注册进 registry）。
     // `PluginManager` 以 `Arc<PluginManager>` 单独 manage，供插件侧代码用
@@ -280,6 +281,7 @@ pub(super) fn build_service_graph(
             app.handle().clone(),
             db.clone(),
             ai_service.clone(),
+            generation_lock.clone(),
         ),
     ));
 
@@ -309,6 +311,7 @@ pub(super) fn build_service_graph(
         embedding,
         embedding_warming: Arc::new(ai_service::embedding_remote::WarmingTask::default()),
         tool_rag,
+        memory_recall,
         plugin_resources,
         proactive_system: Some(proactive),
         achievement_manager,

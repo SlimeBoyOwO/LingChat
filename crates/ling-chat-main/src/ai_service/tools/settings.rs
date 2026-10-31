@@ -131,6 +131,7 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
         "memory",
         &[
             "memory_get_current",
+            "memory_search",
             "memory_get_notes",
             "memory_add_note",
             "memory_update_note",

@@ -1,9 +1,14 @@
 //! 生成前的准备：用户行、场景变化、上下文、上帝 Agent 预选与工具推荐。
 
+use std::sync::Arc;
+
 use anyhow::Result;
 use tauri::Manager;
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::memory::recall::{
+    RecallSession, RecallStamp, inject_references,
+};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::game_system::status_ops::narration::{weather_change_text, weather_changed};
 use crate::ai_service::game_system::status_ops::{PromptLine, apply_temporary};
@@ -15,6 +20,7 @@ use crate::ai_service::message_system::processor::UserMessageOutcome;
 use crate::ai_service::tools::settings::ToolRecommendMode;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage, ToolDefinition};
 use crate::api::data_dir;
+use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::PromptRole;
 
@@ -125,15 +131,15 @@ impl MessageGenerator {
     pub(super) async fn get_current_context(
         &self,
         user_input: Option<&str>,
-    ) -> Result<Vec<LlmMessage>> {
+    ) -> Result<Option<(Vec<LlmMessage>, Arc<RecallSession>)>> {
         let mut gs = self.deps.game_status.lock().await;
         let Some(rid) = gs.current_role_id else {
             tracing::error!("生成消息的时候没有当前角色，取消生成");
-            return Ok(Vec::new());
+            return Ok(None);
         };
         // 今日首聊天气先入列，再取 memory，保证本轮上下文就能看到这条提醒
         self.inject_weather_first_talk(&mut gs).await;
-        let mut context = {
+        let (mut context, display_name) = {
             let role = gs.get_role(&self.deps.db, rid).await?;
             // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
             let mut context = role.memory.clone();
@@ -141,13 +147,49 @@ impl MessageGenerator {
             if let Some(book) = &role.worldbook {
                 book.inject(&mut context, user_input);
             }
-            context
+            (context, role.display_name.clone().unwrap_or_default())
         };
+        let stamp = RecallStamp::capture(&gs, display_name)?;
+        anyhow::ensure!(stamp.generation == self.deps.generation, "生成任务已过期");
         // 临时记忆只供这一次请求，取走即弃
         let temporary = gs.take_temporary_memories();
         drop(gs);
         apply_temporary(&mut context, &temporary);
-        Ok(context)
+        // 临时记忆也保留在基础上下文中，更新笔记时只替换检索引用。
+        let recall = RecallSession::new(stamp, &context);
+        if let Some(query) =
+            user_input.filter(|query| !query.trim().is_empty() && query.chars().count() <= 4096)
+        {
+            let state = self.deps.app.state::<crate::AppState>();
+            let config = AppConfig::load(&self.deps.app).unwrap_or_default();
+            let snapshot = state
+                .memory_recall
+                .retrieve(
+                    &self.deps.db,
+                    &ling_chat_notes::NotesStore::new(data_dir()),
+                    &recall,
+                    query,
+                    ling_chat_notes::memory_retrieval::SearchSettings::default(),
+                    config.memory_rag_enabled && !self.deps.is_preview,
+                    std::time::Duration::from_millis(u64::from(
+                        config.memory_rag_timeout_ms.clamp(100, 10000),
+                    )),
+                )
+                .await;
+            anyhow::ensure!(
+                recall.matches(&*self.deps.game_status.lock().await),
+                "检索期间当前会话已变化"
+            );
+            match snapshot {
+                Ok(snapshot) => {
+                    if let Some(response) = snapshot.response {
+                        inject_references(&mut context, &recall.references(&response)?);
+                    }
+                },
+                Err(error) => tracing::warn!("自动记忆检索失败，继续普通聊天: {error}"),
+            }
+        }
+        Ok(Some((context, recall)))
     }
 
     /// 今日首次对话时，往 game_status 添加一条「系统」天气台词。

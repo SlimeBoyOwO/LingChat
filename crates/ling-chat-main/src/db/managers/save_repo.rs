@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use chrono::Utc;
 use sea_orm::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{
@@ -157,6 +157,7 @@ impl SaveRepo {
     }
 
     pub async fn delete_save(db: &DatabaseConnection, save_id: i32) -> Result<bool> {
+        super::memory_index_repo::MemoryIndexRepo::delete_for_save(db, save_id).await?;
         // Delete all line_perception rows for this save's lines
         let line_ids: Vec<i32> = line::Entity::find()
             .select_only()
@@ -200,6 +201,14 @@ impl SaveRepo {
 
 impl SaveRepo {
     pub async fn get_line_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<line::Model>> {
+        Self::reconstruct_line_history(db, save_id, false).await
+    }
+
+    async fn reconstruct_line_history(
+        db: &impl ConnectionTrait,
+        save_id: i32,
+        strict: bool,
+    ) -> Result<Vec<line::Model>> {
         let all_lines = line::Entity::find()
             .filter(line::Column::SaveId.eq(save_id))
             .all(db)
@@ -209,18 +218,28 @@ impl SaveRepo {
         let lines_map: HashMap<i32, line::Model> =
             all_lines.into_iter().map(|l| (l.id, l)).collect();
 
-        let save = Self::get_save_by_id(db, save_id)
+        let save = save::Entity::find_by_id(save_id)
+            .one(db)
             .await?
             .context("Save not found")?;
 
         let mut history: Vec<line::Model> = Vec::new();
         let mut current_id = save.last_message_id;
+        let mut visited = HashSet::new();
 
         while let Some(id) = current_id {
+            if !visited.insert(id) {
+                return Err(anyhow!("存档 {save_id} 的历史链包含循环: {id}"));
+            }
             if let Some(line) = lines_map.get(&id) {
                 history.push(line.clone());
                 current_id = line.parent_line_id;
             } else {
+                if strict {
+                    return Err(anyhow!(
+                        "存档 {save_id} 的历史链缺失台词或引用其他存档: {id}"
+                    ));
+                }
                 break;
             }
         }
@@ -232,7 +251,22 @@ impl SaveRepo {
     /// Convert DB lines to `GameLine` with perception data batch-fetched.
     pub async fn get_gameline_list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<GameLine>> {
         let lines = Self::get_line_list(db, save_id).await?;
+        Self::load_gamelines(db, lines).await
+    }
 
+    /// 检索使用严格历史链，缺失台词或跨存档引用时拒绝使用残缺历史。
+    pub async fn get_memory_gameline_list(
+        db: &impl ConnectionTrait,
+        save_id: i32,
+    ) -> Result<Vec<GameLine>> {
+        let lines = Self::reconstruct_line_history(db, save_id, true).await?;
+        Self::load_gamelines(db, lines).await
+    }
+
+    async fn load_gamelines(
+        db: &impl ConnectionTrait,
+        lines: Vec<line::Model>,
+    ) -> Result<Vec<GameLine>> {
         if lines.is_empty() {
             return Ok(Vec::new());
         }
