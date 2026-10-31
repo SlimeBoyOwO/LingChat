@@ -13,6 +13,9 @@ use crate::utils::yaml_file::resolve_settings_file;
 // 手动创建与目录扫描共享锁，避免扫描读到新目录后重复入库。
 pub(crate) static ROLE_SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
+// 官方角色入库顺序：全新数据库下依次得到 1、2、3、4 号，1 号即默认角色。
+const OFFICIAL_ROLE_ORDER: &[&str] = &["诺一钦灵", "风雪", "DeepSeek", "松子"];
+
 #[derive(Debug, Deserialize)]
 struct CharacterSettings {
     title: Option<String>,
@@ -98,6 +101,7 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
 
     let mut created_ids = Vec::new();
 
+    let mut folders = Vec::new();
     for entry in fs::read_dir(&characters_dir)
         .with_context(|| format!("Failed to read {:?}", characters_dir))?
     {
@@ -109,8 +113,19 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
         if folder_name == "avatar" || folder_name.starts_with('.') {
             continue;
         }
+        folders.push((folder_name, entry.path()));
+    }
+    // 新库按此顺序自增分配 ID，官方角色优先占前几号，其余按文件夹名排序保证跨平台一致。
+    folders.sort_by_key(|(name, _)| {
+        let rank = OFFICIAL_ROLE_ORDER
+            .iter()
+            .position(|f| f == name)
+            .unwrap_or(OFFICIAL_ROLE_ORDER.len());
+        (rank, name.clone())
+    });
 
-        let settings_path = resolve_settings_file(&entry.path());
+    for (folder_name, folder_path) in folders {
+        let settings_path = resolve_settings_file(&folder_path);
         if !settings_path.exists() {
             continue;
         }
