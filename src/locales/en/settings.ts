@@ -595,6 +595,15 @@ export default {
       voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
       text: "Reference text",
       textPlaceholder: "Text spoken in the reference audio",
+      samplingDesc:
+        "Leave blank to use the defaults. Lower temperature and top_p make output steadier and closer to the reference timbre; speech rate can be tuned per emotion (e.g. angry 1.1, sad 0.9).",
+      temperature: "Temperature",
+      topP: "Top-p",
+      speed: "Speed factor",
+      samplingPlaceholder: "Default",
+      refGuideTitle: "Reference audio recording tips",
+      refGuide:
+        'Keep each clip 3–10 seconds, dry (no reverb or background noise), one speaker, natural pace.\nRecord all six categories in the same session if possible, otherwise the timbre jumps when switching emotions.\nThe reference text must match the audio word for word (including fillers like "ah" or "mm"); mismatches cause the largest quality loss.',
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
