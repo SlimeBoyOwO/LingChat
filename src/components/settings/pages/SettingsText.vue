@@ -136,47 +136,6 @@
         </p>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
-        <template #header>
-          <Download :size="20" />
-        </template>
-        <div class="flex gap-3">
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.cpuHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.cpu") }}</Button
-          >
-          <Button
-            type="big"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.nvidia") }}</Button
-          >
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.amdHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.amd") }}</Button
-          >
-        </div>
-        <p class="mt-3 text-sm leading-relaxed text-white/50">
-          现在更推荐使用本软件自带的内置 TTS 模型，本处提供的 TTS
-          引擎需要自行下载，可以参考文档了解详细信息。
-        </p>
-      </MenuItem>
-
       <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
@@ -506,7 +465,6 @@ import {
   Bug,
   ClipboardList,
   Combine,
-  Download,
   Earth,
   Gauge,
   GlassWater,

@@ -1007,16 +1007,6 @@ export default {
       title: "Voice Sound Effects",
       desc: "Enable dialogue sound effects when no VITS voice is available",
     },
-    engineDownload: {
-      title: "Voice Inference Engine Download (SBV2)",
-      cpuHint:
-        "CPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      cpu: "CPU Inference",
-      nvidia: "NVIDIA GPU Inference",
-      amdHint:
-        "AMD GPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      amd: "AMD GPU Inference",
-    },
     back: {
       title: "Back to Main Menu",
       button: "Back to Main Menu",

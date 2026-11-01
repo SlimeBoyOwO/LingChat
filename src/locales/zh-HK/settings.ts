@@ -969,16 +969,6 @@ export default {
       title: "語音音效開關",
       desc: "啟用冇vits嗰陣嘅對話音效",
     },
-    engineDownload: {
-      title: "語音推理引擎下載（SBV2）",
-      cpuHint:
-        "CPU 推理用嘅係 SBV2-API，要喺 settings.yml 入面將 sbv2 改做 sbv2api，人物設定都改得",
-      cpu: "CPU推理",
-      nvidia: "N卡推理",
-      amdHint:
-        "A 卡推理用嘅係 SBV2-API，要喺 settings.yml 入面將 sbv2 改做 sbv2api，人物設定都改得",
-      amd: "A卡推理",
-    },
     back: {
       title: "返去主菜單",
       button: "返去主菜單",

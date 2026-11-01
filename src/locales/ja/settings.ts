@@ -991,16 +991,6 @@ export default {
       title: "音声効果音スイッチ",
       desc: "VITSなし時の会話効果音を有効にする",
     },
-    engineDownload: {
-      title: "音声推論エンジンのダウンロード（SBV2）",
-      cpuHint:
-        "CPU推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      cpu: "CPU推論",
-      nvidia: "NVIDIA推論",
-      amdHint:
-        "AMD推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      amd: "AMD推論",
-    },
     back: {
       title: "メインメニューに戻る",
       button: "メインメニューに戻る",
