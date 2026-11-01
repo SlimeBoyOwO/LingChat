@@ -89,6 +89,19 @@
       </Slider>
     </MenuItem>
 
+    <!-- 对话打字音效开关 -->
+    <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
+      <template #header>
+        <Earth :size="20" class="text-orange-400" />
+      </template>
+      <Toggle
+        :checked="settingsStore.audio.chatEffectSound"
+        @change="(v: boolean) => settingsStore.update('audio.chatEffectSound', v)"
+      >
+        {{ $t("settings.text.voiceSound.desc") }}
+      </Toggle>
+    </MenuItem>
+
     <!-- 测试声音部分 -->
     <!-- 环境音音量控制 -->
     <MenuItem :title="$t('settings.sound.volume.ambient')" size="small">
@@ -477,7 +490,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
-import { Button, Slider } from "../../base";
+import { Button, Slider, Toggle } from "../../base";
 import { MenuItem, MenuPage } from "../../ui";
 import PluginTag from "@/components/ui/PluginTag.vue";
 import { musicDialogFilters } from "@/utils/dialogFilters";
@@ -535,6 +548,7 @@ import {
   ScanLine,
   Star,
   FolderOpen,
+  Earth,
 } from "@lucide/vue";
 
 const uiStore = useUIStore();

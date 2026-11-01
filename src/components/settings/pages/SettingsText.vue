@@ -171,13 +171,6 @@
         </template>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
-        <template #header>
-          <Earth :size="20" />
-        </template>
-        <Toggle @change="voiceSound">{{ $t("settings.text.voiceSound.desc") }}</Toggle>
-      </MenuItem>
-
       <MenuItem :title="$t('settings.text.back.title')" size="small">
         <template #header>
           <ArrowBigLeft :size="20" />
@@ -465,7 +458,6 @@ import {
   Bug,
   ClipboardList,
   Combine,
-  Earth,
   Gauge,
   GlassWater,
   HardDrive,
@@ -1074,10 +1066,6 @@ const textSpeedSample = ref<number>(settingsStore.textSpeed);
 const textSpeedChange = (data: number) => {
   settingsStore.update("text.speed", data);
   textSpeedSample.value = data;
-};
-
-const voiceSound = (data: boolean) => {
-  settingsStore.update("audio.chatEffectSound", data);
 };
 
 const toggleSedentaryReminder = (data: boolean) => {

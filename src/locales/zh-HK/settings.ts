@@ -966,8 +966,8 @@ export default {
       desc: "開咗之後記憶會自動壓縮，儲存後要重啟 LingChat 先會生效",
     },
     voiceSound: {
-      title: "語音音效開關",
-      desc: "啟用冇vits嗰陣嘅對話音效",
+      title: "對話音效開關",
+      desc: "角色講嘢時播放隨機對話音效（設定語音則唔播放）",
     },
     back: {
       title: "返去主菜單",

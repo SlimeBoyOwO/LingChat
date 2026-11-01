@@ -1004,8 +1004,8 @@ export default {
       desc: "When on, memory is automatically compressed; restart LingChat after saving to apply",
     },
     voiceSound: {
-      title: "Voice Sound Effects",
-      desc: "Enable dialogue sound effects when no VITS voice is available",
+      title: "Dialogue Sound Effects",
+      desc: "Play random dialogue sound effects while the character speaks (suppressed when a voice is configured)",
     },
     back: {
       title: "Back to Main Menu",
