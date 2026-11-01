@@ -122,6 +122,7 @@ Pytorch/RAG/embedding_models/
 *.safetensors
 *.onnx
 *.data
+*.bak
 # 发布产物
 release/
 data_manifest.json

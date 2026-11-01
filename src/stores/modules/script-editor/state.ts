@@ -22,7 +22,7 @@ import type { ScriptEventData } from "@/api/services/script-editor";
 
 /** 编辑器外观偏好（背景图 + 模糊/压暗），持久化于 script-editor-ui */
 export interface EditorBg {
-  /** 自定义背景绝对路径；'' 表示用内置默认背景（background2.png，加载失败回退渐变） */
+  /** 自定义背景绝对路径；'' 表示用内置默认背景（background2.webp，加载失败回退渐变） */
   path: string;
   /** 背景模糊半径（px） */
   blur: number;

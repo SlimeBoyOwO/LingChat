@@ -42,6 +42,9 @@ export default {
     edit: "編輯",
     delete: "刪除",
     create: "新增身份",
+    editorTitle: "編輯身份卡",
+    editorCreateTitle: "新增身份卡",
+    editorSubtitle: "名同副標題決定角色點樣稱呼你",
     cancel: "取消",
     save: "儲存",
     addRelation: "+ 加一條認知",
@@ -451,26 +454,23 @@ export default {
       title: "關係／對佢嘅認知",
       hint: "呢度填呢個角色對各方嘅初始認知（關係）——由呢個角色嘅視角寫完整句、對方一律寫「ta」：例如「ta係我嘅青梅竹馬」。唔同角色對同一個人嘅認知互不影響；本局嘅變化會記錄喺存檔，唔會改角色卡。",
       missing: "目標已經唔存在（{key}）",
+      affectionPlaceholder: "初始好感",
+      affectionHint:
+        "「我嘅身份」行右邊嘅數字，係呢個角色對該身份嘅初始好感度（-100~100）；留空就跟角色卡預設值。",
       msg: {
         savedTitle: "認知已儲存",
         savedMsg: "呢個角色嘅認知（關係）已更新",
         loadFailTitle: "讀取關係失敗",
       },
     },
-    alias: {
-      identityLabel: "我嘅身份",
-      noneOption: "未選擇身份",
-      nameLabel: "該角色對「我」嘅稱呼",
-      namePlaceholder: "留空就用身份卡嘅名",
-      subtitleLabel: "該角色對「我」嘅副標題",
-      subtitlePlaceholder: "留空就唔顯示副標題",
-      affectionLabel: "該身份嘅初始好感度",
-      affectionPlaceholder: "留空就用卡片預設初始值",
-      hint: "稱呼、副標題同初始好感度按身份分別設定：同一個角色對唔同身份嘅「我」，叫法、副標題同初始好感度都可以唔同。留空就用卡片預設。",
-    },
     fields: {
       aiName: "AI 名稱",
       aiSubtitle: "AI 副標題",
+      userName: "該角色對我嘅預設稱呼",
+      userSubtitle: "該角色對我嘅預設副標題",
+      initialAffection: "預設初始好感度",
+      initialAffectionHint:
+        "新開局時該角色對你嘅初始好感度（-100~100）。資料庫已經有該身份嘅數值時以資料庫為準；留空即係唔設定。",
       title: "角色標題",
       info: "角色介紹",
       systemPrompt: "系統提示詞",
@@ -567,6 +567,15 @@ export default {
       voiceFilePlaceholder: "填寫 GSV 伺服器可存取嘅音頻路徑（如 /refs/開心.wav）",
       text: "參考文本",
       textPlaceholder: "參考音頻對應的文本內容",
+      samplingDesc:
+        "留空會用預設值。調低溫度同 top_p 會更穩定、更貼近參考音色；語速可以按情緒微調（例如生氣 1.1、難過 0.9）。",
+      temperature: "溫度 temperature",
+      topP: "取樣閾值 top_p",
+      speed: "語速 speed_factor",
+      samplingPlaceholder: "預設",
+      refGuideTitle: "參考音頻製作建議",
+      refGuide:
+        "每段 3–10 秒，無混響、無背景聲，單一說話人，語速自然。\n六段參考盡量出自同一角色同一次錄音，否則跨情緒切換時音色會跳。\n參考文本同音頻必須逐字一致（包括「啊」「唔」等語氣詞），唔一致係失真最大嘅來源。",
     },
     touch: {
       hint: "喺立繪上面畫出可以摸嘅範圍，每個部位配一句發畀 AI 嘅話。每件服裝各自一套範圍。淨係對靜態立繪有效，Live2D 角色嘅可摸範圍由模型配置決定。",
@@ -973,18 +982,8 @@ export default {
       desc: "開咗之後記憶會自動壓縮，儲存後要重啟 LingChat 先會生效",
     },
     voiceSound: {
-      title: "語音音效開關",
-      desc: "啟用冇vits嗰陣嘅對話音效",
-    },
-    engineDownload: {
-      title: "語音推理引擎下載（SBV2）",
-      cpuHint:
-        "CPU 推理用嘅係 SBV2-API，要喺 settings.yml 入面將 sbv2 改做 sbv2api，人物設定都改得",
-      cpu: "CPU推理",
-      nvidia: "N卡推理",
-      amdHint:
-        "A 卡推理用嘅係 SBV2-API，要喺 settings.yml 入面將 sbv2 改做 sbv2api，人物設定都改得",
-      amd: "A卡推理",
+      title: "對話音效開關",
+      desc: "角色講嘢時播放隨機對話音效（設定語音則唔播放）",
     },
     back: {
       title: "返去主菜單",

@@ -229,6 +229,9 @@ export default {
     edit: "编辑",
     delete: "删除",
     create: "新建身份",
+    editorTitle: "编辑身份卡",
+    editorCreateTitle: "新建身份卡",
+    editorSubtitle: "名字与副标题决定角色如何称呼你",
     cancel: "取消",
     save: "保存",
     addRelation: "+ 添加一条认知",
@@ -717,22 +720,14 @@ export default {
       title: "关系 / 对 ta 的认知",
       hint: "这里填的是这个角色对各方的初始认知（关系）——从该角色的视角写完整句、把对方写成「ta」：例如「ta是我的青梅竹马」。不同角色对同一个人的认知互不影响；本局的变化记录在存档里，不会改动角色卡。",
       missing: "目标已不存在（{key}）",
+      affectionPlaceholder: "初始好感",
+      affectionHint:
+        "「我的身份」行右侧的数字是这个角色对该身份的初始好感度（-100~100）；留空则跟随角色卡的默认值。",
       msg: {
         savedTitle: "认知已保存",
         savedMsg: "这个角色的认知（关系）已更新",
         loadFailTitle: "读取关系失败",
       },
-    },
-    alias: {
-      identityLabel: "我的身份",
-      noneOption: "未选择身份",
-      nameLabel: "该角色对「我」的称呼",
-      namePlaceholder: "留空则用身份卡的名字",
-      subtitleLabel: "该角色对「我」的副标题",
-      subtitlePlaceholder: "留空则不显示副标题",
-      affectionLabel: "该身份的初始好感度",
-      affectionPlaceholder: "留空则用卡片默认初始值",
-      hint: "称呼、副标题与初始好感度按身份分别设置：同一个角色对不同身份的「我」，可以叫法不同、副标题与初始好感度也可以不同。留空则用卡片默认。",
     },
     initialAffection: {
       tiers: {
@@ -747,6 +742,11 @@ export default {
     fields: {
       aiName: "AI 名称",
       aiSubtitle: "AI 副标题",
+      userName: "该角色对我的默认称呼",
+      userSubtitle: "该角色对我的默认副标题",
+      initialAffection: "默认初始好感度",
+      initialAffectionHint:
+        "新开局时该角色对你的初始好感度（-100~100）。数据库里已有该身份的数值时以数据库为准；留空表示不设置。",
       title: "角色标题",
       info: "角色介绍",
       systemPrompt: "系统提示词",
@@ -843,6 +843,15 @@ export default {
       voiceFilePlaceholder: "填写 GSV 服务端可访问的音频路径（如 /refs/开心.wav）",
       text: "参考文本",
       textPlaceholder: "参考音频对应的文本内容",
+      samplingDesc:
+        "留空使用默认值。调低温度与 top_p 更稳定、更贴近参考音色；语速可按情绪微调（如生气 1.1、难过 0.9）。",
+      temperature: "温度 temperature",
+      topP: "采样阈值 top_p",
+      speed: "语速 speed_factor",
+      samplingPlaceholder: "默认",
+      refGuideTitle: "参考音频制作建议",
+      refGuide:
+        "每段 3–10 秒，无混响、无背景音，单一说话人，语速自然。\n六段参考尽量出自同一角色同一次录音，否则跨情绪切换时音色会跳。\n参考文本与音频必须逐字一致（包括「啊」「唔」等语气词），不一致是失真最大的来源。",
     },
     touch: {
       hint: "在立绘上画出可以摸的区域，每个部位配一句发给 AI 的话。每件服装各有一套区域。仅对静态立绘生效，Live2D 角色的可摸范围由模型配置决定。",
@@ -1266,18 +1275,8 @@ export default {
       desc: "开启后记忆将自动压缩，保存后需重启 LingChat 生效",
     },
     voiceSound: {
-      title: "语音音效开关",
-      desc: "启用无vits时的对话音效",
-    },
-    engineDownload: {
-      title: "语音推理引擎下载（SBV2）",
-      cpuHint:
-        "CPU 推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改",
-      cpu: "CPU推理",
-      nvidia: "N卡推理",
-      amdHint:
-        "A 卡推理使用的是 SBV2-API，需要在 settings.yml 中把 sbv2 换成 sbv2api，人物设定也能改",
-      amd: "A卡推理",
+      title: "对话音效开关",
+      desc: "角色说话时播放随机对话音效（配置语音则不播放）",
     },
     back: {
       title: "返回主菜单",

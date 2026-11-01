@@ -176,61 +176,7 @@
                 </div>
               </div>
 
-              <!-- 该角色对「我」的称呼/副标题：按「我的身份」分别设置，落到 user_aliases -->
-              <div v-if="activeTab === 'basic'" class="flex flex-col gap-2">
-                <label class="text-[13px] font-medium text-white/60">{{
-                  $t("settings.characterInfo.alias.identityLabel")
-                }}</label>
-                <SelectMenu v-model="aliasIdentityId" :options="aliasIdentityOptions" />
-
-                <template v-if="aliasIdentityId">
-                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
-                    $t("settings.characterInfo.alias.nameLabel")
-                  }}</label>
-                  <input
-                    v-model="aliasName"
-                    type="text"
-                    :placeholder="$t('settings.characterInfo.alias.namePlaceholder')"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                  />
-
-                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
-                    $t("settings.characterInfo.alias.subtitleLabel")
-                  }}</label>
-                  <input
-                    v-model="aliasSubtitle"
-                    type="text"
-                    :placeholder="$t('settings.characterInfo.alias.subtitlePlaceholder')"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                  />
-
-                  <label class="mt-2 text-[13px] font-medium text-white/60">{{
-                    $t("settings.characterInfo.alias.affectionLabel")
-                  }}</label>
-                  <input
-                    v-model.number="aliasInitialAffection"
-                    type="number"
-                    min="-100"
-                    max="100"
-                    :placeholder="$t('settings.characterInfo.alias.affectionPlaceholder')"
-                    class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                  />
-                  <p class="text-[11px] leading-relaxed text-white/40">
-                    &lt; 0 {{ $t("settings.characterInfo.initialAffection.tiers.estranged") }} ·
-                    0-20 {{ $t("settings.characterInfo.initialAffection.tiers.initial") }} · 21-40
-                    {{ $t("settings.characterInfo.initialAffection.tiers.calm") }} · 41-60
-                    {{ $t("settings.characterInfo.initialAffection.tiers.familiar") }} · 61-80
-                    {{ $t("settings.characterInfo.initialAffection.tiers.deep") }} · 81-100
-                    {{ $t("settings.characterInfo.initialAffection.tiers.blazing") }}
-                  </p>
-
-                  <p class="text-[12px] leading-relaxed text-white/40">
-                    {{ $t("settings.characterInfo.alias.hint") }}
-                  </p>
-                </template>
-              </div>
-
-              <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
+              <!-- 关系（AI 角色视角）：角色间关系写 relations.yml，角色对玩家身份的关系写数据库 -->
               <CharacterRelationsEditor
                 v-if="activeTab === 'basic' && props.roleId"
                 ref="relationsEditor"
@@ -272,6 +218,68 @@
                     }}
                   </button>
                 </div>
+
+                <!-- 合成采样参数：留空=后端默认 1.0，调低更稳定、更贴近参考音色 -->
+                <div
+                  class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-3"
+                >
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.temperature") }}
+                    </label>
+                    <input
+                      v-model="gsvTemperature"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.topP") }}
+                    </label>
+                    <input
+                      v-model="gsvTopP"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="1"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.speed") }}
+                    </label>
+                    <input
+                      v-model="gsvSpeedFactor"
+                      type="number"
+                      step="0.05"
+                      min="0.5"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <p class="col-span-full text-xs text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.samplingDesc") }}
+                  </p>
+                </div>
+
+                <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
+                <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <summary class="cursor-pointer text-sm font-bold text-white/70">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
+                  </summary>
+                  <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
+                  </p>
+                </details>
+
                 <div v-if="gsvEmoEnabled" class="space-y-3">
                   <div
                     v-for="cat in GSV_EMO_CATEGORIES"
@@ -466,7 +474,6 @@ import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
-import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
 import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
@@ -596,6 +603,9 @@ const {
   gsvEmoEnabled,
   toggleGsvEmo,
   gsvEmoField,
+  gsvTemperature,
+  gsvTopP,
+  gsvSpeedFactor,
 } = useVoiceResources(localSettings);
 
 /** 热词草稿：随底部保存一次提交，取消即丢弃。 */
@@ -776,72 +786,6 @@ const removeClothesItem = (idx: number) => {
   }
 };
 
-const playerIdentities = ref<PlayerIdentitySummary[]>([]);
-const aliasIdentityId = ref("");
-
-const aliasIdentityOptions = computed(() => [
-  { label: t("settings.characterInfo.alias.noneOption"), value: "" },
-  ...playerIdentities.value.map((identity) => ({ label: identity.name, value: identity.id })),
-]);
-
-/** user_aliases 条目形状；initial_affection 为该身份专享的初始好感度覆写（null = 用卡片默认） */
-type UserAliasEntry = { name: string; subtitle: string; initial_affection?: number | null };
-
-const aliasEntry = computed<UserAliasEntry | null>(() => {
-  const id = aliasIdentityId.value;
-  if (!id) return null;
-  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry> | undefined;
-  return map?.[id] ?? null;
-});
-
-const ensureAliasEntry = () => {
-  const id = aliasIdentityId.value;
-  if (!id) return null;
-  if (!localSettings.value.user_aliases || typeof localSettings.value.user_aliases !== "object") {
-    localSettings.value.user_aliases = {};
-  }
-  const map = localSettings.value.user_aliases as Record<string, UserAliasEntry>;
-  if (!map[id]) map[id] = { name: "", subtitle: "", initial_affection: null };
-  return map[id];
-};
-
-const aliasName = computed({
-  get: () => aliasEntry.value?.name ?? "",
-  set: (value: string) => {
-    const entry = ensureAliasEntry();
-    if (entry) entry.name = value;
-  },
-});
-
-/** 副标题只存储/展示，不参与提示词 */
-const aliasSubtitle = computed({
-  get: () => aliasEntry.value?.subtitle ?? "",
-  set: (value: string) => {
-    const entry = ensureAliasEntry();
-    if (entry) entry.subtitle = value;
-  },
-});
-
-/** 该身份的初始好感度覆写；留空（""）表示用卡片默认值（保存为 null） */
-const aliasInitialAffection = computed<number | "">({
-  get: () => aliasEntry.value?.initial_affection ?? "",
-  set: (value) => {
-    const entry = ensureAliasEntry();
-    if (!entry) return;
-    entry.initial_affection =
-      typeof value === "number" && !Number.isNaN(value) ? Math.trunc(value) : null;
-  },
-});
-
-const loadPlayerIdentities = async () => {
-  try {
-    playerIdentities.value = await listPlayerIdentities();
-  } catch (e) {
-    console.error("读取身份列表失败:", e);
-    playerIdentities.value = [];
-  }
-};
-
 // --- Watchers & Methods ---
 
 watch(
@@ -902,8 +846,6 @@ watch(
       if (!localSettings.value.voice_lang) {
         localSettings.value.voice_lang = "ja";
       }
-      aliasIdentityId.value = gameStore.playerIdentityId ?? "";
-      void loadPlayerIdentities();
       // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
       if (!localSettings.value.avatar_mode) {
         localSettings.value.avatar_mode = "live2d";

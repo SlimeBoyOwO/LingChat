@@ -3,12 +3,16 @@
 use std::collections::HashMap;
 use std::path::Path;
 
+use anyhow::Result;
+use sea_orm::DatabaseConnection;
+
 use super::{
     AliasEntry, IdentityStore, PlayerIdentity, RelationEndpoint, build_player_block,
     effective_user_alias, resolve_relation, runtime_relations,
 };
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::CharacterSettings;
+use crate::db::managers::role_repo::RoleRepo;
 
 /// 引导期解析出的玩家身份。
 pub struct PlayerBootstrap {
@@ -72,12 +76,7 @@ pub fn resolve_player_bootstrap(
         Some(effective_prompt.as_str()),
     );
 
-    let identity_id = if identity.id.trim().is_empty() {
-        None
-    } else {
-        Some(identity.id.as_str())
-    };
-    let alias = effective_user_alias(settings, identity_id, &identity.name);
+    let alias = effective_user_alias(settings, &identity.name);
 
     // 开场只有本角色一行称呼；其他角色入场时由 persona 重建把他们的称呼补进来
     let roster = vec![AliasEntry {
@@ -140,6 +139,32 @@ pub(crate) fn legacy_player_prompt(settings: &CharacterSettings) -> String {
         segment.clone()
     };
     body.trim().to_string()
+}
+
+/// 角色卡绑定了专属身份且该身份仍存在时，把它设为当前身份并返回其 id。
+/// 只写 `_current.json`，不生成旁白、不写数据库、不改本局状态。
+pub async fn apply_bound_identity_for_role(
+    db: &DatabaseConnection,
+    data_dir: &Path,
+    role_id: i32,
+) -> Result<Option<String>> {
+    let Some(settings) = RoleRepo::get_role_settings_by_id(db, data_dir, role_id).await? else {
+        return Ok(None);
+    };
+    let folder = settings.character_folder.trim();
+    if folder.is_empty() {
+        return Ok(None);
+    }
+    let store = IdentityStore::new(data_dir);
+    let Some(card) = store
+        .list()
+        .into_iter()
+        .find(|card| card.source_folders.iter().any(|bound| bound == folder))
+    else {
+        return Ok(None);
+    };
+    store.set_current_id(&card.id)?;
+    Ok(Some(card.id))
 }
 
 #[cfg(test)]

@@ -16,11 +16,26 @@
       <div v-for="(row, idx) in relationRows" :key="idx" class="flex items-center gap-2">
         <SelectMenu v-model="row.target" class="w-44 shrink-0" :options="optionsFor(row)" />
         <ExpandableInput v-model="row.text" class="glass-input flex-1" />
+        <!-- 我的身份行：该角色对 ta 的初始好感度覆写，留空跟随角色卡默认 -->
+        <input
+          v-if="row.target.startsWith('me:')"
+          :value="row.affection ?? ''"
+          type="number"
+          min="-100"
+          max="100"
+          class="glass-input w-22 shrink-0 text-center"
+          :placeholder="$t('settings.characterInfo.relations.affectionPlaceholder')"
+          :title="$t('settings.characterInfo.relations.affectionHint')"
+          @input="setAffection(row, ($event.target as HTMLInputElement).value)"
+        />
         <button class="btn-sm btn-sm-ghost" @click="removeRow(idx)">×</button>
       </div>
       <button class="btn-sm btn-sm-ghost" @click="addRow()">
         {{ $t("settings.identity.addRelation") }}
       </button>
+      <p class="text-[11px] leading-relaxed text-white/35">
+        {{ $t("settings.characterInfo.relations.affectionHint") }}
+      </p>
     </template>
   </div>
 </template>
@@ -59,6 +74,8 @@ const {
   addRow,
   removeRow,
   fold,
+  foldAffections,
+  setAffection,
   optionsFor,
 } = useRelationEditor(relationTargets, (key) =>
   t("settings.characterInfo.relations.missing", { key }),
@@ -113,7 +130,7 @@ const loadRelations = async (roleId: number) => {
 
     const saved = await getRoleRelations(roleId);
     if (seq !== loadSeq) return;
-    syncRows(saved);
+    syncRows(saved.relations, saved.affections);
     relationsLoaded.value = true;
   } catch (e: any) {
     if (seq !== loadSeq) return;
@@ -134,7 +151,7 @@ const submit = async (silent = false): Promise<void> => {
   if (!relationsLoaded.value || !props.roleId) return;
   relationsSaving.value = true;
   try {
-    await saveRoleRelations(props.roleId, fold());
+    await saveRoleRelations(props.roleId, fold(), foldAffections());
     if (!silent) {
       uiStore.showSuccess({
         title: t("settings.characterInfo.relations.msg.savedTitle"),

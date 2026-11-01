@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::bootstrap::apply_bound_identity_for_role;
 use crate::ai_service::game_system::player_identity::{effective_user_alias, runtime_relations};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::game_system::status_ops::PromptLine;
@@ -360,6 +361,13 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 1b. 换角色是会话边界：旧剧本必须真正停掉。否则它会一直阻塞在输入通道上，
     super::script::abort_running_script(&app).await;
 
+    // 1c. 角色卡绑定了专属玩家身份时自动启用（只改当前身份指针，不生成旁白）。
+    if let Err(e) =
+        apply_bound_identity_for_role(&state.db, &crate::api::data_dir(), character_id).await
+    {
+        tracing::warn!("切换角色时应用绑定身份失败: {e}");
+    }
+
     // 2. 读取 AppConfig 构建 PromptOptions
     let app_config = AppConfig::load(&app).unwrap_or_default();
     let prompt_options = PromptOptions::from_config(&app_config);
@@ -702,11 +710,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
                 &role.settings.character_folder,
                 &gs,
             );
-            let alias = effective_user_alias(
-                &role.settings,
-                gs.player.identity_id.as_deref(),
-                &gs.player.user_name,
-            );
+            let alias = effective_user_alias(&role.settings, &gs.player.user_name);
             let player_block =
                 crate::ai_service::game_system::player_identity::persona::player_block_for(
                     &gs,

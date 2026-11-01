@@ -4,10 +4,11 @@ import { initializeEventProcessors } from "./core/events";
 import { initializeTauriEventListeners, initializeCastWindowListeners } from "./api/tauri-events";
 
 import App from "./App.vue";
+import mainMenuCharacterUrl from "./assets/images/alona.webp";
 import "./assets/styles/base.css";
 import "./assets/styles/variables.css";
 import "./assets/styles/dialogue-text.css";
-import { i18n } from "./locales";
+import { i18n, localeReady } from "./locales";
 
 // WebSocket handlers 保留用于未来剧本模式参考
 // import "./api/websocket/handlers/script-handler";
@@ -35,6 +36,18 @@ const windowKind = new URLSearchParams(window.location.search).get("window");
 const isCastWindow = windowKind === "cast";
 const isBubbleWindow = windowKind === "bubble";
 const isTodoWidgetWindow = windowKind === "todo_widget";
+
+// 主菜单立绘是首屏 LCP 元素。生产构建由 vite 插件在 index.html 静态注入 preload；
+// dev 下没有这一步，这里补一个运行时预加载。独立窗口不渲染主菜单，跳过。
+if (import.meta.env.DEV && !windowKind) {
+  const preload = document.createElement("link");
+  preload.rel = "preload";
+  preload.as = "image";
+  preload.href = mainMenuCharacterUrl;
+  preload.setAttribute("fetchpriority", "high");
+  document.head.appendChild(preload);
+}
+
 if (isCastWindow) {
   initializeCastWindowListeners();
 } else if (!isBubbleWindow && !isTodoWidgetWindow) {
@@ -43,6 +56,11 @@ if (isCastWindow) {
 
 app.use(pinia);
 app.use(i18n);
+
+// 主菜单是首屏路由：尽早预取组件 chunk，避免 LCP 等待首次导航串行加载
+if (!windowKind) {
+  void import("./components/views/MainMenu.vue");
+}
 
 // 路由黑屏过渡守卫：必须早于 app.use(router) 触发的首次导航，且只注册一次
 installRouteFade(router);
@@ -68,10 +86,14 @@ if (isTodoWidgetWindow) {
   router.replace("/todo-widget");
 }
 
-app.mount("#app");
+// 语言包按需加载：非中文界面先载入对应词条再挂载，避免首屏闪现中文。
+// 默认的中文词条已同步就绪，这里通常只等待一次微任务。
+void localeReady.finally(() => {
+  app.mount("#app");
 
-// 初始化全局音频输出设备管理器（需 pinia 就绪）
-initAudioOutputManager();
+  // 初始化全局音频输出设备管理器（需 pinia 就绪）
+  initAudioOutputManager();
 
-// 延迟执行 CPU+GPU 画质自适应，确保 pinia store 已就绪
-setTimeout(autoConfigurePerformance, 1000);
+  // 延迟执行 CPU+GPU 画质自适应，确保 pinia store 已就绪
+  setTimeout(autoConfigurePerformance, 1000);
+});
