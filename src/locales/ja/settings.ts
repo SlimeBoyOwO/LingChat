@@ -43,6 +43,9 @@ export default {
     edit: "編集",
     delete: "削除",
     create: "身分を作成",
+    editorTitle: "身分カードを編集",
+    editorCreateTitle: "身分カードを作成",
+    editorSubtitle: "名前とサブタイトルが、キャラがあなたをどう呼ぶかを決めます",
     cancel: "キャンセル",
     save: "保存",
     addRelation: "+ 認識を追加",
@@ -460,26 +463,23 @@ export default {
       title: "関係／相手への認識",
       hint: "ここにはこのキャラが各相手をどう見ているか（関係）を書きます。相手は「ta」と書いて、文として完結させてください：例「相手は私の幼なじみ」。キャラ同士の認識は互いに影響しません。ゲーム中の変化はセーブに記録され、キャラカードは変更されません。",
       missing: "対象は既に存在しません（{key}）",
+      affectionPlaceholder: "初期好感度",
+      affectionHint:
+        "「わたしの身分」の行にある数字は、このキャラがその身分に対する初期好感度です（-100〜100）。空欄ならキャラカードの既定値に従います。",
       msg: {
         savedTitle: "認識を保存しました",
         savedMsg: "このキャラの認識（関係）を更新しました",
         loadFailTitle: "関係の読み込みに失敗しました",
       },
     },
-    alias: {
-      identityLabel: "私の身分",
-      noneOption: "身分未選択",
-      nameLabel: "このキャラクターが「私」を呼ぶ名前",
-      namePlaceholder: "空欄なら身分カードの名前を使用",
-      subtitleLabel: "このキャラクターが「私」に使う副題",
-      subtitlePlaceholder: "空欄なら副題を表示しない",
-      affectionLabel: "この身分の初期好感度",
-      affectionPlaceholder: "空欄ならカードの初期値を使用",
-      hint: "呼称・副題・初期好感度は身分ごとに設定します。同じキャラクターでも身分によって呼び方・副題・初期好感度を変えられます。空欄ならカードの初期値を使用します。",
-    },
     fields: {
       aiName: "AI 名",
       aiSubtitle: "AI サブタイトル",
+      userName: "このキャラクターが「私」を呼ぶ既定の名前",
+      userSubtitle: "このキャラクターが「私」に使う既定の副題",
+      initialAffection: "既定の初期好感度",
+      initialAffectionHint:
+        "新しい会話を始めるときの初期好感度（-100〜100）。データベースに身分ごとの値がある場合はそちらが優先されます。空欄なら未設定になります。",
       title: "キャラクタータイトル",
       info: "キャラクター紹介",
       systemPrompt: "システムプロンプト",
@@ -577,6 +577,15 @@ export default {
       voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
       text: "参照テキスト",
       textPlaceholder: "参照音声に対応するテキスト",
+      samplingDesc:
+        "空欄なら既定値を使用します。temperature と top_p を下げるとより安定し、参照の声質に近づきます。話速は感情ごとに微調整できます（例: 怒り 1.1、悲しみ 0.9）。",
+      temperature: "temperature（温度）",
+      topP: "top_p（サンプリング閾値）",
+      speed: "speed_factor（話速）",
+      samplingPlaceholder: "既定",
+      refGuideTitle: "参照音声の作成ガイド",
+      refGuide:
+        "1 本あたり 3〜10 秒、リバーブや BGM なし、話者は 1 人、話速は自然に。\n6 分類は可能な限り同じキャラクターの同じ収録から用意してください。そうでないと感情を切り替えたとき声質が跳ねます。\n参照テキストは音声と一字一句一致させてください（「あ」「ん」などの間投詞も含む）。不一致は音質劣化の最大要因です。",
     },
     touch: {
       hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
@@ -1001,18 +1010,8 @@ export default {
       desc: "有効にすると記憶が自動圧縮されます。保存後に LingChat を再起動すると反映されます",
     },
     voiceSound: {
-      title: "音声効果音スイッチ",
-      desc: "VITSなし時の会話効果音を有効にする",
-    },
-    engineDownload: {
-      title: "音声推論エンジンのダウンロード（SBV2）",
-      cpuHint:
-        "CPU推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      cpu: "CPU推論",
-      nvidia: "NVIDIA推論",
-      amdHint:
-        "AMD推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      amd: "AMD推論",
+      title: "会話効果音スイッチ",
+      desc: "キャラクターの発話中にランダムな会話効果音を再生（音声を設定している場合は再生しない）",
     },
     back: {
       title: "メインメニューに戻る",

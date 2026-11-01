@@ -29,6 +29,10 @@ impl MigratorTrait for Migrator {
             // 工具轮标识：前导台词、载体与工具结果共享，记忆构建器据此分组。
             Box::new(m20261020_000001_add_line_round_id::Migration),
             Box::new(m20261023_000001_library_hotword_unique_per_category::Migration),
+            // 角色与玩家身份的认知关系（多对多），从 relations.yml 迁入。
+            Box::new(m20261030_000001_create_role_identity_relation::Migration),
+            // 该表追加初始好感度覆写列。
+            Box::new(m20261030_000002_add_role_identity_affection::Migration),
         ]
     }
 }
@@ -51,3 +55,5 @@ pub mod m20261015_000001_add_line_identity_id;
 pub mod m20261016_000001_create_player_identity_index;
 pub mod m20261020_000001_add_line_round_id;
 pub mod m20261023_000001_library_hotword_unique_per_category;
+pub mod m20261030_000001_create_role_identity_relation;
+pub mod m20261030_000002_add_role_identity_affection;

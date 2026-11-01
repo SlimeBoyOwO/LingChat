@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
@@ -13,7 +13,7 @@ use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::types::LineBase;
 use crate::api::game::{WebInitData, build_web_init_data};
 use crate::config::AppConfig;
-use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::role_repo::{IdentityRelation, RoleRepo};
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::{PromptOptions, PromptRole};
 
@@ -41,7 +41,7 @@ pub async fn list_player_identities(app: AppHandle) -> Result<Vec<PlayerIdentity
         .map(|identity| PlayerIdentitySummary::from_identity(identity, current_id.as_deref()))
         .collect();
 
-    // 主身份排在最前；其余卡只可能来自未完成的旧数据迁移。
+    // 主身份排在最前；其余是旧角色卡迁移时按名字去重生成的专属身份。
     if let Some(primary) = primary.as_ref() {
         items.sort_by_key(|item| item.id != primary.id);
     }
@@ -93,6 +93,12 @@ pub async fn save_player_identity(
         .unwrap_or(false)
     {
         identity.is_primary = true;
+    }
+    // 角色绑定由迁移维护，前端不认识该字段，保存时不能把它清空。
+    if identity.source_folders.is_empty() {
+        if let Some(existing) = store.find_by_id(&identity.id) {
+            identity.source_folders = existing.source_folders;
+        }
     }
     let saved = store
         .save(&identity)
@@ -261,8 +267,7 @@ pub async fn set_current_player_identity(
                         .clone()
                         .unwrap_or_else(|| role.settings.ai_name.clone());
                     let folder = role.settings.character_folder.clone();
-                    let alias =
-                        effective_user_alias(&role.settings, old_identity_id.as_deref(), &old_name);
+                    let alias = effective_user_alias(&role.settings, &old_name);
                     let speaker_relations =
                         runtime_relations::load_effective(&data_dir, &folder, &gs);
                     let relation = resolve_relation(
@@ -280,9 +285,12 @@ pub async fn set_current_player_identity(
                     .and_then(crate::ai_service::affection::state_from_value)
                     .map(|state| crate::ai_service::affection::tier_label(state.vector.average()))
                     .or_else(|| {
+                        let override_value = old_identity_id
+                            .as_deref()
+                            .and_then(|id| gs.role_manager.identity_affection_of_role(rid, id));
                         crate::ai_service::affection::effective_initial_affection(
                             &role.settings,
-                            old_identity_id.as_deref(),
+                            override_value,
                         )
                         .map(|v| crate::ai_service::affection::tier_label(v.clamp(-100, 100)))
                     });
@@ -402,14 +410,36 @@ pub async fn start_new_game_with_identity(
     result
 }
 
+/// 角色关系编辑器的一份数据：关系文本按 `ai:` / `me:` 键，初始好感度按 `me:<身份 id>` 键。
+#[derive(serde::Serialize)]
+pub struct RoleRelationsPayload {
+    pub relations: HashMap<String, String>,
+    pub affections: HashMap<String, Option<i32>>,
+}
+
 #[tauri::command]
 pub async fn get_role_relations(
     app: AppHandle,
     role_id: i32,
-) -> Result<HashMap<String, String>, String> {
+) -> Result<RoleRelationsPayload, String> {
     let state = app.state::<AppState>();
     let folder = role_folder(&state, role_id).await?;
-    Ok(role_relations::load(&crate::api::data_dir(), &folder))
+    let mut relations = role_relations::load(&crate::api::data_dir(), &folder);
+    let identity_rows = RoleRepo::load_identity_relations(&state.db, role_id)
+        .await
+        .map_err(|e| format!("读取身份关系失败: {e}"))?;
+    let mut affections = HashMap::new();
+    for (identity_id, value) in identity_rows {
+        let key = format!("me:{identity_id}");
+        if !value.text.trim().is_empty() {
+            relations.insert(key.clone(), value.text);
+        }
+        affections.insert(key, value.initial_affection);
+    }
+    Ok(RoleRelationsPayload {
+        relations,
+        affections,
+    })
 }
 
 #[tauri::command]
@@ -417,21 +447,125 @@ pub async fn save_role_relations(
     app: AppHandle,
     role_id: i32,
     relations: HashMap<String, String>,
+    affections: HashMap<String, Option<i32>>,
 ) -> Result<(), String> {
     let state = app.state::<AppState>();
     let folder = role_folder(&state, role_id).await?;
     let data_dir = crate::api::data_dir();
 
+    // 角色间关系写 relations.yml，角色对玩家身份的关系与初始好感度写数据库。
+    let mut file_relations: HashMap<String, String> = HashMap::new();
+    let mut identity_relations: HashMap<String, IdentityRelation> = HashMap::new();
+    for (key, text) in relations {
+        let key = key.trim();
+        if key.is_empty() {
+            continue;
+        }
+        match key.strip_prefix("me:") {
+            Some(identity_id) => {
+                identity_relations
+                    .entry(identity_id.trim().to_string())
+                    .or_default()
+                    .text = text;
+            },
+            None => {
+                file_relations.insert(key.to_string(), text);
+            },
+        }
+    }
+    for (key, value) in affections {
+        let Some(identity_id) = key.trim().strip_prefix("me:") else {
+            continue;
+        };
+        if identity_id.trim().is_empty() {
+            continue;
+        }
+        identity_relations
+            .entry(identity_id.trim().to_string())
+            .or_default()
+            .initial_affection = value.map(|v| v.clamp(-100, 100));
+    }
+    let file_relations = role_relations::sanitize(&file_relations);
+
     let service = state.ai_service.lock().await;
     let mut gs = service.game_status.lock().await;
 
     let before = runtime_relations::load_effective(&data_dir, &folder, &gs);
-    if role_relations::sanitize(&relations) == before {
+    let mut next = file_relations.clone();
+    next.extend(
+        identity_relations
+            .iter()
+            .map(|(identity_id, value)| {
+                (format!("me:{identity_id}"), value.text.trim().to_string())
+            })
+            .filter(|(_, text)| !text.is_empty()),
+    );
+    let stored = RoleRepo::load_identity_relations(&state.db, role_id)
+        .await
+        .map_err(|e| format!("读取身份关系失败: {e}"))?;
+    let relations_unchanged = role_relations::sanitize(&next) == before;
+    let affections_unchanged = stored.iter().all(|(identity_id, row)| {
+        identity_relations
+            .get(identity_id)
+            .map(|value| value.initial_affection)
+            == Some(row.initial_affection)
+    }) && identity_relations.iter().all(|(identity_id, value)| {
+        stored
+            .get(identity_id)
+            .and_then(|row| row.initial_affection)
+            == value.initial_affection
+    });
+    if relations_unchanged && affections_unchanged {
         return Ok(());
     }
 
-    role_relations::save(&data_dir, &folder, &relations)
+    role_relations::save(&data_dir, &folder, &file_relations)
         .map_err(|e| format!("保存关系失败: {e}"))?;
+    RoleRepo::replace_identity_relations(&state.db, role_id, &identity_relations)
+        .await
+        .map_err(|e| format!("保存身份关系失败: {e}"))?;
+    let cache: HashMap<String, String> = identity_relations
+        .iter()
+        .map(|(identity_id, value)| (format!("me:{identity_id}"), value.text.trim().to_string()))
+        .filter(|(_, text)| !text.is_empty())
+        .collect();
+    let affection_cache: HashMap<String, i32> = identity_relations
+        .iter()
+        .filter_map(|(identity_id, value)| {
+            value
+                .initial_affection
+                .map(|affection| (identity_id.clone(), affection))
+        })
+        .collect();
+    gs.role_manager
+        .set_identity_relations(&folder, cache, affection_cache);
+
+    // 改的是当前身份的初始好感度：把它同步进当前存档并广播，规则与角色设置保存一致。
+    let current_identity = gs.player.identity_id.clone();
+    if let Some(identity_id) = current_identity.as_deref() {
+        let old_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
+            crate::ai_service::affection::effective_initial_affection(
+                &role.settings,
+                stored
+                    .get(identity_id)
+                    .and_then(|row| row.initial_affection),
+            )
+        });
+        let new_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
+            crate::ai_service::affection::effective_initial_affection(
+                &role.settings,
+                identity_relations
+                    .get(identity_id)
+                    .and_then(|row| row.initial_affection),
+            )
+        });
+        if let Some(init) = new_initial.filter(|value| Some(*value) != old_initial) {
+            let payload = gs
+                .sync_identity_affection_initial(&state.db, role_id, Some(identity_id), init)
+                .await;
+            let _ = app.emit("affection:changed", payload);
+        }
+    }
 
     if gs.role_manager.get_loaded(role_id).is_some() {
         let app_config = AppConfig::load(&app).unwrap_or_default();
@@ -491,6 +625,7 @@ async fn current_identity() -> Result<PlayerIdentity, String> {
         prompt: String::new(),
         avatar: None,
         relations: HashMap::new(),
+        source_folders: Vec::new(),
         is_primary: true,
     })
 }

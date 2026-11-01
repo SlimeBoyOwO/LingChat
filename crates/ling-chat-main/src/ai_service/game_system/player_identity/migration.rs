@@ -1,14 +1,16 @@
-//! 玩家身份迁移：把 A/B 两类老数据统一成一张「主玩家身份」。
+//! 玩家身份迁移：把 A/B 两类老数据统一成一张「主玩家身份」，并给每张老卡补齐专属身份。
 //!
 //! A 类：没有任何身份数据，新建「玩家A（待填写）」并把老角色卡的玩家名/副标题/设定
 //! 收进 alias 与双向关系。
 //! B 类：已有身份卡，当前身份直接当主身份沿用（id 不变、内容不改、其他身份卡不动）。
 //!
-//! 两类共用：老卡 `user_name`/`user_subtitle` 收进 per-character alias，「以下是我的设定」
-//! 正文写三处——角色侧关系 `me:<主身份>`、身份侧关系 `ai:<角色>`、主身份 prompt 聚合。
-//! 不改数据库引用（save_identity / line.identity_id / affection / relations 键），不归档旧身份卡。
+//! 两类共用：按 (user_name, user_subtitle) 去重，为每张老卡建立专属身份卡，并把角色文件夹
+//! 记进身份卡的 `source_folders`（绑定只存在身份卡里，角色 yml 不出现身份 id）。
+//! 「以下是我的设定」正文写进身份卡 prompt / `ai:<角色文件夹>` 关系；角色侧认知存数据库
+//! `role_identity_relation`，并从 `relations.yml` 的历史 `me:<身份id>` 键迁入。
+//! `player_identity` 索引表由 `sync_player_identities` 跟随文件更新。
 //!
-//! 迁移完成后写 `_primary_identity.json`；之后的启动只做增量补齐，不再新建身份。
+//! 迁移完成后写 `_primary_identity.json`；之后的启动只做增量补齐，不再新建主身份。
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -16,18 +18,18 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
-use serde_json::{Map, Value};
 
 use super::bootstrap::legacy_player_prompt;
 use super::{IdentityStore, PlayerIdentity, RelationEndpoint, role_relations};
-use crate::ai_service::types::{CharacterSettings, LegacyIdentity};
+use crate::ai_service::types::CharacterSettings;
 use crate::api::resolve_role_dir_in;
-use crate::db::entities::role::RoleType;
+use crate::db::entities::role::{self, RoleType};
 use crate::db::entities::{line, player_identity, save_identity};
+use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::yaml_file::{read_yaml_as_json, resolve_settings_file, write_json_as_yaml};
 
 const PRIMARY_NAME: &str = "玩家A（待填写）";
-/// 老卡里这些名字只是占位，不算「真实旧名」，不生成 alias/legacy。
+/// 老卡里这些名字只是占位，不算「真实旧名」，不建专属身份。
 const DEFAULT_USER_NAMES: [&str; 2] = ["user_name未设定", "用户"];
 
 /// 迁移结果，供启动日志与验收排查使用。
@@ -40,43 +42,110 @@ pub struct MigrationReport {
     pub already_migrated: bool,
     pub roles_scanned: usize,
     pub roles_updated: usize,
+    pub identities_created: usize,
+    pub identities_bound: usize,
 }
 
 #[derive(Default)]
 struct RoleSyncOutcome {
     scanned: usize,
     updated: usize,
-    identity_relations_changed: bool,
-    prompt_changed: bool,
+    primary_changed: bool,
+    identities_created: usize,
+    identities_bound: usize,
 }
 
 #[derive(Default)]
 struct RoleCardOutcome {
-    alias_changed: bool,
-    legacy_changed: bool,
-    role_relation_changed: bool,
-    identity_relation_changed: bool,
-    /// 该卡「以下是我的设定」正文（无则空串），供主身份 prompt 聚合。
-    player_setting: String,
+    cleaned: bool,
+    primary_changed: bool,
+    identity_created: bool,
+    identity_bound: bool,
 }
 
 impl RoleCardOutcome {
     fn any(&self) -> bool {
-        self.alias_changed
-            || self.legacy_changed
-            || self.role_relation_changed
-            || self.identity_relation_changed
+        self.cleaned || self.primary_changed || self.identity_created || self.identity_bound
+    }
+}
+
+/// 按 (name, subtitle) 与角色文件夹索引身份卡，用于同名老卡合并与绑定反查。
+#[derive(Default)]
+struct IdentityRegistry {
+    primary_key: (String, String),
+    by_key: HashMap<(String, String), PlayerIdentity>,
+    by_folder: HashMap<String, String>,
+    deleted_folders: HashSet<String>,
+}
+
+impl IdentityRegistry {
+    fn new(
+        primary: &PlayerIdentity,
+        cards: Vec<PlayerIdentity>,
+        deleted_folders: HashSet<String>,
+    ) -> Self {
+        let primary_key = identity_key(&primary.name, &primary.subtitle);
+        let mut registry = Self {
+            primary_key: primary_key.clone(),
+            by_key: HashMap::new(),
+            by_folder: HashMap::new(),
+            deleted_folders,
+        };
+        for folder in &primary.source_folders {
+            registry
+                .by_folder
+                .insert(folder.clone(), primary.id.clone());
+        }
+        for card in cards {
+            registry.insert(card);
+        }
+        // 主身份的 key 优先指向主身份，避免被同名专属卡抢走。
+        if !primary_key.0.is_empty() {
+            registry.by_key.insert(primary_key, primary.clone());
+        }
+        registry
+    }
+
+    fn is_primary(&self, key: &(String, String)) -> bool {
+        key == &self.primary_key
+    }
+
+    fn get(&self, key: &(String, String)) -> Option<&PlayerIdentity> {
+        self.by_key.get(key)
+    }
+
+    fn insert(&mut self, card: PlayerIdentity) {
+        for folder in &card.source_folders {
+            self.by_folder.insert(folder.clone(), card.id.clone());
+        }
+        let key = identity_key(&card.name, &card.subtitle);
+        if key.0.is_empty() {
+            return;
+        }
+        self.by_key.insert(key, card);
+    }
+
+    fn bind_folder(&mut self, folder: &str, identity_id: &str) {
+        self.by_folder
+            .insert(folder.to_string(), identity_id.to_string());
+    }
+
+    fn bound_identity(&self, folder: &str) -> Option<&str> {
+        self.by_folder.get(folder).map(String::as_str)
+    }
+
+    fn is_deleted(&self, folder: &str) -> bool {
+        self.deleted_folders.contains(folder)
     }
 }
 
 /// 启动时调用：已完成迁移则只做增量补齐。
 pub async fn run(data_dir: &Path, db: &DatabaseConnection) -> Result<MigrationReport> {
     let store = IdentityStore::new(data_dir);
-    let now = chrono::Local::now().to_rfc3339();
 
     if let Some(marker) = store.primary_marker() {
         if let Some(primary) = store.find_by_id(&marker.primary_identity_id) {
-            return run_incremental(data_dir, db, &store, primary, &now).await;
+            return run_incremental(data_dir, db, &store, primary).await;
         }
         tracing::warn!(
             "主身份标记指向的身份卡不存在，重新执行迁移: {}",
@@ -87,9 +156,9 @@ pub async fn run(data_dir: &Path, db: &DatabaseConnection) -> Result<MigrationRe
     // 没有标记文件时一律按数据形态跑全量迁移：B 迁移可能只写了 is_primary 就崩溃，
     // 角色卡尚未补完，不能靠 is_primary 兜底跳过。
     if has_identity_data(&store, db).await {
-        migrate_b(data_dir, db, &store, &now).await
+        migrate_b(data_dir, db, &store).await
     } else {
-        migrate_a(data_dir, db, &store, &now).await
+        migrate_a(data_dir, db, &store).await
     }
 }
 
@@ -98,10 +167,11 @@ async fn run_incremental(
     db: &DatabaseConnection,
     store: &IdentityStore,
     mut primary: PlayerIdentity,
-    now: &str,
 ) -> Result<MigrationReport> {
-    let outcome = sync_roles(data_dir, &mut primary, now)?;
-    if outcome.identity_relations_changed || outcome.prompt_changed {
+    let mut registry =
+        IdentityRegistry::new(&primary, store.list(), store.deleted_source_folders());
+    let outcome = sync_roles(data_dir, store, db, &mut primary, &mut registry).await?;
+    if outcome.primary_changed {
         primary.is_primary = true;
         store.save(&primary)?;
     }
@@ -114,6 +184,8 @@ async fn run_incremental(
         primary_identity_id: primary.id.clone(),
         roles_scanned: outcome.scanned,
         roles_updated: outcome.updated,
+        identities_created: outcome.identities_created,
+        identities_bound: outcome.identities_bound,
         already_migrated: true,
         ..Default::default()
     };
@@ -125,11 +197,12 @@ async fn migrate_a(
     data_dir: &Path,
     db: &DatabaseConnection,
     store: &IdentityStore,
-    now: &str,
 ) -> Result<MigrationReport> {
     let mut primary = store.set_primary(&default_primary_card())?;
-    let outcome = sync_roles(data_dir, &mut primary, now)?;
-    if outcome.identity_relations_changed || outcome.prompt_changed {
+    let mut registry =
+        IdentityRegistry::new(&primary, store.list(), store.deleted_source_folders());
+    let outcome = sync_roles(data_dir, store, db, &mut primary, &mut registry).await?;
+    if outcome.primary_changed {
         primary.is_primary = true;
         store.save(&primary)?;
     }
@@ -143,6 +216,8 @@ async fn migrate_a(
         created_primary: true,
         roles_scanned: outcome.scanned,
         roles_updated: outcome.updated,
+        identities_created: outcome.identities_created,
+        identities_bound: outcome.identities_bound,
         ..Default::default()
     };
     log_report(&report);
@@ -153,7 +228,6 @@ async fn migrate_b(
     data_dir: &Path,
     db: &DatabaseConnection,
     store: &IdentityStore,
-    now: &str,
 ) -> Result<MigrationReport> {
     // 新方案不改数据库引用、不归档旧身份卡：当前身份直接当主身份沿用。
     let cards = store.list();
@@ -171,7 +245,9 @@ async fn migrate_b(
     }
     primary.is_primary = true;
 
-    let outcome = sync_roles(data_dir, &mut primary, now)?;
+    let mut registry =
+        IdentityRegistry::new(&primary, store.list(), store.deleted_source_folders());
+    let outcome = sync_roles(data_dir, store, db, &mut primary, &mut registry).await?;
     primary = store.save(&primary)?;
     store.set_current_id(&primary.id)?;
     store.write_primary_marker(&primary.id, "B")?;
@@ -183,6 +259,8 @@ async fn migrate_b(
         created_primary,
         roles_scanned: outcome.scanned,
         roles_updated: outcome.updated,
+        identities_created: outcome.identities_created,
+        identities_bound: outcome.identities_bound,
         ..Default::default()
     };
     log_report(&report);
@@ -192,12 +270,14 @@ async fn migrate_b(
 fn log_report(report: &MigrationReport) {
     let mode = report.mode.as_str();
     let primary_id = report.primary_identity_id.as_str();
+    let created = report.created_primary;
+    let migrated = report.already_migrated;
+    let updated = report.roles_updated;
+    let scanned = report.roles_scanned;
+    let identities_created = report.identities_created;
+    let identities_bound = report.identities_bound;
     tracing::info!(
-        "玩家身份迁移完成: mode={mode} primary={primary_id} created={} migrated={} roles={}/{}",
-        report.created_primary,
-        report.already_migrated,
-        report.roles_updated,
-        report.roles_scanned
+        "玩家身份迁移完成: mode={mode} primary={primary_id} created={created} migrated={migrated} roles={updated}/{scanned} identities={identities_created}/{identities_bound}"
     );
 }
 
@@ -209,6 +289,7 @@ fn default_primary_card() -> PlayerIdentity {
         prompt: String::new(),
         avatar: None,
         relations: HashMap::new(),
+        source_folders: Vec::new(),
         is_primary: true,
     }
 }
@@ -233,69 +314,78 @@ async fn has_identity_data(store: &IdentityStore, db: &DatabaseConnection) -> bo
     player_identity::Entity::find().count(db).await.unwrap_or(0) > 0
 }
 
-/// 把所有老卡「以下是我的设定」正文合并进主身份 prompt：
-/// 去掉空段、相同正文去重、已有 prompt 已包含的正文不重复追加，用空行拼接。
-/// 返回 prompt 是否有变化。
-fn merge_prompt_bodies(prompt: &mut String, bodies: &[String]) -> bool {
-    let mut seen: HashSet<&str> = HashSet::new();
-    let mut additions: Vec<&str> = Vec::new();
-    for body in bodies {
-        let body = body.trim();
-        if body.is_empty() || !seen.insert(body) {
-            continue;
-        }
-        if prompt.contains(body) {
-            continue;
-        }
-        additions.push(body);
-    }
-    if additions.is_empty() {
+/// 把正文合并进身份卡 prompt：空段或已包含时返回 false。
+fn append_prompt_body(prompt: &mut String, body: &str) -> bool {
+    let body = body.trim();
+    if body.is_empty() || prompt.contains(body) {
         return false;
     }
     let existing = prompt.trim();
     *prompt = if existing.is_empty() {
-        additions.join("\n\n")
+        body.to_string()
     } else {
-        format!("{existing}\n\n{}", additions.join("\n\n"))
+        format!("{existing}\n\n{body}")
     };
     true
 }
 
-fn sync_roles(
+/// 身份去重键：名字 + 副标题，去首尾空白。
+fn identity_key(name: &str, subtitle: &str) -> (String, String) {
+    (name.trim().to_string(), subtitle.trim().to_string())
+}
+
+async fn sync_roles(
     data_dir: &Path,
+    store: &IdentityStore,
+    db: &DatabaseConnection,
     primary: &mut PlayerIdentity,
-    migrated_at: &str,
+    registry: &mut IdentityRegistry,
 ) -> Result<RoleSyncOutcome> {
     let mut outcome = RoleSyncOutcome::default();
-    let mut bodies: Vec<String> = Vec::new();
+    let role_ids = main_role_ids_by_folder(db).await?;
     for folder in main_character_folders(data_dir) {
         outcome.scanned += 1;
-        match sync_role_card(data_dir, &folder, primary, migrated_at) {
+        let role_id = role_ids.get(&folder).copied();
+        match sync_role_card(data_dir, store, db, &folder, role_id, primary, registry).await {
             Ok(card) => {
-                if card.identity_relation_changed {
-                    outcome.identity_relations_changed = true;
+                if card.primary_changed {
+                    outcome.primary_changed = true;
                 }
                 if card.any() {
                     outcome.updated += 1;
                 }
-                if !card.player_setting.trim().is_empty() {
-                    bodies.push(card.player_setting);
+                if card.identity_created {
+                    outcome.identities_created += 1;
+                }
+                if card.identity_bound {
+                    outcome.identities_bound += 1;
                 }
             },
             Err(e) => tracing::warn!("同步角色卡 {folder} 的玩家身份失败: {e}"),
         }
     }
-    if merge_prompt_bodies(&mut primary.prompt, &bodies) {
-        outcome.prompt_changed = true;
-    }
     Ok(outcome)
 }
 
-fn sync_role_card(
+async fn main_role_ids_by_folder(db: &DatabaseConnection) -> Result<HashMap<String, i32>> {
+    let roles = role::Entity::find()
+        .filter(role::Column::RoleType.eq(RoleType::Main))
+        .all(db)
+        .await?;
+    Ok(roles
+        .into_iter()
+        .filter_map(|row| row.resource_folder.map(|folder| (folder, row.id)))
+        .collect())
+}
+
+async fn sync_role_card(
     data_dir: &Path,
+    store: &IdentityStore,
+    db: &DatabaseConnection,
     folder: &str,
+    role_id: Option<i32>,
     primary: &mut PlayerIdentity,
-    migrated_at: &str,
+    registry: &mut IdentityRegistry,
 ) -> Result<RoleCardOutcome> {
     let mut outcome = RoleCardOutcome::default();
     let role_dir = resolve_role_dir_in(data_dir, &RoleType::Main, None, folder)
@@ -315,6 +405,7 @@ fn sync_role_card(
         .unwrap_or_default()
         .trim()
         .to_string();
+    let body = legacy_player_prompt(&settings);
 
     let Some(obj) = value.as_object_mut() else {
         tracing::warn!(
@@ -324,117 +415,136 @@ fn sync_role_card(
         return Ok(outcome);
     };
 
-    // 只动 user_aliases / legacy_identity，其他字段原样写回。
-    let mut aliases = obj
-        .get("user_aliases")
-        .and_then(Value::as_object)
-        .cloned()
-        .unwrap_or_default();
-    match aliases.get_mut(&primary.id) {
-        Some(Value::Object(entry)) => {
-            let name_empty = entry
-                .get("name")
-                .and_then(Value::as_str)
-                .map(|text| text.trim().is_empty())
-                .unwrap_or(true);
-            if name_empty {
-                if let Some(name) = legacy_name.as_deref() {
-                    entry.insert("name".to_string(), Value::String(name.to_string()));
-                    outcome.alias_changed = true;
-                }
-            }
-            let subtitle_empty = entry
-                .get("subtitle")
-                .and_then(Value::as_str)
-                .map(|text| text.trim().is_empty())
-                .unwrap_or(true);
-            if subtitle_empty && !legacy_subtitle.is_empty() {
-                entry.insert(
-                    "subtitle".to_string(),
-                    Value::String(legacy_subtitle.clone()),
-                );
-                outcome.alias_changed = true;
-            }
-        },
-        Some(slot) => {
-            if let Some(name) = legacy_name.as_deref() {
-                *slot = alias_value(name, &legacy_subtitle);
-                outcome.alias_changed = true;
-            }
-        },
-        None => {
-            if let Some(name) = legacy_name.as_deref() {
-                aliases.insert(primary.id.clone(), alias_value(name, &legacy_subtitle));
-                outcome.alias_changed = true;
-            }
-        },
+    // 清理上一版迁移留在角色卡里的数据库键值：关系改存数据库，绑定改存身份卡。
+    if obj.remove("user_aliases").is_some() {
+        outcome.cleaned = true;
     }
-    if outcome.alias_changed {
-        obj.insert("user_aliases".to_string(), Value::Object(aliases));
+    if obj.remove("legacy_identity").is_some() {
+        outcome.cleaned = true;
     }
 
-    // 只有真实旧名才写迁移记录；默认名的卡（含 B 类里新建的卡）不算老卡。
-    let has_legacy = obj.get("legacy_identity").is_some_and(Value::is_object);
-    if !has_legacy {
-        if let Some(name) = legacy_name.as_deref() {
-            let record = LegacyIdentity {
-                migrated_at: migrated_at.to_string(),
-                primary_identity_id: primary.id.clone(),
-                user_name: name.to_string(),
-                user_subtitle: legacy_subtitle.clone(),
-            };
-            obj.insert(
-                "legacy_identity".to_string(),
-                serde_json::to_value(&record).context("序列化 legacy_identity 失败")?,
-            );
-            outcome.legacy_changed = true;
+    // 把 relations.yml 里历史 `me:<身份id>` 键搬进数据库，再从文件里摘掉。
+    if let Some(role_id) = role_id {
+        let raw_relations = role_relations::load_raw(data_dir, folder);
+        let mut kept = HashMap::new();
+        let mut moved = false;
+        for (key, text) in raw_relations {
+            if let Some(identity_id) = key.strip_prefix("me:") {
+                moved = true;
+                if store.find_by_id(identity_id.trim()).is_some() {
+                    RoleRepo::ensure_identity_relation(db, role_id, identity_id, &text).await?;
+                }
+            } else {
+                kept.insert(key, text);
+            }
+        }
+        if moved {
+            role_relations::save(data_dir, folder, &kept)
+                .with_context(|| format!("清理角色侧关系失败 {folder}"))?;
+            outcome.cleaned = true;
         }
     }
 
-    if outcome.alias_changed || outcome.legacy_changed {
+    let mut identity_id = registry.bound_identity(folder).map(str::to_string);
+    if let Some(bound) = identity_id.as_deref() {
+        tracing::debug!("角色卡 {folder} 已绑定身份 {bound}");
+    } else if registry.is_deleted(folder) {
+        tracing::info!("角色卡 {folder} 的专属身份已被删除，按用户意图不再重建");
+    } else if let Some(name) = legacy_name {
+        let key = identity_key(&name, &legacy_subtitle);
+        let bound_id = if registry.is_primary(&key) {
+            // 与主身份同名：复用主身份，不碰主身份 prompt。
+            if !primary.source_folders.iter().any(|item| item == folder) {
+                primary.source_folders.push(folder.to_string());
+                outcome.primary_changed = true;
+            }
+            let ai_key = RelationEndpoint::Ai(folder.to_string()).key();
+            if !body.trim().is_empty()
+                && primary
+                    .relations
+                    .get(&ai_key)
+                    .map(|text| text.trim().is_empty())
+                    .unwrap_or(true)
+            {
+                primary.relations.insert(ai_key, body.clone());
+                outcome.primary_changed = true;
+            }
+            registry.bind_folder(folder, &primary.id);
+            primary.id.clone()
+        } else if let Some(existing) = registry.get(&key).cloned() {
+            let mut card = existing;
+            let mut changed = false;
+            if !card.source_folders.iter().any(|item| item == folder) {
+                card.source_folders.push(folder.to_string());
+                changed = true;
+            }
+            let ai_key = RelationEndpoint::Ai(folder.to_string()).key();
+            if !body.trim().is_empty()
+                && card
+                    .relations
+                    .get(&ai_key)
+                    .map(|text| text.trim().is_empty())
+                    .unwrap_or(true)
+            {
+                card.relations.insert(ai_key, body.clone());
+                changed = true;
+            }
+            if append_prompt_body(&mut card.prompt, &body) {
+                changed = true;
+            }
+            if changed {
+                card = store
+                    .save(&card)
+                    .with_context(|| format!("更新专属玩家身份失败 {folder}"))?;
+                registry.insert(card.clone());
+            }
+            card.id.clone()
+        } else {
+            let mut relations = HashMap::new();
+            if !body.trim().is_empty() {
+                relations.insert(RelationEndpoint::Ai(folder.to_string()).key(), body.clone());
+            }
+            let card = PlayerIdentity {
+                id: String::new(),
+                name: name.clone(),
+                subtitle: legacy_subtitle.clone(),
+                prompt: body.clone(),
+                avatar: None,
+                relations,
+                source_folders: vec![folder.to_string()],
+                is_primary: false,
+            };
+            let saved = store
+                .save(&card)
+                .with_context(|| format!("创建专属玩家身份失败 {folder}"))?;
+            if store.find_by_id(&saved.id).is_none() {
+                anyhow::bail!("专属玩家身份保存后回读失败: {}", saved.id);
+            }
+            registry.insert(saved.clone());
+            outcome.identity_created = true;
+            saved.id
+        };
+
+        // 该角色对这张身份的认知存数据库；已有非空文本不覆盖。
+        if let Some(role_id) = role_id {
+            RoleRepo::ensure_identity_relation(db, role_id, &bound_id, &body).await?;
+        }
+        identity_id = Some(bound_id);
+        outcome.identity_bound = true;
+    }
+
+    // 角色卡 yml 的初始好感度只用于初始化数据库里的身份覆写，已有值时不覆盖。
+    if let (Some(role_id), Some(identity_id), Some(value)) =
+        (role_id, identity_id.as_deref(), settings.initial_affection)
+    {
+        RoleRepo::ensure_identity_affection(db, role_id, identity_id, value).await?;
+    }
+
+    if outcome.cleaned {
         write_json_as_yaml(&settings_path, &value).map_err(|e| anyhow::anyhow!(e))?;
     }
 
-    // 「以下是我的设定」正文同时写入角色侧 me:<主身份> 与身份侧 ai:<角色文件夹>。
-    let body = legacy_player_prompt(&settings);
-    outcome.player_setting = body.clone();
-    if body.is_empty() {
-        return Ok(outcome);
-    }
-    let me_key = RelationEndpoint::Me(primary.id.clone()).key();
-    let mut relations = role_relations::load(data_dir, folder);
-    if relations
-        .get(&me_key)
-        .map(|text| text.trim().is_empty())
-        .unwrap_or(true)
-    {
-        relations.insert(me_key, body.clone());
-        match role_relations::save(data_dir, folder, &relations) {
-            Ok(()) => outcome.role_relation_changed = true,
-            Err(e) => tracing::warn!("写入角色侧关系失败 {folder}: {e}"),
-        }
-    }
-
-    let ai_key = RelationEndpoint::Ai(folder.to_string()).key();
-    if primary
-        .relations
-        .get(&ai_key)
-        .map(|text| text.trim().is_empty())
-        .unwrap_or(true)
-    {
-        primary.relations.insert(ai_key, body);
-        outcome.identity_relation_changed = true;
-    }
-
     Ok(outcome)
-}
-
-fn alias_value(name: &str, subtitle: &str) -> Value {
-    let mut map = Map::new();
-    map.insert("name".to_string(), Value::String(name.to_string()));
-    map.insert("subtitle".to_string(), Value::String(subtitle.to_string()));
-    map.insert("initial_affection".to_string(), Value::Null);
-    Value::Object(map)
 }
 
 fn real_legacy_name(settings: &CharacterSettings) -> Option<&str> {
@@ -468,34 +578,4 @@ fn main_character_folders(data_dir: &Path) -> Vec<String> {
     }
     folders.sort();
     folders
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn merge_prompt_bodies_dedupes_and_appends() {
-        let mut prompt = String::new();
-        let bodies = vec![
-            "我是莱姆。".to_string(),
-            "".to_string(),
-            "我是莱姆。".to_string(),
-            "  ".to_string(),
-            "喜欢喝咖啡。".to_string(),
-        ];
-        assert!(merge_prompt_bodies(&mut prompt, &bodies));
-        assert_eq!(prompt, "我是莱姆。\n\n喜欢喝咖啡。");
-        // 已包含的正文不重复追加，幂等
-        assert!(!merge_prompt_bodies(&mut prompt, &bodies));
-        assert_eq!(prompt, "我是莱姆。\n\n喜欢喝咖啡。");
-    }
-
-    #[test]
-    fn merge_prompt_bodies_keeps_existing_prompt() {
-        let mut prompt = "已有设定。".to_string();
-        let bodies = vec!["已有设定。".to_string(), "新设定。".to_string()];
-        assert!(merge_prompt_bodies(&mut prompt, &bodies));
-        assert_eq!(prompt, "已有设定。\n\n新设定。");
-    }
 }

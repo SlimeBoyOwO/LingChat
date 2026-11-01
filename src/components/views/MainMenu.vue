@@ -6,7 +6,7 @@
 
     <!-- 背景层（最底层） -->
     <div
-      class="absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.png')] bg-cover bg-center will-change-transform"
+      class="absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.webp')] bg-cover bg-center will-change-transform"
       ref="bgRef"
     ></div>
 
@@ -26,9 +26,10 @@
     <img
       class="pointer-events-none absolute bottom-0 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,0)] will-change-transform select-none"
       ref="charRef"
-      src="../../assets/images/alona.png"
+      src="../../assets/images/alona.webp"
       :alt="$t('views.mainMenu.characterAlt')"
       draggable="false"
+      fetchpriority="high"
       @contextmenu.prevent
     />
 
@@ -99,7 +100,7 @@
 
 <script setup lang="ts">
 import { getScriptList, type ScriptSummary } from "@/api/services/script-info";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useSettingsStore } from "../../stores/modules/settings";
@@ -107,10 +108,13 @@ import { useUIStore } from "../../stores/modules/ui/ui";
 import MeteorAnimation from "../game/standard/animations/MeteorAnimation.vue";
 import { useParallaxAnimation } from "../game/standard/animations/ParallaxAnimation";
 import StarAnimation from "../game/standard/animations/StarAnimation.vue";
-import { SettingsPanel as Settings } from "../settings/";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
 import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+
+// 设置面板体量大且多数会话不会打开，拆成独立 chunk，不随主菜单首屏加载
+const loadSettingsPanel = () => import("../settings/").then((m) => m.SettingsPanel);
+const Settings = defineAsyncComponent(loadSettingsPanel);
 
 const { t } = useI18n();
 const router = useRouter();

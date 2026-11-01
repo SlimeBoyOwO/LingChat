@@ -13,7 +13,16 @@ pub fn relations_path(data_dir: &Path, character_folder: &str) -> PathBuf {
 }
 
 /// 读取角色的关系表；文件缺失或解析失败一律降级为空表。
+/// 历史遗留的 `me:<身份id>` 键已迁入数据库，这里只返回角色间（`ai:`）关系。
 pub fn load(data_dir: &Path, character_folder: &str) -> HashMap<String, String> {
+    load_raw(data_dir, character_folder)
+        .into_iter()
+        .filter(|(key, _)| !key.starts_with("me:"))
+        .collect()
+}
+
+/// 读取原始关系表（含历史 `me:<身份id>` 键），仅供迁移搬入数据库。
+pub fn load_raw(data_dir: &Path, character_folder: &str) -> HashMap<String, String> {
     let path = relations_path(data_dir, character_folder);
     let Ok(raw) = fs::read_to_string(&path) else {
         return HashMap::new();

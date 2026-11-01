@@ -86,7 +86,44 @@ export function useCursorFx(enabled: () => boolean = () => true) {
     }
   };
 
-  watch(shouldRun, (on) => (on ? void start() : stop()), { immediate: true });
+  // 特效库约 425 KB，首屏不下载：等用户第一次移动或点击鼠标再拉取，
+  // 避免与主菜单的字体、图片、语言包争带宽。
+  let warmupBound = false;
+
+  const warmup = () => {
+    if (!warmupBound) return;
+    warmupBound = false;
+    window.removeEventListener("pointermove", warmup);
+    window.removeEventListener("pointerdown", warmup);
+    void start();
+  };
+
+  const bindWarmup = () => {
+    if (warmupBound) return;
+    warmupBound = true;
+    window.addEventListener("pointermove", warmup, { passive: true });
+    window.addEventListener("pointerdown", warmup, { passive: true });
+  };
+
+  const unbindWarmup = () => {
+    if (!warmupBound) return;
+    warmupBound = false;
+    window.removeEventListener("pointermove", warmup);
+    window.removeEventListener("pointerdown", warmup);
+  };
+
+  watch(
+    shouldRun,
+    (on) => {
+      if (!on) {
+        unbindWarmup();
+        stop();
+        return;
+      }
+      bindWarmup();
+    },
+    { immediate: true },
+  );
 
   // 开关变化时就地更新配置，并清掉已经画出来的粒子
   watch(
@@ -99,5 +136,8 @@ export function useCursorFx(enabled: () => boolean = () => true) {
     },
   );
 
-  onBeforeUnmount(stop);
+  onBeforeUnmount(() => {
+    unbindWarmup();
+    stop();
+  });
 }
