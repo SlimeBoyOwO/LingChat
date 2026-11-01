@@ -228,6 +228,7 @@ pub(super) fn build_service_graph(
         let manager = Arc::new(plugins::PluginManager::new(
             data_dir.clone(),
             tool_registry.clone(),
+            tool_settings.clone(),
         ));
         // 插件注册可能更新了 available_tools，落盘到权限配置
         if let Err(e) = tool_registry.save_permissions(&data_dir) {

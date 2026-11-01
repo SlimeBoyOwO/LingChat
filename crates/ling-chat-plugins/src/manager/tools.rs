@@ -2,16 +2,22 @@
 
 use ling_chat_main::ai_service::tools::permissions::DEFAULT_ROLE_GROUP;
 use ling_chat_main::ai_service::tools::registry::ToolRegistry;
+use ling_chat_main::ai_service::tools::settings::SharedToolSettings;
 
 use crate::tool::PluginTool;
 use crate::types::PluginRecord;
 
-/// 把插件的所有工具注册进 registry、并入 available_tools，并授权给 default 角色组。
+/// 把插件的所有工具注册进 registry、并入 available_tools，并把白名单中的工具
+/// 授权给 default 角色组。
 ///
 /// 授权不能省：`available_tools` 只用于展示，真正决定工具是否下发给 LLM
 /// （以及能否进 Tool RAG 的候选池）的是权限矩阵，而主聊天取的就是 default
 /// 角色组的工具集——不授权的话插件工具等于声明了也没人看得见。
-pub(super) fn register_tools(registry: &ToolRegistry, record: &PluginRecord) -> Result<(), String> {
+pub(super) fn register_tools(
+    registry: &ToolRegistry,
+    settings: &SharedToolSettings,
+    record: &PluginRecord,
+) -> Result<(), String> {
     let mut registered: Vec<String> = Vec::new();
     for spec in &record.manifest.tools {
         let tool = std::sync::Arc::new(PluginTool::new(record.manifest.id.clone(), spec.clone()));
@@ -28,7 +34,20 @@ pub(super) fn register_tools(registry: &ToolRegistry, record: &PluginRecord) -> 
     }
     // 授权与展示列表都在全部注册成功之后做：中途失败时已注册的工具刚被注销，
     // 不会留下「注销了却还授着权」的残影。
-    grant_tools_to_default_group(registry, &registered);
+    let tool_settings = settings.get();
+    let enabled: Vec<String> = registered
+        .iter()
+        .filter(|name| tool_settings.plugin_tool_enabled(name))
+        .cloned()
+        .collect();
+    // 旧版本可能已经把工具写进权限文件；用户取消勾选后要顺带收回，不能等下次保存。
+    let disabled: Vec<String> = registered
+        .iter()
+        .filter(|name| !enabled.contains(*name))
+        .cloned()
+        .collect();
+    revoke_tools_from_default_group(registry, &disabled);
+    grant_tools_to_default_group(registry, &enabled);
     registry.add_available_tools(&registered);
     Ok(())
 }

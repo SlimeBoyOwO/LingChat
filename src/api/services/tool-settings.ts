@@ -51,6 +51,8 @@ export interface ToolSettings {
   embedding: EmbeddingSettings;
   /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
   groups: Record<string, boolean>;
+  /** 工具级白名单：组名 → 组内已勾选的工具名。缺失某个组时沿用整组开关。 */
+  enabled_tools: Record<string, string[]>;
   /** 文件修改与命令执行的统一审批模式。 */
   access_mode: ToolAccessMode;
   /** 主聊天单次回复可连续执行工具的最大轮数；每轮可能包含多个工具调用。 */
@@ -91,10 +93,47 @@ export const TOOL_GROUP_KEYS = [
   "command",
 ] as const;
 
+/** 工具包卡片的展示顺序；plugin 由后端目录里的插件工具动态插入。 */
+export const TOOL_PACKAGE_ORDER = [
+  "web_search",
+  "schedule",
+  "memory",
+  "media",
+  "file_ops",
+  "command",
+  "skills",
+  "character",
+  "scene",
+  "status",
+  "clock",
+  "plugin",
+] as const;
+
+/** 后端提供的工具目录：分组、工具名与平台支持情况。 */
+export interface ToolGroupCatalog {
+  group: string;
+  tools: string[];
+  supported: boolean;
+}
+
+export interface ToolCatalog {
+  groups: ToolGroupCatalog[];
+  /** 始终下发的常驻工具，不参与工具级白名单。 */
+  residentTools: string[];
+  /** 当前已注册的插件工具。 */
+  pluginTools: string[];
+}
+
 /** 工具的界面友好名（通知与调用记录用），查不到翻译时回退原始名。 */
 export function toolDisplayName(tool: string): string {
   const key = `ui.toolCalls.tools.${tool}`;
   return i18n.global.te(key) ? i18n.global.t(key) : tool;
+}
+
+/** 工具的一行介绍；缺失翻译时返回空串，界面只显示名称。 */
+export function toolDescription(tool: string): string {
+  const key = `ui.toolCalls.toolDescriptions.${tool}`;
+  return i18n.global.te(key) ? i18n.global.t(key) : "";
 }
 
 /** 后端 `ai:tool_call` 事件的载荷 + 前端补充的时间戳。 */
@@ -288,6 +327,11 @@ export async function getToolSettings(): Promise<ToolSettings> {
   const settings = await invoke<ToolSettings>("get_tool_settings");
   currentToolAccessMode.value = settings.access_mode ?? "manual";
   return settings;
+}
+
+/** 读取后端工具目录，避免前端维护第二份「组 → 工具」映射。 */
+export function getToolCatalog(): Promise<ToolCatalog> {
+  return invoke<ToolCatalog>("get_tool_catalog");
 }
 
 export async function saveToolSettings(settings: ToolSettings): Promise<void> {
