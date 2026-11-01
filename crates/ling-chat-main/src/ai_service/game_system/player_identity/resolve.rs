@@ -4,19 +4,8 @@ use std::collections::HashMap;
 
 use crate::ai_service::types::CharacterSettings;
 
-/// 该角色眼里「我」的称呼：per-身份覆写 → 老卡 settings.user_name → 身份卡名字。
-pub fn effective_user_alias(
-    settings: &CharacterSettings,
-    identity_id: Option<&str>,
-    identity_name: &str,
-) -> String {
-    if let Some(id) = identity_id {
-        if let Some(alias) = settings.user_aliases.get(id) {
-            if !alias.name.trim().is_empty() {
-                return alias.name.trim().to_string();
-            }
-        }
-    }
+/// 该角色眼里「我」的称呼：角色卡默认称呼优先，未配置时用身份名。
+pub fn effective_user_alias(settings: &CharacterSettings, identity_name: &str) -> String {
     if !settings.user_name.trim().is_empty() {
         return settings.user_name.trim().to_string();
     }

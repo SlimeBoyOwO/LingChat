@@ -73,8 +73,7 @@ impl SpeakerView {
                 .display_name
                 .clone()
                 .unwrap_or_else(|| format!("角色{role_id}"));
-            let player_alias =
-                effective_user_alias(&role.settings, identity_id.as_deref(), &identity_name);
+            let player_alias = effective_user_alias(&role.settings, &identity_name);
             // 玩家对该角色的认知（身份卡 relations，内存快照），如"妹妹"。
             let player_view_of_npc = gs
                 .player

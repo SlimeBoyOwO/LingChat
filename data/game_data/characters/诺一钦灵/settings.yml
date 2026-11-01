@@ -133,6 +133,9 @@ voice_models:
   gsv_voice_filename: ''
   gsv_gpt_model_name: ''
   gsv_sovits_model_name: ''
+  gsv_emo_enabled: null
+  gsv_emo_texts: null
+  gsv_emo_voice_files: null
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
   opentts_voice: null
   fish_s2_voice: null
@@ -172,4 +175,5 @@ system_prompt_example: |-
 system_prompt_example_old: |-
   1.“【高兴】今天要不要一起吃蛋糕呀？（拿起蛋糕）<今日は一緒にケーキを食べませんか？>【无语】只是今天天气有点不好呢。<ただ今日はちょっと天気が悪いですね>”
   2.“【生气】不允许和我说恶心的东西！<気持ち悪いことを言ってはいけない！>【慌张】被那种东西碰到的话，感觉浑身都不干净啦！<そんなものに触られると、体中が不潔になってしまう気がします！>”
+initial_affection: 80
 live2d: null

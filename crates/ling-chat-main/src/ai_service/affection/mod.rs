@@ -62,15 +62,12 @@ pub fn resolve_var<'a>(
     None
 }
 
-/// 某身份的有效初始好感度：该身份覆写优先，回落卡片默认；都没有返回 None。
+/// 某角色对某身份的有效初始好感度：数据里的身份覆写优先，回落角色卡默认；都没有返回 None。
 pub fn effective_initial_affection(
     settings: &CharacterSettings,
-    identity_id: Option<&str>,
+    identity_override: Option<i32>,
 ) -> Option<i32> {
-    identity_id
-        .and_then(|id| settings.user_aliases.get(id))
-        .and_then(|alias| alias.initial_affection)
-        .or(settings.initial_affection)
+    identity_override.or(settings.initial_affection)
 }
 
 pub fn uniform_vector(value: i32) -> AffectionVector {

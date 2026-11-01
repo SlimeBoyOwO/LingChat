@@ -44,6 +44,9 @@ export default {
     edit: "Edit",
     delete: "Delete",
     create: "New identity",
+    editorTitle: "Edit identity card",
+    editorCreateTitle: "New identity card",
+    editorSubtitle: "Name and subtitle decide how characters address you",
     cancel: "Cancel",
     save: "Save",
     addRelation: "+ Add impression",
@@ -479,26 +482,23 @@ export default {
       title: "Relationship / how they see them",
       hint: 'Describe how this character sees each party (relationship) — write a full sentence with the other person as "them": e.g. "They are my childhood friend." Each character keeps an independent view; changes are stored in the save and never modify the character card.',
       missing: "Target no longer exists ({key})",
+      affectionPlaceholder: "Affection",
+      affectionHint:
+        "The number on a My Identity row is this character's starting affection for that identity (-100..100). Leave it empty to follow the character card default.",
       msg: {
         savedTitle: "Impression saved",
         savedMsg: "This character's impression (relationship) has been updated",
         loadFailTitle: "Failed to load relationships",
       },
     },
-    alias: {
-      identityLabel: "My identity",
-      noneOption: "No identity selected",
-      nameLabel: 'How this character addresses "me"',
-      namePlaceholder: "Leave empty to use the identity's name",
-      subtitleLabel: 'Subtitle this character uses for "me"',
-      subtitlePlaceholder: "Leave empty to hide the subtitle",
-      affectionLabel: "Initial affection for this identity",
-      affectionPlaceholder: "Leave empty to use the card's default",
-      hint: "Address, subtitle and initial affection are set per identity: the same character can address each identity differently, with a different subtitle and starting affection. Leave empty to use the card's default.",
-    },
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
+      userName: 'Name this character calls "me"',
+      userSubtitle: 'Subtitle this character uses for "me"',
+      initialAffection: "Default starting affection",
+      initialAffectionHint:
+        "Starting affection for new conversations (-100..100). Once the database has a value for an identity, that value wins; leave empty to leave it unset.",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",
@@ -596,6 +596,15 @@ export default {
       voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
       text: "Reference text",
       textPlaceholder: "Text spoken in the reference audio",
+      samplingDesc:
+        "Leave blank to use the defaults. Lower temperature and top_p make output steadier and closer to the reference timbre; speech rate can be tuned per emotion (e.g. angry 1.1, sad 0.9).",
+      temperature: "Temperature",
+      topP: "Top-p",
+      speed: "Speed factor",
+      samplingPlaceholder: "Default",
+      refGuideTitle: "Reference audio recording tips",
+      refGuide:
+        'Keep each clip 3–10 seconds, dry (no reverb or background noise), one speaker, natural pace.\nRecord all six categories in the same session if possible, otherwise the timbre jumps when switching emotions.\nThe reference text must match the audio word for word (including fillers like "ah" or "mm"); mismatches cause the largest quality loss.',
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
@@ -1017,18 +1026,8 @@ export default {
       desc: "When on, memory is automatically compressed; restart LingChat after saving to apply",
     },
     voiceSound: {
-      title: "Voice Sound Effects",
-      desc: "Enable dialogue sound effects when no VITS voice is available",
-    },
-    engineDownload: {
-      title: "Voice Inference Engine Download (SBV2)",
-      cpuHint:
-        "CPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      cpu: "CPU Inference",
-      nvidia: "NVIDIA GPU Inference",
-      amdHint:
-        "AMD GPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      amd: "AMD GPU Inference",
+      title: "Dialogue Sound Effects",
+      desc: "Play random dialogue sound effects while the character speaks (suppressed when a voice is configured)",
     },
     back: {
       title: "Back to Main Menu",

@@ -154,7 +154,7 @@
                   />
                   <div v-else class="flex h-full w-full items-center justify-center bg-white/5">
                     <img
-                      src="@/assets/images/LingChatLogo.png"
+                      src="@/assets/images/LingChatLogo.webp"
                       alt="Logo"
                       class="h-full w-full scale-130 -rotate-20 object-contain opacity-100"
                     />
@@ -457,7 +457,7 @@ onMounted(() => {
 .workshop-page__bg {
   position: absolute;
   inset: -10% -10% 0;
-  background-image: url("@/assets/images/background2.png");
+  background-image: url("@/assets/images/background2.webp");
   background-size: cover;
   background-position: center;
 }

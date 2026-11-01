@@ -56,7 +56,7 @@
         <!-- Logo 与 标题 -->
         <div class="mb-20 flex w-full flex-col items-center">
           <img
-            src="@/assets/images/LingChatLogo.png"
+            src="@/assets/images/LingChatLogo.webp"
             class="mx-auto mb-6 w-1/2 max-w-100 object-contain"
             alt="Logo"
           />

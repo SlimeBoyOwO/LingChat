@@ -5,7 +5,7 @@
     不给背景就直接透出桌面。Credits.vue 同理显式加了 bg-[#0a0a0c]。
 
     结构：bg-layer（渐变兜底）→ bg-image（背景图，模糊+压暗）→ bg-dim-mask（可调遮罩）。
-    默认背景图是主菜单同款的 background2.png —— 它是 Git LFS 资产，无 LFS 的
+    默认背景图是主菜单同款的 background2.webp —— 它是 Git LFS 资产，无 LFS 的
     开发环境读出来是 131 字节指针，加载失败时浏览器自动跳过该图层露出渐变，
     因此本地开发看到兜底渐变、CI 构建产物看到真实图，两种环境都不会破图。
   -->
@@ -91,7 +91,7 @@ import type { ShortcutAction } from "@/utils/shortcuts";
 import { bindingMatches } from "@/utils/shortcuts";
 // 默认背景与主菜单同款。Git LFS 资产：无 LFS 环境读出来是 131 字节指针，
 // 背景图加载失败会露出渐变兜底层（见模板注释），构建产物则是真实图。
-import defaultBg from "@/assets/images/background2.png";
+import defaultBg from "@/assets/images/background2.webp";
 
 const { t } = useI18n();
 const router = useRouter();

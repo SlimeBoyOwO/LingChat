@@ -408,6 +408,9 @@ impl VoiceMaker {
                     cfg.gsv_gpt_model_name.clone(),
                     cfg.gsv_sovits_model_name.clone(),
                     emo_prompts,
+                    cfg.gsv_temperature,
+                    cfg.gsv_top_p,
+                    cfg.gsv_speed_factor,
                 );
                 self.provider.gsv = Some(Arc::new(adapter));
                 let _ = name;

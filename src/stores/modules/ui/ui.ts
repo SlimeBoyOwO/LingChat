@@ -9,11 +9,7 @@ import { isWeatherEffect } from "@/components/game/standard/particles";
 // 通知类型
 export type NotificationType = "error" | "success" | "info" | "warning";
 export type ScheduleViewType =
-  | "schedule_groups"
-  | "schedule_details"
-  | "todo_groups"
-  | "todo_detail"
-  | "calendar";
+  "schedule_groups" | "schedule_details" | "todo_groups" | "todo_detail" | "calendar";
 
 // 通知状态接口
 interface NotificationState {
@@ -90,7 +86,7 @@ interface UIState {
 }
 
 // 默认 avatar
-const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.png";
+const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.webp";
 
 // 防抖相关
 const notificationDebounceMap = new Map<string, number>();
@@ -371,7 +367,7 @@ export const useUIStore = defineStore("ui", {
         type,
         title,
         message,
-        avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.png`,
+        avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.webp`,
         duration,
       };
 
