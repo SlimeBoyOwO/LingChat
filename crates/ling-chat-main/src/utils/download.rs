@@ -100,7 +100,12 @@ pub async fn download_to_file(
             .unwrap_or_else(|_| "<unreadable response body>".into());
         let body = body.trim();
         let snippet = if body.len() > 512 {
-            format!("{}...", &body[..512])
+            // 按字节截断可能切在多字节字符中间导致 panic，回退到最近的字符边界
+            let mut end = 512;
+            while !body.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &body[..end])
         } else {
             body.to_string()
         };
