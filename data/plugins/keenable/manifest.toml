@@ -1,0 +1,17 @@
+id = "keenable"
+name = "Keenable 搜索"
+description = "基于 Keenable 的联网搜索（无需 API Key 即可使用）"
+version = "0.1.0"
+author = "LingChat"
+
+# API Key 可选：未设置时走免费公共端点，设置后走带 Key 的端点（更高额度）。
+[[env]]
+key = "KEENABLE_API_KEY"
+label = "Keenable API Key（可选，来自环境变量）"
+
+[[tools]]
+name = "keenable_search"
+description = "联网搜索，返回相关网页摘要与链接"
+timeout_ms = 30000
+parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_results":{"type":"integer","default":5} }, "required":["query"] }'
+script = "keenable.py"
