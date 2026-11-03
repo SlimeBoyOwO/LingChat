@@ -57,34 +57,45 @@
             </div>
             <div v-else class="mx-auto max-w-3xl">
               <!-- `role-id=0` 仅作新建条目的占位，不入库、不上行 -->
-              <HotwordSettings v-model="draft" :role-id="0" :model-capability="modelCapability" />
+              <HotwordSettings
+                v-model="draft"
+                :role-id="0"
+                :model-capability="modelCapability"
+                scope="global"
+                :save-hotwords="saveHotwordRows"
+              />
             </div>
           </div>
 
           <div
-            class="flex justify-end gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
+            class="flex items-center justify-between gap-3 border-t border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.05)_0%,rgba(255,255,255,0.1)_100%)] p-4"
           >
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
-              @click="handleClose"
-            >
-              {{ $t("settings.asr.globalHotword.dialog.footer.cancel") }}
-            </button>
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving || loading"
-              @click="save"
-            >
-              <span
-                v-if="saving"
-                class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
-              ></span>
-              {{
-                saving
-                  ? $t("settings.asr.globalHotword.dialog.footer.saving")
-                  : $t("settings.asr.globalHotword.dialog.footer.save")
-              }}
-            </button>
+            <span class="text-sm text-white/40">
+              {{ $t("settings.asr.globalHotword.dialog.footerHint") }}
+            </span>
+            <div class="flex gap-3">
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
+                @click="handleClose"
+              >
+                {{ $t("settings.asr.globalHotword.dialog.footer.cancel") }}
+              </button>
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="saving || loading"
+                @click="save"
+              >
+                <span
+                  v-if="saving"
+                  class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                ></span>
+                {{
+                  saving
+                    ? $t("settings.asr.globalHotword.dialog.footer.saving")
+                    : $t("settings.asr.globalHotword.dialog.footer.save")
+                }}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -99,6 +110,7 @@ import { useI18n } from "vue-i18n";
 import {
   getGlobalHotwords,
   saveGlobalHotwords,
+  type RoleHotword,
   type RoleHotwordDraft,
 } from "@/api/services/hotword";
 import { Icon } from "@/components/base";
@@ -140,10 +152,15 @@ watch(
 
 const handleClose = () => emit("close");
 
+/** 批量导入保存：只上行 {text, weight}；成功后刷新运行时缓存。 */
+const saveHotwordRows = async (rows: RoleHotword[]) => {
+  await saveGlobalHotwords(rows.map(({ text, weight }) => ({ text, weight })));
+  void refreshSceneHotwords();
+};
+
 const save = async () => {
   saving.value = true;
   try {
-    // 只上行 {text, weight}：role_id 是组件内的占位字段
     await saveGlobalHotwords(draft.value.hotwords.map(({ text, weight }) => ({ text, weight })));
     // 运行时缓存与库同步（识别时注入的就是这份）：保存成功后重取
     void refreshSceneHotwords();
