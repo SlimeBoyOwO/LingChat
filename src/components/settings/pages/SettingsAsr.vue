@@ -650,6 +650,10 @@ watch(
 
 let saveTimer: number | null = null;
 let saveStateTimer: number | null = null;
+/** 保存序号：连续保存时只让最后一次的结果落到状态上，避免旧结果覆盖新结果 */
+let saveSeq = 0;
+/** 串行化写入：保证后发的表单最后落库，不被先发的慢请求覆盖 */
+let saveQueue: Promise<unknown> = Promise.resolve();
 /** 初始化完成标记：onMounted 赋值后置 true，跳过一次初始化触发的保存 */
 let initialized = false;
 
@@ -664,8 +668,14 @@ async function persistSettings(): Promise<boolean> {
     saveStateTimer = null;
   }
   saveState.value = "saving";
+  // 拷贝一份：并发保存时避免后发请求读到已被改动的表单
+  const payload = JSON.parse(JSON.stringify(localSettings.value)) as AsrSettings;
+  const seq = ++saveSeq;
   try {
-    await asrStore.save(localSettings.value);
+    const run = saveQueue.then(() => asrStore.save(payload));
+    saveQueue = run.catch(() => {});
+    await run;
+    if (seq !== saveSeq) return true;
     saveState.value = "saved";
     saveStateTimer = window.setTimeout(() => {
       saveStateTimer = null;
@@ -673,6 +683,8 @@ async function persistSettings(): Promise<boolean> {
     }, 2000);
     return true;
   } catch (e) {
+    // 已有更新的保存在进行：本次结果不落到状态上，也不当作失败上报
+    if (seq !== saveSeq) return true;
     // 失败提示常驻，等下一次保存成功再清除
     console.warn("[ASR] autosave failed:", e);
     saveState.value = "failed";
@@ -989,13 +1001,21 @@ function ensureProviderConfig(id: string) {
 }
 // provider / 地域变更的统一入口：必须是一个 watch 且顺序固定（先 ensureProviderConfig
 // 再 applyRegionEndpoints），拆开会依赖注册顺序并留下错误的端点。
+// 切到本地时暂存流式偏好，切回云端再恢复，避免静默丢弃用户的开关
+let streamBeforeLocal: boolean | null = null;
 watch(
   [() => localSettings.value.active_provider, () => providerCfg.value.region],
   async ([id]) => {
     // 本地服务暂不支持流式识别：切换 provider 时显式关闭，不能依赖 activeModel
     // 的 watcher（服务没起时清单为空）
-    if (isLocalProvider.value && localSettings.value.stream_enabled) {
-      localSettings.value.stream_enabled = false;
+    if (isLocalProvider.value) {
+      if (localSettings.value.stream_enabled) {
+        streamBeforeLocal = true;
+        localSettings.value.stream_enabled = false;
+      }
+    } else if (streamBeforeLocal !== null) {
+      localSettings.value.stream_enabled = streamBeforeLocal;
+      streamBeforeLocal = null;
     }
     ensureProviderConfig(id);
     applyRegionEndpoints();

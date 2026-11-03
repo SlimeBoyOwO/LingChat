@@ -95,7 +95,7 @@ pub trait AsrProvider: Send + Sync {
     /// 调用云 API 识别一段 WAV 字节。
     ///
     /// - `wav_bytes`：前端 OfflineAudioContext 重采样后的 16kHz mono WAV。
-    /// - `opts`：本次调用的可选参数（语言提示 + 热词）。热词走这里而非
+    /// - `opts`：本次调用的可选参数（热词）。热词走这里而非
     ///   `ProviderCredentials`，是因为它的来源是**当前角色**，随角色切换而变。
     ///
     /// 错误统一返回 [`AsrError`]。

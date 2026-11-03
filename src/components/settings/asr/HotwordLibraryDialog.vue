@@ -582,6 +582,7 @@ const saveImportedWords = async (rows: ImportRow[], categoryIndex: number | null
     throw new Error(t(key));
   }
 
+  const before = draft.value.words.length;
   const next = draft.value.words.map((word) => ({ ...word }));
   for (const row of rows) {
     next.push({
@@ -591,6 +592,8 @@ const saveImportedWords = async (rows: ImportRow[], categoryIndex: number | null
     });
   }
   dedupeRows(next, libraryRowKey);
+  // 与已有词条合并的行不新增条目，只更新权重，通知按实际新增数计
+  const added = next.length - before;
 
   await saveHotwordLibrary(draft.value.categories, next);
   draft.value.words = next;
@@ -598,7 +601,7 @@ const saveImportedWords = async (rows: ImportRow[], categoryIndex: number | null
   selected.value = categoryIndex === null ? "none" : categoryIndex;
   uiStore.showNotification({
     type: "success",
-    title: t("settings.hotwordImport.notification.libraryTitle", { count: rows.length }),
+    title: t("settings.hotwordImport.notification.libraryTitle", { count: added }),
     message: t("settings.hotwordImport.notification.scopeLibrary"),
     skipTipsCheck: true,
   });

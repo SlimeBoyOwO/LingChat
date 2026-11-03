@@ -287,10 +287,6 @@ const detailReason = (detail: ImportDetail) => {
         count: hotwordSegmentCount(detail.text),
         max: MAX_HOTWORD_SEGMENTS,
       });
-    case "badWeight":
-      return t("settings.hotwordImport.dialog.reason.badWeight", {
-        weight: detailWeightValue(detail),
-      });
     case "overCapacity":
       return t("settings.hotwordImport.dialog.reason.overCapacity");
     default:

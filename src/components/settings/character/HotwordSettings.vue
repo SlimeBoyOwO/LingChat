@@ -326,18 +326,21 @@ const appendFromLibrary = (words: LibraryWord[]) => {
 
 /** 批量导入：先在副本上追加并去重，保存成功后才写回草稿；失败时宿主草稿不变。 */
 const handleImportSave = async (rows: ImportRow[]) => {
+  const before = props.modelValue.hotwords.length;
   const next = props.modelValue.hotwords.map((row) => ({ ...row }));
   for (const row of rows) {
     next.push({ text: row.text, weight: row.weight, role_id: props.roleId });
   }
   dedupeRows(next);
+  // 与已有词条合并的行不新增条目，只更新权重，通知按实际新增数计
+  const added = next.length - before;
 
   await props.saveHotwords(next);
   props.modelValue.hotwords.splice(0, props.modelValue.hotwords.length, ...next);
 
   uiStore.showNotification({
     type: "success",
-    title: t("settings.hotwordImport.notification.title", { count: rows.length }),
+    title: t("settings.hotwordImport.notification.title", { count: added }),
     message: t(
       props.scope === "global"
         ? "settings.hotwordImport.notification.scopeGlobal"

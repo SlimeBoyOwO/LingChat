@@ -1,5 +1,5 @@
 import { hotwordLimitKind } from "../api/services/hotword";
-import { HOTWORD_WEIGHT_OPTIONS } from "./hotwordRows";
+import { normalizeWeightInput } from "./hotwordRows";
 
 /**
  * 批量热词导入的纯函数解析内核。
@@ -22,8 +22,7 @@ export interface ImportDetail {
   reason: ImportReason;
 }
 
-export type ImportReason =
-  "badFormat" | "tooLongChars" | "tooLongSegments" | "badWeight" | "overCapacity";
+export type ImportReason = "badFormat" | "tooLongChars" | "tooLongSegments" | "overCapacity";
 
 export interface ImportReview {
   rows: ImportRow[];
@@ -43,19 +42,15 @@ interface ParsedRow extends ImportRow {
   label?: string;
 }
 
-const VALID_WEIGHTS = new Set<number>(HOTWORD_WEIGHT_OPTIONS);
-
 /** 唯一的行格式：序号.词条(权重)；全角数字、句点与括号视为同一写法。 */
-const LINE_PATTERN = /^([0-9０-９]+)[.．]\s*(.+?)\s*[（(]\s*([0-9０-９]+)\s*[）)]$/;
+const LINE_PATTERN = /^([0-9０-９]+)[.．。]\s*(.+?)\s*[（(]\s*([0-9０-９]+)\s*[）)]$/;
 
 const normalizeDigits = (text: string) =>
   text.replace(/[０-９]/g, (ch) => String(ch.charCodeAt(0) - 0xff10));
 
-function parseWeightToken(raw: string): number | null {
-  const text = normalizeDigits(raw.trim());
-  if (!/^\d+$/.test(text)) return null;
-  const weight = Number(text);
-  return VALID_WEIGHTS.has(weight) ? weight : null;
+/** 权重与行内编辑器、后端同口径：`6..=49` 归一到 5，`>=50` 归到 50。 */
+function parseWeightToken(raw: string): number {
+  return normalizeWeightInput(Number(normalizeDigits(raw.trim())));
 }
 
 /**
@@ -122,21 +117,7 @@ export function parseHotwordImport(
       return;
     }
 
-    const rawWeight = normalizeDigits(match[3]);
-    const weight = parseWeightToken(rawWeight);
-
-    if (weight === null) {
-      invalidCount += 1;
-      details.push({
-        kind: "invalid",
-        line: lineNo,
-        label,
-        text: content,
-        weight: rawWeight,
-        reason: "badWeight",
-      });
-      return;
-    }
+    const weight = parseWeightToken(match[3]);
 
     const limit = hotwordLimitKind(content);
     if (limit !== "ok") {

@@ -1619,8 +1619,6 @@ export default {
     },
     streamMode: "Streaming Recognition",
     streamModeHint: "Shows recognized text in real time while speaking",
-    streamModeHintLocal:
-      "Uploads the recording after you finish speaking, then shows results progressively (llama-server result streaming)",
     streamNotSupported: "The selected model does not support streaming recognition",
     provider: {
       title: "Speech Recognition",
@@ -1629,10 +1627,8 @@ export default {
       modelSelect: "Model",
       modelListFailed: "Failed to load model list: {err}",
       test: "Test connection (4s recording)",
-      testing: "Recording… please speak (4s)",
       testingStop: "Stop & recognize",
       testSuccess: "Voice test: {text}",
-      testResult: "Recognized: {text}",
       testNoSpeech: "No speech detected, please retry",
       testFailed: "Failed: {err}",
       streamNotSupportedLocal: "Streaming recognition is not yet supported locally",
@@ -1671,7 +1667,6 @@ export default {
         badFormat: "Format must be index.term(weight)",
         tooLongChars: "Exceeds {max} characters (currently {count})",
         tooLongSegments: "Exceeds {max} segments (currently {count})",
-        badWeight: "Weight must be 1, 2, 3, 4, 5, or 50 (currently {weight})",
         overCapacity: "Exceeds capacity and was not imported",
       },
       targetCategory: "Target category",

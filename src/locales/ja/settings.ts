@@ -1605,8 +1605,6 @@ export default {
     },
     streamMode: "ストリーム認識",
     streamModeHint: "話している間に認識テキストをリアルタイム表示",
-    streamModeHintLocal:
-      "録音終了後にローカル認識へアップロードし、結果を段階的に表示（llama-server 結果ストリーム）",
     streamNotSupported: "選択中のモデルはストリーム認識に対応していません",
     provider: {
       title: "音声認識",
@@ -1615,10 +1613,8 @@ export default {
       modelSelect: "モデル",
       modelListFailed: "モデルリストの取得に失敗しました：{err}",
       test: "接続テスト（4 秒録音）",
-      testing: "録音中…話してください（4秒）",
       testingStop: "停止して認識",
       testSuccess: "音声テスト：{text}",
-      testResult: "認識結果：{text}",
       testNoSpeech: "音声を検出できませんでした。もう一度お試しください",
       testFailed: "失敗：{err}",
       streamNotSupportedLocal: "現在、ローカルではストリーム認識に対応していません",
@@ -1658,7 +1654,6 @@ export default {
         badFormat: "形式は 番号.単語(重み) で入力してください",
         tooLongChars: "{max} 文字を超えています（現在 {count}）",
         tooLongSegments: "{max} 個を超えています（現在 {count}）",
-        badWeight: "重みは 1、2、3、4、5、50 のいずれかです（現在 {weight}）",
         overCapacity: "容量上限を超えたためインポートされません",
       },
       targetCategory: "対象分類",

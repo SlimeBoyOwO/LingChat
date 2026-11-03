@@ -20,6 +20,8 @@ impl MigrationTrait for Migration {
 
     /// 不可逆：`6..=49` 与「本来就是 5」区分不开，下调无法还原。
     async fn down(&self, _manager: &SchemaManager) -> Result<(), DbErr> {
-        Ok(())
+        Err(DbErr::Migration(
+            "m20261012_000001 不可回滚：降级后的权重无法还原".into(),
+        ))
     }
 }

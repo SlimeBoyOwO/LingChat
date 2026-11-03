@@ -24,6 +24,10 @@ pub(crate) fn validate_and_trim(text: &mut String) -> Result<(), anyhow::Error> 
     if trimmed.is_empty() {
         return Err(anyhow!("热词为空"));
     }
+    // 热词会拼进本地 ASR 的 prompt，换行/制表等控制字符不应进入
+    if trimmed.chars().any(char::is_control) {
+        return Err(anyhow!("热词包含控制字符"));
+    }
     validate_text_len(trimmed)?;
     if trimmed.len() != text.len() {
         *text = trimmed.to_string();

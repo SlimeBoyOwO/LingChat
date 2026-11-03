@@ -57,7 +57,7 @@ export function commitRowText<T extends HotwordRow>(
 }
 
 /** 失焦时归一到 `[1, 5] ∪ {50}`：清空 / 非数字回默认值；`6..=49` 就近降到 5；`>=50` 归 50。 */
-function normalizeWeightInput(raw: unknown): number {
+export function normalizeWeightInput(raw: unknown): number {
   const text = String(raw).trim();
   const n = Number(text);
   if (text === "" || !Number.isFinite(n)) return HOTWORD_DEFAULT_WEIGHT;
