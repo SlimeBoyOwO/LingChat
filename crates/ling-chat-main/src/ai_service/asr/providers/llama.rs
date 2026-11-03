@@ -35,7 +35,7 @@ pub struct LlamaAsrProvider {
 
 impl LlamaAsrProvider {
     pub const ID: &'static str = "llama-asr";
-    pub const DISPLAY: &'static str = "本地 ASR（llama-server）";
+    pub const DISPLAY: &'static str = "本地 llama.cpp";
     pub const DEFAULT_ENDPOINT: &'static str = "http://127.0.0.1:8080";
     pub const DEFAULT_MODEL: &'static str = "models/Qwen3-ASR-1.7B-Q8_0.gguf";
 
