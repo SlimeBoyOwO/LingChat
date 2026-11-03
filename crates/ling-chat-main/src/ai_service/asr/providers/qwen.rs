@@ -16,7 +16,7 @@ use crate::ai_service::asr::provider::AsrProvider;
 use crate::ai_service::asr::provider_meta::AsrConfigField;
 use crate::ai_service::asr::provider_types::{AsrOptions, AsrResult, Hotword, ProviderCredentials};
 use crate::ai_service::asr::qwen_models::{
-    qwen_default_model, qwen_is_streaming_model, qwen_supports_inline_vocabulary,
+    qwen_default_model, qwen_is_streaming_model, qwen_max_hotword_count,
     qwen_uses_legacy_audio_content,
 };
 
@@ -59,6 +59,26 @@ impl QwenAsrProvider {
     }
 }
 
+/// 按容量截断：保留前 `max` 个（整词丢弃、丢尾部）。
+///
+/// 支持但超容量时走这里；能力位为 false 的模型由调用方另行 warn 且不发。
+/// 同步与流式两个落点共用本函数，保持截断规则一致。
+pub(crate) fn take_within_capacity<'a>(
+    hotwords: &'a [Hotword],
+    max: usize,
+    label: &str,
+) -> &'a [Hotword] {
+    if hotwords.len() <= max {
+        return hotwords;
+    }
+    warn!(
+        "[ASR] {label}即时热词 {max}/{} 条（超出 {} 条未发送）",
+        hotwords.len(),
+        hotwords.len() - max
+    );
+    &hotwords[..max]
+}
+
 /// 热词列表 → DashScope 即时热词对象 `{"词": 权重}`。
 ///
 /// 同词重复时保留**先出现**的权重（调用方已按优先级排序，见
@@ -78,7 +98,7 @@ pub(crate) fn hotwords_to_vocabulary_json(hotwords: &[Hotword]) -> JsonValue {
 
 /// 构造同步端点（multimodal-generation）的请求体。
 ///
-/// 该端点的 `parameters` 只有 format / sample_rate / vocabulary（无 language_hints）。
+/// 该端点的 `parameters` 只有 format / sample_rate / vocabulary。
 /// 热词在此门控：仅 qwen-audio-3.x 系支持 `vocabulary`，对其余模型发它很可能直接 400。
 fn build_batch_body(model: &str, data_url: &str, hotwords: &[Hotword]) -> JsonValue {
     // 音频内容格式按模型分流：qwen-audio-3.x 系用 input_audio；历史 Fun-ASR-Realtime
@@ -107,8 +127,9 @@ fn build_batch_body(model: &str, data_url: &str, hotwords: &[Hotword]) -> JsonVa
         body["resources"] = json!([]);
     }
     if !hotwords.is_empty() {
-        if qwen_supports_inline_vocabulary(model) {
-            body["parameters"]["vocabulary"] = hotwords_to_vocabulary_json(hotwords);
+        if let Some(max) = qwen_max_hotword_count(model) {
+            let kept = take_within_capacity(hotwords, max, &format!("{model} "));
+            body["parameters"]["vocabulary"] = hotwords_to_vocabulary_json(kept);
         } else {
             warn!(
                 "[ASR] 模型 {model} 不支持即时热词，已忽略 {} 条热词（如需热词请改用 qwen-audio-3.x 系）",
@@ -181,8 +202,6 @@ impl AsrProvider for QwenAsrProvider {
 
         Ok(AsrResult {
             text,
-            // 同步端点既不返回语言也不接受 language_hints：回填 hint 会伪造一个没人检测过的值
-            language: None,
             confidence: None,
             provider_id: Self::ID.into(),
         })

@@ -8,7 +8,7 @@
 //! - 客户端事件（文本帧）：
 //!   - run-task（start）：`{"header":{"streaming":"duplex","task_id":"<32 hex>",
 //!     "action":"run-task"},"payload":{"model":"paraformer-realtime-v2",
-//!     "parameters":{"sample_rate":16000,"format":"pcm","language_hints":[...]},
+//!     "parameters":{"sample_rate":16000,"format":"pcm"},
 //!     "input":{},"task":"asr","task_group":"audio","function":"recognition"}}`
 //!   - 音频：**裸 PCM16 二进制帧**（无 DashScope 帧头）
 //!   - finish-task（stop）：`{"header":{"streaming":"duplex","task_id":"...",
@@ -50,8 +50,6 @@ const PROVIDER: &str = "qwen-asr";
 /// 对 fun-asr-realtime / paraformer 系发送很可能直接 400。
 #[derive(Debug, Clone, Default)]
 pub struct StreamParams {
-    /// `parameters.language_hints`；None = 不发。
-    pub language_hint: Option<String>,
     /// `parameters.vocabulary` 即时热词 `{"词": 权重}`；None = 不发。
     pub vocabulary: Option<JsonValue>,
 }
@@ -168,13 +166,6 @@ fn build_run_task_payload(model: &str, params: &StreamParams) -> (String, Vec<u8
         }
     });
     let p = &mut payload["payload"]["parameters"];
-    if let Some(lang) = params
-        .language_hint
-        .as_deref()
-        .filter(|l| !l.trim().is_empty())
-    {
-        p["language_hints"] = json!([lang]);
-    }
     // 即时热词（仅 qwen-audio-3.x 系支持，门控在调用方）
     if let Some(vocab) = &params.vocabulary {
         p["vocabulary"] = vocab.clone();

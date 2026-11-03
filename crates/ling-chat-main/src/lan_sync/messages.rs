@@ -131,6 +131,18 @@ pub struct SyncPlan {
 pub struct DbRecords {
     pub device_id: String,
     pub roles: Vec<serde_json::Value>,
+    /// 角色热词。四张热词表字段均 `#[serde(default)]`：旧版 payload 缺失时解析为空数组。
+    #[serde(default)]
+    pub role_hotwords: Vec<serde_json::Value>,
+    /// 全局热词（不随角色）。
+    #[serde(default)]
+    pub global_hotwords: Vec<serde_json::Value>,
+    /// 词库分类。
+    #[serde(default)]
+    pub hotword_categories: Vec<serde_json::Value>,
+    /// 词库词条。
+    #[serde(default)]
+    pub library_hotwords: Vec<serde_json::Value>,
     pub saves: Vec<serde_json::Value>,
     pub running_scripts: Vec<serde_json::Value>,
     pub adventure_unlocks: Vec<serde_json::Value>,

@@ -245,7 +245,6 @@ impl AsrSession {
         let text = result?.text;
         Ok(AsrResult {
             text,
-            language: None,
             confidence: None,
             provider_id: h.provider_id,
         })
