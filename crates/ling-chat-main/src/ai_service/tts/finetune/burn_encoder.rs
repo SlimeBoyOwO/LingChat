@@ -10,6 +10,8 @@ use burn::nn::PaddingConfig1d;
 use burn::prelude::*;
 use burn::tensor::activation::{relu, softmax};
 
+use super::onnx_weights::OnnxTensor;
+
 /// 编码器超参数（burn 版，字段与 candle 版对应）。
 #[derive(Debug, Clone)]
 pub struct BurnBaseEncoderConfig {
@@ -222,9 +224,237 @@ impl BurnBaseEncoder {
         (mel, durations)
     }
 }
+// 归一化参数名顺序，与基座图内导出顺序一致（weight 与 bias 交替）。
+fn normalization_names(layers: usize) -> Vec<String> {
+    let mut names = Vec::new();
+    for index in 0..3 {
+        for part in ["weight", "bias"] {
+            names.push(format!("model.encoder.prenet.norm{index}.{part}"));
+        }
+    }
+    for index in 0..layers {
+        for slot in ["1", "2"] {
+            for part in ["weight", "bias"] {
+                names.push(format!("model.encoder.encoder.norm{index}_{slot}.{part}"));
+            }
+        }
+    }
+    names
+}
+
+fn fill3(param: &mut Param<Tensor<3>>, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<3>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    *param = Param::from_tensor(t);
+}
+
+fn fill2(param: &mut Param<Tensor<2>>, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<2>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    *param = Param::from_tensor(t);
+}
+
+fn fill1(param: &mut Param<Tensor<1>>, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    *param = Param::from_tensor(t);
+}
+
+/// 按名字把一个命名 ONNX 权重张量填入编码器对应参数。
+///
+/// 只处理 `model.encoder.*.weight`；未知名字静默忽略，便于复用基座权重。
+/// 按名字把一个命名 ONNX 权重张量填入编码器对应参数。
+///
+/// 识别 `model.encoder.*.{weight,bias}`；未知名字静默忽略，便于复用基座权重。
+pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, device: &Device) {
+    let name = &tensor.name;
+    let suffix: &str = name.rsplit('.').next().unwrap_or("");
+    let container = name
+        .strip_suffix(".weight")
+        .or_else(|| name.strip_suffix(".bias"))
+        .unwrap_or(name);
+
+    // 词嵌入只有 weight。
+    if name == "model.encoder.emb.weight" {
+        fill2(&mut encoder.embedding.weight, &tensor.data, &tensor.dims, device);
+        return;
+    }
+    // 归一化参数走 apply_normalizations，这里跳过命名样子的 norm weight/bias。
+    if container.contains("norm") && container.contains("prenet") && container.contains("encoder") {
+        // 不匹配具体归一化见 apply_normalizations
+    }
+
+    // prenet 卷积层。
+    if let Some(idxstr) = container
+        .strip_prefix("model.encoder.prenet.conv_layers.")
+        .and_then(|r| r.split('.').next())
+    {
+        let index: usize = idxstr.parse().unwrap_or(usize::MAX);
+        if index < encoder.prenet.len() {
+            let w = &mut encoder.prenet[index];
+            match suffix {
+                "weight" => fill3(&mut w.weight, &tensor.data, &tensor.dims, device),
+                "bias" => fill1(&mut w.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+                _ => {}
+            }
+        }
+        return;
+    }
+    if container == "model.encoder.prenet.proj" {
+        match suffix {
+            "weight" => fill3(&mut encoder.prenet_proj.weight, &tensor.data, &tensor.dims, device),
+            "bias" => fill1(&mut encoder.prenet_proj.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+            _ => {}
+        }
+        return;
+    }
+    if let Some(rest) = container.strip_prefix("model.encoder.encoder.attn_layers.") {
+        let (idx, after) = rest.split_once('.').unwrap_or((rest, ""));
+        let index: usize = idx.parse().unwrap_or(usize::MAX);
+        if index >= encoder.attentions.len() {
+            return;
+        }
+        let attn = &mut encoder.attentions[index];
+        let conv = match after {
+            "conv_q" => &mut attn.query,
+            "conv_k" => &mut attn.key,
+            "conv_v" => &mut attn.value,
+            "conv_o" => &mut attn.output,
+            _ => return,
+        };
+        match suffix {
+            "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
+            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+            _ => {}
+        }
+        return;
+    }
+    if let Some(rest) = container.strip_prefix("model.encoder.encoder.ffn_layers.") {
+        let (idx, after) = rest.split_once('.').unwrap_or((rest, ""));
+        let index: usize = idx.parse().unwrap_or(usize::MAX);
+        if index >= encoder.feed_forwards.len() {
+            return;
+        }
+        let ff = &mut encoder.feed_forwards[index];
+        let conv = match after {
+            "conv_1" => &mut ff.conv1,
+            "conv_2" => &mut ff.conv2,
+            _ => return,
+        };
+        match suffix {
+            "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
+            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+            _ => {}
+        }
+        return;
+    }
+    if container == "model.encoder.proj_m" {
+        match suffix {
+            "weight" => fill3(&mut encoder.proj_m.weight, &tensor.data, &tensor.dims, device),
+            "bias" => fill1(&mut encoder.proj_m.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+            _ => {}
+        }
+        return;
+    }
+    if let Some(rest) = container.strip_prefix("model.encoder.proj_w.") {
+        let (proj, _) = rest.split_once('.').unwrap_or((rest, ""));
+        let conv = match proj {
+            "conv_1" => &mut encoder.duration_conv1,
+            "conv_2" => &mut encoder.duration_conv2,
+            "proj" => &mut encoder.duration_proj,
+            _ => return,
+        };
+        match suffix {
+            "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
+            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
+            _ => {}
+        }
+    }
+}
+
+/// 把匿名归一化常量按图内顺序填入编码器各 AffineNorm。
+pub fn apply_normalizations(
+    encoder: &mut BurnBaseEncoder,
+    tensors: &[OnnxTensor],
+    hidden: usize,
+    layers: usize,
+    device: &Device,
+) -> Result<(), String> {
+    let mut anonymous: Vec<&OnnxTensor> = tensors
+        .iter()
+        .filter(|tensor| tensor.name.starts_with("onnx::") && tensor.dims == vec![1, hidden, 1])
+        .collect();
+    anonymous.sort_by_key(|tensor| {
+        tensor
+            .name
+            .rsplit('_')
+            .next()
+            .and_then(|v| v.parse::<u32>().ok())
+            .unwrap_or(0)
+    });
+
+    let names = normalization_names(layers);
+    if anonymous.len() != names.len() {
+        return Err(format!(
+            "归一化参数数量不符：图里 {} 个，模型需要 {} 个",
+            anonymous.len(),
+            names.len()
+        ));
+    }
+
+    let shape = vec![1, hidden, 1];
+    // 用索引数组避免同一字段的多重可变借用。
+    let mut targets: Vec<(bool, usize, usize)> = Vec::with_capacity(names.len()); // (is_prenet, idx, slot)
+    for i in 0..3 {
+        targets.push((true, i, 0));
+        targets.push((true, i, 1));
+    }
+    for i in 0..layers {
+        targets.push((false, i, 0));
+        targets.push((false, i, 1));
+        targets.push((false, i, 2));
+        targets.push((false, i, 3));
+    }
+
+    for (tensor, &(is_prenet, idx, slot)) in anonymous.iter().zip(targets.iter()) {
+        let t = Tensor::<3>::from_data(TensorData::new(tensor.data.clone(), shape.clone()), device);
+        let t = Param::from_tensor(t);
+        if is_prenet {
+            if slot == 0 {
+                encoder.prenet_norms[idx].weight = t;
+            } else {
+                encoder.prenet_norms[idx].bias = t;
+            }
+        } else {
+            match slot {
+                0 => encoder.block_norms[idx].0.weight = t,
+                1 => encoder.block_norms[idx].0.bias = t,
+                2 => encoder.block_norms[idx].1.weight = t,
+                _ => encoder.block_norms[idx].1.bias = t,
+            }
+        }
+    }
+    Ok(())
+}
+
+/// 从基座 ONNX 张量按名构造编码器（含命名权重与匿名归一化）。
+pub fn from_onnx_tensors(
+    config: &BurnBaseEncoderConfig,
+    tensors: &[OnnxTensor],
+    device: &Device,
+) -> Result<BurnBaseEncoder, String> {
+    let mut encoder = BurnBaseEncoder::init(config, device);
+    for tensor in tensors {
+        if tensor.name.ends_with(".weight") && tensor.name.starts_with("model.encoder.") {
+            apply_named_weight(&mut encoder, tensor, device);
+        }
+    }
+    apply_normalizations(&mut encoder, tensors, config.hidden, config.layers, device)?;
+    Ok(encoder)
+}
+
 
 #[cfg(test)]
 mod tests {
+    use std::path::Path;
+
     use super::*;
 
     /// 在 Vulkan 设备上跑一次前向，验证形状与链路可用。
@@ -233,6 +463,28 @@ mod tests {
         let device = Device::vulkan(DeviceKind::DefaultDevice);
         let config = BurnBaseEncoderConfig::default();
         let encoder = BurnBaseEncoder::init(&config, &device);
+
+        let tokens = Tensor::<2, Int>::from_data(
+            TensorData::new(vec![1u32, 2, 3, 4, 5], vec![1, 5]),
+            &device,
+        );
+        let (mel, durations) = encoder.forward(tokens);
+        assert_eq!(mel.shape().dims(), [1, 80, 5]);
+        assert_eq!(durations.shape().dims(), [1, 5]);
+    }
+
+    /// 从基座 ONNX 加载权重到 burn 编码器，验证权重桥可用且前向形状正确。
+    #[test]
+    fn loads_from_real_onnx_and_forwards() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        if !path.exists() {
+            return;
+        }
+        let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
+        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let config = BurnBaseEncoderConfig::default();
+        let encoder = from_onnx_tensors(&config, &tensors, &device).unwrap();
 
         let tokens = Tensor::<2, Int>::from_data(
             TensorData::new(vec![1u32, 2, 3, 4, 5], vec![1, 5]),
