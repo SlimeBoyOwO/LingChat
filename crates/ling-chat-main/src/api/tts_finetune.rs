@@ -41,18 +41,22 @@ fn summary_from(manifest: &DatasetManifest) -> FinetuneDatasetSummary {
 /// 导入压缩包。
 #[tauri::command]
 pub async fn tts_finetune_import(
+    app: AppHandle,
     zip_path: String,
     dataset_id: String,
     overwrite: Option<bool>,
 ) -> Result<ImportReport, String> {
-    let path = std::path::PathBuf::from(&zip_path);
-    if !path.is_file() {
+    // Android 的 content:// 先落到 cache 成真实路径；桌面端原路径直通。
+    let src = crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &zip_path)
+        .await?;
+    if !src.path.is_file() {
         return Err(format!("压缩包不存在: {zip_path}"));
     }
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let import_path = src.path.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || {
         import_zip(
-            &path,
+            &import_path,
             &dataset_id,
             DEFAULT_SAMPLE_RATE,
             overwrite.unwrap_or(false),
@@ -60,7 +64,13 @@ pub async fn tts_finetune_import(
     })
     .await
     .map_err(|error| format!("导入任务失败: {error}"))?
-    .map_err(|error| format!("导入失败: {error:#}"))
+    .map_err(|error| format!("导入失败: {error:#}"));
+
+    // Android 的 content:// 暂存文件用完即删，避免遗留到 cache。
+    if src.cleanup_after_import {
+        let _ = std::fs::remove_file(&src.path);
+    }
+    result
 }
 
 /// 列出已导入的数据集。
