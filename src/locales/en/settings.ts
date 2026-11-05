@@ -1519,6 +1519,7 @@ export default {
   sherpa: {
     title: "Sherpa-ONNX Local Voice",
     models: "Models",
+    asrTag: "ASR",
     noModels: "No models available. Download one first",
     manageModels: "Open model folder",
     modelConfig: "Model Configuration",

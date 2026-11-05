@@ -23,6 +23,7 @@
               <div class="model-info">
                 <span class="model-name">{{ model.display_name }}</span>
                 <span class="model-meta">
+                  <span v-if="isAsrModel(model)" class="tag-asr">{{ t("settings.sherpa.asrTag") }}</span>
                   {{ model.model_type.toUpperCase() }} · {{ model.language }} ·
                   {{ formatSize(model.size_bytes) }}
                 </span>
@@ -340,7 +341,9 @@
                 {{ t("settings.sherpaFinetune.selectBase") }}
               </option>
               <option
-                v-for="model in availableModels.filter((item) => item.installed)"
+                v-for="model in availableModels.filter(
+                  (item) => item.installed && !isAsrModel(item),
+                )"
                 :key="model.id"
                 :value="model.path"
               >
@@ -724,7 +727,14 @@ async function loadModels() {
   }
 }
 
+/** 判断是否是本地识别（ASR）模型：这类模型用于自动标注，不作为 TTS 音色。 */
+function isAsrModel(model: SherpaOnnxModelRecord) {
+  return model.model_type.startsWith("asr");
+}
+
 function selectModel(model: SherpaOnnxModelRecord) {
+  // ASR 识别模型不参与 TTS 合成，点击不应置为当前音色。
+  if (isAsrModel(model)) return;
   // 未安装的模型无本地文件，选中后试听只会失败；需先下载。
   if (!model.installed) return;
   selectedModelId.value = model.id;
@@ -1009,6 +1019,16 @@ const formatSize = (bytes: number): string => {
 .model-meta {
   color: rgba(255, 255, 255, 0.4);
   font-size: 11px;
+}
+
+.tag-asr {
+  display: inline-block;
+  margin-right: 6px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: rgba(99, 179, 237, 0.2);
+  color: rgb(99, 179, 237);
+  font-size: 10px;
 }
 
 .model-actions {

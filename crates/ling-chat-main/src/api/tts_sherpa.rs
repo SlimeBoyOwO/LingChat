@@ -322,6 +322,19 @@ const SHERPA_CATALOG: &[SherpaCatalogEntry] = &[
         model_type: "zipvoice",
         platforms: SherpaPlatforms::All,
     },
+    // 本地离线 ASR（SenseVoice）：用于微调数据集自动标注，与 TTS 音色共用
+    // 该下载页。model_type 以 `asr_` 前缀区分，适配器与角色音色列表据此
+    // 识别「这是识别模型，不是用于合成的音色」。
+    SherpaCatalogEntry {
+        dir: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
+        repo: "gomodels/sherpa",
+        source: SherpaSource::ModelScope,
+        display_name: "SenseVoice 中英日韩粤 离线识别 (int8)",
+        language: "zh",
+        voice: "asr",
+        model_type: "asr_sense_voice",
+        platforms: SherpaPlatforms::All,
+    },
 ];
 
 /// 当前平台可下载的内置模型。
@@ -374,6 +387,15 @@ fn skip_repo_file(dir: &str, rel: &str) -> bool {
     // ZipVoice：若存在非 int8 的 encoder/decoder，则跳过 int8 冗余
     if dir == "sherpa-onnx-zipvoice-distill-zh-en-emilia"
         && (rel.ends_with("fm_decoder_int8.onnx") || rel.ends_with("text_encoder_int8.onnx"))
+    {
+        return true;
+    }
+    // SenseVoice ASR：只用 int8 推理（尺寸小且精度够），跳过 937MB 的完整版。
+    if dir == "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17"
+        && (rel == "model.onnx"
+            || rel == "model.fp32.onnx"
+            || rel == "export-onnx.py"
+            || rel.ends_with(".bpe.size"))
     {
         return true;
     }
