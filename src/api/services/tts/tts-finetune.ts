@@ -122,3 +122,39 @@ export function onFinetuneProgress(
     callback(event.payload),
   );
 }
+
+export interface FinetuneAnnotateReport {
+  annotated: number;
+  failed: number;
+  skipped: number;
+  stats: FinetuneDatasetStats;
+}
+
+export interface FinetuneAnnotateProgress {
+  done: number;
+  total: number;
+  id: string;
+}
+
+/** 用云端 ASR 为缺失文本的音频自动标注。仅处理缺文本的条目。 */
+export function autoAnnotateFinetuneDataset(
+  datasetId: string,
+  providerId: string,
+  languageHint?: string,
+) {
+  return invoke<FinetuneAnnotateReport>("tts_finetune_auto_annotate", {
+    datasetId,
+    providerId,
+    languageHint,
+  });
+}
+
+/** 订阅自动标注逐条进度。 */
+export function onFinetuneAnnotateProgress(
+  callback: (progress: FinetuneAnnotateProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<FinetuneAnnotateProgress>(
+    "tts:finetune-annotate-progress",
+    (event) => callback(event.payload),
+  );
+}

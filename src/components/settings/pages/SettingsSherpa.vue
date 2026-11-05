@@ -363,6 +363,10 @@
             {{ finetuneProgress.step }}/{{ finetuneProgress.total_steps }} ·
             loss {{ finetuneProgress.loss.toFixed(4) }}
           </p>
+          <p v-if="finetuneAnnotateProgress" class="test-hint">
+            {{ t("settings.sherpaFinetune.annotating") }}
+            {{ finetuneAnnotateProgress.done }}/{{ finetuneAnnotateProgress.total }}
+          </p>
           <p v-if="finetuneError" class="test-hint">{{ finetuneError }}</p>
           <p v-if="finetuneDatasets.length === 0" class="test-hint">
             {{ t("settings.sherpaFinetune.empty") }}
@@ -391,6 +395,19 @@
               @click="startFinetuneTraining(dataset.dataset_id)"
             >
               <Play :size="16" />
+            </button>
+            <button
+              class="btn-secondary"
+              :disabled="finetuneAnnotating === dataset.dataset_id"
+              :title="t('settings.sherpaFinetune.autoAnnotate')"
+              @click="autoAnnotateDataset(dataset.dataset_id)"
+            >
+              <Loader2
+                v-if="finetuneAnnotating === dataset.dataset_id"
+                :size="16"
+                class="spin"
+              />
+              <Mic v-else :size="16" />
             </button>
             <button
               class="btn-secondary"
@@ -463,9 +480,13 @@ import {
   exportFinetuneVoice,
   cancelFinetuneTraining,
   onFinetuneProgress,
+  autoAnnotateFinetuneDataset,
+  onFinetuneAnnotateProgress,
   type FinetuneDatasetSummary,
   type FinetuneTrainingProgress,
+  type FinetuneAnnotateProgress,
 } from "@/api/services/tts/tts-finetune";
+import { useAsrStore } from "@/stores/modules/settings/asr";
 
 const { t } = useI18n();
 
@@ -515,6 +536,41 @@ async function importFinetuneDataset() {
 const finetuneBaseModel = ref("");
 const finetuneTraining = ref(false);
 const finetuneProgress = ref<FinetuneTrainingProgress | null>(null);
+const finetuneAnnotating = ref<string | null>(null);
+const finetuneAnnotateProgress = ref<FinetuneAnnotateProgress | null>(null);
+const asrStore = useAsrStore();
+
+async function autoAnnotateDataset(datasetId: string) {
+  finetuneError.value = "";
+  finetuneAnnotateProgress.value = null;
+  finetuneAnnotating.value = datasetId;
+  const unlisten = await onFinetuneAnnotateProgress((progress) => {
+    finetuneAnnotateProgress.value = progress;
+  });
+  try {
+    const report = await autoAnnotateFinetuneDataset(
+      datasetId,
+      asrStore.settings.active_provider,
+    );
+    const hits = report.annotated;
+    const failed = report.failed;
+    const skipped = report.skipped;
+    finetuneError.value =
+      `${t("settings.sherpaFinetune.annotateDone")}：` +
+      t("settings.sherpaFinetune.annotateSummary", {
+        hits,
+        failed,
+        skipped,
+      });
+    await refreshFinetuneDatasets();
+  } catch (error) {
+    finetuneError.value = String(error);
+  } finally {
+    unlisten();
+    finetuneAnnotating.value = null;
+    finetuneAnnotateProgress.value = null;
+  }
+}
 
 async function startFinetuneTraining(datasetId: string) {
   if (!finetuneBaseModel.value) {

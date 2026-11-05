@@ -303,6 +303,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::tts_finetune::tts_finetune_list,
         api::tts_finetune::tts_finetune_stats,
         api::tts_finetune::tts_finetune_remove,
+        api::tts_finetune::tts_finetune_auto_annotate,
         api::tts_sherpa::sherpa_list_models,
         api::tts_sherpa::sherpa_list_speakers,
         api::tts_sherpa::sherpa_download_model,
