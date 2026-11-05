@@ -1738,6 +1738,22 @@ export default {
     },
   },
 
+  sherpaFinetune: {
+    selectBase: "选择基座模型",
+    cancel: "取消",
+    training: "训练中…",
+    trainDone: "训练完成，检查点已保存",
+    title: "音色微调",
+    desc: "导入一个只含音频的压缩包，自动归一化并统计可用于训练的数据量。",
+    datasetIdPlaceholder: "数据集 id（留空则用文件名）",
+    import: "导入压缩包",
+    importing: "导入中…",
+    empty: "还没有导入数据集",
+    duration: "总时长",
+    ready: "数据量达标",
+    insufficient: "数据量不足（至少 5 分钟且全部有文本标注）",
+    remove: "删除",
+  },
   sherpa: {
     title: "Sherpa-ONNX 本地语音",
     models: "模型",

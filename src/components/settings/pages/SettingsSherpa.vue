@@ -307,6 +307,100 @@
           </div>
           <p v-if="!selectedModelId" class="test-hint">{{ t("settings.sherpa.noModelHint") }}</p>
         </section>
+        <section class="section">
+          <h4 class="section-title">
+            <Wand2 :size="16" />
+            {{ t("settings.sherpaFinetune.title") }}
+          </h4>
+          <p class="section-desc">{{ t("settings.sherpaFinetune.desc") }}</p>
+          <div class="test-row">
+            <input
+              v-model="finetuneDatasetId"
+              type="text"
+              class="config-input test-input"
+              :placeholder="t('settings.sherpaFinetune.datasetIdPlaceholder')"
+            />
+            <button
+              class="btn-primary"
+              :disabled="finetuneImporting"
+              @click="importFinetuneDataset"
+            >
+              <Loader2 v-if="finetuneImporting" :size="16" class="spin" />
+              <FolderOpen v-else :size="16" />
+              {{
+                finetuneImporting
+                  ? t("settings.sherpaFinetune.importing")
+                  : t("settings.sherpaFinetune.import")
+              }}
+            </button>
+          </div>
+          <div class="test-row">
+            <select v-model="finetuneBaseModel" class="config-select">
+              <option value="">
+                {{ t("settings.sherpaFinetune.selectBase") }}
+              </option>
+              <option
+                v-for="model in availableModels.filter((item) => item.installed)"
+                :key="model.id"
+                :value="model.path"
+              >
+                {{ model.display_name }}
+              </option>
+            </select>
+            <button
+              v-if="finetuneTraining"
+              class="btn-secondary"
+              @click="cancelTraining"
+            >
+              {{ t("settings.sherpaFinetune.cancel") }}
+            </button>
+          </div>
+          <p v-if="finetuneTraining" class="test-hint">
+            {{ t("settings.sherpaFinetune.training") }}
+          </p>
+          <p v-if="finetuneProgress" class="test-hint">
+            {{ finetuneProgress.epoch }}/{{ finetuneProgress.total_epochs }} ·
+            {{ finetuneProgress.step }}/{{ finetuneProgress.total_steps }} ·
+            loss {{ finetuneProgress.loss.toFixed(4) }}
+          </p>
+          <p v-if="finetuneError" class="test-hint">{{ finetuneError }}</p>
+          <p v-if="finetuneDatasets.length === 0" class="test-hint">
+            {{ t("settings.sherpaFinetune.empty") }}
+          </p>
+          <div
+            v-for="dataset in finetuneDatasets"
+            :key="dataset.dataset_id"
+            class="test-row"
+          >
+            <span>{{ dataset.dataset_id }}</span>
+            <span class="test-hint">
+              {{ t("settings.sherpaFinetune.duration") }}
+              {{ formatFinetuneDuration(dataset.total_secs) }}
+            </span>
+            <span class="test-hint">
+              {{
+                dataset.meets_minimum
+                  ? t("settings.sherpaFinetune.ready")
+                  : t("settings.sherpaFinetune.insufficient")
+              }}
+            </span>
+            <button
+              class="btn-primary"
+              :disabled="finetuneTraining || !finetuneBaseModel"
+              :title="t('settings.sherpaFinetune.training')"
+              @click="startFinetuneTraining(dataset.dataset_id)"
+            >
+              <Play :size="16" />
+            </button>
+            <button
+              class="btn-secondary"
+              :title="t('settings.sherpaFinetune.remove')"
+              @click="removeFinetuneDataset(dataset.dataset_id)"
+            >
+              <Trash2 :size="16" />
+            </button>
+          </div>
+        </section>
       </div>
     </MenuItem>
   </MenuPage>
@@ -348,8 +442,103 @@ import { decodePathFileName } from "@/utils/path";
 import { isAndroid, isIOS, isMacOS, isWindows } from "@/utils/platform";
 import { audioDialogFilters } from "@/utils/dialogFilters";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  listFinetuneDatasets,
+  importFinetuneZip,
+  removeFinetuneDataset as removeFinetuneDatasetApi,
+  trainFinetuneDataset,
+  cancelFinetuneTraining,
+  onFinetuneProgress,
+  type FinetuneDatasetSummary,
+  type FinetuneTrainingProgress,
+} from "@/api/services/tts/tts-finetune";
 
 const { t } = useI18n();
+
+// 音色微调数据集管理。
+const finetuneDatasets = ref<FinetuneDatasetSummary[]>([]);
+const finetuneDatasetId = ref("");
+const finetuneImporting = ref(false);
+const finetuneError = ref("");
+
+function formatFinetuneDuration(seconds: number) {
+  const total = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(total / 60);
+  return `${minutes}:${String(total % 60).padStart(2, "0")}`;
+}
+
+async function refreshFinetuneDatasets() {
+  try {
+    finetuneDatasets.value = await listFinetuneDatasets();
+  } catch (error) {
+    finetuneError.value = String(error);
+  }
+}
+
+async function importFinetuneDataset() {
+  const selected = await open({
+    multiple: false,
+    filters: [{ name: "Zip", extensions: ["zip"] }],
+  });
+  if (typeof selected !== "string") return;
+
+  const fallbackId = decodePathFileName(selected).replace(/\.[^.]+$/, "");
+  finetuneImporting.value = true;
+  finetuneError.value = "";
+  try {
+    await importFinetuneZip(selected, finetuneDatasetId.value.trim() || fallbackId);
+    finetuneDatasetId.value = "";
+    await refreshFinetuneDatasets();
+  } catch (error) {
+    finetuneError.value = String(error);
+  } finally {
+    finetuneImporting.value = false;
+  }
+}
+
+
+const finetuneBaseModel = ref("");
+const finetuneTraining = ref(false);
+const finetuneProgress = ref<FinetuneTrainingProgress | null>(null);
+
+async function startFinetuneTraining(datasetId: string) {
+  if (!finetuneBaseModel.value) {
+    finetuneError.value = t("settings.sherpaFinetune.selectBase");
+    return;
+  }
+  finetuneError.value = "";
+  finetuneProgress.value = null;
+  finetuneTraining.value = true;
+  const unlisten = await onFinetuneProgress((progress) => {
+    finetuneProgress.value = progress;
+  });
+  try {
+    await trainFinetuneDataset(datasetId, finetuneBaseModel.value);
+  } catch (error) {
+    finetuneError.value = String(error);
+  } finally {
+    unlisten();
+    finetuneTraining.value = false;
+  }
+}
+
+async function cancelTraining() {
+  try {
+    await cancelFinetuneTraining();
+  } catch (error) {
+    finetuneError.value = String(error);
+  }
+}
+
+async function removeFinetuneDataset(datasetId: string) {
+  try {
+    await removeFinetuneDatasetApi(datasetId);
+    await refreshFinetuneDatasets();
+  } catch (error) {
+    finetuneError.value = String(error);
+  }
+}
+
 const uiStore = useUIStore();
 
 const availableModels = ref<SherpaOnnxModelRecord[]>([]);
@@ -404,6 +593,7 @@ const refAudioName = computed(() => {
 
 onMounted(() => {
   loadModels();
+  void refreshFinetuneDatasets();
   progressUnlisten = onSherpaDownloadProgress((progress) => {
     progressByModel.value = {
       ...progressByModel.value,

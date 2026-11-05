@@ -1493,6 +1493,22 @@ export default {
     },
   },
 
+  sherpaFinetune: {
+    selectBase: "Select base model",
+    cancel: "Cancel",
+    training: "Training…",
+    trainDone: "Training finished, checkpoint saved",
+    title: "Voice fine-tuning",
+    desc: "Import a zip containing only audio files. It is normalized automatically and the usable training data is reported.",
+    datasetIdPlaceholder: "Dataset id (defaults to the file name)",
+    import: "Import zip",
+    importing: "Importing…",
+    empty: "No datasets imported yet",
+    duration: "Total duration",
+    ready: "Enough data",
+    insufficient: "Not enough data (at least 5 minutes, all with text labels)",
+    remove: "Remove",
+  },
   sherpa: {
     title: "Sherpa-ONNX Local Voice",
     models: "Models",
