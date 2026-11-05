@@ -168,6 +168,8 @@ pub async fn tts_finetune_train(
 
     let checkpoint = root.join("checkpoint.safetensors");
     let checkpoint_display = checkpoint.display().to_string();
+    // 匿名投影权重映射表放在运行时数据目录（随程序数据分发），不要用编译期路径。
+    let map_path = crate::data_dir::get_data_dir().join("tts-training/decoder_weight_map.json");
 
     let token = CancellationToken::new();
     *active_train()
@@ -183,6 +185,7 @@ pub async fn tts_finetune_train(
                 &decoder_config,
                 &config,
                 &onnx_path,
+                &map_path,
                 Some(&checkpoint),
                 Some(&token),
                 &device,
