@@ -15,6 +15,7 @@
 pub mod base_decoder;
 pub mod base_encoder;
 pub mod burn_backend;
+pub mod burn_encoder;
 pub use base_decoder::{BaseDecoder, BaseDecoderConfig};
 pub use base_encoder::{BaseEncoder, BaseEncoderConfig};
 pub mod base_training;
