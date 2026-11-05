@@ -76,6 +76,24 @@ export interface FinetuneTrainOutcome {
   checkpoint: string;
 }
 
+export interface FinetuneExportOutcome {
+  model_name: string;
+  model_path: string;
+}
+
+/** 把训练好的数据集导出为一个独立的 Sherpa 音色模型目录。 */
+export function exportFinetuneVoice(
+  datasetId: string,
+  baseModelDir: string,
+  modelName: string,
+) {
+  return invoke<FinetuneExportOutcome>("tts_finetune_export", {
+    datasetId,
+    baseModelDir,
+    modelName,
+  });
+}
+
 /** 开始训练，基座目录需包含 tokens.txt 与 lexicon.txt。 */
 export function trainFinetuneDataset(
   datasetId: string,

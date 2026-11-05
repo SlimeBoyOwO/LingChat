@@ -91,7 +91,7 @@ fn load_encoder_weights(
 }
 
 /// 把基座 ONNX 的解码器权重填进参数表（命名张量 + 匿名投影按映射表）。
-fn load_decoder_weights(
+pub fn load_decoder_weights(
     var_map: &VarMap,
     tensors: &[super::onnx_weights::OnnxTensor],
     map_path: &Path,
@@ -192,20 +192,18 @@ fn expand_prior(
         }
     }
     debug_assert_eq!(expanded.len(), channels * target_frames);
-    Ok(Tensor::from_vec(expanded, (1, channels, target_frames), device)?)
+    Ok(Tensor::from_vec(
+        expanded,
+        (1, channels, target_frames),
+        device,
+    )?)
 }
 
 /// 构造训练用的噪声数据（matcha 源实现的 CFM 公式）。
 ///
 /// 返回 `(noisy=y, target=u)`。`sigma=1e-4`。
-fn cfm_noise(
-    mel: &Tensor,
-    noise: &Tensor,
-    time: f64,
-    sigma_min: f64,
-) -> Result<(Tensor, Tensor)> {
-    let noisy = (noise.affine(1.0 - (1.0 - sigma_min) * time, 0.0)?
-        + mel.affine(time, 0.0)?)?;
+fn cfm_noise(mel: &Tensor, noise: &Tensor, time: f64, sigma_min: f64) -> Result<(Tensor, Tensor)> {
+    let noisy = (noise.affine(1.0 - (1.0 - sigma_min) * time, 0.0)? + mel.affine(time, 0.0)?)?;
     let target = (mel - noise.affine(1.0 - sigma_min, 0.0)?)?;
     Ok((noisy, target))
 }
@@ -229,9 +227,8 @@ pub fn train_base(
         anyhow::bail!("语料为空，无法训练");
     }
 
-    let tensors = read_initializers(base_model).with_context(|| {
-        format!("读取基座权重失败: {}", base_model.display())
-    })?;
+    let tensors = read_initializers(base_model)
+        .with_context(|| format!("读取基座权重失败: {}", base_model.display()))?;
 
     // 编码器：独立 VarMap，只加载基座权重，不进优化器（时长与 mel 先验固定）。
     let encoder_vm = VarMap::new();
@@ -250,8 +247,11 @@ pub fn train_base(
     // 每样本预计算 mel 先验并展开到帧级：编码器冻结，整轮训练只算一次。
     let mut priors = Vec::with_capacity(corpus.samples.len());
     for sample in &corpus.samples {
-        let tokens =
-            Tensor::from_vec(sample.token_ids.clone(), (1, sample.token_ids.len()), device)?;
+        let tokens = Tensor::from_vec(
+            sample.token_ids.clone(),
+            (1, sample.token_ids.len()),
+            device,
+        )?;
         let (mel_prior, durations) = encoder.forward(&tokens)?;
         let expanded = expand_prior(&mel_prior, &durations, sample.frames(), device)
             .with_context(|| format!("样本 {} 先验展开失败", sample.id))?;
@@ -303,8 +303,7 @@ pub fn train_base(
             .contiguous()?;
 
             let time_value = rng.uniform();
-            let (noisy, target) =
-                cfm_noise(&mel, &noise, time_value, 1e-4)?;
+            let (noisy, target) = cfm_noise(&mel, &noise, time_value, 1e-4)?;
             let time = base_time_embed(time_value, device)?;
             let predicted = decoder.forward(&noisy, prior, &time)?;
             let loss = flow_matching_loss(&predicted, &target)?;
@@ -415,14 +414,9 @@ mod tests {
     fn expand_prior_aligns_frames() {
         let device = Device::Cpu;
         // 3 token 的 mel 先验，展开到 10 帧。
-        let mel_prior = Tensor::from_vec(
-            (0..3 * 4).map(|i| i as f32).collect(),
-            (1, 4, 3),
-            &device,
-        )
-        .unwrap();
-        let durations =
-            Tensor::from_vec(vec![1.0f32, 2.0, 3.0], (1, 3), &device).unwrap();
+        let mel_prior =
+            Tensor::from_vec((0..3 * 4).map(|i| i as f32).collect(), (1, 4, 3), &device).unwrap();
+        let durations = Tensor::from_vec(vec![1.0f32, 2.0, 3.0], (1, 3), &device).unwrap();
         let expanded = expand_prior(&mel_prior, &durations, 10, &device).unwrap();
         assert_eq!(expanded.dims(), &[1, 4, 10]);
     }
@@ -545,8 +539,7 @@ mod tests {
 
         let after = read_w();
         assert_ne!(
-            before,
-            after,
+            before, after,
             "转置卷积权重未随反向更新，自动微分未穿透该层"
         );
         Ok(())

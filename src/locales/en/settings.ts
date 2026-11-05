@@ -1508,6 +1508,9 @@ export default {
     ready: "Enough data",
     insufficient: "Not enough data (at least 5 minutes, all with text labels)",
     remove: "Remove",
+    export: "Export as voice",
+    exporting: "Exporting…",
+    exportNamePlaceholder: "Voice name",
   },
   sherpa: {
     title: "Sherpa-ONNX Local Voice",

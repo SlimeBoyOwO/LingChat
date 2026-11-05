@@ -6,16 +6,18 @@
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
-use candle_core::Device;
+use candle_core::{DType, Device};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::tts::finetune::{
-    BaseDecoderConfig, BaseEncoderConfig, BaseTrainingConfig, BaseTrainingOutcome, CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetManifest, DatasetStats,
-    ImportReport, MelConfig, TextFrontend, TrainingProgress, build_corpus, finetune_root,
+    BaseDecoder, BaseDecoderConfig, BaseEncoderConfig, BaseTrainingConfig, BaseTrainingOutcome,
+    CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetManifest, DatasetStats, ImportReport, MelConfig,
+    TextFrontend, TrainingProgress, base_training, build_corpus, export_tuned_model, finetune_root,
     import_zip, list_datasets, load_manifest, remove_dataset, train_base,
 };
+use candle_nn::{VarBuilder, VarMap};
 
 /// 数据集摘要，供前端列表展示。
 #[derive(Debug, Clone, Serialize)]
@@ -47,8 +49,9 @@ pub async fn tts_finetune_import(
     overwrite: Option<bool>,
 ) -> Result<ImportReport, String> {
     // Android 的 content:// 先落到 cache 成真实路径；桌面端原路径直通。
-    let src = crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &zip_path)
-        .await?;
+    let src =
+        crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &zip_path)
+            .await?;
     if !src.path.is_file() {
         return Err(format!("压缩包不存在: {zip_path}"));
     }
@@ -170,8 +173,8 @@ pub async fn tts_finetune_train(
         .lock()
         .map_err(|_| "训练状态锁失效".to_string())? = Some(token.clone());
 
-    let result = tauri::async_runtime::spawn_blocking(
-        move || -> anyhow::Result<BaseTrainingOutcome> {
+    let result =
+        tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<BaseTrainingOutcome> {
             let device = Device::Cpu;
             train_base(
                 &corpus,
@@ -198,9 +201,8 @@ pub async fn tts_finetune_train(
                     let _ = app.emit("tts:finetune-progress", legacy);
                 },
             )
-        },
-    )
-    .await;
+        })
+        .await;
 
     if let Ok(mut guard) = active_train().lock() {
         *guard = None;
@@ -234,6 +236,157 @@ fn find_base_onnx(base: &PathBuf) -> Result<PathBuf, String> {
         .first()
         .map(|entry| entry.path())
         .ok_or_else(|| format!("基座目录缺少声学 ONNX: {}", base.display()))
+}
+
+/// 导出结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct FinetuneExportOutcome {
+    /// 生成的可选音色模型目录（相对 sherpa_onnx_models 的名字）。
+    pub model_name: String,
+    /// 模型目录的绝对路径。
+    pub model_path: String,
+}
+
+/// 把训练好的解码器导出为独立的 Sherpa 音色模型目录。
+///
+/// 读取数据集检查点，把微调后的解码器权重写回基座声学 ONNX，再把导出的声学
+/// 模型与基座配套文件（tokens/lexicon/dict/规则 FST/声码器）组装成一个自洽的
+/// `sherpa_onnx_models/<model_name>/` 目录。目录一落地即被模型管理器自动识别为
+/// 一个可选 matcha 音色，设置页可直接选中。
+#[tauri::command]
+pub async fn tts_finetune_export(
+    dataset_id: String,
+    base_model_dir: String,
+    model_name: String,
+) -> Result<FinetuneExportOutcome, String> {
+    let model_name = model_name.trim().to_string();
+    // 复用导入暂存文件的命名净化规则，保证目录名安全且可用于文件系统。
+    let sanitized =
+        crate::ai_service::tts::local::saf_bridge::sanitize_staged_filename(&model_name)
+            .ok_or_else(|| "请给音色起个名字".to_string())?;
+
+    let root = finetune_root().join(&dataset_id);
+    if !root.is_dir() {
+        return Err(format!("数据集不存在: {dataset_id}"));
+    }
+    let base = PathBuf::from(&base_model_dir);
+    if !base.is_dir() {
+        return Err(format!("基座目录不存在: {}", base.display()));
+    }
+
+    let checkpoint = root.join("checkpoint.safetensors");
+    if !checkpoint.is_file() {
+        return Err(format!(
+            "数据集尚未训练，缺少检查点: {}",
+            checkpoint.display()
+        ));
+    }
+    let weight_map = crate::data_dir::get_data_dir().join("tts-training/decoder_weight_map.json");
+    if !weight_map.is_file() {
+        return Err(format!("缺少权重映射表: {}", weight_map.display()));
+    }
+    let onnx_path = find_base_onnx(&base)?;
+
+    let device = Device::Cpu;
+    // 组装解码器 VarMap：结构与基座一致，再从检查点装载微调参数。
+    let mut var_map = VarMap::new();
+    let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
+    BaseDecoder::new(&BaseDecoderConfig::default(), vb)
+        .map_err(|error| format!("构造解码器失败: {error}"))?;
+    base_training::load_checkpoint(&mut var_map, &checkpoint)
+        .map_err(|error| format!("读取检查点失败: {error:#}"))?;
+
+    let dest_dir = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+        .join(&sanitized);
+    tokio::fs::create_dir_all(&dest_dir)
+        .await
+        .map_err(|error| format!("创建模型目录失败: {error}"))?;
+
+    // 1) 导出写进临时文件，再原子搬到模型目录的 model-steps-*.onnx。
+    let tmp = root.join(".export-tmp.onnx");
+    tokio::task::spawn_blocking({
+        let weight_map = weight_map.clone();
+        let onnx_path = onnx_path.clone();
+        let tmp = tmp.clone();
+        move || {
+            export_tuned_model(&var_map, &onnx_path, &weight_map, &tmp)
+                .map_err(|error| error.to_string())
+        }
+    })
+    .await
+    .map_err(|error| format!("导出任务失败: {error}"))??;
+    let acoustic_name = "model-steps-3.onnx";
+    tokio::fs::rename(&tmp, dest_dir.join(acoustic_name))
+        .await
+        .map_err(|error| format!("移动导出声学模型失败: {error}"))?;
+
+    // 2) 复用基座配套文件（词表、音素表、dict、规则 FST、声码器）。
+    for name in [
+        "tokens.txt",
+        "lexicon.txt",
+        "vocos-22khz-univ.onnx",
+        "phone.fst",
+        "date.fst",
+        "number.fst",
+    ] {
+        let src = base.join(name);
+        if !src.is_file() {
+            continue;
+        }
+        tokio::fs::copy(&src, dest_dir.join(name))
+            .await
+            .map_err(|error| format!("复制 {} 失败: {error}", src.display()))?;
+    }
+    if base.join("dict").is_dir() {
+        let proto = copy_dir_tree;
+        let src = base.join("dict");
+        let dst = dest_dir.join("dict");
+        tokio::task::spawn_blocking(move || proto(&src, &dst))
+            .await
+            .map_err(|error| format!("复制 dict 失败: {error}"))??;
+    }
+
+    // 3) 写 config.json：声明为 matcha，供模型管理器识别 type/语音。
+    let config = serde_json::json!({
+        "model_type": "matcha",
+        "language": "zh",
+        "voice": sanitized,
+    });
+    tokio::fs::write(
+        dest_dir.join("config.json"),
+        serde_json::to_string_pretty(&config).unwrap(),
+    )
+    .await
+    .map_err(|error| format!("写 config.json 失败: {error}"))?;
+
+    Ok(FinetuneExportOutcome {
+        model_name: sanitized.clone(),
+        model_path: dest_dir.to_string_lossy().to_string(),
+    })
+}
+
+/// 递归拷贝一个目录树。
+fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst)
+        .map_err(|error| format!("创建目录 {} 失败: {error}", dst.display()))?;
+    for entry in std::fs::read_dir(src)
+        .map_err(|error| format!("读取目录 {} 失败: {error}", src.display()))?
+    {
+        let entry = entry.map_err(|error| format!("读取目录项失败: {error}"))?;
+        let from = entry.path();
+        let to = dst.join(entry.file_name());
+        let ty = entry
+            .file_type()
+            .map_err(|error| format!("读取文件类型失败: {error}"))?;
+        if ty.is_dir() {
+            copy_dir_tree(&from, &to)?;
+        } else {
+            std::fs::copy(&from, &to)
+                .map_err(|error| format!("复制 {} 失败: {error}", from.display()))?;
+        }
+    }
+    Ok(())
 }
 
 /// 取消正在进行的训练。

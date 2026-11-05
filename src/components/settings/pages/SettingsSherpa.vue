@@ -394,6 +394,19 @@
             </button>
             <button
               class="btn-secondary"
+              :disabled="finetuneExporting === dataset.dataset_id"
+              :title="t('settings.sherpaFinetune.export')"
+              @click="exportVoice(dataset.dataset_id)"
+            >
+              <Loader2
+                v-if="finetuneExporting === dataset.dataset_id"
+                :size="16"
+                class="spin"
+              />
+              <Package v-else :size="16" />
+            </button>
+            <button
+              class="btn-secondary"
               :title="t('settings.sherpaFinetune.remove')"
               @click="removeFinetuneDataset(dataset.dataset_id)"
             >
@@ -447,6 +460,7 @@ import {
   importFinetuneZip,
   removeFinetuneDataset as removeFinetuneDatasetApi,
   trainFinetuneDataset,
+  exportFinetuneVoice,
   cancelFinetuneTraining,
   onFinetuneProgress,
   type FinetuneDatasetSummary,
@@ -460,6 +474,7 @@ const finetuneDatasets = ref<FinetuneDatasetSummary[]>([]);
 const finetuneDatasetId = ref("");
 const finetuneImporting = ref(false);
 const finetuneError = ref("");
+const finetuneExporting = ref<string | null>(null);
 
 function formatFinetuneDuration(seconds: number) {
   const total = Math.max(0, Math.round(seconds));
@@ -536,6 +551,42 @@ async function removeFinetuneDataset(datasetId: string) {
     await refreshFinetuneDatasets();
   } catch (error) {
     finetuneError.value = String(error);
+  }
+}
+
+/** 把训练好的数据集导成一个独立音色，成功后刷新模型列表使其可选。 */
+async function exportVoice(datasetId: string) {
+  if (!finetuneBaseModel.value) {
+    finetuneError.value = t("settings.sherpaFinetune.selectBase");
+    return;
+  }
+  const modelName = window.prompt(
+    t("settings.sherpaFinetune.exportNamePlaceholder"),
+    datasetId,
+  );
+  if (modelName === null) return;
+  if (!modelName.trim()) {
+    finetuneError.value = t("settings.sherpaFinetune.exportNamePlaceholder");
+    return;
+  }
+  finetuneError.value = "";
+  finetuneExporting.value = datasetId;
+  try {
+    const outcome = await exportFinetuneVoice(
+      datasetId,
+      finetuneBaseModel.value,
+      modelName,
+    );
+    await loadModels();
+    // 导出完成后自动选中新音色，方便立即试听。
+    const model = availableModels.value.find(
+      (item) => item.id === outcome.model_name,
+    );
+    if (model) selectModel(model);
+  } catch (error) {
+    finetuneError.value = String(error);
+  } finally {
+    finetuneExporting.value = null;
   }
 }
 

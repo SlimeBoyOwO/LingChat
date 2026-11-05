@@ -1753,6 +1753,9 @@ export default {
     ready: "数据量达标",
     insufficient: "数据量不足（至少 5 分钟且全部有文本标注）",
     remove: "删除",
+    export: "导出为音色",
+    exporting: "导出中…",
+    exportNamePlaceholder: "音色名",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地语音",

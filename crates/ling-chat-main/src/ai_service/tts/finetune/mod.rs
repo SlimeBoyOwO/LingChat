@@ -29,26 +29,26 @@ pub mod resample;
 pub mod text;
 pub mod training;
 
+pub use base_training::{
+    BaseTrainingConfig, BaseTrainingOutcome, BaseTrainingProgress, load_decoder_weights, train_base,
+};
 pub use corpus::{
     Corpus, CorpusConfig, CorpusStats, SkippedSample, TrainingSample, build_corpus, make_batches,
 };
 pub use decoder::{CfmConfig, CfmDecoder, flow_matching_loss};
 pub use feature::{MelConfig, MelFilterbank, log_mel, stft_magnitude};
-pub use model::{Matcha, MatchaConfig};
-pub use training::{
-    TrainingConfig, TrainingOutcome, TrainingProgress, load_checkpoint, save_checkpoint, train,
-};
-pub use base_training::{
-    BaseTrainingConfig, BaseTrainingOutcome, BaseTrainingProgress, train_base,
-};
 pub use import::{
     DatasetItem, DatasetManifest, DatasetStats, ImportReport, SkippedItem, finetune_root,
     import_zip, list_datasets, load_manifest, remove_dataset,
 };
+pub use model::{Matcha, MatchaConfig};
 pub use normalize::{NormalizeReport, normalize_to_wav};
 pub use onnx_export::export_tuned_model;
 pub use onnx_weights::{OnnxTensor, read_initializers};
 pub use text::{Lexicon, TextFrontend, TokenTable};
+pub use training::{
+    TrainingConfig, TrainingOutcome, TrainingProgress, load_checkpoint, save_checkpoint, train,
+};
 
 /// 数据集默认归一化采样率。
 ///
