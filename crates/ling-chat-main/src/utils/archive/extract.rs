@@ -121,6 +121,11 @@ pub fn extract_zip(
 
 /// 解压 7z 归档到指定目录。
 ///
+/// `skip_existing` 为 true 时，目标路径已存在的文件一律跳过、不覆写
+/// （用于移动端增量补齐缺失的默认资源，保留用户已生成/改动的数据）。
+/// 注意：7z 是固实归档，跳过写入不等于跳过解压，
+/// 整条数据流仍会被解码，只是不再落盘。
+///
 /// 安全策略（取消、条目数、压缩比、路径清洗、子树校验）与 [`extract_zip`] 完全一致。
 ///
 /// 7z 解压器需要分两遍：固实块顺序的数据流条目先建文件，再遍历建无流目录与空文件。
@@ -129,6 +134,7 @@ pub fn extract_zip(
 pub fn extract_sevenz(
     src: &Path,
     dest_root: &Path,
+    skip_existing: bool,
     cancel_token: &CancellationToken,
     on_entry: &dyn Fn(EntryEvent),
 ) -> Result<ExtractSummary, ArchiveError> {
@@ -200,17 +206,22 @@ pub fn extract_sevenz(
             std::fs::create_dir_all(&out_path)
                 .map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
         } else {
-            if let Some(parent) = out_path.parent() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
-            }
-            let mut f =
-                File::create(&out_path).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
-            if uncompressed > 0 {
-                let n =
-                    io::copy(reader, &mut f).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
-                bytes_done += n;
-                summary.files_extracted += 1;
+            if skip_existing && out_path.exists() {
+                // 目标已存在且选择跳过：仍需把固实流解到尾部，否则后续条目错位。
+                let mut sink = std::io::sink();
+                let _ = io::copy(reader, &mut sink);
+            } else {
+                if let Some(parent) = out_path.parent() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+                }
+                let mut f =
+                    File::create(&out_path).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+                io::copy(reader, &mut f).map_err(|e| sevenz_rust2::Error::Io(e, "".into()))?;
+                bytes_done += uncompressed;
+                if uncompressed > 0 {
+                    summary.files_extracted += 1;
+                }
             }
         }
 
@@ -270,6 +281,9 @@ pub fn extract_sevenz(
         };
         // 7-Zip 把空文件记成无数据流、非目录、size 为 0。
         // 这里如果照 size == 0 去建目录，.gitkeep / empty.json 会变成目录。
+        if skip_existing && out_path.exists() {
+            continue;
+        }
         write_unstreamed_entry(entry.is_directory(), &out_path)?;
     }
 
@@ -353,7 +367,7 @@ mod tests {
         assert_eq!(entry_flags(&archive, "keep"), (false, true, 0));
 
         let dest = root.path().join("out");
-        extract_sevenz(&archive, &dest, &CancellationToken::new(), &|_| {}).unwrap();
+        extract_sevenz(&archive, &dest, false, &CancellationToken::new(), &|_| {}).unwrap();
 
         let gitkeep = dest.join(".gitkeep");
         let empty_json = dest.join("keep/empty.json");
@@ -404,5 +418,30 @@ mod tests {
         assert_eq!(err.kind(), std::io::ErrorKind::AlreadyExists);
         assert!(blocker.is_file());
         assert!(!blocker.join(".gitkeep").exists());
+    }
+
+    #[test]
+    fn 跳过已存在文件时不覆盖() {
+        let root = tempfile::tempdir().unwrap();
+        let archive = root.path().join("fixture.7z");
+        write_fixture(&archive);
+
+        let dest = root.path().join("out");
+        // 先留一个本地已存在、内容不同的 readme.txt，模拟移动端升级后的本地数据。
+        std::fs::create_dir_all(&dest).unwrap();
+        std::fs::write(dest.join("readme.txt"), b"user-edit").unwrap();
+
+        // missing-on-disk 的文件没有在 fixture 里，这里直接验证：skip_existing=true
+        // 时已存在的 readme.txt 不被覆盖，其余（.gitkeep / empty.json）照常补建。
+        extract_sevenz(&archive, &dest, true, &CancellationToken::new(), &|_| {}).unwrap();
+
+        // 已存在文件保持原内容，不被归档覆盖。
+        assert_eq!(
+            std::fs::read_to_string(dest.join("readme.txt")).unwrap(),
+            "user-edit"
+        );
+        // 缺的文件照常补齐。
+        assert!(dest.join(".gitkeep").is_file());
+        assert!(dest.join("keep/empty.json").is_file());
     }
 }

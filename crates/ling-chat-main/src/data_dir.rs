@@ -92,12 +92,32 @@ pub fn seed_data_dir(app: &tauri::AppHandle) -> anyhow::Result<()> {
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let manifest = data_dir.join("data_manifest.json");
-        if seeded.exists() && manifest.exists() {
+        let local_manifest_path = data_dir.join("data_manifest.json");
+        let was_seeded = seeded.exists();
+        let needs_full = !was_seeded;
+        // 比较打包清单与本地清单。若 .seeded 已存在但打包内容有新增，
+        // 仅增量补齐缺失文件，不覆盖本地已有/已改动数据。
+        let packaged_manifest = read_packaged_manifest(app)?;
+        let local_manifest = local_manifest_path
+            .exists()
+            .then(|| crate::manifest::DataManifest::load(&local_manifest_path).ok())
+            .flatten();
+        let needs_refresh = needs_full
+            || match (&packaged_manifest, &local_manifest) {
+                (Some(p), Some(l)) => l.diff(p).files_to_add.iter().any(|_| true),
+                (Some(_), None) => true,
+                _ => false,
+            };
+
+        if !needs_refresh {
             return Ok(());
         }
-        let _ = std::fs::remove_file(&seeded);
-        seed_via_fs_plugin(app, &data_dir)?;
+
+        let skip_existing = was_seeded && needs_refresh && !needs_full;
+        seed_via_fs_plugin(app, &data_dir, skip_existing)?;
+        if let Some(p) = packaged_manifest {
+            p.save(&local_manifest_path)?;
+        }
         std::fs::write(&seeded, b"")
             .map_err(|e| anyhow::anyhow!("failed to write .seeded marker: {}", e))?;
         tracing::info!("Data directory seeding complete (mobile)");
@@ -156,7 +176,11 @@ fn seed_desktop(
 ///   → 读取 `{resource_dir}/data/data.7z`（不要再拼一层 `assets/`，否则变成
 ///   `<bundle>/assets/assets/data/data.7z` 导致播种失败）
 #[cfg(any(target_os = "android", target_os = "ios"))]
-fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
+fn seed_via_fs_plugin(
+    app: &tauri::AppHandle,
+    data_dir: &std::path::Path,
+    skip_existing: bool,
+) -> anyhow::Result<()> {
     use anyhow::Context;
     use tauri::Manager;
     use tauri_plugin_fs::FsExt;
@@ -181,11 +205,52 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
         .read(std::path::Path::new(&archive_asset))
         .with_context(|| format!("failed to read data.7z from {}", archive_asset))?;
 
-    let cursor = std::io::Cursor::new(archive_bytes);
-    tracing::info!("Extracting data.7z ({} bytes)", cursor.get_ref().len());
+    tracing::info!("Extracting data.7z ({} bytes, skip_existing={})", archive_bytes.len(), skip_existing);
 
-    sevenz_rust2::decompress(cursor, data_dir).context("failed to extract data.7z")?;
+    // 归档在内存中，extract_sevenz 需要文件路径，先落盘到临时文件再解压。
+    let tmp_archive = data_dir.join(".data_seed_tmp.7z");
+    std::fs::write(&tmp_archive, &archive_bytes)
+        .context("failed to stage data.7z to temp file")?;
+
+    let result = crate::utils::archive::extract_sevenz(
+        &tmp_archive,
+        data_dir,
+        skip_existing,
+        &tokio_util::sync::CancellationToken::new(),
+        &|_| {},
+    );
+    let _ = std::fs::remove_file(&tmp_archive);
+    result.context("failed to extract data.7z")?;
 
     tracing::info!("Data extraction from data.7z complete");
     Ok(())
+}
+
+/// 读取打包在资源目录（data.7z 之外）的 `data/data_manifest.json`。
+///
+/// 构建脚本 `prepare-bundled-resources.mjs` 会把清单额外复制一份放到
+/// `data/data_manifest.json`，供这里快速读取，无需全量解压 data.7z 即可
+/// 得知默认资源文件集合，从而判断是否要增量补齐缺失文件。
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn read_packaged_manifest(
+    app: &tauri::AppHandle,
+) -> anyhow::Result<Option<crate::manifest::DataManifest>> {
+    use anyhow::Context;
+    use tauri::Manager;
+    use tauri_plugin_fs::FsExt;
+
+    let base = app
+        .path()
+        .resource_dir()
+        .context("failed to resolve resource_dir on mobile")?;
+    let base = base.to_string_lossy();
+    let base = base.trim_end_matches('/');
+    let asset = format!("{}/data/data_manifest.json", base);
+
+    match app.fs().read(std::path::Path::new(&asset)) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| anyhow::anyhow!("failed to parse packaged manifest: {e}")),
+        Err(_) => Ok(None),
+    }
 }
