@@ -133,7 +133,7 @@ pub async fn tts_finetune_train(
         return Err(format!("数据集不存在: {dataset_id}"));
     }
 
-    let base = PathBuf::from(&base_model_dir);
+    let base = resolve_base_dir(&base_model_dir);
     let tokens_path = base.join("tokens.txt");
     if !tokens_path.is_file() {
         return Err(format!("基座目录缺少 tokens.txt: {}", base.display()));
@@ -238,6 +238,21 @@ fn find_base_onnx(base: &PathBuf) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("基座目录缺少声学 ONNX: {}", base.display()))
 }
 
+/// 把前端传入的「基座模型目录」参数归一化为目录路径。
+///
+/// 前端给的 `model.path` 是模型目录里的声学 ONNX 文件（如
+/// `…/matcha-icefall-zh-baker/model-steps-3.onnx`），而训练/导出需要的是**整个
+/// 模型目录**（含 tokens.txt / lexicon.txt / voCos）。若传入的是文件则取父目录，
+/// 兼容两种传法。
+fn resolve_base_dir(base_model_dir: &str) -> PathBuf {
+    let p = PathBuf::from(base_model_dir);
+    if p.is_file() {
+        p.parent().map(PathBuf::from).unwrap_or(p)
+    } else {
+        p
+    }
+}
+
 /// 导出结果。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -270,7 +285,7 @@ pub async fn tts_finetune_export(
     if !root.is_dir() {
         return Err(format!("数据集不存在: {dataset_id}"));
     }
-    let base = PathBuf::from(&base_model_dir);
+    let base = resolve_base_dir(&base_model_dir);
     if !base.is_dir() {
         return Err(format!("基座目录不存在: {}", base.display()));
     }
