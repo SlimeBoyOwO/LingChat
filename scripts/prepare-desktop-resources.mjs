@@ -147,6 +147,27 @@ if (isMobile) {
 }
 console.log(`✅ 已复制 ${thirdPartyCount} 个 third_party 文件`);
 
+// ─── 复制 tts-training 文件（移动端由 data.7z 提供，仅建空目录占位） ───
+//
+// 微调训练的解码器匿名权重映射表。桌面端已由上方 gitFiles 循环把
+// `decoder_weight_map.json` 复制进 staging；移动端数据走 data.7z，
+// 无需在 bundle.resources 里额外复制，但 Tauri 构建会校验源路径存在，
+// 故同样创建空目录占位（与 third_party 一致）。
+const ttsTrainingDst = join(stagingDir, "tts-training");
+if (isMobile) {
+  // 移动端：tts-training 已打包进 data.7z，这里只创建空占位目录，
+  // 满足 tauri-cli inject_resources 对 bundle.resources 源路径的校验。
+  mkdirSync(ttsTrainingDst, { recursive: true });
+} else if (
+  existsSync(join(ttsTrainingDst, "decoder_weight_map.json"))
+) {
+  console.log(
+    "   tts-training: decoder_weight_map.json 已就位（git 跟踪文件）",
+  );
+} else {
+  console.warn("   ⚠ staging 里缺少 tts-training/decoder_weight_map.json");
+}
+
 // ─── 生成 data_manifest.json (仅 game_data) ─────────────────
 
 const dataVersion = parseInt(process.env.DATA_VERSION, 10) || 1;
