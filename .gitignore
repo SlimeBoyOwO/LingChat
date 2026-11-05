@@ -230,3 +230,4 @@ data/plugins/**/*.py[cod]
 prev-build-*/
 
 .dsh-ops/
+.venv-onnx/
