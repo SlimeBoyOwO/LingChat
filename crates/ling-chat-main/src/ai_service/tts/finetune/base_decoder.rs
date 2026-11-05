@@ -561,6 +561,10 @@ impl BaseDecoder {
         }
         for (block, attention, sampler) in &self.up {
             let skip = skips.pop().expect("skip 对齐");
+            if hidden.dims3()?.2 != skip.dims3()?.2 {
+                let (_, _, sf) = skip.dims3()?;
+                hidden = hidden.narrow(2, 0, sf)?;
+            }
             hidden = Tensor::cat(&[hidden.clone(), skip], 1)?;
             hidden = block.forward(&hidden, &time)?;
             out.push(hidden.clone());
@@ -599,6 +603,11 @@ impl BaseDecoder {
         // 上采样路径（栈序取 skip）。
         for (block, attention, sampler) in &self.up {
             let skip = skips.pop().expect("解码器 up 阶段的 skip 数量与 down 对齐");
+            // 奇数帧时转置上采样会多一帧，拼 channel 前修剪到与 skip 一致，避免 cat 维度不匹配。
+            if hidden.dims3()?.2 != skip.dims3()?.2 {
+                let (_, _, sf) = skip.dims3()?;
+                hidden = hidden.narrow(2, 0, sf)?;
+            }
             hidden = Tensor::cat(&[hidden.clone(), skip], 1)?;
             hidden = block.forward(&hidden, &time)?;
             hidden = attention.forward(&hidden)?;
@@ -729,6 +738,28 @@ mod tests {
         assert_eq!(output.dims()[0], 1);
         assert_eq!(output.dims()[1], 80);
         assert_eq!(output.rank(), 3);
+    }
+
+    #[test]
+    fn forward_odd_length_output_matches_input() {
+        let device = Device::Cpu;
+        let var_map = candle_nn::VarMap::new();
+        let vb = VarBuilder::from_varmap(&var_map, candle_core::DType::F32, &device);
+        let decoder = BaseDecoder::new(&BaseDecoderConfig::default(), vb).unwrap();
+
+        // 奇数帧：下采样 stride=2 后再转置上采样会多一帧，通道拼接前需修剪，
+        // 输出帧数必须与输入一致，否则训练时报 cat 维度不匹配。
+        for frames in [31usize, 233, 234, 1001] {
+            let noisy = Tensor::randn(0f32, 1f32, (1, 80, frames), &device).unwrap();
+            let text = Tensor::randn(0f32, 1f32, (1, 80, frames), &device).unwrap();
+            let time = Tensor::randn(0f32, 1f32, (1, 160), &device).unwrap();
+            let output = decoder.forward(&noisy, &text, &time).unwrap();
+            assert_eq!(
+                output.dims(),
+                &[1, 80, frames],
+                "奇数帧 {frames} 下输出帧数应与输入一致"
+            );
+        }
     }
 
     #[test]
