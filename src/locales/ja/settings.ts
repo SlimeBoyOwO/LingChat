@@ -1504,6 +1504,7 @@ export default {
   sherpa: {
     title: "Sherpa-ONNX ローカル音声",
     models: "モデル",
+    asrTag: "認識",
     noModels: "利用可能なモデルがありません。先にダウンロードしてください",
     manageModels: "モデルフォルダを開く",
     modelConfig: "モデル設定",

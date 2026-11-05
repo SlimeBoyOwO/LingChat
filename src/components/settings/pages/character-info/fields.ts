@@ -490,12 +490,14 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         isVoiceModel: true,
         onChange: (value) => applySherpaModelDefaults?.(value),
         dynamicOptions: () =>
-          installedSherpaModels.length === 0
+          installedSherpaModels.filter((m) => !m.model_type.startsWith("asr")).length === 0
             ? [{ label: t("settings.characterInfo.fields.noSherpaModel"), value: "" }]
-            : installedSherpaModels.map((model) => ({
-                label: model.display_name || model.id,
-                value: model.id,
-              })),
+            : installedSherpaModels
+                .filter((m) => !m.model_type.startsWith("asr"))
+                .map((model) => ({
+                  label: model.display_name || model.id,
+                  value: model.id,
+                })),
         visibleIf: (s) => s.tts_type === "sherpa-onnx",
       },
       {

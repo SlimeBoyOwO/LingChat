@@ -17,6 +17,7 @@ use crate::ai_service::asr::providers::llama::{LlamaAsrProvider, parse_llama_mod
 use crate::ai_service::asr::providers::qwen::{
     QwenAsrProvider, hotwords_to_vocabulary_json, take_within_capacity,
 };
+use crate::ai_service::asr::providers::sherpa::SherpaAsrProvider;
 use crate::ai_service::asr::qwen_models::{qwen_max_hotword_count, qwen_models};
 use crate::ai_service::asr::region::DashScopeRegion;
 
@@ -41,6 +42,17 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             supports_streaming: false,
             config_fields: llama_asr_config_fields(),
             // 本地服务无地域概念：空数组 → 前端不渲染地域下拉
+            regions: Vec::new(),
+        },
+        // 本地离线 sherpa-onnx ASR：零配置，模型从共享的 sherpa 模型下载页装好后即用。
+        // 仅供微调数据集自动标注；不参与设置页里的聊天时的实时语音识别，故不要求
+        // ASR 会话初始化。
+        ProviderInfo {
+            id: SherpaAsrProvider::ID,
+            display_name: SherpaAsrProvider::DISPLAY,
+            description: "本地 sherpa-onnx 离线识别（SenseVoice，用于自动标注）",
+            supports_streaming: false,
+            config_fields: Vec::new(),
             regions: Vec::new(),
         },
     ]
@@ -211,6 +223,7 @@ pub async fn get_provider(
     let provider: Arc<dyn AsrProvider> = match id {
         QwenAsrProvider::ID => Arc::new(QwenAsrProvider::new(http.clone(), cred.clone())?),
         LlamaAsrProvider::ID => Arc::new(LlamaAsrProvider::new(http.clone(), cred.clone())),
+        SherpaAsrProvider::ID => Arc::new(SherpaAsrProvider::new()),
         other => {
             return Err(AsrError::ProviderNotFound(other.into()));
         },

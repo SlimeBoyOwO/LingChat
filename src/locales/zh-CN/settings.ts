@@ -1764,6 +1764,7 @@ export default {
   sherpa: {
     title: "Sherpa-ONNX 本地语音",
     models: "模型",
+    asrTag: "识别",
     noModels: "暂无可用模型，请先下载",
     manageModels: "打开模型文件夹",
     modelConfig: "模型配置",

@@ -472,18 +472,27 @@ pub async fn tts_finetune_auto_annotate(
     provider_id: String,
     language_hint: Option<String>,
 ) -> Result<FinetuneAnnotateReport, String> {
+    // 语言提示参数保留（前端仍传），但上游 ASR API 已移除语言字段，这里不再透传。
+    let _ = language_hint;
     let root = finetune_root().join(&dataset_id);
     if !root.is_dir() {
         return Err(format!("数据集不存在: {dataset_id}"));
     }
 
-    // 取 ASR 会话。未初始化（未启动/init 失败）时给明确提示。
-    let session = {
+    // 本地优先、云端回退：只要共享模型目录里已装 SenseVoice，就用本地 sherpa
+    // （零配置、无凭据）；否则回退到前端传来的云端 provider。即使前端显式要
+    // 云端，装了本地模型也优先走本地，未装时自然落回云端。
+    let local_sherpa = provider_id
+        == crate::ai_service::asr::providers::sherpa::SherpaAsrProvider::ID
+        || crate::ai_service::asr::providers::sherpa::SherpaAsrProvider::model_installed();
+    let session = if !local_sherpa {
+        // 取 ASR 会话。未初始化（未启动/init 失败）时给明确提示。
         let guard = state.asr_state.session.lock().await;
-        guard
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| "ASR 未初始化，请先配置并初始化语音识别".to_string())?
+        Some(guard.as_ref().cloned().ok_or_else(|| {
+            "ASR 未初始化，请先配置并初始化语音识别（本地 sherpa 模型则不需要）".to_string()
+        })?)
+    } else {
+        None
     };
 
     let mut manifest = load_manifest(&dataset_id).map_err(|e| format!("读取数据集失败: {e:#}"))?;
@@ -496,7 +505,6 @@ pub async fn tts_finetune_auto_annotate(
         .collect();
 
     let opts = crate::ai_service::asr::provider::AsrOptions {
-        language_hint,
         hotwords: Vec::new(),
     };
     let mut annotated = 0usize;
@@ -535,7 +543,26 @@ pub async fn tts_finetune_auto_annotate(
             },
         };
 
-        let recognized = session.recognize_wav(provider_id.clone(), wav_bytes, &opts).await;
+        let recognized = {
+            if let Some(s) = &session {
+                s.recognize_wav(provider_id.clone(), wav_bytes.clone(), &opts)
+                    .await
+            } else {
+                let http = reqwest::Client::new();
+                let cred: crate::ai_service::asr::provider_types::ProviderCredentials =
+                    Default::default();
+                let provider = crate::ai_service::asr::registry::get_provider(
+                    crate::ai_service::asr::providers::sherpa::SherpaAsrProvider::ID,
+                    &cred,
+                    &http,
+                )
+                .await;
+                match provider {
+                    Ok(p) => p.recognize(wav_bytes.clone(), &opts).await,
+                    Err(e) => Err(e),
+                }
+            }
+        };
         match recognized {
             Ok(result) => {
                 let text = result.text.trim().to_string();
