@@ -297,6 +297,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         ai_service::tts::local::tts_local_set_device,
         // Sherpa-ONNX 本地 TTS 模型管理相关命令
         api::tts_finetune::tts_finetune_train,
+        api::tts_finetune::tts_finetune_export,
         api::tts_finetune::tts_finetune_cancel,
         api::tts_finetune::tts_finetune_import,
         api::tts_finetune::tts_finetune_list,
