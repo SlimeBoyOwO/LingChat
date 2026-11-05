@@ -210,7 +210,8 @@ fn cfm_noise(mel: &Tensor, noise: &Tensor, time: f64, sigma_min: f64) -> Result<
 
 /// 执行基座对齐训练：只更新解码器，编码器与时长固定用基座预测。
 ///
-/// `base_model` 是基座 ONNX 路径，从中读取权重填充编码器与解码器。
+/// `base_model` 是基座 ONNX 路径，从中读取权重填充编码器与解码器；
+/// `map_path` 是匿名投影权重映射表（`decoder_weight_map.json`）。
 #[allow(clippy::too_many_arguments)]
 pub fn train_base(
     corpus: &Corpus,
@@ -218,6 +219,7 @@ pub fn train_base(
     decoder_config: &BaseDecoderConfig,
     config: &BaseTrainingConfig,
     base_model: &Path,
+    map_path: &Path,
     checkpoint_path: Option<&Path>,
     cancel: Option<&CancellationToken>,
     device: &Device,
@@ -226,7 +228,14 @@ pub fn train_base(
     if corpus.samples.is_empty() {
         anyhow::bail!("语料为空，无法训练");
     }
+    if !map_path.is_file() {
+        anyhow::bail!(
+            "缺少解码器权重映射表: {}（请确认它随程序数据分发）",
+            map_path.display()
+        );
+    }
 
+    tracing::info!("[训练] 载入基座权重: {}", base_model.display());
     let tensors = read_initializers(base_model)
         .with_context(|| format!("读取基座权重失败: {}", base_model.display()))?;
 
@@ -240,9 +249,8 @@ pub fn train_base(
     let decoder_vm = VarMap::new();
     let decoder_vb = VarBuilder::from_varmap(&decoder_vm, DType::F32, device);
     let decoder = BaseDecoder::new(decoder_config, decoder_vb)?;
-    let map_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/tts-training/decoder_weight_map.json");
-    load_decoder_weights(&decoder_vm, &tensors, &map_path, device)?;
+    load_decoder_weights(&decoder_vm, &tensors, map_path, device)
+        .with_context(|| format!("填充解码器权重失败，映射表: {}", map_path.display()))?;
 
     // 每样本预计算 mel 先验并展开到帧级：编码器冻结，整轮训练只算一次。
     let mut priors = Vec::with_capacity(corpus.samples.len());
@@ -259,6 +267,12 @@ pub fn train_base(
     }
 
     let total_steps = config.epochs * corpus.samples.len();
+    tracing::info!(
+        "[训练] 开始：样本 {} 条，{} 轮共 {total_steps} 步，lr={}",
+        corpus.samples.len(),
+        config.epochs,
+        config.learning_rate
+    );
     let params = ParamsAdamW {
         lr: config.learning_rate,
         ..Default::default()
@@ -278,6 +292,7 @@ pub fn train_base(
         for index in order {
             if cancel.is_some_and(|token| token.is_cancelled()) {
                 cancelled = true;
+                tracing::info!("[训练] 收到取消，提前结束（第 {} 轮，已完成 {step} 步）", epoch + 1);
                 break 'outer;
             }
 
@@ -329,10 +344,18 @@ pub fn train_base(
         if config.checkpoint_every > 0 && (epoch + 1) % config.checkpoint_every == 0 {
             if let Some(path) = checkpoint_path {
                 save_checkpoint(&decoder_vm, path)?;
+                tracing::info!(
+                    "[训练] 第 {} 轮结束，已保存检查点: {}",
+                    epoch + 1,
+                    path.display()
+                );
             }
         }
     }
 
+    tracing::info!(
+        "[训练] 结束：共 {step} 步，初损 {initial_loss:.6}，末损 {final_loss:.6}，取消={cancelled}"
+    );
     Ok(BaseTrainingOutcome {
         steps: step,
         initial_loss,
@@ -485,6 +508,7 @@ mod tests {
             &BaseDecoderConfig::default(),
             &config,
             &onnx,
+            &map,
             None,
             None,
             &Device::Cpu,

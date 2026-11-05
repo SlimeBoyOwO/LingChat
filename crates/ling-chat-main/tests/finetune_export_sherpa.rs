@@ -184,12 +184,15 @@ async fn full_pipeline_import_train_export_loads_sherpa() {
     let onnx = base.join("model-steps-3.onnx");
     let checkpoint = root.join("checkpoint.safetensors");
     let device = Device::Cpu;
+    let weight_map = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../data/tts-training/decoder_weight_map.json");
     train_base(
         &corpus,
         &encoder_config,
         &decoder_config,
         &train_config,
         &onnx,
+        &weight_map,
         Some(&checkpoint),
         Some(&CancellationToken::new()),
         &device,
@@ -199,8 +202,6 @@ async fn full_pipeline_import_train_export_loads_sherpa() {
     assert!(checkpoint.is_file(), "训练没产出检查点");
 
     // 4) 从检查点装载解码器并导出声学模型，组装独立音色目录。
-    let weight_map = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../data/tts-training/decoder_weight_map.json");
     let mut var_map = VarMap::new();
     let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
     BaseDecoder::new(&BaseDecoderConfig::default(), vb).unwrap();
