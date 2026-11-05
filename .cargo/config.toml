@@ -36,4 +36,6 @@ rustflags = [
     "link-arg=-Wl,--allow-shlib-undefined",
     "-C",
     "link-arg=-Wl,--unresolved-symbols=ignore-all",
+    "-C",
+    "target-feature=+fp16",
 ]
