@@ -23,6 +23,7 @@ pub mod feature;
 pub mod import;
 pub mod model;
 pub mod normalize;
+pub mod onnx_export;
 pub mod onnx_weights;
 pub mod resample;
 pub mod text;
@@ -45,6 +46,7 @@ pub use import::{
     import_zip, list_datasets, load_manifest, remove_dataset,
 };
 pub use normalize::{NormalizeReport, normalize_to_wav};
+pub use onnx_export::export_tuned_model;
 pub use onnx_weights::{OnnxTensor, read_initializers};
 pub use text::{Lexicon, TextFrontend, TokenTable};
 
