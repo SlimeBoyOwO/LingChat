@@ -94,6 +94,7 @@ pub async fn do_import_plugin(
             ArchiveFormat::SevenZ => archive::extract_sevenz(
                 &path_for_blocking,
                 &target,
+                false,
                 &cancel_for_blocking,
                 &on_entry,
             ),
