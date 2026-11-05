@@ -1478,6 +1478,22 @@ export default {
     },
   },
 
+  sherpaFinetune: {
+    selectBase: "ベースモデルを選択",
+    cancel: "キャンセル",
+    training: "学習中…",
+    trainDone: "学習完了、チェックポイントを保存しました",
+    title: "音声のファインチューニング",
+    desc: "音声ファイルのみを含む zip を読み込み、自動で正規化して学習可能なデータ量を集計します。",
+    datasetIdPlaceholder: "データセット ID（空欄ならファイル名）",
+    import: "zip を読み込む",
+    importing: "読み込み中…",
+    empty: "データセットがまだありません",
+    duration: "合計時間",
+    ready: "データ量は十分",
+    insufficient: "データ量が不足（5 分以上、すべてテキスト注釈付き）",
+    remove: "削除",
+  },
   sherpa: {
     title: "Sherpa-ONNX ローカル音声",
     models: "モデル",

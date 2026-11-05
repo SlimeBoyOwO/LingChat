@@ -89,6 +89,11 @@ hound = "3.5"
 # 许可证 BSD-3-Clause，无 GPL 问题。
 opus = "0.4"
 
+# 端侧音色微调：训练需要自动求导与优化器。candle 纯 Rust，桌面和 Android
+# 共用一套代码；端侧不追求速度，CPU 后端足够。
+candle-core = "0.9"
+candle-nn = "0.9"
+
 # LAN Sync
 axum = { workspace = true }
 mdns-sd = "0.11"
