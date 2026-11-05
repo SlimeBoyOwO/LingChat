@@ -148,7 +148,7 @@ pub fn install_inspected(
                     crate::utils::archive::extract_zip(&src_buf, &dst_buf, &token, &|_| {})
                 },
                 PackageKind::SevenZ => {
-                    crate::utils::archive::extract_sevenz(&src_buf, &dst_buf, &token, &|_| {})
+                    crate::utils::archive::extract_sevenz(&src_buf, &dst_buf, false, &token, &|_| {})
                 },
                 _ => unreachable!(),
             });
