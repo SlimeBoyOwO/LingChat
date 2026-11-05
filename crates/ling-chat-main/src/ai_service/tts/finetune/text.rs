@@ -46,9 +46,8 @@ impl TokenTable {
             let id: i32 = id_text
                 .parse()
                 .with_context(|| format!("tokens 行的 id 不是整数: {line}"))?;
-            if symbol.is_empty() {
-                bail!("tokens 行缺少符号: {line}");
-            }
+            // sherpa 的 tokens.txt 常以仅含 id 的行打头（例如 `0`，对应换行符/占位符）。
+            // 空符号同样进查找表，保证符号总数（n_vocab）与基座模型一致。
             symbol_to_id.insert(symbol.clone(), id);
             entries.push((id, symbol));
         }
