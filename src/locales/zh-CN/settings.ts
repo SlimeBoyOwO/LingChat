@@ -1756,6 +1756,10 @@ export default {
     export: "导出为音色",
     exporting: "导出中…",
     exportNamePlaceholder: "音色名",
+    autoAnnotate: "用 ASR 自动识别缺文本的音频并写入标注",
+    annotating: "自动标注中",
+    annotateDone: "自动标注完成",
+    annotateSummary: "成功 {hits} 条，失败 {failed} 条，跳过 {skipped} 条",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地语音",
