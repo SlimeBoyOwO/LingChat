@@ -1493,6 +1493,9 @@ export default {
     ready: "データ量は十分",
     insufficient: "データ量が不足（5 分以上、すべてテキスト注釈付き）",
     remove: "削除",
+    export: "音声としてエクスポート",
+    exporting: "エクスポート中…",
+    exportNamePlaceholder: "音声名",
   },
   sherpa: {
     title: "Sherpa-ONNX ローカル音声",
