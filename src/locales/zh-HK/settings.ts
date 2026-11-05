@@ -1674,6 +1674,10 @@ export default {
     export: "匯出為音色",
     exporting: "匯出中…",
     exportNamePlaceholder: "音色名稱",
+    autoAnnotate: "用 ASR 自動識別缺文本嘅音頻並寫入標注",
+    annotating: "自動標注中",
+    annotateDone: "自動標注完成",
+    annotateSummary: "成功 {hits} 條，失敗 {failed} 條，跳過 {skipped} 條",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地語音",

@@ -39,7 +39,7 @@ pub use decoder::{CfmConfig, CfmDecoder, flow_matching_loss};
 pub use feature::{MelConfig, MelFilterbank, log_mel, stft_magnitude};
 pub use import::{
     DatasetItem, DatasetManifest, DatasetStats, ImportReport, SkippedItem, finetune_root,
-    import_zip, list_datasets, load_manifest, remove_dataset,
+    import_zip, list_datasets, load_manifest, persist_text_updates, remove_dataset,
 };
 pub use model::{Matcha, MatchaConfig};
 pub use normalize::{NormalizeReport, normalize_to_wav};

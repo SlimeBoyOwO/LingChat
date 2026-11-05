@@ -1511,6 +1511,10 @@ export default {
     export: "Export as voice",
     exporting: "Exporting…",
     exportNamePlaceholder: "Voice name",
+    autoAnnotate: "Auto-transcribe audio missing text via ASR",
+    annotating: "Annotating",
+    annotateDone: "Auto-annotation finished",
+    annotateSummary: "{hits} succeeded, {failed} failed, {skipped} skipped",
   },
   sherpa: {
     title: "Sherpa-ONNX Local Voice",

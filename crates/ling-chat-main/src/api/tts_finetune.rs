@@ -13,9 +13,10 @@ use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::tts::finetune::{
     BaseDecoder, BaseDecoderConfig, BaseEncoderConfig, BaseTrainingConfig, BaseTrainingOutcome,
-    CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetManifest, DatasetStats, ImportReport, MelConfig,
-    TextFrontend, TrainingProgress, base_training, build_corpus, export_tuned_model, finetune_root,
-    import_zip, list_datasets, load_manifest, remove_dataset, train_base,
+    CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetItem, DatasetManifest, DatasetStats, ImportReport,
+    MelConfig, TextFrontend, TrainingProgress, base_training, build_corpus, export_tuned_model,
+    finetune_root, import_zip, list_datasets, load_manifest, persist_text_updates, remove_dataset,
+    train_base,
 };
 use candle_nn::{VarBuilder, VarMap};
 
@@ -412,4 +413,165 @@ pub fn tts_finetune_cancel() {
             token.cancel();
         }
     }
+}
+
+/// 把 `%f32` 单声道采样序列化为 16-bit PCM 单声道 WAV 字节（供 ASR 识别用）。
+///
+/// ASR provider 统一吃 16kHz mono PCM16（见 `asr_recognize_wav`），而微调数据集
+/// 的 WAV 是 22.05kHz，需先重采样再打包成字节。直接复用 hound 输出为内存缓冲，
+/// 不落盘临时文件。
+fn wav_bytes_from_mono(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut buf = std::io::Cursor::new(Vec::new());
+    let mut writer = hound::WavWriter::new(&mut buf, spec)
+        .map_err(|e| format!("创建 WAV 编码器失败: {e}"))?;
+    for sample in samples {
+        let value = (sample.clamp(-1.0, 1.0) * i16::MAX as f32).round() as i16;
+        writer
+            .write_sample(value)
+            .map_err(|e| format!("写 WAV 样本失败: {e}"))?;
+    }
+    writer
+        .finalize()
+        .map_err(|e| format!("编码 WAV 失败: {e}"))?;
+    Ok(buf.into_inner())
+}
+
+/// 自动标注结果。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub struct FinetuneAnnotateReport {
+    /// 本次识别成功并写入文本的样本数。
+    pub annotated: usize,
+    /// 识别失败（网络/API 报错）的样本数。
+    pub failed: usize,
+    /// 因读取/重采样问题被跳过的样本数。
+    pub skipped: usize,
+    /// 重算后的数据集统计。
+    pub stats: DatasetStats,
+}
+
+/// 用云端 ASR 为缺失文本的音频自动标注。
+///
+/// 遍历数据集里 `text == None` 的样本，把（22.05kHz）WAV 重采样成 16kHz 后逐个
+/// 调 provider 识别，识别成功的文本写回清单并重算统计。只补缺文本的条目，
+/// 已有标注的一律不动。
+///
+/// `provider_id` 必须是已配置的 ASR provider（qwen-asr / llama-asr 等）；
+/// `language_hint` 可选语言码（如 zh / en），透传给 provider。
+#[tauri::command]
+pub async fn tts_finetune_auto_annotate(
+    app: AppHandle,
+    state: tauri::State<'_, crate::state::AppState>,
+    dataset_id: String,
+    provider_id: String,
+    language_hint: Option<String>,
+) -> Result<FinetuneAnnotateReport, String> {
+    let root = finetune_root().join(&dataset_id);
+    if !root.is_dir() {
+        return Err(format!("数据集不存在: {dataset_id}"));
+    }
+
+    // 取 ASR 会话。未初始化（未启动/init 失败）时给明确提示。
+    let session = {
+        let guard = state.asr_state.session.lock().await;
+        guard
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| "ASR 未初始化，请先配置并初始化语音识别".to_string())?
+    };
+
+    let mut manifest = load_manifest(&dataset_id).map_err(|e| format!("读取数据集失败: {e:#}"))?;
+    // 收集缺文本的样本 id，逐个处理。
+    let pending: Vec<DatasetItem> = manifest
+        .items
+        .iter()
+        .filter(|item| item.text.is_none())
+        .cloned()
+        .collect();
+
+    let opts = crate::ai_service::asr::provider::AsrOptions {
+        language_hint,
+        hotwords: Vec::new(),
+    };
+    let mut annotated = 0usize;
+    let mut failed = 0usize;
+    let mut skipped = 0usize;
+    // 单条过长音频容易拖垮识别请求，超过 32 秒直接跳过。
+    const MAX_ASR_SECS: f64 = 32.0;
+
+    for item in &pending {
+        let wav_path = root.join(&item.wav);
+        // 读取 + 重采样在阻塞线程做，避免拖住 async 运行时。
+        let read = tauri::async_runtime::spawn_blocking({
+            let wav_path = wav_path.clone();
+            move || crate::ai_service::tts::finetune::normalize::read_wav_mono(&wav_path)
+        })
+        .await
+        .map_err(|e| format!("读取音频任务失败: {e}"))?;
+        let (samples, rate) = match read {
+            Ok(v) => v,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            },
+        };
+        if samples.len() as f64 / f64::from(rate) > MAX_ASR_SECS {
+            skipped += 1;
+            continue;
+        }
+        // 统一重采样成 16kHz（ASR 约定输入）。
+        let samples = crate::ai_service::tts::finetune::resample::resample_mono(&samples, rate, 16_000);
+        let wav_bytes = match wav_bytes_from_mono(&samples, 16_000) {
+            Ok(b) => b,
+            Err(_) => {
+                skipped += 1;
+                continue;
+            },
+        };
+
+        let recognized = session.recognize_wav(provider_id.clone(), wav_bytes, &opts).await;
+        match recognized {
+            Ok(result) => {
+                let text = result.text.trim().to_string();
+                if !text.is_empty() {
+                    if let Some(target) = manifest.items.iter_mut().find(|i| i.id == item.id) {
+                        target.text = Some(text);
+                    }
+                    annotated += 1;
+                } else {
+                    failed += 1;
+                }
+            },
+            Err(_) => failed += 1,
+        }
+        // 逐条推进度。
+        let _ = app.emit(
+            "tts:finetune-annotate-progress",
+            serde_json::json!({
+                "done": annotated + failed + skipped,
+                "total": pending.len(),
+                "id": item.id,
+            }),
+        );
+    }
+
+    // 至少成功一项才落盘；完全失败则不改动清单，避免把半成品写进去。
+    let stats = if annotated > 0 {
+        persist_text_updates(&root, &mut manifest).map_err(|e| format!("保存标注失败: {e}"))?
+    } else {
+        crate::ai_service::tts::finetune::import::summarize(&manifest.items)
+    };
+
+    Ok(FinetuneAnnotateReport {
+        annotated,
+        failed,
+        skipped,
+        stats,
+    })
 }

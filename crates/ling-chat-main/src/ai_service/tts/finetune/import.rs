@@ -286,7 +286,23 @@ pub fn remove_dataset(dataset_id: &str) -> Result<()> {
     Ok(())
 }
 
-fn summarize(items: &[DatasetItem]) -> DatasetStats {
+/// 在样本文本被修改后重新落盘清单与 metadata.csv，并重算统计。
+///
+/// 自动标注等批量改写 `items[].text` 的流程在改完后调用：统一重算
+/// `DatasetStats`、写回 `dataset.json` 与 `metadata.csv`，避免（快照已算好的）
+/// 统计与实际文本脱节。返回重算后的统计。
+pub fn persist_text_updates(root: &Path, manifest: &mut DatasetManifest) -> Result<DatasetStats> {
+    let stats = summarize(&manifest.items);
+    manifest.stats = stats.clone();
+    std::fs::write(
+        root.join("dataset.json"),
+        serde_json::to_vec_pretty(manifest)?,
+    )?;
+    std::fs::write(root.join("metadata.csv"), build_metadata_csv(&manifest.items))?;
+    Ok(stats)
+}
+
+pub(crate) fn summarize(items: &[DatasetItem]) -> DatasetStats {
     let total_secs: f64 = items.iter().map(|item| item.duration_secs).sum();
     let items_with_text = items.iter().filter(|item| item.text.is_some()).count();
     DatasetStats {
