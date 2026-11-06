@@ -1760,6 +1760,9 @@ export default {
     annotating: "自动标注中",
     annotateDone: "自动标注完成",
     annotateSummary: "成功 {hits} 条，失败 {failed} 条，跳过 {skipped} 条",
+    epochs: "训练轮次",
+    learningRate: "学习率",
+    cleanupEvery: "内存回收间隔（步）",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地语音",

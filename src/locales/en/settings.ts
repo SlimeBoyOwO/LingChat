@@ -1515,6 +1515,9 @@ export default {
     annotating: "Annotating",
     annotateDone: "Auto-annotation finished",
     annotateSummary: "{hits} succeeded, {failed} failed, {skipped} skipped",
+    epochs: "Training epochs",
+    learningRate: "Learning rate",
+    cleanupEvery: "Mem cleanup interval (steps)",
   },
   sherpa: {
     title: "Sherpa-ONNX Local Voice",

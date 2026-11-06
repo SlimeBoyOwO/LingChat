@@ -1678,6 +1678,9 @@ export default {
     annotating: "自動標注中",
     annotateDone: "自動標注完成",
     annotateSummary: "成功 {hits} 條，失敗 {failed} 條，跳過 {skipped} 條",
+    epochs: "訓練輪次",
+    learningRate: "學習率",
+    cleanupEvery: "記憶體回收間隔（步）",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地語音",
