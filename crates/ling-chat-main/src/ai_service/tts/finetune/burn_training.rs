@@ -37,6 +37,14 @@ pub struct BaseTrainingConfig {
     pub seed: u64,
     /// 每多少轮存一次检查点。
     pub checkpoint_every: usize,
+    /// 每多少步触发一次显式设备内存回收。
+    ///
+    /// burn/cubecl 的 wgpu 内存池会把训练中间张量占用的页保留在池里以便复用，
+    /// 但 Adreno 这类移动 GPU 上池内已归还的空闲页若不显式交还驱动，会随步数
+    /// 累积挤占设备内存，最终 OOM。这里按步周期性触发
+    /// [`Device::memory_cleanup`]，把空闲页归还驱动，对冲「越跑越崩」。
+    /// 0 表示不开启。
+    pub cleanup_every: usize,
 }
 
 impl Default for BaseTrainingConfig {
@@ -46,6 +54,7 @@ impl Default for BaseTrainingConfig {
             learning_rate: 1e-3,
             seed: 1,
             checkpoint_every: 1,
+            cleanup_every: 50,
         }
     }
 }
@@ -310,6 +319,12 @@ pub fn train_base(
             decoder = optimizer.step(config.learning_rate, decoder, grads);
             step += 1;
 
+            // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
+            // 移动端 OOM（Adreno 等设备对长期驻留的设备内存尤其敏感）。
+            if config.cleanup_every > 0 && step % config.cleanup_every == 0 {
+                train_dev.memory_cleanup();
+            }
+
             on_progress(&BaseTrainingProgress {
                 epoch: epoch + 1,
                 total_epochs: config.epochs,
@@ -417,6 +432,7 @@ mod tests {
             learning_rate: 1e-3,
             seed: 7,
             checkpoint_every: 0,
+            cleanup_every: 0,
         };
         let outcome = train_base(
             &corpus,

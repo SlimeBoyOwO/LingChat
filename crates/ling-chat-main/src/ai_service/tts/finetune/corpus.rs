@@ -1,7 +1,7 @@
 //! 训练语料组装。
 //!
 //! 把数据集清单、文本前端和 mel 特征串起来：每条样本产出 token id 序列和
-//! log-mel 帧，供训练循环直接消费。这里同时承担长度过滤——过短、过长或没有
+//! log-mel 帧，供训练循环直接消费。这里同时承担长度过滤——过短或没有
 //! 文本标注的素材会被跳过并记录原因，不会让训练在坏样本上崩掉。
 
 use std::path::Path;
@@ -26,8 +26,6 @@ pub struct CorpusConfig {
     pub max_tokens: usize,
     /// 最少 mel 帧数。
     pub min_frames: usize,
-    /// 最多 mel 帧数。
-    pub max_frames: usize,
 }
 
 impl Default for CorpusConfig {
@@ -37,7 +35,6 @@ impl Default for CorpusConfig {
             min_tokens: 1,
             max_tokens: 400,
             min_frames: 8,
-            max_frames: 1_000,
         }
     }
 }
@@ -181,17 +178,6 @@ pub fn build_from_manifest(
             skipped.push(SkippedSample {
                 id: item.id.clone(),
                 reason: format!("音频过短（{} 帧，下限 {}）", mel.len(), config.min_frames),
-            });
-            continue;
-        }
-        if mel.len() > config.max_frames {
-            skipped.push(SkippedSample {
-                id: item.id.clone(),
-                reason: format!(
-                    "音频过长（{} 帧，上限 {}）",
-                    mel.len(),
-                    config.max_frames
-                ),
             });
             continue;
         }
