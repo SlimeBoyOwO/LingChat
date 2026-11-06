@@ -74,6 +74,8 @@ export interface FinetuneTrainOutcome {
   final_loss: number;
   cancelled: boolean;
   checkpoint: string;
+  /** 从第几轮开始续训；0 表示从头训练。 */
+  resumed_from: number;
 }
 
 export interface FinetuneExportOutcome {

@@ -112,6 +112,8 @@ pub struct FinetuneTrainOutcome {
     pub final_loss: f32,
     pub cancelled: bool,
     pub checkpoint: String,
+    /// 从第几轮开始续训；0 表示从头训练。
+    pub resumed_from: usize,
 }
 
 fn active_train() -> &'static Mutex<Option<CancellationToken>> {
@@ -225,6 +227,7 @@ pub async fn tts_finetune_train(
         final_loss: outcome.final_loss,
         cancelled: outcome.cancelled,
         checkpoint: checkpoint_display,
+        resumed_from: outcome.resumed_from,
     })
 }
 
