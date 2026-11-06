@@ -979,13 +979,14 @@ pub fn from_onnx_tensors(
 
 #[cfg(test)]
 mod tests {
+    use super::super::burn_backend::train_device;
     use super::*;
 
-    /// 在 Vulkan 设备上跑一次前向，验证形状与链路可用。
+    /// 在当前平台设备上跑一次前向，验证形状与链路可用。
     /// 输入 [1, 160, 5]，时间 [1, 160]，输出 [1, 80, 10]（上采样后帧数变化）。
     #[test]
     fn forward_produces_velocity_field() {
-        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let device = train_device();
         let config = BurnBaseDecoderConfig::default();
         let decoder = BurnBaseDecoder::init(&config, &device);
 
@@ -1017,7 +1018,7 @@ mod tests {
         let map_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../data/tts-training/decoder_weight_map.json");
         let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
-        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let device = train_device();
         let config = BurnBaseDecoderConfig::default();
         let decoder = from_onnx_tensors(&config, &tensors, &map_path, &device).unwrap();
 
@@ -1048,7 +1049,7 @@ mod tests {
         let map_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../data/tts-training/decoder_weight_map.json");
         let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
-        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let device = train_device();
         let config = BurnBaseDecoderConfig::default();
         let decoder = from_onnx_tensors(&config, &tensors, &map_path, &device).unwrap();
 

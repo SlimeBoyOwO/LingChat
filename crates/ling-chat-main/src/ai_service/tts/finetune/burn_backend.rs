@@ -10,28 +10,40 @@
 //!  - 桌面（Linux/Windows）与 Android：Vulkan（wgpu / SPIR-V）；
 //!  - Apple（macOS/iOS）：Metal（wgpu / MSL，Apple 无原生 Vulkan）。
 //!
-//! 同一份代码在编译期按 `cfg!(target_os)` 选中合适设备，避免运行时才在
-//! 苹果平台上请求不存在的 Vulkan 设备而 panic。
+//! 后端在 Cargo 层按平台分别启用（Apple 只开 `metal`、其它平台只开 `vulkan`），
+//! 编译期用 `#[cfg(target_os)]` 选中对应设备实现。既避免运行时在苹果平台上请求
+//! 不存在的 Vulkan 设备，也确保 macOS 不会被无谓拉进 wgpu 的 `spirv`（那会要求
+//! 装 Vulkan SDK 才能编）。
 
 use burn::prelude::*;
 
-/// 返回当前训练用的 burn 设备。
+/// 返回当前训练用的 burn 设备（Apple 平台，走 Metal）。
 ///
-/// 桌面与 Android 固定走 Vulkan（`Device::vulkan(DeviceKind)`）；Apple 平台
-/// 走 Metal（`Device::metal(DeviceKind)`）。二者都只挑选可用的 GPU，由 wgpu
-/// 自动匹配设备。训练设备之间夹一层 autodiff（见 [`train_device_autodiff`]）。
+/// Apple 走 `Device::metal(DeviceKind)`；桌面与 Android 走 Vulkan（见下面那个
+/// 非 Apple 版本）。二者都只挑选可用的 GPU，由 wgpu 自动匹配设备。训练设备之间
+/// 夹一层 autodiff（见 [`train_device_autodiff`]）。
+#[cfg(any(target_os = "macos", target_os = "ios"))]
 pub fn train_device() -> Device {
-    if cfg!(any(target_os = "macos", target_os = "ios")) {
-        Device::metal(DeviceKind::DefaultDevice)
-    } else {
-        Device::vulkan(DeviceKind::DefaultDevice)
-    }
+    Device::metal(DeviceKind::DefaultDevice)
 }
 
-/// 带自动求导的训练设备。
+/// 带自动求导的训练设备（Apple 平台，走 Metal）。
+#[cfg(any(target_os = "macos", target_os = "ios"))]
+pub fn train_device_autodiff() -> Device {
+    train_device().autodiff()
+}
+
+/// 返回当前训练用的 burn 设备（桌面/Android，走 Vulkan）。
 ///
-/// 梯度下降需要在训练设备上启用反向传播上下文，训练张量统一用这里返回的
-/// 设备创建。
+/// 桌面与 Android 走 `Device::vulkan(DeviceKind)`，挑选可用的 GPU，由 wgpu
+/// 自动匹配设备。训练设备之间夹一层 autodiff（见 [`train_device_autodiff`]）。
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
+pub fn train_device() -> Device {
+    Device::vulkan(DeviceKind::DefaultDevice)
+}
+
+/// 带自动求导的训练设备（桌面/Android，走 Vulkan）。
+#[cfg(not(any(target_os = "macos", target_os = "ios")))]
 pub fn train_device_autodiff() -> Device {
     train_device().autodiff()
 }

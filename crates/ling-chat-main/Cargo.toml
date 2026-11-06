@@ -102,9 +102,18 @@ tokio-util = { workspace = true }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
-# 显式列出所需 feature 而非沿用 default：默认会带入 autotune，它在 Adreno 集成 GPU 上
-# 做测速回读会触发设备毒化（device poisoned），所以这里关掉 autotune 保证训练稳定。
-burn = { version = "0.22.1", default-features = false, features = ["std", "autodiff", "optim", "vulkan", "metal"] }
+
+# 微调训练用的 burn：显式列出所需 feature 而非沿用 default（默认会带入 autotune，
+# 它在 Adreno 集成 GPU 上做测速回读会触发设备毒化 device poisoned，关掉保证训练稳定）。
+# 后端按平台分别启用：Apple（macOS/iOS）只走 Metal，其它平台走 Vulkan。这样 macOS
+# 不会被无谓拉进 cubecl-wgpu 的 `spirv`（其 build.rs 在开 spirv 且没设 VULKAN_SDK 时
+# 会 panic，而 macOS 构建未装 Vulkan SDK），其它平台（Windows/Linux CI/Android 都带
+# Vulkan）才启用 vulkan。
+[target.'cfg(any(target_os = "macos", target_os = "ios"))'.dependencies]
+burn = { version = "0.22.1", default-features = false, features = ["std", "autodiff", "optim", "metal"] }
+
+[target.'cfg(not(any(target_os = "macos", target_os = "ios")))'.dependencies]
+burn = { version = "0.22.1", default-features = false, features = ["std", "autodiff", "optim", "vulkan"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"

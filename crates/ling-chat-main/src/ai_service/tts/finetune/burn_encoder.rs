@@ -455,12 +455,13 @@ pub fn from_onnx_tensors(
 mod tests {
     use std::path::Path;
 
+    use super::super::burn_backend::train_device;
     use super::*;
 
-    /// 在 Vulkan 设备上跑一次前向，验证形状与链路可用。
+    /// 在当前平台设备上跑一次前向，验证形状与链路可用。
     #[test]
     fn forward_produces_mel_and_durations() {
-        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let device = train_device();
         let config = BurnBaseEncoderConfig::default();
         let encoder = BurnBaseEncoder::init(&config, &device);
 
@@ -482,7 +483,7 @@ mod tests {
             return;
         }
         let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
-        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let device = train_device();
         let config = BurnBaseEncoderConfig::default();
         let encoder = from_onnx_tensors(&config, &tensors, &device).unwrap();
 
