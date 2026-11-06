@@ -11,12 +11,15 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::ai_service::tts::finetune::burn_training::{
+    BaseTrainingConfig as BurnBaseTrainingConfig, BaseTrainingOutcome,
+    train_base as burn_train_base,
+};
 use crate::ai_service::tts::finetune::{
-    BaseDecoder, BaseDecoderConfig, BaseEncoderConfig, BaseTrainingConfig, BaseTrainingOutcome,
-    CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetItem, DatasetManifest, DatasetStats, ImportReport,
-    MelConfig, TextFrontend, TrainingProgress, base_training, build_corpus, export_tuned_model,
-    finetune_root, import_zip, list_datasets, load_manifest, persist_text_updates, remove_dataset,
-    train_base,
+    BaseDecoder, BaseDecoderConfig, CorpusConfig, DEFAULT_SAMPLE_RATE,
+    DatasetItem, DatasetManifest, DatasetStats, ImportReport, MelConfig, TextFrontend,
+    TrainingProgress, base_training, build_corpus, export_tuned_model, finetune_root, import_zip,
+    list_datasets, load_manifest, persist_text_updates, remove_dataset,
 };
 use candle_nn::{VarBuilder, VarMap};
 
@@ -151,22 +154,22 @@ pub async fn tts_finetune_train(
         .map_err(|error| format!("组装语料失败: {error:#}"))?;
 
     let mel = MelConfig::default();
-    let encoder_config = BaseEncoderConfig {
+    let encoder_config = crate::ai_service::tts::finetune::burn_encoder::BurnBaseEncoderConfig {
         n_vocab: frontend.tokens().len(),
         n_mels: mel.n_mels,
         ..Default::default()
     };
-    let decoder_config = BaseDecoderConfig {
+    let decoder_config = crate::ai_service::tts::finetune::burn_decoder::BurnBaseDecoderConfig {
         n_mels: mel.n_mels,
         ..Default::default()
     };
-    let config = BaseTrainingConfig {
+    let config = BurnBaseTrainingConfig {
         epochs: epochs.unwrap_or(20).max(1),
         learning_rate: learning_rate.unwrap_or(1e-3),
         ..Default::default()
     };
 
-    let checkpoint = root.join("checkpoint.safetensors");
+    let checkpoint = root.join("checkpoint.bpk");
     let checkpoint_display = checkpoint.display().to_string();
     // 匿名投影权重映射表放在运行时数据目录（随程序数据分发），不要用编译期路径。
     let map_path = crate::data_dir::get_data_dir().join("tts-training/decoder_weight_map.json");
@@ -178,8 +181,7 @@ pub async fn tts_finetune_train(
 
     let result =
         tauri::async_runtime::spawn_blocking(move || -> anyhow::Result<BaseTrainingOutcome> {
-            let device = Device::Cpu;
-            train_base(
+            burn_train_base(
                 &corpus,
                 &encoder_config,
                 &decoder_config,
@@ -188,7 +190,6 @@ pub async fn tts_finetune_train(
                 &map_path,
                 Some(&checkpoint),
                 Some(&token),
-                &device,
                 |progress| {
                     // 每步都发事件会淹没前端，按步数节流。
                     if progress.step % 5 != 0 && progress.step != progress.total_steps {
