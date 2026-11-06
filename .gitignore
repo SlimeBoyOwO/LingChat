@@ -241,3 +241,5 @@ prev-build-*/
 /vendor/cubecl-wgpu/
 # 构建前由 scripts/patch-cubek-matmul.mjs 解包生成的补丁源码副本
 /vendor/cubek-matmul/
+# 构建前由 scripts/patch-wgpu-hal.mjs 解包生成的补丁源码副本
+/vendor/wgpu-hal/
