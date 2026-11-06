@@ -64,6 +64,10 @@ jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpre
 # （Android Adreno 上训练必 SIGSEGV，详见脚本注释）。首次克隆或删掉 vendor 目录后，
 # 先跑 pnpm patch:cubecl-wgpu，否则 cargo 会因找不到该路径而报错。
 cubecl-wgpu = { path = "vendor/cubecl-wgpu" }
+# cubek-matmul 的源码同样不进仓库：由 scripts/patch-cubek-matmul.mjs 在构建前解包到
+# vendor/cubek-matmul，收紧 Strategy::Auto 的矩阵乘法降级链——Adreno 集成 GPU 共享内存每
+# cube 只有 32KB，高级 cmma 内核会超预算，补丁让降级最终落到共享内存最低的 Naive 内核。
+cubek-matmul = { path = "vendor/cubek-matmul" }
 
 # 依赖不生成调试符号。proc-macro 每次指纹变化都要重编，PDB 体积大且无需单步调试。
 [profile.dev.build-override]
