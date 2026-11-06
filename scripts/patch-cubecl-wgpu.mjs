@@ -102,11 +102,39 @@ function patchStream() {
   fs.writeFileSync(STREAM_RS, source.slice(0, start) + replacement + source.slice(end));
 }
 
-/** 已经是打完补丁的状态就跳过，返回值表示是否做了实际动作。 */
+// 补丁后 host_ptr 不再被读取，给两个存储结构体的字段标 allow 免除 dead_code 警告，
+// 保持仓库零警告（编译器对 upstream 的私有结构体不会主动豁免）。
+const STORAGE_RS = path.join(DEST, "src", "compute", "storage.rs");
+
+function patchStorage() {
+  const source = fs.readFileSync(STORAGE_RS, "utf8");
+  const from = "pub(crate) struct HostPtr(pub(crate) NonNull<u8>);";
+  const to = "pub(crate) struct HostPtr(#[allow(dead_code)] pub(crate) NonNull<u8>);";
+  if (!source.includes(from)) {
+    throw new Error("未找到 HostPtr 定义，无法标记 dead_code，需要重新校对补丁");
+  }
+  const step1 = source.replace(from, to);
+
+  const f2 =
+    '    /// The buffer host mapping, if host visible.\n    #[new(default)]\n    pub(crate) host_ptr: Option<HostPtr>,\n    /// The buffer offset.';
+  const r2 =
+    '    /// The buffer host mapping, if host visible.\n    #[allow(dead_code)]\n    #[new(default)]\n    pub(crate) host_ptr: Option<HostPtr>,\n    /// The buffer offset.';
+  if (!step1.includes(f2)) {
+    throw new Error("未找到 WgpuResource.host_ptr 定义，无法标记 dead_code，需要重新校对补丁");
+  }
+  const step2 = step1.replace(f2, r2);
+
+  fs.writeFileSync(STORAGE_RS, step2);
+}
+
+/** 补丁集清单 — 每次改动这里统一提升，用于让已解包的 vendor 强制重打。 */
+const PATCH_SET = "2";
+
+/** 已经是打完补丁的状态就跳过。 */
 function alreadyPatched() {
   if (!fs.existsSync(MARKER)) return false;
-  if (fs.readFileSync(MARKER, "utf8").trim() !== VERSION) return false;
-  return fs.existsSync(STREAM_RS);
+  if (fs.readFileSync(MARKER, "utf8").trim() !== PATCH_SET) return false;
+  return fs.existsSync(STREAM_RS) && fs.existsSync(STORAGE_RS);
 }
 
 async function main() {
@@ -119,8 +147,9 @@ async function main() {
   console.log(`[patch-cubecl-wgpu] 解包 ${crateFile}`);
   unpack(crateFile);
   patchStream();
-  fs.writeFileSync(MARKER, `${VERSION}\n`);
-  console.log(`[patch-cubecl-wgpu] 已禁用 write_mapped 快路径：${DEST}`);
+  patchStorage();
+  fs.writeFileSync(MARKER, `${PATCH_SET}\n`);
+  console.log(`[patch-cubecl-wgpu] 已禁用 write_mapped 快路径并消除 dead_code 警告：${DEST}`);
 }
 
 main().catch((error) => {
