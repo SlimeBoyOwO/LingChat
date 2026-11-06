@@ -358,6 +358,36 @@
               {{ t("settings.sherpaFinetune.cancel") }}
             </button>
           </div>
+          <div class="test-row">
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.epochs") }}
+            </label>
+            <input
+              v-model.number="finetuneEpochs"
+              type="number"
+              min="1"
+              class="config-input test-input"
+            />
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.learningRate") }}
+            </label>
+            <input
+              v-model.number="finetuneLearningRate"
+              type="number"
+              min="0"
+              step="0.0001"
+              class="config-input test-input"
+            />
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.cleanupEvery") }}
+            </label>
+            <input
+              v-model.number="finetuneCleanupEvery"
+              type="number"
+              min="0"
+              class="config-input test-input"
+            />
+          </div>
           <p v-if="finetuneTraining" class="test-hint">
             {{ t("settings.sherpaFinetune.training") }}
           </p>
@@ -541,6 +571,10 @@ const finetuneTraining = ref(false);
 const finetuneProgress = ref<FinetuneTrainingProgress | null>(null);
 const finetuneAnnotating = ref<string | null>(null);
 const finetuneAnnotateProgress = ref<FinetuneAnnotateProgress | null>(null);
+// 微调训练参数：轮次、学习率、设备内存回收间隔（步）。
+const finetuneEpochs = ref(20);
+const finetuneLearningRate = ref(0.001);
+const finetuneCleanupEvery = ref(50);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {
@@ -587,7 +621,13 @@ async function startFinetuneTraining(datasetId: string) {
     finetuneProgress.value = progress;
   });
   try {
-    await trainFinetuneDataset(datasetId, finetuneBaseModel.value);
+    await trainFinetuneDataset(
+      datasetId,
+      finetuneBaseModel.value,
+      finetuneEpochs.value,
+      finetuneLearningRate.value,
+      finetuneCleanupEvery.value,
+    );
   } catch (error) {
     finetuneError.value = String(error);
   } finally {

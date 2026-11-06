@@ -100,12 +100,14 @@ export function trainFinetuneDataset(
   baseModelDir: string,
   epochs = 20,
   learningRate = 0.001,
+  cleanupEvery = 50,
 ) {
   return invoke<FinetuneTrainOutcome>("tts_finetune_train", {
     datasetId,
     baseModelDir,
     epochs,
     learningRate,
+    cleanupEvery,
   });
 }
 

@@ -1500,6 +1500,9 @@ export default {
     annotating: "自動文字起こし中",
     annotateDone: "自動文字起こし完了",
     annotateSummary: "成功 {hits} 件、失敗 {failed} 件、スキップ {skipped} 件",
+    epochs: "学習エポック",
+    learningRate: "学習率",
+    cleanupEvery: "メモリ回収間隔（ステップ）",
   },
   sherpa: {
     title: "Sherpa-ONNX ローカル音声",

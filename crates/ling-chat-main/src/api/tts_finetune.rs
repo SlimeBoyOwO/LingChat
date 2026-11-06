@@ -129,6 +129,7 @@ pub async fn tts_finetune_train(
     base_model_dir: String,
     epochs: Option<usize>,
     learning_rate: Option<f64>,
+    cleanup_every: Option<usize>,
 ) -> Result<FinetuneTrainOutcome, String> {
     let root = finetune_root().join(&dataset_id);
     if !root.is_dir() {
@@ -164,6 +165,7 @@ pub async fn tts_finetune_train(
     let config = BurnBaseTrainingConfig {
         epochs: epochs.unwrap_or(20).max(1),
         learning_rate: learning_rate.unwrap_or(1e-3),
+        cleanup_every: cleanup_every.unwrap_or(50),
         ..Default::default()
     };
 
