@@ -47,7 +47,7 @@ pub use import::{
 };
 pub use model::{Matcha, MatchaConfig};
 pub use normalize::{NormalizeReport, normalize_to_wav};
-pub use onnx_export::export_tuned_model;
+pub use onnx_export::{export_tuned_model, export_tuned_model_burn};
 pub use onnx_weights::{OnnxTensor, read_initializers};
 pub use text::{Lexicon, TextFrontend, TokenTable};
 pub use training::{

@@ -12,13 +12,15 @@
 
 use std::path::{Path, PathBuf};
 
-use candle_core::{DType, Device};
-use candle_nn::{VarBuilder, VarMap};
 use ling_chat_main::ai_service::tts::adapters::sherpa_onnx::SherpaOnnxAdapter;
+use ling_chat_main::ai_service::tts::finetune::burn_backend::train_device;
+use ling_chat_main::ai_service::tts::finetune::burn_decoder::{BurnBaseDecoderConfig, from_onnx_tensors};
+use ling_chat_main::ai_service::tts::finetune::burn_encoder::BurnBaseEncoderConfig;
+use ling_chat_main::ai_service::tts::finetune::burn_training::{
+    load_checkpoint, train_base, BaseTrainingConfig,
+};
 use ling_chat_main::ai_service::tts::finetune::{
-    BaseDecoder, BaseDecoderConfig, CorpusConfig, TextFrontend, build_corpus, export_tuned_model,
-    load_checkpoint, load_decoder_weights, read_initializers, train_base, BaseEncoderConfig,
-    BaseTrainingConfig,
+    CorpusConfig, TextFrontend, build_corpus, export_tuned_model_burn, read_initializers,
 };
 use ling_chat_main::ai_service::tts::provider::TtsAdapter;
 use ling_chat_main::config::tts::TtsConfig;
@@ -45,16 +47,13 @@ async fn exported_model_directory_is_loadable_by_sherpa_and_audible() {
     assert!(onnx.is_file(), "基座模型不存在: {}", onnx.display());
     assert!(weight_map.is_file(), "权重映射表不存在");
 
-    let device = Device::Cpu;
+    let device = train_device();
     // 从基座读解码器权重（等于「未微调」副本），导出成声学 ONNX。
     let tensors = read_initializers(&onnx).unwrap();
-    let mut var_map = VarMap::new();
-    let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
-    BaseDecoder::new(&BaseDecoderConfig::default(), vb).unwrap();
-    load_decoder_weights(&mut var_map, &tensors, &weight_map, &device).unwrap();
+    let decoder = from_onnx_tensors(&BurnBaseDecoderConfig::default(), &tensors, &weight_map, &device).unwrap();
 
     let tmp = std::env::temp_dir().join("lingchat-fin-export.onnx");
-    export_tuned_model(&var_map, &onnx, &weight_map, &tmp).unwrap();
+    export_tuned_model_burn(&decoder, &onnx, &weight_map, &tmp).unwrap();
 
     // 组装独立模型目录：声学模型 + 配套文件。
     let out_dir = std::env::temp_dir().join("lingchat-fin-export-model");
@@ -168,12 +167,12 @@ async fn full_pipeline_import_train_export_loads_sherpa() {
     let corpus = build_corpus(&root, &frontend, &CorpusConfig::default()).unwrap();
     assert!(!corpus.samples.is_empty(), "训练语料为空");
     let mel = ling_chat_main::ai_service::tts::finetune::MelConfig::default();
-    let encoder_config = BaseEncoderConfig {
+    let encoder_config = BurnBaseEncoderConfig {
         n_vocab: frontend.tokens().len(),
         n_mels: mel.n_mels,
         ..Default::default()
     };
-    let decoder_config = BaseDecoderConfig {
+    let decoder_config = BurnBaseDecoderConfig {
         n_mels: mel.n_mels,
         ..Default::default()
     };
@@ -182,8 +181,7 @@ async fn full_pipeline_import_train_export_loads_sherpa() {
         ..Default::default()
     };
     let onnx = base.join("model-steps-3.onnx");
-    let checkpoint = root.join("checkpoint.safetensors");
-    let device = Device::Cpu;
+    let checkpoint = root.join("checkpoint.bpk");
     let weight_map = Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../data/tts-training/decoder_weight_map.json");
     train_base(
@@ -195,20 +193,24 @@ async fn full_pipeline_import_train_export_loads_sherpa() {
         &weight_map,
         Some(&checkpoint),
         Some(&CancellationToken::new()),
-        &device,
         |_| {},
     )
     .unwrap();
     assert!(checkpoint.is_file(), "训练没产出检查点");
 
     // 4) 从检查点装载解码器并导出声学模型，组装独立音色目录。
-    let mut var_map = VarMap::new();
-    let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
-    BaseDecoder::new(&BaseDecoderConfig::default(), vb).unwrap();
-    load_checkpoint(&mut var_map, &checkpoint).unwrap();
+    let device = train_device();
+    let decoder = from_onnx_tensors(
+        &BurnBaseDecoderConfig::default(),
+        &read_initializers(&onnx).unwrap(),
+        &weight_map,
+        &device,
+    )
+    .unwrap();
+    let decoder = load_checkpoint(&decoder, &checkpoint).unwrap();
     let out_dir = std::env::temp_dir().join(format!("{dataset_id}-model"));
     let tmp = std::env::temp_dir().join(format!("{dataset_id}-export.onnx"));
-    export_tuned_model(&var_map, &onnx, &weight_map, &tmp).unwrap();
+    export_tuned_model_burn(&decoder, &onnx, &weight_map, &tmp).unwrap();
     let _ = std::fs::remove_dir_all(&out_dir);
     std::fs::create_dir_all(&out_dir).unwrap();
     std::fs::rename(&tmp, out_dir.join("model-steps-3.onnx")).unwrap();

@@ -6,22 +6,20 @@
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 
-use candle_core::{DType, Device};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 use tokio_util::sync::CancellationToken;
 
+use crate::ai_service::tts::finetune::burn_decoder::BurnBaseDecoder;
 use crate::ai_service::tts::finetune::burn_training::{
-    BaseTrainingConfig as BurnBaseTrainingConfig, BaseTrainingOutcome,
+    BaseTrainingConfig as BurnBaseTrainingConfig, BaseTrainingOutcome, load_checkpoint,
     train_base as burn_train_base,
 };
 use crate::ai_service::tts::finetune::{
-    BaseDecoder, BaseDecoderConfig, CorpusConfig, DEFAULT_SAMPLE_RATE,
-    DatasetItem, DatasetManifest, DatasetStats, ImportReport, MelConfig, TextFrontend,
-    TrainingProgress, base_training, build_corpus, export_tuned_model, finetune_root, import_zip,
-    list_datasets, load_manifest, persist_text_updates, remove_dataset,
+    CorpusConfig, DEFAULT_SAMPLE_RATE, DatasetItem, DatasetManifest, DatasetStats, ImportReport,
+    MelConfig, TextFrontend, TrainingProgress, build_corpus, export_tuned_model_burn, finetune_root,
+    import_zip, list_datasets, load_manifest, persist_text_updates, remove_dataset,
 };
-use candle_nn::{VarBuilder, VarMap};
 
 /// 数据集摘要，供前端列表展示。
 #[derive(Debug, Clone, Serialize)]
@@ -295,7 +293,7 @@ pub async fn tts_finetune_export(
         return Err(format!("基座目录不存在: {}", base.display()));
     }
 
-    let checkpoint = root.join("checkpoint.safetensors");
+    let checkpoint = root.join("checkpoint.bpk");
     if !checkpoint.is_file() {
         return Err(format!(
             "数据集尚未训练，缺少检查点: {}",
@@ -308,13 +306,11 @@ pub async fn tts_finetune_export(
     }
     let onnx_path = find_base_onnx(&base)?;
 
-    let device = Device::Cpu;
-    // 组装解码器 VarMap：结构与基座一致，再从检查点装载微调参数。
-    let mut var_map = VarMap::new();
-    let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
-    BaseDecoder::new(&BaseDecoderConfig::default(), vb)
-        .map_err(|error| format!("构造解码器失败: {error}"))?;
-    base_training::load_checkpoint(&mut var_map, &checkpoint)
+    let device = crate::ai_service::tts::finetune::burn_backend::train_device();
+    // 组装解码器骨架并从检查点装载微调参数。
+    let config = crate::ai_service::tts::finetune::burn_decoder::BurnBaseDecoderConfig::default();
+    let decoder = BurnBaseDecoder::init(&config, &device);
+    let decoder = load_checkpoint(&decoder, &checkpoint)
         .map_err(|error| format!("读取检查点失败: {error:#}"))?;
 
     let dest_dir = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
@@ -330,7 +326,7 @@ pub async fn tts_finetune_export(
         let onnx_path = onnx_path.clone();
         let tmp = tmp.clone();
         move || {
-            export_tuned_model(&var_map, &onnx_path, &weight_map, &tmp)
+            export_tuned_model_burn(&decoder, &onnx_path, &weight_map, &tmp)
                 .map_err(|error| error.to_string())
         }
     })

@@ -13,6 +13,93 @@ use std::path::Path;
 use anyhow::{Context, Result, bail};
 use candle_nn::VarMap;
 
+use super::burn_decoder::{self, BurnBaseDecoder};
+
+/// 把 burn `BurnBaseDecoder` 的权重写回基座 ONNX，写出新模型文件。
+///
+/// `read_decoder_param` 返回的值已是 ONNX 布局（MatMul/Gemm 转置已还原），按
+/// decoder 语义名逐一覆写：命名张量用 `tensors` 里的名字，匿名 MatMul 常量用
+/// `weight_map` 反查基座 initializer 名。最后按映射表把每个 decoder 目标写入
+/// 对应基座 initializer。
+pub fn export_tuned_model_burn(
+    decoder: &BurnBaseDecoder,
+    base_model: &Path,
+    weight_map: &Path,
+    out: &Path,
+) -> Result<()> {
+    let bytes = std::fs::read(base_model)
+        .with_context(|| format!("读取基座模型失败: {}", base_model.display()))?;
+    let reverse = read_reverse_map(weight_map)?;
+
+    let mut export = bytes.to_vec();
+    // 1) 命名解码器张量：语义名（`model.decoder.estimator.*`）即基座 initializer 名。
+    for name in decoder_initializer_names(&export)? {
+        if !name.starts_with("model.decoder.estimator.") {
+            continue;
+        }
+        let Some(new_data) = read_decoder_param_bytes(decoder, &name) else {
+            continue;
+        };
+        export = replace_initializer(&export, &name, &new_data)
+            .with_context(|| format!("替换 initializer 失败: {name}"))?;
+    }
+    // 2) 匿名 MatMul 常量：语义名在 reverse 映射里，反查基座 `onnx::*` initializer。
+    for (target, (src, _)) in &reverse {
+        let Some(new_data) = read_decoder_param_bytes(decoder, target) else {
+            continue;
+        };
+        export = replace_initializer(&export, src, &new_data)
+            .with_context(|| format!("替换 initializer 失败: {src}"))?;
+    }
+
+    if let Some(parent) = out.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("创建输出目录失败: {}", parent.display()))?;
+    }
+    std::fs::write(out, &export)
+        .with_context(|| format!("写出模型失败: {}", out.display()))?;
+    Ok(())
+}
+
+/// 用 `read_decoder_param` 读 burn 解码器字段并转成 f32 小端字节。
+///
+/// `name` 是 decoder 语义名（`model.decoder.estimator.*` 或反查后的 `onnx::*`）。
+fn read_decoder_param_bytes(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec<u8>> {
+    let flat = burn_decoder::read_decoder_param(decoder, name)?;
+    let mut out = Vec::with_capacity(flat.len() * 4);
+    for v in flat {
+        out.extend_from_slice(&v.to_le_bytes());
+    }
+    Some(out)
+}
+
+/// 列出基座 ONNX 里属于解码器的 initializer 名，用于决定要覆写哪些张量。
+///
+/// 返回基座里所有 initializer 的名字（结构取自 graph 的 initializer 字段）。
+/// 命名张量本身就带 `model.decoder.estimator.*` 前缀；匿名 MatMul 由映射表反查。
+fn decoder_initializer_names(model_bytes: &[u8]) -> Result<Vec<String>> {
+    let graph = find_submessage(model_bytes, 0, model_bytes.len(), 7)?
+        .with_context(|| "ModelProto 里没有 graph(7)")?;
+    let mut names = Vec::new();
+    scan_fields(model_bytes, graph.start, graph.start + graph.len, |field, init_span| {
+        if field != 5 {
+            return true;
+        }
+        let mut name = None;
+        let _ = scan_fields(model_bytes, init_span.start, init_span.start + init_span.len, |f, sp| {
+            if f == 8 {
+                name = Some(std::str::from_utf8(&model_bytes[sp.start..sp.start + sp.len]).unwrap_or("").to_string());
+            }
+            true
+        });
+        if let Some(n) = name {
+            names.push(n);
+        }
+        true
+    })?;
+    Ok(names)
+}
+
 /// 把训练后的解码器权重覆写进基座模型，写出新模型文件。
 ///
 /// 解码器是基座里唯一被微调的部分，且权重形状与基座一致，因此可以把训练后
@@ -350,6 +437,43 @@ mod tests {
         let out_enc = tensors.iter().find(|t| t.name == enc).unwrap();
         assert_eq!(out_enc.data, base_enc.data, "编码器权重不应被改动");
 
+        let _ = std::fs::remove_file(&out);
+    }
+
+    /// burn 导出应是无损恒等：把从基座加载的解码器写回，导出的解码器权重与基座一致。
+    #[test]
+    fn burn_export_is_identity_with_base_decoder() {
+        use crate::ai_service::tts::finetune::burn_backend::train_device;
+        use crate::ai_service::tts::finetune::burn_decoder::{
+            BurnBaseDecoderConfig, from_onnx_tensors,
+        };
+        use crate::ai_service::tts::finetune::onnx_weights::read_initializers;
+
+        let base = base_onnx();
+        if !base.exists() {
+            return;
+        }
+        let map_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        let device = train_device();
+        let tensors = read_initializers(&base).unwrap();
+        let decoder =
+            from_onnx_tensors(&BurnBaseDecoderConfig::default(), &tensors, &map_path, &device)
+                .unwrap();
+
+        let out = std::env::temp_dir().join("lingchat-export-burn-test.onnx");
+        export_tuned_model_burn(&decoder, &base, &map_path, &out).unwrap();
+
+        let base_tensors = read_initializers(&base).unwrap();
+        let out_tensors = read_initializers(&out).unwrap();
+        // 解码器命名张量应保持基座原值。
+        for bt in &base_tensors {
+            if !bt.name.starts_with("model.decoder.estimator.") {
+                continue;
+            }
+            let ot = out_tensors.iter().find(|t| t.name == bt.name).unwrap();
+            assert_eq!(ot.data, bt.data, "解码器张量不应被改动: {}", bt.name);
+        }
         let _ = std::fs::remove_file(&out);
     }
 }
