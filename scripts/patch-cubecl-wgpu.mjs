@@ -27,6 +27,7 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const DEST = path.join(ROOT, "vendor", "cubecl-wgpu");
 const MARKER = path.join(DEST, ".lingchat-patched");
 const STREAM_RS = path.join(DEST, "src", "compute", "stream.rs");
+const RUNTIME_RS = path.join(DEST, "src", "runtime.rs");
 
 /** cargo 的 home 目录，未显式设置时按默认位置。 */
 function cargoHome() {
@@ -128,13 +129,46 @@ function patchStorage() {
 }
 
 /** 补丁集清单 — 每次改动这里统一提升，用于让已解包的 vendor 强制重打。 */
-const PATCH_SET = "4";
+const PATCH_SET = "5";
 
 /** 已经是打完补丁的状态就跳过。 */
 function alreadyPatched() {
   if (!fs.existsSync(MARKER)) return false;
   if (fs.readFileSync(MARKER, "utf8").trim() !== PATCH_SET) return false;
-  return fs.existsSync(STREAM_RS) && fs.existsSync(STORAGE_RS);
+  return fs.existsSync(STREAM_RS) && fs.existsSync(STORAGE_RS) && fs.existsSync(RUNTIME_RS);
+}
+
+/**
+ * Android（Adreno）上把 Vulkan 设备请求改走 GLES。
+ *
+ * Adreno 的 Vulkan 驱动在 wgpu 训练计算管线（尤其扩展/回读）上仍会触发设备毒化
+ * （device poisoned / Unexpected error variant），而 Android GLES 驱动对
+ * OpenGL ES 3.1 计算管线的覆盖相对稳定。这里把 Android 上 `WgpuBackend::Vulkan`
+ * 的请求映射到 `wgpu::Backend::Gl`（GLES），训练计算走 GLES；其它平台仍走 Vulkan。
+ *
+ * wgpu 的 GL 后端只支持 GLES 3.1+ 的计算能力（node 需 `DownlevelHighlights` 支持
+ * compute），Adreno 的 GLES 3.1 计算支持完整，可行。锚点对不上就报错，避免升级静默失效。
+ */
+function patchRuntime() {
+  const source = fs.readFileSync(RUNTIME_RS, "utf8");
+  const anchor = [
+    "        WgpuBackend::Auto => AutoGraphicsApi::chain(),",
+    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Vulkan],",
+  ].join("\n");
+  const replacement = [
+    "        WgpuBackend::Auto => AutoGraphicsApi::chain(),",
+    "        // LingChat 补丁：Android（Adreno）的 Vulkan 驱动在训练计算管线（扩展/回读）上",
+    "        // 会触发设备毒化（device poisoned），改走 GLES（wgpu::Backend::Gl）绕开这条",
+    "        // 驱动路径；桌面等其它平台仍走 Vulkan。仅 Android 生效。",
+    "        #[cfg(target_os = \"android\")]",
+    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Gl],",
+    "        #[cfg(not(target_os = \"android\"))]",
+    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Vulkan],",
+  ].join("\n");
+  if (!source.includes(anchor)) {
+    throw new Error("未找到 backend_candidates 的 Vulkan 分支，cubecl-wgpu 版本可能已变，需要重新校对补丁");
+  }
+  fs.writeFileSync(RUNTIME_RS, source.replace(anchor, replacement));
 }
 
 async function main() {
@@ -148,8 +182,9 @@ async function main() {
   unpack(crateFile);
   patchStream();
   patchStorage();
+  patchRuntime();
   fs.writeFileSync(MARKER, `${PATCH_SET}\n`);
-  console.log(`[patch-cubecl-wgpu] 已禁用 write_mapped 快路径并消除 dead_code 警告：${DEST}`);
+  console.log(`[patch-cubecl-wgpu] 已禁用 write_mapped、Android 改走 GLES 并消除 dead_code 警告：${DEST}`);
 }
 
 main().catch((error) => {
