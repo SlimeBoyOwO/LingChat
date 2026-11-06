@@ -338,8 +338,16 @@ pub fn train_base(
                 }
 
                 let len = chunk.min(frames - start);
-                let mel = mel_full.clone().narrow(2, start, len);
-                let prior = prior_full.clone().narrow(2, start, len);
+                // 整条样本不需要切分时就别走 narrow：narrow 会在设备上再拷一份，
+                // 而 clone 只是引用计数，短句样本因此少一次无谓的全量拷贝。
+                let (mel, prior) = if len == frames {
+                    (mel_full.clone(), prior_full.clone())
+                } else {
+                    (
+                        mel_full.clone().narrow(2, start, len),
+                        prior_full.clone().narrow(2, start, len),
+                    )
+                };
 
                 // 噪声只按当前片段长度生成，长样本不必先铺满整条再切。
                 let noise = Tensor::<3>::random(
@@ -356,12 +364,6 @@ pub fn train_base(
                 let predicted = decoder.forward(noisy, prior, time);
                 let loss = (predicted - target).powf_scalar(2.0).mean();
 
-                let value: f32 = loss.to_data().try_to_vec::<f32>()?[0];
-                if initial_loss.is_nan() {
-                    initial_loss = value;
-                }
-                final_loss = value;
-
                 let grads = GradientsParams::from_grads(loss.backward(), &decoder);
                 decoder = optimizer.step(config.learning_rate, decoder, grads);
                 step += 1;
@@ -372,13 +374,23 @@ pub fn train_base(
                     train_dev.memory_cleanup();
                 }
 
-                on_progress(&BaseTrainingProgress {
-                    epoch: epoch + 1,
-                    total_epochs: config.epochs,
-                    step,
-                    total_steps,
-                    loss: value,
-                });
+                // 只有真要上报进度时才把 loss 读回主机。每步都读等于每步强制一次
+                // 设备同步，会让 GPU 流水线停顿，是训练循环里最伤速度的写法。
+                if step == 1 || step % 5 == 0 || step == total_steps {
+                    let value: f32 = loss.to_data().try_to_vec::<f32>()?[0];
+                    if initial_loss.is_nan() {
+                        initial_loss = value;
+                    }
+                    final_loss = value;
+
+                    on_progress(&BaseTrainingProgress {
+                        epoch: epoch + 1,
+                        total_epochs: config.epochs,
+                        step,
+                        total_steps,
+                        loss: value,
+                    });
+                }
 
                 start += len;
             }
