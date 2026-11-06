@@ -27,7 +27,6 @@ const ROOT = path.resolve(import.meta.dirname, "..");
 const DEST = path.join(ROOT, "vendor", "cubecl-wgpu");
 const MARKER = path.join(DEST, ".lingchat-patched");
 const STREAM_RS = path.join(DEST, "src", "compute", "stream.rs");
-const RUNTIME_RS = path.join(DEST, "src", "runtime.rs");
 
 /** cargo 的 home 目录，未显式设置时按默认位置。 */
 function cargoHome() {
@@ -129,41 +128,13 @@ function patchStorage() {
 }
 
 /** 补丁集清单 — 每次改动这里统一提升，用于让已解包的 vendor 强制重打。 */
-const PATCH_SET = "3";
-
-/**
- * Android（Adreno）上把 Vulkan 设备请求改走 GLES。Adreno 的 Vulkan 驱动对 wgpu 的提交/
- * 回读管线不完整，整台设备从第一个 kernel 起提交就失败（device poisoned，last successful
- * submission: 0）；GLES 换一条驱动路径有望绕开。仅 Android 生效，桌面仍走 Vulkan。
- * 锚点对不上就报错，避免版本升级后静默失效。
- */
-function patchRuntime() {
-  const source = fs.readFileSync(RUNTIME_RS, "utf8");
-  const anchor = [
-    "        WgpuBackend::Auto => AutoGraphicsApi::chain(),",
-    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Vulkan],",
-  ].join("\n");
-  const replacement = [
-    "        WgpuBackend::Auto => AutoGraphicsApi::chain(),",
-    "        // LingChat 补丁：Android（Adreno）的 Vulkan 驱动对 wgpu 的提交/回读管线不完整，",
-    "        // 整台设备从第一个 kernel 起提交就失败（device poisoned / last successful submission: 0），",
-    "        // 试验性地把 Vulkan 请求改走 GLES 以绕开坏的 Vulkan 驱动路径；桌面不受影响。",
-    "        #[cfg(target_os = \"android\")]",
-    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Gl],",
-    "        #[cfg(not(target_os = \"android\"))]",
-    "        WgpuBackend::Vulkan => alloc::vec![wgpu::Backend::Vulkan],",
-  ].join("\n");
-  if (!source.includes(anchor)) {
-    throw new Error("未找到 backend_candidates 的 Vulkan 分支，cubecl-wgpu 版本可能已变，需要重新校对补丁");
-  }
-  fs.writeFileSync(RUNTIME_RS, source.replace(anchor, replacement));
-}
+const PATCH_SET = "4";
 
 /** 已经是打完补丁的状态就跳过。 */
 function alreadyPatched() {
   if (!fs.existsSync(MARKER)) return false;
   if (fs.readFileSync(MARKER, "utf8").trim() !== PATCH_SET) return false;
-  return fs.existsSync(STREAM_RS) && fs.existsSync(STORAGE_RS) && fs.existsSync(RUNTIME_RS);
+  return fs.existsSync(STREAM_RS) && fs.existsSync(STORAGE_RS);
 }
 
 async function main() {
@@ -177,7 +148,6 @@ async function main() {
   unpack(crateFile);
   patchStream();
   patchStorage();
-  patchRuntime();
   fs.writeFileSync(MARKER, `${PATCH_SET}\n`);
   console.log(`[patch-cubecl-wgpu] 已禁用 write_mapped 快路径并消除 dead_code 警告：${DEST}`);
 }
