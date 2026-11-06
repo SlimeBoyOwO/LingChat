@@ -236,3 +236,6 @@ prev-build-*/
 
 .dsh-ops/
 .venv-onnx/
+
+# 构建前由 scripts/patch-cubecl-wgpu.mjs 解包生成的补丁源码副本
+/vendor/cubecl-wgpu/
