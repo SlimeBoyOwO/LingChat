@@ -5,6 +5,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::player_identity::relation_ready_all;
+use crate::ai_service::game_system::status_ops::PromptLine;
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::generator::{
     GeneratorDeps, GeneratorSource, MessageGenerator,
@@ -12,7 +14,6 @@ use crate::ai_service::message_system::generator::{
 use crate::ai_service::message_system::processor::EmotionSegment;
 use crate::ai_service::screen_analyzer::{ImageDelivery, ImageIntent, deliver_image};
 use crate::ai_service::tts::local::LocalTtsState;
-use crate::ai_service::types::{LineAttributeExt, LineBase};
 use crate::api::game::{GameLineInit, compute_user_message_seqs};
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
@@ -36,7 +37,26 @@ pub async fn send_chat_message(
         return handle_debug_command(&app, &text).await;
     }
 
+    // 关系未就绪（角色侧或身份侧的关系栏为空）时拒绝玩家发言，前端据错误码弹引导
+    if !relation_ready_now(&app).await {
+        return Err("RELATION_NOT_READY".to_string());
+    }
+
     dispatch_chat_turn(app, Some(text), screenshot_base64, None).await
+}
+
+/// 当前阵容所有在场角色与当前身份的关系是否已就绪；尚未进入对话时不拦。
+async fn relation_ready_now(app: &AppHandle) -> bool {
+    let state = app.state::<AppState>();
+    let svc = state.ai_service.lock().await;
+    let gs = svc.game_status.lock().await;
+    let role_ids = gs.onstage_role_ids.clone();
+    if role_ids.is_empty() {
+        return true;
+    }
+    let identity_id = gs.player.identity_id.clone().unwrap_or_default();
+    let statuses = relation_ready_all(&gs, &crate::api::data_dir(), &identity_id, &role_ids);
+    statuses.iter().all(|s| s.role_side && s.identity_side)
 }
 
 #[tauri::command]
@@ -50,8 +70,7 @@ pub async fn send_system_message(
         return Err("消息内容不能为空".to_string());
     }
 
-    let preamble = PromptRole::System.build_prompt(&text);
-    dispatch_chat_turn(app, None, screenshot_base64, Some(preamble)).await
+    dispatch_chat_turn(app, None, screenshot_base64, Some(text)).await
 }
 
 fn reply_length_adjustable(gs: &GameStatus) -> bool {
@@ -171,12 +190,7 @@ async fn dispatch_chat_turn(
                 let mut gs = game_status.lock().await;
                 gs.add_line(
                     &state.db,
-                    LineBase {
-                        content: PromptRole::Narrator.build_prompt(&narration),
-                        attribute: LineAttributeExt(LineAttribute::User),
-                        display_name: Some("旁白".to_string()),
-                        ..Default::default()
-                    },
+                    PromptLine::new(PromptRole::Narrator, narration.as_str()).into_base(),
                 )
                 .await
                 .map_err(|e| format!("添加旁白台词失败: {}", e))?;
@@ -278,12 +292,7 @@ async fn dispatch_chat_turn(
         // 系统台词先于本轮玩家消息落库；sender_role_id 保持 None，不计入玩家消息序号。
         if let Some(content) = preamble {
             let mut gs = preamble_gs.lock().await;
-            let line = LineBase {
-                content,
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("系统".to_string()),
-                ..Default::default()
-            };
+            let line = PromptLine::new(PromptRole::System, content).into_base();
             if let Err(e) = gs.add_line(&preamble_db, line).await {
                 tracing::error!("写入系统台词失败: {:#}", e);
             }
@@ -805,12 +814,7 @@ pub async fn feed_image(app: AppHandle, path: String) -> Result<(), String> {
         let mut gs = game_status.lock().await;
         gs.add_line(
             &state.db,
-            LineBase {
-                content: PromptRole::Narrator.build_prompt(&text),
-                attribute: LineAttributeExt(LineAttribute::User),
-                display_name: Some("旁白".to_string()),
-                ..Default::default()
-            },
+            PromptLine::new(PromptRole::Narrator, text.as_str()).into_base(),
         )
         .await
         .map_err(|e| format!("添加旁白台词失败: {}", e))?;
@@ -860,12 +864,7 @@ pub async fn feed_text(app: AppHandle, text: String) -> Result<(), String> {
     let mut gs = game_status.lock().await;
     gs.add_line(
         &state.db,
-        LineBase {
-            content: PromptRole::Narrator.build_prompt(&prompt),
-            attribute: LineAttributeExt(LineAttribute::User),
-            display_name: Some("旁白".to_string()),
-            ..Default::default()
-        },
+        PromptLine::new(PromptRole::Narrator, prompt.as_str()).into_base(),
     )
     .await
     .map_err(|e| format!("添加投喂文本台词失败: {}", e))?;

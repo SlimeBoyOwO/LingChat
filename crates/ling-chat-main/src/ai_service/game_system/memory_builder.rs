@@ -389,9 +389,7 @@ impl MemoryBuilder {
         out
     }
 
-    /// 工具调用配对清洗（上游 issue #774）：窗口裁剪可能把 `assistant(tool_calls) → tool`
-    /// 拦腰切断，存档对话链断裂时也会静默丢行，留下没有声明者的孤儿 tool 消息，provider
-    /// 校验失败直接返回 HTTP 400（genai 不做任何规范化，原样下发）。
+    /// 工具调用配对清洗
     fn sanitize_tool_pairing(&self, messages: Vec<LlmMessage>) -> Vec<LlmMessage> {
         let answered: HashSet<String> = messages
             .iter()

@@ -22,6 +22,8 @@ public final class Protocol {
     public static final String MAID_ATTACK = "maid_attack";
     /** 让她去挖方块：玩家正看着的那块，或附近的某一种方块。 */
     public static final String MAID_MINE = "maid_mine";
+    /** 让她把一块方块放到玩家指着的那一面，或一个空格。 */
+    public static final String MAID_PLACE = "maid_place";
     /** 把她背包里的东西交给主人。 */
     public static final String MAID_GIVE_ITEM = "maid_give_item";
     /** 把背包里的东西戴到她头上（最后一格是头饰栏），或把头上那件摘下来。 */
@@ -50,6 +52,8 @@ public final class Protocol {
     public static final String MAID_ATTACK_RESULT = "maid_attack_result";
     /** 挖掘指令的回执。 */
     public static final String MAID_MINE_RESULT = "maid_mine_result";
+    /** 放置指令的回执。 */
+    public static final String MAID_PLACE_RESULT = "maid_place_result";
     /** 交物品的回执。 */
     public static final String MAID_GIVE_ITEM_RESULT = "maid_give_item_result";
     /** 戴/摘头饰的回执。 */

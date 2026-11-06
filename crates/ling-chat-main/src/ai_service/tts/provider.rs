@@ -37,10 +37,6 @@ pub trait TtsAdapter: Send + Sync {
 }
 
 /// 连续合成失败多少次才禁用 TTS。
-///
-/// 单句失败不应该关掉整个语音服务：个别句子可能因为文本本身（纯标点、
-/// 推理后端不支持的张量形状等）失败，而后面的句子完全正常。只有连续
-/// 失败才说明后端真的不可用（服务没启动、URL 配错等）。
 const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
 /// TTS Provider：持有所有已初始化的适配器并按 `tts_type` 路由。

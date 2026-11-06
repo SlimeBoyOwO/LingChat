@@ -10,7 +10,7 @@
 
 from bridge import ask
 from naming import names, narrate
-from wording import heard_sounds, sighting
+from wording import MOB_NAMES, heard_sounds, name_of, sighting, who_of
 
 # 出事时顺手取快照的超时：给得很短，那条旁白不能被一次查询拖住（游戏暂停时
 # 模组答不上来，这一轮就不带，旁白照常进队列）。
@@ -70,6 +70,33 @@ def creature_text(data):
     """同上，但成句：没有活物就什么都说不出来（空串）。"""
     phrase = creature_phrase(data)
     return f"{phrase}。" if phrase else ""
+
+
+def remembered_text(ones):
+    """刚才在附近见过、现在不在了的活物（模组的两分钟记忆）。
+
+    用来回答「刚才那只僵尸呢」：说清它已经不在了，以及死在谁手里。只当过去的事说，
+    不并进此刻的视野——活着的那些本来就会出现在附近那份清单里。
+    """
+    maid, player = names()
+    parts = []
+    for one in ones:
+        who = who_of(one.get("category"), one.get("type"))
+        if not one.get("dead"):
+            parts.append(f"{who}已经不在附近了")
+            continue
+        by = (one.get("killed_by") or "").strip()
+        if by == "maid":
+            parts.append(f"{who}已经被{maid}打倒了")
+        elif by == "owner":
+            parts.append(f"{who}已经被{player}打死了")
+        elif by == "other":
+            raw = (one.get("killed_by_type") or "").strip()
+            killer = "另一个人" if raw == "minecraft:player" else name_of(MOB_NAMES, raw, "别的生物")
+            parts.append(f"{who}已经被{killer}打死了")
+        else:
+            parts.append(f"{who}已经死了")
+    return f"刚才在附近见过、现在不在了的：{'、'.join(parts)}。" if parts else ""
 
 
 def owner_phrase(owner, maid=None, player=None):

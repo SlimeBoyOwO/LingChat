@@ -68,12 +68,12 @@
     <text x="720" y="138" font-size="10.5" fill="#e6edf3">· description 越具体 LLM 越会用对；</text>
     <text x="720" y="164" font-size="10.5" fill="#e6edf3">· execute 校验参数（缺必填 → Err(InvalidArguments)），不 panic；</text>
     <text x="720" y="190" font-size="10.5" fill="#e6edf3">· 失败返回 ToolError（执行器统一编码回填给 LLM）；</text>
-    <text x="720" y="216" font-size="10.5" fill="#e6edf3">· 参考模板：tools/clock.rs（内置 get_current_time）。</text>
+    <text x="720" y="216" font-size="10.5" fill="#e6edf3">· 参考模板：tools/builtin/clock.rs（内置 get_current_time）。</text>
 
     <line x1="350" y1="246" x2="350" y2="284" stroke="#34d399" stroke-width="1.6" marker-end="url(#arrow)" />
 
     <!-- ================= 第 2 步 ================= -->
-    <text x="40" y="304" font-size="14" font-weight="700" fill="#f472b6">第 2 步 · 注册（tools/mod.rs · built_in_registry）</text>
+    <text x="40" y="304" font-size="14" font-weight="700" fill="#f472b6">第 2 步 · 注册（tools/builtin/mod.rs · built_in_registry）</text>
     <rect x="40" y="320" width="620" height="120" rx="9" fill="#16202c" stroke="#f472b6" stroke-opacity="0.5" />
     <text x="60" y="348" font-size="11" font-weight="700" fill="#f472b6">built_in_registry()</text>
     <text x="60" y="376" font-size="10.5" fill="#e6edf3" font-family="Consolas, monospace">let mut registry = ToolRegistry::new();</text>

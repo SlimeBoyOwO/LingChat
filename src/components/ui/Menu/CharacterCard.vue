@@ -53,6 +53,13 @@
         {{ title }}
       </h4>
       <PluginTag :source="source" />
+      <!-- 关系未就绪角标 -->
+      <span
+        v-if="!relationReady"
+        class="mt-1 rounded-full border border-amber-300/40 bg-amber-500/20 px-2 py-0.5 text-[11px] font-medium text-amber-100"
+      >
+        {{ $t("game.relationGuard.badge") }}
+      </span>
     </div>
 
     <div class="flex h-full min-h-36 flex-1 flex-col justify-between pl-4">
@@ -229,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch } from "vue";
+import { onActivated, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { invoke } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
@@ -244,6 +251,7 @@ import { useGameStore } from "@/stores/modules/game";
 import { applyWebInitData } from "@/stores/modules/game/actions";
 import { eventQueue } from "@/core/events/event-queue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { useUIStore } from "@/stores/modules/ui/ui";
 import { Settings, Star } from "@lucide/vue";
 import { Cat, Check } from "@lucide/vue";
 import type { Clothes } from "@/types";
@@ -289,6 +297,7 @@ function handleToggleFavored(): void {
 const { t } = useI18n();
 const gameStore = useGameStore();
 const dialogStore = useDialogStore();
+const uiStore = useUIStore();
 
 const isSelected = () => gameStore.mainRoleId === props.id;
 const isClothesSelected = (role_id: number, clothes_name: string) =>
@@ -367,7 +376,37 @@ const leaveScene = async () => {
 
 const openSettingsModal = () => (isSettingsModalVisible.value = true);
 const closeSettingsModal = () => (isSettingsModalVisible.value = false);
-const handleSettingsSaved = () => emit("saved");
+const handleSettingsSaved = () => {
+  emit("saved");
+  void checkRelationReady();
+};
+
+// 关系就绪角标：与对话前的门用同一个后端判定。设置页保存关系后卡片会被复用，
+// 只在 onMounted 查一次会一直显示旧角标，所以在下面几个时点重查。
+const relationReady = ref(true);
+async function checkRelationReady() {
+  try {
+    const status = await invoke<{ ready: boolean }>("check_relation_ready", { roleId: props.id });
+    relationReady.value = status.ready;
+  } catch (error) {
+    console.error("[CharacterCard] 检查关系就绪失败:", error);
+  }
+}
+onMounted(() => void checkRelationReady());
+// KeepAlive 缓存页重新激活
+onActivated(() => void checkRelationReady());
+// 设置面板从打开变为关闭：用户可能刚补完关系
+watch(
+  () => uiStore.showSettings,
+  (open, wasOpen) => {
+    if (wasOpen && !open) void checkRelationReady();
+  },
+);
+// 切换当前玩家身份后判定结果会变
+watch(
+  () => gameStore.playerIdentityId,
+  () => void checkRelationReady(),
+);
 </script>
 
 <style scoped>

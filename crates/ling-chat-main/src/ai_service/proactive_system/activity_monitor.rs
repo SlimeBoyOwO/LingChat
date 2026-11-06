@@ -138,10 +138,6 @@ impl UserActivityMonitor {
     }
 
     /// 按需安装 Win32 低级钩子。
-    ///
-    /// 主动对话功能未开启时 `get_user_status` 永远不会被调用（30 秒轮询在
-    /// enable_proactive_system=false 时直接 continue），钩子就不会安装；
-    /// 一旦开启，首次感知周期会走到这里补装。非 Windows 平台为空操作。
     #[cfg(target_os = "windows")]
     fn ensure_hooks_installed(&self) {
         if HOOK_HOST.get().is_some() {

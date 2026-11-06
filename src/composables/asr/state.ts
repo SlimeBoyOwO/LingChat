@@ -1,6 +1,7 @@
 import { ref, shallowRef } from "vue";
 import type { RouteLocationNormalizedLoaded } from "vue-router";
 import type { AsrSource } from "@/api/services/asr";
+import type { RoleHotword } from "@/api/services/hotword";
 import type { useGameStore } from "@/stores/modules/game";
 import type { useAsrStore } from "@/stores/modules/settings/asr";
 import type { useUIStore } from "@/stores/modules/ui/ui";
@@ -9,6 +10,12 @@ import type { useUIStore } from "@/stores/modules/ui/ui";
 export interface AsrInputBridge {
   getText: () => string;
   setText: (v: string) => void;
+}
+
+/** 一次录音的热词快照：取快照时的缓存版本，下发前校验，变了则本次不带热词。 */
+export interface HotwordSnapshot {
+  generation: number;
+  hotwords: RoleHotword[];
 }
 
 /** 能量监测句柄（raf 循环 + 独立采集流，stop 时统一回收） */
@@ -50,6 +57,15 @@ export const runtime = {
   inputBridge: null as AsrInputBridge | null,
   /** 录音开始时的输入框内容快照（拼接语义的基准：partial 只追加在这之后） */
   baseText: "",
+  /** 场景热词缓存：角色词 + 全局词（hotwords.ts 刷新） */
+  hotwords: [] as RoleHotword[],
+  /** 角色名热词（主角名 + 在场角色名）。同步派生，与异步读库的 `hotwords` 分开存，
+   *  快照时拼接。 */
+  roleNameHotwords: [] as RoleHotword[],
+  /** 热词缓存版本：每次刷新开始时 +1，用于判断快照是否已被后续刷新取代。 */
+  hotwordsGeneration: 0,
+  /** 本次录音的热词快照（录音开始时取，与 baseText 同类） */
+  hotwordSnapshot: null as HotwordSnapshot | null,
   /** 全局快捷键实际注册状态（审查中危 1）：asr:ptt-global-status 事件 / asrGetStatus
    *  查询驱动。退位判断用它而非设置值——注册失败（键被占用）时窗口内监听继续工作，
    *  避免"设置开但全局没注册 + 窗口内退位"的双重失效（重启后 PTT 完全静默） */

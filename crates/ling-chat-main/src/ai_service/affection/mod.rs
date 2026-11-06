@@ -13,7 +13,7 @@ use std::collections::HashMap;
 
 use serde::{Deserialize, Serialize};
 
-use crate::ai_service::types::{AffectionVector, NegativeVector};
+use crate::ai_service::types::{AffectionVector, CharacterSettings, NegativeVector};
 
 /// 存档全局变量键前缀：`affection.{role_id}`。
 pub const VAR_KEY_PREFIX: &str = "affection.";
@@ -35,6 +35,59 @@ pub struct AffectionState {
 /// 角色在存档全局变量里的键。
 pub fn var_key(role_id: i32) -> String {
     format!("{VAR_KEY_PREFIX}{role_id}")
+}
+
+/// （角色 × 身份）专属键：`affection.{role_id}.{identity_id}`；没有身份时回落旧键。
+pub fn var_key_for(role_id: i32, identity_id: Option<&str>) -> String {
+    match identity_id.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(id) => format!("{VAR_KEY_PREFIX}{role_id}.{id}"),
+        None => var_key(role_id),
+    }
+}
+
+/// 按（角色 × 身份）解析存档里的好感度值：优先该身份专属键，其次旧档共享键
+/// （旧键是「全身份共享默认」，某身份写过专属值后各走各的）。
+pub fn resolve_var<'a>(
+    vars: &'a HashMap<String, serde_json::Value>,
+    role_id: i32,
+    identity_id: Option<&str>,
+) -> Option<&'a serde_json::Value> {
+    let key = var_key_for(role_id, identity_id);
+    if let Some(v) = vars.get(&key) {
+        return Some(v);
+    }
+    if key != var_key(role_id) {
+        return vars.get(&var_key(role_id));
+    }
+    None
+}
+
+/// 某角色对某身份的有效初始好感度：数据里的身份覆写优先，回落角色卡默认；都没有返回 None。
+pub fn effective_initial_affection(
+    settings: &CharacterSettings,
+    identity_override: Option<i32>,
+) -> Option<i32> {
+    identity_override.or(settings.initial_affection)
+}
+
+pub fn uniform_vector(value: i32) -> AffectionVector {
+    let v = value.clamp(-100, 100);
+    AffectionVector {
+        fondness: v,
+        trust: v,
+        intimacy: v,
+        rapport: v,
+        interest: v,
+        longing: v,
+    }
+}
+
+pub fn state_from_vector(vector: AffectionVector) -> AffectionState {
+    AffectionState {
+        total: vector.average(),
+        vector,
+        negative: NegativeVector::default(),
+    }
 }
 
 /// 状态 → 可存入存档全局变量的 JSON；写入前把 `total` 同步为六维平均。
@@ -79,11 +132,6 @@ pub fn negative_tier_label(value: i32) -> &'static str {
 
 /// 好感度变化时写入台词历史的旁白正文：复用既有 add_line 台词工具随记忆构建
 /// 自然进入后续上下文，不做每轮注入（避免每次思维链都携带情感状态）。
-///
-/// 只产出旁白正文，外层 `{旁白: ...}` 包装由调用方统一走
-/// `utils::prompt::PromptRole::Narrator::build_prompt`，这里不再自行包裹。
-/// 以角色名作主语、玩家名作宾语（共享台词历史由在场多名角色共读，「你」会指代不明）；
-/// 数值本身不进文案，只经 [`tier_label`] / [`negative_tier_label`] 翻成程度描述。
 pub fn describe_change_for_line(
     name: &str,
     player_name: &str,

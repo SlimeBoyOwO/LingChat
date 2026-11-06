@@ -7,6 +7,7 @@ import com.google.gson.JsonObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.neoforged.neoforge.items.wrapper.CombinedInvWrapper;
 
@@ -53,5 +54,45 @@ public final class MaidInventory {
     /** 头饰栏里现在是什么；空着给 {@link ItemStack#EMPTY}。 */
     public static ItemStack headwear(EntityMaid maid) {
         return maid.getMaidInv().getStackInSlot(HEADWEAR_SLOT);
+    }
+
+    /** 她手上、副手或背包里有没有这件东西；头饰栏不算存货。 */
+    public static boolean has(EntityMaid maid, Item item) {
+        if (maid.getMainHandItem().is(item) || maid.getOffhandItem().is(item)) {
+            return true;
+        }
+        CombinedInvWrapper backpack = maid.getAvailableBackpackInv();
+        for (int slot = 0; slot < backpack.getSlots(); slot++) {
+            if (slot == HEADWEAR_SLOT) {
+                continue;
+            }
+            if (backpack.getStackInSlot(slot).is(item)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 从她身上取走一件：先主手、再副手、最后背包。取到给 true。 */
+    public static boolean takeOne(EntityMaid maid, Item item) {
+        if (maid.getMainHandItem().is(item)) {
+            maid.getMainHandItem().shrink(1);
+            return true;
+        }
+        if (maid.getOffhandItem().is(item)) {
+            maid.getOffhandItem().shrink(1);
+            return true;
+        }
+        CombinedInvWrapper backpack = maid.getAvailableBackpackInv();
+        for (int slot = 0; slot < backpack.getSlots(); slot++) {
+            if (slot == HEADWEAR_SLOT) {
+                continue;
+            }
+            if (backpack.getStackInSlot(slot).is(item)) {
+                backpack.extractItem(slot, 1, false);
+                return true;
+            }
+        }
+        return false;
     }
 }

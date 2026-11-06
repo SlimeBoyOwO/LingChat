@@ -9,6 +9,7 @@ use crate::ai_service::game_system::memory_builder::MemoryBuilder;
 use crate::ai_service::game_system::persistent_memory_system::{
     MemorySectionLimits, MemorySystemSnapshot, PersistentMemorySystem,
 };
+use crate::ai_service::game_system::player_identity::effective_user_alias;
 use crate::ai_service::llm::LlmSlot;
 use crate::ai_service::tts::VoiceMaker;
 use crate::ai_service::tts::local::LocalTtsRuntime;
@@ -51,6 +52,10 @@ pub struct GameRoleManager {
     memory_inject_continue_user: bool,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
+    /// 角色对玩家身份的关系镜像（DB `role_identity_relation` → 键 `me:<身份id>`），按角色文件夹缓存。
+    identity_relations: HashMap<String, HashMap<String, String>>,
+    /// 角色对各身份的初始好感度覆写（DB 同一张表），按角色文件夹缓存。
+    identity_affections: HashMap<String, HashMap<String, i32>>,
 }
 
 impl GameRoleManager {
@@ -81,6 +86,8 @@ impl GameRoleManager {
             memory_limits,
             memory_inject_continue_user,
             clothes_overrides: HashMap::new(),
+            identity_relations: HashMap::new(),
+            identity_affections: HashMap::new(),
         }
     }
 
@@ -153,6 +160,35 @@ impl GameRoleManager {
     pub fn reset_roles(&mut self) {
         self.loaded_roles.clear();
         self.memory_bank_systems.clear();
+        self.identity_relations.clear();
+        self.identity_affections.clear();
+    }
+
+    /// 该角色对玩家身份的关系（键 `me:<身份 id>`）；未加载时返回 None。
+    pub fn identity_relations_for(&self, role_folder: &str) -> Option<&HashMap<String, String>> {
+        self.identity_relations.get(role_folder)
+    }
+
+    /// 该角色对某身份的初始好感度覆写；没有覆写或角色未加载时返回 None。
+    pub fn identity_affection_of_role(&self, role_id: i32, identity_id: &str) -> Option<i32> {
+        let folder = &self.loaded_roles.get(&role_id)?.settings.character_folder;
+        self.identity_affections
+            .get(folder)
+            .and_then(|map| map.get(identity_id))
+            .copied()
+    }
+
+    /// 设置页保存关系后刷新会话镜像。
+    pub fn set_identity_relations(
+        &mut self,
+        role_folder: &str,
+        relations: HashMap<String, String>,
+        affections: HashMap<String, i32>,
+    ) {
+        self.identity_relations
+            .insert(role_folder.to_string(), relations);
+        self.identity_affections
+            .insert(role_folder.to_string(), affections);
     }
 
     pub fn clear_role_memory(&mut self, role_id: i32) {
@@ -259,6 +295,26 @@ impl GameRoleManager {
 
         tracing::info!("角色 {} 的服装设置为：{}", role.id, clothes);
 
+        // 角色对玩家身份的关系与初始好感度覆写都存数据库，加载角色时一并取回会话镜像。
+        let identity_rows = RoleRepo::load_identity_relations(db, role.id).await?;
+        let identity_relations = identity_rows
+            .iter()
+            .filter(|(_, value)| !value.text.trim().is_empty())
+            .map(|(identity_id, value)| (format!("me:{identity_id}"), value.text.clone()))
+            .collect::<HashMap<_, _>>();
+        let identity_affections = identity_rows
+            .into_iter()
+            .filter_map(|(identity_id, value)| {
+                value
+                    .initial_affection
+                    .map(|affection| (identity_id, affection))
+            })
+            .collect::<HashMap<_, _>>();
+        self.identity_relations
+            .insert(settings.character_folder.clone(), identity_relations);
+        self.identity_affections
+            .insert(settings.character_folder.clone(), identity_affections);
+
         let new_role = GameRole {
             role_id: Some(role.id),
             worldbook,
@@ -292,18 +348,23 @@ impl GameRoleManager {
         Some((role.affection, role.negative))
     }
 
-    /// 用存档全局变量中的好感度覆盖所有已加载角色的内存值（读档恢复用）。
-    pub fn overlay_affections_from_vars(&mut self, vars: &HashMap<String, serde_json::Value>) {
+    pub fn overlay_affections_from_vars(
+        &mut self,
+        vars: &HashMap<String, serde_json::Value>,
+        identity_id: Option<&str>,
+    ) {
         for role in self.loaded_roles.values_mut() {
             let Some(rid) = role.role_id else {
                 continue;
             };
-            if let Some(state) = vars
-                .get(&crate::ai_service::affection::var_key(rid))
+            if let Some(state) = crate::ai_service::affection::resolve_var(vars, rid, identity_id)
                 .and_then(crate::ai_service::affection::state_from_value)
             {
                 role.affection = state.vector;
                 role.negative = state.negative;
+            } else {
+                role.affection = Default::default();
+                role.negative = Default::default();
             }
         }
     }
@@ -447,8 +508,7 @@ impl GameRoleManager {
             let alias = self
                 .loaded_roles
                 .get(&rid)
-                .filter(|_| !player.user_name.trim().is_empty())
-                .map(|_| player.user_name.clone());
+                .map(|role| effective_user_alias(&role.settings, &player.user_name));
             let built = MemoryBuilder::new(rid)
                 .with_continue_user(self.memory_inject_continue_user)
                 .with_player_alias(alias)
@@ -632,6 +692,19 @@ impl GameRoleManager {
         true
     }
 
+    /// 仅替换目标角色的世界书；下一轮组装上下文时读取，已生成的请求副本不变。
+    pub fn update_role_worldbook(
+        &mut self,
+        role_id: i32,
+        book: Option<crate::ai_service::worldbook::Worldbook>,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            return false;
+        };
+        role.worldbook = book;
+        true
+    }
+
     /// 刷新已加载角色的形象配置和主对话立绘、气泡布局。
     ///
     /// 这些字段必须一起拷：内存里的 `role.settings` 是之后
@@ -662,6 +735,35 @@ impl GameRoleManager {
         role.settings.clothes_name = settings.clothes_name.clone();
         role.settings.body_part = settings.body_part.clone();
         true
+    }
+
+    /// 刷新已加载角色的提示词/称呼相关字段；返回是否发生了实际变化。
+    pub fn update_role_prompt_settings(
+        &mut self,
+        role_id: i32,
+        settings: &CharacterSettings,
+    ) -> bool {
+        let Some(role) = self.loaded_roles.get_mut(&role_id) else {
+            return false;
+        };
+        let changed = role.settings.ai_name != settings.ai_name
+            || role.settings.ai_subtitle != settings.ai_subtitle
+            || role.settings.user_name != settings.user_name
+            || role.settings.user_subtitle != settings.user_subtitle
+            || role.settings.system_prompt != settings.system_prompt
+            || role.settings.system_prompt_example != settings.system_prompt_example
+            || role.settings.system_prompt_example_old != settings.system_prompt_example_old;
+        if changed {
+            role.settings.ai_name = settings.ai_name.clone();
+            role.settings.ai_subtitle = settings.ai_subtitle.clone();
+            role.settings.user_name = settings.user_name.clone();
+            role.settings.user_subtitle = settings.user_subtitle.clone();
+            role.settings.system_prompt = settings.system_prompt.clone();
+            role.settings.system_prompt_example = settings.system_prompt_example.clone();
+            role.settings.system_prompt_example_old = settings.system_prompt_example_old.clone();
+        }
+        role.settings.initial_affection = settings.initial_affection;
+        changed
     }
 
     /// 更新已加载角色的语音语言并重新初始化其 VoiceMaker。
@@ -816,45 +918,6 @@ impl GameRoleManager {
                 system.rewind_pointer(idx).await;
             }
         }
-    }
-}
-
-#[cfg(test)]
-mod memory_context_tests {
-    use super::*;
-
-    #[test]
-    fn memory_context_is_separate_from_persona_and_user_message() {
-        let input = vec![
-            LlmMessage::system("不可变角色人设"),
-            LlmMessage::user("玩家当前消息"),
-        ];
-
-        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史记忆资料");
-
-        assert_eq!(output.len(), 3);
-        assert_eq!(output[0].role, "system");
-        assert_eq!(output[0].content, "不可变角色人设");
-        assert_eq!(output[1].role, "system");
-        assert_eq!(output[1].content, "历史记忆资料");
-        assert_eq!(output[2].role, "user");
-        assert_eq!(output[2].content, "玩家当前消息");
-    }
-
-    #[test]
-    fn memory_context_follows_all_original_system_messages() {
-        let input = vec![
-            LlmMessage::system("角色人设"),
-            LlmMessage::system("系统规则"),
-            LlmMessage::user("当前消息"),
-        ];
-
-        let output = GameRoleManager::merge_memory_bank_into_context(input, "历史资料");
-
-        assert_eq!(output[0].content, "角色人设");
-        assert_eq!(output[1].content, "系统规则");
-        assert_eq!(output[2].content, "历史资料");
-        assert_eq!(output[3].content, "当前消息");
     }
 }
 

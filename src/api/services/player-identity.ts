@@ -51,19 +51,26 @@ export const startNewGameWithIdentity = async (id: string): Promise<WebInitData>
   return await invoke<WebInitData>("start_new_game_with_identity", { id });
 };
 
-/** 原地切换当前身份：历史保留、角色收到切换旁白（只影响当前存档）。 */
-export const setCurrentPlayerIdentity = (id: string) =>
-  invoke<WebInitData>("set_current_player_identity", { id });
+/** 原地切换当前身份：历史保留、角色收到切换旁白；转场描述可留空（留空则不生成）。 */
+export const setCurrentPlayerIdentity = (id: string, exitDesc = "", enterDesc = "") =>
+  invoke<WebInitData>("set_current_player_identity", { id, exitDesc, enterDesc });
 
-export const getRoleRelations = async (roleId: number): Promise<Record<string, string>> => {
-  return await invoke<Record<string, string>>("get_role_relations", { roleId });
+/** 关系文本按 `ai:` / `me:` 键；初始好感度按 `me:<身份 id>` 键，null = 跟随角色卡默认 */
+export interface RoleRelationsPayload {
+  relations: Record<string, string>;
+  affections: Record<string, number | null>;
+}
+
+export const getRoleRelations = async (roleId: number): Promise<RoleRelationsPayload> => {
+  return await invoke<RoleRelationsPayload>("get_role_relations", { roleId });
 };
 
 export const saveRoleRelations = async (
   roleId: number,
   relations: Record<string, string>,
+  affections: Record<string, number | null>,
 ): Promise<void> => {
-  await invoke("save_role_relations", { roleId, relations });
+  await invoke("save_role_relations", { roleId, relations, affections });
 };
 
 export const aiKey = (characterFolder: string) => `ai:${characterFolder}`;

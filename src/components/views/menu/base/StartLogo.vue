@@ -11,7 +11,7 @@
 </template>
 
 <script setup lang="ts">
-import normalLogoUrl from "../../../../assets/images/LingChatLogo.png";
+import normalLogoUrl from "../../../../assets/images/LingChatLogo.webp";
 
 defineOptions({ inheritAttrs: false });
 

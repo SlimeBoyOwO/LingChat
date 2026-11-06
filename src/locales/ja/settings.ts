@@ -8,9 +8,7 @@ export default {
   },
   identity: {
     title: "わたしの身分",
-    hint: "「わたし」が誰かを決めます：名前・サブタイトル・チャットに注入される身分プロンプト・各キャラとの関係。いつでも途中で切り替えでき、会話履歴は保持されます（シナリオ進行中を除く）。",
-    lockedHint:
-      "このプレイはセーブ（自動セーブを含む）に紐づいているため、途中では身分を変更できません。新しい会話を始めてください。",
+    hint: "「わたし」が誰かを決めます：名前・サブタイトル・チャットに注入される身分プロンプト・各キャラとの関係／相手への認識。いつでも途中で切り替えでき、会話履歴は保持されます（シナリオ進行中を除く）。",
     scriptBlocked: "シナリオ進行中は身分を変更できません。先にシナリオを終了してください。",
     newGame: "この身分で新しい会話",
     newGameConfirm:
@@ -35,26 +33,31 @@ export default {
       skip: "スキップ（デフォルト）",
       confirm: "切り替えを確定",
     },
-    saveConfirm: "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
-    saveConfirmNoSave: "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存すると身分カードが更新されます：現在使用中の身分（名前 / サブタイトル / 身分プロンプト / 関係／認識）を変更した場合、現在のセーブ「{save}」も同期して変わります。他の身分の変更は現在のセーブに影響しません。保存しますか？",
+    saveConfirmNoSave:
+      "保存すると身分カードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     empty:
       "身分カードがまだありません。下のボタンで作成できます。作成しなくても既定の身分で動きます。",
     current: "使用中",
     edit: "編集",
     delete: "削除",
     create: "身分を作成",
+    editorTitle: "身分カードを編集",
+    editorCreateTitle: "身分カードを作成",
+    editorSubtitle: "名前とサブタイトルが、キャラがあなたをどう呼ぶかを決めます",
     cancel: "キャンセル",
     save: "保存",
-    addRelation: "+ 関係を追加",
+    addRelation: "+ 認識を追加",
     fieldName: "名前",
     fieldSubtitle: "サブタイトル",
     fieldPrompt: "身分プロンプト（チャットに注入され、「わたし」の設定を説明します）",
-    fieldRelations: "関係",
+    fieldRelations: "関係／相手への認識",
     relationsHint:
-      "「わたしと各キャラ / わたしの他の身分」との関係を書けます。空の場合は相手のカード情報を「あなたが知っている情報」として扱い、既定の関係としては扱いません。",
+      "「わたし」が各相手をどう見ているか（関係）を書きます。相手は「ta」と書いて、文として完結させてください：例「相手は私の幼なじみ」。身分ごとに独立しています。ゲーム中の変化はセーブに記録され、身分カードは変更されません。",
     targetAi: "AI キャラ",
     targetMe: "わたしの身分",
-    relationCount: "{n} 件の関係",
+    relationCount: "{n} 件の認識",
     msg: {
       nameRequired: "名前を入力してください",
       savedTitle: "身分を保存しました",
@@ -380,6 +383,9 @@ export default {
     envHint: "環境変数（プロセスから読取）：",
     envFromProcess: "プロセス環境から",
     saveConfig: "保存",
+    reload: "プラグインを再読み込み",
+    reloadHint:
+      "プラグインの manifest を編集したり data/plugins のファイルを入れ替えた後は、ここから再読み込みできます。アプリの再起動は不要です。",
     empty: "プラグインが見つかりません。data/plugins/ にプラグインフォルダを置いてください",
     delete: "削除",
     deleteConfirm:
@@ -435,10 +441,13 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - 設定編集",
+      untitled: "キャラクター",
       subtitle: "キャラクターの詳細設定を変更します",
     },
-    saveConfirm: "保存するとキャラカードが更新されます：「人物設定と呼称」「関係」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
-    saveConfirmNoSave: "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
+    saveConfirm:
+      "保存するとキャラカードが更新されます：「人物設定と呼称」「関係／認識」「初期好感度」の変更は、現在のセーブ「{save}」の対応内容も同期して変わります。立ち絵・ボイス・称号・紹介文などのみの変更はカード自体のみ更新されます。保存しますか？",
+    saveConfirmNoSave:
+      "保存するとキャラカードが更新されます：進行中のセーブがないため、カード自体のみ更新されます。保存しますか？",
     tabs: {
       basic: "基本情報",
       prompts: "プロンプト",
@@ -448,26 +457,29 @@ export default {
       live2d: "Live2D",
       pet: "デスクトップペット",
       voice: "音声設定",
+      hotword: "音声認識ホットワード",
     },
     relations: {
-      title: "関係",
-      hint: "ここにはこのキャラが相手をどう見ているか（例：幼なじみ、ライバル）を書きます。キャラクターフォルダーの relations.yml に保存されるので、キャラ設定を上書きしても消えません。",
-      save: "関係を保存",
+      title: "関係／相手への認識",
+      hint: "ここにはこのキャラが各相手をどう見ているか（関係）を書きます。相手は「ta」と書いて、文として完結させてください：例「相手は私の幼なじみ」。キャラ同士の認識は互いに影響しません。ゲーム中の変化はセーブに記録され、キャラカードは変更されません。",
       missing: "対象は既に存在しません（{key}）",
+      affectionPlaceholder: "初期好感度",
+      affectionHint:
+        "「わたしの身分」の行にある数字は、このキャラがその身分に対する初期好感度です（-100〜100）。空欄ならキャラカードの既定値に従います。",
       msg: {
-        savedTitle: "関係を保存しました",
-        savedMsg: "このキャラの関係を更新しました",
-        saveFailTitle: "関係の保存に失敗しました",
+        savedTitle: "認識を保存しました",
+        savedMsg: "このキャラの認識（関係）を更新しました",
         loadFailTitle: "関係の読み込みに失敗しました",
       },
     },
     fields: {
       aiName: "AI 名",
       aiSubtitle: "AI サブタイトル",
-      userName: "このキャラが「わたし」を呼ぶ名前",
-      userNameHint: "空欄の場合は身分カードの名前を使用します",
-      userSubtitle: "このキャラが「わたし」に使うサブタイトル",
-      userSubtitleHint: "空欄の場合は身分カードのサブタイトルを使用します",
+      userName: "このキャラクターが「私」を呼ぶ既定の名前",
+      userSubtitle: "このキャラクターが「私」に使う既定の副題",
+      initialAffection: "既定の初期好感度",
+      initialAffectionHint:
+        "新しい会話を始めるときの初期好感度（-100〜100）。データベースに身分ごとの値がある場合はそちらが優先されます。空欄なら未設定になります。",
       title: "キャラクタータイトル",
       info: "キャラクター紹介",
       systemPrompt: "システムプロンプト",
@@ -565,6 +577,15 @@ export default {
       voiceFilePlaceholder: "GSV サーバーからアクセス可能な音声パス（例: /refs/开心.wav）",
       text: "参照テキスト",
       textPlaceholder: "参照音声に対応するテキスト",
+      samplingDesc:
+        "空欄なら既定値を使用します。temperature と top_p を下げるとより安定し、参照の声質に近づきます。話速は感情ごとに微調整できます（例: 怒り 1.1、悲しみ 0.9）。",
+      temperature: "temperature（温度）",
+      topP: "top_p（サンプリング閾値）",
+      speed: "speed_factor（話速）",
+      samplingPlaceholder: "既定",
+      refGuideTitle: "参照音声の作成ガイド",
+      refGuide:
+        "1 本あたり 3〜10 秒、リバーブや BGM なし、話者は 1 人、話速は自然に。\n6 分類は可能な限り同じキャラクターの同じ収録から用意してください。そうでないと感情を切り替えたとき声質が跳ねます。\n参照テキストは音声と一字一句一致させてください（「あ」「ん」などの間投詞も含む）。不一致は音質劣化の最大要因です。",
     },
     touch: {
       hint: "立ち絵の上に触れられる範囲を描き、部位ごとに AI へ送る一言を設定します。衣装ごとに別々の範囲を持てます。静止画の立ち絵にのみ有効で、Live2D モデルの触れられる範囲はモデル側の設定で決まります。",
@@ -586,6 +607,27 @@ export default {
       apply: "保存して閉じる",
       discardTitle: "変更を破棄",
       discardMessage: "未適用の変更があります。閉じてもよろしいですか？",
+    },
+    hotword: {
+      modelUnsupported:
+        "現在のモデル {model} は即時ホットワードに対応していないため、設定しても反映されません",
+      listTitle: "ホットワード一覧",
+      count: "全 {count} 件 · 上限 {max}",
+      roleHint:
+        "このキャラクターにのみ適用され、キャラクターを切り替えると単語表も切り替わります。キャラクター名は自動で追加されます。",
+      roleAppendHint:
+        "キャラクター名は自動で追加されます。主人公と登場中のキャラクター名が認識時に重み 5 で先頭に追加されるため、手動で管理する必要はありません。複数キャラクターの場面でも脇役の名前を正しく認識できます。",
+      add: "ホットワードを追加",
+      empty: "ホットワードがまだありません。「ホットワードを追加」から作成してください",
+      colText: "語句",
+      colWeight: "重み",
+      weight: {
+        super: "50（スーパー）",
+      },
+      delete: "削除",
+      tooLongChars: "長すぎます：{count} 文字（上限 {max} 文字）。保存は拒否されます",
+      tooLongSegments: "語句が多すぎます：{count} 個（上限 {max} 個）。保存は拒否されます",
+      tooMany: "ホットワードが多すぎます：{count} 件（上限 {max} 件）。保存は拒否されます",
     },
     live2d: {
       importDirectory: "モデルフォルダーをインポート",
@@ -968,18 +1010,8 @@ export default {
       desc: "有効にすると記憶が自動圧縮されます。保存後に LingChat を再起動すると反映されます",
     },
     voiceSound: {
-      title: "音声効果音スイッチ",
-      desc: "VITSなし時の会話効果音を有効にする",
-    },
-    engineDownload: {
-      title: "音声推論エンジンのダウンロード（SBV2）",
-      cpuHint:
-        "CPU推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      cpu: "CPU推論",
-      nvidia: "NVIDIA推論",
-      amdHint:
-        "AMD推論にはSBV2-APIを使用します。settings.yml で sbv2 を sbv2api に変更してください。キャラクター設定も変更できます",
-      amd: "AMD推論",
+      title: "会話効果音スイッチ",
+      desc: "キャラクターの発話中にランダムな会話効果音を再生（音声を設定している場合は再生しない）",
     },
     back: {
       title: "メインメニューに戻る",
@@ -1423,15 +1455,16 @@ export default {
 
   asr: {
     title: "音声認識",
-    pttKey: "音声ショートカット",
+    sections: { inputMethod: "入力方法" },
+    pttKey: "押して話すショートカット",
     pttKeyHint:
-      "押して話す、クリックで録音切替。自動音声認識オン時は自動リスニングを切替。単独キーも可（チャット入力時にも反応します。ファンクションキーか組合せ推奨）",
+      "このキーを押している間だけ話し、離すと録音を終了します。チャット入力中は単独の英字キーを使用しないでください。ショートカットの優先度が高く、キーが奪われる場合は組合せキーを設定してください。",
     pttKeyCapture: "新しいキーを押してください…（Escでキャンセル）",
     pttKeyInvalid: "このキーはバインドできません：Enter はメッセージ送信に使用されます",
     pttKeyReset: "デフォルトに戻す",
-    pttGlobal: "フォーカス喪失時もショートカット有効",
+    pttGlobal: "グローバルショートカット",
     pttGlobalHint:
-      "ウィンドウがフォーカスを失ってもショートカットが有効（グローバルショートカット）。英字・数字などの単独キーを割り当てると他のアプリでそのキーが奪われます。自己責任でご利用ください",
+      "他のアプリが前面にあるときも音声入力を発動できます。システムレベルのキー権限が必要です",
     pttGlobalError: "グローバルショートカットの登録に失敗しました：{reason}",
     pttGlobalNotRegistered:
       "キーが他のアプリに使用されている可能性があり、グローバルショートカットが有効になっていません",
@@ -1445,11 +1478,21 @@ export default {
       vadLoaded: "VAD モデル",
       vadLoadedOk: "読込済み",
       vadLoadedNo: "未読込",
+      service: "認識サービス",
+      serviceOk: "正常",
+      serviceError: "異常",
+      serviceUnchecked: "未確認",
+      hotkey: "グローバルショートカット",
+      hotkeyOk: "登録済み",
+      hotkeyMissing: "未登録",
     },
     voiceInput: "音声入力",
-    voiceInputHint: "マスタースイッチ：オフにすると音声入力がすべて無効（自動・手動マイクとも）",
-    autoListen: "自動音声認識を有効化",
-    autoListenHint: "マイクを自動監視し、ユーザーの発話をテキストに変換",
+    voiceInputHint:
+      "オンにすると、押して話す・グローバルショートカット・自動リスニングで音声入力できます",
+    voiceInputHintMobile: "オンにすると、押して話す・自動リスニングで音声入力できます",
+    autoListen: "自動リスニング",
+    autoListenHint:
+      "環境音を常時監視し、発話を検出すると自動で録音を開始、話し終わると自動で終了します",
     vadSilence: "無音タイムアウト（ms）",
     vadSilenceHint:
       "発話停止後、この時間だけ無音が続いたら録音を終了します（デフォルト 800ms。大きいほど発話途中で切れにくくなります）",
@@ -1461,27 +1504,124 @@ export default {
       "フレームごとの音声確率（frame/prob/len）をログページに出力します。音声認識が発火しない原因の調査用。デフォルトはオフ、録音中は毎秒約 1 行",
     sendMode: {
       title: "認識後",
-      fillOnly: "入力欄に挿入（推奨）",
-      autoSend: "自動送信",
+      fillOnly: "入力欄に挿入",
+      autoSend: "直接送信",
+      fillOnlyHint: "認識結果を入力欄に書き込みます",
+      autoSendHint: "認識完了後すぐにメッセージとして送信します",
+    },
+    hotwords: {
+      sectionTitle: "ホットワード",
+      description:
+        "ホットワードは固有名詞の認識精度を高めます。グローバルホットワードはすべてのキャラクターに適用されます。ライブラリは分類された素材で、コピー後は独立して管理されます。キャラクターホットワードは「キャラクター設定 → 音声認識ホットワード」で管理します。",
+    },
+    refreshStatus: "状態を更新",
+    refreshing: "更新中…",
+    save: {
+      saving: "保存中…",
+      saved: "保存済み",
+      failed: "保存に失敗しました",
+    },
+    manage: "管理",
+    globalHotword: {
+      title: "グローバルホットワード",
+      open: "グローバルホットワードを管理",
+      hint: "毎回の認識で送信され、シーンのキャラクターホットワードと統合されます（同じ語は高い重みを採用）",
+      rowHint: "すべてのキャラクターで共用され、認識時に単語表の末尾へ追加されます",
+      dialog: {
+        title: "グローバルホットワード",
+        subtitle: "すべてのキャラクターで共用し、認識時に単語表の末尾へ追加されます",
+        loadFailed: "グローバルホットワードの読み込みに失敗しました",
+        saveFailed: "グローバルホットワードの保存に失敗しました",
+        weightHint:
+          "重み 1–5 は通常のホットワードで、値が大きいほど優先されます。50 はスーパーホットワードで再現率が高い一方、1 回のリクエストで最大 50 件までです。超過分は自動的に通常枠へ降格され、破棄されません。",
+        footerHint: "保存後すぐに認識へ反映されます",
+        footer: { cancel: "キャンセル", save: "保存", saving: "保存中…" },
+      },
+    },
+    hotwordLibrary: {
+      title: "ホットワードライブラリ",
+      open: "ホットワードライブラリを管理",
+      hint: "よく使う単語を分類して保存し、各キャラクターや全体のホットワードに追加できます。追加はコピーなので、その後は互いに影響しません",
+      rowHint: "素材の単語を分類して整理し、キャラクターやグローバルのホットワードへコピーできます",
+      dialog: {
+        title: "ホットワードライブラリ",
+        subtitle: "単語を分類して、キャラクターと全体のホットワードに提供します",
+        loadFailed: "ホットワードライブラリの読み込みに失敗しました",
+        saveFailed: "ホットワードライブラリの保存に失敗しました",
+        footer: {
+          cancel: "キャンセル",
+          save: "保存",
+          saving: "保存中…",
+          count: "全 {count} 件 · 分類 {categories} · 上限 {max}",
+        },
+        categories: {
+          all: "すべて",
+          uncategorized: "未分類",
+          unnamed: "（名称未設定）",
+          new: "分類を追加",
+          delete: "分類を削除",
+          deleteConfirm:
+            "この分類と {count} 件の単語を削除しますか？キャラクターや全体にコピー済みの単語は影響を受けません。",
+          namePlaceholder: "分類名",
+        },
+        words: {
+          add: "単語を追加",
+          searchPlaceholder: "単語を検索",
+          empty: "単語がありません",
+          colCategory: "分類",
+          hint: "左の分類または検索で絞り込めます。単語はその場で編集できます。",
+        },
+        validation: {
+          checkForm: "赤く表示された分類名を修正してください",
+          emptyName: "分類名を入力してください",
+          duplicateName: "分類名が重複しています",
+          nameTooLong: "分類名が長すぎます",
+          tooManyWords: "単語数 {count} が上限 {max} を超えています。削除してください",
+          tooManyCategories: "分類数 {count} が上限 {max} を超えています。削除してください",
+        },
+      },
+      pickButton: "ライブラリから追加",
+      picker: {
+        title: "ライブラリから追加",
+        allCategories: "すべての分類",
+        uncategorized: "未分類",
+        searchPlaceholder: "単語を検索",
+        selectAll: "すべて選択",
+        clear: "クリア",
+        existing: "追加済み",
+        selected: "{count} 件選択中",
+        remaining: "残り {count} 件",
+        limitReached: "上限に達しました。選択を外すと追加できます",
+        add: "追加",
+        cancel: "キャンセル",
+        empty:
+          "ライブラリに単語がありません。先に「ホットワードライブラリを管理」で追加してください",
+      },
+    },
+    advanced: {
+      title: "詳細と診断",
+      description:
+        "以下のパラメータは録音の分割とデバッグに影響します。通常はデフォルト値で問題ありません。",
     },
     streamMode: "ストリーム認識",
     streamModeHint: "話している間に認識テキストをリアルタイム表示",
-    streamModeHintLocal:
-      "録音終了後にローカル認識へアップロードし、結果を段階的に表示（llama-server 結果ストリーム）",
     streamNotSupported: "選択中のモデルはストリーム認識に対応していません",
     provider: {
       title: "音声認識",
       providerSelect: "サービス",
       modelRefresh: "モデルリストを更新",
+      modelSelect: "モデル",
       modelListFailed: "モデルリストの取得に失敗しました：{err}",
-      test: "接続テスト",
-      testing: "録音中…話してください（4秒）",
+      test: "接続テスト（4 秒録音）",
       testingStop: "停止して認識",
-      testSuccess: "接続成功",
-      testResult: "認識結果：{text}",
+      testSuccess: "音声テスト：{text}",
       testNoSpeech: "音声を検出できませんでした。もう一度お試しください",
       testFailed: "失敗：{err}",
+      streamNotSupportedLocal: "現在、ローカルではストリーム認識に対応していません",
       presetHint: "モデル選択でエンドポイントが自動入力されます。API キーのみ必要です",
+      inlineHotwordLimit: "インラインホットワード：上限 約 {count} 件（推定値）",
+      promptBiasNoLimit:
+        "ホットワードは prompt の文脈バイアスで反映されるため、件数の上限はありません",
     },
     errors: {
       ASR_MODEL_MISSING: "VAD モデルが見つかりません",
@@ -1496,6 +1636,54 @@ export default {
       ASR_MISSING_CREDENTIALS: "このプロバイダの API Key を入力してください",
       ASR_STREAMING_UNSUPPORTED: "現在のモデルはストリーミング認識に対応していません",
     },
+  },
+  hotwordImport: {
+    entry: "一括インポート",
+    dialog: {
+      title: "ホットワードを一括インポート",
+      subtitle: "単語表を貼り付け、検証後に保存します",
+      placeholder: "1 行に 1 語：番号.単語(重み)\n1.钦灵(5)\n2.deepseek(2)",
+      invalidCount: "異常 {count} 行",
+      noInvalid: "異常なし",
+      overCapacityCount: "上限超過 {count} 行",
+      listOverLimit: "現在のリストが上限を超えています。先に削減してからインポートしてください。",
+      line: "{line} 行目",
+      weight: "重み",
+      more: "他 {count} 件の異常",
+      reason: {
+        badFormat: "形式は 番号.単語(重み) で入力してください",
+        tooLongChars: "{max} 文字を超えています（現在 {count}）",
+        tooLongSegments: "{max} 個を超えています（現在 {count}）",
+        overCapacity: "容量上限を超えたためインポートされません",
+      },
+      targetCategory: "対象分類",
+      libraryOnly: "ライブラリのみ",
+      uncategorized: "未分類",
+      unnamed: "（名称未設定）",
+      cancel: "キャンセル",
+      save: "保存",
+      saving: "保存中…",
+      noRows: "インポートできる語句がありません",
+      appendHint:
+        "新しい語句はリストの末尾に追加されます。容量が厳しいときは前の語句が優先されます。",
+      duplicateCategoryHint:
+        "重複した語句は元の分類を保持し、重みだけを更新します。対象分類は新規の語句にのみ適用されます。",
+      saveScopeHint: "保存すると現在のホットワード一覧の既存の編集と削除も同時に書き込まれます。",
+    },
+    notification: {
+      title: "{count} 件のホットワードを保存しました",
+      libraryTitle: "{count} 件の単語を保存しました",
+      scopeRole: "キャラクターホットワード",
+      scopeGlobal: "グローバルホットワード",
+      scopeLibrary: "ホットワードライブラリ",
+    },
+  },
+  hotwordBatch: {
+    entry: "一括削除",
+    exit: "一括モード終了",
+    selectAll: "すべて選択",
+    clearSelection: "選択を解除",
+    deleteSelected: "選択した {count} 件を削除",
   },
   memoryDebug: {
     title: "永続記憶デバッグ",

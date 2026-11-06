@@ -17,6 +17,7 @@ use tauri_plugin_store::StoreExt;
 use crate::AppState;
 use crate::ai_service::types::{CharacterSettings, strip_transient_fields};
 use crate::config;
+use crate::config::AppConfig;
 use crate::db::entities::role::RoleType;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::system::open_folder;
@@ -701,7 +702,18 @@ pub async fn select_clothes(
     role_id: i32,
     clothes_name: String,
 ) -> Result<serde_json::Value, String> {
-    let result = select_clothes_inner(app.clone(), role_id, clothes_name).await?;
+    let result = select_clothes_inner(app.clone(), role_id, clothes_name.clone()).await?;
+    // 与 AI 换装走同一事件，让投屏窗口等其它窗口同步；重复收到是无害的赋值
+    let payload = serde_json::json!({
+        "roleId": role_id,
+        "clothesName": clothes_name,
+    });
+    if let Err(e) = app.emit(
+        crate::ai_service::game_system::world_actions::EVENT_CLOTHES_CHANGED,
+        &payload,
+    ) {
+        tracing::warn!("emit character:clothes-changed 失败: {e}");
+    }
     // 手动优先：用户手动选装后，关闭 AI 自动换装（设置页可重新打开）
     crate::config::AppConfig::lock_auto_switch(&app, config::keys::AI_AUTO_CLOTHES);
     Ok(result)
@@ -745,16 +757,65 @@ pub async fn update_role_settings(
     let yaml_path = resolve_settings_file(&base_path);
     write_json_as_yaml(&yaml_path, &save_data).map_err(|e| format!("保存失败: {e}"))?;
 
+    let app_config = AppConfig::load(&app).unwrap_or_default();
+    let prompt_options = crate::utils::prompt::PromptOptions::from_config(&app_config);
+
     let runtime_updated = {
         let service = state.ai_service.lock().await;
         let mut gs = service.game_status.lock().await;
+
+        let identity_id = gs.player.identity_id.clone();
+        let affection_override = identity_id
+            .as_deref()
+            .and_then(|id| gs.role_manager.identity_affection_of_role(role_id, id));
+        let old_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
+            crate::ai_service::affection::effective_initial_affection(
+                &role.settings,
+                affection_override,
+            )
+        });
+
         let voice_updated = gs
             .role_manager
             .update_role_voice_settings(role_id, &validated);
         let visual_updated = gs
             .role_manager
             .update_role_visual_settings(role_id, &validated);
-        voice_updated || visual_updated
+
+        let prompt_changed = gs
+            .role_manager
+            .update_role_prompt_settings(role_id, &validated);
+
+        // 保存即烘：称呼/人设类字段有变化时，按当前阵容重建在场人设行，刷新记忆并落一次当前存档。
+        if prompt_changed {
+            crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
+                &mut gs,
+                db,
+                &crate::api::data_dir(),
+                prompt_options,
+            )
+            .await
+            .map_err(|e| format!("重建人设行失败: {}", e))?;
+            gs.persist_lines_if_bound(db).await;
+        }
+
+        // 改初始好感度即同步：本次保存若改变了当前身份的有效初始值，把当前存档里
+        // 「该角色 × 当前身份」的数值直接同步为新初始值，并写一次快照落库。
+        if let Some(old) = old_initial {
+            let new_initial = crate::ai_service::affection::effective_initial_affection(
+                &validated,
+                affection_override,
+            );
+            if let Some(init) = new_initial.filter(|v| *v != old) {
+                // 补发一次变更事件：面板即时刷新新值（本路径不经过上帝 Agent）。
+                let payload = gs
+                    .sync_identity_affection_initial(db, role_id, identity_id.as_deref(), init)
+                    .await;
+                let _ = app.emit("affection:changed", payload);
+            }
+        }
+
+        voice_updated || visual_updated || prompt_changed
     };
 
     tracing::info!(

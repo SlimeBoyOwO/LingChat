@@ -17,6 +17,9 @@ pub use codex::auth as codex_auth;
 pub use factory::create_llm_client;
 pub use provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
 
+// 云端嵌入后端复用同一套 base_url 规范化，避免尾斜杠拼接踩同一个坑。
+pub(crate) use providers::normalize_base_url;
+
 use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;

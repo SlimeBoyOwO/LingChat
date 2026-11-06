@@ -6,18 +6,23 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, TransactionTrait};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::tts::local::saf_bridge::{ImportSource, prepare_file_import_source};
 use crate::db::entities::role::{Column, Entity as RoleEntity};
+use crate::db::managers::hotword_repo::HotwordRepo;
 use crate::utils::archive::{
     self, ArchiveError, ArchiveFormat, ConflictPolicy, EntryEvent, ExtractSummary,
 };
 use crate::utils::yaml_file::resolve_settings_file;
 
-use super::ImportResult;
+use super::{HOTWORD_SIDECAR_VERSION, HotwordSidecar, ImportResult};
+
+/// 旁挂文件体积上限，超过即判非法且不 parse：压缩包本身不限大小，
+/// 高压缩比的巨型 JSON 会先把内存吃满。
+const MAX_SIDECAR_BYTES: u64 = 1024 * 1024;
 
 pub(super) async fn do_import(
     app: &AppHandle,
@@ -120,6 +125,18 @@ pub(super) async fn do_import(
         extracted_dir.display()
     );
 
+    // 5.5 先在暂存目录里校验设定文件（settings_local.yml 优先，否则 settings.yml）。
+    //     必须早于任何破坏旧目录的动作：否则一个缺设定文件的坏包会把原角色一并带走。
+    if !resolve_settings_file(&extracted_dir).exists() {
+        tracing::error!(
+            "[RoleArchive] do_import 压缩包缺少设定文件: {}",
+            extracted_dir.display()
+        );
+        cleanup_err(&staging_root_for_cleanup);
+        // 返回 i18n 错误码，前端按 ui.archiveProgress.errors.<code> 查表翻译。
+        return Err("ARCHIVE_MISSING_SETTINGS_YML".into());
+    }
+
     // 6. 根据同名冲突策略解析最终目标目录。
     let resolution = match archive::resolve_target(&characters_root, &final_name, policy) {
         Ok(r) => {
@@ -156,11 +173,13 @@ pub(super) async fn do_import(
         return Err("导入已取消".into());
     }
 
-    // 覆盖策略：先清空旧目录，失败时返回明确错误。
-    if resolution.action == "overwritten" {
-        if let Err(e) = tokio::fs::remove_dir_all(&resolution.target).await {
+    // 覆盖策略：把旧目录改名到同级的隐藏备份，而不是直接删除。
+    // 任何后续步骤失败都靠它还原来保证原角色不丢；只有全部成功后才真正清理。
+    let backup_dir = if resolution.action == "overwritten" {
+        let backup = characters_root.join(format!(".import_backup_{staging_id}"));
+        if let Err(e) = tokio::fs::rename(&resolution.target, &backup).await {
             tracing::error!(
-                "[RoleArchive] do_import overwrite 清空旧目录失败: target={}, err={}",
+                "[RoleArchive] do_import overwrite 备份旧目录失败: target={}, err={}",
                 resolution.target.display(),
                 e
             );
@@ -170,33 +189,38 @@ pub(super) async fn do_import(
                 resolution.target.display()
             ));
         }
-    }
+        Some(backup)
+    } else {
+        None
+    };
+
     if let Some(parent) = resolution.target.parent() {
-        tokio::fs::create_dir_all(parent).await.map_err(|e| {
+        if let Err(e) = tokio::fs::create_dir_all(parent).await {
             cleanup_err(&staging_root_for_cleanup);
-            format!("创建目标父目录: {e}")
-        })?;
+            restore_backup(&resolution.target, backup_dir.as_deref()).await;
+            return Err(format!("创建目标父目录: {e}"));
+        }
     }
 
     // 移动目录前再次检查取消状态；目标已确定，但尚未写入最终位置。
     if cancel_token.is_cancelled() {
         tracing::info!("[RoleArchive] do_import cancel hit before rename: cleanup staging");
         cleanup_err(&staging_root_for_cleanup);
+        restore_backup(&resolution.target, backup_dir.as_deref()).await;
         return Err("导入已取消".into());
     }
 
     // 7. 把解压后的角色目录移动到最终目标位置。
     //    同一磁盘优先重命名；若因句柄占用或权限失败，则重试并回退到复制。
-    let target_exists_before = resolution.target.exists();
     if let Err(e) = archive::relocate_dir(&extracted_dir, &resolution.target).await {
         tracing::error!(
-            "[RoleArchive] do_import 移动失败: src={}, target={}, target_exists={}, err={}",
+            "[RoleArchive] do_import 移动失败: src={}, target={}, err={}",
             extracted_dir.display(),
             resolution.target.display(),
-            target_exists_before,
             e
         );
         cleanup_err(&staging_root_for_cleanup);
+        restore_backup(&resolution.target, backup_dir.as_deref()).await;
         return Err(e);
     }
     tracing::info!(
@@ -209,22 +233,10 @@ pub(super) async fn do_import(
     let _ = tokio::fs::remove_dir_all(&staging_root).await;
     tracing::info!("[RoleArchive] do_import staging 已清理");
 
-    // 8.5 校验设定文件（settings_local.yml 优先，否则 settings.yml）；缺失时删除刚移动的目录并返回错误。
-    let settings_file = resolve_settings_file(&resolution.target);
-    if !settings_file.exists() {
-        tracing::error!(
-            "[RoleArchive] do_import 缺少设定文件: {}",
-            settings_file.display()
-        );
-        let _ = tokio::fs::remove_dir_all(&resolution.target).await;
-        // 返回 i18n 错误码，前端按 ui.archiveProgress.errors.<code> 查表翻译。
-        return Err("ARCHIVE_MISSING_SETTINGS_YML".into());
-    }
-
     // 同步角色数据前进行最后一次取消检查。
     if cancel_token.is_cancelled() {
         tracing::info!("[RoleArchive] do_import cancel hit before sync: rollback target");
-        let _ = tokio::fs::remove_dir_all(&resolution.target).await;
+        restore_backup(&resolution.target, backup_dir.as_deref()).await;
         return Err("导入已取消".into());
     }
 
@@ -234,26 +246,134 @@ pub(super) async fn do_import(
     if let Err(e) = crate::db::role_sync::sync_roles_from_folder(&db, &data_dir).await {
         // 同步失败时立即回滚已移入的角色目录（await 而不是 spawn），
         // 避免用户立刻重试同名导入时遇到尚未删除的旧目录。
-        let target = resolution.target.clone();
         tracing::error!(
             "[RoleArchive] do_import sync failed, rolling back target={}",
-            target.display()
+            resolution.target.display()
         );
-        let _ = tokio::fs::remove_dir_all(&target).await;
+        restore_backup(&resolution.target, backup_dir.as_deref()).await;
         return Err(format!("sync roles: {e}"));
     }
 
-    // 10. 查询新角色 ID。
+    // 10. 全部成功，删除旧目录备份。
+    if let Some(backup) = &backup_dir {
+        if let Err(e) = tokio::fs::remove_dir_all(backup).await {
+            // 备份残留不影响功能（隐藏目录不会被注册为角色），只记录日志。
+            tracing::warn!(
+                "[RoleArchive] 删除旧目录备份失败: backup={}, err={}",
+                backup.display(),
+                e
+            );
+        }
+    }
+
+    // 11. 查询新角色 ID。
     let role_id = find_role_id_by_folder(&db, &resolution.final_name).await?;
+
+    // 11. 热词旁挂导入已停用：不回写、不删文件，`warnings` 原样透传。
+    let warnings = summary.warnings;
 
     Ok(ImportResult {
         role_id,
         role_name: resolution.final_name.clone(),
         conflict_action: resolution.action.into(),
-        warnings: summary.warnings,
+        warnings,
         bytes_extracted: summary.bytes_extracted,
         format,
     })
+}
+
+/// 导入收尾的热词旁挂处理，已停用；保留签名供将来恢复。
+#[allow(dead_code)] // 保留供将来恢复旁挂读取
+async fn restore_hotwords_for_import(
+    _db: &DatabaseConnection,
+    _role_id: Option<i32>,
+    role_dir: &Path,
+    _warnings: &mut Vec<String>,
+) {
+    tracing::warn!(
+        "[RoleArchive] 热词旁挂导入已停用，忽略角色目录下的旁挂文件 (dir={})",
+        role_dir.display()
+    );
+}
+
+/// 旁挂文件的读取、校验与写库。`None` = 文件不存在，`Some` = 已处理（含失败）。
+#[allow(dead_code)] // 保留供将来恢复旁挂读取
+async fn read_sidecar_into_db(
+    db: &DatabaseConnection,
+    role_id: i32,
+    path: &Path,
+) -> Option<Vec<String>> {
+    let meta = match tokio::fs::metadata(path).await {
+        Ok(meta) => meta,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
+        Err(e) => return Some(vec![format!("热词旁挂文件读取失败: {e}")]),
+    };
+    // 体积闸门须在 parse 之前。
+    if meta.len() > MAX_SIDECAR_BYTES {
+        return Some(vec![format!(
+            "热词旁挂文件过大 ({} 字节 > {MAX_SIDECAR_BYTES})，已跳过",
+            meta.len()
+        )]);
+    }
+    let bytes = match tokio::fs::read(path).await {
+        Ok(bytes) => bytes,
+        Err(e) => return Some(vec![format!("热词旁挂文件读取失败: {e}")]),
+    };
+    let sidecar: HotwordSidecar = match serde_json::from_slice(&bytes) {
+        Ok(sidecar) => sidecar,
+        Err(e) => return Some(vec![format!("热词旁挂文件解析失败: {e}")]),
+    };
+    if sidecar.version != HOTWORD_SIDECAR_VERSION {
+        return Some(vec![format!(
+            "热词旁挂文件版本不支持 ({}，本版支持 {HOTWORD_SIDECAR_VERSION})，已跳过",
+            sidecar.version
+        )]);
+    }
+
+    // 校验与归一交给 replace_for_role，与保存路径同口径。
+    let rows: Vec<(String, i32)> = sidecar
+        .hotwords
+        .into_iter()
+        .map(|row| (row.text, row.weight))
+        .collect();
+    if let Err(e) = write_hotwords(db, role_id, &rows).await {
+        tracing::warn!("[RoleArchive] 热词回写失败 (role_id={role_id}): {e}");
+        return Some(vec![format!("热词写入失败: {e}")]);
+    }
+    tracing::info!("[RoleArchive] 热词旁挂文件已回写: role_id={role_id}");
+    Some(Vec::new())
+}
+
+/// 在一个事务里写入；校验失败整体回滚。`&txn` 的原因见 `replace_for_role`。
+async fn write_hotwords(
+    db: &DatabaseConnection,
+    role_id: i32,
+    rows: &[(String, i32)],
+) -> Result<(), anyhow::Error> {
+    let txn = db.begin().await.map_err(|e| anyhow::anyhow!(e))?;
+    HotwordRepo::replace_for_role(&txn, role_id, rows).await?;
+    txn.commit().await.map_err(|e| anyhow::anyhow!(e))
+}
+
+/// 导入失败时把目标位置恢复成导入前的样子。
+///
+/// 覆盖导入的旧目录此时躺在同级隐藏备份里：先删掉刚落位的新目录，再把备份改名
+/// 回原位，保证原角色不会因为一个坏包而消失。还原失败时备份目录仍然保留，
+/// 日志里带上它的路径，用户可以手工恢复。
+/// 非覆盖场景（新建 / 重命名）没有旧目录，直接删掉刚移入的目录即可。
+async fn restore_backup(target: &Path, backup: Option<&Path>) {
+    let Some(backup) = backup else {
+        let _ = tokio::fs::remove_dir_all(target).await;
+        return;
+    };
+    let _ = tokio::fs::remove_dir_all(target).await;
+    match tokio::fs::rename(backup, target).await {
+        Ok(()) => tracing::info!("[RoleArchive] 已还原原角色目录: {}", target.display()),
+        Err(e) => tracing::error!(
+            "[RoleArchive] 还原原角色失败, 旧目录仍在备份中 ({}): {e}",
+            backup.display()
+        ),
+    }
 }
 
 /// 把 Tauri 调用传来的字节写入应用缓存目录，并返回临时文件路径。
@@ -388,5 +508,42 @@ pub(super) fn parse_policy(s: &str) -> Result<ConflictPolicy, String> {
         "skip" => Ok(ConflictPolicy::Skip),
         "overwrite" => Ok(ConflictPolicy::Overwrite),
         _ => Err(format!("不支持的 conflict: {s}")),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write(path: &Path, body: &str) {
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        std::fs::write(path, body).unwrap();
+    }
+
+    #[tokio::test]
+    async fn restore_backup_puts_old_role_back() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("角色A");
+        let backup = dir.path().join(".import_backup_x");
+        write(&backup.join("settings.yml"), "name: 旧角色");
+        // 目标位置放的是刚落位的坏包内容
+        write(&target.join("junk.txt"), "broken");
+
+        restore_backup(&target, Some(backup.as_path())).await;
+
+        assert!(target.join("settings.yml").exists());
+        assert!(!target.join("junk.txt").exists());
+        assert!(!backup.exists());
+    }
+
+    #[tokio::test]
+    async fn restore_backup_without_backup_removes_target() {
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("新角色");
+        write(&target.join("settings.yml"), "name: 新角色");
+
+        restore_backup(&target, None).await;
+
+        assert!(!target.exists());
     }
 }

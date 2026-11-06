@@ -19,7 +19,7 @@
             </div>
             <div>
               <h2 class="m-0 text-xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
-                {{ $t("settings.characterInfo.header.title", { title }) }}
+                {{ $t("settings.characterInfo.header.title", { title: headerTitle }) }}
               </h2>
               <p class="m-0 text-sm text-white/50">
                 {{ $t("settings.characterInfo.header.subtitle") }}
@@ -85,6 +85,14 @@
               >
                 {{ t("settings.characterInfo.draft.hint") }}
               </p>
+              <WorldbookEditor
+                v-if="editId"
+                v-show="activeTab === 'worldbook'"
+                ref="worldbookEditor"
+                v-model="worldbook"
+                :baseline="worldbookBaseline"
+                :load-error="worldbookError"
+              />
               <PetLayoutEditor
                 v-if="activeTab === 'pet' && props.roleId"
                 v-model="localSettings"
@@ -168,15 +176,15 @@
                 </div>
               </div>
 
-              <!-- 关系（AI 角色视角）：写角色目录下的 relations.yml，独立保存 -->
+              <!-- 关系（AI 角色视角）：角色间关系写 relations.yml，角色对玩家身份的关系写数据库 -->
               <CharacterRelationsEditor
                 v-if="activeTab === 'basic' && props.roleId"
+                ref="relationsEditor"
                 :role-id="props.roleId"
                 :character-folder="String(localSettings.character_folder || '')"
               />
 
-              <!-- GSV 六情绪参考语音：填全的分类按情绪切换参考音色，未填全的
-                   分类仍回退到上面的 gsv_voice_filename / gsv_voice_text -->
+              <!-- GSV 六情绪参考语音：填全的分类按情绪切换，未填全的仍回退到 gsv_voice_filename / gsv_voice_text -->
               <div
                 v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
                 class="space-y-4"
@@ -210,6 +218,68 @@
                     }}
                   </button>
                 </div>
+
+                <!-- 合成采样参数：留空=后端默认 1.0，调低更稳定、更贴近参考音色 -->
+                <div
+                  class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-3"
+                >
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.temperature") }}
+                    </label>
+                    <input
+                      v-model="gsvTemperature"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.topP") }}
+                    </label>
+                    <input
+                      v-model="gsvTopP"
+                      type="number"
+                      step="0.05"
+                      min="0.1"
+                      max="1"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <div class="flex flex-col gap-2">
+                    <label class="text-[13px] font-medium text-white/60">
+                      {{ $t("settings.characterInfo.gsvEmo.speed") }}
+                    </label>
+                    <input
+                      v-model="gsvSpeedFactor"
+                      type="number"
+                      step="0.05"
+                      min="0.5"
+                      max="2"
+                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                    />
+                  </div>
+                  <p class="col-span-full text-xs text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.samplingDesc") }}
+                  </p>
+                </div>
+
+                <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
+                <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+                  <summary class="cursor-pointer text-sm font-bold text-white/70">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
+                  </summary>
+                  <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
+                    {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
+                  </p>
+                </details>
+
                 <div v-if="gsvEmoEnabled" class="space-y-3">
                   <div
                     v-for="cat in GSV_EMO_CATEGORIES"
@@ -288,6 +358,15 @@
                   {{ $t("settings.characterInfo.touch.open") }}
                 </button>
               </div>
+
+              <HotwordSettings
+                v-if="activeTab === 'hotword' && props.roleId"
+                v-model="hotwordDraft"
+                :role-id="props.roleId"
+                :model-capability="modelCapability"
+                scope="role"
+                :save-hotwords="saveHotwordRows"
+              />
             </fieldset>
           </div>
         </div>
@@ -345,7 +424,7 @@
             </button>
             <button
               class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving || loading || resourceBusy > 0 || !editId"
+              :disabled="saving || loading || resourceBusy > 0 || !loaded || !editId"
               @click="saveSettings"
             >
               <span
@@ -386,14 +465,26 @@ import {
   getLive2dFilePath,
   listCharacterCostumes,
 } from "../../../api/services/character";
+import {
+  getRoleHotwords,
+  saveRoleHotwords,
+  type RoleHotword,
+  type RoleHotwordDraft,
+} from "../../../api/services/hotword";
+import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services/player-identity";
+import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
-import SelectMenu from "../../ui/SelectMenu.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
+import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
+import { refreshSceneHotwords } from "@/composables/asr/hotwords";
+import { useAsrModelCapability } from "@/composables/asr/modelCapability";
 import AvatarManager from "../character/AvatarManager.vue";
+import WorldbookEditor from "../character/WorldbookEditor.vue";
+import { readCharacterWorldbook, type Worldbook } from "@/api/services/character";
 import RoleLayoutEditor from "../character/RoleLayoutEditor.vue";
 import CostumeManager from "../character/CostumeManager.vue";
 import PetLayoutEditor from "../character/PetLayoutEditor.vue";
@@ -418,11 +509,13 @@ const props = defineProps<{
   clothes?: Array<{ title: string; avatar: string }>;
 }>();
 
-const emit = defineEmits(["close", "saved"]);
+const emit = defineEmits(["close", "saved", "loaded"]);
 
 const activeTab = ref("basic");
 const avatarCostume = ref("default");
 const loading = ref(false);
+/** 表单是否已完成一次成功装载；未装载时禁止保存，避免把空表单写回角色卡 */
+const loaded = ref(false);
 const saving = ref(false);
 const deleting = ref(false);
 const dialogStore = useDialogStore();
@@ -436,13 +529,32 @@ const editRoleId = ref<number>();
 const resourceBusy = ref(0);
 const resourceRevision = ref(0);
 const baseline = ref("");
+const worldbook = ref<Worldbook | null>(null);
+const worldbookBaseline = ref<Worldbook | null>(null);
+const worldbookError = ref("");
+const worldbookEditor = ref<InstanceType<typeof WorldbookEditor>>();
+const worldbookChanged = computed(
+  () => JSON.stringify(worldbook.value) !== JSON.stringify(worldbookBaseline.value),
+);
 const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
 const clothesLoading = ref(false);
 let clothesSequence = 0;
 let loadSequence = 0;
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
-  () => resourceRevision.value > 0 || JSON.stringify(localSettings.value) !== baseline.value,
+  () =>
+    loaded.value &&
+    (worldbookChanged.value ||
+      resourceRevision.value > 0 ||
+      JSON.stringify(localSettings.value) !== baseline.value ||
+      JSON.stringify(hotwordDraft.value.hotwords) !== hotwordBaseline.value),
+);
+/** 标题兜底：关系引导可能先于角色列表拿到 title，装载后用角色名补上 */
+const headerTitle = computed(
+  () =>
+    props.title?.trim() ||
+    String(localSettings.value.ai_name ?? "").trim() ||
+    t("settings.characterInfo.header.untitled"),
 );
 async function refreshDraftClothes() {
   const id = editId.value;
@@ -495,7 +607,16 @@ const {
   gsvEmoEnabled,
   toggleGsvEmo,
   gsvEmoField,
+  gsvTemperature,
+  gsvTopP,
+  gsvSpeedFactor,
 } = useVoiceResources(localSettings);
+
+/** 热词草稿：随底部保存一次提交，取消即丢弃。 */
+const hotwordDraft = ref<RoleHotwordDraft>({ hotwords: [] });
+const hotwordBaseline = ref("[]");
+
+const modelCapability = useAsrModelCapability();
 
 // 删除按钮可用性：系统保护角色 / 在场角色不可删
 const deleteState = computed(() => {
@@ -534,7 +655,6 @@ const handleDelete = async () => {
   try {
     await deleteCharacterApi(props.roleId, true);
 
-    // 删除成功
     uiStore.showSuccess({
       title: t("settings.characterInfo.delete.successTitle"),
       message: t("settings.characterInfo.delete.successMessage", {
@@ -542,7 +662,6 @@ const handleDelete = async () => {
       }),
     });
 
-    // 通知父组件刷新列表 + 关闭弹窗
     emit("saved");
     emit("close");
   } catch (error: any) {
@@ -556,9 +675,13 @@ const handleDelete = async () => {
   }
 };
 
+/** 关系编辑器：设置保存前要先让它把关系落盘 */
+const relationsEditor = ref<InstanceType<typeof CharacterRelationsEditor> | null>(null);
+
 const tabs = computed(() => [
   { id: "basic", label: t("settings.characterInfo.tabs.basic") },
   { id: "prompts", label: t("settings.characterInfo.tabs.prompts") },
+  { id: "worldbook", label: t("settings.worldbook.title") },
   { id: "visuals", label: t("settings.characterInfo.tabs.visuals") },
   { id: "avatars", label: t("settings.avatars.title") },
   { id: "clothes", label: t("settings.characterInfo.tabs.clothes") },
@@ -566,6 +689,7 @@ const tabs = computed(() => [
   { id: "live2d", label: t("settings.characterInfo.tabs.live2d") },
   { id: "pet", label: t("settings.characterInfo.tabs.pet") },
   { id: "voice", label: t("settings.characterInfo.tabs.voice") },
+  { id: "hotword", label: t("settings.characterInfo.tabs.hotword") },
 ]);
 
 const resolveFieldOptions = (field: FieldSchema) => {
@@ -594,14 +718,12 @@ const schemas = computed(() =>
 
 const currentTabConfig = computed(() => schemas.value[activeTab.value]);
 
-// voice model 子区域已移除，所有字段统一在主表单渲染
 const currentTabFields = computed(() => {
   const fields = currentTabConfig.value || [];
-  // 过滤掉当前不可见的字段
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-// --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
+// GSV 六情绪参考语音：自定义 UI，只写草稿，由底部保存统一提交
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
@@ -672,51 +794,90 @@ const removeClothesItem = (idx: number) => {
 
 watch(
   () => [props.visible, props.roleId] as const,
-  async ([newVal]) => {
+  async ([visible]) => {
     const sequence = ++loadSequence;
-    if (!newVal) {
+    if (!visible) {
+      loading.value = false;
+      loaded.value = false;
       await discardDraft();
+      if (sequence === loadSequence) {
+        localSettings.value = {};
+        baseline.value = "";
+        worldbook.value = null;
+        worldbookBaseline.value = null;
+        worldbookError.value = "";
+      }
       return;
     }
-    if (newVal && props.roleId) {
-      loading.value = true;
-      try {
-        await discardDraft();
-        if (sequence !== loadSequence || !props.visible) return;
-        const roleId = props.roleId;
-        const draft = await beginCharacterEdit(roleId);
-        if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
-          await discardCharacterEdit(roleId, draft.edit_id);
-          return;
-        }
-        editId.value = draft.edit_id;
-        editRoleId.value = roleId;
-        resourceRevision.value = 0;
-        localSettings.value = JSON.parse(JSON.stringify(draft.settings));
-        migrateLegacyVoiceModelFields();
-        if (!localSettings.value.voice_lang) {
-          localSettings.value.voice_lang = "ja";
-        }
-        // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
-        if (!localSettings.value.avatar_mode) {
-          localSettings.value.avatar_mode = "live2d";
-        }
-        if (!localSettings.value.avatar_mode_p) {
-          localSettings.value.avatar_mode_p = "live2d";
-        }
-        baseline.value = JSON.stringify(localSettings.value);
-        draftClothes.value = [...(props.clothes ?? [])];
-      } catch (e) {
-        console.error("Failed to load character settings", e);
-        emit("close");
-      } finally {
-        if (sequence === loadSequence) loading.value = false;
+    if (!props.roleId) {
+      loading.value = false;
+      loaded.value = false;
+      return;
+    }
+
+    // 弹窗可能在 visible 已经为 true 时挂载（关系引导先写意图再打开设置页），
+    // 因此这里必须 immediate：否则首帧只渲染空表单，用户点保存有清空角色卡的风险。
+    loading.value = true;
+    loaded.value = false;
+    try {
+      await discardDraft();
+      if (sequence !== loadSequence || !props.visible) return;
+      const roleId = props.roleId;
+      const draft = await beginCharacterEdit(roleId);
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+        await discardCharacterEdit(roleId, draft.edit_id);
+        return;
       }
+      let loadedBook: Worldbook | null = null;
+      let bookError = "";
+      try {
+        loadedBook = await readCharacterWorldbook(roleId, draft.edit_id);
+      } catch (error) {
+        bookError = String(error);
+      }
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) {
+        await discardCharacterEdit(roleId, draft.edit_id);
+        return;
+      }
+      worldbook.value = loadedBook;
+      worldbookBaseline.value = structuredClone(loadedBook);
+      worldbookError.value = bookError;
+      editId.value = draft.edit_id;
+      editRoleId.value = roleId;
+      resourceRevision.value = 0;
+      localSettings.value = JSON.parse(JSON.stringify(draft.settings));
+      migrateLegacyVoiceModelFields();
+      if (!localSettings.value.voice_lang) {
+        localSettings.value.voice_lang = "ja";
+      }
+      // 形象缺省值兜底：老配置缺键时回填 live2d，否则 <select> 显示空白
+      if (!localSettings.value.avatar_mode) {
+        localSettings.value.avatar_mode = "live2d";
+      }
+      if (!localSettings.value.avatar_mode_p) {
+        localSettings.value.avatar_mode_p = "live2d";
+      }
+      baseline.value = JSON.stringify(localSettings.value);
+      draftClothes.value = [...(props.clothes ?? [])];
+      // 热词保存是整表替换，读失败必须禁止进入，否则空草稿保存会清空该角色热词
+      const roleHotwords = await getRoleHotwords(roleId);
+      // 读取期间可能已关闭弹窗或切到别的角色，不能把结果写进当前草稿
+      if (sequence !== loadSequence || !props.visible || props.roleId !== roleId) return;
+      hotwordDraft.value = { hotwords: roleHotwords };
+      hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
+      loaded.value = true;
+      emit("loaded");
+    } catch (e) {
+      console.error("Failed to load character settings", e);
+      emit("close");
+    } finally {
+      if (sequence === loadSequence) loading.value = false;
     }
   },
+  { immediate: true },
 );
 
-// Refresh local voices when the voice tab is shown while the dialog is visible.
+// 打开语音 tab 时刷新本地音色
 watch(
   () => [props.visible, activeTab.value, localSettings.value.tts_type],
   ([visible, tab, ttsType]) => {
@@ -781,14 +942,29 @@ function applySettingsToRuntime() {
     runtimeRole.avatarModeP = localSettings.value.avatar_mode_p ?? null;
     // /chat 与 /pet 互斥，靠这次内存热更避免后端 re-init
     runtimeRole.petFrameless = localSettings.value.pet_frameless ?? false;
-    // 触摸区域热更：TouchAreas 直接读 role.bodyPart
+    // store 里的 roleName 不会自行更新，热更后改名才能立即用于识别热词
+    if (typeof localSettings.value.ai_name === "string" && localSettings.value.ai_name.trim()) {
+      runtimeRole.roleName = localSettings.value.ai_name.trim();
+    }
+    // 触摸区域热更：TouchAreas 直接读 role.bodyPart，不更的话要重进 /chat 才生效
     runtimeRole.bodyPart = structuredClone(toRaw(localSettings.value.body_part)) ?? {};
   }
   const role = gameStore.gameRoles[props.roleId];
   if (role) role.clothes = structuredClone(toRaw(localSettings.value.clothes)) ?? [];
 }
 
-/** 保存前校验：实际会被加载的那个 variant 的模型文件是否还在。走 getLive2dFilePath 是为了让草稿里的模型按 editId 解析。 */
+/** 批量导入保存：只保存热词表，不提交角色设置；失败由导入面板显示错误。 */
+async function saveHotwordRows(rows: RoleHotword[]) {
+  if (!props.roleId) return;
+  await saveRoleHotwords(
+    props.roleId,
+    rows.map(({ text, weight }) => ({ text, weight })),
+  );
+  hotwordBaseline.value = JSON.stringify(rows);
+  void refreshSceneHotwords();
+}
+
+/** 校验实际加载的 variant 模型文件是否还在（按 editId 解析草稿模型） */
 async function isLive2dModelAvailable(): Promise<boolean> {
   const live2d = localSettings.value.live2d;
   if (!live2d) return false;
@@ -804,19 +980,54 @@ async function isLive2dModelAvailable(): Promise<boolean> {
 
 /** 落盘 + 运行时热更。返回是否成功，成功与否由调用方决定要不要关弹窗。 */
 async function persistSettings(): Promise<boolean> {
-  if (!props.roleId || !editId.value || resourceBusy.value || saving.value) return false;
+  if (!loaded.value || !props.roleId || !editId.value || resourceBusy.value || saving.value)
+    return false;
+  const confirmed = await confirmSaveEffect(
+    (save) => t("settings.characterInfo.saveConfirm", { save }),
+    t("settings.characterInfo.saveConfirmNoSave"),
+  );
+  if (!confirmed) return false;
+  // 保存期间弹窗可能被关闭或切到别的角色：先捕获本次提交对象，await 回来再校验
+  const currentRoleId = props.roleId;
+  const currentEditId = editId.value;
   saving.value = true;
   try {
-    // 配了 Live2D 但模型文件取不到时改回静态立绘，否则运行时要先建一套
-    // WebGL 上下文、失败之后才退回静态
+    if (worldbookChanged.value && !(await worldbookEditor.value?.validate())) {
+      activeTab.value = "worldbook";
+      return false;
+    }
+    // 热词先保存：它失败时角色设置不提交，editId 保留，用户可以直接重试。
+    // 热词保存是整表替换，重试幂等。
+    await saveRoleHotwords(
+      currentRoleId,
+      hotwordDraft.value.hotwords.map(({ text, weight }) => ({ text, weight })),
+    );
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
+    hotwordBaseline.value = JSON.stringify(hotwordDraft.value.hotwords);
+    // 第一次刷新：热词已单独落盘，让新词不必等设置提交就生效
+    void refreshSceneHotwords();
+    // 关系先落盘，后保存设置（设置保存会重建人设行，必须读到新关系）。
+    await relationsEditor.value?.submit(true);
+    // Live2D 模型文件取不到时改回静态立绘，避免运行时先建 WebGL 上下文再失败
     if (localSettings.value.live2d && !(await isLive2dModelAvailable())) {
       localSettings.value.avatar_mode = "image";
       localSettings.value.avatar_mode_p = "image";
     }
-    await commitCharacterEdit(props.roleId, editId.value, localSettings.value);
+    if (props.roleId !== currentRoleId || editId.value !== currentEditId || !props.visible)
+      return false;
+    await commitCharacterEdit(
+      currentRoleId,
+      currentEditId,
+      localSettings.value,
+      worldbookChanged.value ? { book: worldbook.value } : undefined,
+    );
     editId.value = undefined;
     editRoleId.value = undefined;
     applySettingsToRuntime();
+    // 第二次刷新：提交后角色名可能已改，重新派生角色名热词
+    // 刷新有 generation 守卫，重复调用的旧结果会被丢弃
+    void refreshSceneHotwords();
     return true;
   } catch (e) {
     console.error("Failed to save settings", e);
@@ -832,6 +1043,7 @@ async function persistSettings(): Promise<boolean> {
 }
 
 const saveSettings = async () => {
+  if (!loaded.value) return;
   if (await persistSettings()) {
     emit("saved");
     emit("close");
@@ -847,6 +1059,7 @@ async function onTouchRegionsApply(value: Record<string, unknown>) {
 
 onUnmounted(() => {
   ++loadSequence;
+  loaded.value = false;
   void discardDraft().catch(console.error);
 });
 </script>

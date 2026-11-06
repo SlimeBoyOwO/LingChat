@@ -9,6 +9,7 @@ import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
@@ -54,6 +55,7 @@ public final class MaidActionController {
         // 追打、挖掘与动作都写寻路目标，同时跑她会在两个目标之间来回走
         MaidAttackController.cancel();
         MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
         MaidActuator.Target target = MaidActuator.resolveTarget(maid, action);
         if (target.reject() != null) {
             return ActionFrames.rejected(action, target.reject().code(), target.reject().reason());

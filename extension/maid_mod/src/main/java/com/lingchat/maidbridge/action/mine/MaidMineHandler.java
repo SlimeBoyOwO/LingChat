@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
@@ -12,6 +13,8 @@ import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.nearby.Surroundings;
 import com.lingchat.maidbridge.perception.query.BlockProjector;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,6 +22,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.level.Level;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 
@@ -63,13 +67,24 @@ public class MaidMineHandler implements MessageHandler {
         JsonObject data = Envelope.data(request);
         return mine(
                 server, maid, Envelope.string(data, "target"), parseCount(data),
-                Envelope.string(data, "at"));
+                Envelope.string(data, "at"), Envelope.string(data, "area"),
+                parseFlag(data, "whole"));
     }
 
+    /**
+     * 三条入口：一片区域（两个角）、整团同种方块（{@code whole}），或原来那几种单块/若干块。
+     *
+     * @param rawArea 长方体的两个相对角，非空时优先于其余写法
+     * @param whole   以目标那一格为种子，把相连的一团同种方块整团拆掉
+     */
     private static JsonObject mine(
-            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt) {
+            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt,
+            String rawArea, boolean whole) {
+        if (rawArea != null && !rawArea.trim().isEmpty()) {
+            return mineArea(server, maid, rawArea.trim(), count);
+        }
         if (!rawAt.isEmpty()) {
-            return mineAddressed(server, maid, rawTarget, count, rawAt);
+            return mineAddressed(server, maid, rawTarget, count, rawAt, whole);
         }
         String token = rawTarget == null ? "" : rawTarget.trim();
         boolean looked = token.isEmpty() || "looked".equalsIgnoreCase(token);
@@ -136,13 +151,10 @@ public class MaidMineHandler implements MessageHandler {
         }
         // 没有落脚点也受理：埋在墙里的矿、树干高处的木头，她会一路把挡路的方块挖穿过去。
         // 真正走不通时由控制器在挖的过程中收尾，理由比「走不到跟前」具体。
-
-        // 插件发起的动作与攻击每 tick 都在写寻路，会跟挖掘互相顶
-        MaidAttackController.cancel();
-        String replaced = MaidActionController.cancelCurrent(server);
-        // 上一轮挖掘留下的裂纹与寻路也一并清掉，再开始新的
-        MaidMineController.cancel(server);
-        MaidActuator.standUp(maid);
+        if (whole) {
+            return startWhole(server, maid, target, state, blockId, null, looked);
+        }
+        String replaced = stopOtherActions(server, maid);
         MaidMineController.start(maid, target, blockId, count, anchor);
 
         return accepted(maid, state, blockId, count, looked, replaced);
@@ -155,7 +167,8 @@ public class MaidMineHandler implements MessageHandler {
      * 现场与最近的同类方块回去，让模型改个地址或改个说法，而不是照原样重试。
      */
     private static JsonObject mineAddressed(
-            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt) {
+            MinecraftServer server, EntityMaid maid, String rawTarget, int count, String rawAt,
+            boolean whole) {
         MineRules.Offset offset = MineRules.parseOffset(rawAt);
         if (offset == null) {
             return rejected(
@@ -215,10 +228,10 @@ public class MaidMineHandler implements MessageHandler {
                     blockId, count, scene(maid, target), null, offset);
         }
 
-        MaidAttackController.cancel();
-        String replaced = MaidActionController.cancelCurrent(server);
-        MaidMineController.cancel(server);
-        MaidActuator.standUp(maid);
+        if (whole) {
+            return startWhole(server, maid, target, state, blockId, offset, false);
+        }
+        String replaced = stopOtherActions(server, maid);
         // 锚点就是她指的那一格：要挖多块时以它为中心接着找同类方块
         MaidMineController.start(maid, target, blockId, count, target);
 
@@ -228,6 +241,189 @@ public class MaidMineHandler implements MessageHandler {
         data.addProperty("at", MineRules.formatOffset(offset.dx(), offset.dy(), offset.dz()));
         data.add("scene", scene(maid, target));
         return frame;
+    }
+
+    /**
+     * 整团拆：以 seed 为起点按六面相连收同种方块，再逐块交给控制器。
+     *
+     * <p>区域拆除与整团拆都走「格子清单」那条路；这里只负责把这一团挑出来，并把拆不动的
+     * 方块（受保护、缺工具）先剔掉，免得拆到一半才停下。
+     */
+    private static JsonObject startWhole(
+            MinecraftServer server, EntityMaid maid, BlockPos seed, BlockState seedState,
+            String blockId, MineRules.Offset offset, boolean looked) {
+        Level level = maid.level();
+        MineTargets.Cells group = MineTargets.cluster(maid, seed, blockId, MineRules.MAX_AREA_CELLS);
+        List<BlockPos> cells = new ArrayList<>();
+        for (BlockPos pos : group.cells()) {
+            if (!maid.canDestroyBlock(pos)) {
+                continue;
+            }
+            BlockState one = level.getBlockState(pos);
+            if (one.requiresCorrectToolForDrops() && !MineTargets.hasCorrectTool(maid, one)) {
+                continue;
+            }
+            cells.add(pos);
+        }
+        if (cells.isEmpty()) {
+            String reason = "这一团方块她都拆不了（受保护或者缺工具）";
+            if (offset == null) {
+                return rejected("not_mineable", reason, blockId, 0);
+            }
+            return atRejected(
+                    "not_mineable", reason, blockId, 0, scene(maid, seed), null, offset);
+        }
+        String replaced = stopOtherActions(server, maid);
+        MaidMineController.startCells(maid, cells, group.truncated(), blockId);
+        JsonObject frame = acceptedCells(
+                maid, blockId, seedState.getBlock().getName().getString(),
+                cells.size(), group.truncated(), looked, replaced);
+        if (offset != null) {
+            JsonObject data = Envelope.data(frame);
+            data.addProperty("addressed", true);
+            data.addProperty("at", MineRules.formatOffset(offset.dx(), offset.dy(), offset.dz()));
+            data.add("scene", scene(maid, seed));
+        }
+        return frame;
+    }
+
+    /**
+     * 拆一片长方体：两个相对角由模型给，偏移都相对她脚下那一格。
+     *
+     * <p>只收能拆的方块：空气、液体、挖不动的、受保护、缺工具的都不进清单；清单按离她的
+     * 远近取前 {@link MineRules#MAX_AREA_CELLS} 块，再多就只拆最近的这些，回执里说一声。
+     */
+    private static JsonObject mineArea(
+            MinecraftServer server, EntityMaid maid, String rawArea, int count) {
+        MineRules.Area area = MineRules.parseArea(rawArea);
+        if (area == null) {
+            return rejected(
+                    "bad_address",
+                    "没看懂这个区域：" + rawArea + "。它应该像 @-3,0,2 @3,3,4，是两个相对她脚下那一格的角",
+                    rawArea, count);
+        }
+        Level level = maid.level();
+        BlockPos feet = maid.blockPosition();
+        int minX = Math.min(area.from().dx(), area.to().dx());
+        int minY = Math.min(area.from().dy(), area.to().dy());
+        int minZ = Math.min(area.from().dz(), area.to().dz());
+        int maxX = Math.max(area.from().dx(), area.to().dx());
+        int maxY = Math.max(area.from().dy(), area.to().dy());
+        int maxZ = Math.max(area.from().dz(), area.to().dz());
+        List<BlockPos> found = new ArrayList<>();
+        for (int x = minX; x <= maxX; x++) {
+            for (int y = minY; y <= maxY; y++) {
+                for (int z = minZ; z <= maxZ; z++) {
+                    BlockPos pos = feet.offset(x, y, z);
+                    if (!level.isLoaded(pos)) {
+                        continue;
+                    }
+                    BlockState state = level.getBlockState(pos);
+                    if (state.isAir() || state.getBlock() instanceof LiquidBlock) {
+                        continue;
+                    }
+                    if (!MineRules.mineable(state.getDestroySpeed(level, pos))) {
+                        continue;
+                    }
+                    if (maid.hasRestriction() && !maid.isWithinRestriction(pos)) {
+                        continue;
+                    }
+                    found.add(pos);
+                }
+            }
+        }
+        if (found.isEmpty()) {
+            return rejected("not_mineable", "这一片里没有能拆的方块", rawArea, count);
+        }
+        found.sort(Comparator.comparingDouble(feet::distSqr));
+        List<BlockPos> cells = new ArrayList<>();
+        for (BlockPos pos : found) {
+            if (cells.size() >= MineRules.MAX_AREA_CELLS) {
+                break;
+            }
+            if (!maid.canDestroyBlock(pos)) {
+                continue;
+            }
+            BlockState state = level.getBlockState(pos);
+            if (state.requiresCorrectToolForDrops() && !MineTargets.hasCorrectTool(maid, state)) {
+                continue;
+            }
+            cells.add(pos);
+        }
+        if (cells.isEmpty()) {
+            return rejected("not_mineable", "这一片都拆不了（受保护或者缺工具）", rawArea, count);
+        }
+        boolean truncated = cells.size() >= MineRules.MAX_AREA_CELLS && found.size() > cells.size();
+        String common = commonBlockId(level, cells);
+        String replaced = stopOtherActions(server, maid);
+        MaidMineController.startCells(maid, cells, truncated, common);
+        return acceptedCells(
+                maid, common, blockName(common), cells.size(), truncated, false, replaced);
+    }
+
+    /** 区域拆除的受理回执：与 accepted 同样的外形，另带 area / cells / truncated。 */
+    private static JsonObject acceptedCells(
+            EntityMaid maid, String blockId, String name, int cells, boolean truncated,
+            boolean looked, String replaced) {
+        JsonObject data = base();
+        data.addProperty("accepted", true);
+        data.addProperty("async", true);
+        data.addProperty("looked", looked);
+        data.addProperty("addressed", false);
+        data.addProperty("at", "");
+        data.addProperty("count", cells);
+        data.addProperty("block", blockId);
+        data.addProperty("name", name);
+        data.addProperty("requires_tool", false);
+        data.addProperty("has_tool", true);
+        data.addProperty("tool", handItemId(maid));
+        data.addProperty("replaced_action", replaced);
+        data.addProperty("area", true);
+        data.addProperty("cells", cells);
+        data.addProperty("truncated", truncated);
+        return Envelope.response(Protocol.MAID_MINE_RESULT, data);
+    }
+
+    /** 开新的挖掘之前把别的会写寻路的都收掉：动作、攻击与上一轮挖掘。 */
+    private static String stopOtherActions(MinecraftServer server, EntityMaid maid) {
+        MaidAttackController.cancel();
+        String replaced = MaidActionController.cancelCurrent(server);
+        // 上一轮挖掘留下的裂纹与寻路也一并清掉，再开始新的
+        MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
+        MaidActuator.standUp(maid);
+        return replaced;
+    }
+
+    /** 清单里只有一种方块时给它的 id，混着几种给空串。 */
+    private static String commonBlockId(Level level, List<BlockPos> cells) {
+        String common = "";
+        for (BlockPos pos : cells) {
+            String id = MineTargets.blockId(level.getBlockState(pos));
+            if (common.isEmpty()) {
+                common = id;
+            } else if (!common.equals(id)) {
+                return "";
+            }
+        }
+        return common;
+    }
+
+    private static String blockName(String blockId) {
+        if (blockId.isEmpty()) {
+            return "";
+        }
+        ResourceLocation id = ResourceLocation.tryParse(blockId);
+        Block block = id == null ? null : BuiltInRegistries.BLOCK.get(id);
+        return block == null ? "" : block.getName().getString();
+    }
+
+    private static boolean parseFlag(JsonObject data, String key) {
+        try {
+            return data.get(key).getAsBoolean();
+        } catch (RuntimeException missingOrNotABoolean) {
+            return false;
+        }
     }
 
     /** 目标写法 → 规范写法：标签保留 {@code #}，裸名补 minecraft:；认不出给 null。 */

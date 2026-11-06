@@ -41,14 +41,16 @@
             <slot></slot>
           </div>
 
-          <!-- 底部按钮 -->
+          <!-- 底部按钮：默认是「确认创建」，需要自定义动作的调用方用 #footer 覆盖 -->
           <div class="mt-8">
-            <button
-              @click="$emit('confirm')"
-              class="w-full rounded-2xl bg-cyan-500 py-4 font-black text-white shadow-lg transition-all hover:bg-cyan-600 active:scale-95"
-            >
-              {{ $t("ui.baseModal.confirmCreate") }}
-            </button>
+            <slot name="footer">
+              <button
+                @click="$emit('confirm')"
+                class="w-full rounded-2xl bg-cyan-500 py-4 font-black text-white shadow-lg transition-all hover:bg-cyan-600 active:scale-95"
+              >
+                {{ $t("ui.baseModal.confirmCreate") }}
+              </button>
+            </slot>
           </div>
         </div>
       </div>

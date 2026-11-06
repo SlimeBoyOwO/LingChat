@@ -31,6 +31,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.levelgen.structure.StructureStart;
+import net.minecraft.world.level.material.FluidState;
 import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.EntityHitResult;
@@ -73,9 +74,16 @@ public final class SurroundingsReader {
         String feetBlock = vehicle != null
                 ? ""
                 : blockId(inside.getFluidState().isEmpty() ? level.getBlockState(pos.below()) : inside);
+        // 泡没泡在液体里看她自己这一格，不看脚下：跨进水里时脚下还是河床。
+        // 坐在船里、被抱着时不算——那时候她在水面上或别人怀里，不是自己泡着
+        String liquid = vehicle != null ? "" : fluidId(inside.getFluidState());
+        // 头也埋在同一种液体里才算游泳；眼睛那一格比她脚下高，两处分开读
+        boolean submerged =
+                !liquid.isEmpty() && liquid.equals(fluidId(level.getFluidState(BlockPos.containing(maid.getEyePosition()))));
 
         ServerPlayer owner = MaidQueries.owner(maid);
         List<Surroundings.Nearby> raw = new ArrayList<>();
+        long tick = level.getGameTime();
         double radius = Math.max(profile.visibleRadius(), profile.heardRadius());
         AABB box = new AABB(pos).inflate(radius);
         for (LivingEntity other : level.getEntitiesOfClass(
@@ -86,6 +94,8 @@ public final class SurroundingsReader {
             if (distance > radius) {
                 continue;
             }
+            // 她看见过的活物都要留下一条短期记忆：追打落空时，只有它能说清对方去哪了
+            CreatureMemory.observe(other, maid, tick);
             raw.add(new Surroundings.Nearby(
                     typeId(other),
                     categoryOf(other),
@@ -105,13 +115,16 @@ public final class SurroundingsReader {
                 GroundKind.of(feetBlock),
                 level.canSeeSky(pos),
                 level.dimensionType().hasSkyLight(),
+                OverheadScan.read(level, pos),
                 level.getMaxLocalRawBrightness(pos),
                 ownerView(maid, owner),
                 nearby,
                 eligible.size() > nearby.size(),
                 vehicleId,
                 structureAt(maid, level),
-                MaidQueries.posture(maid));
+                MaidQueries.posture(maid),
+                liquid,
+                submerged);
     }
 
     /**
@@ -286,6 +299,11 @@ public final class SurroundingsReader {
 
     private static String blockId(BlockState state) {
         return BuiltInRegistries.BLOCK.getKey(state.getBlock()).toString();
+    }
+
+    /** 流体 id；没有液体时给空串。 */
+    private static String fluidId(FluidState state) {
+        return state.isEmpty() ? "" : BuiltInRegistries.FLUID.getKey(state.getType()).toString();
     }
 
     /** 同上：注册表 id 也只有这一处口径。 */

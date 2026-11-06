@@ -129,6 +129,7 @@
 <script setup lang="ts">
 import { ref, watch, computed, onMounted, onBeforeUnmount } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import defaultBackgroundUrl from "@/assets/images/default_bg.webp";
 import { toPlayableMediaUrl } from "@/utils/mediaUrl";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useGameStore } from "../../../stores/modules/game";
@@ -152,6 +153,8 @@ const gameStore = useGameStore();
 
 const backgroundSrc = computed(() => {
   const bg = uiStore.currentBackground;
+  // 设置里保存的是构建期别名（稳定标识），运行时浏览器无法解析，落到打包后的默认背景
+  if (bg.startsWith("@/assets/images/default_bg")) return defaultBackgroundUrl;
   if (
     !bg ||
     bg.startsWith("http://") ||

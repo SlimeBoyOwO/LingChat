@@ -10,6 +10,7 @@ import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.perception.EventFrames;
+import com.lingchat.maidbridge.perception.nearby.CreatureMemory;
 import com.lingchat.maidbridge.perception.nearby.SurroundingsReader;
 import net.minecraft.nbt.CompoundTag;
 import net.minecraft.server.MinecraftServer;
@@ -69,6 +70,11 @@ public final class DeathReporter {
         }
         Entity attacker = Attackers.actor(event.getSource());
         Entity owner = MaidQueries.owner(maid);
+        // 她记得的活物死了：先把死因记进短期记忆，追打落空时才说得出「已经被谁打死了」。
+        // 记忆不吃下面那条静默期与距离限制——静默期管的是旁白，不是记性
+        if (dead != maid) {
+            CreatureMemory.markDead(dead, attacker, maid, dead.level().getGameTime());
+        }
         // 她自己死了：比「附近死了谁」重要得多，不吃下面那条静默期。这条也是插件唯一
         // 知道她已经倒下的途径——之后所有指令都只会回「找不到女仆」。
         if (dead == maid) {

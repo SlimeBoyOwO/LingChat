@@ -4,21 +4,6 @@
  * 把应用内正在播放的 <audio>（背景音乐 / 环境音）接到同一个 AnalyserNode，
  * 供 SpectrumVisualizer 绘制实时频谱。
  *
- * 三条不能碰的红线（改动前务必读完）：
- *
- * 1. **只接管显式注册、且以 CORS 模式加载的元素**（crossorigin="anonymous"）。
- *    跨源媒体未经 CORS 就接进 MediaElementAudioSourceNode 会被浏览器强制静音
- *    ——所以本模块对不满足条件的元素一律不动，宁可少画几根柱子，也不能把声音弄哑。
- *    注册方见 AudioAcrossFade.vue / AmbientLoopPlayer.vue。
- *    另外自带一层兜底：CORS 加载失败的元素会退回非 CORS 加载（见 onElementError），
- *    保证"最坏情况也只是没有频谱，不会没有声音"。
- *
- * 2. **只在 AudioContext 处于 running 时接入**。接入后元素的音频改走 Web Audio 图
- *    （仍连到 destination，音量/暂停/播放速率/循环都不受影响），因此这个 AudioContext
- *    一旦建立就不能关闭；被系统挂起时靠 watchdog 在有用户手势/页面可见时恢复。
- *
- * 3. **功能关闭时完全不创建 AudioContext**（默认关闭）。未开启该功能的环境里，
- *    本模块不存在于任何播放链路上。
  */
 import { ref } from "vue";
 
@@ -134,7 +119,6 @@ const playingFlags = new WeakMap<HTMLMediaElement, boolean>();
  * CORS 加载失败的兜底：某些音源（或不支持 CORS 的自定义协议）在
  * crossorigin="anonymous" 下会直接加载失败、彻底没声。
  * 这里退回非 CORS 加载——声音优先，该元素从此不参与频谱。
- * 每个元素只兜底一次，且已接入音频图的元素绝不动（断开/改载会让它变哑）。
  */
 function onElementError(e: Event) {
   const el = e.currentTarget as HTMLAudioElement | null;

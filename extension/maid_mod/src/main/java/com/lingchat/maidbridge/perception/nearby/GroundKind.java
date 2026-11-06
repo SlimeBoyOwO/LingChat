@@ -12,10 +12,8 @@ import java.util.Map;
  * 协议里的 token 与判定口径因此不会走岔。
  */
 public final class GroundKind {
-    /** 方块 id → 类别；没收录的返回空串，一律不报。 */
+    /** 方块 id → 类别；没收录的返回空串，一律不报。液体不在这里：泡进什么液体另有事件。 */
     private static final Map<String, String> BY_BLOCK = Map.ofEntries(
-            Map.entry("minecraft:water", "water"),
-            Map.entry("minecraft:lava", "lava"),
             Map.entry("minecraft:fire", "fire"),
             Map.entry("minecraft:soul_fire", "fire"),
             Map.entry("minecraft:powder_snow", "snow"),
@@ -28,8 +26,8 @@ public final class GroundKind {
             Map.entry("minecraft:packed_ice", "ice"),
             Map.entry("minecraft:blue_ice", "ice"));
 
-    /** 踩进这几样要立刻说，不受冷静期挡。 */
-    private static final List<String> URGENT = List.of("water", "lava", "fire");
+    /** 踩到火上要立刻说，不受冷静期挡。 */
+    private static final List<String> URGENT = List.of("fire");
 
     private GroundKind() {
     }

@@ -2,17 +2,20 @@
 
 pub mod bootstrap;
 pub mod guard;
+pub mod migration;
 pub mod persona;
 pub mod resolve;
 pub mod role_relations;
 pub mod runtime_relations;
 pub mod store;
 
-pub use guard::ensure_identity_switchable;
+pub use guard::{RoleRelationStatus, ensure_identity_switchable, relation_ready_all};
+pub use migration::MigrationReport;
 pub use resolve::{
-    RelationEndpoint, ScenePeer, build_peers_block, build_player_block, resolve_relation,
+    AliasEntry, RelationEndpoint, ScenePeer, build_peers_block, build_player_block,
+    effective_user_alias, resolve_relation,
 };
-pub use store::IdentityStore;
+pub use store::{IdentityStore, PrimaryIdentityMarker};
 
 use std::collections::HashMap;
 
@@ -34,6 +37,12 @@ pub struct PlayerIdentity {
     /// 我对各个对象的出厂关系，键为 `ai:<角色文件夹>` 或 `me:<身份 id>`。
     #[serde(default)]
     pub relations: HashMap<String, String>,
+    /// 该身份绑定的角色文件夹（旧角色卡迁移生成时写入），角色卡据此反查自己的身份。
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub source_folders: Vec<String>,
+    /// 本数据目录唯一的主玩家身份；老数据迁移后只有它为 true。
+    #[serde(default)]
+    pub is_primary: bool,
 }
 
 impl PlayerIdentity {

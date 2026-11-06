@@ -10,16 +10,13 @@
             v-model="fontFamily"
             class="max-w-48 min-w-32 flex-none cursor-pointer appearance-none rounded-lg border border-white/20 bg-white/10 py-2 pr-8 pl-3 text-sm text-white transition-colors outline-none focus:border-(--accent-color)"
             @change="onFontChange"
+            @focus="ensureSystemFonts"
+            @pointerdown="ensureSystemFonts"
             :title="$t('settings.text.font.selectHint')"
           >
             <option value="">{{ $t("settings.text.font.default") }}</option>
             <optgroup v-if="importedFonts.length > 0" :label="$t('settings.text.font.imported')">
-              <option
-                v-for="f in importedFonts"
-                :key="f.name"
-                :value="f.name"
-                :style="{ fontFamily: `'${f.name}'` }"
-              >
+              <option v-for="f in importedFonts" :key="f.name" :value="f.name">
                 {{ f.name }}
               </option>
             </optgroup>
@@ -27,9 +24,7 @@
             <option v-if="fontsLoading" value="" disabled>
               {{ $t("settings.text.font.loading") }}
             </option>
-            <option v-for="f in systemFonts" :key="f" :value="f" :style="{ fontFamily: `'${f}'` }">
-              {{ f }}
-            </option>
+            <option v-for="f in systemFonts" :key="f" :value="f">{{ f }}</option>
           </select>
           <button
             class="flex flex-none cursor-pointer items-center justify-center rounded-lg border border-white/20 bg-white/10 px-[0.6rem] py-[0.35rem] text-white transition-colors hover:border-(--accent-color) hover:bg-white/20 active:bg-white/30"
@@ -141,47 +136,6 @@
         </p>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
-        <template #header>
-          <Download :size="20" />
-        </template>
-        <div class="flex gap-3">
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.cpuHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.cpu") }}</Button
-          >
-          <Button
-            type="big"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.nvidia") }}</Button
-          >
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.amdHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.amd") }}</Button
-          >
-        </div>
-        <p class="mt-3 text-sm leading-relaxed text-white/50">
-          现在更推荐使用本软件自带的内置 TTS 模型，本处提供的 TTS
-          引擎需要自行下载，可以参考文档了解详细信息。
-        </p>
-      </MenuItem>
-
       <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
@@ -215,13 +169,6 @@
         <template #header>
           <Star :size="20" />
         </template>
-      </MenuItem>
-
-      <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
-        <template #header>
-          <Earth :size="20" />
-        </template>
-        <Toggle @change="voiceSound">{{ $t("settings.text.voiceSound.desc") }}</Toggle>
       </MenuItem>
 
       <MenuItem :title="$t('settings.text.back.title')" size="small">
@@ -511,8 +458,6 @@ import {
   Bug,
   ClipboardList,
   Combine,
-  Download,
-  Earth,
   Gauge,
   GlassWater,
   HardDrive,
@@ -872,8 +817,7 @@ onMounted(async () => {
   loadConfig();
   checkTtsCache();
   loadLastTtsCleanup();
-  // 加载本机已装字体族列表（Rust 侧枚举，单次缓存）
-  void loadSystemFonts();
+  // 系统字体列表改为展开下拉时再加载：几百个 option 在页面首次布局时会明显拖慢
   // 加载已导入字体列表
   void loadImportedFonts();
   // 每 30 秒自动刷新一次 TTS 缓存信息，频率适中不浪费资源
@@ -1053,6 +997,14 @@ async function loadSystemFonts() {
   }
 }
 
+// 系统字体列表只在用户要展开下拉时才枚举，避免设置页首屏渲染几百个 option
+let systemFontsRequested = false;
+function ensureSystemFonts() {
+  if (systemFontsRequested) return;
+  systemFontsRequested = true;
+  void loadSystemFonts();
+}
+
 // ─── 导入字体 ───────────────────────────────────────────────
 async function loadImportedFonts() {
   try {
@@ -1119,10 +1071,6 @@ const textSpeedSample = ref<number>(settingsStore.textSpeed);
 const textSpeedChange = (data: number) => {
   settingsStore.update("text.speed", data);
   textSpeedSample.value = data;
-};
-
-const voiceSound = (data: boolean) => {
-  settingsStore.update("audio.chatEffectSound", data);
 };
 
 const toggleSedentaryReminder = (data: boolean) => {

@@ -29,6 +29,10 @@ class EventSpec:
     def format(self, data):
         return self.formatter(data)
 
+    def ttl_of(self, data):
+        """这条事件值多少秒；ttl 登记成函数时按数据当场算（受伤按轻重分档）。"""
+        return self.ttl(data) if callable(self.ttl) else self.ttl
+
     def is_urgent(self, data):
         return self.urgent or bool(self.urgent_when and self.urgent_when(data))
 

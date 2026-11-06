@@ -55,28 +55,61 @@ def action_done(data):
 
 
 def maid_mine_done(data):
-    """挖掘收尾：挖到多少、还差多少、为什么停。
+    """挖掘收尾：拆/挖了多少、还剩多少、为什么停、卡在哪。
 
     工具受理只代表开始挖了，模型很容易把「正过去挖」当成「已经挖到了」；这条旁白才是
-    唯一能让它改口的依据。走不到、工具不对也在这里说清楚，不留悬案。
+    唯一能让它改口的依据。走不到、工具不对也在这里说清楚，不留悬案。区域拆除（area）
+    一次是一整片，剩余量由模组给；老模组没有 remaining 时按 wanted - mined 算。
     """
     maid, _ = names()
-    name = name_of(BLOCK_NAMES, data.get("block"), "方块")
+    block = (data.get("block") or "").strip()
+    name = name_of(BLOCK_NAMES, block, "方块") if block else "方块"
+    counter = "块" if block else "个"
     mined = as_int(data.get("mined"), 0)
     wanted = as_int(data.get("wanted"), mined)
+    remaining = as_int(data.get("remaining"), max(0, wanted - mined))
+    area = bool(data.get("area"))
+    stuck = (data.get("stuck_at") or "").strip()
     status = (data.get("status") or "").strip()
     if status == "done":
+        if area:
+            text = f"{maid}拆掉了{mined}{counter}{name}，这一片都拆完了。"
+            if data.get("truncated"):
+                text += "这一片太大，只拆了最近的这些。"
+            return text
         return f"{maid}挖掉了一块{name}。" if mined == 1 else f"{maid}挖掉了{mined}块{name}。"
     reason = narrate(data.get("reason"))
+    verb = "拆" if area else "挖"
     if mined > 0:
-        text = f"{maid}挖掉了{mined}块{name}"
-        if wanted > mined:
-            text += f"，还差{wanted - mined}块没挖完"
+        text = f"{maid}{verb}掉了{mined}{counter}{name}"
+        if remaining > 0:
+            text += f"，还剩{remaining}{counter}没{verb}" if area else f"，还差{remaining}块没挖完"
+        if stuck:
+            text += f"，停在了{stuck}那一格"
         return text + (f"：{reason}。" if reason else "。")
-    return f"{maid}没能挖成：{reason}。" if reason else f"{maid}没能挖成。"
+    text = f"{maid}没能{verb}成"
+    if stuck:
+        text += f"，停在了{stuck}那一格"
+    return text + (f"：{reason}。" if reason else "。")
+
+
+def maid_place_done(data):
+    """放置收尾：放下了，或者为什么没放成。
+
+    与挖掘一样，受理只代表她过去了；这条才是「方块真的在那儿」的凭据。
+    """
+    maid, _ = names()
+    block = (data.get("block") or "").strip()
+    name = name_of(BLOCK_NAMES, block, "方块") if block else "方块"
+    status = (data.get("status") or "").strip()
+    if status == "done":
+        return f"{maid}把一块{name}放好了。"
+    reason = narrate(data.get("reason"))
+    return f"{maid}没能把{name}放下：{reason}。" if reason else f"{maid}没能把{name}放下。"
 
 
 SPECS = {
     "action_done": EventSpec(action_done, urgent=True, ttl=60, snapshot=True),
     "maid_mine_done": EventSpec(maid_mine_done, urgent=True, ttl=120),
+    "maid_place_done": EventSpec(maid_place_done, urgent=True, ttl=60),
 }

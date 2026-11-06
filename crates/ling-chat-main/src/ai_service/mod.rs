@@ -3,11 +3,12 @@ pub mod asr;
 pub mod config;
 // 嵌入引擎实现已下沉到 notes crate，这里保持 `ai_service::embedding` 路径稳定。
 pub use ling_chat_notes::embedding;
+// 云端向量化后端与本地/云端路由（依赖 HTTP 栈，不能放进 notes crate）。
+pub mod embedding_remote;
 pub mod emotion;
 pub mod game_system;
 pub mod god_agent;
 pub mod llm;
-pub mod memory_injection;
 pub mod message_system;
 pub mod proactive_system;
 pub mod screen_analyzer;

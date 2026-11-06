@@ -36,9 +36,6 @@ pub struct LlmResponseWithTools {
 }
 
 /// LLM 供应商协议：不同供应商的唯一区别在于 HTTP 请求/响应的格式。
-///
-/// 对标 Python `BaseLLMProvider` ABC。
-/// 参照 `TtsAdapter` trait 使用 `async_trait` + `Send + Sync` 的模式。
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {

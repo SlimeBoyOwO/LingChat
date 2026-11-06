@@ -86,7 +86,7 @@ Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个 crate：
 
 ## 参考文档
 
-各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、笔记检索（`notes-retrieval.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
+各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、ASR 热词（`asr/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、笔记检索（`notes-retrieval.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
 
 ## 关键约定（本部分务必人工维护）
 
@@ -98,3 +98,4 @@ Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个 crate：
 - 格式化：用户明确不要求，格式检查不作为验收依据，格式化在提交时由 husky + lint-staged 处理 -换行/编码：`.gitattributes` 强制文本文件 LF + UTF-8（Windows 脚本 CRLF）。媒体/大文件走 Git LFS，不要提交大的二进制
 - 样式优先用 Tailwind CSS v4，而不是传统css：项目用 `@tailwindcss/vite` 4.x，CSS-first 配置，v4 语法与 v3 有差异，不确定时可查网络或 context7 文档，官方库 ID：`/websites/tailwindcss`（无需再 resolve-library-id）
 - provider 预设：LLM 服务商快捷配置在 `src/constants/llm-presets.ts`，改这个数组即可，勿动组件。
+- 无论任何时候，面对比较模糊的需求/提问时，你应当调用提问工具（优先，可多次）或输出最终回复，以中断对话的方式向用户提问，明确具体需求，不要自己私自做决定，或是采取忽略用户需求的方法推进plan和功能落地。用户需求不合理时你有责任中断实现并提醒用户且给出更佳的方法，除非用户二次明确指出需求，你必须服从用户。

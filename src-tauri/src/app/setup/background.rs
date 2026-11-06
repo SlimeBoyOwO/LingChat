@@ -87,7 +87,7 @@ pub(super) fn run(
 
     // 天气缓存后台刷新：每 5 分钟检查一次，配置了手动城市且缓存过期才拉取
     //（没有自动定位），供 generator 注入"用户所在地天气"提醒与 query_weather 工具复用
-    tauri::async_runtime::spawn(ai_service::tools::weather::run_refresh_loop(
+    tauri::async_runtime::spawn(ai_service::tools::builtin::weather::run_refresh_loop(
         app.handle().clone(),
     ));
 

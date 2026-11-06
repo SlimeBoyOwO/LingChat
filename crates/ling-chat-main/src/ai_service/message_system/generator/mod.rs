@@ -6,6 +6,8 @@
 //! 3. 启动 StreamProducer 从 LLM 流中切句子，送入 consumer 并行处理（情绪解析 + 翻译 + TTS）。
 //! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
 //! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
+//!
+//! 钦灵：这一模块是整个 LC 的核心模块，务必保证设计合理
 
 mod backfill;
 mod post;
@@ -20,6 +22,7 @@ use tauri::{AppHandle, Emitter};
 use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::game_system::game_status::GameStatus;
+use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
 use crate::ai_service::llm::LlmClient;
@@ -112,8 +115,10 @@ impl MessageGenerator {
 
         // 1.5. 场景变化检测
         self.detect_scene_change().await?;
+        // 1.6. 天气变化检测：切换时只改状态，到这一轮才补旁白
+        self.detect_weather_change().await?;
 
-        // 1.6. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
+        // 1.7. 本轮 user 行的下标：好感度这类后台产出之后要挂回这一轮。
         // 真正的指纹在评估时再取，避免 `cleanup_temp_message` 改写玩家行后对不上。
         let recent_anchor_hint = user_ctx.line_index.or(self.deps.round_anchor_hint);
 
@@ -122,8 +127,7 @@ impl MessageGenerator {
             self.god_agent_pre_select().await?;
         }
 
-        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一，
-        // 结果只是一条临时提示与几个本轮可直接调用的工具名，不写台词表也不进记忆。
+        // 2.5 工具推荐：按设置走「不推荐 / 上帝 Agent / 静默检索」三条路之一。
         // 没有玩家发言时（主动对话）只取上一轮回复后暂存的那份。
         let tool_hint = if user_message.is_some() {
             self.tool_hint(user_message.as_deref().unwrap_or_default())
@@ -131,6 +135,18 @@ impl MessageGenerator {
         } else {
             self.pending_tool_hint().await
         };
+        // 推荐内容按临时记忆注入：与提示行同一个信封，只进本轮请求，不写台词表。
+        // 工具名另走参数并进本轮工具集，两半不拆。
+        if let Some(hint) = &tool_hint {
+            self.deps
+                .game_status
+                .lock()
+                .await
+                .queue_temporary_memory(TemporaryMemory {
+                    text: hint.text.clone(),
+                    placement: TemporaryPlacement::IntoUser,
+                });
+        }
 
         // 本轮新落台词的起点：回复后推荐只取这之后的助手行，用户行与场景旁白都应排除。
         let reply_start = {
@@ -201,28 +217,21 @@ impl MessageGenerator {
         }
 
         // 好感度定期评估：真实对话累计到间隔后，后台 spawn 上帝 Agent 评估，
-        // 不阻塞本轮回复的呈现。
         self.maybe_evaluate_affection(recent_anchor_hint).await;
 
-        // 回复后处理扩展点（顺序排在好感度评估之后，避免刚排队的提示混进评估快照）：
-        // 新增的回复后处理一律加在 `maybe_correct_reply_shape` 旁边——轻量动作
-        // 直接 await，需要 LLM 的动作 spawn 到后台，失败只 warn，
-        // 绝不能影响已经呈现给用户的回复。
+        // 回复后处理扩展点
         self.maybe_correct_reply_shape(&round_replies).await;
 
-        // 回复后工具推荐：模型先说「我去看看你屏幕」却没调用工具的场合，下一轮
-        // 前置推荐未必还能从玩家的话里看出这个意图，这里拿本轮正文与动作补一次。
+        // 回复后工具推荐
         self.maybe_recommend_tools_after_reply(reply_start).await;
 
-        // 近期记忆落位：等这一轮所有写入结束再做，避免中段插入打乱流式行号。
-        // 调用方（非剧本路径）已持有 generation_lock，这里只锁 game_status。
+        // 近期记忆落位
         self.flush_recent_memories().await;
 
         Ok(accumulated)
     }
 
     /// 把后台工具完成通知作为仅对 LLM 可见的临时 user context 触发新一轮回复。
-    /// 通知不会写成玩家台词，避免界面和历史中出现伪造的用户消息。
     #[cfg_attr(not(desktop), allow(dead_code))]
     pub async fn process_notification(&self, notification: String) -> Result<String> {
         // 调用方（后台工具通知）持有 generation_lock；先把待落位的近期记忆写回历史。
@@ -289,8 +298,7 @@ impl MessageGenerator {
                 .clone()
         };
         // 原生多模态识图：把当轮图片作为一条独立的用户消息拼进 LLM 上下文，
-        // 仅本次请求可见，不回写记忆。放在末尾（紧跟最新用户输入之后的视觉提示），
-        // 让模型把图片与最近的用户语境关联起来。
+        // 仅本次请求可见，不回写记忆。放在末尾
         let context = if let Some(image) = self.deps.transient_image.clone() {
             let mut ctx = context;
             let gs_guard = self.deps.game_status.lock().await;
@@ -305,14 +313,6 @@ impl MessageGenerator {
                 )
             };
             ctx.push(LlmMessage::user_with_image(marker, image));
-            ctx
-        } else {
-            context
-        };
-        // 工具推荐是临时提示：只搭本次请求，不写台词表也不进记忆。
-        let context = if let Some(hint) = tool_hint {
-            let mut ctx = context;
-            ctx.insert(0, LlmMessage::system(hint.text.clone()));
             ctx
         } else {
             context
@@ -405,9 +405,6 @@ impl MessageGenerator {
                         break;
                     };
                     let (sentence, index, is_final) = match item {
-                        // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
-                        // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
-                        // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
                         SentenceItem::BeforeTools { index, ack } => {
                             if publish_tx
                                 .send(PublishItem::BeforeTools { index, ack })
@@ -528,11 +525,6 @@ impl MessageGenerator {
                 &anyhow::anyhow!("模型没有返回任何内容，请再试一次"),
             );
         } else if !published_final {
-            // 有正文、但没有一条 `is_final` 的回复成功落地——前端队列只认 is_final 或
-            // status:reset 来复位，缺了它界面会永远停在等待态。工具闭环下这条是可达的：
-            // 呈现栅栏已经把前导缓冲清空，工具后模型若不再产出正文，EOF 就没有可提升为
-            // 终句的内容（旧行为会重放前导，但那会让用户看到同一句话两次）。
-            // 这里只做温和复位：不重放、不弹错误提示。
             tracing::warn!(
                 sent_final = output.sent_final,
                 "本轮没有成功发布收尾句，仅复位前端状态"
@@ -549,10 +541,6 @@ impl MessageGenerator {
 // ============================================================
 
 /// 投递到 publisher 的工作项。
-///
-/// 栅栏与回复共用同一个索引空间：publisher 只有在推进到栅栏索引（即所有更小索引
-/// 都已处理完，包括被丢弃的 `None` 结果）之后才会回 ack，从而保证"前导台词的
-/// `ai:reply` 已 emit"严格先于"工具事件 emit"。
 #[allow(clippy::large_enum_variant)]
 pub(super) enum PublishItem {
     Reply {

@@ -4,10 +4,6 @@
 //! `screen_analyzer` 与 `tools/read_media_file` 里的两套手写 HTTP：
 //! - 图片走 genai（OpenAI 兼容 adapter），与项目其余 LLM 调用统一；
 //! - 视频保留裸 reqwest（genai 0.6.5 不支持 `video_url`），但代码位置也收敛到这里。
-//!
-//! 说明：视觉请求固定使用 OpenAI 兼容协议 + `vision_base_url` 改写后的端点，
-//! 不经过 `GenaiProvider`——后者会无条件下发 chat 专属的 `thinking` 字段与
-//! reasoning 剥名逻辑，强加到任意视觉端点上会有回归风险。
 
 use anyhow::{Result, anyhow};
 use base64::Engine as _;
@@ -32,9 +28,6 @@ pub struct VisionResult {
 }
 
 /// 视觉请求的目标端点（`base_url` 已按视觉协议改写为 OpenAI 兼容端点）。
-///
-/// 与 `LlmProviderConfig` 区分：这里的 `base_url` 已经过 [`vision_base_url`]
-/// 改写（如 Kimi Code 的 Anthropic 兼容聊天入口会换成其 OpenAI 兼容入口）。
 pub struct VisionTarget {
     pub api_key: String,
     pub base_url: String,
@@ -52,9 +45,6 @@ impl VisionTarget {
 }
 
 /// 将 provider 的 base_url 适配为视觉分析使用的 OpenAI 兼容端点前缀
-/// （请求时拼接 `{base}/chat/completions`）。
-/// Kimi Code 的聊天入口是 Anthropic 兼容协议，视觉请求需要改用
-/// 官方提供的 OpenAI 兼容入口。
 pub fn vision_base_url(provider: &LlmProviderConfig) -> String {
     let base = provider.base_url.trim().trim_end_matches('/');
     match provider.provider.as_str() {
@@ -78,11 +68,6 @@ pub fn vision_base_url(provider: &LlmProviderConfig) -> String {
 }
 
 /// 图片识别：走 genai（固定 OpenAI 兼容 adapter）。
-///
-/// `mime` 为完整 MIME 类型（如 `image/jpeg`）——`ContentPart` 的 `is_image()`
-/// 依赖 `image/` 前缀，data URL 也据此拼接。
-/// `auto_compress` 为全局开关：图片超过端点硬限制时是否自动压缩（见
-/// [`crate::utils::image::clamp_to_inline_limits`]）；关闭则原样发送。
 pub async fn analyze_image(
     http: &Client,
     target: &VisionTarget,

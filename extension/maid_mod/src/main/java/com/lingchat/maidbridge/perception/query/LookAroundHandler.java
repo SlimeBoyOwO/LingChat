@@ -10,6 +10,7 @@ import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
 import com.lingchat.maidbridge.perception.PerceptionProfiles;
+import com.lingchat.maidbridge.perception.nearby.CreatureMemory;
 import com.lingchat.maidbridge.perception.nearby.Surroundings;
 import com.lingchat.maidbridge.perception.nearby.SurroundingsReader;
 import com.lingchat.maidbridge.perception.spatial.BlockSight;
@@ -41,6 +42,8 @@ public class LookAroundHandler implements MessageHandler {
     private static final int BLOCK_LIMIT = 12;
     /** 背包清单最多列几种：给「把东西给我」这类指令一个能用的 id 清单。 */
     private static final int BACKPACK_LIMIT = 12;
+    /** 记得的活物最多列几只：只用来回答「刚才那只呢」，不是第二份活物清单。 */
+    private static final int REMEMBERED_LIMIT = 5;
     /** 看玩家准星落点多远：与挖掘的区域锚点同一口径。 */
     private static final double GAZE_RAY = 32.0;
     /** 小图自己的地形快照半径：远处两格合并要看到 ±13 格。 */
@@ -93,6 +96,7 @@ public class LookAroundHandler implements MessageHandler {
         // 背包清单只给按需查询：模型要能看见她身上有什么，才谈得上「把那个给我」
         JsonObject body = Envelope.data(response);
         addProjection(body, projection);
+        addRemembered(body, maid, level);
         body.add("backpack", MaidInventory.stacks(maid, BACKPACK_LIMIT));
         // 最后一格是头饰栏：顶在头上，不算背包存货，单独说
         ItemStack headwear = MaidInventory.headwear(maid);
@@ -105,8 +109,33 @@ public class LookAroundHandler implements MessageHandler {
         return response;
     }
 
-    private static void addProjection(JsonObject body, BlockProjection projection) {
-        JsonArray relations = new JsonArray();
+    /**
+     * 她记得的活物：刚才见过、现在不在了的那几只。
+     *
+     * <p>只列死了或走远了的，还活着的本来就在附近那份清单里。模型问「刚才那只僵尸呢」
+     * 时靠它答；也是攻击失败时能看到同一份记忆的来源。
+     */
+    private static void addRemembered(JsonObject body, EntityMaid maid, Level level) {
+        JsonArray remembered = new JsonArray();
+        for (CreatureMemory.Known one : CreatureMemory.recent(
+                maid,
+                level.getGameTime(),
+                PerceptionProfiles.QUERY_VISIBLE_RADIUS,
+                REMEMBERED_LIMIT)) {
+            JsonObject item = new JsonObject();
+            item.addProperty("type", one.type());
+            item.addProperty("category", one.category());
+            item.addProperty("name", one.name());
+            item.addProperty("dead", one.dead());
+            item.addProperty("killed_by", one.killedBy());
+            item.addProperty("killed_by_type", one.killerType());
+            item.addProperty("distance", EventFrames.round(one.distance()));
+            remembered.add(item);
+        }
+        body.add("remembered", remembered);
+    }
+
+    private static void addProjection(JsonObject body, BlockProjection projection) {        JsonArray relations = new JsonArray();
         for (BlockRelation one : projection.relations()) {
             JsonObject item = new JsonObject();
             item.addProperty("id", one.id());

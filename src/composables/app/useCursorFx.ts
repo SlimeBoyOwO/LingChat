@@ -6,7 +6,8 @@
  * 库自己会往 document.body 追加一个 pointer-events: none 的全屏覆盖层，所以这里
  * 没有对应的组件与 DOM；旧实现由 App.vue 按设置用 v-if 挂载。
  *
- * 在 App.vue 中调用一次以激活。
+ * 在 App.vue 中调用一次以激活。`enabled` 由调用方给出门控（本项目只在主界面开启），
+ * 不满足时销毁实例，连覆盖层与 WebGL 上下文都不保留。
  */
 import { onBeforeUnmount, ref, watch } from "vue";
 import type { BAClickFX } from "ba-click-fx";
@@ -32,14 +33,16 @@ const LOOK_PATCH: Record<string, number> = {
   "shards.hdrIntensity": 6, // 默认 5.99
 };
 
-export function useCursorFx() {
+export function useCursorFx(enabled: () => boolean = () => true) {
   const settingsStore = useSettingsStore();
 
   let fx: BAClickFX | null = null;
   let loading = false;
 
-  // 选到内置实现、或两个开关都关掉时不持有实例：既不下载库也不起 WebGL 上下文
+  // 选到内置实现、两个开关都关掉、或当前界面不使用特效时都不持有实例：
+  // 既不下载库也不起 WebGL 上下文
   const shouldRun = () =>
+    enabled() &&
     settingsStore.cursorEffectEngine !== "legacy" &&
     (settingsStore.globalMouseTrailEnabled || settingsStore.clickAnimationEnabled);
 
@@ -83,7 +86,44 @@ export function useCursorFx() {
     }
   };
 
-  watch(shouldRun, (on) => (on ? void start() : stop()), { immediate: true });
+  // 特效库约 425 KB，首屏不下载：等用户第一次移动或点击鼠标再拉取，
+  // 避免与主菜单的字体、图片、语言包争带宽。
+  let warmupBound = false;
+
+  const warmup = () => {
+    if (!warmupBound) return;
+    warmupBound = false;
+    window.removeEventListener("pointermove", warmup);
+    window.removeEventListener("pointerdown", warmup);
+    void start();
+  };
+
+  const bindWarmup = () => {
+    if (warmupBound) return;
+    warmupBound = true;
+    window.addEventListener("pointermove", warmup, { passive: true });
+    window.addEventListener("pointerdown", warmup, { passive: true });
+  };
+
+  const unbindWarmup = () => {
+    if (!warmupBound) return;
+    warmupBound = false;
+    window.removeEventListener("pointermove", warmup);
+    window.removeEventListener("pointerdown", warmup);
+  };
+
+  watch(
+    shouldRun,
+    (on) => {
+      if (!on) {
+        unbindWarmup();
+        stop();
+        return;
+      }
+      bindWarmup();
+    },
+    { immediate: true },
+  );
 
   // 开关变化时就地更新配置，并清掉已经画出来的粒子
   watch(
@@ -96,5 +136,8 @@ export function useCursorFx() {
     },
   );
 
-  onBeforeUnmount(stop);
+  onBeforeUnmount(() => {
+    unbindWarmup();
+    stop();
+  });
 }

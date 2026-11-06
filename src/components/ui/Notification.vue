@@ -1,21 +1,24 @@
 <template>
-  <Transition name="notify-fade">
-    <div
-      v-if="uiStore.notification.isVisible"
-      class="fixed top-[calc(20px+var(--safe-area-inset-top))] left-[calc(16px+var(--safe-area-inset-left))] z-10000 flex max-w-[320px] min-w-55 flex-col gap-0.5 rounded-xl border border-l-4 border-white/10 bg-neutral-950/75 p-2.5 px-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-200 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]"
-      :class="typeBorderClass"
-    >
-      <div class="truncate text-sm leading-snug font-semibold" :class="typeTitleClass">
-        {{ uiStore.notification.title || $t("ui.notification.titlePlaceholder") }}
-      </div>
+  <!-- Teleport 到 body：宿主弹窗的 backdrop-blur / overflow-hidden 会形成层叠上下文并裁切 fixed 子层 -->
+  <Teleport to="body">
+    <Transition name="notify-fade">
       <div
-        v-if="uiStore.notification.message"
-        class="line-clamp-2 text-xs leading-snug text-white/75"
+        v-if="uiStore.notification.isVisible"
+        class="fixed top-[calc(20px+var(--safe-area-inset-top))] left-[calc(16px+var(--safe-area-inset-left))] z-[10001] flex max-w-[320px] min-w-55 flex-col gap-0.5 rounded-xl border border-l-4 border-white/10 bg-neutral-950/75 p-2.5 px-3.5 shadow-[0_4px_16px_rgba(0,0,0,0.4),inset_0_1px_0_rgba(255,255,255,0.06)] backdrop-blur-xl backdrop-saturate-200 [text-shadow:0_1px_3px_rgba(0,0,0,0.5)]"
+        :class="typeBorderClass"
       >
-        {{ uiStore.notification.message }}
+        <div class="truncate text-sm leading-snug font-semibold" :class="typeTitleClass">
+          {{ uiStore.notification.title || $t("ui.notification.titlePlaceholder") }}
+        </div>
+        <div
+          v-if="uiStore.notification.message"
+          class="line-clamp-2 text-xs leading-snug text-white/75"
+        >
+          {{ uiStore.notification.message }}
+        </div>
       </div>
-    </div>
-  </Transition>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">

@@ -25,10 +25,14 @@ import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MonitoredMaidHandler;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.mine.MaidMineHandler;
+import com.lingchat.maidbridge.action.place.MaidPlaceController;
+import com.lingchat.maidbridge.action.place.MaidPlaceHandler;
 import com.lingchat.maidbridge.perception.event.AchievementReporter;
 import com.lingchat.maidbridge.perception.event.DeathReporter;
 import com.lingchat.maidbridge.perception.event.FavoriteFoodReporter;
 import com.lingchat.maidbridge.perception.event.HurtReporter;
+import com.lingchat.maidbridge.perception.event.ProjectileReporter;
+import com.lingchat.maidbridge.perception.nearby.CreatureMemory;
 import com.lingchat.maidbridge.perception.PerceptionSampler;
 import com.lingchat.maidbridge.perception.query.LookAroundHandler;
 import com.lingchat.maidbridge.voice.PlayTtsHandler;
@@ -90,6 +94,8 @@ public class LingChatMaidBridge {
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerTick);
         NeoForge.EVENT_BUS.addListener(ChatPushListener::onServerChat);
         NeoForge.EVENT_BUS.addListener(HurtReporter::onDamage);
+        // 雪球、鸡蛋这类零伤害的投掷物：不算受伤，但确实砸在了她身上
+        NeoForge.EVENT_BUS.addListener(ProjectileReporter::onImpact);
         // 致命伤改成就地昏迷：普通伤害在昏迷期间取消，/kill 与虚空仍走旧死亡
         NeoForge.EVENT_BUS.addListener(EventPriority.LOWEST, MaidCondition::onDamage);
         NeoForge.EVENT_BUS.addListener(EventPriority.HIGHEST, MaidCondition::onIncoming);
@@ -144,6 +150,7 @@ public class LingChatMaidBridge {
         newRouter.register(Protocol.MAID_SET_TASK, new MaidTaskHandler(server));
         newRouter.register(Protocol.MAID_ATTACK, new MaidAttackHandler(server));
         newRouter.register(Protocol.MAID_MINE, new MaidMineHandler(server));
+        newRouter.register(Protocol.MAID_PLACE, new MaidPlaceHandler(server));
         newRouter.register(Protocol.MAID_GIVE_ITEM, new MaidGiveItemHandler(server));
         newRouter.register(Protocol.MAID_HEADWEAR, new MaidHeadwearHandler(server));
         newRouter.register(Protocol.PLAY_TTS, new PlayTtsHandler(server));
@@ -184,6 +191,9 @@ public class LingChatMaidBridge {
         PerceptionSampler.reset();
         // 附近死亡那条记着静默期，别带到下一个世界
         DeathReporter.clear();
+        ProjectileReporter.clear();
+        // 她记得的活物同样是一个世界的：换存档后 uuid 都不作数了
+        CreatureMemory.clear();
         // 物品的去抖与背包基线同理
         ItemReporter.clear();
         FavoriteFoodReporter.clear();
@@ -196,6 +206,7 @@ public class LingChatMaidBridge {
         MaidAttackController.cancel();
         // 挖掘循环记着上一块方块
         MaidMineController.cancel(event.getServer());
+        MaidPlaceController.cancel(event.getServer());
     }
 
     private static void onServerTick(ServerTickEvent.Post event) {
@@ -212,6 +223,8 @@ public class LingChatMaidBridge {
         MaidAttackController.tick(event.getServer());
         // 挖掘也按 tick 推进：走过去、朝着方块挖、挖穿了捡东西
         MaidMineController.tick(event.getServer());
+        // 放置同理：走到够得着的地方，按原版规则放下一块
+        MaidPlaceController.tick(event.getServer());
         // 喂食的待收尾有寿命：没吃成的那口要还给她，金苹果等不到吃完就作废
         MaidFeeder.tick(event.getServer());
         // 主人举着她最爱吃的东西、她凑过来讨食的那一刻

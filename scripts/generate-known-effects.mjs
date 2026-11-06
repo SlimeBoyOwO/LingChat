@@ -94,26 +94,30 @@ async function loadRegistryKeys() {
   patch(outDir);
 
   const mod = await import(pathToFileURL(join(outDir, "index.js")).href);
-  const keys = (mod.ALL_EFFECTS ?? []).map((effect) => effect.key);
+  const toKeys = (list) => (list ?? []).map((effect) => effect.key);
+  const keys = toKeys(mod.ALL_EFFECTS);
+  const weatherKeys = toKeys(mod.WEATHER_EFFECTS);
   if (keys.length === 0) {
     throw new Error("注册表里没读到任何特效，ALL_EFFECTS 是不是改名了？");
   }
-  return keys;
+  if (weatherKeys.length === 0) {
+    throw new Error("注册表里没读到天气特效，WEATHER_EFFECTS 是不是改名了？");
+  }
+  return { keys, weatherKeys };
 }
 
-function render(keys) {
-  const body = keys.map((key) => `    "${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}",`);
+function render(keys, weatherKeys) {
+  const quote = (key) => `    "${key.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}",`;
+  const body = keys.map(quote);
+  const weatherBody = weatherKeys.map(quote);
   return `//! 内置背景特效清单 —— 本文件由脚本生成，请勿手改。
 //!
 //! 生成命令: pnpm gen:effects
 //! 唯一真相是前端注册表 src/components/game/standard/particles/index.ts。
 //!
 //! 特效由前端渲染，Rust 不参与，这份清单只用来让剧本编辑器给作者报
-//! 「这不是内置特效」。正因为如此它必须是派生品 —— 手抄一份的话，抄漏的
-//! 症状只是警告不再触发，不报错，很难查。
-//!
-//! 前端把特效分成氛围与天气两层，这里刻意拍平：剧本只写一个特效值，
-//! 落在哪一层由前端决定。
+//! 「这不是内置特效」，以及让后端判断某个特效属于哪一层。正因为如此它
+//! 必须是派生品 —— 手抄一份的话，抄漏的症状只是判断失灵，不报错，很难查。
 
 /// 全部内置特效的 key，顺序与注册表一致。
 ///
@@ -122,11 +126,24 @@ function render(keys) {
 pub const KNOWN_EFFECTS: &[&str] = &[
 ${body.join("\n")}
 ];
+
+/// 天气层特效的 key。氛围层与天气层各自单选、互不覆盖。
+///
+/// 前端按这个集合决定特效落在哪一层；后端据此把天气名的特效写进
+/// \`weather_effect\`，从而能检测天气变化并生成旁白。
+pub const WEATHER_EFFECTS: &[&str] = &[
+${weatherBody.join("\n")}
+];
+
+/// 是否天气层特效（大小写敏感，与前端按 === 比较一致）。
+pub fn is_weather_effect(effect: &str) -> bool {
+    WEATHER_EFFECTS.contains(&effect)
+}
 `;
 }
 
-const keys = await loadRegistryKeys();
-const next = render(keys);
+const { keys, weatherKeys } = await loadRegistryKeys();
+const next = render(keys, weatherKeys);
 
 if (checkOnly) {
   let current = "";
@@ -140,8 +157,11 @@ if (checkOnly) {
     console.error("❌ known_effects.rs 与粒子注册表不一致，请执行 pnpm gen:effects");
     process.exit(1);
   }
-  console.log(`✅ known_effects.rs 与注册表一致（${keys.length} 个特效）`);
+  console.log(
+    `✅ known_effects.rs 与注册表一致（${keys.length} 个特效，其中天气 ${weatherKeys.length} 个）`,
+  );
 } else {
   writeFileSync(OUTPUT, next);
   console.log(`✅ 已生成 known_effects.rs（${keys.length} 个特效）: ${keys.join(", ")}`);
+  console.log(`   天气层: ${weatherKeys.join(", ")}`);
 }

@@ -122,7 +122,29 @@ pub(super) fn build_service_graph(
         rt.block_on(ai_service.set_clothes_overrides(overrides));
     }
 
+    // 玩家身份迁移：必须在开局引导读取主身份之前完成；已迁移时只做增量补齐。
+    if let Err(e) = rt.block_on(
+        ling_chat_main::ai_service::game_system::player_identity::migration::run(&data_dir, &db),
+    ) {
+        tracing::warn!("玩家身份迁移失败，继续使用现有身份: {e}");
+    }
+
+    // 冷启动恢复上次角色时，同样启用该角色卡绑定的专属身份（迁移会把 current 重置为主身份）。
+    if let Some(cid) = character_id {
+        if let Err(e) = rt.block_on(
+            ling_chat_main::ai_service::game_system::player_identity::bootstrap::apply_bound_identity_for_role(
+                &db, &data_dir, cid,
+            ),
+        ) {
+            tracing::warn!("冷启动应用绑定身份失败: {e}");
+        }
+    }
+
     rt.block_on(ai_service.init_game_status(character_id, prompt_options))?;
+    // 冷启动直接恢复上次角色，不经过 select_character，这里补播种初始好感度（与切角色同构）。
+    if let Some(cid) = character_id {
+        rt.block_on(ai_service.seed_initial_affection(cid))?;
+    }
 
     tracing::info!("AIService 初始化完成");
 
@@ -172,18 +194,24 @@ pub(super) fn build_service_graph(
             ling_chat_main::data_dir::get_data_dir(),
         )?,
     );
-    let tool_registry = Arc::new(ai_service::tools::built_in_registry(
+    let tool_registry = Arc::new(ai_service::tools::builtin::built_in_registry(
         role_names,
         tool_settings.clone(),
     )?);
 
-    // 文本嵌入引擎（Tool RAG 的工具语义检索）。模型缺失 / ONNX 不可用都只是
-    // 降级为禁用态，由工具闭环回退到「全量工具下发」。
-    let embedding = ai_service::embedding::EmbeddingEngine::load(
+    // 文本嵌入引擎（本地 ONNX）。模型缺失 / ONNX 不可用都只是降级为禁用态。
+    let local_embedding = ai_service::embedding::EmbeddingEngine::load(
         &data_dir
             .join("third_party")
             .join(ai_service::embedding::MODEL_DIR_NAME),
         ling_chat_main::utils::onnx::onnx_available(),
+    );
+    // 本地 / 云端路由器：用户配置了云端就换后端，云端连续失败则熔断并告警，
+    // 两条路径都只暴露同一个 Embedder 接口给下游。
+    let embedding = ai_service::embedding_remote::EmbeddingSelector::new(
+        local_embedding,
+        tool_settings.clone(),
+        app.handle().clone(),
     );
     let tool_rag = Arc::new(ai_service::tools::tool_rag::ToolRag::new(embedding.clone()));
     tool_rag.set_capacity(tool_settings.get().cache_capacity());
@@ -200,6 +228,7 @@ pub(super) fn build_service_graph(
         let manager = Arc::new(plugins::PluginManager::new(
             data_dir.clone(),
             tool_registry.clone(),
+            tool_settings.clone(),
         ));
         // 插件注册可能更新了 available_tools，落盘到权限配置
         if let Err(e) = tool_registry.save_permissions(&data_dir) {
@@ -279,6 +308,7 @@ pub(super) fn build_service_graph(
         tool_registry,
         tool_settings,
         embedding,
+        embedding_warming: Arc::new(ai_service::embedding_remote::WarmingTask::default()),
         tool_rag,
         plugin_resources,
         proactive_system: Some(proactive),

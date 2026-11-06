@@ -1,8 +1,10 @@
 //! 角色编辑会话：资源只写入独立副本，底部保存统一提交，取消销毁副本。
 use crate::ai_service::types::CharacterSettings;
+use crate::ai_service::worldbook::{EntryMatch, MAX_WORLDBOOK_BYTES, ValidationIssue, Worldbook};
 use crate::utils::yaml_file::{read_yaml_as_json, resolve_settings_file, write_json_as_yaml};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::io::Read;
 use std::{
     collections::{BTreeSet, HashMap},
     fs,
@@ -16,6 +18,7 @@ struct EditSession {
     original: PathBuf,
     draft: tempfile::TempDir,
     settings_version: Vec<u8>,
+    worldbook_source: Result<Option<String>, String>,
     resource_versions: HashMap<String, Vec<u8>>,
     changes: Vec<(String, String)>,
     resources_changed: BTreeSet<String>,
@@ -286,6 +289,7 @@ pub(in crate::api) async fn prepare_resource(
                 if text.starts_with(".editor-")
                     || text.starts_with(".live2d-staging-")
                     || text == ".git"
+                    || text == "worldbook.yml"
                     || text.starts_with("settings.yml")
                     || text.starts_with("settings_local.yml")
                     || (text == "avatar" && draft.join(&name).exists())
@@ -398,6 +402,7 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
         .ok_or("角色目录不存在")?
         .to_path_buf();
     let expected = settings_version(&original)?;
+    let worldbook_source = read_worldbook_source(&original);
     let settings = super::get_role_settings(app.clone(), role_id).await?;
     let parent = original.join(".editor-drafts");
     fs::create_dir_all(&parent).map_err(|e| e.to_string())?;
@@ -430,6 +435,7 @@ pub async fn begin_character_edit(app: AppHandle, role_id: i32) -> Result<Editor
             original,
             draft,
             settings_version: expected,
+            worldbook_source,
             resource_versions: HashMap::new(),
             changes: Vec::new(),
             resources_changed: BTreeSet::new(),
@@ -449,6 +455,121 @@ pub async fn discard_character_edit(role_id: i32, edit_id: String) -> Result<(),
         drop(sessions);
         close_session(session);
     }
+    Ok(())
+}
+
+fn read_worldbook_source(root: &Path) -> Result<Option<String>, String> {
+    let path = root.join("worldbook.yml");
+    if path.is_symlink() {
+        return Err("世界书不能是符号链接".into());
+    }
+    let file = match fs::File::open(&path) {
+        Ok(file) => file,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(error.to_string()),
+    };
+    let mut text = String::new();
+    file.take((MAX_WORLDBOOK_BYTES + 1) as u64)
+        .read_to_string(&mut text)
+        .map_err(|e| e.to_string())?;
+    if text.len() > MAX_WORLDBOOK_BYTES {
+        return Err("世界书大小不能超过 2 MiB".into());
+    }
+    Ok(Some(text))
+}
+
+fn worldbook_version(source: &Option<String>) -> Vec<u8> {
+    let mut digest = Sha256::new();
+    digest.update([u8::from(source.is_some())]);
+    if let Some(text) = source {
+        digest.update(text.as_bytes());
+    }
+    digest.finalize().to_vec()
+}
+
+#[derive(Deserialize)]
+pub struct WorldbookPatch {
+    book: Option<Worldbook>,
+}
+
+#[tauri::command]
+pub fn read_character_worldbook(
+    role_id: i32,
+    edit_id: String,
+) -> Result<Option<Worldbook>, String> {
+    let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+    let session = sessions
+        .get(&edit_id)
+        .filter(|session| session.role_id == role_id)
+        .ok_or("草稿已失效")?;
+    session
+        .worldbook_source
+        .as_ref()
+        .map_err(Clone::clone)?
+        .as_ref()
+        .map(|text| serde_yaml::from_str(text).map_err(|error| format!("世界书格式错误：{error}")))
+        .transpose()
+}
+
+#[derive(Serialize)]
+pub struct WorldbookPreview {
+    issues: Vec<ValidationIssue>,
+    entries: Vec<EntryMatch>,
+}
+
+#[tauri::command]
+pub fn preview_character_worldbook(
+    book: Worldbook,
+    input: String,
+) -> Result<WorldbookPreview, String> {
+    if input.len() > 64 * 1024 {
+        return Err("测试输入不能超过 64 KiB".into());
+    }
+    let issues = book.validate();
+    if book.limit_error().is_some() {
+        return Ok(WorldbookPreview {
+            issues,
+            entries: Vec::new(),
+        });
+    }
+    Ok(WorldbookPreview {
+        issues,
+        entries: book.evaluate(Some(&input)),
+    })
+}
+
+fn stage_worldbook(
+    session: &mut EditSession,
+    patch: Option<&WorldbookPatch>,
+) -> Result<(), String> {
+    session.resources_changed.remove("worldbook.yml");
+    session.resource_versions.remove("worldbook.yml");
+    let Some(patch) = patch else {
+        return Ok(());
+    };
+    let original = session.worldbook_source.as_ref().map_err(Clone::clone)?;
+    if worldbook_version(&read_worldbook_source(&session.original)?) != worldbook_version(original)
+    {
+        return Err("世界书已被其他操作修改，请保留草稿并重新打开角色编辑器".into());
+    }
+    let path = session.draft.path().join("worldbook.yml");
+    if let Some(book) = &patch.book {
+        let issues = book.validate();
+        if !issues.is_empty() {
+            return Err(format!("世界书校验失败：{}", issues[0].message));
+        }
+        let yaml = serde_yaml::to_string(book).map_err(|error| error.to_string())?;
+        if yaml.len() > MAX_WORLDBOOK_BYTES {
+            return Err("世界书大小不能超过 2 MiB".into());
+        }
+        fs::write(path, yaml).map_err(|error| error.to_string())?;
+    } else if path.exists() {
+        fs::remove_file(path).map_err(|error| error.to_string())?;
+    }
+    session
+        .resource_versions
+        .insert("worldbook.yml".into(), worldbook_version(original));
+    session.resources_changed.insert("worldbook.yml".into());
     Ok(())
 }
 
@@ -485,16 +606,18 @@ pub async fn commit_character_edit(
     role_id: i32,
     edit_id: String,
     settings: serde_json::Value,
+    worldbook_patch: Option<WorldbookPatch>,
 ) -> Result<(), String> {
     let _guard = super::costumes::RESOURCE_LOCK.lock().await;
     let validated: CharacterSettings =
         serde_json::from_value(settings.clone()).map_err(|e| e.to_string())?;
     let (original, draft, expected, changes, resources_changed, resource_versions) = {
-        let sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
+        let mut sessions = SESSIONS.lock().map_err(|e| e.to_string())?;
         let s = sessions
-            .get(&edit_id)
+            .get_mut(&edit_id)
             .filter(|s| s.role_id == role_id)
             .ok_or("草稿已失效")?;
+        stage_worldbook(s, worldbook_patch.as_ref())?;
         (
             s.original.clone(),
             s.draft.path().to_path_buf(),
@@ -508,7 +631,12 @@ pub async fn commit_character_edit(
         return Err("角色配置或资源已被其他操作修改，请保留当前内容并重新打开配置后再保存".into());
     }
     for resource in &resources_changed {
-        if resource_versions.get(resource) != Some(&fingerprint(&original.join(resource))?) {
+        let version = if resource == "worldbook.yml" {
+            worldbook_version(&read_worldbook_source(&original)?)
+        } else {
+            fingerprint(&original.join(resource))?
+        };
+        if resource_versions.get(resource) != Some(&version) {
             return Err("待保存的角色资源已被其他操作修改，请保留当前内容并重新打开配置".into());
         }
     }
@@ -563,6 +691,12 @@ pub async fn commit_character_edit(
             remove_empty_parent(&original.join(".editor-trash"));
         }
         return Err(error);
+    }
+    if let Some(patch) = worldbook_patch {
+        let state = app.state::<crate::AppState>();
+        let service = state.ai_service.lock().await;
+        let mut gs = service.game_status.lock().await;
+        gs.role_manager.update_role_worldbook(role_id, patch.book);
     }
     if let Some(backup) = &backup {
         // 仅在正式配置成功保存后标记；清理失败不改变保存结果，启动时再清理。

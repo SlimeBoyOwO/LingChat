@@ -28,11 +28,14 @@ def _mine(ctx):
     raw = raw.strip() if isinstance(raw, str) else ""
     at = args.get("at")
     at = at.strip() if isinstance(at, str) else ""
+    area = args.get("area")
+    area = area.strip() if isinstance(area, str) else ""
+    whole = args.get("whole") is True
     target = mine_target(raw)
     if at and target == "looked":
         # 地址已经指到具体一格：target 只用来核对种类，留空就是「那一格原本是什么」
         target = ""
-    if not target and not at:
+    if not target and not at and not area:
         return {
             "ok": False,
             "error": f"没听懂要挖哪种方块：{raw or '（空）'}。可以说 {mine_choices()}。",
@@ -46,6 +49,10 @@ def _mine(ctx):
     request = {"maid_id": maid, "target": target, "count": count}
     if at:
         request["at"] = at
+    if area:
+        request["area"] = area
+    elif whole:
+        request["whole"] = True
     response, error = ask({"type": MINE_TOOL, "data": request}, ACTION_TIMEOUT_MS)
     if error:
         return {"ok": False, "error": error}
@@ -54,6 +61,12 @@ def _mine(ctx):
         return {"ok": False, "error": narrate(frame.get("message")) or "游戏那边没能开始挖"}
     if not frame.get("accepted"):
         return {"ok": False, "error": _failure_text(frame, target)}
+    # 老模组不认识 area / whole：它只挖了一块，别让模型以为自己已经在拆一整片
+    if (area or whole) and not frame.get("area"):
+        return {
+            "ok": False,
+            "error": "这个模组版本还不支持整片拆，只挖了那一块；先一块一块来吧。",
+        }
     maid_name, player = names()
     return {"ok": True, "message": _mine_text(frame, maid_name, player)}
 
@@ -133,20 +146,30 @@ def _mine_text(frame, maid, player):
     """挖掘回执 → 一句话。这个工具只负责开始挖，不代表方块已经掉下来。
 
     挖穿、挖够、走不到都由模组之后推的 `maid_mine_done` 状态说明；在这之前，
-    模型只能说她「正过去挖」。
+    模型只能说她「正过去挖」。区域拆除（area）一次是一整片，不按单块的地址说。
     """
     block = frame.get("block") or ""
+    if frame.get("area"):
+        cells = as_int(frame.get("cells"), 0) or as_int(frame.get("count"), 1)
+        if block:
+            name = name_of(BLOCK_NAMES, block, "方块")
+            text = f"{maid}扛起工具，开始拆这一片{name}（{cells}块）。"
+        else:
+            text = f"{maid}扛起工具，开始拆这一片（{cells}块）。"
+        if frame.get("truncated"):
+            text += "一次最多拆64块，先拆最近的这些。"
+        return text
     fallback = (frame.get("name") or "").strip() or "方块"
     name = name_of(BLOCK_NAMES, block, fallback)
     if frame.get("addressed"):
-        parts = [f"{maid}扛起工具，朝你指的那块{name}去了。"]
+        parts = [f"{maid}扛起工具，朝指的那块{name}去了。"]
     elif frame.get("looked"):
         parts = [f"{maid}扛起工具，往{player}看着的那块{name}去了。"]
     else:
         parts = [f"{maid}扛起工具，去挖{frame.get('count') or 1}块{name}。"]
     if not frame.get("has_tool", True):
         parts.append(f"{maid}手上没有趁手的工具，只能徒手慢慢抠。")
-    parts.append(f"第一下才刚落下，{name}还留在原地。")
+    parts.append(f"开始挖{name}中...")
     return "".join(parts)
 
 

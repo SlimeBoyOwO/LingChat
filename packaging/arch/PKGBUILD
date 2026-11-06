@@ -1,0 +1,47 @@
+# Maintainer: lzx <lzx@localhost>
+pkgname=lingchat
+# 需与 src-tauri/tauri.conf.json 中的 version 保持一致
+pkgver=0.5.2
+pkgrel=1
+pkgdesc='AI Galgame Engine'
+arch=('x86_64')
+url='https://github.com/SlimeBoyOwO/LingChat'
+license=('AGPL-3.0-only')
+depends=('gtk3' 'webkit2gtk-4.1' 'hicolor-icon-theme')
+makedepends=('nodejs' 'pnpm' 'rust' 'pkgconf' 'clang' 'cmake' 'libarchive')
+options=('!strip' '!debug')
+
+# 直接在源码工作区里构建，复用已有的 node_modules 与 target 缓存。
+# 用法：在本文件所在目录执行 makepkg -si
+_src="$startdir/../.."
+_deb="target/release/bundle/deb/LingChat_${pkgver}_amd64.deb"
+
+build() {
+  cd "$_src"
+
+  # makepkg 默认注入的 -flto=auto 会让 ring 预编译汇编/GCC LTO 目标文件
+  # 在 rust-lld 下解析失败（undefined symbol: ring_core_0_17_14__*）。
+  # RUSTFLAGS 里的 -C opt-level=3 也会覆盖项目自身的 opt-level=z。
+  # Rust/C 依赖的优化级别由 Cargo profile 决定，这里清空 makepkg 的注入。
+  unset CFLAGS CXXFLAGS LDFLAGS LTOFLAGS RUSTFLAGS
+
+  rm -f "$_deb"
+  pnpm install --frozen-lockfile
+  # 关闭 updater 签名产物，避免本地无 TAURI_SIGNING_PRIVATE_KEY 时构建失败
+  pnpm tauri build --bundles deb \
+    --config '{"bundle":{"createUpdaterArtifacts":false}}'
+}
+
+package() {
+  cd "$_src"
+  [[ -f "$_deb" ]] || {
+    echo "error: 未生成 $_deb" >&2
+    return 1
+  }
+
+  install -d "$srcdir/deb"
+  bsdtar -xf "$_deb" -C "$srcdir/deb"
+
+  install -d "$pkgdir"
+  tar -xzf "$srcdir/deb/data.tar.gz" -C "$pkgdir"
+}
