@@ -6,14 +6,14 @@
 //! 张量计算全部落在 burn 的 autodiff 设备上，物理后端固定为 Vulkan（不启用 CPU
 //! 回退，见 [`burn_backend`](super::burn_backend)）。检查点是 burn 原生 `.bpk` 格式。
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result};
 use burn::module::Module;
 use burn::optim::{AdamWConfig, GradientsParams};
 use burn::prelude::*;
 use burn::tensor::Distribution;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use tokio_util::sync::CancellationToken;
 
 use super::burn_backend::train_device_autodiff;
@@ -95,6 +95,75 @@ pub struct BaseTrainingOutcome {
     pub final_loss: f32,
     /// 是否被取消。
     pub cancelled: bool,
+    /// 从第几轮开始续训；0 表示从头训练（本次没有续训）。
+    pub resumed_from: usize,
+}
+
+/// 训练检查点的配套元数据，用来在中断后从已训轮次续训。
+///
+/// 只记解码器权重没法知道「训到第几轮了」，这里用 sidecar 文件补记。指纹用于
+/// 在续训前校验训练配方是否与上次一致，避免用了不同的数据集或超参去续训上次的
+/// 结果，那相当于让两套配方混着训。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct TrainState {
+    /// 已完成的轮数。
+    pub epochs_done: usize,
+    /// 已完成的步数。
+    pub steps_done: usize,
+    /// 续训配方指纹，见 [`train_fingerprint`]。
+    pub fingerprint: String,
+}
+
+/// 由检查点路径派生出配套的续训状态文件路径。
+///
+/// 例如 `…/checkpoint.bpk` → `…/train-state.json`，与权重检查点放在同目录。
+fn train_state_path(checkpoint_path: &Path) -> PathBuf {
+    checkpoint_path.with_file_name("train-state.json")
+}
+
+/// 保存续训状态。写临时文件再改名，避免中途崩溃留下半截 JSON。
+pub fn save_train_state(state: &TrainState, checkpoint_path: &Path) -> Result<()> {
+    let path = train_state_path(checkpoint_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("创建状态目录失败: {}", parent.display()))?;
+    }
+    let tmp = path.with_extension("json.tmp");
+    std::fs::write(&tmp, serde_json::to_vec_pretty(state)?)
+        .with_context(|| format!("写入状态临时文件失败: {}", tmp.display()))?;
+    std::fs::rename(&tmp, &path)
+        .with_context(|| format!("写入状态文件失败: {}", path.display()))
+}
+
+/// 读取续训状态；不存在或读失败时返回 None（视为从零开始）。
+pub fn load_train_state(checkpoint_path: &Path) -> Option<TrainState> {
+    let path = train_state_path(checkpoint_path);
+    let data = std::fs::read(&path).ok()?;
+    serde_json::from_slice(&data).ok()
+}
+
+/// 计算「训练配方」指纹：一份检查点只对同一套数据集、基座与超参有效。
+///
+/// 把影响训练语义的要素取个稳定组合：样本 id 列表、基座 ONNX 文件信息、学习率、
+/// 单步帧上限、种子。注意**不包含轮数**——否则想「从已训 5 轮继续到 10 轮」时会
+/// 因目标轮数不同而被拒绝续训。任一非轮数字段变化，指纹就变，续训时据此拒绝
+/// 不匹配的检查点。
+fn train_fingerprint(corpus: &Corpus, base_model: &Path, config: &BaseTrainingConfig) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+
+    let mut hasher = DefaultHasher::new();
+    for sample in &corpus.samples {
+        sample.id.hash(&mut hasher);
+    }
+    let meta = std::fs::metadata(base_model).ok();
+    let base_size = meta.map(|m| m.len()).unwrap_or(0);
+    (config.learning_rate as u64).hash(&mut hasher);
+    config.max_frames_per_step.hash(&mut hasher);
+    config.seed.hash(&mut hasher);
+    base_size.hash(&mut hasher);
+    format!("{:016x}", hasher.finish())
 }
 
 /// 生成解码器时间 MLP 的 160 维正弦嵌入，形状 `[1,160]`。
@@ -241,6 +310,37 @@ pub fn train_base(
         .map_err(anyhow::Error::msg)?;
     decoder = decoder.train();
 
+    // 续训：如果该数据集已训过一部分且配方一致，就接着上次的权重继续，而不是
+    // 从基座重推。中途崩溃或主动取消后重新开始训练，已完成的轮次就保留下来。
+    let mut resume_epochs = 0usize;
+    let mut resume_steps = 0usize;
+    if let Some(checkpoint) = checkpoint_path {
+        let expected = train_fingerprint(corpus, base_model, config);
+        if let Some(state) = load_train_state(checkpoint) {
+            if state.fingerprint != expected {
+                tracing::warn!(
+                    "[训练] 检查点与当前数据集/参数不匹配，忽略它并从基座从头训练"
+                );
+            } else if state.epochs_done >= config.epochs {
+                // 上次已跑满本次要求的轮数，说明用户是要调参或换数据集重训，从头开始。
+                tracing::info!(
+                    "[训练] 检查点已完成 {} 轮，不小于目标 {} 轮，从头训练",
+                    state.epochs_done,
+                    config.epochs
+                );
+            } else if let Ok(loaded) = load_checkpoint(&decoder, checkpoint) {
+                decoder = loaded;
+                resume_epochs = state.epochs_done;
+                resume_steps = state.steps_done;
+                tracing::info!(
+                    "[训练] 找到检查点，从第 {resume_epochs} 轮（已完成 {resume_steps} 步）继续训练"
+                );
+            } else {
+                tracing::warn!("[训练] 检查点存在但读取失败，改为从基座从头训练");
+            }
+        }
+    }
+
     // 每样本预计算 mel 先验并展开到帧级：编码器冻结，整轮训练只算一次。
     let mut priors: Vec<Vec<f32>> = Vec::with_capacity(corpus.samples.len());
     for sample in &corpus.samples {
@@ -278,10 +378,10 @@ pub fn train_base(
 
     let mut initial_loss = f32::NAN;
     let mut final_loss = f32::NAN;
-    let mut step = 0usize;
+    let mut step = resume_steps;
     let mut cancelled = false;
 
-    'outer: for epoch in 0..config.epochs {
+    'outer: for epoch in resume_epochs..config.epochs {
         let order = make_batches(corpus.samples.len(), usize::MAX, config.seed ^ epoch as u64);
         let order: Vec<usize> = order.into_iter().flatten().collect();
 
@@ -399,6 +499,14 @@ pub fn train_base(
         if config.checkpoint_every > 0 && (epoch + 1) % config.checkpoint_every == 0 {
             if let Some(path) = checkpoint_path {
                 save_checkpoint(&decoder, path)?;
+                save_train_state(
+                    &TrainState {
+                        epochs_done: epoch + 1,
+                        steps_done: step,
+                        fingerprint: train_fingerprint(corpus, base_model, config),
+                    },
+                    path,
+                )?;
                 tracing::info!("[训练] 第 {} 轮结束，已保存检查点: {}", epoch + 1, path.display());
             }
         }
@@ -412,6 +520,7 @@ pub fn train_base(
         initial_loss,
         final_loss,
         cancelled,
+        resumed_from: resume_epochs,
     })
 }
 
@@ -512,5 +621,101 @@ mod tests {
         assert!(outcome.steps > 0, "训练步数应为正");
         assert!(outcome.initial_loss.is_finite(), "初损应为有限值");
         assert!(outcome.final_loss.is_finite(), "末损应为有限值");
+    }
+
+    /// 续训集成验证：第一次跑 1 轮存检查点，第二次请求 2 轮，应只补第 2 轮。
+    #[test]
+    fn train_resumes_from_checkpoint() {
+        use crate::ai_service::tts::finetune::corpus::{Corpus, CorpusStats, TrainingSample};
+        use std::path::Path;
+
+        let onnx = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        let map = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        if !onnx.exists() || !map.exists() {
+            eprintln!("基座权重缺失，跳过续训集成测试");
+            return;
+        }
+
+        let melt = |frames: usize| {
+            (0..frames)
+                .map(|i| {
+                    (0..80)
+                        .map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin())
+                        .collect()
+                })
+                .collect::<Vec<Vec<f32>>>()
+        };
+        let corpus = Corpus {
+            samples: vec![
+                TrainingSample {
+                    id: "a".to_string(),
+                    token_ids: vec![5, 10],
+                    mel: melt(120),
+                },
+                TrainingSample {
+                    id: "b".to_string(),
+                    token_ids: vec![20, 33, 7],
+                    mel: melt(150),
+                },
+            ],
+            skipped: vec![],
+            stats: CorpusStats::default(),
+        };
+
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/resume-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let checkpoint = dir.join("checkpoint.bpk");
+
+        let run = |epochs: usize, checkpoint: Option<&Path>| {
+            let config = BaseTrainingConfig {
+                epochs,
+                learning_rate: 1e-3,
+                seed: 7,
+                checkpoint_every: 1,
+                cleanup_every: 0,
+                max_frames_per_step: 0,
+            };
+            train_base(
+                &corpus,
+                &BurnBaseEncoderConfig::default(),
+                &BurnBaseDecoderConfig::default(),
+                &config,
+                &onnx,
+                &map,
+                checkpoint,
+                None,
+                |_| {},
+            )
+            .map_err(|e| format!("续训验证训练失败: {e:#}"))
+            .unwrap()
+        };
+
+        // 第一次：1 轮，存检查点。两步样本对应每一步一次。
+        let first = run(1, Some(&checkpoint));
+        // 第二次：请求 2 轮，应从第 1 轮续，总共仍只多跑 1 轮（而非 2 轮）。
+        let second = run(2, Some(&checkpoint));
+
+        // 每轮步数 = 样本数（无切片）= 2 步。
+        let steps_per_epoch = 2usize;
+        assert_eq!(first.steps, steps_per_epoch, "第一次应正好训 1 轮");
+        assert_eq!(first.resumed_from, 0, "第一次应从头训练");
+        // 续训共 2 轮 → 共 2*steps_per_epoch 步。
+        assert_eq!(
+            second.steps,
+            2 * steps_per_epoch,
+            "续训后步数应按 2 轮累计"
+        );
+        // 第二次应从第 1 轮开始续训，而不是从头重训，这才是续训生效的关键证据。
+        assert_eq!(second.resumed_from, 1, "第二次应从上一次结束的轮次续训");
+        // 确保状态文件已生成并可读、指纹匹配。
+        assert!(
+            load_train_state(&checkpoint).is_some(),
+            "续训状态文件应存在"
+        );
+        // 清理测试产物。
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

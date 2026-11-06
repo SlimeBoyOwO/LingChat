@@ -632,7 +632,7 @@ async function startFinetuneTraining(datasetId: string) {
     finetuneProgress.value = progress;
   });
   try {
-    await trainFinetuneDataset(
+    const outcome = await trainFinetuneDataset(
       datasetId,
       finetuneBaseModel.value,
       finetuneEpochs.value,
@@ -640,6 +640,12 @@ async function startFinetuneTraining(datasetId: string) {
       finetuneCleanupEvery.value,
       finetuneMaxFrames.value,
     );
+    // 检测到续训时给出提示，让用户知道这次是接着上次进度继续，而不是从头开始。
+    if (outcome.resumed_from > 0) {
+      finetuneError.value = t("settings.sherpaFinetune.resumedFrom", {
+        epoch: outcome.resumed_from,
+      });
+    }
   } catch (error) {
     finetuneError.value = String(error);
   } finally {
