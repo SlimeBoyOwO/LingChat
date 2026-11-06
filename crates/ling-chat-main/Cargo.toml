@@ -102,6 +102,7 @@ tokio-util = { workspace = true }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
+pollster = "1.0.1"
 
 # 微调训练用的 burn：显式列出所需 feature 而非沿用 default（默认会带入 autotune，
 # 它在 Adreno 集成 GPU 上做测速回读会触发设备毒化 device poisoned，关掉保证训练稳定）。
@@ -141,7 +142,7 @@ sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
 
 [target.'cfg(any(target_os = "linux", all(target_os = "macos", target_arch = "x86_64")))'.dependencies]
 # GPU 性能分级：Linux 走 Vulkan、macOS(x86_64) 走 Metal（WebGPU / wgpu）
-wgpu = "26"
+wgpu = "30"
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
 ort = { version = "=2.0.0-rc.13", default-features = false, features = [
