@@ -375,6 +375,317 @@ impl BurnBaseDecoder {
         self.final_proj.forward(hidden)
     }
 }
+
+// ---- 权重桥：从 ONNX 基座（命名张量 + decoder_weight_map.json 匿名常量）填充解码器 ----
+
+/// 把一组 float 数据装入一个线性层权重。`src` 以 `onnx::MatMul_` 开头时代表 ONNX
+/// MatMul 的 [in, out] 布局，与 burn Linear 的 `weight: [d_input, d_output]` 一致，
+/// 无需转置；其它来源（Gemm/命名）是 `[out, in]`，需转置再填。
+fn set_linear_weight(linear: &mut burn::nn::Linear, data: &[f32], dims: &[usize], transposed: bool, device: &Device) {
+    if dims.len() != 2 {
+        panic!("set_linear_weight got non-2 dims: {:?}", dims);
+    }
+    let t = if transposed {
+        Tensor::<2>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device)
+            .permute([1, 0])
+    } else {
+        Tensor::<2>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device)
+    };
+    linear.weight = Param::from_tensor(t);
+}
+
+fn set_linear_bias(linear: &mut burn::nn::Linear, data: &[f32], dims: &[usize], device: &Device) {
+    if let Some(bias) = linear.bias.as_mut() {
+        let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+        *bias = Param::from_tensor(t);
+    }
+}
+
+/// 给卷积权重填充数据。ONNX 普通/转置卷积权重布局均为 `[c_out, c_in, k]`，而 burn
+/// 的 `Conv1d`/`ConvTranspose1d` 权重为 `[c_in, c_out, k]`，需交换前两维。
+/// 卷积权重（普通与转置卷积）布局同为 `[c_out, c_in, k]`，与 burn 的
+/// `Conv1d::weight`、`ConvTranspose1d::weight` 一致，无需转置。
+fn set_conv_weight(conv: &mut Conv1d, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<3>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    conv.weight = Param::from_tensor(t);
+}
+
+fn set_conv_bias(conv: &mut Conv1d, data: &[f32], dims: &[usize], device: &Device) {
+    if let Some(bias) = conv.bias.as_mut() {
+        let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+        *bias = Param::from_tensor(t);
+    }
+}
+
+#[allow(dead_code)]
+fn set_groups_weight(group: &mut GroupNormAffine, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<2>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    group.weight = Param::from_tensor(t);
+}
+
+#[allow(dead_code)]
+fn set_groups_bias(group: &mut GroupNormAffine, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<2>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    group.bias = Param::from_tensor(t);
+}
+
+fn set_affine(affine: &mut Affine, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    affine.weight = Param::from_tensor(t);
+}
+
+fn set_affine_bias(affine: &mut Affine, data: &[f32], dims: &[usize], device: &Device) {
+    let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+    affine.bias = Param::from_tensor(t);
+}
+
+/// 按目标名把一个命名 ONNX 权重填入解码器对应参数。
+///
+/// 目标名沿用 candle 版的参数位路径（如
+/// `model.decoder.estimator.down_blocks.0.0.block1.block.0.weight`）。未知名字静默忽略，
+/// 便于复用基座权重。
+pub fn apply_named_decoder_weight(decoder: &mut BurnBaseDecoder, name: &str, data: &[f32], dims: &[usize], device: &Device) {
+    let key = name.strip_prefix("model.decoder.estimator.").unwrap_or(name);
+    if !key.ends_with(".weight") && !key.ends_with(".bias") {
+        return;
+    }
+    let is_weight = key.ends_with(".weight");
+    let base = key.strip_suffix(".weight").or_else(|| key.strip_suffix(".bias")).unwrap_or(key);
+
+    // 找出该参数属哪个块（down/mid/up），以及块内的剩余子路径。
+    let parse_block = |prefix: &str| -> Option<(usize, String)> {
+        let rest = base.strip_prefix(prefix)?;
+        let (i, after) = rest.split_once('.')?;
+        i.parse().ok().map(|ix| (ix, after.to_string()))
+    };
+
+    // 时间 MLP（命名 Gemm，[out, in] 需转置）。
+    if base == "time_mlp.linear_1" {
+        if is_weight { set_linear_weight(&mut decoder.time_mlp.linear1, data, dims, true, device); }
+        else { set_linear_bias(&mut decoder.time_mlp.linear1, data, dims, device); }
+        return;
+    }
+    if base == "time_mlp.linear_2" {
+        if is_weight { set_linear_weight(&mut decoder.time_mlp.linear2, data, dims, true, device); }
+        else { set_linear_bias(&mut decoder.time_mlp.linear2, data, dims, device); }
+        return;
+    }
+    // 收尾。final_block.block.0 是卷积，final_block.block.1 是归一化仿射，final_proj 卷积。
+    if base.starts_with("final_block.block.0") {
+        if is_weight { set_conv_weight(&mut decoder.final_block, data, dims, device); }
+        else { set_conv_bias(&mut decoder.final_block, data, dims, device); }
+        return;
+    }
+    if base.starts_with("final_block.block.1") {
+        if is_weight { set_groups_weight(&mut decoder.final_norm, data, dims, device); }
+        else { set_groups_bias(&mut decoder.final_norm, data, dims, device); }
+        return;
+    }
+    if base == "final_proj" {
+        if is_weight { set_conv_weight(&mut decoder.final_proj, data, dims, device); }
+        else { set_conv_bias(&mut decoder.final_proj, data, dims, device); }
+        return;
+    }
+
+    // 下行块：down_blocks.{i}.0=残差，.1.0=注意力，.2=采样卷积（i=0 名 `2.conv`，i=1 名 `2`）。
+    if let Some((i, after)) = parse_block("down_blocks.") {
+        let (res, attn, conv) = &mut decoder.down[i];
+        apply_block(res, attn, after, is_weight, data, dims, device);
+        // down 卷积：i=0 用 `2.conv`，i=1 用 `2`。
+        let conv_key = format!("2.{}", if i == 0 { "conv." } else { "" });
+        let conv_name = base.strip_prefix(&format!("down_blocks.{i}.")).unwrap_or("");
+        if conv_name.starts_with(&conv_key) {
+            if is_weight { set_conv_weight(conv, data, dims, device); }
+            else { set_conv_bias(conv, data, dims, device); }
+        }
+        return;
+    }
+
+    // 中部块：mid_blocks.{i}.0=残差，.1.0=注意力，无采样卷积。
+    if let Some((i, after)) = parse_block("mid_blocks.") {
+        let (res, attn) = &mut decoder.mid[i];
+        apply_block(res, attn, after, is_weight, data, dims, device);
+        return;
+    }
+
+    // 上行块：up_blocks.{i}.0=残差，.1.0=注意力，.2=上采样（i=0 转置 `2.conv`，i=1 卷积 `2`）。
+    if let Some((i, after)) = parse_block("up_blocks.") {
+        let conv_name = base.strip_prefix(&format!("up_blocks.{i}.")).unwrap_or("");
+        let (res, attn, sampler) = &mut decoder.up[i];
+        apply_block(res, attn, after, is_weight, data, dims, device);
+        // 采样/转置卷积名：i=0 用 `2.conv`，i=1 用 `2`。
+        if conv_name.starts_with("2.") || conv_name.starts_with("2") {
+            apply_sampler(sampler, is_weight, data, dims, device);
+        }
+    }
+}
+
+/// 把剩余子路径分发给残差块与注意力块。
+fn apply_block(
+    res: &mut ResBlock,
+    attn: &mut AttnBlock,
+    after: String,
+    is_weight: bool,
+    data: &[f32],
+    dims: &[usize],
+    device: &Device,
+) {
+    // 残差块：block1/block2 的 block.0=卷积、block.1=归一化仿射，res_conv，mlp.1=时间投影。
+    if after.starts_with("block1.block.0") {
+        if is_weight { set_conv_weight(&mut res.conv1, data, dims, device); }
+        else { set_conv_bias(&mut res.conv1, data, dims, device); }
+        return;
+    }
+    if after.starts_with("block2.block.0") {
+        if is_weight { set_conv_weight(&mut res.conv2, data, dims, device); }
+        else { set_conv_bias(&mut res.conv2, data, dims, device); }
+        return;
+    }
+    if after.starts_with("res_conv") {
+        if is_weight { set_conv_weight(&mut res.res_conv, data, dims, device); }
+        else { set_conv_bias(&mut res.res_conv, data, dims, device); }
+        return;
+    }
+    if after.starts_with("block1.block.1") {
+        if is_weight { set_groups_weight(&mut res.norm1, data, dims, device); }
+        else { set_groups_bias(&mut res.norm1, data, dims, device); }
+        return;
+    }
+    if after.starts_with("block2.block.1") {
+        if is_weight { set_groups_weight(&mut res.norm2, data, dims, device); }
+        else { set_groups_bias(&mut res.norm2, data, dims, device); }
+        return;
+    }
+    if after.starts_with("mlp.1") {
+        if is_weight { set_linear_weight(&mut res.time_proj, data, dims, true, device); }
+        else { set_linear_bias(&mut res.time_proj, data, dims, device); }
+        return;
+    }
+
+    // 注意力块：norm1/norm3 仿射，attn1 的 qkv 权重（MatMul 匿名，不转）、to_out.0，ff。
+    for (name, g) in [("norm1", true), ("norm3", false)] {
+        if after.starts_with(name) {
+            let a = if g { &mut attn.norm1 } else { &mut attn.norm3 };
+            if is_weight { set_affine(a, data, dims, device); }
+            else { set_affine_bias(a, data, dims, device); }
+            return;
+        }
+    }
+    if after.starts_with("attn1.to_q") {
+        if is_weight { set_linear_weight(&mut attn.q, data, dims, false, device); }
+        return;
+    }
+    if after.starts_with("attn1.to_k") {
+        if is_weight { set_linear_weight(&mut attn.k, data, dims, false, device); }
+        return;
+    }
+    if after.starts_with("attn1.to_v") {
+        if is_weight { set_linear_weight(&mut attn.v, data, dims, false, device); }
+        return;
+    }
+    if after.starts_with("attn1.to_out.0") {
+        if is_weight { set_linear_weight(&mut attn.to_out, data, dims, false, device); }
+        else { set_linear_bias(&mut attn.to_out, data, dims, device); }
+        return;
+    }
+    if after.starts_with("ff.net.0.proj") {
+        if is_weight { set_linear_weight(&mut attn.ff_proj, data, dims, false, device); }
+        else { set_linear_bias(&mut attn.ff_proj, data, dims, device); }
+        return;
+    }
+    if after.starts_with("ff.net.0.alpha") {
+        if is_weight {
+            let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+            attn.ff_alpha = Param::from_tensor(t);
+        }
+        return;
+    }
+    if after.starts_with("ff.net.0.beta") {
+        if is_weight {
+            let t = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+            attn.ff_beta = Param::from_tensor(t);
+        }
+        return;
+    }
+    if after.starts_with("ff.net.2") {
+        if is_weight { set_linear_weight(&mut attn.ff_out, data, dims, false, device); }
+        else { set_linear_bias(&mut attn.ff_out, data, dims, device); }
+    }
+}
+
+/// 给上采样算子填权重/偏置。
+fn apply_sampler(sampler: &mut UpSampler, is_weight: bool, data: &[f32], dims: &[usize], device: &Device) {
+    match sampler {
+        UpSampler::Transpose(ct) => {
+            // 转置卷积权重 [c_out, c_in, k] -> burn [c_in, c_out, k]。
+            if is_weight {
+                let t = Tensor::<3>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+                ct.weight = Param::from_tensor(t);
+            } else if let Some(b) = ct.bias.as_mut() {
+                let bt = Tensor::<1>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
+                *b = Param::from_tensor(bt);
+            }
+        }
+        UpSampler::Conv(c) => {
+            if is_weight { set_conv_weight(c, data, dims, device); }
+            else { set_conv_bias(c, data, dims, device); }
+        }
+    }
+}
+
+/// 从基座 ONNX 权重构建解码器：先填命名张量（卷积、线性、偏置、时间 MLP、注意力仿射、
+/// ff 常数），再按 decoder_weight_map 把匿名常量（注意力 qkv 权重、归一化仿射）落位，
+/// 其余保留随机初值。
+///
+/// `tensors` 来自 onnx_weights::read_initializers。地图文件用 candle 版的
+/// `decoder_weight_map.json`。
+pub fn from_onnx_tensors(
+    config: &BurnBaseDecoderConfig,
+    tensors: &[super::onnx_weights::OnnxTensor],
+    map_path: &std::path::Path,
+    device: &Device,
+) -> Result<BurnBaseDecoder, String> {
+    use std::collections::HashMap;
+
+    let mut decoder = BurnBaseDecoder::init(config, device);
+    // 命名张量：只处理 decoder.estimator 路径下的 weight/bias。
+    for tensor in tensors {
+        if tensor.name.starts_with("model.decoder.estimator.") {
+            apply_named_decoder_weight(&mut decoder, &tensor.name, &tensor.data, &tensor.dims, device);
+        }
+    }
+
+    // 匿名常量：按 decoder_weight_map.json 的 target 路径落位。目标名与命名张量一致，
+    // 调用同一个分发逻辑；MatMul 布局（[in, out]）已在分发层处理。
+    let bytes = std::fs::read(map_path).map_err(|e| format!("读取映射表失败: {e}"))?;
+    let map: HashMap<String, serde_json::Value> =
+        serde_json::from_slice(&bytes).map_err(|e| format!("解析映射表失败: {e}"))?;
+    let by_name: HashMap<&str, &super::onnx_weights::OnnxTensor> =
+        tensors.iter().map(|t| (t.name.as_str(), t)).collect();
+
+    let mut bound = 0usize;
+    for (src, info) in &map {
+        let Some(target) = info.get("target").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        // 只处理解码器路径；编码器匿名归一化由 base_encoder 单独处理。
+        if !target.starts_with("model.decoder.") {
+            continue;
+        }
+        let target = target.replace('/', ".");
+        let Some(tensor) = by_name.get(src.as_str()) else {
+            continue;
+        };
+        apply_named_decoder_weight(&mut decoder, &target, &tensor.data, &tensor.dims, device);
+        bound += 1;
+    }
+
+    if bound == 0 {
+        return Err("decoder 未绑定任何匿名权重".to_string());
+    }
+    Ok(decoder)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -403,4 +714,36 @@ mod tests {
         // 下行把 5 帧变 3，上行转置再放大，最终约 [1, 80, N]。仅校验通道数。
         assert_eq!(out.shape().dims::<3>()[1], 80);
     }
+
+    /// 从基座 ONNX 加载权重到 burn 解码器，验证权重桥可用且前向形状正确。
+    #[test]
+    fn loads_from_real_onnx_and_forwards() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        if !path.exists() {
+            return;
+        }
+        let map_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
+        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let config = BurnBaseDecoderConfig::default();
+        let decoder = from_onnx_tensors(&config, &tensors, &map_path, &device).unwrap();
+
+        let noisy: Tensor<3, Float> = Tensor::<3, Float>::from_data(
+            TensorData::new(vec![0.0f32; 80 * 5], vec![1, 80, 5]),
+            &device,
+        );
+        let text: Tensor<3, Float> = Tensor::<3, Float>::from_data(
+            TensorData::new(vec![0.0f32; 80 * 5], vec![1, 80, 5]),
+            &device,
+        );
+        let time: Tensor<2, Float> = Tensor::<2, Float>::from_data(
+            TensorData::new(vec![0.5f32; 160], vec![1, 160]),
+            &device,
+        );
+        let out: Tensor<3, Float> = decoder.forward(noisy, text, time);
+        assert_eq!(out.shape().dims::<3>()[1], 80);
+    }
 }
+
