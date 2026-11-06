@@ -50,6 +50,8 @@ interface UIState {
   currentSoundEffect: string;
   currentAvatarAudio: string;
   autoMode: boolean;
+  /** 轻量模式：主窗口隐藏到托盘时卸载渲染侧重资源 */
+  liteMode: boolean;
 
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
@@ -121,6 +123,7 @@ export const useUIStore = defineStore("ui", {
     currentSoundEffect: "None",
     currentAvatarAudio: "None",
     autoMode: false,
+    liteMode: false,
 
     // 环境音轨道列表初始值
     ambientTracks: [],
@@ -205,6 +208,13 @@ export const useUIStore = defineStore("ui", {
   },
 
   actions: {
+    setLiteMode(enabled: boolean) {
+      this.liteMode = enabled;
+      if (enabled) {
+        // 轻量模式下没有页面接收语音，顺手清掉待播放的音频地址
+        this.currentAvatarAudio = "None";
+      }
+    },
     setCurrentBackground(background: string) {
       useSettingsStore().setCurrentBackground(background);
     },

@@ -6,6 +6,7 @@
 //! - `builder`：`tauri::Builder` 构建与插件注册
 //! - `commands`：全部 Tauri 命令的注册表（`generate_handler!`）
 //! - `setup`：Tauri setup 阶段的启动编排
+//! - `tray`：系统托盘与轻量模式（仅桌面端）
 //!
 //! 与 `init` 的分工：
 //! - `init`：**数据与服务引导**——种子数据目录、打开数据库、同步角色、构建 AIService 等。
@@ -19,3 +20,5 @@ pub mod commands;
 pub mod logging;
 pub mod platform;
 pub mod setup;
+#[cfg(desktop)]
+pub mod tray;

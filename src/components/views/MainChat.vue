@@ -10,7 +10,9 @@
     </div>
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
+    <!-- 轻量模式卸载整个角色舞台：Pixi Application、Live2D 模型与 WebGL 上下文随之释放 -->
     <GameRolesStage
+      v-if="!uiStore.liteMode"
       ref="gameAvatarRef"
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
