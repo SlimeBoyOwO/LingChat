@@ -1681,6 +1681,7 @@ export default {
     epochs: "訓練輪次",
     learningRate: "學習率",
     cleanupEvery: "記憶體回收間隔（步）",
+    maxFrames: "單步最大幀數（0 為不限）",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地語音",

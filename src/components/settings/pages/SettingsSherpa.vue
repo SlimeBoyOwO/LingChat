@@ -387,6 +387,15 @@
               min="0"
               class="config-input test-input"
             />
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.maxFrames") }}
+            </label>
+            <input
+              v-model.number="finetuneMaxFrames"
+              type="number"
+              min="0"
+              class="config-input test-input"
+            />
           </div>
           <p v-if="finetuneTraining" class="test-hint">
             {{ t("settings.sherpaFinetune.training") }}
@@ -575,6 +584,8 @@ const finetuneAnnotateProgress = ref<FinetuneAnnotateProgress | null>(null);
 const finetuneEpochs = ref(20);
 const finetuneLearningRate = ref(0.001);
 const finetuneCleanupEvery = ref(50);
+// 单步最大帧数：长音频按此切片段训练，0 表示不限制。
+const finetuneMaxFrames = ref(512);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {
@@ -627,6 +638,7 @@ async function startFinetuneTraining(datasetId: string) {
       finetuneEpochs.value,
       finetuneLearningRate.value,
       finetuneCleanupEvery.value,
+      finetuneMaxFrames.value,
     );
   } catch (error) {
     finetuneError.value = String(error);

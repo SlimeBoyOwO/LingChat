@@ -1518,6 +1518,7 @@ export default {
     epochs: "Training epochs",
     learningRate: "Learning rate",
     cleanupEvery: "Mem cleanup interval (steps)",
+    maxFrames: "Max frames per step (0 = unlimited)",
   },
   sherpa: {
     title: "Sherpa-ONNX Local Voice",

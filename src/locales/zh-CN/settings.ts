@@ -1763,6 +1763,7 @@ export default {
     epochs: "训练轮次",
     learningRate: "学习率",
     cleanupEvery: "内存回收间隔（步）",
+    maxFrames: "单步最大帧数（0 为不限）",
   },
   sherpa: {
     title: "Sherpa-ONNX 本地语音",

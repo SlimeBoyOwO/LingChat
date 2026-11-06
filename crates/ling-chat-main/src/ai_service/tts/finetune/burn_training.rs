@@ -45,6 +45,13 @@ pub struct BaseTrainingConfig {
     /// [`Device::memory_cleanup`]，把空闲页归还驱动，对冲「越跑越崩」。
     /// 0 表示不开启。
     pub cleanup_every: usize,
+    /// 单个训练步允许的最大 mel 帧数，0 表示不限制。
+    ///
+    /// 解码器的时间轴注意力会在每个注意力块上建 [1, 头数, F, F] 矩阵，显存
+    /// 随帧数平方增长。移动端 GPU 显存有限，十几秒的长音频单步就能到几百 MB
+    /// 峰值而直接崩掉。这里把长样本沿时间轴切成若干不超过该帧数的片段分别
+    /// 训练，既不对素材做时长裁剪，又让单步峰值封顶。
+    pub max_frames_per_step: usize,
 }
 
 impl Default for BaseTrainingConfig {
@@ -55,6 +62,7 @@ impl Default for BaseTrainingConfig {
             seed: 1,
             checkpoint_every: 1,
             cleanup_every: 50,
+            max_frames_per_step: 512,
         }
     }
 }
@@ -180,6 +188,15 @@ fn cfm_noise(mel: &Tensor<3>, noise: &Tensor<3>, time: f64, sigma_min: f64) -> (
     (noisy, target)
 }
 
+/// 按单步帧数预算，算一条样本会被切成几个训练片段。
+fn chunk_count(frames: usize, max_frames_per_step: usize) -> usize {
+    if max_frames_per_step == 0 || frames <= max_frames_per_step {
+        1
+    } else {
+        frames.div_ceil(max_frames_per_step)
+    }
+}
+
 /// 执行基座对齐训练：只更新解码器，编码器与时长固定用基座预测。
 ///
 /// `base_model` 是基座 ONNX 路径，从中读取权重填充编码器与解码器；`map_path` 是
@@ -239,12 +256,20 @@ pub fn train_base(
         priors.push(expanded);
     }
 
-    let total_steps = config.epochs * corpus.samples.len();
+    // 每个样本按单步帧数预算切成若干片段，总步数按片段数累计，进度条才准。
+    let chunk_counts: Vec<usize> = corpus
+        .samples
+        .iter()
+        .map(|sample| chunk_count(sample.frames(), config.max_frames_per_step))
+        .collect();
+    let steps_per_epoch: usize = chunk_counts.iter().sum();
+    let total_steps = config.epochs * steps_per_epoch;
     tracing::info!(
-        "[训练] 开始：样本 {} 条，{} 轮共 {total_steps} 步，lr={}",
+        "[训练] 开始：样本 {} 条，{} 轮共 {total_steps} 步，lr={}，单步上限 {} 帧",
         corpus.samples.len(),
         config.epochs,
-        config.learning_rate
+        config.learning_rate,
+        config.max_frames_per_step
     );
     let mut optimizer = AdamWConfig::new()
         .with_weight_decay(0.0)
@@ -276,6 +301,7 @@ pub fn train_base(
             let prior_values = &priors[index];
 
             // mel 展开成 [1, 80, frames]（先按帧序的行优先，再转成通道在前的布局）。
+            // 整条样本只构建一次，长样本切片段时切片复用，避免每步重复搬运。
             let mel_flat: Vec<f32> = sample
                 .mel
                 .iter()
@@ -283,55 +309,79 @@ pub fn train_base(
                 .collect();
             // mel 行优先 [frames, mel_ch] 展开成 [1, frames, mel_ch] 再转置为
             // [1, mel_ch, frames]，与 candle 版行为一致。
-            let mel = Tensor::<3>::from_data(
+            let mel_full = Tensor::<3>::from_data(
                 TensorData::new(mel_flat, [1, frames, mel_ch]),
                 &train_dev,
             )
             .transpose();
 
-            // 噪声用标准正态分布生成，落在训练设备上参与前向与反向。
-            let noise = Tensor::<3>::random(
-                [1, frames, mel_ch],
-                Distribution::Normal(0.0, 1.0),
-                &train_dev,
-            )
-            .transpose();
-
-            let time_value = rand_uniform(config.seed ^ step as u64 ^ 0x9e37);
-            let (noisy, target) = cfm_noise(&mel, &noise, time_value, 1e-4);
-            let time = base_time_embed(time_value, &train_dev);
-
-            let prior = Tensor::<3>::from_data(
-                TensorData::new(prior_values.to_vec(), [1, mel_ch, frames]),
+            let prior_full = Tensor::<3>::from_data(
+                TensorData::new(prior_values.clone(), [1, mel_ch, frames]),
                 &train_dev,
             );
 
-            let predicted = decoder.forward(noisy, prior, time);
-            let loss = (predicted - target).powf_scalar(2.0).mean();
+            // 沿时间轴切片：片段长度不超过预算，避免长音频的单步显存峰值爆掉。
+            let chunk = if config.max_frames_per_step == 0 {
+                frames
+            } else {
+                config.max_frames_per_step.min(frames).max(1)
+            };
+            let mut start = 0usize;
+            while start < frames {
+                if cancel.is_some_and(|token| token.is_cancelled()) {
+                    cancelled = true;
+                    tracing::info!(
+                        "[训练] 收到取消，提前结束（第 {} 轮，已完成 {step} 步）",
+                        epoch + 1
+                    );
+                    break 'outer;
+                }
 
-            let value: f32 = loss.to_data().try_to_vec::<f32>()?[0];
-            if initial_loss.is_nan() {
-                initial_loss = value;
+                let len = chunk.min(frames - start);
+                let mel = mel_full.clone().narrow(2, start, len);
+                let prior = prior_full.clone().narrow(2, start, len);
+
+                // 噪声只按当前片段长度生成，长样本不必先铺满整条再切。
+                let noise = Tensor::<3>::random(
+                    [1, len, mel_ch],
+                    Distribution::Normal(0.0, 1.0),
+                    &train_dev,
+                )
+                .transpose();
+
+                let time_value = rand_uniform(config.seed ^ step as u64 ^ 0x9e37);
+                let (noisy, target) = cfm_noise(&mel, &noise, time_value, 1e-4);
+                let time = base_time_embed(time_value, &train_dev);
+
+                let predicted = decoder.forward(noisy, prior, time);
+                let loss = (predicted - target).powf_scalar(2.0).mean();
+
+                let value: f32 = loss.to_data().try_to_vec::<f32>()?[0];
+                if initial_loss.is_nan() {
+                    initial_loss = value;
+                }
+                final_loss = value;
+
+                let grads = GradientsParams::from_grads(loss.backward(), &decoder);
+                decoder = optimizer.step(config.learning_rate, decoder, grads);
+                step += 1;
+
+                // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
+                // 移动端 OOM（Adreno 等设备对长期驻留的设备内存尤其敏感）。
+                if config.cleanup_every > 0 && step % config.cleanup_every == 0 {
+                    train_dev.memory_cleanup();
+                }
+
+                on_progress(&BaseTrainingProgress {
+                    epoch: epoch + 1,
+                    total_epochs: config.epochs,
+                    step,
+                    total_steps,
+                    loss: value,
+                });
+
+                start += len;
             }
-            final_loss = value;
-
-            let grads = GradientsParams::from_grads(loss.backward(), &decoder);
-            decoder = optimizer.step(config.learning_rate, decoder, grads);
-            step += 1;
-
-            // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
-            // 移动端 OOM（Adreno 等设备对长期驻留的设备内存尤其敏感）。
-            if config.cleanup_every > 0 && step % config.cleanup_every == 0 {
-                train_dev.memory_cleanup();
-            }
-
-            on_progress(&BaseTrainingProgress {
-                epoch: epoch + 1,
-                total_epochs: config.epochs,
-                step,
-                total_steps,
-                loss: value,
-            });
         }
 
         if config.checkpoint_every > 0 && (epoch + 1) % config.checkpoint_every == 0 {
@@ -433,6 +483,7 @@ mod tests {
             seed: 7,
             checkpoint_every: 0,
             cleanup_every: 0,
+            max_frames_per_step: 0,
         };
         let outcome = train_base(
             &corpus,
