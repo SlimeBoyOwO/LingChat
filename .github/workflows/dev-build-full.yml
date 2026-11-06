@@ -46,6 +46,9 @@ jobs:
         with:
           lfs: false
 
+      - name: 拉取 DLC 前端资源
+        run: git lfs pull --include="packages/ling-chat-dlc-ui/**"
+
       - uses: pnpm/setup@v1
         with:
           runtime: node@26

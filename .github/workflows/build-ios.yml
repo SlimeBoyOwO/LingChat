@@ -30,10 +30,10 @@ jobs:
         # checkout(lfs: false) 后手动拉取。必须覆盖全部 LFS 目录：
         # - data/game_data/**：游戏数据（进 data.7z）
         # - src-tauri/icons/**：应用图标
-        # - public/** + src/assets/**：前端静态资源（字体/背景插画/Tip 图标/音频），
+        # - public/** + src/assets/** + packages/ling-chat-dlc-ui/**：前端静态资源，
         #   漏拉会导致 vite 把 LFS 指针文本拷进 dist，App 内字体/背景/图标缺失
         run: |
-          git lfs pull --include="data/game_data/**,src-tauri/icons/**,public/**,src/assets/**"
+          git lfs pull --include="data/game_data/**,src-tauri/icons/**,public/**,src/assets/**,packages/ling-chat-dlc-ui/**"
 
       - uses: pnpm/setup@v1
         with:
