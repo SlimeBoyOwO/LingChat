@@ -25,7 +25,8 @@
     "format:check": "prettier --check . && cargo fmt -p ling_chat -p ling-chat-main -p ling-chat-plugins -- --check",
     "check:rs": "cargo check --workspace",
     "patch:cubecl-wgpu": "node scripts/patch-cubecl-wgpu.mjs",
-    "postinstall": "node scripts/patch-cubecl-wgpu.mjs",
+    "patch:cubek-matmul": "node scripts/patch-cubek-matmul.mjs",
+    "postinstall": "node scripts/patch-cubecl-wgpu.mjs && node scripts/patch-cubek-matmul.mjs",
     "gen:effects": "node scripts/generate-known-effects.mjs",
     "check:effects": "node scripts/generate-known-effects.mjs --check",
     "prepare": "husky"
