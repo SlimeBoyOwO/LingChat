@@ -1,21 +1,24 @@
 <template>
-  <div class="relative h-full w-full overflow-hidden">
+  <div
+    class="main-menu-page relative h-full w-full overflow-hidden"
+    :class="[menuThemeClass, { 'main-menu-page--effects-suspended': transientSuspend }]"
+  >
     <MainChat v-if="currentPage === 'gameMainView'" />
     <!-- 设置面板的挂载时机单独用 settingsMounted 控制：关闭时要等退场动画播完再卸载 -->
     <Settings v-if="settingsMounted" slide-from-right @closed="onSettingsClosed" />
 
     <!-- 背景层（最底层） -->
     <div
-      class="absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.webp')] bg-cover bg-center will-change-transform"
+      class="video-background absolute top-0 left-[-10%] z-[-2] h-full w-[120%] bg-[url('../../assets/images/background2.webp')] bg-cover bg-center will-change-transform"
       ref="bgRef"
     ></div>
 
-    <!-- 流星层（SVG动画）— 临时暂停不污染持久偏好 -->
-    <MeteorAnimation :meteors-enabled="effectiveMeteorsEnabled" :meteor-fps="meteorFps" />
+    <!-- 流星层（SVG动画）— 由当前演出策略控制 -->
+    <MeteorAnimation :meteors-enabled="visualMeteorsEnabled" :meteor-fps="meteorFps" />
 
     <!-- 星星粒子层（位于背景和人物之间） -->
     <StarAnimation
-      :stars-enabled="effectiveStarsEnabled"
+      :stars-enabled="visualStarsEnabled"
       :stars-layer-ref="starsLayerRef"
       :stars-fps="starsFps"
     />
@@ -24,7 +27,8 @@
          贴底而非居中：立绘是横构图（2560x1446），竖屏手机由 max-w-full 先卡住，
          居中会在屏幕底部留下大片背景空隙（导航条处最明显），贴底让人物落到屏底 -->
     <img
-      class="pointer-events-none absolute bottom-0 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,0)] will-change-transform select-none"
+      class="character-image pointer-events-none absolute bottom-0 left-1/2 z-3 max-h-full max-w-full transform-[translate(-50%,0)] will-change-transform select-none"
+      :class="{ 'motion-safe:translate-y-1/2': menuEffect.theme === 'ghost' }"
       ref="charRef"
       src="../../assets/images/alona.webp"
       :alt="$t('views.mainMenu.characterAlt')"
@@ -69,8 +73,17 @@
             v-if="menuState === 'gameMode'"
             @back="backToMainMenu"
             @open-scripts="showScriptModeMenu"
+            @open-extension="menuState = $event"
             :loadingScripts="loadingScripts"
             :scripts="scripts"
+          />
+        </Transition>
+
+        <Transition name="slide-right">
+          <component
+            :is="menuPages[menuState]"
+            v-if="menuPages[menuState]"
+            @back="showGameModeMenu"
           />
         </Transition>
 
@@ -79,6 +92,7 @@
           <ScriptModeOptions
             v-if="menuState === 'scriptMode'"
             @back="showGameModeMenu"
+            @script-state-reset="fetchScriptMenuEffect"
             :scripts="scripts"
           />
         </Transition>
@@ -92,9 +106,11 @@
           />
         </Transition>
 
-        <StartLogo @click="goToGithub" />
+        <StartLogo :src="logo" @click="goToGithub" />
       </StartPage>
     </Transition>
+
+    <MenuOverlay :effect="menuEffect" :names="dlcNames" :visible="currentPage === 'mainMenu'" />
   </div>
 </template>
 
@@ -111,6 +127,12 @@ import StarAnimation from "../game/standard/animations/StarAnimation.vue";
 import MainChat from "./MainChat.vue";
 import { StartLogo, StartPage } from "./menu/base";
 import { GameModeOptions, MainMenuOptions, ScriptModeOptions, WorkshopOptions } from "./menu/page";
+import { menuPages, useMenuPresentation } from "@lingchat/dlc-ui/host/menu";
+import MenuOverlay from "@lingchat/dlc-ui/host/MenuOverlay.vue";
+
+const props = withDefaults(defineProps<{ initialMenu?: string }>(), {
+  initialMenu: "main",
+});
 
 // 设置面板体量大且多数会话不会打开，拆成独立 chunk，不随主菜单首屏加载
 const loadSettingsPanel = () => import("../settings/").then((m) => m.SettingsPanel);
@@ -127,9 +149,24 @@ const currentPage = ref("mainMenu");
 // 而菜单需要立刻回场与它重叠
 const settingsMounted = ref(false);
 let settingsMountFrame: number | null = null;
-const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+const menuState = ref<string>(props.initialMenu);
+// Returning from a game reopens its list in the existing LC menu shell.
+watch(
+  () => props.initialMenu,
+  (menu) => {
+    menuState.value = menu;
+  },
+);
 const scripts = ref<ScriptSummary[]>([]);
 const loadingScripts = ref(false);
+const {
+  effect: menuEffect,
+  names: dlcNames,
+  className: menuThemeClass,
+  logo,
+  particlesEnabled,
+  refresh: fetchScriptMenuEffect,
+} = useMenuPresentation(scripts);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
 const meteorFps = computed(() => settingsStore.meteorFps);
@@ -138,6 +175,10 @@ const starsFps = computed(() => settingsStore.starsFps);
 const transientSuspend = ref(false);
 const effectiveStarsEnabled = computed(() => starsEnabled.value && !transientSuspend.value);
 const effectiveMeteorsEnabled = computed(() => meteorsEnabled.value && !transientSuspend.value);
+const visualStarsEnabled = computed(() => effectiveStarsEnabled.value && particlesEnabled.value);
+const visualMeteorsEnabled = computed(
+  () => effectiveMeteorsEnabled.value && particlesEnabled.value,
+);
 const parallaxEnabled = computed(() => !transientSuspend.value);
 
 // DOM Refs
@@ -255,10 +296,19 @@ onMounted(() => {
     }
 
     fetchScripts();
+    fetchScriptMenuEffect();
   };
 
   initializeMenu();
 });
+
+watch(
+  () => uiStore.dlcRefreshToken,
+  () => {
+    fetchScripts();
+    fetchScriptMenuEffect();
+  },
+);
 </script>
 
 <style scoped>

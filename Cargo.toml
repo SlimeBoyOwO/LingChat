@@ -4,14 +4,18 @@ members = [
     "crates/ling-chat-main",
     "crates/ling-chat-plugins",
     "crates/ling-chat-notes",
+    "crates/ling-chat-dlc-contract",
+    "crates/ling-chat-dlc-runtime",
 ]
 resolver = "2"
 
-# 三个成员共用的包版本。
+# 工作区默认包版本。
 [workspace.package]
 version = "0.5.2"
 
 [workspace.dependencies]
+ling-chat-dlc-contract = { path = "crates/ling-chat-dlc-contract" }
+ling-chat-dlc-runtime = { path = "crates/ling-chat-dlc-runtime" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 serde_yaml = "0.9"

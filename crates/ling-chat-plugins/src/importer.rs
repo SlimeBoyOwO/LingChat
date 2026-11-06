@@ -47,6 +47,8 @@ pub async fn do_import_plugin(
     policy: ConflictPolicy,
     cancel_token: Arc<CancellationToken>,
 ) -> Result<PluginImportResult, String> {
+    let _operation = super::games::LIFECYCLE.lock().await;
+    let _story = super::games::StoryContentGuard::acquire(&app).await?;
     // 1. 以文件头魔数决定真实格式，前端 hint 只用于日志比对。
     let detected = archive::detect_format(tmp_path).map_err(|e| e.to_string())?;
     let format = match format_hint {
@@ -138,6 +140,12 @@ pub async fn do_import_plugin(
     };
     // id 已由 manifest::validate 限定为 [A-Za-z0-9_-]，可直接作为目录名，无穿越风险。
     let plugin_id = manifest.id.clone();
+    if let Err(error) = super::games::validate_files(&extracted_dir, &manifest.games)
+        .and_then(|_| super::games::validate_story_files(&extracted_dir, &manifest))
+    {
+        cleanup(&staging_for_cleanup);
+        return Err(format!("Invalid game entry: {error}"));
+    }
 
     // 6. tools 声明的每个脚本必须真实存在。
     if let Some(missing) = find_missing_script(&extracted_dir, &manifest).await {
@@ -168,6 +176,10 @@ pub async fn do_import_plugin(
     // 8. 覆盖：先经 manager.delete_plugin 注销工具并删除旧目录与状态条目。
     //    直接 remove_dir_all 会把已注册的工具留在 registry 里，重启前一直可调。
     if resolution.action == "overwritten" {
+        if let Err(error) = super::games::runtime::request_close_plugin(app, &plugin_id).await {
+            cleanup(&staging_for_cleanup);
+            return Err(error);
+        }
         let manager = app.state::<Arc<PluginManager>>().inner().clone();
         match manager.delete_plugin(&plugin_id).await {
             Ok(()) => {},

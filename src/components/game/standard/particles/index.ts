@@ -1,7 +1,8 @@
+import { HORROR_EFFECTS } from "@lingchat/dlc-ui/host/effects";
 /**
- * 粒子特效注册表 —— 软件内置特效的**单一真相源**。
+ * 粒子特效注册表 —— 软件内置背景粒子的**单一真相源**。
  *
- * 编辑器的「背景特效」下拉从这里取值，作者只能从列表里选，杜绝拼错大小写
+ * 设置页与桌宠的「背景特效」下拉从这里取值，作者只能从列表里选，杜绝拼错大小写
  * 导致特效被静默清空（上游复核要求：从前端获取粒子列表、防范输入错误）。
  *
  * 新增粒子：在此加一项 + 在 GameBackground.vue 加对应渲染分支 + 补两份词条。
@@ -11,14 +12,12 @@
  * 设置页与剧本编辑器的下拉均已改读此处；GameBackground 仍是硬编码 v-if
  * （每个粒子的 props 各不相同），新增粒子时两边都要动。
  *
- * 特效分两层：氛围层（PARTICLE_EFFECTS）与天气层（WEATHER_EFFECTS），
- * 两者各自单选、互不干扰，可以同时开着。天气天生是叠加的（雷阵雨 = 暴雨 + 闪电，
- * 以后还有雾），不该和雪、樱花抢同一个槽位。
+ * 扩展特效由 SDK 提供，独立于生成到 Rust 的内置清单。
  */
 export interface ParticleEffect {
-  /** 写进 YAML 的值，与 GameBackground 的 v-if 分支、引擎的 KNOWN_EFFECTS 对应 */
+  /** 写进设置的值，与 GameBackground 的 v-if 分支对应 */
   key: string;
-  /** 下拉里给作者看的中文名（i18n 词条缺失时的兜底） */
+  /** 下拉里给用户看的中文名（i18n 词条缺失时的兜底） */
   label: string;
   /**
    * 词条后缀：`settings.background.particle.<i18n>`（设置页）
@@ -60,35 +59,37 @@ export const WEATHER_EFFECTS: ParticleEffect[] = [
   { key: "Fog", label: "雾", i18n: "fog" },
 ];
 
-/** 全部内置特效。给编辑器下拉与大小写纠错用，不区分它属于哪一层。 */
+export { HORROR_EFFECTS, HORROR_EFFECT_KEYS } from "@lingchat/dlc-ui/host/effects";
+
+/** 仅内置特效；用于生成 Rust 清单，扩展由 SDK 在运行时注册。 */
 export const ALL_EFFECTS: ParticleEffect[] = [...PARTICLE_EFFECTS, ...WEATHER_EFFECTS];
 
 /** 这个特效是不是天气层的。剧本与存档只记一个特效值，靠它决定落到哪一层。 */
-export const isWeatherEffect = (key: string): boolean => WEATHER_EFFECTS.some((p) => p.key === key);
+export const isWeatherEffect = (key: string): boolean =>
+  WEATHER_EFFECTS.some((p) => p.key.toLowerCase() === key.toLowerCase());
 
 /**
  * 给编辑器下拉用的选项：首项「无特效」对应引擎的清空值 None，
  * 其余为各特效。返回 { value, label } 以便下拉显示中文、写入英文 key。
  *
- * 两层都列出来：剧本作者不必关心引擎把它们放在哪一层。
+ * 三层都列出来：剧本作者不必关心引擎把它们放在哪一层。
  */
 export const particleEffectOptions = (): { value: string; label: string }[] => [
   { value: "None", label: "无特效" },
-  ...ALL_EFFECTS.map((p) => ({ value: p.key, label: p.label })),
+  ...[...ALL_EFFECTS, ...HORROR_EFFECTS].map((p) => ({ value: p.key, label: p.label })),
 ];
 
-/**
- * 大小写自动纠错：把任意写法（starfield/STARFIELD…）映射到注册表里的规范 key
- * （大小写不敏感匹配）。上游明确要求「直接大小写自动纠错，在前端识别上实现」，
- * 而不是只告警——AI 写剧本或手改 YAML 常产出错误大小写，打开章节时在此纠回。
- *
- * - 命中已知粒子：返回规范 key（如 'StarField'）。
- * - 'none'/空：返回 'None'（清空值，不算纠错）。
- * - 未命中任何已知粒子：返回 null（交给 validate/runtime 的 warn，不强行改写）。
- */
+/** 大小写不敏感地映射到特效注册表中的规范 key；组合特效（"+" 连接）逐段规范化。 */
 export const canonicalEffectKey = (value: string): string | null => {
-  const v = value.trim();
-  if (!v) return "None";
-  if (v.toLowerCase() === "none") return "None";
-  return ALL_EFFECTS.find((p) => p.key.toLowerCase() === v.toLowerCase())?.key ?? null;
+  const raw = value.trim();
+  if (!raw || raw.toLowerCase() === "none") return "None";
+  const canonical: string[] = [];
+  for (const part of raw.split("+").map((item) => item.trim())) {
+    const match = [...ALL_EFFECTS, ...HORROR_EFFECTS].find(
+      (effect) => effect.key.toLowerCase() === part.toLowerCase(),
+    );
+    if (!match) return null;
+    canonical.push(match.key);
+  }
+  return canonical.join("+");
 };

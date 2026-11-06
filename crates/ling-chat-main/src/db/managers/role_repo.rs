@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
 
@@ -6,7 +6,7 @@ use anyhow::{Context, Result};
 use sea_orm::sea_query::Expr;
 use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, DatabaseBackend, DatabaseConnection,
-    EntityTrait, QueryFilter, QuerySelect, Set, Statement,
+    EntityTrait, IntoActiveModel, QueryFilter, QuerySelect, Set, Statement,
 };
 use tracing::warn;
 
@@ -119,6 +119,30 @@ impl RoleRepo {
             .await?)
     }
 
+    /// Remove only script-role rows created after a preview snapshot.
+    pub async fn delete_preview_created_script_roles(
+        db: &DatabaseConnection,
+        script_key: &str,
+        retained_ids: &HashSet<i32>,
+    ) -> Result<Vec<i32>> {
+        let roles = Self::get_script_roles(db, script_key).await?;
+        let mut deleted = Vec::new();
+        for role in roles {
+            if retained_ids.contains(&role.id) || Self::is_system_protected_role(role.id) {
+                continue;
+            }
+            MemoryRepo::delete_all_memories_by_role_id(db, role.id).await?;
+            role_hotword::Entity::delete_many()
+                .filter(role_hotword::Column::RoleId.eq(role.id))
+                .exec(db)
+                .await?;
+            Self::delete_identity_relations(db, role.id).await?;
+            role::Entity::delete_by_id(role.id).exec(db).await?;
+            deleted.push(role.id);
+        }
+        Ok(deleted)
+    }
+
     /// Find an existing role by script keys, or create a new one.
     pub async fn find_or_create_role(
         db: &DatabaseConnection,
@@ -131,7 +155,13 @@ impl RoleRepo {
         // Try to find existing
         if let (Some(sk), Some(srk)) = (script_key, script_role_key) {
             if let Some(existing) = Self::get_role_by_script_keys(db, sk, srk).await? {
-                return Ok(existing.id);
+                let id = existing.id;
+                let mut active = existing.into_active_model();
+                active.name = Set(name.to_string());
+                active.role_type = Set(role_type);
+                active.resource_folder = Set(resource_folder.map(str::to_string));
+                active.update(db).await?;
+                return Ok(id);
             }
         }
 
@@ -592,5 +622,83 @@ mod tests {
             .expect("查询热词失败");
         assert_eq!(kept.len(), 1, "其他角色的热词不应被删除");
         assert_eq!(kept[0].text, "李四");
+    }
+
+    #[tokio::test]
+    async fn preview_cleanup_removes_only_new_role_associations() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = crate::db::init_db(tmp.path()).await.unwrap();
+
+        for (role_id, script, key) in [
+            (100, "story", "retained"),
+            (101, "story", "preview"),
+            (102, "other", "preview"),
+        ] {
+            role::ActiveModel {
+                id: Set(role_id),
+                name: Set(key.to_string()),
+                role_type: Set(RoleType::Npc),
+                script_key: Set(Some(script.to_string())),
+                script_role_key: Set(Some(key.to_string())),
+                resource_folder: Set(None),
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+            role_hotword::ActiveModel {
+                role_id: Set(role_id),
+                text: Set(key.to_string()),
+                weight: Set(4),
+                ..Default::default()
+            }
+            .insert(&db)
+            .await
+            .unwrap();
+            RoleRepo::replace_identity_relations(
+                &db,
+                role_id,
+                &HashMap::from([(
+                    "identity".to_string(),
+                    IdentityRelation {
+                        text: key.to_string(),
+                        initial_affection: Some(10),
+                    },
+                )]),
+            )
+            .await
+            .unwrap();
+        }
+
+        let deleted =
+            RoleRepo::delete_preview_created_script_roles(&db, "story", &HashSet::from([100]))
+                .await
+                .unwrap();
+        assert_eq!(deleted, vec![101]);
+        for role_id in [100, 101, 102] {
+            let expected = usize::from(role_id != 101);
+            assert_eq!(
+                role_hotword::Entity::find()
+                    .filter(role_hotword::Column::RoleId.eq(role_id))
+                    .all(&db)
+                    .await
+                    .unwrap()
+                    .len(),
+                expected
+            );
+            assert_eq!(
+                RoleRepo::load_identity_relations(&db, role_id)
+                    .await
+                    .unwrap()
+                    .len(),
+                expected
+            );
+            assert_eq!(
+                RoleRepo::get_role_by_id(&db, role_id)
+                    .await
+                    .unwrap()
+                    .is_some(),
+                role_id != 101
+            );
+        }
     }
 }

@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'" />
+    <title>LingChat Runtime</title>
+    <style>
+      :root {
+        color-scheme: dark;
+        font-family: Consolas, "Cascadia Mono", "Courier New", monospace;
+        background: #030503;
+        color: #71ff7a;
+      }
+      * { box-sizing: border-box; }
+      html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+      body {
+        position: relative;
+        display: grid;
+        grid-template-rows: auto 1fr auto;
+        padding: 14px 16px 12px;
+        background:
+          repeating-linear-gradient(0deg, rgba(255,255,255,.025) 0 1px, transparent 1px 3px),
+          radial-gradient(circle at 20% 0%, rgba(60,255,80,.09), transparent 45%),
+          #030503;
+        text-shadow: 0 0 7px currentColor;
+        animation: flicker 160ms steps(2,end) infinite;
+      }
+      body::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        background: linear-gradient(90deg, transparent 0 47%, rgba(255,255,255,.08) 48% 49%, transparent 50%);
+        opacity: .18;
+        animation: sweep 2.4s linear infinite;
+      }
+      #heading {
+        margin: 0 0 10px;
+        padding-bottom: 8px;
+        border-bottom: 1px solid currentColor;
+        font-size: 13px;
+        letter-spacing: .12em;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #message {
+        margin: 0;
+        overflow: hidden;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font-size: 14px;
+        line-height: 1.42;
+      }
+      #status {
+        align-self: end;
+        margin-top: 8px;
+        font-size: 11px;
+        opacity: .65;
+      }
+      .cursor { display: inline-block; animation: cursor 520ms steps(1,end) infinite; }
+      body.error {
+        color: #290000;
+        text-shadow: none;
+        background:
+          repeating-linear-gradient(0deg, rgba(150,0,0,.04) 0 1px, transparent 1px 4px),
+          linear-gradient(135deg, #f7f3ef, #e7dddd);
+        animation: error-jolt 2.2s steps(1,end) infinite;
+      }
+      body.error #heading { color: #9d0000; border-color: rgba(157,0,0,.45); font-weight: 700; }
+      body.error #message { color: #240000; }
+      body.error #status { color: #8c0000; }
+      @keyframes cursor { 0%,49% { opacity: 1 } 50%,100% { opacity: 0 } }
+      @keyframes sweep { from { transform: translateX(-110%) } to { transform: translateX(110%) } }
+      @keyframes flicker { 0% { opacity: 1 } 50% { opacity: .97 } 100% { opacity: 1 } }
+      @keyframes error-jolt { 0%,91%,100% { transform: translate(0) } 92% { transform: translate(-2px,1px) } 94% { transform: translate(2px,-1px) } }
+      @media (prefers-reduced-motion: reduce) {
+        body, body::after, .cursor { animation: none !important; }
+      }
+    </style>
+  </head>
+  <body>
+    <h1 id="heading">LINGCHAT RUNTIME</h1>
+    <pre id="message">PROCESS STATE DESYNCHRONIZED</pre>
+    <div id="status">LOCAL SCRIPT EFFECT <span id="counter">1/1</span> <span class="cursor">█</span></div>
+    <script>
+      (() => {
+        const fallback = {
+          title: 'LingChat Runtime',
+          text: 'PROCESS STATE DESYNCHRONIZED',
+          style: 'terminal',
+          index: 1,
+          total: 1,
+        }
+        let payload = fallback
+        try {
+          const encoded = new URLSearchParams(location.search).get('payload') || ''
+          const padded = encoded.replace(/-/g, '+').replace(/_/g, '/') + '='.repeat((4 - encoded.length % 4) % 4)
+          const bytes = Uint8Array.from(atob(padded), char => char.charCodeAt(0))
+          const parsed = JSON.parse(new TextDecoder().decode(bytes))
+          payload = { ...fallback, ...parsed }
+        } catch (_) {
+          payload = fallback
+        }
+        document.title = String(payload.title).slice(0, 80)
+        document.body.classList.toggle('error', payload.style === 'error')
+        document.getElementById('heading').textContent = document.title
+        document.getElementById('message').textContent = String(payload.text).slice(0, 1200)
+        document.getElementById('counter').textContent = `${payload.index}/${payload.total}`
+      })()
+    </script>
+  </body>
+</html>

@@ -1,3 +1,4 @@
+import { extensionMessages } from "@lingchat/dlc-ui/locales";
 import { invoke } from "@tauri-apps/api/core";
 import { createI18n } from "vue-i18n";
 import { useSettingsStore } from "@/stores/modules/settings";
@@ -24,9 +25,8 @@ const BUNDLED_LOADERS: Record<AppLocale, () => Promise<Record<string, unknown>>>
   en: () => import("./en").then((m) => m.default as Record<string, unknown>),
 };
 
-const bundledCache = new Map<AppLocale, Record<string, unknown>>([
-  ["zh-CN", zhCN as Record<string, unknown>],
-]);
+const defaultMessages = deepMergeMessages(zhCN, extensionMessages["zh-CN"] ?? {});
+const bundledCache = new Map<AppLocale, Record<string, unknown>>([["zh-CN", defaultMessages]]);
 const bundledPending = new Map<AppLocale, Promise<Record<string, unknown>>>();
 
 async function loadBundled(locale: AppLocale): Promise<Record<string, unknown>> {
@@ -36,8 +36,9 @@ async function loadBundled(locale: AppLocale): Promise<Record<string, unknown>> 
   if (!pending) {
     pending = BUNDLED_LOADERS[locale]()
       .then((messages) => {
-        bundledCache.set(locale, messages);
-        return messages;
+        const merged = deepMergeMessages(messages, extensionMessages[locale] ?? {});
+        bundledCache.set(locale, merged);
+        return merged;
       })
       .finally(() => bundledPending.delete(locale));
     bundledPending.set(locale, pending);
@@ -89,7 +90,7 @@ export const i18n = createI18n<[MessageSchema], AppLocale>({
   locale: detectLocale(),
   fallbackLocale: "zh-CN",
   // 其余语言包在首次切换到该语言时才加载并挂载；类型上仍按完整语言表声明
-  messages: { "zh-CN": zhCN } as unknown as Record<AppLocale, MessageSchema>,
+  messages: { "zh-CN": defaultMessages } as unknown as Record<AppLocale, MessageSchema>,
 });
 
 /** 全局 composer 的 locale 引用（legacy:false 下运行时为可写 Ref） */

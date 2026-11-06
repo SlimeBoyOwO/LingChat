@@ -25,6 +25,7 @@ pub mod event_names {
     pub const SCRIPT_CHOICE: &str = "script:choice";
     pub const SCRIPT_END: &str = "script:end";
     pub const SCRIPT_FREE_DIALOGUE: &str = "script:free-dialogue";
+    pub const SCRIPT_WATCH_JUMP: &str = "script:watch-jump";
     pub const SCRIPT_PROGRESS: &str = "script:progress";
 }
 
@@ -75,6 +76,8 @@ pub struct BackgroundEffectPayload {
     pub effect: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    #[serde(flatten)]
+    pub extension: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -94,6 +97,13 @@ pub struct SoundPayload {
     pub sound_path: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+}
+
+/// 异步跳转：通知前端取消被中断章节的积压事件。
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WatchJumpPayload {
+    pub target: String,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -140,6 +150,8 @@ pub struct ModifyCharacterPayload {
     pub clothes: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub duration: Option<f64>,
+    #[serde(flatten)]
+    pub extension: serde_json::Map<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -192,6 +204,11 @@ pub struct ScriptEndPayload {
     /// reaching its end. The frontend must not credit the player with an
     /// adventure completion in that case.
     pub completed: bool,
+    /// 剧本声明 main_character 时，进剧本前的主角在此随队列事件交还给前端。
+    /// 必须走 script:end 载荷而不是即时 emit：后端跑完时前端往往还在消化积压
+    /// 事件，即时切角色会让立绘抢跑出现在尚未播完的空场景里。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub restored_role_id: Option<i32>,
 }
 
 /// 阅读锚点：引擎每执行一个事件前广播，事件流进入前端队列、按阅读速度被消费。

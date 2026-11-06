@@ -38,7 +38,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useGameStore } from "@/stores/modules/game";
-import { useVoicePlayback } from "@/composables/role/useVoicePlayback";
+import { useStoryVoice } from "@lingchat/dlc-ui/composables/useStoryVoice";
 import { useLive2dFallback } from "@/composables/role/useLive2dFallback";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import Live2DStage from "../live2d/Live2DStage.vue";
@@ -64,12 +64,7 @@ const props = withDefaults(
 );
 
 const mainAudio = ref<HTMLAudioElement | null>(null);
-
-// 语音播放管线（TTS 期间禁用 ASR、音量实时跟随）—— 与桌宠共用同一实现
-const { voiceDataUrl, onAudioEnded } = useVoicePlayback({
-  audioRef: mainAudio,
-  onStarted: () => emit("audio-started"),
-  onEnded: () => emit("audio-ended"),
+const { voiceDataUrl, onAudioEnded, stopAudio } = useStoryVoice(mainAudio, emit, {
   respectPluginVoicePlayback: props.respectPluginVoicePlayback,
 });
 
@@ -79,6 +74,10 @@ const lightOverlayStyle = computed(() => {
   if (l.overlay_target !== "character" && l.overlay_target !== "both") return undefined;
   const blend = l.blend_mode !== "normal" ? l.blend_mode : "overlay";
   return `background: radial-gradient(circle at ${l.light_x}% ${l.light_y}%, ${l.overlay_color1} 0%, ${l.overlay_color2} ${l.overlay_radius}%); mix-blend-mode: ${blend}; opacity: ${l.overlay_opacity}`;
+});
+
+defineExpose({
+  stopAudio,
 });
 </script>
 

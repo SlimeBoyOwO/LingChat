@@ -1,5 +1,5 @@
 <template>
-  <div class="main-box">
+  <div class="main-box" data-game-stage>
     <!-- 主界面始终渲染，加载动画期间在后台初始化 -->
     <FreeModeTools />
     <div class="main-status-panel">
@@ -15,6 +15,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
+    <StageOverlay />
     <GameDialog
       ref="gameDialogRef"
       :relation-ready="relationReady"
@@ -46,6 +47,8 @@
         v-if="!isMobile()"
         type="nav"
         icon="character"
+        :disabled="entryPolicy.lockPet"
+        :title="entryPolicy.petHint"
         @click="goToPetMode"
         v-show="uiStore.showSettings !== true"
       >
@@ -66,6 +69,7 @@
 </template>
 
 <script setup lang="ts">
+import { storyPolicy } from "@lingchat/dlc-ui/host/policy";
 import { getEnvConfigByKey } from "@/api/services/config";
 import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import StatusInfoBar from "@/components/tools/StatusInfoBar.vue";
@@ -86,6 +90,7 @@ import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import { useRelationGuard } from "@/composables/chat/useRelationGuard";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
+import StageOverlay from "@lingchat/dlc-ui/host/StageOverlay.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -209,6 +214,9 @@ onMounted(() => {
     runInitialization();
   }
 });
+
+/** 当前内容扩展提供的演出策略。 */
+const entryPolicy = computed(() => storyPolicy(gameStore.runningScript));
 
 const {
   onAudioStarted: handleAudioStarted,

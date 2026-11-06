@@ -7,11 +7,15 @@
     </StartLine>
 
     <StartLine>
-      <StartItem class="menu-subitem" disabled="true">{{ $t("views.menu.storyMode") }}</StartItem>
+      <StartItem class="menu-subitem" @click="startStoryMode">{{
+        $t("views.menu.storyMode")
+      }}</StartItem>
     </StartLine>
 
-    <StartLine>
-      <StartItem class="menu-subitem" disabled="true">{{ $t("views.menu.miniGame") }}</StartItem>
+    <StartLine v-for="item in menuItems" :key="item.key">
+      <StartItem class="menu-subitem" @click="emit('open-extension', item.key)">{{
+        $t(item.label)
+      }}</StartItem>
     </StartLine>
 
     <StartLine>
@@ -21,6 +25,7 @@
 </template>
 
 <script setup lang="ts">
+import { menuItems } from "@lingchat/dlc-ui/host/menu";
 import { StartItem, StartLine, StartList } from "../base";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -32,6 +37,7 @@ import { eventQueue } from "@/core/events/event-queue";
 const emit = defineEmits<{
   (e: "back"): void;
   (e: "open-scripts"): void;
+  (e: "open-extension", key: string): void;
 }>();
 
 const router = useRouter();
@@ -54,10 +60,15 @@ const startFreeDialogue = async () => {
       console.error("中止剧本失败:", error);
     }
     // 剧本停了，它还没播完的事件也就成了旧会话残留，一并丢弃（issue #796 同款处理）
-    eventQueue.clear();
-    eventQueue.resume();
   }
+  eventQueue.clear();
+  eventQueue.resume();
   gameStore.exitStoryMode();
   router.push("/chat");
+};
+
+// 进入剧情模式：切到剧本列表页
+const startStoryMode = () => {
+  emit("open-scripts");
 };
 </script>

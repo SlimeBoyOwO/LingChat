@@ -33,6 +33,8 @@ pub fn setup(
     app: &mut tauri::App<tauri::Wry>,
     log_filter: LogFilterHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    ling_chat_dlc_runtime::install();
+
     // 设置日志桥接的应用句柄
     utils::log_bridge::set_app_handle(app.handle().clone());
 

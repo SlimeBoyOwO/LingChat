@@ -15,8 +15,7 @@
 //! - **章节名**是每个剧本自己的，前端从已加载的章节列表填。
 //! - **素材文件名**同理，前端从素材索引填。
 //! - **角色**是 `MAIN` 加上该剧本 `characters/` 下的目录名。
-//! - **背景特效**由 Rust 拥有（`background_effect_event::KNOWN_EFFECTS`），
-//!   因为它对应前端组件是否存在，本文件直接引用那个常量。
+//! - **背景特效**来自前端粒子注册表生成的清单（`pnpm gen:effects`）。
 
 use serde::Serialize;
 
@@ -50,8 +49,7 @@ pub enum FieldKind {
     BranchOptions,
     /// `set_variable` 的赋值组（专用编辑器）
     VarOptions,
-    /// 触发条件：结构化「变量 + 关系 + 值」表单，序列化为 `var == 值` / `var != 值` / 裸变量
-    /// （引擎的 evaluate_condition 只认这三种写法，结构化让作者写不出不支持的语法）
+    /// 触发条件：编辑器可生成简单关系式；运行时另支持数字比较及 `&&` / `||` 组合。
     Condition,
     /// 遗留字段：只展示、不可编辑、保存时原样保留
     Deprecated,
@@ -90,7 +88,7 @@ pub struct FieldSpec {
 }
 
 impl FieldSpec {
-    fn new(key: &'static str, label: &'static str, kind: FieldKind) -> Self {
+    pub fn new(key: &'static str, label: &'static str, kind: FieldKind) -> Self {
         FieldSpec {
             key,
             label,
@@ -105,36 +103,36 @@ impl FieldSpec {
             enabled: true,
         }
     }
-    fn required(mut self) -> Self {
+    pub fn required(mut self) -> Self {
         self.required = true;
         self
     }
-    fn hint(mut self, h: &'static str) -> Self {
+    pub fn hint(mut self, h: &'static str) -> Self {
         self.hint = Some(h);
         self
     }
-    fn placeholder(mut self, p: &'static str) -> Self {
+    pub fn placeholder(mut self, p: &'static str) -> Self {
         self.placeholder = Some(p);
         self
     }
     /// 标注引擎真实默认值（人类可读），供「不设置」选项展示
-    fn default_desc(mut self, d: &'static str) -> Self {
+    pub fn default_desc(mut self, d: &'static str) -> Self {
         self.default_desc = Some(d);
         self
     }
-    fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
+    pub fn options<I: IntoIterator<Item = S>, S: Into<String>>(mut self, opts: I) -> Self {
         self.options = opts.into_iter().map(Into::into).collect();
         self
     }
-    fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
+    pub fn option_labels<I: IntoIterator<Item = S>, S: Into<String>>(mut self, labels: I) -> Self {
         self.option_labels = labels.into_iter().map(Into::into).collect();
         self
     }
-    fn asset(mut self, kind: &'static str) -> Self {
+    pub fn asset(mut self, kind: &'static str) -> Self {
         self.asset_kind = Some(kind);
         self
     }
-    fn disabled(mut self, why: &'static str) -> Self {
+    pub fn disabled(mut self, why: &'static str) -> Self {
         self.enabled = false;
         self.hint = Some(why);
         self
@@ -370,6 +368,7 @@ pub fn build_schema() -> ScriptSchema {
                     .hint(
                     "决定该角色是否出现在后续台词的「感知者」列表里。注意 hide_character 会同时把角色移出感知列表",
                 ),
+
             ],
         },
         EventSpec {
@@ -390,10 +389,13 @@ pub fn build_schema() -> ScriptSchema {
             label: "背景特效",
             category: "演出",
             color: "#2dd4bf",
-            fields: vec![FieldSpec::new("effect", "特效", FieldKind::Select)
-                .required()
-                .options(effect_options())
-                .hint("从下拉里选；选「无特效」会清空当前特效")],
+            fields: vec![
+                FieldSpec::new("effect", "特效", FieldKind::Select)
+                    .required()
+                    .options(effect_options())
+                    .hint("从下拉里选；选「无特效」会清空。运行时支持在 YAML 中用 + 叠加多个特效"),
+
+            ],
         },
         EventSpec {
             type_key: "present_pic",
@@ -402,8 +404,8 @@ pub fn build_schema() -> ScriptSchema {
             color: "#a3e635",
             fields: vec![
                 FieldSpec::new("imagePath", "图片", FieldKind::Asset)
-                    .required()
-                    .asset("pic"),
+                    .asset("pic")
+                    .hint("留空收起当前插图"),
                 FieldSpec::new("scale", "缩放", FieldKind::Number).placeholder("1.0"),
             ],
         },
@@ -476,9 +478,9 @@ pub fn build_schema() -> ScriptSchema {
     let common_fields = vec![
         FieldSpec::new("condition", "触发条件", FieldKind::Condition)
             .hint("设置条件后，只有满足条件时本事件才会执行；留空则必定触发"),
-        FieldSpec::new("duration", "事件间隔（秒）", FieldKind::Number)
-            .placeholder("留空或负数 = 等玩家点击")
-            .hint("事件展示后自动等待 N 秒再继续，作为事件之间的 CD；留空或填负数表示等玩家点击后才继续"),
+        FieldSpec::new("duration", "事件时长/间隔（秒）", FieldKind::Number)
+            .placeholder("由具体事件解释")
+            .hint("仅部分事件读取；具体含义由事件定义说明"),
     ];
 
     let story_config_fields = vec![
@@ -539,7 +541,7 @@ pub fn build_schema() -> ScriptSchema {
         },
     ];
 
-    ScriptSchema {
+    let mut schema = ScriptSchema {
         events,
         common_fields,
         story_config_fields,
@@ -557,9 +559,18 @@ pub fn build_schema() -> ScriptSchema {
             "description",
         ],
         condition_syntax: ConditionSyntax {
-            supported: vec!["var == 值", "var != 值", "var（真值判断）"],
-            unsupported: vec![">", "<", ">=", "<=", "&&", "||", "!", "括号", "算术"],
-            note: "比较是按文字逐个比对的。没赋过值的变量不会正常运作，先用「设置变量」给它赋个值再比较。注意「大于/小于」这类比较不支持：写 hp >= 5 不会报错，但会被当成一个名叫 \"hp >= 5\" 的变量去查，结果不会正常运作。",
+            supported: vec![
+                "var == 值",
+                "var != 值",
+                "var >= 数字 / <= / > / <",
+                "条件 && 条件",
+                "条件 || 条件",
+                "var（真值判断）",
+            ],
+            unsupported: vec!["!", "括号", "算术"],
+            note: "== / != 按文字比较，大小比较要求右侧是数字；逻辑符必须写成两侧带空格的 ` && ` / ` || `，且 && 优先于 ||。无空格的 a||b 可继续作为普通字符串值。暂不支持括号、取反和算术表达式。",
         },
-    }
+    };
+    super::extension::configure_schema(&mut schema);
+    schema
 }

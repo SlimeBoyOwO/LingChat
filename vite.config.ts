@@ -1,3 +1,4 @@
+import { extensionAssets } from "@lingchat/dlc-ui/build";
 import { defineConfig } from "vite";
 import type { Plugin } from "vite";
 import vue from "@vitejs/plugin-vue";
@@ -29,11 +30,12 @@ function preloadMainMenuImage(): Plugin {
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [vue(), VueDevTools(), tailwindcss(), preloadMainMenuImage()],
+  plugins: [vue(), VueDevTools(), tailwindcss(), extensionAssets(), preloadMainMenuImage()],
 
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "./src"),
+      "@lingchat/host": path.resolve(import.meta.dirname, "./src"),
     },
   },
 

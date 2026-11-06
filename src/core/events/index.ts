@@ -1,8 +1,12 @@
 import { eventProcessorManager } from "./event-processor";
 import type { IEventProcessor } from "./event-processor";
+import { createStoryEventProcessors } from "@lingchat/dlc-ui/core/events";
 
 // 动态导入所有处理器
 export async function initializeEventProcessors() {
+  for (const processor of createStoryEventProcessors()) {
+    eventProcessorManager.registerProcessor(processor);
+  }
   // 使用 import.meta.glob 动态导入 processors 目录下的所有 ts 文件
   const processorModules = import.meta.glob("./processors/*.ts", {
     eager: true,

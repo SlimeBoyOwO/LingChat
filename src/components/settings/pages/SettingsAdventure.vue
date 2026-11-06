@@ -143,6 +143,7 @@
 </template>
 
 <script setup lang="ts">
+import { confirmStoryEntry } from "@lingchat/dlc-ui/composables/useStoryEntry";
 import { computed, ref, onMounted, watch } from "vue";
 import { useRouter } from "vue-router";
 import { useI18n } from "vue-i18n";
@@ -157,9 +158,13 @@ import { getAvatarFile } from "@/api/services/character";
 import { Birdhouse, Book, FileText, UserPlus } from "@lucide/vue";
 import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
 import type { ScriptSummary } from "@/api/services/script-info";
+import { useDialogStore } from "@/stores/modules/ui/dialog";
+import { i18n } from "@/locales";
+import { eventQueue } from "@/core/events/event-queue";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
+const dialogStore = useDialogStore();
 const router = useRouter();
 const { t } = useI18n();
 // 独立剧本相关状态
@@ -206,13 +211,20 @@ const startStandaloneScript = async (script: ScriptSummary) => {
     });
     return;
   }
+  if (!(await confirmStoryEntry(script))) return;
+
+  eventQueue.clear();
+  gameStore.enterStoryMode(script.script_name, script.content_warning, script.folder_key);
+  uiStore.showSettings = false;
   try {
     await router.push("/chat");
-    gameStore.enterStoryMode(script.script_name);
+    // MainChat 可能已挂载在设置层后方；clear() 后无论是否发生路由切换都要恢复 FIFO。
+    eventQueue.resume();
     await startScriptApi(script.script_name);
-    uiStore.showSettings = false;
   } catch (error) {
-    gameStore.exitStoryMode();
+    eventQueue.clear();
+    gameStore.exitStoryMode(false);
+    eventQueue.resume();
     console.error("启动独立剧本失败:", error);
     uiStore.showNotification({
       type: "error",

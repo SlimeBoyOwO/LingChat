@@ -30,11 +30,14 @@
     </template>
   </StaticRolePresentation>
 
-  <!-- 原有气泡与情绪音效位于共享 Pixi 舞台上方。 -->
+  <!-- 原有气泡与情绪音效位于共享 Pixi 舞台上方。触摸层已随立绘组件内嵌（见上方 #overlay）。 -->
+
   <div
     class="role-container-transition pointer-events-none absolute h-full w-full origin-[center_0%]"
     :style="effectsLayerStyle"
   >
+    <RoleOverlay :role="role" :object-fit="computedObjectFit" />
+
     <div :class="bubbleClasses" :style="bubbleStyles" class="bubble"></div>
     <audio ref="bubbleAudio"></audio>
   </div>
@@ -48,6 +51,7 @@ import type { GameRole } from "@/stores/modules/game/state";
 import Live2DRolePresentation from "./Live2DRolePresentation.vue";
 import StaticRolePresentation from "./StaticRolePresentation.vue";
 import TouchAreas from "./TouchAreas.vue";
+import RoleOverlay from "@lingchat/dlc-ui/host/RoleOverlay.vue";
 import { avatarObjectFit, useRoleAvatar } from "@/composables/role/useRoleAvatar";
 import { standardAvatarStyle } from "@/utils/avatar-layout";
 import { prefersLive2d } from "@/types/live2d";
@@ -158,3 +162,9 @@ const bubbleStyles = computed(() => ({
   backgroundImage: `url(${currentBubbleImageUrl.value})`,
 }));
 </script>
+
+<style scoped>
+:deep(.touch-area) {
+  pointer-events: auto;
+}
+</style>
