@@ -59,6 +59,11 @@ tracing-subscriber = { version = "0.3", features = [
 [patch.crates-io]
 esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }
 jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
+# cubecl-wgpu 的源码不进仓库：由 scripts/patch-cubecl-wgpu.mjs 在构建前从 .crate 解包到
+# vendor/cubecl-wgpu，并禁用集成 GPU 上会踩野指针的 write_mapped 快路径
+# （Android Adreno 上训练必 SIGSEGV，详见脚本注释）。首次克隆或删掉 vendor 目录后，
+# 先跑 pnpm patch:cubecl-wgpu，否则 cargo 会因找不到该路径而报错。
+cubecl-wgpu = { path = "vendor/cubecl-wgpu" }
 
 # 依赖不生成调试符号。proc-macro 每次指纹变化都要重编，PDB 体积大且无需单步调试。
 [profile.dev.build-override]
