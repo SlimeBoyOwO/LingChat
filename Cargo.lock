@@ -16904,3 +16904,7 @@ dependencies = [
  "syn 3.0.9",
  "winnow 1.0.4",
 ]
+
+[[patch.unused]]
+name = "cubecl-wgpu"
+version = "0.11.3"
