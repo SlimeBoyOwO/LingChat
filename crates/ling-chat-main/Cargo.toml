@@ -102,7 +102,7 @@ tokio-util = { workspace = true }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
-burn = { version = "0.22.1", features = ["autodiff", "optim", "vulkan"] }
+burn = { version = "0.22.1", features = ["autodiff", "optim", "vulkan", "metal"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-global-shortcut = "2"
