@@ -1503,6 +1503,7 @@ export default {
     epochs: "学習エポック",
     learningRate: "学習率",
     cleanupEvery: "メモリ回収間隔（ステップ）",
+    maxFrames: "1 ステップの最大フレーム数（0 で無制限）",
   },
   sherpa: {
     title: "Sherpa-ONNX ローカル音声",
