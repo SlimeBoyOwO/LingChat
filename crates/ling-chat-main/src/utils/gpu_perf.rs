@@ -88,14 +88,14 @@ fn list_devices() -> Vec<(u32, u32, String)> {
 fn list_devices() -> Vec<(u32, u32, String)> {
     use std::collections::HashSet;
 
-    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
+    let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle());
     let mut devices = Vec::new();
     // 去重同一物理 GPU：多后端（如 Linux 的 Vulkan + GLES）会对同一 GPU 重复枚举，
     // 且 GLES 路径的 vendor/device 可能为 0 —— 有真实 ID 按 (vendor, device) 去重，
     // 无真实 ID 时按归一化名字兜底，避免同卡重复。
     let mut seen_id: HashSet<(u32, u32)> = HashSet::new();
     let mut seen_name: HashSet<String> = HashSet::new();
-    for adapter in instance.enumerate_adapters(wgpu::Backends::all()) {
+    for adapter in pollster::block_on(instance.enumerate_adapters(wgpu::Backends::all())) {
         let info = adapter.get_info();
         let name_key = normalize(&info.name);
         let is_dup = if info.vendor != 0 && info.device != 0 {
