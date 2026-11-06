@@ -446,10 +446,12 @@ fn set_affine_bias(affine: &mut Affine, data: &[f32], dims: &[usize], device: &D
 /// 便于复用基座权重。
 pub fn apply_named_decoder_weight(decoder: &mut BurnBaseDecoder, name: &str, data: &[f32], dims: &[usize], device: &Device) {
     let key = name.strip_prefix("model.decoder.estimator.").unwrap_or(name);
-    if !key.ends_with(".weight") && !key.ends_with(".bias") {
+    // `ff.net.0.alpha`/`ff.net.0.beta` 是参数化 GELU 常数，按 weight 语义处理。
+    let alpha_beta = key.ends_with(".alpha") || key.ends_with(".beta");
+    if !key.ends_with(".weight") && !key.ends_with(".bias") && !alpha_beta {
         return;
     }
-    let is_weight = key.ends_with(".weight");
+    let is_weight = alpha_beta || key.ends_with(".weight");
     let base = key.strip_suffix(".weight").or_else(|| key.strip_suffix(".bias")).unwrap_or(key);
 
     // 找出该参数属哪个块（down/mid/up），以及块内的剩余子路径。
@@ -490,11 +492,14 @@ pub fn apply_named_decoder_weight(decoder: &mut BurnBaseDecoder, name: &str, dat
     // 下行块：down_blocks.{i}.0=残差，.1.0=注意力，.2=采样卷积（i=0 名 `2.conv`，i=1 名 `2`）。
     if let Some((i, after)) = parse_block("down_blocks.") {
         let (res, attn, conv) = &mut decoder.down[i];
-        apply_block(res, attn, after, is_weight, data, dims, device);
-        // down 卷积：i=0 用 `2.conv`，i=1 用 `2`。
-        let conv_key = format!("2.{}", if i == 0 { "conv." } else { "" });
-        let conv_name = base.strip_prefix(&format!("down_blocks.{i}.")).unwrap_or("");
-        if conv_name.starts_with(&conv_key) {
+        // `after` 形如 `0.block1...` 或 `1.0.attn1...`，先剥离元组索引再分发给残差/注意力。
+        if let Some(sub) = strip_tuple_index(&after) {
+            apply_block(res, attn, sub, is_weight, data, dims, device);
+        }
+        // down 卷积：i=0 用 `2.conv`，i=1 用 `2`。用完整 `key`（含 weight/bias 后缀）匹配。
+        let conv_key = if i == 0 { "2.conv" } else { "2" };
+        let conv_name = key.strip_prefix(&format!("down_blocks.{i}.")).unwrap_or("");
+        if conv_name.starts_with(conv_key) {
             if is_weight { set_conv_weight(conv, data, dims, device); }
             else { set_conv_bias(conv, data, dims, device); }
         }
@@ -504,20 +509,39 @@ pub fn apply_named_decoder_weight(decoder: &mut BurnBaseDecoder, name: &str, dat
     // 中部块：mid_blocks.{i}.0=残差，.1.0=注意力，无采样卷积。
     if let Some((i, after)) = parse_block("mid_blocks.") {
         let (res, attn) = &mut decoder.mid[i];
-        apply_block(res, attn, after, is_weight, data, dims, device);
+        if let Some(sub) = strip_tuple_index(&after) {
+            apply_block(res, attn, sub, is_weight, data, dims, device);
+        }
         return;
     }
 
     // 上行块：up_blocks.{i}.0=残差，.1.0=注意力，.2=上采样（i=0 转置 `2.conv`，i=1 卷积 `2`）。
     if let Some((i, after)) = parse_block("up_blocks.") {
-        let conv_name = base.strip_prefix(&format!("up_blocks.{i}.")).unwrap_or("");
+        let conv_name = key.strip_prefix(&format!("up_blocks.{i}.")).unwrap_or("");
         let (res, attn, sampler) = &mut decoder.up[i];
-        apply_block(res, attn, after, is_weight, data, dims, device);
+        if let Some(sub) = strip_tuple_index(&after) {
+            apply_block(res, attn, sub, is_weight, data, dims, device);
+        }
         // 采样/转置卷积名：i=0 用 `2.conv`，i=1 用 `2`。
-        if conv_name.starts_with("2.") || conv_name.starts_with("2") {
+        if conv_name.starts_with("2") {
             apply_sampler(sampler, is_weight, data, dims, device);
         }
     }
+}
+
+/// 从块的 ONNX 子路径里剥离开头的元组索引。
+///
+/// 块内是一个元组：`0.` 开头是残差块、`1.0.` 开头是注意力块。返回剥掉
+/// 该前缀后的子路径（`block1...`、`mlp.1...`、`attn1...` 等）。不匹配返回 None。
+fn strip_tuple_index(after: &str) -> Option<String> {
+    if let Some(rest) = after.strip_prefix("0.") {
+        return Some(rest.to_string());
+    }
+    // 注意力块在元组索引 1 下，再进一层索引 0。
+    if let Some(rest) = after.strip_prefix("1.0.") {
+        return Some(rest.to_string());
+    }
+    None
 }
 
 /// 把剩余子路径分发给残差块与注意力块。
@@ -633,6 +657,273 @@ fn apply_sampler(sampler: &mut UpSampler, is_weight: bool, data: &[f32], dims: &
     }
 }
 
+// —— 以下为导出用回读（与 apply_named_decoder_weight 的写入方向互逆）——。
+
+/// 把 burn 线性权重转回 ONNX 布局的扁平 f32。`transposed` 表示写入时 ONNX [out,in]
+/// 被转置成 burn [in,out]，回读时对称地再转置回去。
+fn read_linear_weight(linear: &burn::nn::Linear, transposed: bool) -> Option<Vec<f32>> {
+    let t = if transposed {
+        linear.weight.val().permute([1, 0])
+    } else {
+        linear.weight.val()
+    };
+    t.to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_linear_bias(linear: &burn::nn::Linear) -> Option<Vec<f32>> {
+    linear.bias.as_ref()?.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_conv_weight(weight: &Param<Tensor<3>>) -> Option<Vec<f32>> {
+    weight.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_conv_bias(conv: &Option<Param<Tensor<1>>>) -> Option<Vec<f32>> {
+    conv.as_ref()?.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_groups_weight(group: &GroupNormAffine) -> Option<Vec<f32>> {
+    group.weight.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_groups_bias(group: &GroupNormAffine) -> Option<Vec<f32>> {
+    group.bias.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_affine_weight(affine: &Affine) -> Option<Vec<f32>> {
+    affine.weight.val().to_data().try_to_vec::<f32>().ok()
+}
+
+fn read_affine_bias(affine: &Affine) -> Option<Vec<f32>> {
+    affine.bias.val().to_data().try_to_vec::<f32>().ok()
+}
+
+/// 从解码器读出某残差/注意力块的权重，按 ONNX 语义名分发。
+fn read_block_weight(
+    res: &ResBlock,
+    attn: &AttnBlock,
+    after: &str,
+    is_weight: bool,
+) -> Option<Vec<f32>> {
+    if after.starts_with("block1.block.0") {
+        return if is_weight {
+            read_conv_weight(&res.conv1.weight)
+        } else {
+            read_conv_bias(&res.conv1.bias)
+        };
+    }
+    if after.starts_with("block2.block.0") {
+        return if is_weight {
+            read_conv_weight(&res.conv2.weight)
+        } else {
+            read_conv_bias(&res.conv2.bias)
+        };
+    }
+    if after.starts_with("res_conv") {
+        return if is_weight {
+            read_conv_weight(&res.res_conv.weight)
+        } else {
+            read_conv_bias(&res.res_conv.bias)
+        };
+    }
+    if after.starts_with("block1.block.1") {
+        return if is_weight {
+            read_groups_weight(&res.norm1)
+        } else {
+            read_groups_bias(&res.norm1)
+        };
+    }
+    if after.starts_with("block2.block.1") {
+        return if is_weight {
+            read_groups_weight(&res.norm2)
+        } else {
+            read_groups_bias(&res.norm2)
+        };
+    }
+    if after.starts_with("mlp.1") {
+        return if is_weight {
+            read_linear_weight(&res.time_proj, true)
+        } else {
+            read_linear_bias(&res.time_proj)
+        };
+    }
+    // 注意力块。
+    for (name, g) in [("norm1", true), ("norm3", false)] {
+        if after.starts_with(name) {
+            let a = if g { &attn.norm1 } else { &attn.norm3 };
+            return if is_weight {
+                read_affine_weight(a)
+            } else {
+                read_affine_bias(a)
+            };
+        }
+    }
+    if after.starts_with("attn1.to_q") {
+        return if is_weight { read_linear_weight(&attn.q, false) } else { None };
+    }
+    if after.starts_with("attn1.to_k") {
+        return if is_weight { read_linear_weight(&attn.k, false) } else { None };
+    }
+    if after.starts_with("attn1.to_v") {
+        return if is_weight { read_linear_weight(&attn.v, false) } else { None };
+    }
+    if after.starts_with("attn1.to_out.0") {
+        return if is_weight {
+            read_linear_weight(&attn.to_out, false)
+        } else {
+            read_linear_bias(&attn.to_out)
+        };
+    }
+    if after.starts_with("ff.net.0.proj") {
+        return if is_weight {
+            read_linear_weight(&attn.ff_proj, false)
+        } else {
+            read_linear_bias(&attn.ff_proj)
+        };
+    }
+    if after.starts_with("ff.net.0.alpha") {
+        return if is_weight { attn.ff_alpha.val().to_data().try_to_vec::<f32>().ok() } else { None };
+    }
+    if after.starts_with("ff.net.0.beta") {
+        return if is_weight { attn.ff_beta.val().to_data().try_to_vec::<f32>().ok() } else { None };
+    }
+    if after.starts_with("ff.net.2") {
+        return if is_weight {
+            read_linear_weight(&attn.ff_out, false)
+        } else {
+            read_linear_bias(&attn.ff_out)
+        };
+    }
+    None
+}
+
+/// 读上采样算子（conv 权重/偏置，转置卷积权重）。
+fn read_sampler_weight(sampler: &UpSampler, is_weight: bool) -> Option<Vec<f32>> {
+    match sampler {
+        UpSampler::Transpose(ct) => {
+            if is_weight {
+                ct.weight.val().to_data().try_to_vec::<f32>().ok()
+            } else {
+                ct.bias.as_ref()?.val().to_data().try_to_vec::<f32>().ok()
+            }
+        }
+        UpSampler::Conv(c) => {
+            if is_weight {
+                read_conv_weight(&c.weight)
+            } else {
+                read_conv_bias(&c.bias)
+            }
+        }
+    }
+}
+
+/// 按 ONNX 语义名回读解码器某参数，返回 ONNX 布局的扁平 f32 值。
+///
+/// `name` 形如 `model.decoder.estimator.up_blocks.0.2.conv.weight`，与
+/// `apply_named_decoder_weight` 的写入目标一致。找不到对应字段返回 None。用于把
+/// 微调后的解码器权重导出回基座 ONNX。
+pub fn read_decoder_param(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec<f32>> {
+    let base = name.strip_prefix("model.decoder.estimator.")?;
+    // `ff.net.0.alpha`/`ff.net.0.beta` 是单值参数，按 weight 语义处理且保留完整子路径。
+    let alpha_beta = base.ends_with(".alpha") || base.ends_with(".beta");
+    let is_weight = alpha_beta || base.ends_with(".weight");
+    let path = if alpha_beta {
+        base
+    } else if is_weight {
+        base.strip_suffix(".weight")?
+    } else if base.ends_with(".bias") {
+        base.strip_suffix(".bias")?
+    } else {
+        return None;
+    };
+
+    if path == "time_mlp.linear_1" {
+        return if is_weight {
+            read_linear_weight(&decoder.time_mlp.linear1, true)
+        } else {
+            read_linear_bias(&decoder.time_mlp.linear1)
+        };
+    }
+    if path == "time_mlp.linear_2" {
+        return if is_weight {
+            read_linear_weight(&decoder.time_mlp.linear2, true)
+        } else {
+            read_linear_bias(&decoder.time_mlp.linear2)
+        };
+    }
+    if path.starts_with("final_block.block.0") {
+        return if is_weight {
+            read_conv_weight(&decoder.final_block.weight)
+        } else {
+            read_conv_bias(&decoder.final_block.bias)
+        };
+    }
+    if path.starts_with("final_block.block.1") {
+        return if is_weight {
+            read_groups_weight(&decoder.final_norm)
+        } else {
+            read_groups_bias(&decoder.final_norm)
+        };
+    }
+    if path == "final_proj" {
+        return if is_weight {
+            read_conv_weight(&decoder.final_proj.weight)
+        } else {
+            read_conv_bias(&decoder.final_proj.bias)
+        };
+    }
+
+    let parse_block = |prefix: &str| -> Option<(usize, String)> {
+        let rest = path.strip_prefix(prefix)?;
+        let (i, after) = rest.split_once('.')?;
+        i.parse().ok().map(|ix| (ix, after.to_string()))
+    };
+
+    if let Some((i, after)) = parse_block("down_blocks.") {
+        let (res, attn, conv) = &decoder.down[i];
+        let mut got = None;
+        if let Some(sub) = strip_tuple_index(&after) {
+            got = read_block_weight(res, attn, &sub, is_weight);
+        }
+        if got.is_some() {
+            return got;
+        }
+        // down 卷积：i=0 用 `2.conv`，i=1 用 `2`。用完整 `base`（含 weight/bias 后缀）匹配，
+        // 与写入侧一致。
+        let conv_key = format!("2.{}", if i == 0 { "conv." } else { "" });
+        if base.strip_prefix(&format!("down_blocks.{i}.")).map_or(false, |n| n.starts_with(&conv_key)) {
+            return if is_weight {
+                read_conv_weight(&conv.weight)
+            } else {
+                read_conv_bias(&conv.bias)
+            };
+        }
+        return None;
+    }
+    if let Some((i, after)) = parse_block("mid_blocks.") {
+        let (res, attn) = &decoder.mid[i];
+        if let Some(sub) = strip_tuple_index(&after) {
+            return read_block_weight(res, attn, &sub, is_weight);
+        }
+        return None;
+    }
+    if let Some((i, after)) = parse_block("up_blocks.") {
+        let (res, attn, sampler) = &decoder.up[i];
+        if let Some(sub) = strip_tuple_index(&after) {
+            let got = read_block_weight(res, attn, &sub, is_weight);
+            if got.is_some() {
+                return got;
+            }
+        }
+        let conv_name = base.strip_prefix(&format!("up_blocks.{i}."));
+        if conv_name.map_or(false, |n| n.starts_with("2")) {
+            return read_sampler_weight(sampler, is_weight);
+        }
+        return None;
+    }
+    None
+}
+
 /// 从基座 ONNX 权重构建解码器：先填命名张量（卷积、线性、偏置、时间 MLP、注意力仿射、
 /// ff 常数），再按 decoder_weight_map 把匿名常量（注意力 qkv 权重、归一化仿射）落位，
 /// 其余保留随机初值。
@@ -744,6 +1035,58 @@ mod tests {
         );
         let out: Tensor<3, Float> = decoder.forward(noisy, text, time);
         assert_eq!(out.shape().dims::<3>()[1], 80);
+    }
+
+    /// 从基座 ONNX 加载解码器后逐一回读，确认与原始 ONNX 权重一致（导出逆桥正确）。
+    #[test]
+    fn read_back_matches_onnx_original() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        if !path.exists() {
+            return;
+        }
+        let map_path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
+        let device = Device::vulkan(DeviceKind::DefaultDevice);
+        let config = BurnBaseDecoderConfig::default();
+        let decoder = from_onnx_tensors(&config, &tensors, &map_path, &device).unwrap();
+
+        let by_name: std::collections::HashMap<&str, &super::super::onnx_weights::OnnxTensor> =
+            tensors.iter().map(|t| (t.name.as_str(), t)).collect();
+
+        let mut checked = 0usize;
+        // 命名张量：所有 decoder.estimator 路径下权重均应能回读且一致。
+        for tensor in &tensors {
+            if !tensor.name.starts_with("model.decoder.estimator.") {
+                continue;
+            }
+            let read = read_decoder_param(&decoder, &tensor.name)
+                .unwrap_or_else(|| panic!("回读不到 {}", tensor.name));
+            assert_eq!(read, tensor.data, "{} 回读不一致", tensor.name);
+            checked += 1;
+        }
+        // 匿名 MatMul 常量：从映射表取 target 属于 decoder 的，通过 target 语义名回读。
+        let bytes = std::fs::read(&map_path).unwrap();
+        let map: std::collections::HashMap<String, serde_json::Value> =
+            serde_json::from_slice(&bytes).unwrap();
+        for (src, info) in &map {
+            let Some(target) = info.get("target").and_then(|v| v.as_str()) else {
+                continue;
+            };
+            if !target.starts_with("model.decoder.") {
+                continue;
+            }
+            let target = target.replace('/', ".");
+            let Some(tensor) = by_name.get(src.as_str()) else {
+                continue;
+            };
+            let read = read_decoder_param(&decoder, &target)
+                .unwrap_or_else(|| panic!("回读不到匿名权重 {target}"));
+            assert_eq!(read, tensor.data, "{target} 回读不一致");
+            checked += 1;
+        }
+        assert!(checked >= 2, "未校验到任何 decoder 权重");
     }
 }
 
