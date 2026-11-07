@@ -376,6 +376,32 @@ pub fn train_base(
         .with_grad_clipping(Some(burn::grad_clipping::GradientClippingConfig::Norm(1.0)))
         .init();
 
+    // 学习率调度：前 warmup_frac 步线性升到峰值 lr，之后沿余弦衰减到 lr*min_frac。
+    // 固定高 lr 会让 loss 在高位平台振荡且不收敛，衰减才能在末期精修到更低。
+    let peak_lr = config.learning_rate;
+    let min_frac = 0.02f64;
+    let warmup_frac = 0.05f64;
+    let warmup_steps = ((total_steps as f64 * warmup_frac).round() as usize).max(1);
+    let anneal_steps = total_steps.saturating_sub(warmup_steps).max(1);
+    let scheduler = burn::lr_scheduler::sequential::SequentialLrSchedulerConfig::new(
+        vec![
+            burn::lr_scheduler::LrSchedulerConfig::Linear(
+                burn::lr_scheduler::linear::LinearLrSchedulerConfig::new(
+                    peak_lr * min_frac,
+                    peak_lr,
+                    warmup_steps,
+                ),
+            ),
+            burn::lr_scheduler::LrSchedulerConfig::Cosine(
+                burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig::new(peak_lr, anneal_steps)
+                    .with_min_lr(peak_lr * min_frac),
+            ),
+        ],
+        vec![warmup_steps],
+    )
+    .init()
+    .map_err(anyhow::Error::msg)?;
+    let mut lr_scheduler = scheduler;
     let mut initial_loss = f32::NAN;
     let mut final_loss = f32::NAN;
     let mut step = resume_steps;
@@ -465,7 +491,8 @@ pub fn train_base(
                 let loss = (predicted - target).powf_scalar(2.0).mean();
 
                 let grads = GradientsParams::from_grads(loss.backward(), &decoder);
-                decoder = optimizer.step(config.learning_rate, decoder, grads);
+                let step_lr = lr_scheduler.step();
+                decoder = optimizer.step(step_lr, decoder, grads);
                 step += 1;
 
                 // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
