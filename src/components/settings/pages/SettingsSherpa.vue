@@ -588,7 +588,7 @@ const finetuneEpochs = ref(20);
 const finetuneLearningRate = ref(0.001);
 const finetuneCleanupEvery = ref(25);
 // 单步最大帧数：长音频按此切片段训练，0 表示不限制。
-const finetuneMaxFrames = ref(256);
+const finetuneMaxFrames = ref(192);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {

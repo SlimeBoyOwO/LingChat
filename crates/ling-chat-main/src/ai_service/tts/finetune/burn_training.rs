@@ -62,7 +62,7 @@ impl Default for BaseTrainingConfig {
             seed: 1,
             checkpoint_every: 1,
             cleanup_every: 25,
-            max_frames_per_step: 256,
+            max_frames_per_step: 192,
         }
     }
 }
@@ -464,6 +464,9 @@ pub fn train_base(
     let mut final_loss = f32::NAN;
     let mut step = resume_steps;
     let mut cancelled = false;
+    // 每轮耗时统计：按步累加，轮末打印该轮平均每步时间与步/秒，用来校准性能。
+    let mut epoch_start = std::time::Instant::now();
+    let mut epoch_step_count = 0usize;
 
     'outer: for epoch in resume_epochs..config.epochs {
         let order = make_batches(corpus.samples.len(), usize::MAX, config.seed ^ epoch as u64);
@@ -535,6 +538,7 @@ pub fn train_base(
                 let step_lr = lr_scheduler.step();
                 decoder = optimizer.step(step_lr, decoder, grads);
                 step += 1;
+                epoch_step_count += 1;
 
                 // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
                 // 移动端 OOM（Adreno 等设备对长期驻留的设备内存尤其敏感）。
@@ -637,6 +641,20 @@ pub fn train_base(
                 tracing::info!("[训练] 第 {} 轮结束，已保存检查点: {}", epoch + 1, path.display());
             }
         }
+
+        // 打印本轮每步平均耗时，供校准「步/秒」性能目标。
+        let epoch_elapsed = epoch_start.elapsed().as_secs_f64();
+        epoch_start = std::time::Instant::now();
+        if epoch_step_count > 0 {
+            let per_step = epoch_elapsed / epoch_step_count as f64;
+            let step_ms = per_step * 1000.0;
+            let per_second = 1.0 / per_step;
+            tracing::info!(
+                "[训练] 第 {} 轮耗时 {epoch_elapsed:.1}s，{epoch_step_count} 步，均值 {step_ms:.1}ms/步（{per_second:.2} 步/s）",
+                epoch + 1
+            );
+        }
+        epoch_step_count = 0;
     }
 
     tracing::info!(
