@@ -62,6 +62,8 @@ pub struct TrainingProgress {
     pub total_steps: usize,
     /// 当前损失。
     pub loss: f32,
+    /// 本轮验证集平均损失；每个 epoch 末上报一次，训练步中间为 None。
+    pub val_loss: Option<f32>,
 }
 
 /// 训练结果。
@@ -171,6 +173,7 @@ pub fn train(
                 step,
                 total_steps,
                 loss: value,
+                val_loss: None,
             });
         }
 

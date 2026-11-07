@@ -404,6 +404,9 @@
             {{ finetuneProgress.epoch }}/{{ finetuneProgress.total_epochs }} ·
             {{ finetuneProgress.step }}/{{ finetuneProgress.total_steps }} ·
             loss {{ finetuneProgress.loss.toFixed(4) }}
+            <span v-if="finetuneProgress.val_loss !== undefined" class="text-violet-300">
+              · val {{ finetuneProgress.val_loss.toFixed(4) }}
+            </span>
           </p>
           <p v-if="finetuneAnnotateProgress" class="test-hint">
             {{ t("settings.sherpaFinetune.annotating") }}
