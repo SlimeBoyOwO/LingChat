@@ -9,6 +9,71 @@ export interface FilterParams {
   glow_color: string;
 }
 
+export type LightType = "point" | "directional" | "spot" | "ambient";
+
+/**
+ * 单盏光源（2.5D 多光源扩展）。
+ *
+ * 统一扁平结构：所有几何字段都用 number 存放，不适用的字段由前端填默认值，
+ * 与 Rust 侧 `LightSource` 保持一致。
+ */
+export interface LightSource {
+  id: string;
+  type: LightType;
+  enabled: boolean;
+  color: string;
+  intensity: number;
+  x: number;
+  y: number;
+  z: number;
+  radius: number;
+  softness: number;
+  azimuth: number;
+  elevation: number;
+  cone: number;
+  penumbra: number;
+}
+
+/** 全局光影强度参数，对应 Rust `GlobalParams`。 */
+export interface LightingGlobalParams {
+  master: number;
+  ambient_blend: number;
+  albedo_protect: number;
+  soft_knee: number;
+  lift: number;
+  mono: number;
+}
+
+/** 合成层参数（光包裹 / 边缘光 / 泛光），对应 Rust `CompositingParams`。 */
+export interface LightingCompositingParams {
+  light_wrap: number;
+  rim_width: number;
+  bloom_int: number;
+  bloom_thresh: number;
+}
+
+/** 材质参数（伪法线 / 卡通着色 / 高光 / 自阴影），对应 Rust `MaterialParams`。 */
+export interface LightingMaterialParams {
+  use_normal: boolean;
+  normal_strength: number;
+  cel_thresh: number;
+  cel_softness: number;
+  spec_int: number;
+  spec_gloss: number;
+  self_shadow_int: number;
+  use_depth: boolean;
+}
+
+export type LightingShot = "fs" | "ws" | "ms" | "cu" | "ecu";
+
+/** 相机 / 景别参数，对应 Rust `CameraParams`。 */
+export interface LightingCameraParams {
+  shot: LightingShot;
+  zoom: number;
+  focus_y: number;
+  dof: number;
+}
+
 export interface LightingParams {
   character: FilterParams;
   background: FilterParams;
@@ -21,6 +86,16 @@ export interface LightingParams {
   overlay_radius: number;
   overlay_opacity: number;
   overlay_target: string;
+  /** 多光源数组；缺省或 null 表示沿用 CSS 滤镜 + 叠加层老逻辑。 */
+  lights?: LightSource[] | null;
+  /** 全局强度；缺省或 null 表示未启用 2.5D 管线。 */
+  global?: LightingGlobalParams | null;
+  /** 合成层参数。 */
+  compositing?: LightingCompositingParams | null;
+  /** 材质参数（伪法线 / 卡通着色）。 */
+  material?: LightingMaterialParams | null;
+  /** 相机 / 景别参数。 */
+  camera?: LightingCameraParams | null;
 }
 
 /** 场景室内外标注（LLM 建场景时自动标注一次，场景卡上可点击修改）。 */
