@@ -18,12 +18,14 @@
 
 import type {
   LightSource,
+  LightingCameraParams,
   LightingCompositingParams,
   LightingGlobalParams,
   LightingMaterialParams,
 } from "../../api/services/scene";
 import { BLUR_FRAGMENT_SHADER, CHARACTER_FRAGMENT_SHADER } from "./characterShader";
 import { BACKGROUND_FRAGMENT_SHADER, VERTEX_SHADER } from "./glsl";
+import { BLOOM_PREFILTER_FRAGMENT_SHADER, FINAL_COMPOSITE_FRAGMENT_SHADER } from "./postProcess";
 import { packLights } from "./lights";
 import { createFlatNormalTexture, generatePseudoDepth } from "./pseudoDepth";
 
@@ -47,6 +49,8 @@ export interface SceneLightingFrame {
   global?: LightingGlobalParams | null;
   compositing?: LightingCompositingParams | null;
   material?: LightingMaterialParams | null;
+  /** 相机参数；目前只有 `dof` 参与渲染（背景景深）。 */
+  camera?: LightingCameraParams | null;
   /** 背景平均色（sRGB 0-1）；不传则用上传背景时算好的值。 */
   averageColor?: readonly [number, number, number];
 }
@@ -123,6 +127,10 @@ const BG_UNIFORMS = [
 ];
 
 const BLUR_UNIFORMS = ["uTex", "uStep"];
+
+const BLOOM_UNIFORMS = ["uSceneTex", "uThresh"];
+
+const FINAL_UNIFORMS = ["uSceneTex", "uBloom1Tex", "uBloom2Tex", "uBloomInt", "uMono"];
 
 const CHARACTER_UNIFORMS = [
   "uLCount",
@@ -220,6 +228,8 @@ export class SceneLightingRenderer {
   private readonly bgProgram: CompiledProgram;
   private readonly blurProgram: CompiledProgram;
   private readonly charProgram: CompiledProgram;
+  private readonly bloomProgram: CompiledProgram;
+  private readonly finalProgram: CompiledProgram;
   private readonly quadBuffer: WebGLBuffer;
 
   private readonly backgroundTexture: WebGLTexture;
@@ -228,8 +238,15 @@ export class SceneLightingRenderer {
   private readonly depthTexture: WebGLTexture;
 
   private bgTarget: RenderTarget | null = null;
+  private sceneTarget: RenderTarget | null = null;
   private wrapTargetA: RenderTarget | null = null;
   private wrapTargetB: RenderTarget | null = null;
+  private dofTargetA: RenderTarget | null = null;
+  private dofTargetB: RenderTarget | null = null;
+  private bloomTarget1A: RenderTarget | null = null;
+  private bloomTarget1B: RenderTarget | null = null;
+  private bloomTarget2A: RenderTarget | null = null;
+  private bloomTarget2B: RenderTarget | null = null;
 
   private backgroundReady = false;
   private characterReady = false;
@@ -252,6 +269,8 @@ export class SceneLightingRenderer {
     this.bgProgram = linkProgram(gl, BACKGROUND_FRAGMENT_SHADER, BG_UNIFORMS);
     this.blurProgram = linkProgram(gl, BLUR_FRAGMENT_SHADER, BLUR_UNIFORMS);
     this.charProgram = linkProgram(gl, CHARACTER_FRAGMENT_SHADER, CHARACTER_UNIFORMS);
+    this.bloomProgram = linkProgram(gl, BLOOM_PREFILTER_FRAGMENT_SHADER, BLOOM_UNIFORMS);
+    this.finalProgram = linkProgram(gl, FINAL_COMPOSITE_FRAGMENT_SHADER, FINAL_UNIFORMS);
 
     const buffer = gl.createBuffer();
     if (!buffer) throw new Error("无法创建顶点缓冲");
@@ -301,15 +320,41 @@ export class SceneLightingRenderer {
     if (canvas.width === w && canvas.height === h && this.bgTarget) return;
     canvas.width = w;
     canvas.height = h;
-    for (const target of [this.bgTarget, this.wrapTargetA, this.wrapTargetB]) {
+    const allTargets = [
+      this.bgTarget,
+      this.sceneTarget,
+      this.wrapTargetA,
+      this.wrapTargetB,
+      this.dofTargetA,
+      this.dofTargetB,
+      this.bloomTarget1A,
+      this.bloomTarget1B,
+      this.bloomTarget2A,
+      this.bloomTarget2B,
+    ];
+    for (const target of allTargets) {
       if (target) {
         gl.deleteFramebuffer(target.fbo);
         gl.deleteTexture(target.tex);
       }
     }
+
+    // 分层尺寸与设计稿一致：全分辨率场景、半分辨率泛光/景深、四分之一光包裹
+    const hw = Math.max(1, w >> 1);
+    const hh = Math.max(1, h >> 1);
+    const qw = Math.max(1, w >> 2);
+    const qh = Math.max(1, h >> 2);
+
     this.bgTarget = createTarget(gl, w, h);
-    this.wrapTargetA = createTarget(gl, w, h);
-    this.wrapTargetB = createTarget(gl, w, h);
+    this.sceneTarget = createTarget(gl, w, h);
+    this.dofTargetA = createTarget(gl, hw, hh);
+    this.dofTargetB = createTarget(gl, hw, hh);
+    this.bloomTarget1A = createTarget(gl, hw, hh);
+    this.bloomTarget1B = createTarget(gl, hw, hh);
+    this.wrapTargetA = createTarget(gl, qw, qh);
+    this.wrapTargetB = createTarget(gl, qw, qh);
+    this.bloomTarget2A = createTarget(gl, qw, qh);
+    this.bloomTarget2B = createTarget(gl, qw, qh);
   }
 
   setBackground(source: TexImageSource): void {
@@ -387,14 +432,27 @@ export class SceneLightingRenderer {
     // ---- Pass 2：双向高斯模糊 -> wrapB（光包裹用）----
     this.blur(bgTarget.tex, wrapA, wrapB, WRAP_BLUR_RADIUS, WRAP_BLUR_ITERATIONS);
 
-    // ---- Pass 3：角色合成 -> 屏幕 ----
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    // ---- Pass 3：背景景深（可选）----
+    let bgSceneTex: WebGLTexture = bgTarget.tex;
+    const dof = frame.camera?.dof ?? 0;
+    const dofA = this.dofTargetA;
+    const dofB = this.dofTargetB;
+    if (dof > 0.05 && dofA && dofB) {
+      const dofScale = Math.max(0.25, (dof / 6) * (Math.min(dofB.width, dofB.height) / 360));
+      this.blur(bgTarget.tex, dofA, dofB, dofScale, 2);
+      bgSceneTex = dofB.tex;
+    }
+
+    // ---- Pass 4：角色合成 -> sceneTarget ----
+    const sceneTarget = this.sceneTarget;
+    if (!sceneTarget) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, sceneTarget.fbo);
+    gl.viewport(0, 0, sceneTarget.width, sceneTarget.height);
     gl.useProgram(this.charProgram.program);
     this.applyLightUniforms(this.charProgram, packed);
 
     this.bindTextureUnit(0, this.characterTexture);
-    this.bindTextureUnit(1, bgTarget.tex);
+    this.bindTextureUnit(1, bgSceneTex);
     this.bindTextureUnit(2, wrapB.tex);
     this.bindTextureUnit(3, this.normalTexture);
     this.bindTextureUnit(4, this.depthTexture);
@@ -429,6 +487,45 @@ export class SceneLightingRenderer {
     gl.uniform1f(cu.uRimWidth ?? null, compositing.rim_width);
     gl.uniform1f(cu.uCharOnly ?? null, this.characterReady ? 0 : 1);
     gl.uniform3f(cu.uBgAvgSrgb ?? null, avg[0], avg[1], avg[2]);
+    this.drawQuad();
+
+    // ---- Pass 5：亮部提取 + 两级泛光 ----
+    let bloom1Tex: WebGLTexture | null = null;
+    let bloom2Tex: WebGLTexture | null = null;
+    const b1a = this.bloomTarget1A;
+    const b1b = this.bloomTarget1B;
+    const b2a = this.bloomTarget2A;
+    const b2b = this.bloomTarget2B;
+    if (compositing.bloom_int > 0.005 && b1a && b1b && b2a && b2b && dofA) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, b1a.fbo);
+      gl.viewport(0, 0, b1a.width, b1a.height);
+      gl.useProgram(this.bloomProgram.program);
+      this.bindTextureUnit(0, sceneTarget.tex);
+      gl.uniform1i(this.bloomProgram.uniforms.uSceneTex ?? null, 0);
+      gl.uniform1f(this.bloomProgram.uniforms.uThresh ?? null, compositing.bloom_thresh);
+      this.drawQuad();
+
+      // 第一级：小半径，给高光描边；结果留在 b1b
+      this.blur(b1a.tex, dofA, b1b, 1.25, 2);
+      // 第二级：大半径，铺成雾状光晕；结果留在 b2b
+      this.blur(b1b.tex, b2a, b2b, 2.25, 3);
+      bloom1Tex = b1b.tex;
+      bloom2Tex = b2b.tex;
+    }
+
+    // ---- Pass 6：最终合成 -> 屏幕 ----
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.useProgram(this.finalProgram.program);
+    const fu = this.finalProgram.uniforms;
+    this.bindTextureUnit(0, sceneTarget.tex);
+    this.bindTextureUnit(1, bloom1Tex ?? sceneTarget.tex);
+    this.bindTextureUnit(2, bloom2Tex ?? sceneTarget.tex);
+    gl.uniform1i(fu.uSceneTex ?? null, 0);
+    gl.uniform1i(fu.uBloom1Tex ?? null, 1);
+    gl.uniform1i(fu.uBloom2Tex ?? null, 2);
+    gl.uniform1f(fu.uBloomInt ?? null, bloom1Tex ? compositing.bloom_int : 0);
+    gl.uniform1f(fu.uMono ?? null, globalParams.mono);
     this.drawQuad();
   }
 
@@ -498,7 +595,19 @@ export class SceneLightingRenderer {
   dispose(): void {
     if (this.disposed) return;
     const gl = this.gl;
-    for (const target of [this.bgTarget, this.wrapTargetA, this.wrapTargetB]) {
+    const allTargets = [
+      this.bgTarget,
+      this.sceneTarget,
+      this.wrapTargetA,
+      this.wrapTargetB,
+      this.dofTargetA,
+      this.dofTargetB,
+      this.bloomTarget1A,
+      this.bloomTarget1B,
+      this.bloomTarget2A,
+      this.bloomTarget2B,
+    ];
+    for (const target of allTargets) {
       if (target) {
         gl.deleteFramebuffer(target.fbo);
         gl.deleteTexture(target.tex);
@@ -507,6 +616,8 @@ export class SceneLightingRenderer {
     gl.deleteProgram(this.bgProgram.program);
     gl.deleteProgram(this.blurProgram.program);
     gl.deleteProgram(this.charProgram.program);
+    gl.deleteProgram(this.bloomProgram.program);
+    gl.deleteProgram(this.finalProgram.program);
     gl.deleteBuffer(this.quadBuffer);
     for (const tex of [
       this.backgroundTexture,
