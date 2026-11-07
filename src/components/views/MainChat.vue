@@ -9,6 +9,7 @@
       <FullAccessWarning />
     </div>
     <GameBackground></GameBackground>
+    <LightingStage />
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <GameRolesStage
       ref="gameAvatarRef"
@@ -76,7 +77,7 @@ import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { Button } from "../base";
-import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
+import { GameBackground, GameDialog, GameRolesStage, LightingStage } from "../game/standard";
 import LoadingTransition from "./LoadingTransition.vue";
 
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";

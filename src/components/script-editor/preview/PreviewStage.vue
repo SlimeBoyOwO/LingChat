@@ -24,6 +24,7 @@
                另写一套预览解释器的兑现点：这四个组件读的是同一份 store，
                引擎 emit 的事件经 eventQueue 进来后，表现与正式游玩逐帧一致。 -->
           <GameBackground />
+          <LightingStage />
           <GameRolesStage :respect-plugin-voice-playback="false" />
           <GameExtraUI />
           <GameDialog />
@@ -59,7 +60,12 @@
 <script setup lang="ts">
 import { computed, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { GameBackground, GameDialog, GameRolesStage } from "@/components/game/standard";
+import {
+  GameBackground,
+  GameDialog,
+  GameRolesStage,
+  LightingStage,
+} from "@/components/game/standard";
 import GameExtraUI from "@/components/game/standard/GameExtraUI.vue";
 import { eventQueue } from "@/core/events/event-queue";
 import { useScriptEditorStore } from "@/stores/modules/script-editor";
