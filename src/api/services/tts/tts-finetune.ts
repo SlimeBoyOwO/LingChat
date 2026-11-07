@@ -104,8 +104,8 @@ export function trainFinetuneDataset(
   baseModelDir: string,
   epochs = 20,
   learningRate = 0.001,
-  cleanupEvery = 50,
-  maxFramesPerStep = 512,
+  cleanupEvery = 25,
+  maxFramesPerStep = 256,
 ) {
   return invoke<FinetuneTrainOutcome>("tts_finetune_train", {
     datasetId,
