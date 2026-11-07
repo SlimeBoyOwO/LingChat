@@ -144,8 +144,11 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # Linux：sherpa 走官方 shared 包、其 ORT 在 .so 里，与 ort 静态链接的
           # ORT 错开，不再有重复符号；保留 mold 加速链接。
-          RUSTFLAGS: |
+          # RUSTFLAGS 会覆盖 .cargo/config.toml 的 target rustflags，aarch64
+          # 必须显式带上 +fp16,+fhm，否则 gemm-f16 的内联汇编报 fullfp16。
+          RUSTFLAGS: >-
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
+            ${{ matrix.platform == 'linux-aarch64' && '-C target-feature=+fp16,+fhm' || '' }}
             ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
