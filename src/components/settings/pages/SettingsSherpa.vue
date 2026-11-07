@@ -586,9 +586,9 @@ const finetuneAnnotateProgress = ref<FinetuneAnnotateProgress | null>(null);
 // 微调训练参数：轮次、学习率、设备内存回收间隔（步）。
 const finetuneEpochs = ref(20);
 const finetuneLearningRate = ref(0.001);
-const finetuneCleanupEvery = ref(50);
+const finetuneCleanupEvery = ref(25);
 // 单步最大帧数：长音频按此切片段训练，0 表示不限制。
-const finetuneMaxFrames = ref(512);
+const finetuneMaxFrames = ref(256);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {

@@ -168,8 +168,8 @@ pub async fn tts_finetune_train(
     let config = BurnBaseTrainingConfig {
         epochs: epochs.unwrap_or(20).max(1),
         learning_rate: learning_rate.unwrap_or(1e-3),
-        cleanup_every: cleanup_every.unwrap_or(50),
-        max_frames_per_step: max_frames_per_step.unwrap_or(512),
+        cleanup_every: cleanup_every.unwrap_or(25),
+        max_frames_per_step: max_frames_per_step.unwrap_or(256),
         ..Default::default()
     };
 

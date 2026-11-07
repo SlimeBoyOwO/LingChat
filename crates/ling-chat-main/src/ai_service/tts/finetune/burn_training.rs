@@ -61,8 +61,8 @@ impl Default for BaseTrainingConfig {
             learning_rate: 1e-3,
             seed: 1,
             checkpoint_every: 1,
-            cleanup_every: 50,
-            max_frames_per_step: 512,
+            cleanup_every: 25,
+            max_frames_per_step: 256,
         }
     }
 }
@@ -380,6 +380,36 @@ pub fn train_base(
         priors.push(expanded);
     }
 
+    // 训练过程中 mel 与展开先验的内容不变（编码器冻结、二者都是不可微输入），
+    // 且不参与反传。一次性搬上设备并按样本缓存，让每个 epoch 的训练与验证循环
+    // 直接引用计数复用，避免每轮反复 from_data 搬移这类纯重复开销。显存占用随
+    // 样本量线性（每样本存两片 80 通道张量），对分钟级微调语料规模（数十句）
+    // 远小于单步峰值，可接受。
+    let mel_priors: Vec<(Tensor<3>, Tensor<3>)> = corpus
+        .samples
+        .iter()
+        .enumerate()
+        .map(|(index, sample)| {
+            let mel_ch = sample.mel[0].len();
+            let frames = sample.frames();
+            let mel_flat: Vec<f32> = sample
+                .mel
+                .iter()
+                .flat_map(|frame| frame.iter().copied())
+                .collect();
+            let mel_full = Tensor::<3>::from_data(
+                TensorData::new(mel_flat, [1, frames, mel_ch]),
+                &train_dev,
+            )
+            .transpose();
+            let prior_full = Tensor::<3>::from_data(
+                TensorData::new(priors[index].clone(), [1, mel_ch, frames]),
+                &train_dev,
+            );
+            (mel_full, prior_full)
+        })
+        .collect();
+
     // 每个样本按单步帧数预算切成若干片段，总步数按片段数累计，进度条才准。
     // 验证集不参与梯度更新，步骤数只按训练集累计。
     let val_indices = split_val_indices(corpus.samples.len(), config.seed);
@@ -455,27 +485,7 @@ pub fn train_base(
             let sample = &corpus.samples[index];
             let mel_ch = sample.mel[0].len();
             let frames = sample.frames();
-            let prior_values = &priors[index];
-
-            // mel 展开成 [1, 80, frames]（先按帧序的行优先，再转成通道在前的布局）。
-            // 整条样本只构建一次，长样本切片段时切片复用，避免每步重复搬运。
-            let mel_flat: Vec<f32> = sample
-                .mel
-                .iter()
-                .flat_map(|frame| frame.iter().copied())
-                .collect();
-            // mel 行优先 [frames, mel_ch] 展开成 [1, frames, mel_ch] 再转置为
-            // [1, mel_ch, frames]，与 candle 版行为一致。
-            let mel_full = Tensor::<3>::from_data(
-                TensorData::new(mel_flat, [1, frames, mel_ch]),
-                &train_dev,
-            )
-            .transpose();
-
-            let prior_full = Tensor::<3>::from_data(
-                TensorData::new(prior_values.clone(), [1, mel_ch, frames]),
-                &train_dev,
-            );
+            let (mel_full, prior_full) = &mel_priors[index];
 
             // 沿时间轴切片：片段长度不超过预算，避免长音频的单步显存峰值爆掉。
             let chunk = if config.max_frames_per_step == 0 {
@@ -567,21 +577,7 @@ pub fn train_base(
                 let vsample = &corpus.samples[*vindex];
                 let vmel_ch = vsample.mel[0].len();
                 let vframes = vsample.frames();
-                let vprior_values = &priors[*vindex];
-                let vmel_flat: Vec<f32> = vsample
-                    .mel
-                    .iter()
-                    .flat_map(|frame| frame.iter().copied())
-                    .collect();
-                let vmel_full = Tensor::<3>::from_data(
-                    TensorData::new(vmel_flat, [1, vframes, vmel_ch]),
-                    &train_dev,
-                )
-                .transpose();
-                let vprior_full = Tensor::<3>::from_data(
-                    TensorData::new(vprior_values.clone(), [1, vmel_ch, vframes]),
-                    &train_dev,
-                );
+                let (vmel_full, vprior_full) = &mel_priors[*vindex];
                 let vchunk = if config.max_frames_per_step == 0 {
                     vframes
                 } else {
