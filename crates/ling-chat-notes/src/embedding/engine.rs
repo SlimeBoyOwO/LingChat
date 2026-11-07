@@ -463,9 +463,14 @@ impl Embedder for EmbeddingEngine {
 
 #[cfg(test)]
 mod tests {
+    use super::l2_normalize;
+
+    // 以下两项只被 Windows 上的 embedding_smoke 测试使用。
+    #[cfg(target_os = "windows")]
     use std::path::PathBuf;
 
-    use super::{EXPECTED_DIMENSION, EmbeddingEngine, l2_normalize};
+    #[cfg(target_os = "windows")]
+    use super::{EXPECTED_DIMENSION, EmbeddingEngine};
 
     #[test]
     fn l2_normalize_produces_unit_vector() {
@@ -480,6 +485,9 @@ mod tests {
         assert!(v.iter().all(|x| x.is_finite()));
     }
 
+    /// 该测试（以及它的路径助手）依赖 Windows 上的 onnxruntime.dll：`ort::init_from`
+    /// 只在 Windows 的 `load-dynamic` 模式下存在，其它平台编译不过。
+    #[cfg(target_os = "windows")]
     fn repo_path(rel: &str) -> PathBuf {
         // 本 crate 位于 <repo>/crates/ling-chat-notes
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -495,6 +503,7 @@ mod tests {
     /// `ort::init_from` 只应初始化一次）：
     /// `cargo test -p ling-chat-notes --lib --ignored embedding_smoke -- --exact --nocapture`
     #[test]
+    #[cfg(target_os = "windows")]
     #[ignore = "需要已下载的嵌入模型与 onnxruntime.dll"]
     fn embedding_smoke_returns_normalized_semantic_vectors() {
         // 只有 Windows 的 load-dynamic 模式暴露 ort::init_from；其余平台静态链接，

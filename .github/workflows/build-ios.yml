@@ -29,11 +29,13 @@ jobs:
       - name: 拉取 LFS 资源
         # checkout(lfs: false) 后手动拉取。必须覆盖全部 LFS 目录：
         # - data/game_data/**：游戏数据（进 data.7z）
+        # - data/third_party/**：运行时模型与 ZipVoice 音素表（进 data.7z）。音素表走
+        #   LFS，漏拉就是 130 字节指针，合成时直接报「先执行 git lfs pull」
         # - src-tauri/icons/**：应用图标
         # - public/** + src/assets/**：前端静态资源（字体/背景插画/Tip 图标/音频），
         #   漏拉会导致 vite 把 LFS 指针文本拷进 dist，App 内字体/背景/图标缺失
         run: |
-          git lfs pull --include="data/game_data/**,src-tauri/icons/**,public/**,src/assets/**"
+          git lfs pull --include="data/**,src-tauri/icons/**,public/**,src/assets/**"
 
       - uses: pnpm/setup@v1
         with:

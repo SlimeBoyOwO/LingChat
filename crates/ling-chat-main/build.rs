@@ -24,4 +24,70 @@ fn main() {
             "cargo:rustc-link-arg=/MANIFESTDEPENDENCY:type='win32' name='Microsoft.Windows.Common-Controls' version='6.0.0.0' processorArchitecture='*' publicKeyToken='6595b64144ccf1df' language='*'"
         );
     }
+
+    emit_sherpa_provider();
+}
+
+/// 发射编译期常量 `SHERPA_ONNX_PROVIDER`（`dml` / `nnapi` / `cpu`），供
+/// `adapters/sherpa_onnx.rs` 判断「链接进来的这套 sherpa-onnx 到底有没有编 GPU 后端」。
+///
+/// 判定依据是 `SHERPA_ONNX_LIB_DIR` 里那份 `sherpa-build.json` —— 由自编脚本在构建时
+/// 写出（`scripts/build-desktop-sherpa-dml.mjs` 写 `dml`、`scripts/build-android-sherpa-nnapi.mjs`
+/// 写 `nnapi`）。以**实际链接的库**为准：目录里带标记才算 GPU 版；没有标记（上游 build.rs
+/// 自己下官方预编译包，或者直接 cargo build）一律按 CPU 处理 —— 官方包没编 DirectML /
+/// NNAPI，把 provider 交给 sherpa 只会静默回落，等于给用户一个假的开关。
+fn emit_sherpa_provider() {
+    println!("cargo:rerun-if-env-changed=SHERPA_ONNX_LIB_DIR");
+    println!("cargo:rerun-if-env-changed=SHERPA_ONNX_GPU");
+
+    let lib_dir = std::env::var_os("SHERPA_ONNX_LIB_DIR").map(std::path::PathBuf::from);
+    let provider = lib_dir
+        .as_ref()
+        .map(|dir| dir.join("sherpa-build.json"))
+        .filter(|marker| marker.is_file())
+        .and_then(|marker| std::fs::read_to_string(marker).ok())
+        .and_then(|text| parse_sherpa_build_provider(&text));
+
+    let provider = match provider.as_deref() {
+        Some("dml") => "dml",
+        Some("nnapi") => "nnapi",
+        Some(other) => {
+            println!(
+                "cargo:warning=sherpa-build.json 里的 provider={other} 无法识别，本次按 CPU 处理"
+            );
+            "cpu"
+        },
+        None => {
+            let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+            if target_os == "android" {
+                println!(
+                    "cargo:warning=这份构建链接的是没编 NNAPI 的 sherpa（官方预编译包按 API 21 编），\
+                     Android 的「GPU 推理」开关会诚实地回落 CPU。要 GPU 请用 `pnpm android:build`\
+                     （会自编 NNAPI 版，见 scripts/build-android-sherpa-nnapi.mjs）。"
+                );
+            } else if std::env::var("SHERPA_ONNX_GPU")
+                .is_ok_and(|v| v.trim().eq_ignore_ascii_case("dml"))
+            {
+                println!(
+                    "cargo:warning=SHERPA_ONNX_GPU=dml，但 SHERPA_ONNX_LIB_DIR 里没有 \
+                     sherpa-build.json（不像 DirectML 版产物），本次按 CPU 编译。\
+                     请用 `pnpm tauri:build:win`。"
+                );
+            }
+            "cpu"
+        },
+    };
+
+    println!("cargo:rustc-env=SHERPA_ONNX_PROVIDER={provider}");
+}
+
+/// 从 sherpa-build.json 里抠出 `provider` 的值。
+/// 只有一个键要读，不值得为它给 build.rs 引 JSON 依赖。
+fn parse_sherpa_build_provider(text: &str) -> Option<String> {
+    const KEY: &str = "\"provider\"";
+    let rest = &text[text.find(KEY)? + KEY.len()..];
+    let rest = rest[rest.find(':')? + 1..].trim_start();
+    let rest = rest.strip_prefix('"')?;
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
 }
