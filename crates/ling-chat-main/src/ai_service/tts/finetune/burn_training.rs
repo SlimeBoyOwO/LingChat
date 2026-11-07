@@ -81,6 +81,8 @@ pub struct BaseTrainingProgress {
     pub total_steps: usize,
     /// 当前损失。
     pub loss: f32,
+    /// 本轮验证集平均损失；训练步中间为 None，每轮末上报一次。
+    pub val_loss: Option<f32>,
 }
 
 /// 训练结果。
@@ -120,6 +122,28 @@ pub struct TrainState {
 /// 例如 `…/checkpoint.bpk` → `…/train-state.json`，与权重检查点放在同目录。
 fn train_state_path(checkpoint_path: &Path) -> PathBuf {
     checkpoint_path.with_file_name("train-state.json")
+}
+
+/// 验证集占原始样本量的比例（固定 20%）。
+const VAL_SPLIT_RATIO: f64 = 0.2;
+
+/// 从样本总数里按固定种子随机抽取验证集下标（其余为训练集）。
+///
+/// 用 xorshift 打乱全部下标后取前若干条为验证，保证划分可复现、且与训练
+/// 循环的按轮打乱解耦（训练每轮还会再打乱训练集内的顺序）。校验集合用
+/// `HashSet` 以便循环内 O(1) 判断某条样本是否属于验证集。
+fn split_val_indices(sample_count: usize, seed: u64) -> std::collections::HashSet<usize> {
+    let mut indices: Vec<usize> = (0..sample_count).collect();
+    let mut state = seed | 0x9E37_79B9;
+    for i in (1..sample_count).rev() {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        let j = (state % (i as u64 + 1)) as usize;
+        indices.swap(i, j);
+    }
+    let val_count = ((sample_count as f64) * VAL_SPLIT_RATIO).round() as usize;
+    indices.into_iter().take(val_count).collect()
 }
 
 /// 保存续训状态。写临时文件再改名，避免中途崩溃留下半截 JSON。
@@ -357,10 +381,14 @@ pub fn train_base(
     }
 
     // 每个样本按单步帧数预算切成若干片段，总步数按片段数累计，进度条才准。
+    // 验证集不参与梯度更新，步骤数只按训练集累计。
+    let val_indices = split_val_indices(corpus.samples.len(), config.seed);
     let chunk_counts: Vec<usize> = corpus
         .samples
         .iter()
-        .map(|sample| chunk_count(sample.frames(), config.max_frames_per_step))
+        .enumerate()
+        .filter(|(i, _)| !val_indices.contains(i))
+        .map(|(_, sample)| chunk_count(sample.frames(), config.max_frames_per_step))
         .collect();
     let steps_per_epoch: usize = chunk_counts.iter().sum();
     let total_steps = config.epochs * steps_per_epoch;
@@ -412,6 +440,9 @@ pub fn train_base(
         let order: Vec<usize> = order.into_iter().flatten().collect();
 
         for index in order {
+            if val_indices.contains(&index) {
+                continue;
+            }
             if cancel.is_some_and(|token| token.is_cancelled()) {
                 cancelled = true;
                 tracing::info!(
@@ -516,11 +547,84 @@ pub fn train_base(
                         step,
                         total_steps,
                         loss: value,
+                        val_loss: None,
                     });
                 }
 
                 start += len;
             }
+        }
+
+        // 每轮末在验证集上算一次平均 CFM 损失（不反传，用于观察过拟合与泛化）。
+        // 与训练同口径：每个样本随机采样时间 t，MSE 取整条（长样本逐 chunk）均摊。
+        if !val_indices.is_empty() {
+            let mut val_sum = 0.0f64;
+            let mut val_n = 0usize;
+            for vindex in &val_indices {
+                if cancel.is_some_and(|token| token.is_cancelled()) {
+                    break;
+                }
+                let vsample = &corpus.samples[*vindex];
+                let vmel_ch = vsample.mel[0].len();
+                let vframes = vsample.frames();
+                let vprior_values = &priors[*vindex];
+                let vmel_flat: Vec<f32> = vsample
+                    .mel
+                    .iter()
+                    .flat_map(|frame| frame.iter().copied())
+                    .collect();
+                let vmel_full = Tensor::<3>::from_data(
+                    TensorData::new(vmel_flat, [1, vframes, vmel_ch]),
+                    &train_dev,
+                )
+                .transpose();
+                let vprior_full = Tensor::<3>::from_data(
+                    TensorData::new(vprior_values.clone(), [1, vmel_ch, vframes]),
+                    &train_dev,
+                );
+                let vchunk = if config.max_frames_per_step == 0 {
+                    vframes
+                } else {
+                    config.max_frames_per_step.min(vframes).max(1)
+                };
+                let mut vstart = 0usize;
+                while vstart < vframes {
+                    let vlen = vchunk.min(vframes - vstart);
+                    let (vmel, vprior) = if vlen == vframes {
+                        (vmel_full.clone(), vprior_full.clone())
+                    } else {
+                        (
+                            vmel_full.clone().narrow(2, vstart, vlen),
+                            vprior_full.clone().narrow(2, vstart, vlen),
+                        )
+                    };
+                    let vnoise = Tensor::<3>::random(
+                        [1, vlen, vmel_ch],
+                        Distribution::Normal(0.0, 1.0),
+                        &train_dev,
+                    )
+                    .transpose();
+                    // 与训练同一随机源但用独立种子偏移，避免与训练步的时间采样重合。
+                    let vtime = rand_uniform(config.seed ^ step as u64 ^ 0xC0DE);
+                    let (vnoisy, vtarget) = cfm_noise(&vmel, &vnoise, vtime, 1e-4);
+                    let vtime_t = base_time_embed(vtime, &train_dev);
+                    let vpred = decoder.forward(vnoisy, vprior, vtime_t);
+                    let vloss = (vpred - vtarget).powf_scalar(2.0).mean();
+                    val_sum += vloss.to_data().try_to_vec::<f32>()?[0] as f64;
+                    val_n += 1;
+                    vstart += vlen;
+                }
+            }
+            let val_loss = if val_n > 0 { val_sum / val_n as f64 } else { f32::NAN as f64 };
+            on_progress(&BaseTrainingProgress {
+                epoch: epoch + 1,
+                total_epochs: config.epochs,
+                step,
+                total_steps,
+                loss: final_loss,
+                val_loss: Some(val_loss as f32),
+            });
+            tracing::info!("[训练] 第 {} 轮验证集 loss={val_loss:.6}", epoch + 1);
         }
 
         if config.checkpoint_every > 0 && (epoch + 1) % config.checkpoint_every == 0 {

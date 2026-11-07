@@ -206,6 +206,7 @@ pub async fn tts_finetune_train(
                         step: progress.step,
                         total_steps: progress.total_steps,
                         loss: progress.loss,
+                        val_loss: progress.val_loss,
                     };
                     let _ = app.emit("tts:finetune-progress", legacy);
                 },

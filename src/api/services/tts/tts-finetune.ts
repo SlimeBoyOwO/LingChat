@@ -66,6 +66,8 @@ export interface FinetuneTrainingProgress {
   step: number;
   total_steps: number;
   loss: number;
+  /** 本轮验证集平均损失；每个 epoch 末上报一次，中间为 undefined。 */
+  val_loss?: number;
 }
 
 export interface FinetuneTrainOutcome {
