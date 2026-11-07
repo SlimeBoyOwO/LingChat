@@ -21,6 +21,8 @@ export interface LightSource {
   id: string;
   type: LightType;
   enabled: boolean;
+  /** 主光标记：纯 UI 语义，不参与光照计算，但影响角色侧的主方向权重。 */
+  is_key?: boolean;
   color: string;
   intensity: number;
   x: number;
