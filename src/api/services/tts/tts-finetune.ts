@@ -106,6 +106,8 @@ export function trainFinetuneDataset(
   learningRate = 0.001,
   cleanupEvery = 25,
   maxFramesPerStep = 192,
+  loraEnabled = false,
+  loraRank = 8,
 ) {
   return invoke<FinetuneTrainOutcome>("tts_finetune_train", {
     datasetId,
@@ -114,6 +116,8 @@ export function trainFinetuneDataset(
     learningRate,
     cleanupEvery,
     maxFramesPerStep,
+    loraEnabled,
+    loraRank,
   });
 }
 

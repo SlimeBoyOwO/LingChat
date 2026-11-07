@@ -52,6 +52,10 @@ pub struct BaseTrainingConfig {
     /// 峰值而直接崩掉。这里把长样本沿时间轴切成若干不超过该帧数的片段分别
     /// 训练，既不对素材做时长裁剪，又让单步峰值封顶。
     pub max_frames_per_step: usize,
+    /// 是否用 LoRA 微调：开则只训低秩旁路（冻结其余参数），参数与显存占用远小于全量。
+    pub lora_enabled: bool,
+    /// LoRA 秩；数值越小旁路参数越少、越省，但表达能力也越低。
+    pub lora_rank: usize,
 }
 
 impl Default for BaseTrainingConfig {
@@ -63,6 +67,8 @@ impl Default for BaseTrainingConfig {
             checkpoint_every: 1,
             cleanup_every: 25,
             max_frames_per_step: 192,
+            lora_enabled: false,
+            lora_rank: 8,
         }
     }
 }
@@ -186,6 +192,8 @@ fn train_fingerprint(corpus: &Corpus, base_model: &Path, config: &BaseTrainingCo
     (config.learning_rate as u64).hash(&mut hasher);
     config.max_frames_per_step.hash(&mut hasher);
     config.seed.hash(&mut hasher);
+    config.lora_enabled.hash(&mut hasher);
+    config.lora_rank.hash(&mut hasher);
     base_size.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
@@ -333,6 +341,25 @@ pub fn train_base(
     let mut decoder = load_decoder_from_onnx(decoder_config, &tensors, map_path, &train_dev)
         .map_err(anyhow::Error::msg)?;
     decoder = decoder.train();
+
+    // 可选 LoRA：给自注意力 q/k/v/to_out 与 FFN 的二维权重挂低秩旁路，并冻结其余参数。
+    // burn 的 apply_lora 让 Linear 取值时自动合成 base + scale*(a@b)，前向无需改动；
+    // backward 只有旁路收到梯度，导出读到的有效权重也已把旁路折回基座，推理端零改动。
+    if config.lora_enabled {
+        use burn::module::{Lora, Module};
+        let lora_paths = [
+            ".q.weight", ".k.weight", ".v.weight", ".to_out.weight", ".ff_proj.weight",
+            ".ff_out.weight",
+        ];
+        decoder = decoder.apply_lora(
+            Lora::new(config.lora_rank, 1.0)
+                .set_param_group(burn::module::ParamGroup::from_any_predicates(lora_paths.to_vec())),
+        );
+        tracing::info!(
+            "[训练] 已启用 LoRA 微调（秩 {}），仅自注意力与 FFN 旁路参与更新",
+            config.lora_rank
+        );
+    }
 
     // 续训：如果该数据集已训过一部分且配方一致，就接着上次的权重继续，而不是
     // 从基座重推。中途崩溃或主动取消后重新开始训练，已完成的轮次就保留下来。
@@ -750,6 +777,8 @@ mod tests {
             checkpoint_every: 0,
             cleanup_every: 0,
             max_frames_per_step: 0,
+            lora_enabled: false,
+            lora_rank: 8,
         };
         let outcome = train_base(
             &corpus,
@@ -822,6 +851,8 @@ mod tests {
                 checkpoint_every: 1,
                 cleanup_every: 0,
                 max_frames_per_step: 0,
+                lora_enabled: false,
+                lora_rank: 8,
             };
             train_base(
                 &corpus,

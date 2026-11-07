@@ -1682,6 +1682,8 @@ export default {
     learningRate: "學習率",
     cleanupEvery: "記憶體回收間隔（步）",
     maxFrames: "單步最大幀數（0 為不限）",
+    lora: "LoRA 微調",
+    loraRank: "LoRA 秩",
     resumedFrom: "已從第 {epoch} 輪繼續上次訓練。",
   },
   sherpa: {
