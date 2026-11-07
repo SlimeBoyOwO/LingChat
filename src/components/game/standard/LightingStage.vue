@@ -12,7 +12,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { resolveBackgroundSrc } from "@/utils/background-src";
@@ -92,10 +92,29 @@ function teardown(): void {
 function loadBackground(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
+    // Tauri 的 asset 协议与页面不同源，不声明跨域会在 texImage2D 时抛 SecurityError
+    img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => reject(new Error(`背景加载失败: ${src}`));
     img.src = src;
   });
+}
+
+async function applyBackground(src: string): Promise<void> {
+  if (!src || !renderer) return;
+  const token = ++loadToken;
+  try {
+    const img = await loadBackground(src);
+    // 期间又换了背景或实例已销毁，丢弃这次结果
+    if (token !== loadToken || !renderer) return;
+    background = img;
+    renderer.setBackground(img);
+    draw();
+  } catch (err) {
+    // 背景图拿不到（协议不支持 / 文件缺失）时让出背景层，宁可退回 CSS 路径也不要留一块黑板
+    console.warn("[lighting] 背景加载失败，回退到 CSS 光影", src, err);
+    teardown();
+  }
 }
 
 async function start(): Promise<void> {
@@ -103,6 +122,11 @@ async function start(): Promise<void> {
   if (!canvas) return;
   if (!hasLights.value) return;
   if (!BackgroundLightingRenderer.isSupported()) return;
+
+  // 先让画布可见，否则 display:none 下 clientWidth 为 0，尺寸会被量成 1x1
+  enabled.value = true;
+  await nextTick();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
   try {
     renderer = new BackgroundLightingRenderer(canvas);
@@ -119,40 +143,23 @@ async function start(): Promise<void> {
   observer = new ResizeObserver(() => draw());
   observer.observe(canvas);
 
-  enabled.value = true;
   if (!acquired) {
     acquireLightingStage();
     acquired = true;
   }
+
+  // immediate 的 watch 在 renderer 就绪前就跑过了，这里必须补一次
+  await applyBackground(backgroundSrc.value);
+  draw();
 }
 
-watch(
-  backgroundSrc,
-  async (src) => {
-    const token = ++loadToken;
-    if (!src || !renderer) return;
-    try {
-      const img = await loadBackground(src);
-      if (token !== loadToken) return; // 期间又换了背景，丢弃这次结果
-      background = img;
-      renderer.setBackground(img);
-      draw();
-    } catch (err) {
-      console.warn("[lighting]", err);
-    }
-  },
-  { immediate: true },
-);
+watch(backgroundSrc, (src) => void applyBackground(src));
 
 watch(
   hasLights,
   async (has) => {
-    if (has) {
-      await start();
-      draw();
-    } else {
-      teardown();
-    }
+    if (has) await start();
+    else teardown();
   },
   { immediate: true },
 );
