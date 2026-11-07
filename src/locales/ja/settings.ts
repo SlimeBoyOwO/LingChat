@@ -1504,6 +1504,8 @@ export default {
     learningRate: "学習率",
     cleanupEvery: "メモリ回収間隔（ステップ）",
     maxFrames: "1 ステップの最大フレーム数（0 で無制限）",
+    lora: "LoRA ファインチューニング",
+    loraRank: "LoRA ランク",
     resumedFrom: "前回の訓練を {epoch} エポック目から再開しました。",
   },
   sherpa: {

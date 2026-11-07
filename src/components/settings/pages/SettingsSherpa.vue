@@ -396,6 +396,23 @@
               min="0"
               class="config-input test-input"
             />
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.lora") }}
+            </label>
+            <input
+              v-model="finetuneLora"
+              type="checkbox"
+              class="config-input test-input"
+            />
+            <label class="config-label">
+              {{ t("settings.sherpaFinetune.loraRank") }}
+            </label>
+            <input
+              v-model.number="finetuneLoraRank"
+              type="number"
+              min="1"
+              class="config-input test-input"
+            />
           </div>
           <p v-if="finetuneTraining" class="test-hint">
             {{ t("settings.sherpaFinetune.training") }}
@@ -589,6 +606,9 @@ const finetuneLearningRate = ref(0.001);
 const finetuneCleanupEvery = ref(25);
 // 单步最大帧数：长音频按此切片段训练，0 表示不限制。
 const finetuneMaxFrames = ref(192);
+// LoRA 微调：开则只训低秩旁路，参数与显存占用远小于全量。
+const finetuneLora = ref(false);
+const finetuneLoraRank = ref(8);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {
@@ -642,6 +662,8 @@ async function startFinetuneTraining(datasetId: string) {
       finetuneLearningRate.value,
       finetuneCleanupEvery.value,
       finetuneMaxFrames.value,
+      finetuneLora.value,
+      finetuneLoraRank.value,
     );
     // 检测到续训时给出提示，让用户知道这次是接着上次进度继续，而不是从头开始。
     if (outcome.resumed_from > 0) {
