@@ -48,3 +48,5 @@ impl Default for SkillAgentState {
         }
     }
 }
+
+#[cfg(test)] mod perf_probe;

@@ -172,6 +172,8 @@ pub async fn run_chat(
             .iter()
             .any(|(_, _, h)| matches!(h, role::Handoff::Prerequisite { .. }));
 
+    // 技能索引一轮只扫一次：一轮内技能库不会变，逐项重扫只是重复 canonicalize + 读全文。
+    let skills_xml: std::sync::OnceLock<String> = std::sync::OnceLock::new();
     let mut cursor = 0usize;
     while cursor < planned.len() {
         let (idx, task, handoff) = planned[cursor];
@@ -216,12 +218,14 @@ pub async fn run_chat(
         let target = plan.items.get(idx).map(|i| i.target.as_str()).unwrap_or("");
 
         let skills_block = if allowed.contains(&"read_skill") {
-            skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir))
+            skills_xml
+                .get_or_init(|| skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir)))
+                .as_str()
         } else {
-            String::new()
+            ""
         };
 
-        let task_block = stage::prompt::build_task_block(&stage::prompt::TaskBlockInput {
+        let parts = stage::prompt::build_task_parts(&stage::prompt::TaskBlockInput {
             task,
             handoff,
             plan: &plan,
@@ -236,9 +240,9 @@ pub async fn run_chat(
         let system_prompt = history::build_system_prompt(
             &ctx.config,
             allowed,
-            &skills_block,
+            skills_block,
             &script_block,
-            &task_block,
+            &parts.fixed,
             &ctx.sandbox_dir,
             &ctx.skills_dir,
         );
@@ -260,7 +264,7 @@ pub async fn run_chat(
             }
         );
         let mut messages =
-            item_messages(system_prompt, &base_history, &digest, run_materials, &own);
+            item_messages(system_prompt, &base_history, &digest, run_materials, &parts.varying, &own);
 
         let text = run_item_tools(
             &ctx,
@@ -520,11 +524,12 @@ fn save_queue(
 }
 
 /// 拼一项请求的消息表：system + 历史 + 交接材料（前面各项 + 状态）+ 本轮动态材料 + 本项任务书（放最后，走 user 角色）。
-fn item_messages(
+pub(super) fn item_messages(
     system_prompt: String,
     base_history: &[LlmMessage],
     handoff_digest: &str,
     run_materials: String,
+    varying: &str,
     own_task: &str,
 ) -> Vec<LlmMessage> {
     let mut messages = Vec::with_capacity(base_history.len() + 3);
@@ -535,6 +540,9 @@ fn item_messages(
     }
     if !run_materials.is_empty() {
         messages.push(LlmMessage::user(run_materials));
+    }
+    if !varying.is_empty() {
+        messages.push(LlmMessage::user(varying.to_string()));
     }
     messages.push(LlmMessage::user(own_task.to_string()));
     messages

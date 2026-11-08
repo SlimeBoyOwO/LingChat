@@ -221,6 +221,306 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
     out
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum PartKind {
+    Fixed,
+    Varying,
+}
+
+#[derive(Default, Debug)]
+pub struct TaskBlockParts {
+    pub fixed: String,
+    pub varying: String,
+    pub ordered: String,
+}
+
+/// 与 [`build_task_block`] 逐字等价的第二份独立实现：把同一批段落按原顺序收进一个
+/// `Vec<(PartKind, String)>`，再同源派生出 fixed / varying / ordered 三份文本。
+/// 这是交叉对拍用，绝不能让 build_task_block 反过来调用本函数。
+pub fn build_task_parts(input: &TaskBlockInput<'_>) -> TaskBlockParts {
+    let TaskBlockInput {
+        task,
+        handoff,
+        plan,
+        user_msg,
+        skills_dir,
+        land,
+        item_index,
+        skipped,
+        is_last,
+        allowed,
+    } = *input;
+
+    let prerequisite = matches!(
+        handoff,
+        crate::ai_service::skill_agent::role::Handoff::Prerequisite { .. }
+    );
+
+    let mut parts: Vec<(PartKind, String)> = Vec::new();
+
+    // P1 (:76-80) —— 裁决：整句「【本轮任务】…｜本项目标：…」保持 Varying，前半句不拆去 Fixed。
+    parts.push((PartKind::Varying, {
+        let mut s = format!("\n\n【本轮任务】{}", task.label());
+        match task.role() {
+            Some(role) => s.push_str(&format!("（{}）", role.label())),
+            None => s.push_str("（不涉及剧本）"),
+        }
+        s
+    }));
+
+    // P2 (:81-88)
+    parts.push((PartKind::Varying, {
+        if let Some(target) = plan
+            .items
+            .get(item_index)
+            .map(|i| i.target.trim())
+            .filter(|t| !t.is_empty())
+        {
+            format!("｜本项目标：{target}")
+        } else {
+            String::new()
+        }
+    }));
+
+    // P3 (:93-104)
+    parts.push((PartKind::Varying, {
+        if plan.items.len() > 1 {
+            format!(
+                "　队列第 {}/{} 项，{}",
+                item_index + 1,
+                plan.items.len(),
+                if prerequisite {
+                    "先补前置（见下）"
+                } else {
+                    "只做这一项"
+                }
+            )
+        } else {
+            String::new()
+        }
+    }));
+
+    // P4 (:105-119)
+    parts.push((PartKind::Varying, {
+        if let crate::ai_service::skill_agent::role::Handoff::Prerequisite { why, .. } = handoff {
+            if let Some(original) = plan.items.get(item_index) {
+                let target = original.target.trim();
+                let original_desc = if target.is_empty() {
+                    original.kind.label().to_string()
+                } else {
+                    format!("{}：{}", original.kind.label(), target)
+                };
+                format!(
+                    "\n【这一项为什么换了名字】原定这一项是「{original_desc}」；{why} —— \
+                     所以本轮先做前置的「{}」。同轮会接着做回原任务（见【承接说明】）。",
+                    task.label()
+                )
+            } else {
+                String::new()
+            }
+        } else {
+            String::new()
+        }
+    }));
+
+    // P5 (:120-125)
+    parts.push((PartKind::Fixed, {
+        if !skipped.is_empty() {
+            format!(
+                "\n【队列里做不了的项】{}（在回执里逐条说明为什么，别装没看见）",
+                skipped.join("；")
+            )
+        } else {
+            String::new()
+        }
+    }));
+
+    // P6 (:126-128)
+    parts.push((PartKind::Fixed, {
+        if plan.items.len() > 1 {
+            include_str!("../prompts/stage_build_task_block.md").to_string()
+        } else {
+            String::new()
+        }
+    }));
+
+    // P7 (:129-135)
+    parts.push((PartKind::Varying, {
+        if is_last {
+            "\n【本轮最后一项】你是本轮最后执行的一项：先把这一项交待完\
+             （做了什么 / 发现了什么 / 要用户定什么），**然后**用一句话把本轮每项各自做了什么列全 ——\
+             用户只看最后这一段也知道全貌。"
+                .to_string()
+        } else {
+            String::new()
+        }
+    }));
+
+    // P8 (:137-139)
+    parts.push((PartKind::Fixed, {
+        if !user_msg.trim().is_empty() {
+            format!("\n【用户这一轮的原话】{}", user_msg.trim())
+        } else {
+            String::new()
+        }
+    }));
+
+    // P9 (:141)
+    parts.push((
+        PartKind::Fixed,
+        include_str!("../prompts/stage_build_task_block_2.md").to_string(),
+    ));
+
+    // P10 (:143) —— 独立 out.push('\n')，单独一个 Fixed 段保槽位。
+    parts.push((PartKind::Fixed, "\n".to_string()));
+
+    // P11 (:144)
+    parts.push((
+        PartKind::Fixed,
+        crate::ai_service::skill_agent::role::ACTION_VOCAB.to_string(),
+    ));
+
+    // P12 (:145-148)
+    parts.push((PartKind::Fixed, {
+        if !land && !task.materials().is_empty() && task.role().is_some() {
+            let mut s = String::from("\n");
+            s.push_str(crate::ai_service::skill_agent::role::DICTATE_NOTE);
+            s
+        } else {
+            String::new()
+        }
+    }));
+
+    // P13 (:150-153)
+    parts.push((
+        PartKind::Fixed,
+        format!(
+            include_str!("../prompts/stage_build_task_block_3.md"),
+            allowed.join(" / ")
+        ),
+    ));
+
+    // P14 (:155-164)
+    parts.push((
+        PartKind::Varying,
+        format!(
+            // 本项能动什么：三层方向规则（改可以往上对齐、删只能往下连带），工具层另有对应闸门。
+            include_str!("../prompts/stage_build_task_block_4.md"),
+            task.scope_note(
+                plan.items
+                    .get(item_index)
+                    .map(|i| i.target.trim())
+                    .unwrap_or("")
+            )
+        ),
+    ));
+
+    // P15 (:166-173)
+    parts.push((PartKind::Varying, {
+        if plan.items.len() > 1 {
+            format!(
+                "\n\n【本轮共 {} 项，这是第 {} 项】代码会**逐项**交给对应角色执行：\
+                 **你只管这一项**，其余项由代码另起一段交给对应角色，**别代劳、也别替它们汇报**。",
+                plan.items.len(),
+                item_index + 1
+            )
+        } else {
+            String::new()
+        }
+    }));
+
+    // P16 (:175-179) —— 固定「回执怎么写」，无条件。
+    parts.push((
+        PartKind::Fixed,
+        "\n\n【回执怎么写】只讲**这一轮盘上发生的改变**：动了哪个文件、改前是什么、改后是什么\
+         （新增/删掉了哪一章哪一节、把哪一行改成了什么）；盘上**本来就有的**东西不要重新介绍一遍 ——\
+         比如前面 1~10 章早就写好了、这一轮写的是第 11 章，那就只说第 11 章，别把 1~10 章再列一遍。"
+            .to_string(),
+    ));
+
+    // P17 (:180-191) —— is_last 分支；不带前导 \n，与 P16 直接相连。
+    parts.push((
+        PartKind::Varying,
+        if is_last {
+            "你是本轮最后一项：用户要定的事在这里一次说清（其余各项已由代码各自交付）。\
+             **交接材料里标着「还没核对到产物」的项，也要如实交代**（说我这一轮没核对到它的产物、\
+             缺什么、要他定什么），不许当成做完了。"
+                .to_string()
+        } else {
+            format!(
+                include_str!("../prompts/stage_build_task_block_5.md"),
+                DEFERRED_MARK = DEFERRED_MARK
+            )
+        },
+    ));
+
+    // P18 (:193) —— push_directive 原样调用，其内 '\n' 与空判断都在辅助函数里。
+    parts.push((PartKind::Fixed, {
+        let mut s = String::new();
+        push_directive(&mut s, task.directive());
+        s
+    }));
+
+    // P19 (:195-204)
+    parts.push((PartKind::Fixed, {
+        let note = match (task.boundary_note(), plan.boundary.as_deref()) {
+            (Some(a), Some(b)) => Some(format!("{a}；{b}")),
+            (Some(a), None) => Some(a.to_string()),
+            (None, Some(b)) => Some(b.to_string()),
+            (None, None) => None,
+        };
+        let mut s = String::from("\n【职责边界】");
+        s.push_str(&crate::ai_service::skill_agent::role::render_boundary(
+            note.as_deref(),
+        ));
+        s
+    }));
+
+    // P20 (:206-210) —— Proceed 时连标题一起空。
+    parts.push((PartKind::Varying, {
+        let handoff_text = crate::ai_service::skill_agent::role::render_handoff(handoff);
+        if !handoff_text.is_empty() {
+            let mut s = String::from("\n【承接说明】");
+            s.push_str(&handoff_text);
+            s
+        } else {
+            String::new()
+        }
+    }));
+
+    // P21 (:212-219) —— 最大 Fixed 段：标题 + push_materials（整本 SKILL.md）。
+    parts.push((PartKind::Fixed, {
+        let materials = task.materials();
+        let mut s = String::new();
+        if materials.is_empty() {
+            s.push_str("\n\n（本轮不注入任何角色指令。）");
+        } else {
+            s.push_str(
+                "\n\n以下技能文档是本轮**必须遵守的角色指令**，不是参考资料；已注入的无需重复读取。",
+            );
+            push_materials(&mut s, skills_dir, materials);
+        }
+        s
+    }));
+
+    let ordered: String = parts.iter().map(|(_, s)| s.as_str()).collect();
+    let fixed: String = parts
+        .iter()
+        .filter(|(k, _)| *k == PartKind::Fixed)
+        .map(|(_, s)| s.as_str())
+        .collect();
+    let varying: String = parts
+        .iter()
+        .filter(|(k, _)| *k == PartKind::Varying)
+        .map(|(_, s)| s.as_str())
+        .collect();
+    TaskBlockParts {
+        fixed,
+        varying,
+        ordered,
+    }
+}
+
 /// 中间项把"要用户拍板的事"写成这一行，代码原样摘给后面各项（尤其收尾那一项）。
 pub const DEFERRED_MARK: &str = "【留给最后一项问】";
 
