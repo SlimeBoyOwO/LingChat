@@ -142,6 +142,27 @@
                     }}</span>
                   </label>
 
+                  <!-- 2.5D 高级光影工作台入口 -->
+                  <div class="my-2 rounded-lg border border-purple-500/30 bg-purple-500/10 p-2.5">
+                    <div class="flex items-center justify-between gap-2">
+                      <div class="flex flex-col">
+                        <span class="text-xs font-bold text-purple-200">{{
+                          $t("settings.sceneEdit.lightingWorkbench.openProBtn")
+                        }}</span>
+                        <span class="text-[10px] text-white/60">{{
+                          $t("settings.sceneEdit.lightingWorkbench.openProDesc")
+                        }}</span>
+                      </div>
+                      <button
+                        type="button"
+                        @click="showAdvancedLightingModal = true"
+                        class="shrink-0 rounded bg-gradient-to-r from-purple-600 to-indigo-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm hover:from-purple-500 hover:to-indigo-500 active:scale-95"
+                      >
+                        {{ $t("settings.sceneEdit.lightingWorkbench.title") }}
+                      </button>
+                    </div>
+                  </div>
+
                   <template v-if="formData.lightingEnabled">
                     <label class="flex cursor-pointer items-center gap-2 pl-4">
                       <input
@@ -437,6 +458,17 @@
       </div>
     </Transition>
   </Teleport>
+
+  <!-- 2.5D 高级光影工作台弹窗 -->
+  <SceneLightingModal
+    :is-open="showAdvancedLightingModal"
+    :scene-name="formData.sceneName"
+    :background-src="selectedBackgroundPreview"
+    :character-src="previewAvatarUrl"
+    :initial-lighting="advancedLighting || props.initialData?.lighting"
+    @close="showAdvancedLightingModal = false"
+    @save="onAdvancedLightingSave"
+  />
 </template>
 
 <script setup lang="ts">
@@ -448,6 +480,15 @@ import { useGameStore } from "../../../stores/modules/game";
 import { EMOTION_CONFIG_EMO } from "../../../controllers/emotion/config";
 import type { BackgroundImageInfo } from "../../../types";
 import type { LightingParams, FilterParams } from "../../../api/services/scene";
+import SceneLightingModal from "./SceneLightingModal.vue";
+
+const showAdvancedLightingModal = ref(false);
+const advancedLighting = ref<LightingParams | null>(null);
+
+function onAdvancedLightingSave(saved: LightingParams) {
+  advancedLighting.value = saved;
+  formData.lightingEnabled = true;
+}
 
 const props = defineProps<{
   show: boolean;
@@ -775,31 +816,33 @@ watch(
       formData.sceneDescription = props.initialData.sceneDescription;
       const l = props.initialData.lighting;
       if (l) {
+        advancedLighting.value = l;
         formData.lightingEnabled = true;
-        formData.overlayEnabled = l.overlay_enabled;
-        formData.charBrightness = l.character.brightness;
-        formData.charContrast = l.character.contrast;
-        formData.charSaturation = l.character.saturation;
-        formData.charSepia = l.character.sepia;
-        formData.charGlowRadius = l.character.glow_radius;
-        formData.charGlowColor = l.character.glow_color;
-        formData.bgBrightness = l.background.brightness;
-        formData.bgContrast = l.background.contrast;
-        formData.bgSaturation = l.background.saturation;
-        formData.bgSepia = l.background.sepia;
-        formData.bgGlowRadius = l.background.glow_radius;
-        formData.bgGlowColor = l.background.glow_color;
-        formData.blendMode = l.blend_mode;
-        formData.lightX = l.light_x;
-        formData.lightY = l.light_y;
-        formData.overlayColor1 = l.overlay_color1;
-        formData.overlayColor2 = l.overlay_color2;
+        formData.overlayEnabled = l.overlay_enabled ?? false;
+        formData.charBrightness = l.character?.brightness ?? DEF.brightness;
+        formData.charContrast = l.character?.contrast ?? DEF.contrast;
+        formData.charSaturation = l.character?.saturation ?? DEF.saturation;
+        formData.charSepia = l.character?.sepia ?? DEF.sepia;
+        formData.charGlowRadius = l.character?.glow_radius ?? DEF.glowRadius;
+        formData.charGlowColor = l.character?.glow_color ?? DEF.glowColor;
+        formData.bgBrightness = l.background?.brightness ?? DEF.brightness;
+        formData.bgContrast = l.background?.contrast ?? DEF.contrast;
+        formData.bgSaturation = l.background?.saturation ?? DEF.saturation;
+        formData.bgSepia = l.background?.sepia ?? DEF.sepia;
+        formData.bgGlowRadius = l.background?.glow_radius ?? DEF.glowRadius;
+        formData.bgGlowColor = l.background?.glow_color ?? DEF.glowColor;
+        formData.blendMode = l.blend_mode ?? DEF.blendMode;
+        formData.lightX = l.light_x ?? DEF.lightX;
+        formData.lightY = l.light_y ?? DEF.lightY;
+        formData.overlayColor1 = l.overlay_color1 ?? DEF.overlayColor1;
+        formData.overlayColor2 = l.overlay_color2 ?? DEF.overlayColor2;
         formData.overlayRadius = l.overlay_radius ?? 80;
         formData.overlayOpacity = (l.overlay_opacity ?? 0.5) * 100;
         formData.overlayTarget = l.overlay_target || "both";
         showLighting.value = true;
       } else {
         formData.lightingEnabled = false;
+        advancedLighting.value = null;
         resetLighting();
         showLighting.value = false;
       }
@@ -934,6 +977,17 @@ const handleSubmit = () => {
       overlay_radius: formData.overlayRadius,
       overlay_opacity: formData.overlayOpacity / 100,
       overlay_target: formData.overlayTarget,
+      // 只取高级面板管的五个新字段。整对象展开会把上面按旧滑块算出的
+      // character/background/light_x 等覆盖回打开面板时的旧值，导致旧 UI 调参失效。
+      ...(advancedLighting.value
+        ? {
+            lights: advancedLighting.value.lights,
+            global: advancedLighting.value.global,
+            compositing: advancedLighting.value.compositing,
+            material: advancedLighting.value.material,
+            camera: advancedLighting.value.camera,
+          }
+        : {}),
     };
   }
   emit("submit", {

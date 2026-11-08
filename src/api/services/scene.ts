@@ -19,6 +19,8 @@ export type LightType = "point" | "directional" | "spot" | "ambient";
  */
 export interface LightSource {
   id: string;
+  /** 显示名称（编辑器里给灯起的名字，缺省由前端按类型生成） */
+  name?: string;
   type: LightType;
   enabled: boolean;
   /** 主光标记：纯 UI 语义，不参与光照计算，但影响角色侧的主方向权重。 */
