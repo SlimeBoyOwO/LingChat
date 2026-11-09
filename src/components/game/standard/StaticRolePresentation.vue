@@ -9,6 +9,8 @@
         v-show="visible && !!src"
         ref="imageFadeRef"
         class="absolute h-[102%] w-full"
+        data-lighting-avatar
+        :data-role-id="String(roleId ?? '')"
         :class="animationClasses"
         :src="src"
         :duration="300"
@@ -35,8 +37,13 @@ withDefaults(
     layerStyle: Record<string, string>;
     animationClasses: Record<string, boolean>;
     objectFit: string;
+    /**
+     * 角色 id。只作为 `data-role-id` 透出，给光影接管层按角色定位用
+     * （同一屏多角色时，WebGL 只有一个角色纹理槽，只能挑一个）。
+     */
+    roleId?: string | number;
   }>(),
-  { visible: true },
+  { visible: true, roleId: "" },
 );
 
 const emit = defineEmits<{

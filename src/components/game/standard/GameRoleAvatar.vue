@@ -12,6 +12,7 @@
   <StaticRolePresentation
     v-else
     ref="presentationRef"
+    :role-id="role.roleId"
     :src="targetAvatarUrl"
     :layer-style="staticLayerStyle"
     :animation-classes="containerClasses"

@@ -356,8 +356,8 @@ export class SceneLightingRenderer {
   private bloomTarget2A: RenderTarget | null = null;
   private bloomTarget2B: RenderTarget | null = null;
 
-  private backgroundReady = false;
-  private characterReady = false;
+  private backgroundReadyFlag = false;
+  private characterReadyFlag = false;
   private normalReady = false;
   private depthReady = false;
   /** 最近一次贴图错误（中文可读）；空串表示正常。界面用它显示原因，而不是白屏。 */
@@ -398,6 +398,16 @@ export class SceneLightingRenderer {
   /** 供界面读取的最近错误文案 */
   get lastError(): string {
     return this.errorText;
+  }
+
+  /** 背景贴图是否就绪。调用方据此决定「继续用 WebGL」还是「回退旧路径」。 */
+  get backgroundReady(): boolean {
+    return this.backgroundReadyFlag;
+  }
+
+  /** 立绘贴图是否就绪（游戏侧目前只渲染背景，留作诊断用）。 */
+  get characterReady(): boolean {
+    return this.characterReadyFlag;
   }
 
   /** 统一错误落点：不上抛，只记文案 —— 一张坏图不该让整块画布消失。 */
@@ -482,12 +492,12 @@ export class SceneLightingRenderer {
   setBackground(source: TexImageSource): void {
     try {
       this.uploadTexture(this.backgroundTexture, source);
-      this.backgroundReady = true;
+      this.backgroundReadyFlag = true;
       this.averageColor = estimateAverageColor(source);
       this.errorText = "";
     } catch (err) {
       // 跨源图片在这里会被 WebGL 拒绝（texImage2D SecurityError）
-      this.backgroundReady = false;
+      this.backgroundReadyFlag = false;
       this.fail("场景底图上传失败", err);
     }
   }
@@ -495,10 +505,10 @@ export class SceneLightingRenderer {
   setCharacter(source: TexImageSource, maps: CharacterMaps = {}): void {
     try {
       this.uploadTexture(this.characterTexture, source);
-      this.characterReady = true;
+      this.characterReadyFlag = true;
       this.errorText = "";
     } catch (err) {
-      this.characterReady = false;
+      this.characterReadyFlag = false;
       this.fail("立绘上传失败", err);
       return;
     }
@@ -554,12 +564,12 @@ export class SceneLightingRenderer {
   }
 
   clearCharacter(): void {
-    this.characterReady = false;
+    this.characterReadyFlag = false;
   }
 
   /** 画一帧。背景未就绪时什么都不做。 */
   render(frame: SceneLightingFrame): void {
-    if (this.disposed || !this.backgroundReady) return;
+    if (this.disposed || !this.backgroundReadyFlag) return;
     const gl = this.gl;
     const bgTarget = this.bgTarget;
     const wrapA = this.wrapTargetA;
