@@ -269,12 +269,15 @@ export function useSceneLighting() {
 
   // Initialize from existing SceneInfo.lighting or default
   function initFromLighting(initial: LightingParams | null | undefined) {
-    if (initial?.lights && Array.isArray(initial.lights)) {
-      lights.value = JSON.parse(JSON.stringify(initial.lights));
-      if (initial.global) globalParams.value = { ...initial.global };
-      if (initial.compositing) compositingParams.value = { ...initial.compositing };
-      if (initial.material) materialParams.value = { ...initial.material };
-      if (initial.camera) cameraParams.value = { ...initial.camera };
+    // 零灯是非法状态：场景会走 WebGL 路径却没有任何光源，画面被压成一片黑。
+    // 这类数据只可能来自旧版本或导入了坏的 JSON，一律回落到 neutral 预设。
+    const incoming = initial?.lights;
+    if (Array.isArray(incoming) && incoming.length > 0) {
+      lights.value = JSON.parse(JSON.stringify(incoming)).slice(0, 8);
+      if (initial?.global) globalParams.value = { ...initial.global };
+      if (initial?.compositing) compositingParams.value = { ...initial.compositing };
+      if (initial?.material) materialParams.value = { ...initial.material };
+      if (initial?.camera) cameraParams.value = { ...initial.camera };
       selectedLightIndex.value = 0;
     } else {
       // Default to neutral preset

@@ -191,6 +191,8 @@ const allPresetsJson = computed(() => {
 });
 
 function handleSave() {
+  // 兜底：零灯的 lighting 会让场景「有 2.5D 路径却没有光」，直接存成一片黑
+  if (lights.value.length === 0) applyPreset("neutral");
   const finalParams = toLightingParams(props.initialLighting || undefined);
   emit("save", finalParams);
   emit("close");
