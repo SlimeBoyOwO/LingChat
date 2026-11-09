@@ -27,7 +27,22 @@ import { BLUR_FRAGMENT_SHADER, CHARACTER_FRAGMENT_SHADER } from "./characterShad
 import { BACKGROUND_FRAGMENT_SHADER, VERTEX_SHADER } from "./glsl";
 import { BLOOM_PREFILTER_FRAGMENT_SHADER, FINAL_COMPOSITE_FRAGMENT_SHADER } from "./postProcess";
 import { packLights } from "./lights";
-import { createFlatNormalTexture, generatePseudoDepth } from "./pseudoDepth";
+import { createFlatNormalTexture, generatePseudoDepth, generatePseudoNormal } from "./pseudoDepth";
+
+/**
+ * 伪法线 / 伪深度贴图的长边上限。
+ *
+ * 立绘实际是 2304×3072（7M 像素）：按原尺寸生成深度要读 28MB 像素、再传一张
+ * 28MB 的纹理，主线程会卡 0.7s 以上，低配机直接失败。这类贴图只是给着色器
+ * 做「相对关系」，1024 已经足够，超出只会变慢不会变好看。
+ */
+const MAP_MAX_DIM = 768;
+
+/**
+ * 深度图还可以更小：它本质是「越靠下越近 + 一点横向鼓起」的低频场，
+ * 512 与 3072 在画面上看不出差别，但生成量差 36 倍。
+ */
+const DEPTH_MAX_DIM = 512;
 
 /** 舞台像素尺寸（已乘设备像素比）。 */
 export interface StageSize {
@@ -77,9 +92,9 @@ export interface SceneOverlayParams {
   mode: string;
 }
 
-/** 立绘可选贴图。`depth` 传 `"auto"` 时从 alpha 生成。 */
+/** 立绘可选贴图。`depth` / `normal` 传 `"auto"` 时从立绘本身生成。 */
 export interface CharacterMaps {
-  normal?: TexImageSource | null;
+  normal?: TexImageSource | "auto" | null;
   depth?: TexImageSource | "auto" | null;
 }
 
@@ -345,6 +360,8 @@ export class SceneLightingRenderer {
   private characterReady = false;
   private normalReady = false;
   private depthReady = false;
+  /** 最近一次贴图错误（中文可读）；空串表示正常。界面用它显示原因，而不是白屏。 */
+  private errorText = "";
   private averageColor: readonly [number, number, number] = [0.5, 0.5, 0.5];
   private disposed = false;
 
@@ -376,6 +393,18 @@ export class SceneLightingRenderer {
     this.normalTexture = this.createTexture();
     this.depthTexture = this.createTexture();
     this.uploadTexture(this.normalTexture, createFlatNormalTexture());
+  }
+
+  /** 供界面读取的最近错误文案 */
+  get lastError(): string {
+    return this.errorText;
+  }
+
+  /** 统一错误落点：不上抛，只记文案 —— 一张坏图不该让整块画布消失。 */
+  private fail(stage: string, err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err);
+    this.errorText = `${stage}：${msg.slice(0, 60)}`;
+    console.warn("[lighting]", this.errorText, err);
   }
 
   static isSupported(): boolean {
@@ -451,32 +480,74 @@ export class SceneLightingRenderer {
   }
 
   setBackground(source: TexImageSource): void {
-    this.uploadTexture(this.backgroundTexture, source);
-    this.backgroundReady = true;
-    this.averageColor = estimateAverageColor(source);
+    try {
+      this.uploadTexture(this.backgroundTexture, source);
+      this.backgroundReady = true;
+      this.averageColor = estimateAverageColor(source);
+      this.errorText = "";
+    } catch (err) {
+      // 跨源图片在这里会被 WebGL 拒绝（texImage2D SecurityError）
+      this.backgroundReady = false;
+      this.fail("场景底图上传失败", err);
+    }
   }
 
   setCharacter(source: TexImageSource, maps: CharacterMaps = {}): void {
-    this.uploadTexture(this.characterTexture, source);
-    this.characterReady = true;
+    try {
+      this.uploadTexture(this.characterTexture, source);
+      this.characterReady = true;
+      this.errorText = "";
+    } catch (err) {
+      this.characterReady = false;
+      this.fail("立绘上传失败", err);
+      return;
+    }
 
-    if (maps.normal) {
-      this.uploadTexture(this.normalTexture, maps.normal);
-      this.normalReady = true;
-    } else {
+    // 法线：显式传图就用图，传 "auto"（默认）从立绘算伪法线，传 null 退回平法线。
+    // 生成可能因为图片跨域/脏画布抛错，**必须自己兜住**：否则后面的深度也一并丢掉，
+    // 表现就是「人物能看，法线和深度都没有」。
+    const normalSource = maps.normal === undefined ? "auto" : maps.normal;
+    try {
+      if (normalSource === "auto") {
+        this.uploadTexture(this.normalTexture, generatePseudoNormal(source, MAP_MAX_DIM));
+        this.normalReady = true;
+      } else if (normalSource) {
+        this.uploadTexture(this.normalTexture, normalSource);
+        this.normalReady = true;
+      } else {
+        this.uploadTexture(this.normalTexture, createFlatNormalTexture());
+        this.normalReady = false;
+      }
+    } catch (err) {
+      console.warn("[lighting] 法线生成失败，回退平法线:", err);
       this.uploadTexture(this.normalTexture, createFlatNormalTexture());
       this.normalReady = false;
     }
 
     const depthSource = maps.depth ?? "auto";
-    if (depthSource === "auto") {
-      const size = readSourceSize(source);
-      this.uploadTexture(this.depthTexture, generatePseudoDepth(source, size.width, size.height));
-      this.depthReady = true;
-    } else if (depthSource) {
-      this.uploadTexture(this.depthTexture, depthSource);
-      this.depthReady = true;
-    } else {
+    try {
+      if (depthSource === "auto") {
+        const size = readSourceSize(source);
+        const longest = Math.max(size.width, size.height);
+        const scale = longest > DEPTH_MAX_DIM ? DEPTH_MAX_DIM / longest : 1;
+        this.uploadTexture(
+          this.depthTexture,
+          generatePseudoDepth(
+            source,
+            Math.max(1, Math.round(size.width * scale)),
+            Math.max(1, Math.round(size.height * scale)),
+          ),
+        );
+        this.depthReady = true;
+      } else if (depthSource) {
+        this.uploadTexture(this.depthTexture, depthSource);
+        this.depthReady = true;
+      } else {
+        this.uploadTexture(this.depthTexture, createFlatNormalTexture());
+        this.depthReady = false;
+      }
+    } catch (err) {
+      console.warn("[lighting] 深度生成失败，回退平面深度:", err);
       this.uploadTexture(this.depthTexture, createFlatNormalTexture());
       this.depthReady = false;
     }

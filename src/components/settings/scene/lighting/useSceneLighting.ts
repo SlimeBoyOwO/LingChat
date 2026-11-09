@@ -22,6 +22,7 @@ import { BUILTIN_PRESETS } from "./presetsData";
 
 const LS_OVERRIDE_KEY = "lingchat.lighting.builtinOverrides";
 const LS_FAV_KEY = "lingchat.lighting.favoritePresets";
+const LS_CUSTOM_KEY = "lingchat.lighting.customPresets";
 
 interface LightingSnapshot {
   lights: LightSource[];
@@ -191,6 +192,61 @@ export function useSceneLighting() {
   }
   loadOverrides();
 
+  /**
+   * 自定义预设与「内置覆盖」分开存：内置覆盖会被「重置内置」清掉，
+   * 自定义是用户自己存出来的资产，不该跟着消失。
+   */
+  function loadCustomPresets() {
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_KEY);
+      if (!raw) return;
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return;
+      list.forEach((p) => {
+        if (!p || typeof p !== "object" || !p.id) return;
+        if (presets.value.some((x) => x.id === p.id)) return;
+        presets.value.push({ ...p, builtin: false });
+      });
+    } catch {
+      // 存档坏了就当没有自定义预设
+    }
+  }
+  loadCustomPresets();
+
+  /** 把当前参数快照存成新预设并切过去。 */
+  function createCustomPreset(name: string): LightingPreset | null {
+    const trimmed = name.trim();
+    if (!trimmed) return null;
+
+    const preset: LightingPreset = {
+      id: `custom-${Date.now().toString(36)}`,
+      name: trimmed,
+      cat: "daily",
+      desc: "自定义参数快照",
+      builtin: false,
+      camera: { ...cameraParams.value },
+      global: { ...globalParams.value },
+      compositing: { ...compositingParams.value },
+      material: { ...materialParams.value },
+      lights: JSON.parse(JSON.stringify(lights.value)),
+      _overridden: true,
+    };
+
+    presets.value.push(preset);
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_KEY);
+      const list = raw ? JSON.parse(raw) : [];
+      localStorage.setItem(
+        LS_CUSTOM_KEY,
+        JSON.stringify(Array.isArray(list) ? [...list, preset] : [preset]),
+      );
+    } catch {
+      // 存不进 localStorage 也让它在本会话里可用
+    }
+    applyPreset(preset.id);
+    return preset;
+  }
+
   const selectedLight = computed<LightSource | null>(() => {
     if (selectedLightIndex.value >= 0 && selectedLightIndex.value < lights.value.length) {
       return lights.value[selectedLightIndex.value];
@@ -199,6 +255,15 @@ export function useSceneLighting() {
   });
 
   const currentPreset = computed(() => presets.value.find((p) => p.id === curPresetId.value));
+
+  /**
+   * 预设的第一盏灯基本都是环境底光。编辑面板默认选中真正的发光灯（点光/主光），
+   * 否则一打开右栏全是「环境光」的三条参数，连位置滑块都没有。
+   */
+  function defaultSelectedIndex(): number {
+    const i = lights.value.findIndex((l) => l.type !== "ambient");
+    return i >= 0 ? i : 0;
+  }
 
   // Apply a preset
   function applyPreset(presetId: string) {
@@ -212,14 +277,9 @@ export function useSceneLighting() {
     materialParams.value = { ...p.material };
     lights.value = JSON.parse(JSON.stringify(p.lights));
 
-    selectedLightIndex.value = Math.min(
-      selectedLightIndex.value,
-      Math.max(0, lights.value.length - 1),
-    );
+    selectedLightIndex.value = defaultSelectedIndex();
     isDirty.value = true;
   }
-
-  // Override current preset to localStorage
   function overrideCurrentPreset(): boolean {
     const cur = presets.value.find((p) => p.id === curPresetId.value);
     if (!cur) return false;
@@ -278,7 +338,7 @@ export function useSceneLighting() {
       if (initial?.compositing) compositingParams.value = { ...initial.compositing };
       if (initial?.material) materialParams.value = { ...initial.material };
       if (initial?.camera) cameraParams.value = { ...initial.camera };
-      selectedLightIndex.value = 0;
+      selectedLightIndex.value = defaultSelectedIndex();
     } else {
       // Default to neutral preset
       applyPreset("neutral");
@@ -307,7 +367,8 @@ export function useSceneLighting() {
   }
 
   // Light management
-  function addLight(type: LightType): boolean {
+  /** 新增一盏灯；`pos` 用于「点画布放置光源」时直接落在点击位置。 */
+  function addLight(type: LightType, pos?: { x: number; y: number }): boolean {
     if (lights.value.length >= 8) return false;
     const count = lights.value.length + 1;
     const nameMap: Record<LightType, string> = {
@@ -322,6 +383,10 @@ export function useSceneLighting() {
       name: nameMap[type],
       ...template,
     };
+    if (pos) {
+      newL.x = Math.min(1, Math.max(0, +pos.x.toFixed(3)));
+      newL.y = Math.min(1, Math.max(0, +pos.y.toFixed(3)));
+    }
     lights.value.push(newL);
     selectedLightIndex.value = lights.value.length - 1;
     isDirty.value = true;
@@ -514,55 +579,128 @@ export function useSceneLighting() {
     return out as T;
   }
 
-  // JSON import
-  function importJson(raw: unknown): boolean {
-    if (!raw || typeof raw !== "object") return false;
+  // ---- JSON 导入（先校验、后落地）----
+  // 外部 JSON 一律不可信。原则：**校验全部通过前不碰现有状态**，
+  // 否则一份坏数据会把面板改成半新半旧，用户只能重开面板。
+
+  const PRESET_CATS: ReadonlyArray<string> = ["daily", "atmosphere", "drama", "dark"];
+
+  /** 洗一条预设：id/name 必须存在，灯光至少一盏合法，其余分组按默认值补齐。 */
+  function sanitizePreset(raw: unknown): LightingPreset | null {
+    if (!raw || typeof raw !== "object") return null;
+    const o = raw as Record<string, unknown>;
+    const id = typeof o.id === "string" ? o.id.trim() : "";
+    const name = typeof o.name === "string" ? o.name.trim() : "";
+    if (!id || !name) return null;
+
+    const lightsRaw = Array.isArray(o.lights) ? o.lights : [];
+    const cleaned = lightsRaw
+      .map((item, i) => normalizeLight(item, i))
+      .filter((l): l is LightSource => l !== null)
+      .slice(0, 8);
+    if (cleaned.length === 0) return null;
+
+    const cam = normalizeGroup(o.camera, DEFAULT_CAMERA, GROUP_LIMITS.camera);
+    if (!SHOT_CAMERA_MAP[cam.shot]) cam.shot = DEFAULT_CAMERA.shot;
+    const cat = typeof o.cat === "string" && PRESET_CATS.includes(o.cat) ? o.cat : "daily";
+
+    return {
+      id,
+      name,
+      cat: cat as LightingPreset["cat"],
+      desc: typeof o.desc === "string" && o.desc.trim() ? o.desc.trim() : "导入的预设",
+      builtin: false,
+      bgKey: typeof o.bgKey === "string" ? o.bgKey : undefined,
+      shotKey: cam.shot,
+      camera: cam,
+      global: normalizeGroup(o.global, DEFAULT_GLOBAL, GROUP_LIMITS.global),
+      compositing: normalizeGroup(o.compositing, DEFAULT_COMPOSITING, GROUP_LIMITS.compositing),
+      material: normalizeGroup(o.material, DEFAULT_MATERIAL, GROUP_LIMITS.material),
+      lights: cleaned,
+      _overridden: true,
+    };
+  }
+
+  /**
+   * 导入一份 JSON。
+   *
+   * 两种形状：预设包（数组 / `{presets:[]}`）或单份配置。
+   * 任一形状都先完整校验，全部合法才写状态；返回可读回执给 UI 弹提示。
+   */
+  function importJson(raw: unknown): { ok: boolean; message: string } {
+    if (!raw || typeof raw !== "object") {
+      return { ok: false, message: "JSON 不是一个对象" };
+    }
     const obj = raw as Record<string, unknown>;
 
-    // Case 1: Presets pack array or { presets: [...] }
+    // —— Case 1：预设包 ——
     const pList = Array.isArray(obj) ? obj : Array.isArray(obj.presets) ? obj.presets : null;
     if (pList) {
-      pList.forEach((item) => {
-        if (!item || typeof item !== "object" || !item.id) return;
-        const target = presets.value.find((p) => p.id === item.id);
-        if (target) {
-          Object.assign(target, item);
-          target._overridden = true;
-        }
+      const cleaned: LightingPreset[] = [];
+      let skipped = 0;
+      for (const item of pList.slice(0, 200)) {
+        const p = sanitizePreset(item);
+        if (p) cleaned.push(p);
+        else skipped++;
+      }
+      if (!cleaned.length) {
+        return { ok: false, message: "预设包里没有一条合法预设（缺 id/name 或灯光全非法）" };
+      }
+      cleaned.forEach((p) => {
+        const target = presets.value.find((x) => x.id === p.id);
+        if (target) Object.assign(target, p);
+        else presets.value.push(p);
       });
-      applyPreset(curPresetId.value);
-      return true;
+      applyPreset(cleaned[0].id);
+      const tail = skipped ? `，跳过 ${skipped} 条非法` : "";
+      return { ok: true, message: `已导入 ${cleaned.length} 条预设${tail}` };
     }
 
-    // Case 2: Single config
+    // —— Case 2：单份配置 ——
+    // 先算好全部候选值，不写状态
     const cam = normalizeGroup(obj.camera, DEFAULT_CAMERA, GROUP_LIMITS.camera);
     if (!SHOT_CAMERA_MAP[cam.shot]) cam.shot = DEFAULT_CAMERA.shot;
-    cameraParams.value = cam;
-    globalParams.value = normalizeGroup(obj.global, DEFAULT_GLOBAL, GROUP_LIMITS.global);
-    compositingParams.value = normalizeGroup(
+    const nextGlobal = normalizeGroup(obj.global, DEFAULT_GLOBAL, GROUP_LIMITS.global);
+    const nextCompositing = normalizeGroup(
       obj.compositing,
       DEFAULT_COMPOSITING,
       GROUP_LIMITS.compositing,
     );
-    materialParams.value = normalizeGroup(obj.material, DEFAULT_MATERIAL, GROUP_LIMITS.material);
+    const nextMaterial = normalizeGroup(obj.material, DEFAULT_MATERIAL, GROUP_LIMITS.material);
 
+    let nextLights: LightSource[] | null = null;
+    let droppedLights = 0;
     if (Array.isArray(obj.lights)) {
       const normalized = obj.lights
         .map((item, i) => normalizeLight(item, i))
         .filter((l): l is LightSource => l !== null)
         .slice(0, 8);
-      // 一盏都不合法就整体拒绝，否则会留下「2.5D 路径 + 零盏灯」的空白场景
-      if (normalized.length === 0) return false;
-      lights.value = normalized;
+      droppedLights = Math.max(0, obj.lights.length - normalized.length);
+      if (normalized.length === 0) {
+        // 一盏都不合法就整体拒绝，否则会留下「2.5D 路径 + 零盏灯」的空白场景
+        return { ok: false, message: "灯光数据全部非法，已拒绝导入" };
+      }
+      nextLights = normalized;
+    }
+
+    // 到这里才提交
+    cameraParams.value = cam;
+    globalParams.value = nextGlobal;
+    compositingParams.value = nextCompositing;
+    materialParams.value = nextMaterial;
+    if (nextLights) {
+      lights.value = nextLights;
       selectedLightIndex.value = Math.max(
         0,
-        Math.min(selectedLightIndex.value, normalized.length - 1),
+        Math.min(selectedLightIndex.value, nextLights.length - 1),
       );
-    } else {
-      // 没带 lights 的 JSON 只改全局参数，不该把现有灯光清空
     }
     isDirty.value = true;
-    return true;
+
+    const parts = ["已应用配置"];
+    if (nextLights) parts.push(`${nextLights.length} 盏灯`);
+    if (droppedLights) parts.push(`跳过 ${droppedLights} 盏非法灯`);
+    return { ok: true, message: parts.join(" · ") };
   }
 
   return {
@@ -598,5 +736,6 @@ export function useSceneLighting() {
     favoritePresetIds,
     toggleFavoritePreset,
     isPresetFavorite,
+    createCustomPreset,
   };
 }

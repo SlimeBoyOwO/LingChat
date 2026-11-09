@@ -15,7 +15,7 @@ export type { BackgroundLightingInput, BackgroundRect, StageSize } from "./Light
 export { SceneLightingRenderer } from "./SceneLightingRenderer";
 export type { CharacterMaps, Rect, SceneLightingFrame } from "./SceneLightingRenderer";
 
-export { createFlatNormalTexture, generatePseudoDepth } from "./pseudoDepth";
+export { createFlatNormalTexture, generatePseudoDepth, generatePseudoNormal } from "./pseudoDepth";
 
 export {
   LIGHT_TYPE_CODE,
