@@ -200,12 +200,16 @@ function handleSave() {
 </script>
 
 <template>
-  <!-- 必须 Teleport 到 body：宿主 SceneEditModal 自己就在 Teleport 里，DOM 顺序更靠后，
-       同 z-index 会把本弹窗压在下面，表现是「点了没跳转」。z-[60] 再上一层保险。 -->
+  <!--
+    必须 Teleport 到 body，且 z-index 要高于宿主弹窗。
+    宿主的容器类是 `fixed inset-0 z-9998`，所以这里用内联 style 的 9999 压过去；
+    用 Tailwind 的 z-[60] 会被 9998 盖住，表现就是「点了没反应、得先关掉当前面板」。
+  -->
   <Teleport to="body">
     <div
       v-if="isOpen"
-      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4"
+      class="fixed inset-0 flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4"
+      style="z-index: 9999"
       @click.self="emit('close')"
     >
       <div
