@@ -142,6 +142,18 @@ pub struct GlobalParams {
     pub lift: f64,
     /// 去色程度（黑白电影等）
     pub mono: f64,
+    /// 饱和度（0–2，1 = 原色，0 = 灰度，>1 增强）
+    pub saturation: f64,
+    /// 对比度（0–2，1 = 原样）
+    pub contrast: f64,
+    /// 整体色调偏移角度（度，−180–180），配合 tint_amount 使用
+    pub tint_hue: f64,
+    /// 色调偏移强度（0–1）
+    pub tint_amount: f64,
+    /// 立绘单独曝光增益（0–2），与 master 相乘
+    pub char_exposure: f64,
+    /// 背景单独曝光增益（0–2），与 master 相乘
+    pub bg_exposure: f64,
 }
 
 impl Default for GlobalParams {
@@ -153,6 +165,12 @@ impl Default for GlobalParams {
             soft_knee: 0.70,
             lift: 0.10,
             mono: 0.0,
+            saturation: 1.0,
+            contrast: 1.0,
+            tint_hue: 0.0,
+            tint_amount: 0.0,
+            char_exposure: 1.0,
+            bg_exposure: 1.0,
         }
     }
 }
@@ -169,6 +187,8 @@ pub struct CompositingParams {
     pub bloom_int: f64,
     /// 泛光阈值
     pub bloom_thresh: f64,
+    /// 泛光染色（hex），白色等于不染色
+    pub glow_color: String,
 }
 
 impl Default for CompositingParams {
@@ -178,6 +198,7 @@ impl Default for CompositingParams {
             rim_width: 4.5,
             bloom_int: 0.14,
             bloom_thresh: 0.72,
+            glow_color: "#ffffff".to_string(),
         }
     }
 }

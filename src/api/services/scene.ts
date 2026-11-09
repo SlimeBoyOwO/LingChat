@@ -42,6 +42,18 @@ export interface LightingGlobalParams {
   soft_knee: number;
   lift: number;
   mono: number;
+  /** 饱和度（0–2，1 = 原色，0 = 灰度）。旧存档缺失时按 1 处理。 */
+  saturation?: number;
+  /** 对比度（0–2，1 = 原样）。 */
+  contrast?: number;
+  /** 整体色调偏移角度（度，−180–180），配合 tint_amount 使用。 */
+  tint_hue?: number;
+  /** 色调偏移强度（0–1）。 */
+  tint_amount?: number;
+  /** 立绘单独曝光增益（0–2），与 master 相乘。 */
+  char_exposure?: number;
+  /** 背景单独曝光增益（0–2），与 master 相乘。 */
+  bg_exposure?: number;
 }
 
 /** 合成层参数（光包裹 / 边缘光 / 泛光），对应 Rust `CompositingParams`。 */
@@ -50,6 +62,8 @@ export interface LightingCompositingParams {
   rim_width: number;
   bloom_int: number;
   bloom_thresh: number;
+  /** 泛光染色（hex），白色等于不染色。 */
+  glow_color?: string;
 }
 
 /** 材质参数（伪法线 / 卡通着色 / 高光 / 自阴影），对应 Rust `MaterialParams`。 */

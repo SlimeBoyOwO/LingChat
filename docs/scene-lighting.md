@@ -28,15 +28,26 @@ dev 上的光影仍是 CSS 滤镜加径向渐变叠加层（`GameBackground.vue`
 | `azimuth` / `elevation` | 方位角与仰角（度），平行光与锥光使用                                            |
 | `cone` / `penumbra`     | 锥角与锥边半影，锥光使用                                                        |
 
-### global：整体强度
+### global：整体强度与调色
 
 `master` / `ambient_blend` / `albedo_protect` / `soft_knee` / `lift` / `mono`。
 
 对应着色器里的总强度、环境混合比例、反照率保护、软膝色调映射、暗部抬升与去色。
 
+调色组吸收旧 CSS filter 的能力，让 2.5D 路径不再丢功能：
+
+| 字段                            | 范围            | 作用                                                                                           |
+| ------------------------------- | --------------- | ---------------------------------------------------------------------------------------------- |
+| `saturation`                    | 0–2，默认 1     | 饱和度，0 = 灰度，>1 增强                                                                      |
+| `contrast`                      | 0–2，默认 1     | 对比度                                                                                         |
+| `tint_hue` / `tint_amount`      | −180–180° / 0–1 | 整体色调偏移，替代旧界面的「暖色调 / sepia」                                                   |
+| `char_exposure` / `bg_exposure` | 0–2，默认 1     | 立绘与背景各自的曝光增益，与 `master` 相乘。旧界面能分开调角色和背景亮度，这两个字段是它的替代 |
+
 ### compositing：合成层
 
-`light_wrap`（光绕过轮廓包裹暗侧）、`rim_width`（边缘光宽度）、`bloom_int` / `bloom_thresh`（泛光强度与阈值）。
+`light_wrap`（光绕过轮廓包裹暗侧）、`rim_width`（边缘光宽度）、`bloom_int` / `bloom_thresh`（泛光强度与阈值）、`glow_color`（泛光染色，默认 `#ffffff` 即不染色）。
+
+旧的 overlay 径向渐变异色层不走这里，仍由 `overlay_*` 与 `light_x` / `light_y` / `blend_mode` 驱动 —— 那组字段本来就存在，只是 2.5D 路径还没消费它们。
 
 ### material：材质
 
@@ -51,6 +62,15 @@ dev 上的光影仍是 CSS 滤镜加径向渐变叠加层（`GameBackground.vue`
 ## 兼容性
 
 `LightingParams` 是手写 `Deserialize`，同时处理两种历史格式：滤镜字段在顶层的旧格式，和带 `character` / `background` 嵌套的新格式。五组新字段在两个分支里都读取，任一格式缺失都落到 `None`。
+
+`global` 与 `compositing` 的新增字段都靠容器级 `#[serde(default)]` 取值，旧存档读出来自然落到默认值（饱和度 / 对比度 / 曝光 = 1，色调偏移 = 0，`glow_color` = 白），行为与引入前一致。
+
+**注意两处同名不同层**：
+
+- `character.saturation` / `background.saturation` 是旧 CSS filter 的单图层参数，只在旧路径生效；
+- `global.saturation` 作用于 WebGL 合成后的整幅画面，只在 2.5D 路径生效。
+
+`character.glow_color` 与 `compositing.glow_color` 同理：前者是旧 CSS 的 drop-shadow 颜色，后者是泛光染色。两条路径互斥，不会叠加。
 
 四个子结构用 `#[serde(default)]` 配手写 `Default`，因此只给部分字段时缺失项取合理默认值，而不是 `0` / `false`。例如 `material` 只写 `normal_strength` 时，`use_normal` 仍是 `true`。
 
