@@ -53,12 +53,78 @@ export interface SceneLightingFrame {
   camera?: LightingCameraParams | null;
   /** 背景平均色（sRGB 0-1）；不传则用上传背景时算好的值。 */
   averageColor?: readonly [number, number, number];
+  /**
+   * overlay 径向渐变异色层（旧界面的双色光晕 + mix-blend-mode）。
+   * 这组字段一直在 `LightingParams` 里，2.5D 路径此前没有消费。
+   */
+  overlay?: SceneOverlayParams | null;
+}
+
+/** overlay 径向渐变的渲染参数。 */
+export interface SceneOverlayParams {
+  enabled: boolean;
+  /** 中心色（hex） */
+  color1: string;
+  /** 边缘色（hex） */
+  color2: string;
+  /** 半径百分比，0–100 */
+  radius: number;
+  /** 不透明度，0–1 */
+  opacity: number;
+  /** 中心点，舞台归一化坐标（0–1，y 向下） */
+  center: readonly [number, number];
+  /** CSS mix-blend-mode 名称 */
+  mode: string;
 }
 
 /** 立绘可选贴图。`depth` 传 `"auto"` 时从 alpha 生成。 */
 export interface CharacterMaps {
   normal?: TexImageSource | null;
   depth?: TexImageSource | "auto" | null;
+}
+
+/** CSS mix-blend-mode → 着色器里的模式编码，见 postProcess.ts 的 blendMode()。 */
+const BLEND_MODE_CODE: Record<string, number> = {
+  normal: 0,
+  multiply: 1,
+  screen: 2,
+  overlay: 3,
+  "soft-light": 4,
+  darken: 5,
+  lighten: 6,
+};
+
+function blendModeCode(mode: string | null | undefined): number {
+  if (!mode) return 0;
+  return BLEND_MODE_CODE[mode.trim().toLowerCase()] ?? 0;
+}
+
+/** hex → sRGB 0-1。调色在 sRGB 空间做，和 CSS filter 的口径一致。 */
+function hexToSrgb(hex: string | null | undefined): [number, number, number] {
+  const m = /^#([0-9a-fA-F]{6})$/.exec((hex ?? "").trim());
+  if (!m) return [1, 1, 1];
+  const v = m[1];
+  return [
+    parseInt(v.slice(0, 2), 16) / 255,
+    parseInt(v.slice(2, 4), 16) / 255,
+    parseInt(v.slice(4, 6), 16) / 255,
+  ];
+}
+
+/** 色相角 → 最大分量为 1 的 RGB，用作乘性偏色（不让整体变亮或变暗）。 */
+function hueToUnitRgb(deg: number): [number, number, number] {
+  const h = ((((deg % 360) + 360) % 360) / 60) % 6;
+  const x = 1 - Math.abs((h % 2) - 1);
+  if (h < 1) return [1, x, 0];
+  if (h < 2) return [x, 1, 0];
+  if (h < 3) return [0, 1, x];
+  if (h < 4) return [0, x, 1];
+  if (h < 5) return [x, 0, 1];
+  return [1, 0, x];
+}
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
 }
 
 interface RenderTarget {
@@ -86,6 +152,13 @@ const DEFAULT_GLOBAL: LightingGlobalParams = {
   soft_knee: 0.5,
   lift: 0,
   mono: 0,
+  // 调色组默认中性，与旧存档行为一致
+  saturation: 1,
+  contrast: 1,
+  tint_hue: 0,
+  tint_amount: 0,
+  char_exposure: 1,
+  bg_exposure: 1,
 };
 
 const DEFAULT_COMPOSITING: LightingCompositingParams = {
@@ -93,6 +166,7 @@ const DEFAULT_COMPOSITING: LightingCompositingParams = {
   rim_width: 6,
   bloom_int: 0,
   bloom_thresh: 0.7,
+  glow_color: "#ffffff",
 };
 
 const DEFAULT_MATERIAL: LightingMaterialParams = {
@@ -423,6 +497,7 @@ export class SceneLightingRenderer {
     );
     gl.uniform1f(this.bgProgram.uniforms.uSoftKnee ?? null, globalParams.soft_knee);
     gl.uniform1f(this.bgProgram.uniforms.uLift ?? null, globalParams.lift);
+    gl.uniform1f(this.bgProgram.uniforms.uExposure ?? null, globalParams.bg_exposure ?? 1);
     const avg = frame.averageColor ?? this.averageColor;
     gl.uniform3f(this.bgProgram.uniforms.uBgAvgSrgb ?? null, avg[0], avg[1], avg[2]);
     this.bindTextureUnit(0, this.backgroundTexture);
@@ -483,6 +558,7 @@ export class SceneLightingRenderer {
     gl.uniform1f(cu.uSoftKnee ?? null, globalParams.soft_knee);
     gl.uniform1f(cu.uLift ?? null, globalParams.lift);
     gl.uniform1f(cu.uAmbientBlend ?? null, globalParams.ambient_blend);
+    gl.uniform1f(cu.uCharExposure ?? null, globalParams.char_exposure ?? 1);
     gl.uniform1f(cu.uLightWrap ?? null, compositing.light_wrap);
     gl.uniform1f(cu.uRimWidth ?? null, compositing.rim_width);
     gl.uniform1f(cu.uCharOnly ?? null, this.characterReady ? 0 : 1);
@@ -503,6 +579,8 @@ export class SceneLightingRenderer {
       this.bindTextureUnit(0, sceneTarget.tex);
       gl.uniform1i(this.bloomProgram.uniforms.uSceneTex ?? null, 0);
       gl.uniform1f(this.bloomProgram.uniforms.uThresh ?? null, compositing.bloom_thresh);
+      const glow = hexToSrgb(compositing.glow_color);
+      gl.uniform3f(this.bloomProgram.uniforms.uGlowColor ?? null, glow[0], glow[1], glow[2]);
       this.drawQuad();
 
       // 第一级：小半径，给高光描边；结果留在 b1b
@@ -526,6 +604,28 @@ export class SceneLightingRenderer {
     gl.uniform1i(fu.uBloom2Tex ?? null, 2);
     gl.uniform1f(fu.uBloomInt ?? null, bloom1Tex ? compositing.bloom_int : 0);
     gl.uniform1f(fu.uMono ?? null, globalParams.mono);
+
+    // 调色：与旧 CSS filter 的 saturation / contrast / sepia 对应，但作用于整幅合成结果
+    gl.uniform1f(fu.uSaturation ?? null, globalParams.saturation ?? 1);
+    gl.uniform1f(fu.uContrast ?? null, globalParams.contrast ?? 1);
+    const tint = hueToUnitRgb(globalParams.tint_hue ?? 0);
+    gl.uniform3f(fu.uTintColor ?? null, tint[0], tint[1], tint[2]);
+    gl.uniform1f(fu.uTintAmount ?? null, clamp01(globalParams.tint_amount ?? 0));
+
+    // overlay：中心点来自旧 light_x / light_y（0–100 → 0–1）
+    const ov = frame.overlay;
+    const ovOn = !!ov?.enabled;
+    gl.uniform1f(fu.uOverlayEnabled ?? null, ovOn ? 1 : 0);
+    gl.uniform1f(fu.uStageAspect ?? null, stage.height > 0 ? stage.width / stage.height : 1);
+    if (ov && ovOn) {
+      const c1 = hexToSrgb(ov.color1);
+      const c2 = hexToSrgb(ov.color2);
+      gl.uniform4f(fu.uOverlayColor1 ?? null, c1[0], c1[1], c1[2], clamp01(ov.opacity));
+      gl.uniform4f(fu.uOverlayColor2 ?? null, c2[0], c2[1], c2[2], 1);
+      gl.uniform2f(fu.uOverlayCenter ?? null, ov.center[0], ov.center[1]);
+      gl.uniform1f(fu.uOverlayRadius ?? null, Math.max(0.02, (ov.radius ?? 50) / 100));
+      gl.uniform1f(fu.uOverlayMode ?? null, blendModeCode(ov.mode));
+    }
     this.drawQuad();
   }
 

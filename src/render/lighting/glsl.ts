@@ -73,6 +73,8 @@ uniform vec4  uBgRect;
 uniform float uSoftKnee;
 uniform float uLift;
 uniform vec3  uBgAvgSrgb;
+/** 背景单独曝光增益（0–2），与 global.master 相乘后再作用到这一层 */
+uniform float uExposure;
 
 void main() {
   vec2 stagePx = vUv * uStageSize;
@@ -83,7 +85,7 @@ void main() {
   }
   vec4 tex = texture2D(uBgTex, localUv);
   if (uLCount == 0) {
-    gl_FragColor = vec4(tex.rgb, 1.0);
+    gl_FragColor = vec4(clamp(tex.rgb * uExposure, 0.0, 1.0), 1.0);
     return;
   }
   vec3 srcLin = decodeSrgb(tex.rgb);
@@ -143,5 +145,5 @@ void main() {
   vec3 envTint = mix(uBgAvgSrgb, ambSrgb, step(0.01, luma709(ambSrgb)) * 0.65);
   float shadowMask = 1.0 - smoothstep(0.0, 0.52, luma709(outSrgb));
   outSrgb = clamp(outSrgb + uLift * shadowMask * mix(vec3(0.14), envTint * 0.36, 0.82) * (1.0 - outSrgb), 0.0, 1.0);
-  gl_FragColor = vec4(outSrgb, 1.0);
+  gl_FragColor = vec4(clamp(outSrgb * uExposure, 0.0, 1.0), 1.0);
 }`;

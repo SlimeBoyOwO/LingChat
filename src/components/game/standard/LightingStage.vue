@@ -16,7 +16,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue"
 import { useGameStore } from "@/stores/modules/game";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { resolveBackgroundSrc } from "@/utils/background-src";
-import { BackgroundLightingRenderer } from "@/render/lighting";
+import { SceneLightingRenderer } from "@/render/lighting";
 import {
   acquireLightingStage,
   releaseLightingStage,
@@ -30,9 +30,27 @@ const enabled = ref(false);
 
 const lighting = computed(() => gameStore.currentScene?.lighting ?? null);
 const hasLights = computed(() => (lighting.value?.lights?.length ?? 0) > 0);
+
+/**
+ * 旧的 overlay 径向渐变异色层。字段一直在 LightingParams 里，只是 2.5D 路径
+ * 之前没消费它 —— 不接的话，开了工作台的场景会丢掉原来那层双色光晕。
+ */
+const overlayParams = computed(() => {
+  const l = lighting.value;
+  if (!l) return null;
+  return {
+    enabled: !!l.overlay_enabled,
+    color1: l.overlay_color1 || "#ffd9b0",
+    color2: l.overlay_color2 || "#000000",
+    radius: l.overlay_radius ?? 50,
+    opacity: l.overlay_opacity ?? 0.5,
+    center: [(l.light_x ?? 50) / 100, (l.light_y ?? 50) / 100] as [number, number],
+    mode: l.blend_mode || "normal",
+  };
+});
 const backgroundSrc = computed(() => resolveBackgroundSrc(uiStore.currentBackground));
 
-let renderer: BackgroundLightingRenderer | null = null;
+let renderer: SceneLightingRenderer | null = null;
 let background: HTMLImageElement | null = null;
 let observer: ResizeObserver | null = null;
 let acquired = false;
@@ -71,8 +89,15 @@ function draw(): void {
   renderer.render({
     lights: lighting.value?.lights ?? [],
     global: lighting.value?.global ?? null,
+    compositing: lighting.value?.compositing ?? null,
+    material: lighting.value?.material ?? null,
+    camera: lighting.value?.camera ?? null,
+    overlay: overlayParams.value,
     stage: { width, height },
     backgroundRect: bgRect,
+    // 立绘不参与合成（Live2D 拿不到每帧位图），零尺寸矩形 + 未上传角色纹理
+    // 会让着色器走「纯背景」分支，但调色 / overlay / 泛光照常生效
+    characterRect: [0, 0, 0, 0],
   });
 }
 
@@ -121,7 +146,7 @@ async function start(): Promise<void> {
   const canvas = canvasRef.value;
   if (!canvas) return;
   if (!hasLights.value) return;
-  if (!BackgroundLightingRenderer.isSupported()) return;
+  if (!SceneLightingRenderer.isSupported()) return;
 
   // 先让画布可见，否则 display:none 下 clientWidth 为 0，尺寸会被量成 1x1
   enabled.value = true;
@@ -129,7 +154,7 @@ async function start(): Promise<void> {
   await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
 
   try {
-    renderer = new BackgroundLightingRenderer(canvas);
+    renderer = new SceneLightingRenderer(canvas);
   } catch (err) {
     // WebGL 不可用时静默退回旧路径，不让整屏背景因为光影挂掉
     console.warn("[lighting] WebGL 初始化失败，回退到 CSS 光影", err);

@@ -43,6 +43,8 @@ uniform float uLightWrap;
 uniform float uRimWidth;
 uniform float uCharOnly;
 uniform vec3  uBgAvgSrgb;
+/** 立绘单独曝光增益（0–2），只作用于角色像素，不影响背景 */
+uniform float uCharExposure;
 
 float sampleCharAlpha(vec2 uv) {
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return 0.0;
@@ -261,13 +263,17 @@ void main() {
   litSrgb = 1.0 - (1.0 - litSrgb) * (1.0 - wrapAmt);
 
   if (uCharOnly > 0.5) {
-    gl_FragColor = vec4(litSrgb * tex.a, tex.a);
+    // 没有立绘（纯背景场景）：输出已着色的背景，让调色 / overlay / 泛光继续生效。
+    // 原来这里输出 litSrgb * tex.a，无角色时 tex.a = 0，整幅画面会是全透明。
+    gl_FragColor = vec4(bgScene, 1.0);
     return;
   }
 
   float outerScatter = pow(clamp(blurAlphaIso * 1.42 - tex.a * 0.65, 0.0, 1.0), 1.15) * (1.0 - tex.a) * uLightWrap * 0.64;
   vec3 bgWithHalo = 1.0 - (1.0 - bgScene) * (1.0 - clamp(mix(wrapSource, vec3(1.0, 0.97, 0.92), 0.28) * outerScatter * 1.18, 0.0, 0.78));
-  vec3 comp = mix(bgWithHalo, litSrgb, tex.a);
+  // 立绘曝光只乘在角色像素上，背景保持原样
+  vec3 litExposed = clamp(litSrgb * uCharExposure, 0.0, 1.0);
+  vec3 comp = mix(bgWithHalo, litExposed, tex.a);
   gl_FragColor = vec4(comp, 1.0);
 }`;
 
