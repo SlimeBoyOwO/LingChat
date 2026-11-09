@@ -98,7 +98,6 @@ fn task_block_input<'a>(
         task: TaskKind::DraftChapter,
         handoff: Handoff::Proceed,
         plan,
-        user_msg: "把第 1 章写出来，顺便转成 YAML",
         skills_dir: dir,
         land: true,
         item_index: 1,
@@ -333,7 +332,6 @@ fn parts_input<'a>(
         task,
         handoff,
         plan,
-        user_msg: "把第 1 章写出来，顺便转成 YAML",
         skills_dir: dir,
         land,
         item_index,
@@ -604,4 +602,46 @@ fn prefix_manual_in_fixed() {
         !parts.varying.contains(title),
         "手册标题不该出现在随项变段"
     );
+}
+
+/// skipped 逐轮变化只进 varying；固定段不许复述用户原话。
+#[test]
+fn prefix_skipped_in_varying_not_fixed() {
+    let dir = skills_dir();
+    assert!(dir.is_dir(), "skills dir: {}", dir.display());
+    let plan = parts_plan();
+    let allowed: Vec<&str> = vec!["read_skill", "read_file", "write_file", "list_files"];
+    let no_skipped: Vec<String> = Vec::new();
+    let some_skipped: Vec<String> = vec!["盘点素材（还没有素材目录）".to_string()];
+
+    let a = parts_input(
+        &plan, &dir, &allowed, &no_skipped, TaskKind::DraftChapter, Handoff::Proceed, 1, false,
+        true,
+    );
+    let b = parts_input(
+        &plan, &dir, &allowed, &some_skipped, TaskKind::DraftChapter, Handoff::Proceed, 1, false,
+        true,
+    );
+    let pa = prompt::build_task_parts(&a);
+    let pb = prompt::build_task_parts(&b);
+
+    assert_eq!(
+        pa.fixed, pb.fixed,
+        "skipped 变化（换轮）不许影响固定段，否则跨轮前缀复用拿不到"
+    );
+    assert_ne!(pa.varying, pb.varying, "skipped 必须进 varying");
+    assert!(
+        pb.varying.contains("【队列里做不了的项】"),
+        "skipped 的文案必须落在 varying 里"
+    );
+    assert!(
+        !pb.fixed.contains("【队列里做不了的项】"),
+        "固定段里不许再出现 skipped 文案"
+    );
+    assert!(
+        !pb.fixed.contains("【用户这一轮的原话】"),
+        "固定段里不许再复述用户原话（原话已在 base_history 的 user 消息里）"
+    );
+    let golden = prompt::build_task_block(&b);
+    assert_eq!(pb.ordered, golden, "两份实现仍须逐字对拍");
 }

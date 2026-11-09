@@ -229,7 +229,6 @@ pub async fn run_chat(
             task,
             handoff,
             plan: &plan,
-            user_msg: &user_msg,
             skills_dir: &ctx.skills_dir,
             land: creates_chapters,
             item_index: idx,

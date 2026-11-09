@@ -46,7 +46,6 @@ pub struct TaskBlockInput<'a> {
     pub task: crate::ai_service::skill_agent::role::TaskKind,
     pub handoff: crate::ai_service::skill_agent::role::Handoff,
     pub plan: &'a crate::ai_service::skill_agent::router::RoutePlan,
-    pub user_msg: &'a str,
     pub skills_dir: &'a Path,
     /// 这一轮要不要产出能跑章节：由计划里有没有 `WriteChapter` / `ReviseChapter` 派生（见 `core`），不看用户怎么说。
     pub land: bool,
@@ -65,7 +64,6 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
         task,
         handoff,
         plan,
-        user_msg,
         skills_dir,
         land,
         item_index,
@@ -132,10 +130,6 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
              （做了什么 / 发现了什么 / 要用户定什么），**然后**用一句话把本轮每项各自做了什么列全 ——\
              用户只看最后这一段也知道全貌。",
         );
-    }
-
-    if !user_msg.trim().is_empty() {
-        out.push_str(&format!("\n【用户这一轮的原话】{}", user_msg.trim()));
     }
 
     out.push_str(include_str!("../prompts/stage_build_task_block_2.md"));
@@ -242,7 +236,6 @@ pub fn build_task_parts(input: &TaskBlockInput<'_>) -> TaskBlockParts {
         task,
         handoff,
         plan,
-        user_msg,
         skills_dir,
         land,
         item_index,
@@ -324,7 +317,7 @@ pub fn build_task_parts(input: &TaskBlockInput<'_>) -> TaskBlockParts {
     }));
 
     // P5 (:120-125)
-    parts.push((PartKind::Fixed, {
+    parts.push((PartKind::Varying, {
         if !skipped.is_empty() {
             format!(
                 "\n【队列里做不了的项】{}（在回执里逐条说明为什么，别装没看见）",
@@ -351,15 +344,6 @@ pub fn build_task_parts(input: &TaskBlockInput<'_>) -> TaskBlockParts {
              （做了什么 / 发现了什么 / 要用户定什么），**然后**用一句话把本轮每项各自做了什么列全 ——\
              用户只看最后这一段也知道全貌。"
                 .to_string()
-        } else {
-            String::new()
-        }
-    }));
-
-    // P8 (:137-139)
-    parts.push((PartKind::Fixed, {
-        if !user_msg.trim().is_empty() {
-            format!("\n【用户这一轮的原话】{}", user_msg.trim())
         } else {
             String::new()
         }
