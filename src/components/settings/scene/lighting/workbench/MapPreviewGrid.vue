@@ -38,9 +38,15 @@ const depthInput = ref<HTMLInputElement | null>(null);
 
 let token = 0;
 
-function loadImage(src: string): Promise<HTMLImageElement | null> {
+/**
+ * 立绘是 asset 协议（`http://asset.localhost/...`），与页面不同源。
+ * 不带 CORS 声明也能加载成功，但会把画布弄脏 —— 之后 getImageData 抛
+ * SecurityError，界面就显示「生成失败」。所以必须先试带 CORS 的加载。
+ */
+function loadImage(src: string, anonymous = true): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
     const img = new Image();
+    if (anonymous) img.crossOrigin = "anonymous";
     img.onload = () => resolve(img);
     img.onerror = () => resolve(null);
     img.src = src;
@@ -70,7 +76,8 @@ async function buildMaps(src: string | null | undefined) {
     return;
   }
 
-  const img = await loadImage(src);
+  // 先按 CORS 加载；个别地址不返回 ACAO 时退回普通加载（那时会明确报「画布被污染」）
+  const img = (await loadImage(src)) ?? (await loadImage(src, false));
   if (!img || my !== token) {
     if (my === token && src) {
       normalState.value = "fail";

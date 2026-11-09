@@ -262,6 +262,14 @@ async function start(): Promise<void> {
 
   // 背景就绪后再试接管立绘；失败只是「人物不吃光」，不影响背景
   await takeover.sync();
+
+  // 一行说清当前状态，方便在控制台一眼判断卡在哪一环
+  const stage = syncCanvasSize();
+  console.info(
+    `[lighting] WebGL 生效：场景「${gameStore.currentScene?.scene_name ?? "?"}」` +
+      `${lighting.value?.lights?.length ?? 0} 盏灯 · ${stage.width}x${stage.height} · ` +
+      `立绘${takeover.active.value ? "已接管" : "未接管（仍走 DOM）"}`,
+  );
   draw();
 }
 
