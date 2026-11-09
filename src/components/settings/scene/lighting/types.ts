@@ -43,6 +43,13 @@ export const DEFAULT_GLOBAL: LightingGlobalParams = {
   soft_knee: 0.72,
   lift: 0.12,
   mono: 0.0,
+  // 调色组：1 / 1 / 0 / 0 / 1 / 1 表示完全不改变画面，与旧存档行为一致
+  saturation: 1.0,
+  contrast: 1.0,
+  tint_hue: 0.0,
+  tint_amount: 0.0,
+  char_exposure: 1.0,
+  bg_exposure: 1.0,
 };
 
 export const DEFAULT_COMPOSITING: LightingCompositingParams = {
@@ -50,6 +57,7 @@ export const DEFAULT_COMPOSITING: LightingCompositingParams = {
   rim_width: 4.8,
   bloom_int: 0.16,
   bloom_thresh: 0.72,
+  glow_color: "#ffffff",
 };
 
 export const DEFAULT_MATERIAL: LightingMaterialParams = {
