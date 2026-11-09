@@ -1,15 +1,21 @@
 <script setup lang="ts">
-import type { LightingCompositingParams, LightingGlobalParams } from "@/api/services/scene";
-import { DEFAULT_COMPOSITING, DEFAULT_GLOBAL } from "./types";
+import type {
+  LightingCameraParams,
+  LightingCompositingParams,
+  LightingGlobalParams,
+} from "@/api/services/scene";
+import { DEFAULT_CAMERA, DEFAULT_COMPOSITING, DEFAULT_GLOBAL } from "./types";
 
 const props = defineProps<{
   compositingParams: LightingCompositingParams;
   globalParams: LightingGlobalParams;
+  cameraParams: LightingCameraParams;
 }>();
 
 const emit = defineEmits<{
   (e: "resetCompositing"): void;
   (e: "resetGlobal"): void;
+  (e: "resetCamera"): void;
 }>();
 
 function resetCompositing() {
@@ -20,6 +26,14 @@ function resetCompositing() {
 function resetGlobal() {
   Object.assign(props.globalParams, DEFAULT_GLOBAL);
   emit("resetGlobal");
+}
+
+function resetCamera() {
+  // 只重置取景三参数，景别（shot）由画布工具栏按钮控制
+  props.cameraParams.zoom = DEFAULT_CAMERA.zoom;
+  props.cameraParams.focus_y = DEFAULT_CAMERA.focus_y;
+  props.cameraParams.dof = DEFAULT_CAMERA.dof;
+  emit("resetCamera");
 }
 </script>
 
@@ -226,6 +240,65 @@ function resetGlobal() {
             class="cursor-pointer accent-purple-500"
           />
         </div>
+      </div>
+    </div>
+
+    <!-- 构图 / 立绘取景：原来 zoom / focus_y / dof 只存在于数据结构，界面无入口 -->
+    <div class="flex flex-col gap-2.5 rounded-lg border border-[#212736] bg-[#0c0f16] p-3 text-xs">
+      <div class="flex items-center justify-between border-b border-[#1b202c] pb-2">
+        <span class="font-bold text-slate-200">构图 / 立绘取景</span>
+        <button
+          type="button"
+          @click="resetCamera"
+          class="text-[11px] text-slate-400 transition-colors hover:text-purple-300"
+        >
+          重置本组
+        </button>
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <div class="flex justify-between text-[11px] text-slate-400">
+          <span>立绘缩放 (Zoom)</span>
+          <span class="font-mono text-purple-300">{{ cameraParams.zoom.toFixed(2) }}</span>
+        </div>
+        <input
+          type="range"
+          min="0.5"
+          max="2.5"
+          step="0.01"
+          v-model.number="cameraParams.zoom"
+          class="cursor-pointer accent-purple-500"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <div class="flex justify-between text-[11px] text-slate-400">
+          <span>纵向偏移 (Focus Y)</span>
+          <span class="font-mono text-purple-300">{{ cameraParams.focus_y.toFixed(2) }}</span>
+        </div>
+        <input
+          type="range"
+          min="-0.5"
+          max="1"
+          step="0.01"
+          v-model.number="cameraParams.focus_y"
+          class="cursor-pointer accent-purple-500"
+        />
+      </div>
+
+      <div class="flex flex-col gap-1">
+        <div class="flex justify-between text-[11px] text-slate-400">
+          <span>背景景深 (DoF)</span>
+          <span class="font-mono text-purple-300">{{ cameraParams.dof.toFixed(2) }}</span>
+        </div>
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.01"
+          v-model.number="cameraParams.dof"
+          class="cursor-pointer accent-purple-500"
+        />
       </div>
     </div>
   </div>

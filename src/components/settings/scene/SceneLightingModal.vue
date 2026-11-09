@@ -198,248 +198,256 @@ function handleSave() {
 </script>
 
 <template>
-  <div
-    v-if="isOpen"
-    class="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4"
-    @click.self="emit('close')"
-  >
+  <!-- 必须 Teleport 到 body：宿主 SceneEditModal 自己就在 Teleport 里，DOM 顺序更靠后，
+       同 z-index 会把本弹窗压在下面，表现是「点了没跳转」。z-[60] 再上一层保险。 -->
+  <Teleport to="body">
     <div
-      class="flex h-full max-h-[92vh] w-full max-w-[1380px] flex-col overflow-hidden rounded-2xl border border-[#232b3d] bg-[#0e1117] shadow-2xl"
+      v-if="isOpen"
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 p-2 backdrop-blur-md sm:p-4"
+      @click.self="emit('close')"
     >
-      <!-- Topbar Header -->
-      <header
-        class="flex h-13 shrink-0 items-center justify-between border-b border-[#1b212f] bg-[#121620] px-4"
+      <div
+        class="flex h-full max-h-[92vh] w-full max-w-[1380px] flex-col overflow-hidden rounded-2xl border border-[#232b3d] bg-[#0e1117] shadow-2xl"
       >
-        <div class="flex items-center gap-3">
-          <div class="flex items-center gap-2">
-            <span
-              class="rounded bg-gradient-to-r from-purple-600 to-indigo-600 px-2 py-0.5 text-[10px] font-bold tracking-wider text-white uppercase"
-            >
-              PRO-STUDIO
-            </span>
-            <h2 class="text-sm font-bold text-slate-100">
-              {{ $t("settings.sceneEdit.lightingWorkbench.title") }}
-            </h2>
-          </div>
-          <span
-            v-if="sceneName"
-            class="hidden rounded border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[11px] text-purple-300 md:inline-block"
-          >
-            {{ $t("settings.sceneEdit.lightingWorkbench.sceneBadge", { name: sceneName }) }}
-          </span>
-        </div>
-
-        <div class="flex items-center gap-2">
-          <!-- Undo / Redo controls -->
-          <div class="mr-0.5 flex items-center gap-1 border-r border-[#2b3347] pr-2">
-            <button
-              type="button"
-              @click="undo"
-              :disabled="!canUndo"
-              class="flex items-center gap-1 rounded border border-[#2b3347] bg-[#171c26] px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-[#202736] hover:text-white disabled:pointer-events-none disabled:opacity-30"
-              :title="$t('settings.sceneEdit.lightingWorkbench.undoTitle')"
-            >
-              ↶ {{ $t("settings.sceneEdit.lightingWorkbench.undo") }}
-            </button>
-            <button
-              type="button"
-              @click="redo"
-              :disabled="!canRedo"
-              class="flex items-center gap-1 rounded border border-[#2b3347] bg-[#171c26] px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-[#202736] hover:text-white disabled:pointer-events-none disabled:opacity-30"
-              :title="$t('settings.sceneEdit.lightingWorkbench.redoTitle')"
-            >
-              ↷ {{ $t("settings.sceneEdit.lightingWorkbench.redo") }}
-            </button>
-          </div>
-
-          <button
-            type="button"
-            @click="openImportJson"
-            class="rounded border border-[#2b3347] bg-[#171c26] px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-[#202736] hover:text-white"
-          >
-            {{ $t("settings.sceneEdit.lightingWorkbench.btnImportJson") }}
-          </button>
-          <button
-            type="button"
-            @click="openExportJson"
-            class="rounded border border-[#2b3347] bg-[#171c26] px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-[#202736] hover:text-white"
-          >
-            {{ $t("settings.sceneEdit.lightingWorkbench.btnExportJson") }}
-          </button>
-          <button
-            type="button"
-            @click="emit('close')"
-            class="rounded px-3 py-1 text-xs text-slate-400 hover:text-slate-200"
-          >
-            {{ $t("settings.sceneEdit.lightingWorkbench.btnCancel") }}
-          </button>
-          <button
-            type="button"
-            @click="handleSave"
-            class="rounded bg-purple-600 px-4 py-1 text-xs font-bold text-white shadow-sm hover:bg-purple-500 active:scale-95"
-          >
-            {{ $t("settings.sceneEdit.lightingWorkbench.btnSave") }}
-          </button>
-        </div>
-      </header>
-
-      <!-- Main Two-Column Workbench Body -->
-      <div class="flex flex-1 flex-col overflow-hidden lg:flex-row">
-        <!-- Left: Stage & WebGL Canvas -->
-        <div
-          class="flex flex-1 flex-col overflow-hidden border-b border-[#283042] lg:border-r lg:border-b-0"
+        <!-- Topbar Header -->
+        <header
+          class="flex h-13 shrink-0 items-center justify-between border-b border-[#1b212f] bg-[#121620] px-4"
         >
-          <LightingCanvasStage
-            :background-src="customBackgroundSrc || backgroundSrc"
-            :character-src="characterSrc"
-            :current-preset-name="currentPreset?.name"
-            :lights="lights"
-            :global-params="globalParams"
-            :compositing-params="compositingParams"
-            :material-params="materialParams"
-            :camera-params="cameraParams"
-            :selected-light-index="selectedLightIndex"
-            :compare-original="compareOriginal"
-            @update:background-src="customBackgroundSrc = $event"
-            @update:selected-light-index="selectedLightIndex = $event"
-            @update:light-pos="handleLightPos"
-            @update:light-direction="handleLightDirection"
-            @set-shot="setShot"
-          />
-        </div>
-
-        <!-- Right: Inspector Panels with Tab Bar -->
-        <div class="flex w-full flex-col overflow-hidden bg-[#0a0d13] lg:w-[460px]">
-          <!-- Tab Navigation -->
-          <div class="grid grid-cols-4 border-b border-[#1b212f] bg-[#10141d] text-center text-xs">
-            <button
-              type="button"
-              @click="activeTab = 'presets'"
-              :class="[
-                'py-2.5 font-semibold transition-colors',
-                activeTab === 'presets'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-slate-400 hover:text-slate-200',
-              ]"
+          <div class="flex items-center gap-3">
+            <div class="flex items-center gap-2">
+              <span
+                class="rounded bg-gradient-to-r from-purple-600 to-indigo-600 px-2 py-0.5 text-[10px] font-bold tracking-wider text-white uppercase"
+              >
+                PRO-STUDIO
+              </span>
+              <h2 class="text-sm font-bold text-slate-100">
+                {{ $t("settings.sceneEdit.lightingWorkbench.title") }}
+              </h2>
+            </div>
+            <span
+              v-if="sceneName"
+              class="hidden rounded border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[11px] text-purple-300 md:inline-block"
             >
-              预设矩阵
-            </button>
-            <button
-              type="button"
-              @click="activeTab = 'lights'"
-              :class="[
-                'py-2.5 font-semibold transition-colors',
-                activeTab === 'lights'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-slate-400 hover:text-slate-200',
-              ]"
-            >
-              灯光 ({{ lights.length }})
-            </button>
-            <button
-              type="button"
-              @click="activeTab = 'material'"
-              :class="[
-                'py-2.5 font-semibold transition-colors',
-                activeTab === 'material'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-slate-400 hover:text-slate-200',
-              ]"
-            >
-              2.5D 材质
-            </button>
-            <button
-              type="button"
-              @click="activeTab = 'compositing'"
-              :class="[
-                'py-2.5 font-semibold transition-colors',
-                activeTab === 'compositing'
-                  ? 'border-b-2 border-purple-500 text-purple-300'
-                  : 'text-slate-400 hover:text-slate-200',
-              ]"
-            >
-              2D 合成
-            </button>
+              {{ $t("settings.sceneEdit.lightingWorkbench.sceneBadge", { name: sceneName }) }}
+            </span>
           </div>
 
-          <!-- Tab Content Scrollable Area -->
+          <div class="flex items-center gap-2">
+            <!-- Undo / Redo controls -->
+            <div class="mr-0.5 flex items-center gap-1 border-r border-[#2b3347] pr-2">
+              <button
+                type="button"
+                @click="undo"
+                :disabled="!canUndo"
+                class="flex items-center gap-1 rounded border border-[#2b3347] bg-[#171c26] px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-[#202736] hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                :title="$t('settings.sceneEdit.lightingWorkbench.undoTitle')"
+              >
+                ↶ {{ $t("settings.sceneEdit.lightingWorkbench.undo") }}
+              </button>
+              <button
+                type="button"
+                @click="redo"
+                :disabled="!canRedo"
+                class="flex items-center gap-1 rounded border border-[#2b3347] bg-[#171c26] px-2 py-1 text-xs font-medium text-slate-300 transition-all hover:bg-[#202736] hover:text-white disabled:pointer-events-none disabled:opacity-30"
+                :title="$t('settings.sceneEdit.lightingWorkbench.redoTitle')"
+              >
+                ↷ {{ $t("settings.sceneEdit.lightingWorkbench.redo") }}
+              </button>
+            </div>
+
+            <button
+              type="button"
+              @click="openImportJson"
+              class="rounded border border-[#2b3347] bg-[#171c26] px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-[#202736] hover:text-white"
+            >
+              {{ $t("settings.sceneEdit.lightingWorkbench.btnImportJson") }}
+            </button>
+            <button
+              type="button"
+              @click="openExportJson"
+              class="rounded border border-[#2b3347] bg-[#171c26] px-2.5 py-1 text-xs font-medium text-slate-300 hover:bg-[#202736] hover:text-white"
+            >
+              {{ $t("settings.sceneEdit.lightingWorkbench.btnExportJson") }}
+            </button>
+            <button
+              type="button"
+              @click="emit('close')"
+              class="rounded px-3 py-1 text-xs text-slate-400 hover:text-slate-200"
+            >
+              {{ $t("settings.sceneEdit.lightingWorkbench.btnCancel") }}
+            </button>
+            <button
+              type="button"
+              @click="handleSave"
+              class="rounded bg-purple-600 px-4 py-1 text-xs font-bold text-white shadow-sm hover:bg-purple-500 active:scale-95"
+            >
+              {{ $t("settings.sceneEdit.lightingWorkbench.btnSave") }}
+            </button>
+          </div>
+        </header>
+
+        <!-- Main Two-Column Workbench Body -->
+        <div class="flex flex-1 flex-col overflow-hidden lg:flex-row">
+          <!-- Left: Stage & WebGL Canvas -->
           <div
-            class="flex-1 overflow-y-auto p-4"
-            style="scrollbar-width: thin; scrollbar-color: #2b3347 transparent"
+            class="flex flex-1 flex-col overflow-hidden border-b border-[#283042] lg:border-r lg:border-b-0"
           >
-            <!-- Presets Tab -->
-            <div v-show="activeTab === 'presets'">
-              <LightingPresetGrid
-                :presets="presets"
-                :cur-preset-id="curPresetId"
-                :favorite-preset-ids="favoritePresetIds"
-                @select-preset="applyPreset"
-                @override-cur="onOverridePreset"
-                @revert-cur="onRevertPreset"
-                @toggle-favorite="toggleFavoritePreset"
-              />
+            <LightingCanvasStage
+              :background-src="customBackgroundSrc || backgroundSrc"
+              :character-src="characterSrc"
+              :current-preset-name="currentPreset?.name"
+              :lights="lights"
+              :global-params="globalParams"
+              :compositing-params="compositingParams"
+              :material-params="materialParams"
+              :camera-params="cameraParams"
+              :selected-light-index="selectedLightIndex"
+              :compare-original="compareOriginal"
+              @update:background-src="customBackgroundSrc = $event"
+              @update:selected-light-index="selectedLightIndex = $event"
+              @update:light-pos="handleLightPos"
+              @update:light-direction="handleLightDirection"
+              @set-shot="setShot"
+            />
+          </div>
+
+          <!-- Right: Inspector Panels with Tab Bar -->
+          <div class="flex w-full flex-col overflow-hidden bg-[#0a0d13] lg:w-[460px]">
+            <!-- Tab Navigation -->
+            <div
+              class="grid grid-cols-4 border-b border-[#1b212f] bg-[#10141d] text-center text-xs"
+            >
+              <button
+                type="button"
+                @click="activeTab = 'presets'"
+                :class="[
+                  'py-2.5 font-semibold transition-colors',
+                  activeTab === 'presets'
+                    ? 'border-b-2 border-purple-500 text-purple-300'
+                    : 'text-slate-400 hover:text-slate-200',
+                ]"
+              >
+                预设矩阵
+              </button>
+              <button
+                type="button"
+                @click="activeTab = 'lights'"
+                :class="[
+                  'py-2.5 font-semibold transition-colors',
+                  activeTab === 'lights'
+                    ? 'border-b-2 border-purple-500 text-purple-300'
+                    : 'text-slate-400 hover:text-slate-200',
+                ]"
+              >
+                灯光 ({{ lights.length }})
+              </button>
+              <button
+                type="button"
+                @click="activeTab = 'material'"
+                :class="[
+                  'py-2.5 font-semibold transition-colors',
+                  activeTab === 'material'
+                    ? 'border-b-2 border-purple-500 text-purple-300'
+                    : 'text-slate-400 hover:text-slate-200',
+                ]"
+              >
+                2.5D 材质
+              </button>
+              <button
+                type="button"
+                @click="activeTab = 'compositing'"
+                :class="[
+                  'py-2.5 font-semibold transition-colors',
+                  activeTab === 'compositing'
+                    ? 'border-b-2 border-purple-500 text-purple-300'
+                    : 'text-slate-400 hover:text-slate-200',
+                ]"
+              >
+                2D 合成
+              </button>
             </div>
 
-            <!-- Lights Tab -->
-            <div v-show="activeTab === 'lights'">
-              <LightingLightsManager
-                :lights="lights"
-                :selected-light-index="selectedLightIndex"
-                :selected-light="selectedLight"
-                @update:selected-light-index="selectedLightIndex = $event"
-                @add-light="addLight"
-                @remove-light="removeLight"
-                @toggle-key-light="toggleKeyLight"
-                @move-light="moveLight"
-              />
-            </div>
+            <!-- Tab Content Scrollable Area -->
+            <div
+              class="flex-1 overflow-y-auto p-4"
+              style="scrollbar-width: thin; scrollbar-color: #2b3347 transparent"
+            >
+              <!-- Presets Tab -->
+              <div v-show="activeTab === 'presets'">
+                <LightingPresetGrid
+                  :presets="presets"
+                  :cur-preset-id="curPresetId"
+                  :favorite-preset-ids="favoritePresetIds"
+                  @select-preset="applyPreset"
+                  @override-cur="onOverridePreset"
+                  @revert-cur="onRevertPreset"
+                  @toggle-favorite="toggleFavoritePreset"
+                />
+              </div>
 
-            <!-- 2.5D Material Tab -->
-            <div v-show="activeTab === 'material'">
-              <LightingMaterialInspector
-                :material-params="materialParams"
-                @reset="showToast('✓ 材质参数已重置')"
-              />
-            </div>
+              <!-- Lights Tab -->
+              <div v-show="activeTab === 'lights'">
+                <LightingLightsManager
+                  :lights="lights"
+                  :selected-light-index="selectedLightIndex"
+                  :selected-light="selectedLight"
+                  @update:selected-light-index="selectedLightIndex = $event"
+                  @add-light="addLight"
+                  @remove-light="removeLight"
+                  @toggle-key-light="toggleKeyLight"
+                  @move-light="moveLight"
+                />
+              </div>
 
-            <!-- 2D Compositing & Tone Tab -->
-            <div v-show="activeTab === 'compositing'">
-              <LightingAtmosphereInspector
-                :compositing-params="compositingParams"
-                :global-params="globalParams"
-                @reset-compositing="showToast('✓ 合成参数已重置')"
-                @reset-global="showToast('✓ 全局参数已重置')"
-              />
+              <!-- 2.5D Material Tab -->
+              <div v-show="activeTab === 'material'">
+                <LightingMaterialInspector
+                  :material-params="materialParams"
+                  @reset="showToast('✓ 材质参数已重置')"
+                />
+              </div>
+
+              <!-- 2D Compositing & Tone Tab -->
+              <div v-show="activeTab === 'compositing'">
+                <LightingAtmosphereInspector
+                  :compositing-params="compositingParams"
+                  :global-params="globalParams"
+                  :camera-params="cameraParams"
+                  @reset-compositing="showToast('✓ 合成参数已重置')"
+                  @reset-global="showToast('✓ 全局参数已重置')"
+                  @reset-camera="showToast('✓ 构图参数已重置')"
+                />
+              </div>
             </div>
           </div>
         </div>
+
+        <!-- Toast Feedback -->
+        <transition
+          enter-active-class="transition duration-200 ease-out"
+          enter-from-class="translate-y-2 opacity-0"
+          enter-to-class="translate-y-0 opacity-100"
+          leave-active-class="transition duration-150 ease-in"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
+        >
+          <div
+            v-if="toastMessage"
+            class="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-purple-500/40 bg-purple-950/90 px-4 py-1.5 text-xs font-semibold text-purple-200 shadow-xl backdrop-blur-md"
+          >
+            {{ toastMessage }}
+          </div>
+        </transition>
       </div>
 
-      <!-- Toast Feedback -->
-      <transition
-        enter-active-class="transition duration-200 ease-out"
-        enter-from-class="translate-y-2 opacity-0"
-        enter-to-class="translate-y-0 opacity-100"
-        leave-active-class="transition duration-150 ease-in"
-        leave-from-class="opacity-100"
-        leave-to-class="opacity-0"
-      >
-        <div
-          v-if="toastMessage"
-          class="absolute bottom-6 left-1/2 -translate-x-1/2 rounded-full border border-purple-500/40 bg-purple-950/90 px-4 py-1.5 text-xs font-semibold text-purple-200 shadow-xl backdrop-blur-md"
-        >
-          {{ toastMessage }}
-        </div>
-      </transition>
+      <!-- JSON Modal -->
+      <LightingJsonModal
+        :is-open="showJsonModal"
+        :initial-json="jsonInitialText"
+        :all-presets-json="allPresetsJson"
+        @close="showJsonModal = false"
+        @apply="handleApplyJson"
+      />
     </div>
-
-    <!-- JSON Modal -->
-    <LightingJsonModal
-      :is-open="showJsonModal"
-      :initial-json="jsonInitialText"
-      :all-presets-json="allPresetsJson"
-      @close="showJsonModal = false"
-      @apply="handleApplyJson"
-    />
-  </div>
+  </Teleport>
 </template>

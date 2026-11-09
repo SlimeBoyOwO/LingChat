@@ -161,6 +161,31 @@ function resetGroup() {
           class="cursor-pointer accent-purple-500"
         />
       </div>
+
+      <!-- 两个总开关：原来只存在于数据结构里，界面没有任何入口 -->
+      <div class="flex items-center justify-between border-t border-[#1b202c] pt-2 text-[11px]">
+        <div class="flex flex-col">
+          <span class="text-slate-300">启用伪法线</span>
+          <span class="text-[10px] text-slate-500">关闭后退化为平面着色，光会变平但更省</span>
+        </div>
+        <input
+          type="checkbox"
+          v-model="materialParams.use_normal"
+          class="h-4 w-4 cursor-pointer accent-purple-500"
+        />
+      </div>
+
+      <div class="flex items-center justify-between text-[11px]">
+        <div class="flex flex-col">
+          <span class="text-slate-300">启用伪深度</span>
+          <span class="text-[10px] text-slate-500">从立绘 alpha 推导，关闭后自阴影失效</span>
+        </div>
+        <input
+          type="checkbox"
+          v-model="materialParams.use_depth"
+          class="h-4 w-4 cursor-pointer accent-purple-500"
+        />
+      </div>
     </div>
   </div>
 </template>
