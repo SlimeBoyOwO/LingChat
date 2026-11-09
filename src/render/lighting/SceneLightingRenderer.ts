@@ -198,13 +198,31 @@ const BG_UNIFORMS = [
   "uSoftKnee",
   "uLift",
   "uBgAvgSrgb",
+  "uExposure",
 ];
 
 const BLUR_UNIFORMS = ["uTex", "uStep"];
 
-const BLOOM_UNIFORMS = ["uSceneTex", "uThresh"];
+const BLOOM_UNIFORMS = ["uSceneTex", "uThresh", "uGlowColor"];
 
-const FINAL_UNIFORMS = ["uSceneTex", "uBloom1Tex", "uBloom2Tex", "uBloomInt", "uMono"];
+const FINAL_UNIFORMS = [
+  "uSceneTex",
+  "uBloom1Tex",
+  "uBloom2Tex",
+  "uBloomInt",
+  "uMono",
+  "uSaturation",
+  "uContrast",
+  "uTintColor",
+  "uTintAmount",
+  "uOverlayEnabled",
+  "uOverlayColor1",
+  "uOverlayColor2",
+  "uOverlayCenter",
+  "uOverlayRadius",
+  "uOverlayMode",
+  "uStageAspect",
+];
 
 const CHARACTER_UNIFORMS = [
   "uLCount",
@@ -241,6 +259,7 @@ const CHARACTER_UNIFORMS = [
   "uRimWidth",
   "uCharOnly",
   "uBgAvgSrgb",
+  "uCharExposure",
 ];
 
 function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {

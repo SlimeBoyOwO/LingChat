@@ -148,6 +148,7 @@ export class BackgroundLightingRenderer {
       "uStageSize",
       "uBgRect",
       "uSoftKnee",
+      "uExposure",
       "uLift",
       "uBgAvgSrgb",
     ];
@@ -217,6 +218,8 @@ export class BackgroundLightingRenderer {
       backgroundRect[3],
     );
     gl.uniform1f(u.uSoftKnee ?? null, input.global?.soft_knee ?? NEUTRAL_GLOBAL.soft_knee);
+    // 背景曝光默认 1；不传的话 uniform 保持 0，整幅背景会被乘成黑色
+    gl.uniform1f(u.uExposure ?? null, input.global?.bg_exposure ?? 1);
     gl.uniform1f(u.uLift ?? null, input.global?.lift ?? NEUTRAL_GLOBAL.lift);
 
     const avg = input.averageColor ?? this.averageColor;
