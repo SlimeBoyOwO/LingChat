@@ -94,9 +94,12 @@ function showToast(msg: string) {
 function handleKeydown(e: KeyboardEvent) {
   if (!props.isOpen) return;
   const target = e.target as HTMLElement | null;
+  // 只接管滑块和「无焦点控件」上的 Ctrl+Z：文本输入、下拉框、可编辑区一律让给原生，
+  // 否则用户想撤销输入框里刚打的字，触发的是整个场景的撤销
+  if (target?.isContentEditable) return;
   if (
     target &&
-    (target.tagName === "INPUT" || target.tagName === "TEXTAREA") &&
+    (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.tagName === "SELECT") &&
     target.getAttribute("type") !== "range"
   ) {
     return;
@@ -123,6 +126,8 @@ watch(
       window.addEventListener("keydown", handleKeydown);
     } else {
       window.removeEventListener("keydown", handleKeydown);
+      // 关闭时丢掉上传的本地预览图，否则下次打开另一个场景还挂着上一张
+      customBackgroundSrc.value = null;
     }
   },
   { immediate: true },

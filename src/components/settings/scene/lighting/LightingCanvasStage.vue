@@ -44,6 +44,28 @@ const radarCanvasRef = ref<HTMLCanvasElement | null>(null);
 let renderer: SceneLightingRenderer | null = null;
 let bgImg: HTMLImageElement | null = null;
 let charImg: HTMLImageElement | null = null;
+// 组件已卸载：所有 await 之后都要检查，避免往一个没人管的 renderer 上画
+let disposed = false;
+// 连续切图时防止先发后至的图覆盖后发起的
+let bgToken = 0;
+let charToken = 0;
+// 一帧内多次参数变化只画一次
+let rafId = 0;
+
+const FALLBACK_BG =
+  "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='960' height='540'><rect width='960' height='540' fill='%231a1d26'/><text x='480' y='270' fill='%23475569' font-size='24' text-anchor='middle'>Scene Background</text></svg>";
+
+/** 统一的图片加载：失败返回 null 而不是抛错，交给上层决定降级方式。 */
+function loadImage(src: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    // 与页面不同源的图不声明跨域，texImage2D 会抛 SecurityError
+    img.crossOrigin = "anonymous";
+    img.onload = () => resolve(img);
+    img.onerror = () => resolve(null);
+    img.src = src;
+  });
+}
 
 const STAGE_W = 960;
 const STAGE_H = 540;
@@ -162,37 +184,43 @@ async function initRenderer() {
     renderer = new SceneLightingRenderer(canvasRef.value);
     renderer.resize(STAGE_W, STAGE_H);
 
-    // Load background
-    bgImg = new Image();
-    bgImg.crossOrigin = "anonymous";
-    bgImg.src =
-      props.backgroundSrc ||
-      "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='960' height='540'><rect width='960' height='540' fill='%231a1d26'/><text x='480' y='270' fill='%23475569' font-size='24' text-anchor='middle'>Scene Background</text></svg>";
+    const src = props.backgroundSrc || FALLBACK_BG;
+    let bg = await loadImage(src);
+    if (disposed || !renderer) return;
+    if (!bg) {
+      console.warn("[lighting] 背景加载失败，退回占位底图", src);
+      bg = await loadImage(FALLBACK_BG);
+      if (disposed || !renderer) return;
+    }
+    if (bg) {
+      bgImg = bg;
+      renderer.setBackground(bg);
+    }
 
-    await new Promise((resolve) => {
-      if (bgImg!.complete) return resolve(true);
-      bgImg!.onload = () => resolve(true);
-      bgImg!.onerror = () => resolve(false);
-    });
-    renderer.setBackground(bgImg);
-
-    // Load character if present
     if (props.characterSrc) {
-      charImg = new Image();
-      charImg.crossOrigin = "anonymous";
-      charImg.src = props.characterSrc;
-      await new Promise((resolve) => {
-        if (charImg!.complete) return resolve(true);
-        charImg!.onload = () => resolve(true);
-        charImg!.onerror = () => resolve(false);
-      });
-      renderer.setCharacter(charImg, { depth: "auto" });
+      const ch = await loadImage(props.characterSrc);
+      if (disposed || !renderer) return;
+      if (ch) {
+        charImg = ch;
+        renderer.setCharacter(ch, { depth: "auto" });
+      } else {
+        console.warn("[lighting] 立绘加载失败，跳过角色合成", props.characterSrc);
+      }
     }
 
     renderFrame();
   } catch (err) {
     console.warn("Failed to initialize SceneLightingRenderer:", err);
   }
+}
+
+/** 合并同一帧内的多次重绘请求；拖灯时每个 mousemove 都会触发参数变化。 */
+function scheduleRender() {
+  if (rafId) return;
+  rafId = requestAnimationFrame(() => {
+    rafId = 0;
+    renderFrame();
+  });
 }
 
 // Render single frame
@@ -268,22 +296,41 @@ watch(
     props.selectedLightIndex,
   ],
   () => {
-    renderFrame();
+    scheduleRender();
   },
   { deep: true },
 );
 
 watch(
   () => props.backgroundSrc,
-  (newSrc) => {
+  async (newSrc) => {
     if (!renderer || !newSrc) return;
-    bgImg = new Image();
-    bgImg.crossOrigin = "anonymous";
-    bgImg.onload = () => {
-      renderer?.setBackground(bgImg!);
-      renderFrame();
-    };
-    bgImg.src = newSrc;
+    const token = ++bgToken;
+    const img = await loadImage(newSrc);
+    // 加载失败或已被后来的请求取代：保留现有背景，不要留空
+    if (!img || token !== bgToken || disposed || !renderer) return;
+    bgImg = img;
+    renderer.setBackground(img);
+    scheduleRender();
+  },
+);
+
+// 换角色后预览要跟着更新；原来这条 watch 是缺的
+watch(
+  () => props.characterSrc,
+  async (newSrc) => {
+    if (!renderer) return;
+    const token = ++charToken;
+    if (!newSrc) {
+      if (token === charToken) renderer.clearCharacter();
+      scheduleRender();
+      return;
+    }
+    const img = await loadImage(newSrc);
+    if (!img || token !== charToken || disposed || !renderer) return;
+    charImg = img;
+    renderer.setCharacter(img, { depth: "auto" });
+    scheduleRender();
   },
 );
 
@@ -388,8 +435,25 @@ onMounted(() => {
 });
 
 onUnmounted(() => {
+  disposed = true;
   exitFullscreen();
   stopGizmoDrag();
+  if (rafId) {
+    cancelAnimationFrame(rafId);
+    rafId = 0;
+  }
+  if (bgImg) {
+    bgImg.onload = bgImg.onerror = null;
+    bgImg = null;
+  }
+  if (charImg) {
+    charImg.onload = charImg.onerror = null;
+    charImg = null;
+  }
+  // 不释放会漏 WebGL context、纹理和 FBO；浏览器大约只允许 16 个活跃 context，
+  // 反复开关面板后最老的会被强制 lose，表现是预览黑屏
+  renderer?.dispose();
+  renderer = null;
 });
 </script>
 

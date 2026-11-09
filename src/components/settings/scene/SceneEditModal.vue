@@ -852,6 +852,8 @@ watch(
       formData.sceneImage = "";
       formData.sceneDescription = "";
       formData.lightingEnabled = false;
+      // 新建场景必须清掉上一个场景的高级光影参数，否则它会跟着 submit 写进新场景
+      advancedLighting.value = null;
       resetLighting();
       showLighting.value = false;
       resolveAvatar();
