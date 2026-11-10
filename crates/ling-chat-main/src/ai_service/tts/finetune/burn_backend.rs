@@ -15,7 +15,35 @@
 //! 不存在的 Vulkan 设备，也确保 macOS 不会被无谓拉进 wgpu 的 `spirv`（那会要求
 //! 装 Vulkan SDK 才能编）。
 
+use std::path::Path;
+use std::sync::OnceLock;
+
 use burn::prelude::*;
+
+/// cubecl 持久化缓存根目录是否已经配置。
+static CACHE_ROOT_CONFIGURED: OnceLock<()> = OnceLock::new();
+
+/// 把 cubecl 的持久化缓存根目录指到应用私有目录。
+///
+/// Android 上进程通常没有 `HOME`/`XDG_CACHE_HOME`，cubecl 找不到用户缓存目录时
+/// 会回退到 `std::env::temp_dir()`（Android 通常是 `/data/local/tmp`）。普通应用
+/// 对该目录没有写权限，kernel 编译缓存只能退化成内存缓存，冷启动会反复重编。
+///
+/// 该函数幂等：只有第一次调用生效。目录创建失败时仅告警并保留 cubecl 默认
+/// 行为，不影响训练能否运行。
+pub fn configure_cache_root(root: &Path) {
+    CACHE_ROOT_CONFIGURED.get_or_init(|| {
+        if let Err(error) = std::fs::create_dir_all(root) {
+            tracing::warn!(
+                "[burn] 无法创建 cubecl 缓存目录 {}，沿用默认缓存: {error}",
+                root.display()
+            );
+            return;
+        }
+        cubecl_environment::environment::set_root(root);
+        tracing::info!("[burn] cubecl 缓存根目录: {}", root.display());
+    });
+}
 
 /// 返回当前训练用的 burn 设备（Apple 平台，走 Metal）。
 ///

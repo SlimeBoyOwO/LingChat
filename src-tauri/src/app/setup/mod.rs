@@ -86,6 +86,18 @@ pub fn setup(
     data_dir::init_data_dir(app.handle());
     crate::app::platform::early_log("setup: 数据目录已解析");
 
+    // cubecl 的 kernel 编译缓存默认放在用户缓存目录；Android 进程没有 HOME，
+    // 会回退到普通应用不可写的 /data/local/tmp。这里显式指到应用私有 cache，
+    // 让缓存能跨进程保留。失败只告警，不阻塞启动。
+    match app.path().app_cache_dir() {
+        Ok(cache) => {
+            ai_service::tts::finetune::burn_backend::configure_cache_root(&cache.join("cubecl"));
+        },
+        Err(error) => crate::app::platform::early_log(&format!(
+            "setup: 解析应用缓存目录失败，cubecl 将使用默认缓存: {error}"
+        )),
+    }
+
     // ONNX Runtime：定位 onnxruntime.dll 并显式加载
     // （仅 Windows 的 load-dynamic 模式，兼容无 AVX2 的旧 CPU，如三代酷睿；
     //  非 Windows 走 download-binaries 静态链接，无需此调用）。
