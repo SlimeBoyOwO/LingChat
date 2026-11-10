@@ -23,7 +23,9 @@
               <div class="model-info">
                 <span class="model-name">{{ model.display_name }}</span>
                 <span class="model-meta">
-                  <span v-if="isAsrModel(model)" class="tag-asr">{{ t("settings.sherpa.asrTag") }}</span>
+                  <span v-if="isAsrModel(model)" class="tag-asr">{{
+                    t("settings.sherpa.asrTag")
+                  }}</span>
                   {{ model.model_type.toUpperCase() }} · {{ model.language }} ·
                   {{ formatSize(model.size_bytes) }}
                 </span>
@@ -350,77 +352,109 @@
                 {{ model.display_name }}
               </option>
             </select>
-            <button
-              v-if="finetuneTraining"
-              class="btn-secondary"
-              @click="cancelTraining"
-            >
+            <button v-if="finetuneTraining" class="btn-secondary" @click="cancelTraining">
               {{ t("settings.sherpaFinetune.cancel") }}
             </button>
           </div>
-          <div class="test-row">
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.epochs") }}
-            </label>
-            <input
-              v-model.number="finetuneEpochs"
-              type="number"
-              min="1"
-              class="config-input test-input"
-            />
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.learningRate") }}
-            </label>
-            <input
-              v-model.number="finetuneLearningRate"
-              type="number"
-              min="0"
-              step="0.0001"
-              class="config-input test-input"
-            />
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.cleanupEvery") }}
-            </label>
-            <input
-              v-model.number="finetuneCleanupEvery"
-              type="number"
-              min="0"
-              class="config-input test-input"
-            />
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.maxFrames") }}
-            </label>
-            <input
-              v-model.number="finetuneMaxFrames"
-              type="number"
-              min="0"
-              class="config-input test-input"
-            />
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.lora") }}
-            </label>
-            <input
-              v-model="finetuneLora"
-              type="checkbox"
-              class="config-input test-input"
-            />
-            <label class="config-label">
-              {{ t("settings.sherpaFinetune.loraRank") }}
-            </label>
-            <input
-              v-model.number="finetuneLoraRank"
-              type="number"
-              min="1"
-              class="config-input test-input"
-            />
+          <!-- 训练参数用网格而不是单行 flex：单行在嵌套设置页里会把数字框
+               挤到只剩一位宽，值看不清也无法正常编辑。 -->
+          <div class="config-grid">
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.epochs") }}
+              </label>
+              <input v-model.number="finetuneEpochs" type="number" min="1" class="config-input" />
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.learningRate") }}
+              </label>
+              <input
+                v-model.number="finetuneLearningRate"
+                type="number"
+                min="0"
+                step="0.0001"
+                class="config-input"
+              />
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.cleanupEvery") }}
+              </label>
+              <input
+                v-model.number="finetuneCleanupEvery"
+                type="number"
+                min="0"
+                class="config-input"
+              />
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.maxFrames") }}
+              </label>
+              <input
+                v-model.number="finetuneMaxFrames"
+                type="number"
+                min="0"
+                class="config-input"
+              />
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.lora") }}
+              </label>
+              <label class="toggle-wrapper">
+                <input v-model="finetuneLora" type="checkbox" class="toggle-input" />
+                <span class="toggle-track">
+                  <span class="toggle-thumb" />
+                </span>
+              </label>
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.loraRank") }}
+              </label>
+              <input v-model.number="finetuneLoraRank" type="number" min="1" class="config-input" />
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.adapterOnly") }}
+              </label>
+              <label class="toggle-wrapper">
+                <input v-model="finetuneAdapterOnly" type="checkbox" class="toggle-input" />
+                <span class="toggle-track">
+                  <span class="toggle-thumb" />
+                </span>
+              </label>
+            </div>
+            <div class="config-item">
+              <label class="config-label">
+                {{ t("settings.sherpaFinetune.durationAdapter") }}
+              </label>
+              <label class="toggle-wrapper">
+                <input v-model="finetuneDurationAdapter" type="checkbox" class="toggle-input" />
+                <span class="toggle-track">
+                  <span class="toggle-thumb" />
+                </span>
+              </label>
+            </div>
           </div>
+          <p v-if="finetuneLora" class="test-hint">
+            {{ t("settings.sherpaFinetune.loraHint") }}
+          </p>
+          <p v-if="finetuneAdapterOnly" class="test-hint">
+            {{ t("settings.sherpaFinetune.adapterOnlyHint") }}
+          </p>
+          <p v-if="finetuneDurationAdapter" class="test-hint">
+            {{ t("settings.sherpaFinetune.durationAdapterHint") }}
+          </p>
           <p v-if="finetuneTraining" class="test-hint">
             {{ t("settings.sherpaFinetune.training") }}
           </p>
           <p v-if="finetuneProgress" class="test-hint">
             {{ finetuneProgress.epoch }}/{{ finetuneProgress.total_epochs }} ·
-            {{ finetuneProgress.step }}/{{ finetuneProgress.total_steps }} ·
-            loss {{ finetuneProgress.loss.toFixed(4) }}
+            {{ finetuneProgress.step }}/{{ finetuneProgress.total_steps }} · loss
+            {{ finetuneProgress.loss.toFixed(4) }}
             <span v-if="finetuneProgress.val_loss !== undefined" class="text-violet-300">
               · val {{ finetuneProgress.val_loss.toFixed(4) }}
             </span>
@@ -433,11 +467,7 @@
           <p v-if="finetuneDatasets.length === 0" class="test-hint">
             {{ t("settings.sherpaFinetune.empty") }}
           </p>
-          <div
-            v-for="dataset in finetuneDatasets"
-            :key="dataset.dataset_id"
-            class="test-row"
-          >
+          <div v-for="dataset in finetuneDatasets" :key="dataset.dataset_id" class="test-row">
             <span>{{ dataset.dataset_id }}</span>
             <span class="test-hint">
               {{ t("settings.sherpaFinetune.duration") }}
@@ -450,6 +480,32 @@
                   : t("settings.sherpaFinetune.insufficient")
               }}
             </span>
+            <select
+              v-if="dataset.style_clusters.length > 0"
+              v-model.number="finetuneStyleCluster[dataset.dataset_id]"
+              class="config-select style-cluster-select"
+              :title="t('settings.sherpaFinetune.styleCluster')"
+            >
+              <option
+                v-for="cluster in dataset.style_clusters"
+                :key="cluster.cluster"
+                :value="cluster.cluster"
+              >
+                {{ t("settings.sherpaFinetune.styleCluster") }}
+                {{ cluster.cluster }} · {{ cluster.items }} ·
+                {{ formatFinetuneDuration(cluster.total_secs) }}
+              </option>
+            </select>
+            <button
+              v-else
+              class="btn-secondary"
+              :disabled="finetuneClustering === dataset.dataset_id || finetuneTraining"
+              :title="t('settings.sherpaFinetune.clusterStyles')"
+              @click="clusterDatasetStyles(dataset.dataset_id)"
+            >
+              <Loader2 v-if="finetuneClustering === dataset.dataset_id" :size="16" class="spin" />
+              <Wand2 v-else :size="16" />
+            </button>
             <button
               class="btn-primary"
               :disabled="finetuneTraining || !finetuneBaseModel"
@@ -464,11 +520,7 @@
               :title="t('settings.sherpaFinetune.autoAnnotate')"
               @click="autoAnnotateDataset(dataset.dataset_id)"
             >
-              <Loader2
-                v-if="finetuneAnnotating === dataset.dataset_id"
-                :size="16"
-                class="spin"
-              />
+              <Loader2 v-if="finetuneAnnotating === dataset.dataset_id" :size="16" class="spin" />
               <Mic v-else :size="16" />
             </button>
             <button
@@ -477,11 +529,7 @@
               :title="t('settings.sherpaFinetune.export')"
               @click="exportVoice(dataset.dataset_id)"
             >
-              <Loader2
-                v-if="finetuneExporting === dataset.dataset_id"
-                :size="16"
-                class="spin"
-              />
+              <Loader2 v-if="finetuneExporting === dataset.dataset_id" :size="16" class="spin" />
               <Package v-else :size="16" />
             </button>
             <button
@@ -540,8 +588,11 @@ import {
   removeFinetuneDataset as removeFinetuneDatasetApi,
   trainFinetuneDataset,
   exportFinetuneVoice,
+  clusterFinetuneStyles,
   cancelFinetuneTraining,
   onFinetuneProgress,
+  getActiveTraining,
+  onFinetuneFinished,
   autoAnnotateFinetuneDataset,
   onFinetuneAnnotateProgress,
   type FinetuneDatasetSummary,
@@ -558,6 +609,9 @@ const finetuneDatasetId = ref("");
 const finetuneImporting = ref(false);
 const finetuneError = ref("");
 const finetuneExporting = ref<string | null>(null);
+const finetuneClustering = ref<string | null>(null);
+/** 每个数据集当前选中的风格簇；没有聚类的数据集不写入，训练时使用全部数据。 */
+const finetuneStyleCluster = ref<Record<string, number>>({});
 
 function formatFinetuneDuration(seconds: number) {
   const total = Math.max(0, Math.round(seconds));
@@ -567,9 +621,43 @@ function formatFinetuneDuration(seconds: number) {
 
 async function refreshFinetuneDatasets() {
   try {
-    finetuneDatasets.value = await listFinetuneDatasets();
+    const datasets = await listFinetuneDatasets();
+    finetuneDatasets.value = datasets;
+    for (const dataset of datasets) {
+      if (dataset.style_clusters.length === 0) {
+        delete finetuneStyleCluster.value[dataset.dataset_id];
+        continue;
+      }
+      const selected = finetuneStyleCluster.value[dataset.dataset_id];
+      if (
+        selected === undefined ||
+        !dataset.style_clusters.some((cluster) => cluster.cluster === selected)
+      ) {
+        finetuneStyleCluster.value[dataset.dataset_id] = dataset.style_clusters[0].cluster;
+      }
+    }
   } catch (error) {
     finetuneError.value = String(error);
+  }
+}
+
+/** 训练/导出时取当前数据集选中的风格簇；未聚类返回 undefined。 */
+function selectedStyleCluster(datasetId: string): number | undefined {
+  const dataset = finetuneDatasets.value.find((item) => item.dataset_id === datasetId);
+  if (!dataset || dataset.style_clusters.length === 0) return undefined;
+  return finetuneStyleCluster.value[datasetId] ?? dataset.style_clusters[0].cluster;
+}
+
+async function clusterDatasetStyles(datasetId: string) {
+  finetuneError.value = "";
+  finetuneClustering.value = datasetId;
+  try {
+    await clusterFinetuneStyles(datasetId, 4);
+    await refreshFinetuneDatasets();
+  } catch (error) {
+    finetuneError.value = String(error);
+  } finally {
+    finetuneClustering.value = null;
   }
 }
 
@@ -594,7 +682,6 @@ async function importFinetuneDataset() {
   }
 }
 
-
 const finetuneBaseModel = ref("");
 const finetuneTraining = ref(false);
 const finetuneProgress = ref<FinetuneTrainingProgress | null>(null);
@@ -609,6 +696,10 @@ const finetuneMaxFrames = ref(192);
 // LoRA 微调：开则只训低秩旁路，参数与显存占用远小于全量。
 const finetuneLora = ref(false);
 const finetuneLoraRank = ref(8);
+// 仅训练风格 FiLM 适配器：冻结解码器基座，适合低性能设备。
+const finetuneAdapterOnly = ref(false);
+// 逐 token 时长/停顿适配：只训练时长分支的低秩旁路，导出时折叠。
+const finetuneDurationAdapter = ref(true);
 const asrStore = useAsrStore();
 
 async function autoAnnotateDataset(datasetId: string) {
@@ -619,10 +710,7 @@ async function autoAnnotateDataset(datasetId: string) {
     finetuneAnnotateProgress.value = progress;
   });
   try {
-    const report = await autoAnnotateFinetuneDataset(
-      datasetId,
-      asrStore.settings.active_provider,
-    );
+    const report = await autoAnnotateFinetuneDataset(datasetId, asrStore.settings.active_provider);
     const hits = report.annotated;
     const failed = report.failed;
     const skipped = report.skipped;
@@ -641,6 +729,31 @@ async function autoAnnotateDataset(datasetId: string) {
     finetuneAnnotating.value = null;
     finetuneAnnotateProgress.value = null;
   }
+}
+
+/** 页面重建后恢复后台仍在运行的训练状态：训练中 UI + 最近进度，并接续观察。 */
+async function restoreTrainingState() {
+  let active;
+  try {
+    active = await getActiveTraining();
+  } catch (error) {
+    console.error("查询训练状态失败:", error);
+    return;
+  }
+  if (!active.training) return;
+  finetuneError.value = "";
+  finetuneTraining.value = true;
+  if (active.latest) finetuneProgress.value = active.latest;
+  trainProgressUnlisten = await onFinetuneProgress((progress) => {
+    finetuneProgress.value = progress;
+  });
+  trainFinishedUnlisten = await onFinetuneFinished(() => {
+    trainProgressUnlisten?.();
+    trainProgressUnlisten = null;
+    trainFinishedUnlisten = null;
+    finetuneProgress.value = null;
+    finetuneTraining.value = false;
+  });
 }
 
 async function startFinetuneTraining(datasetId: string) {
@@ -664,6 +777,9 @@ async function startFinetuneTraining(datasetId: string) {
       finetuneMaxFrames.value,
       finetuneLora.value,
       finetuneLoraRank.value,
+      finetuneAdapterOnly.value,
+      selectedStyleCluster(datasetId),
+      finetuneDurationAdapter.value,
     );
     // 检测到续训时给出提示，让用户知道这次是接着上次进度继续，而不是从头开始。
     if (outcome.resumed_from > 0) {
@@ -702,10 +818,9 @@ async function exportVoice(datasetId: string) {
     finetuneError.value = t("settings.sherpaFinetune.selectBase");
     return;
   }
-  const modelName = window.prompt(
-    t("settings.sherpaFinetune.exportNamePlaceholder"),
-    datasetId,
-  );
+  const styleCluster = selectedStyleCluster(datasetId);
+  const defaultName = styleCluster === undefined ? datasetId : `${datasetId}-style-${styleCluster}`;
+  const modelName = window.prompt(t("settings.sherpaFinetune.exportNamePlaceholder"), defaultName);
   if (modelName === null) return;
   if (!modelName.trim()) {
     finetuneError.value = t("settings.sherpaFinetune.exportNamePlaceholder");
@@ -718,12 +833,11 @@ async function exportVoice(datasetId: string) {
       datasetId,
       finetuneBaseModel.value,
       modelName,
+      styleCluster,
     );
     await loadModels();
     // 导出完成后自动选中新音色，方便立即试听。
-    const model = availableModels.value.find(
-      (item) => item.id === outcome.model_name,
-    );
+    const model = availableModels.value.find((item) => item.id === outcome.model_name);
     if (model) selectModel(model);
   } catch (error) {
     finetuneError.value = String(error);
@@ -751,6 +865,9 @@ const playlist = ref<HTMLAudioElement | null>(null);
 const testText = ref("你好，这是一段测试语音。");
 
 let progressUnlisten: (() => void) | null = null;
+// 训练进度/完成监听（恢复路径用，页面重建后接续训练观察）。
+let trainProgressUnlisten: (() => void) | null = null;
+let trainFinishedUnlisten: (() => void) | null = null;
 
 const config = ref({
   model_type: "vits",
@@ -787,6 +904,8 @@ const refAudioName = computed(() => {
 onMounted(() => {
   loadModels();
   void refreshFinetuneDatasets();
+  // 页面可能因渲染崩溃重建，主动恢复后台仍在跑的训练状态。
+  void restoreTrainingState();
   progressUnlisten = onSherpaDownloadProgress((progress) => {
     progressByModel.value = {
       ...progressByModel.value,
@@ -798,6 +917,10 @@ onMounted(() => {
 onUnmounted(() => {
   progressUnlisten?.();
   progressUnlisten = null;
+  trainProgressUnlisten?.();
+  trainProgressUnlisten = null;
+  trainFinishedUnlisten?.();
+  trainFinishedUnlisten = null;
   stopRefAudioPreview();
 });
 
@@ -1395,6 +1518,12 @@ const formatSize = (bytes: number): string => {
 
 .test-input {
   flex: 1;
+}
+
+.style-cluster-select {
+  width: auto;
+  max-width: 220px;
+  flex: 0 0 auto;
 }
 
 .test-hint {

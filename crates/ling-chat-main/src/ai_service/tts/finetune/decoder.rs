@@ -172,7 +172,9 @@ impl CfmDecoder {
         let merged = self.up_proj.forward(&merged)?;
         let hidden = self.block3.forward(&merged, &embedded_time)?;
 
-        let hidden = self.out_norm.forward(&hidden.transpose(1, 2)?.contiguous()?)?;
+        let hidden = self
+            .out_norm
+            .forward(&hidden.transpose(1, 2)?.contiguous()?)?;
         let hidden = silu(&hidden)?;
         let hidden = hidden.transpose(1, 2)?.contiguous()?;
         let output = self.out_proj.forward(&hidden)?;

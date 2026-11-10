@@ -21,7 +21,8 @@ use super::burn_decoder::{
     BurnBaseDecoder, BurnBaseDecoderConfig, from_onnx_tensors as load_decoder_from_onnx,
 };
 use super::burn_encoder::{
-    BurnBaseEncoderConfig, from_onnx_tensors as load_encoder_from_onnx,
+    BurnBaseEncoder, BurnBaseEncoderConfig, DurationLora,
+    from_onnx_tensors as load_encoder_from_onnx,
 };
 use super::corpus::{Corpus, make_batches};
 use super::onnx_weights::read_initializers;
@@ -56,6 +57,14 @@ pub struct BaseTrainingConfig {
     pub lora_enabled: bool,
     /// LoRA 秩；数值越小旁路参数越少、越省，但表达能力也越低。
     pub lora_rank: usize,
+    /// 仅训练风格 FiLM 适配器：冻结解码器基座，只更新每层归一化上的逐通道
+    /// gamma/beta。参数量约一万，适合低性能设备；导出时折进归一化权重。
+    pub adapter_only: bool,
+    /// 是否训练逐 token 时长/停顿适配器。开启后编码器时长分支挂低秩旁路，
+    /// 并用可微的软展开把 CFM 损失反传到时长，导出时折进时长预测器权重。
+    pub duration_adapter: bool,
+    /// 时长适配器秩；`duration_adapter` 为真时有效。
+    pub duration_adapter_rank: usize,
 }
 
 impl Default for BaseTrainingConfig {
@@ -69,6 +78,9 @@ impl Default for BaseTrainingConfig {
             max_frames_per_step: 192,
             lora_enabled: false,
             lora_rank: 8,
+            adapter_only: false,
+            duration_adapter: false,
+            duration_adapter_rank: 4,
         }
     }
 }
@@ -121,13 +133,58 @@ pub struct TrainState {
     pub steps_done: usize,
     /// 续训配方指纹，见 [`train_fingerprint`]。
     pub fingerprint: String,
+    /// 是否启用了 LoRA；导出时据此重建旁路骨架再装载检查点。
+    ///
+    /// 旧版状态文件没有这些字段，按未启用处理。
+    #[serde(default)]
+    pub lora_enabled: bool,
+    /// LoRA 秩；`lora_enabled` 为真时有效。
+    #[serde(default)]
+    pub lora_rank: usize,
+    /// 卷积 LoRA 秩；0 表示检查点里没有卷积旁路。
+    #[serde(default)]
+    pub conv_lora_rank: usize,
+    /// 是否只训练 FiLM 适配器。
+    #[serde(default)]
+    pub adapter_only: bool,
+    /// 是否训练了逐 token 时长适配器。
+    #[serde(default)]
+    pub duration_adapter: bool,
+    /// 时长适配器秩；0 表示检查点里没有该旁路。
+    #[serde(default)]
+    pub duration_adapter_rank: usize,
 }
 
 /// 由检查点路径派生出配套的续训状态文件路径。
 ///
-/// 例如 `…/checkpoint.bpk` → `…/train-state.json`，与权重检查点放在同目录。
+/// 默认检查点沿用旧命名 `checkpoint.bpk` → `train-state.json`，避免破坏已有
+/// 续训记录；按风格簇训练时检查点是 `checkpoint-style-<k>.bpk`，状态文件用
+/// `checkpoint-style-<k>.train-state.json`，多个簇不会互相覆盖。
 fn train_state_path(checkpoint_path: &Path) -> PathBuf {
-    checkpoint_path.with_file_name("train-state.json")
+    let is_default = checkpoint_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name == "checkpoint.bpk");
+    if is_default {
+        return checkpoint_path.with_file_name("train-state.json");
+    }
+    let stem = checkpoint_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("checkpoint");
+    checkpoint_path.with_file_name(format!("{stem}.train-state.json"))
+}
+
+/// 时长适配器的独立检查点路径。
+///
+/// 解码器检查点只保存解码器；编码器时长旁路放在同名的 `.duration.bpk` 里，
+/// 既不改动旧检查点结构，也方便导出时单独装载/折叠。
+pub fn duration_adapter_path(checkpoint_path: &Path) -> PathBuf {
+    let stem = checkpoint_path
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .unwrap_or("checkpoint");
+    checkpoint_path.with_file_name(format!("{stem}.duration.bpk"))
 }
 
 /// 验证集占原始样本量的比例（固定 20%）。
@@ -162,8 +219,7 @@ pub fn save_train_state(state: &TrainState, checkpoint_path: &Path) -> Result<()
     let tmp = path.with_extension("json.tmp");
     std::fs::write(&tmp, serde_json::to_vec_pretty(state)?)
         .with_context(|| format!("写入状态临时文件失败: {}", tmp.display()))?;
-    std::fs::rename(&tmp, &path)
-        .with_context(|| format!("写入状态文件失败: {}", path.display()))
+    std::fs::rename(&tmp, &path).with_context(|| format!("写入状态文件失败: {}", path.display()))
 }
 
 /// 读取续训状态；不存在或读失败时返回 None（视为从零开始）。
@@ -194,6 +250,9 @@ fn train_fingerprint(corpus: &Corpus, base_model: &Path, config: &BaseTrainingCo
     config.seed.hash(&mut hasher);
     config.lora_enabled.hash(&mut hasher);
     config.lora_rank.hash(&mut hasher);
+    config.adapter_only.hash(&mut hasher);
+    config.duration_adapter.hash(&mut hasher);
+    config.duration_adapter_rank.hash(&mut hasher);
     base_size.hash(&mut hasher);
     format!("{:016x}", hasher.finish())
 }
@@ -278,11 +337,68 @@ fn expand_prior(
     Ok((expanded, channels))
 }
 
+/// 可微的时长展开：按累计时长把 mel 先验软对齐到目标帧数。
+///
+/// 与 [`expand_prior`] 的硬取整不同，这里对每个输出帧计算它在累计时长轴上的
+/// 位置，再用两个 sigmoid 的差得到该帧属于各 token 的软权重。权重对 token 边界
+/// 可导，边界又由逐 token 对数时长的 cumsum 得到，因此解码器的 CFM 损失可以
+/// 一路反传到编码器的时长适配器，实现逐 token 的时长/停顿适配。
+///
+/// 输入 `mel_prior` 为 `[1, c, tokens]`，`durations` 为 `[1, tokens]` 的对数时长，
+/// 输出 `[1, c, target_frames]`。
+fn soft_expand_prior(
+    mel_prior: &Tensor<3>,
+    durations: &Tensor<2>,
+    target_frames: usize,
+) -> Tensor<3> {
+    let [batch, _channels, tokens] = mel_prior.dims();
+    debug_assert_eq!(batch, 1, "仅支持单样本软展开");
+    let device = mel_prior.device();
+
+    // 对数时长限幅，避免极端预测把 softmax 边界推到数值不稳。
+    let seconds = durations.clone().clamp_min(-8.0).clamp_max(8.0).exp();
+    let total = seconds.clone().sum_dim(1).clamp_min(1e-6);
+    let normalized = seconds / total;
+    let ends = normalized.clone().cumsum(1);
+    let starts = ends.clone() - normalized;
+
+    // 帧中心位置 [1, frames]，取值 (0, 1)。
+    let centers: Vec<f32> = (0..target_frames)
+        .map(|index| (index as f32 + 0.5) / target_frames.max(1) as f32)
+        .collect();
+    let centers = Tensor::<2>::from_data(TensorData::new(centers, [1, target_frames]), &device);
+
+    // 软化尺度约半帧：既保持接近硬对齐，又给边界足够的梯度。
+    let temperature = 0.5 / target_frames.max(1) as f32;
+    let ends = ends
+        .unsqueeze_dim::<3>(2)
+        .expand([1, tokens, target_frames]);
+    let starts = starts
+        .unsqueeze_dim::<3>(2)
+        .expand([1, tokens, target_frames]);
+    let centers = centers
+        .unsqueeze_dim::<3>(1)
+        .expand([1, tokens, target_frames]);
+
+    use burn::tensor::activation::sigmoid;
+    let weights =
+        sigmoid((ends - centers.clone()) / temperature) - sigmoid((starts - centers) / temperature);
+    // sigmoid 尾部会留下少量质量，归一化后每帧权重和为 1。
+    let weights = weights.clone() / weights.sum_dim(1).clamp_min(1e-6);
+
+    mel_prior.clone().matmul(weights)
+}
+
 /// 构造训练用的噪声数据（matcha 源实现的 CFM 公式）。
 ///
 /// 返回 `(noisy=y, target=u)`。`sigma_min=1e-4`：
 /// `y = (1-(1-sigma)*t)*z + t*x1`，`u = x1-(1-sigma)*z`。
-fn cfm_noise(mel: &Tensor<3>, noise: &Tensor<3>, time: f64, sigma_min: f64) -> (Tensor<3>, Tensor<3>) {
+fn cfm_noise(
+    mel: &Tensor<3>,
+    noise: &Tensor<3>,
+    time: f64,
+    sigma_min: f64,
+) -> (Tensor<3>, Tensor<3>) {
     let t = time as f32;
     let noisy = noise.clone() * (1.0 - (1.0 - sigma_min as f32) * t) + mel.clone() * t;
     let target = mel.clone() - noise.clone() * (1.0 - sigma_min as f32);
@@ -296,6 +412,101 @@ fn chunk_count(frames: usize, max_frames_per_step: usize) -> usize {
     } else {
         frames.div_ceil(max_frames_per_step)
     }
+}
+
+/// 从检查点文件本身探测旁路配置。
+///
+/// 正常路径优先读 `train-state.json`；这个探测只用于旧检查点或状态文件丢失时，
+/// 避免导出时把 LoRA 旁路静默丢掉、退回成基座音色。burnpack 的键名里包含
+/// `...lora.a` 与 `conv_lora*.down.weight`，形状足以反推出秩。
+#[derive(Debug, Clone, Copy, Default)]
+pub struct CheckpointAdapters {
+    /// 是否存在线性 LoRA。
+    pub lora: bool,
+    /// 线性 LoRA 秩。
+    pub lora_rank: usize,
+    /// 卷积 LoRA 秩；0 表示没有。
+    pub conv_lora_rank: usize,
+}
+
+/// 探测检查点里的 LoRA/卷积旁路。读取失败时返回 None。
+pub fn inspect_checkpoint_adapters(checkpoint_path: &Path) -> Option<CheckpointAdapters> {
+    use burn_store::{BurnpackStore, ModuleStore};
+
+    let mut store = BurnpackStore::from_file(checkpoint_path);
+    let keys = store.keys().ok()?;
+    let lora_key = keys.iter().find(|key| key.ends_with(".lora.a"));
+    let lora_rank = lora_key
+        .and_then(|key| {
+            store
+                .get_tensor(key)
+                .ok()
+                .flatten()
+                .and_then(|tensor| tensor.shape.dims::<2>().get(1).copied())
+        })
+        .unwrap_or(0);
+    let conv_lora_rank = keys
+        .iter()
+        .find(|key| key.contains("conv_lora") && key.ends_with(".down.weight"))
+        .and_then(|key| {
+            store
+                .get_tensor(key)
+                .ok()
+                .flatten()
+                .and_then(|tensor| tensor.shape.dims::<3>().first().copied())
+        })
+        .unwrap_or(0);
+    Some(CheckpointAdapters {
+        lora: lora_key.is_some(),
+        lora_rank,
+        conv_lora_rank,
+    })
+}
+
+/// 从时长适配器检查点探测低秩旁路的秩。
+///
+/// 时长旁路是独立 `.duration.bpk`；状态文件缺失时可据此恢复骨架，避免严格
+/// 装载因秩不一致失败。
+pub fn inspect_duration_adapter_rank(path: &Path) -> Option<usize> {
+    use burn_store::{BurnpackStore, ModuleStore};
+
+    let mut store = BurnpackStore::from_file(path);
+    let keys = store.keys().ok()?;
+    let key = keys.iter().find(|key| key.ends_with("conv1.down.weight"))?;
+    store
+        .get_tensor(key)
+        .ok()
+        .flatten()
+        .and_then(|tensor| tensor.shape.dims::<3>().first().copied())
+}
+
+/// 给解码器的自注意力/FFN 线性层挂上低秩旁路。
+///
+/// 训练与导出共用同一组路径，避免两边旁路集合不一致。导出前从检查点重建骨架时
+/// 也要先调用它，否则 burn 的 `allow_partial` 会静默丢掉 LoRA 参数，导出成基座。
+pub fn apply_linear_lora(decoder: BurnBaseDecoder, rank: usize) -> BurnBaseDecoder {
+    use burn::module::{Lora, Module};
+    let lora_paths = [
+        ".q.weight",
+        ".k.weight",
+        ".v.weight",
+        ".to_out.weight",
+        ".ff_proj.weight",
+        ".ff_out.weight",
+    ];
+    decoder.apply_lora(Lora::new(rank.max(1), 1.0).set_param_group(
+        burn::module::ParamGroup::from_any_predicates(lora_paths.to_vec()),
+    ))
+}
+
+/// 训练时同时持有解码器与编码器时长旁路，让一次 `backward` 能覆盖两者。
+///
+/// 编码器只有时长旁路要求梯度，其余参数冻结；`GradientsParams` 只会为需要
+/// 梯度的参数收集结果，因此优化器不会碰冻结的 Transformer 权重。
+#[derive(Module, Debug)]
+struct TrainableModel {
+    decoder: BurnBaseDecoder,
+    encoder: BurnBaseEncoder,
 }
 
 /// 执行基座对齐训练：只更新解码器，编码器与时长固定用基座预测。
@@ -332,10 +543,28 @@ pub fn train_base(
     // 训练固定走 Vulkan 的 autodiff 设备（不在参数里暴露，避免误传 CPU）。
     let train_dev = train_device_autodiff();
 
-    // 编码器：加载基座权重后只做前向（先验会被抽取成数据、切断计算图，参数不进梯度）。
-    let encoder = load_encoder_from_onnx(encoder_config, &tensors, &train_dev)
-        .map_err(anyhow::Error::msg)?;
-    let encoder = encoder.no_grad();
+    // 编码器：Transformer 基座冻结，mel 先验从缓存的隐状态里取；只有启用逐
+    // token 时长适配时才解冻时长分支的低秩旁路。
+    let mut encoder =
+        load_encoder_from_onnx(encoder_config, &tensors, &train_dev).map_err(anyhow::Error::msg)?;
+    encoder = encoder.no_grad();
+    if config.duration_adapter {
+        if encoder.duration_lora().is_none() {
+            encoder.set_duration_lora(Some(DurationLora::new(
+                encoder_config,
+                config.duration_adapter_rank,
+                &train_dev,
+            )));
+        }
+        encoder = encoder.set_require_grad_group(
+            burn::module::ParamGroup::from_predicate("duration_lora"),
+            true,
+        );
+        tracing::info!(
+            "[训练] 已启用逐 token 时长/停顿适配（秩 {}），时长旁路参与更新",
+            config.duration_adapter_rank
+        );
+    }
 
     // 解码器：加载基座权重后进入训练模式（参数要求梯度）。
     let mut decoder = load_decoder_from_onnx(decoder_config, &tensors, map_path, &train_dev)
@@ -346,19 +575,27 @@ pub fn train_base(
     // burn 的 apply_lora 让 Linear 取值时自动合成 base + scale*(a@b)，前向无需改动；
     // backward 只有旁路收到梯度，导出读到的有效权重也已把旁路折回基座，推理端零改动。
     if config.lora_enabled {
-        use burn::module::{Lora, Module};
-        let lora_paths = [
-            ".q.weight", ".k.weight", ".v.weight", ".to_out.weight", ".ff_proj.weight",
-            ".ff_out.weight",
-        ];
-        decoder = decoder.apply_lora(
-            Lora::new(config.lora_rank, 1.0)
-                .set_param_group(burn::module::ParamGroup::from_any_predicates(lora_paths.to_vec())),
-        );
+        decoder = apply_linear_lora(decoder, config.lora_rank);
+        // apply_lora 会冻结所有非二维参数，FiLM 是一维 gamma/beta，卷积旁路也是
+        // 三维权重，需要按路径单独解冻。
+        decoder = decoder
+            .set_require_grad_group(burn::module::ParamGroup::from_predicate("style_film"), true)
+            .set_require_grad_group(burn::module::ParamGroup::from_predicate("conv_lora"), true);
         tracing::info!(
-            "[训练] 已启用 LoRA 微调（秩 {}），仅自注意力与 FFN 旁路参与更新",
+            "[训练] 已启用 LoRA 微调（秩 {}），自注意力/FFN/卷积旁路与风格 FiLM 参与更新",
             config.lora_rank
         );
+    }
+
+    // 仅训练风格适配器：冻结整个解码器基座，只让每层归一化上的 FiLM gamma/beta
+    // 接收梯度。这是低性能设备的主路径，参数量约一万，导出时折叠、无推理开销。
+    if config.adapter_only {
+        if !config.lora_enabled {
+            decoder = decoder.no_grad();
+        }
+        decoder = decoder
+            .set_require_grad_group(burn::module::ParamGroup::from_predicate("style_film"), true);
+        tracing::info!("[训练] 已启用仅风格适配器模式：冻结基座，只训练 FiLM");
     }
 
     // 续训：如果该数据集已训过一部分且配方一致，就接着上次的权重继续，而不是
@@ -369,9 +606,7 @@ pub fn train_base(
         let expected = train_fingerprint(corpus, base_model, config);
         if let Some(state) = load_train_state(checkpoint) {
             if state.fingerprint != expected {
-                tracing::warn!(
-                    "[训练] 检查点与当前数据集/参数不匹配，忽略它并从基座从头训练"
-                );
+                tracing::warn!("[训练] 检查点与当前数据集/参数不匹配，忽略它并从基座从头训练");
             } else if state.epochs_done >= config.epochs {
                 // 上次已跑满本次要求的轮数，说明用户是要调参或换数据集重训，从头开始。
                 tracing::info!(
@@ -381,6 +616,21 @@ pub fn train_base(
                 );
             } else if let Ok(loaded) = load_checkpoint(&decoder, checkpoint) {
                 decoder = loaded;
+                // 时长旁路单独存放；缺失时保留基座行为并提示，不阻断续训。
+                if config.duration_adapter {
+                    match load_duration_adapter(
+                        encoder_config,
+                        config.duration_adapter_rank,
+                        checkpoint,
+                        &train_dev,
+                    ) {
+                        Ok(Some(lora)) => encoder.set_duration_lora(Some(lora)),
+                        Ok(None) => tracing::warn!(
+                            "[训练] 检查点没有时长适配器，时长分支将从基座行为继续训练"
+                        ),
+                        Err(error) => tracing::warn!("[训练] 时长适配器读取失败，忽略: {error:#}"),
+                    }
+                }
                 resume_epochs = state.epochs_done;
                 resume_steps = state.steps_done;
                 tracing::info!(
@@ -392,31 +642,46 @@ pub fn train_base(
         }
     }
 
-    // 每样本预计算 mel 先验并展开到帧级：编码器冻结，整轮训练只算一次。
-    let mut priors: Vec<Vec<f32>> = Vec::with_capacity(corpus.samples.len());
+    // 每样本只跑一次 Transformer 并缓存隐状态：mel 先验由冻结的 proj_m 从隐状态
+    // 得到；启用时长适配时，每步只重跑很小的时长分支，避免重复跑六层 Transformer。
+    let mut hidden_cache: Vec<Tensor<3>> = Vec::with_capacity(corpus.samples.len());
+    let mut prior_tokens: Vec<Tensor<3>> = Vec::with_capacity(corpus.samples.len());
     for sample in &corpus.samples {
         let len = sample.token_ids.len();
         let tokens = Tensor::<2, Int>::from_data(
             TensorData::new(sample.token_ids.clone(), [1, len]),
             &train_dev,
         );
-        let (mel_prior, durations) = encoder.forward(tokens);
-        let (expanded, _channels) =
-            expand_prior(&mel_prior, &durations, sample.frames())
-                .with_context(|| format!("样本 {} 先验展开失败", sample.id))?;
-        priors.push(expanded);
+        let hidden = encoder.forward_hidden(tokens);
+        let mel_prior = encoder.mel_prior_from_hidden(hidden.clone());
+        hidden_cache.push(hidden);
+        prior_tokens.push(mel_prior);
     }
 
-    // 训练过程中 mel 与展开先验的内容不变（编码器冻结、二者都是不可微输入），
-    // 且不参与反传。一次性搬上设备并按样本缓存，让每个 epoch 的训练与验证循环
-    // 直接引用计数复用，避免每轮反复 from_data 搬移这类纯重复开销。显存占用随
-    // 样本量线性（每样本存两片 80 通道张量），对分钟级微调语料规模（数十句）
-    // 远小于单步峰值，可接受。
-    let mel_priors: Vec<(Tensor<3>, Tensor<3>)> = corpus
+    // 未启用时长适配时沿用硬展开，先一次性展开到帧级；启用时改为每步可微展开。
+    let expanded_priors: Option<Vec<Tensor<3>>> = if config.duration_adapter {
+        None
+    } else {
+        let mut expanded = Vec::with_capacity(corpus.samples.len());
+        for (index, sample) in corpus.samples.iter().enumerate() {
+            let durations = encoder.durations_from_hidden(hidden_cache[index].clone());
+            let (flat, channels) = expand_prior(&prior_tokens[index], &durations, sample.frames())
+                .with_context(|| format!("样本 {} 先验展开失败", sample.id))?;
+            expanded.push(Tensor::<3>::from_data(
+                TensorData::new(flat, [1, channels, sample.frames()]),
+                &train_dev,
+            ));
+        }
+        Some(expanded)
+    };
+
+    // 训练过程中 mel 内容不变，一次性搬上设备按样本缓存。先验也能复用：未启用
+    // 时长适配时直接引用 `expanded_priors`，启用时每步从缓存的 token 先验重新
+    // 软展开，显存占用随样本量线性，对分钟级微调语料规模可接受。
+    let mel_frames: Vec<Tensor<3>> = corpus
         .samples
         .iter()
-        .enumerate()
-        .map(|(index, sample)| {
+        .map(|sample| {
             let mel_ch = sample.mel[0].len();
             let frames = sample.frames();
             let mel_flat: Vec<f32> = sample
@@ -424,18 +689,13 @@ pub fn train_base(
                 .iter()
                 .flat_map(|frame| frame.iter().copied())
                 .collect();
-            let mel_full = Tensor::<3>::from_data(
-                TensorData::new(mel_flat, [1, frames, mel_ch]),
-                &train_dev,
-            )
-            .transpose();
-            let prior_full = Tensor::<3>::from_data(
-                TensorData::new(priors[index].clone(), [1, mel_ch, frames]),
-                &train_dev,
-            );
-            (mel_full, prior_full)
+            Tensor::<3>::from_data(TensorData::new(mel_flat, [1, frames, mel_ch]), &train_dev)
+                .transpose()
         })
         .collect();
+
+    // 解码器与编码器时长旁路放进同一个模块，单次反传即可同时拿到两者梯度。
+    let mut trainable = TrainableModel { decoder, encoder };
 
     // 每个样本按单步帧数预算切成若干片段，总步数按片段数累计，进度条才准。
     // 验证集不参与梯度更新，步骤数只按训练集累计。
@@ -478,8 +738,11 @@ pub fn train_base(
                 ),
             ),
             burn::lr_scheduler::LrSchedulerConfig::Cosine(
-                burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig::new(peak_lr, anneal_steps)
-                    .with_min_lr(peak_lr * min_frac),
+                burn::lr_scheduler::cosine::CosineAnnealingLrSchedulerConfig::new(
+                    peak_lr,
+                    anneal_steps,
+                )
+                .with_min_lr(peak_lr * min_frac),
             ),
         ],
         vec![warmup_steps],
@@ -515,7 +778,7 @@ pub fn train_base(
             let sample = &corpus.samples[index];
             let mel_ch = sample.mel[0].len();
             let frames = sample.frames();
-            let (mel_full, prior_full) = &mel_priors[index];
+            let mel_full = &mel_frames[index];
 
             // 沿时间轴切片：片段长度不超过预算，避免长音频的单步显存峰值爆掉。
             let chunk = if config.max_frames_per_step == 0 {
@@ -535,6 +798,17 @@ pub fn train_base(
                 }
 
                 let len = chunk.min(frames - start);
+                // 时长适配开启时每步重新软展开，保持计算图新鲜、梯度能回传到时长；
+                // 否则直接复用预先算好的硬展开结果，省掉每步的先验展开开销。
+                let prior_full = match &expanded_priors {
+                    Some(priors) => priors[index].clone(),
+                    None => {
+                        let durations = trainable
+                            .encoder
+                            .durations_from_hidden(hidden_cache[index].clone());
+                        soft_expand_prior(&prior_tokens[index], &durations, frames)
+                    },
+                };
                 // 整条样本不需要切分时就别走 narrow：narrow 会在设备上再拷一份，
                 // 而 clone 只是引用计数，短句样本因此少一次无谓的全量拷贝。
                 let (mel, prior) = if len == frames {
@@ -558,12 +832,12 @@ pub fn train_base(
                 let (noisy, target) = cfm_noise(&mel, &noise, time_value, 1e-4);
                 let time = base_time_embed(time_value, &train_dev);
 
-                let predicted = decoder.forward(noisy, prior, time);
+                let predicted = trainable.decoder.forward(noisy, prior, time);
                 let loss = (predicted - target).powf_scalar(2.0).mean();
 
-                let grads = GradientsParams::from_grads(loss.backward(), &decoder);
+                let grads = GradientsParams::from_grads(loss.backward(), &trainable);
                 let step_lr = lr_scheduler.step();
-                decoder = optimizer.step(step_lr, decoder, grads);
+                trainable = optimizer.step(step_lr, trainable, grads);
                 step += 1;
                 epoch_step_count += 1;
 
@@ -608,7 +882,16 @@ pub fn train_base(
                 let vsample = &corpus.samples[*vindex];
                 let vmel_ch = vsample.mel[0].len();
                 let vframes = vsample.frames();
-                let (vmel_full, vprior_full) = &mel_priors[*vindex];
+                let vmel_full = &mel_frames[*vindex];
+                let vprior_full = match &expanded_priors {
+                    Some(priors) => priors[*vindex].clone(),
+                    None => {
+                        let durations = trainable
+                            .encoder
+                            .durations_from_hidden(hidden_cache[*vindex].clone());
+                        soft_expand_prior(&prior_tokens[*vindex], &durations, vframes)
+                    },
+                };
                 let vchunk = if config.max_frames_per_step == 0 {
                     vframes
                 } else {
@@ -635,14 +918,18 @@ pub fn train_base(
                     let vtime = rand_uniform(config.seed ^ step as u64 ^ 0xC0DE);
                     let (vnoisy, vtarget) = cfm_noise(&vmel, &vnoise, vtime, 1e-4);
                     let vtime_t = base_time_embed(vtime, &train_dev);
-                    let vpred = decoder.forward(vnoisy, vprior, vtime_t);
+                    let vpred = trainable.decoder.forward(vnoisy, vprior, vtime_t);
                     let vloss = (vpred - vtarget).powf_scalar(2.0).mean();
                     val_sum += vloss.to_data().try_to_vec::<f32>()?[0] as f64;
                     val_n += 1;
                     vstart += vlen;
                 }
             }
-            let val_loss = if val_n > 0 { val_sum / val_n as f64 } else { f32::NAN as f64 };
+            let val_loss = if val_n > 0 {
+                val_sum / val_n as f64
+            } else {
+                f32::NAN as f64
+            };
             on_progress(&BaseTrainingProgress {
                 epoch: epoch + 1,
                 total_epochs: config.epochs,
@@ -656,16 +943,39 @@ pub fn train_base(
 
         if config.checkpoint_every > 0 && (epoch + 1) % config.checkpoint_every == 0 {
             if let Some(path) = checkpoint_path {
-                save_checkpoint(&decoder, path)?;
+                save_checkpoint(&trainable.decoder, path)?;
+                if config.duration_adapter {
+                    if let Some(lora) = trainable.encoder.duration_lora() {
+                        save_duration_adapter(lora, path)?;
+                    }
+                }
                 save_train_state(
                     &TrainState {
                         epochs_done: epoch + 1,
                         steps_done: step,
                         fingerprint: train_fingerprint(corpus, base_model, config),
+                        lora_enabled: config.lora_enabled,
+                        lora_rank: config.lora_rank,
+                        conv_lora_rank: if config.lora_enabled {
+                            config.lora_rank
+                        } else {
+                            0
+                        },
+                        adapter_only: config.adapter_only,
+                        duration_adapter: config.duration_adapter,
+                        duration_adapter_rank: if config.duration_adapter {
+                            config.duration_adapter_rank
+                        } else {
+                            0
+                        },
                     },
                     path,
                 )?;
-                tracing::info!("[训练] 第 {} 轮结束，已保存检查点: {}", epoch + 1, path.display());
+                tracing::info!(
+                    "[训练] 第 {} 轮结束，已保存检查点: {}",
+                    epoch + 1,
+                    path.display()
+                );
             }
         }
 
@@ -708,12 +1018,57 @@ pub fn save_checkpoint(decoder: &BurnBaseDecoder, path: &Path) -> Result<()> {
         .with_context(|| format!("保存检查点失败: {}", path.display()))
 }
 
+/// 保存时长适配器旁路（burn `.bpk` 格式）。
+pub fn save_duration_adapter(lora: &DurationLora, checkpoint_path: &Path) -> Result<()> {
+    let path = duration_adapter_path(checkpoint_path);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("创建时长适配器目录失败: {}", parent.display()))?;
+    }
+    lora.clone()
+        .save_file(&path)
+        .with_context(|| format!("保存时长适配器失败: {}", path.display()))
+}
+
+/// 装载时长适配器旁路；文件不存在时返回 None。
+///
+/// 这里必须严格装载：旁路缺失会让逐 token 时长适配静默退回基座行为。
+pub fn load_duration_adapter(
+    config: &BurnBaseEncoderConfig,
+    rank: usize,
+    checkpoint_path: &Path,
+    device: &Device,
+) -> Result<Option<DurationLora>> {
+    let path = duration_adapter_path(checkpoint_path);
+    if !path.is_file() {
+        return Ok(None);
+    }
+    let skeleton = DurationLora::new(config, rank.max(1), device);
+    let loaded = skeleton
+        .try_load_file(&path)
+        .with_context(|| format!("读取时长适配器失败: {}", path.display()))?;
+    Ok(Some(loaded))
+}
+
 /// 读取解码器检查点，填进给定的解码器骨架并返回。
+///
+/// 新增 FiLM 字段后，旧检查点缺少 `style_film.*`。严格加载失败时退回到
+/// `allow_partial`，让缺失字段保留骨架里的恒等初始化，从而兼容旧检查点。
 pub fn load_checkpoint(decoder: &BurnBaseDecoder, path: &Path) -> Result<BurnBaseDecoder> {
-    decoder
-        .clone()
-        .try_load_file(path)
-        .with_context(|| format!("读取检查点失败: {}", path.display()))
+    match decoder.clone().try_load_file(path) {
+        Ok(loaded) => Ok(loaded),
+        Err(strict_error) => {
+            let record = burn::store::ModuleRecord::load(path)
+                .with_context(|| format!("读取检查点失败: {}", path.display()))?
+                .allow_partial(true);
+            decoder.clone().try_load_record(record).with_context(|| {
+                format!(
+                    "读取检查点失败: {}（严格加载也失败: {strict_error}）",
+                    path.display()
+                )
+            })
+        },
+    }
 }
 
 /// xorshift 伪随机，用于时间步采样（与数据打乱解耦，避免占用 make_batches 的种子）。
@@ -728,6 +1083,21 @@ fn rand_uniform(seed: u64) -> f64 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 软展开应按相对时长分配帧：长 token 占据开始段，短 token 占据结尾段。
+    #[test]
+    fn soft_expand_prior_assigns_frames_by_relative_duration() {
+        let device = super::super::burn_backend::train_device();
+        // 两个 token：第一个时长是第二个的两倍；先验值 0 与 10 便于区分。
+        let prior = Tensor::<3>::from_data(TensorData::new(vec![0.0, 10.0], [1, 1, 2]), &device);
+        let durations =
+            Tensor::<2>::from_data(TensorData::new(vec![2f32.ln(), 0.0], [1, 2]), &device);
+        let expanded = soft_expand_prior(&prior, &durations, 6);
+        let values: Vec<f32> = expanded.to_data().try_to_vec::<f32>().unwrap();
+        assert_eq!(values.len(), 6);
+        assert!(values[0] < 0.5, "首帧应主要来自第一个 token: {values:?}");
+        assert!(values[5] > 8.0, "末帧应主要来自第二个 token: {values:?}");
+    }
 
     #[test]
     fn time_embed_len_and_axis() {
@@ -757,7 +1127,11 @@ mod tests {
         }
 
         let mel: Vec<Vec<f32>> = (0..120)
-            .map(|i| (0..80).map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin()).collect())
+            .map(|i| {
+                (0..80)
+                    .map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin())
+                    .collect()
+            })
             .collect();
         let sample = TrainingSample {
             id: "tiny".to_string(),
@@ -779,6 +1153,9 @@ mod tests {
             max_frames_per_step: 0,
             lora_enabled: false,
             lora_rank: 8,
+            adapter_only: false,
+            duration_adapter: false,
+            duration_adapter_rank: 4,
         };
         let outcome = train_base(
             &corpus,
@@ -795,6 +1172,215 @@ mod tests {
         assert!(outcome.steps > 0, "训练步数应为正");
         assert!(outcome.initial_loss.is_finite(), "初损应为有限值");
         assert!(outcome.final_loss.is_finite(), "末损应为有限值");
+    }
+
+    /// 仅风格适配器模式：冻结基座后仍能完成一步反向/优化，损失有限。
+    #[test]
+    fn train_adapter_only_runs() {
+        use std::path::Path;
+
+        use crate::ai_service::tts::finetune::corpus::{Corpus, CorpusStats, TrainingSample};
+
+        let onnx = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        let map = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        if !onnx.exists() || !map.exists() {
+            eprintln!("基座权重缺失，跳过适配器训练集成测试");
+            return;
+        }
+
+        let mel: Vec<Vec<f32>> = (0..120)
+            .map(|i| {
+                (0..80)
+                    .map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin())
+                    .collect()
+            })
+            .collect();
+        let corpus = Corpus {
+            samples: vec![TrainingSample {
+                id: "tiny-adapter".to_string(),
+                token_ids: vec![5, 10, 20, 33],
+                mel,
+            }],
+            skipped: vec![],
+            stats: CorpusStats::default(),
+        };
+        let config = BaseTrainingConfig {
+            epochs: 1,
+            learning_rate: 1e-3,
+            seed: 11,
+            checkpoint_every: 0,
+            cleanup_every: 0,
+            max_frames_per_step: 0,
+            lora_enabled: false,
+            lora_rank: 8,
+            adapter_only: true,
+            duration_adapter: false,
+            duration_adapter_rank: 4,
+        };
+        let outcome = train_base(
+            &corpus,
+            &BurnBaseEncoderConfig::default(),
+            &BurnBaseDecoderConfig::default(),
+            &config,
+            &onnx,
+            &map,
+            None,
+            None,
+            |_| {},
+        )
+        .expect("仅风格适配器训练失败");
+        assert!(outcome.steps > 0, "训练步数应为正");
+        assert!(outcome.initial_loss.is_finite(), "初损应为有限值");
+        assert!(outcome.final_loss.is_finite(), "末损应为有限值");
+    }
+
+    /// LoRA + 卷积旁路训练后，检查点应能按训练状态重建骨架并严格装载，
+    /// 导出时把卷积旁路折进基座权重。
+    #[test]
+    fn lora_checkpoint_reloads_for_export() {
+        use std::path::Path;
+
+        use burn::module::Module;
+
+        use crate::ai_service::tts::finetune::corpus::{Corpus, CorpusStats, TrainingSample};
+        use crate::ai_service::tts::finetune::onnx_export::export_tuned_model_burn;
+
+        let onnx = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        let map = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        if !onnx.exists() || !map.exists() {
+            eprintln!("基座权重缺失，跳过 LoRA 导出集成测试");
+            return;
+        }
+
+        let mel: Vec<Vec<f32>> = (0..120)
+            .map(|i| {
+                (0..80)
+                    .map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin())
+                    .collect()
+            })
+            .collect();
+        let corpus = Corpus {
+            samples: vec![TrainingSample {
+                id: "tiny-lora".to_string(),
+                token_ids: vec![5, 10, 20, 33],
+                mel,
+            }],
+            skipped: vec![],
+            stats: CorpusStats::default(),
+        };
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/conv-lora-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let checkpoint = dir.join("checkpoint.bpk");
+        let state_path = dir.join("train-state.json");
+        let _ = std::fs::remove_file(&checkpoint);
+        let _ = std::fs::remove_file(&state_path);
+
+        let decoder_config = BurnBaseDecoderConfig {
+            conv_lora_rank: 2,
+            ..Default::default()
+        };
+        let config = BaseTrainingConfig {
+            epochs: 1,
+            learning_rate: 1e-3,
+            seed: 13,
+            checkpoint_every: 1,
+            cleanup_every: 0,
+            max_frames_per_step: 0,
+            lora_enabled: true,
+            lora_rank: 2,
+            adapter_only: true,
+            duration_adapter: false,
+            duration_adapter_rank: 4,
+        };
+        train_base(
+            &corpus,
+            &BurnBaseEncoderConfig::default(),
+            &decoder_config,
+            &config,
+            &onnx,
+            &map,
+            Some(&checkpoint),
+            None,
+            |_| {},
+        )
+        .expect("LoRA 训练失败");
+
+        let state = load_train_state(&checkpoint).expect("缺少训练状态");
+        assert!(state.lora_enabled);
+        assert_eq!(state.lora_rank, 2);
+        assert_eq!(state.conv_lora_rank, 2);
+
+        let device = super::super::burn_backend::train_device();
+        let reload_config = BurnBaseDecoderConfig {
+            conv_lora_rank: state.conv_lora_rank,
+            ..Default::default()
+        };
+        let skeleton = BurnBaseDecoder::init(&reload_config, &device);
+        let skeleton = apply_linear_lora(skeleton, state.lora_rank);
+        let loaded = skeleton
+            .try_load_file(&checkpoint)
+            .expect("LoRA 检查点严格装载失败");
+
+        let out = dir.join("export.onnx");
+        export_tuned_model_burn(&loaded, &onnx, &map, &out).expect("LoRA 导出失败");
+        let base_tensors = read_initializers(&onnx).unwrap();
+        let out_tensors = read_initializers(&out).unwrap();
+        let name = "model.decoder.estimator.down_blocks.0.0.block1.block.0.weight";
+        let base_weight = base_tensors.iter().find(|t| t.name == name).unwrap();
+        let out_weight = out_tensors.iter().find(|t| t.name == name).unwrap();
+        let max_diff = base_weight
+            .data
+            .iter()
+            .zip(&out_weight.data)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(max_diff > 1e-7, "卷积 LoRA 没有折进导出权重");
+
+        // 新扩展的下采样/转置上采样/最终投影也必须被折叠，而不是只有 ResBlock。
+        for branch in [
+            "model.decoder.estimator.down_blocks.1.2.weight",
+            "model.decoder.estimator.up_blocks.0.2.conv.weight",
+            "model.decoder.estimator.final_proj.weight",
+        ] {
+            let base_weight = base_tensors.iter().find(|t| t.name == branch).unwrap();
+            let out_weight = out_tensors.iter().find(|t| t.name == branch).unwrap();
+            let diff = base_weight
+                .data
+                .iter()
+                .zip(&out_weight.data)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            assert!(diff > 1e-8, "{branch} 的卷积 LoRA 没有折进导出权重");
+        }
+    }
+
+    /// 缺少 train-state.json 时，应从检查点键名/形状反推出 LoRA 与卷积旁路秩。
+    #[test]
+    fn detects_adapters_without_train_state() {
+        use std::path::Path;
+
+        use burn::module::Module;
+
+        let device = super::super::burn_backend::train_device();
+        let config = BurnBaseDecoderConfig {
+            conv_lora_rank: 3,
+            ..Default::default()
+        };
+        let decoder = BurnBaseDecoder::init(&config, &device);
+        let decoder = apply_linear_lora(decoder, 3);
+        let path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/checkpoint-inspect-test.bpk");
+        let _ = std::fs::remove_file(&path);
+        decoder.save_file(&path).unwrap();
+        let detected = inspect_checkpoint_adapters(&path).expect("无法探测检查点旁路");
+        assert!(detected.lora);
+        assert_eq!(detected.lora_rank, 3);
+        assert_eq!(detected.conv_lora_rank, 3);
+        let _ = std::fs::remove_file(&path);
     }
 
     /// 续训集成验证：第一次跑 1 轮存检查点，第二次请求 2 轮，应只补第 2 轮。
@@ -838,8 +1424,7 @@ mod tests {
             stats: CorpusStats::default(),
         };
 
-        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../target/resume-test");
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/resume-test");
         std::fs::create_dir_all(&dir).unwrap();
         let checkpoint = dir.join("checkpoint.bpk");
 
@@ -853,6 +1438,9 @@ mod tests {
                 max_frames_per_step: 0,
                 lora_enabled: false,
                 lora_rank: 8,
+                adapter_only: false,
+                duration_adapter: false,
+                duration_adapter_rank: 4,
             };
             train_base(
                 &corpus,
@@ -879,11 +1467,7 @@ mod tests {
         assert_eq!(first.steps, steps_per_epoch, "第一次应正好训 1 轮");
         assert_eq!(first.resumed_from, 0, "第一次应从头训练");
         // 续训共 2 轮 → 共 2*steps_per_epoch 步。
-        assert_eq!(
-            second.steps,
-            2 * steps_per_epoch,
-            "续训后步数应按 2 轮累计"
-        );
+        assert_eq!(second.steps, 2 * steps_per_epoch, "续训后步数应按 2 轮累计");
         // 第二次应从第 1 轮开始续训，而不是从头重训，这才是续训生效的关键证据。
         assert_eq!(second.resumed_from, 1, "第二次应从上一次结束的轮次续训");
         // 确保状态文件已生成并可读、指纹匹配。
@@ -892,6 +1476,148 @@ mod tests {
             "续训状态文件应存在"
         );
         // 清理测试产物。
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// 逐 token 时长适配：训练后旁路应保存、能从检查点装回、并折叠进导出权重。
+    #[test]
+    fn duration_adapter_trains_saves_and_folds_into_export() {
+        use std::path::Path;
+
+        use crate::ai_service::tts::finetune::burn_encoder::BurnBaseEncoder;
+        use crate::ai_service::tts::finetune::corpus::{Corpus, CorpusStats, TrainingSample};
+        use crate::ai_service::tts::finetune::onnx_export::export_tuned_model_burn_with_adapters;
+
+        let onnx = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        let map = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
+        if !onnx.exists() || !map.exists() {
+            eprintln!("基座权重缺失，跳过时长适配集成测试");
+            return;
+        }
+
+        let mel: Vec<Vec<f32>> = (0..120)
+            .map(|i| {
+                (0..80)
+                    .map(|j| 0.5 * ((i as f32 * 0.05) + j as f32).sin())
+                    .collect()
+            })
+            .collect();
+        let corpus = Corpus {
+            samples: vec![TrainingSample {
+                id: "tiny-duration".to_string(),
+                token_ids: vec![5, 10, 20, 33],
+                mel,
+            }],
+            skipped: vec![],
+            stats: CorpusStats::default(),
+        };
+
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../target/duration-adapter-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let checkpoint = dir.join("checkpoint.bpk");
+        let _ = std::fs::remove_file(&checkpoint);
+        let _ = std::fs::remove_file(duration_adapter_path(&checkpoint));
+        let _ = std::fs::remove_file(train_state_path(&checkpoint));
+
+        let encoder_config = BurnBaseEncoderConfig {
+            duration_lora_rank: 2,
+            ..Default::default()
+        };
+        let config = BaseTrainingConfig {
+            epochs: 1,
+            learning_rate: 1e-3,
+            seed: 17,
+            checkpoint_every: 1,
+            cleanup_every: 0,
+            max_frames_per_step: 0,
+            lora_enabled: false,
+            lora_rank: 8,
+            adapter_only: true,
+            duration_adapter: true,
+            duration_adapter_rank: 2,
+        };
+        train_base(
+            &corpus,
+            &encoder_config,
+            &BurnBaseDecoderConfig::default(),
+            &config,
+            &onnx,
+            &map,
+            Some(&checkpoint),
+            None,
+            |_| {},
+        )
+        .expect("时长适配训练失败");
+
+        let state = load_train_state(&checkpoint).expect("缺少训练状态");
+        assert!(state.duration_adapter);
+        assert_eq!(state.duration_adapter_rank, 2);
+        assert!(
+            duration_adapter_path(&checkpoint).is_file(),
+            "时长适配器检查点应存在"
+        );
+        assert_eq!(
+            inspect_duration_adapter_rank(&duration_adapter_path(&checkpoint)),
+            Some(2),
+            "应从检查点探测出时长适配器秩"
+        );
+
+        let device = super::super::burn_backend::train_device();
+        let tensors = read_initializers(&onnx).unwrap();
+        let base_config = BurnBaseEncoderConfig::default();
+        let base_encoder: BurnBaseEncoder =
+            load_encoder_from_onnx(&base_config, &tensors, &device).unwrap();
+        let base_weights = base_encoder.folded_duration_weights();
+
+        let mut adapted: BurnBaseEncoder =
+            load_encoder_from_onnx(&encoder_config, &tensors, &device).unwrap();
+        let lora = load_duration_adapter(&encoder_config, 2, &checkpoint, &device)
+            .expect("读取时长适配器失败")
+            .expect("时长适配器文件应可装载");
+        adapted.set_duration_lora(Some(lora));
+        let adapted_weights = adapted.folded_duration_weights();
+
+        let mut changed = false;
+        for ((name, base), (adapted_name, adapted)) in
+            base_weights.iter().zip(adapted_weights.iter())
+        {
+            assert_eq!(name, adapted_name);
+            let diff = base
+                .iter()
+                .zip(adapted)
+                .map(|(a, b)| (a - b).abs())
+                .fold(0.0f32, f32::max);
+            changed |= diff > 1e-7;
+        }
+        assert!(changed, "时长旁路训练后权重没有变化，梯度可能没有回传");
+
+        let out = dir.join("export.onnx");
+        export_tuned_model_burn_with_adapters(
+            &BurnBaseDecoder::init(&BurnBaseDecoderConfig::default(), &device),
+            &adapted_weights
+                .iter()
+                .map(|(name, values)| (*name, values.clone()))
+                .collect::<Vec<_>>(),
+            &onnx,
+            &map,
+            &out,
+            None,
+        )
+        .expect("时长适配导出失败");
+        let out_tensors = read_initializers(&out).unwrap();
+        let name = "model.encoder.proj_w.proj.weight";
+        let base_weight = tensors.iter().find(|t| t.name == name).unwrap();
+        let out_weight = out_tensors.iter().find(|t| t.name == name).unwrap();
+        let max_diff = base_weight
+            .data
+            .iter()
+            .zip(&out_weight.data)
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        assert!(max_diff > 1e-7, "时长旁路没有折进导出的时长预测器");
+
         let _ = std::fs::remove_dir_all(&dir);
     }
 }

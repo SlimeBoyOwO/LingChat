@@ -15,12 +15,13 @@
 pub mod base_decoder;
 pub mod base_encoder;
 pub mod burn_backend;
-pub mod burn_encoder;
 pub mod burn_decoder;
+pub mod burn_encoder;
 pub mod burn_training;
 pub use base_decoder::{BaseDecoder, BaseDecoderConfig};
 pub use base_encoder::{BaseEncoder, BaseEncoderConfig};
 pub mod base_training;
+pub mod conv_lora;
 pub mod corpus;
 pub mod decoder;
 pub mod feature;
@@ -30,6 +31,7 @@ pub mod normalize;
 pub mod onnx_export;
 pub mod onnx_weights;
 pub mod resample;
+pub mod style;
 pub mod text;
 pub mod training;
 
@@ -47,8 +49,15 @@ pub use import::{
 };
 pub use model::{Matcha, MatchaConfig};
 pub use normalize::{NormalizeReport, normalize_to_wav};
-pub use onnx_export::{export_tuned_model, export_tuned_model_burn};
+pub use onnx_export::{
+    export_tuned_model, export_tuned_model_burn, export_tuned_model_burn_with_adapters,
+    export_tuned_model_burn_with_duration,
+};
 pub use onnx_weights::{OnnxTensor, read_initializers};
+pub use style::{
+    DEFAULT_STYLE_CLUSTERS, MAX_STYLE_CLUSTERS, StyleClusterReport, StyleClusterSummary,
+    cluster_dataset, summarize_clusters,
+};
 pub use text::{Lexicon, TextFrontend, TokenTable};
 pub use training::{
     TrainingConfig, TrainingOutcome, TrainingProgress, load_checkpoint, save_checkpoint, train,

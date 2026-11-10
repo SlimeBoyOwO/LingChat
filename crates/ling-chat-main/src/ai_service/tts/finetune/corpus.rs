@@ -26,6 +26,8 @@ pub struct CorpusConfig {
     pub max_tokens: usize,
     /// 最少 mel 帧数。
     pub min_frames: usize,
+    /// 只使用指定风格簇的样本；None 表示使用全部样本。
+    pub style_cluster: Option<u32>,
 }
 
 impl Default for CorpusConfig {
@@ -35,6 +37,7 @@ impl Default for CorpusConfig {
             min_tokens: 1,
             max_tokens: 400,
             min_frames: 8,
+            style_cluster: None,
         }
     }
 }
@@ -127,6 +130,16 @@ pub fn build_from_manifest(
     let mut skipped = Vec::new();
 
     for item in &manifest.items {
+        if let Some(style) = config.style_cluster {
+            if item.style_cluster != Some(style) {
+                skipped.push(SkippedSample {
+                    id: item.id.clone(),
+                    reason: format!("不属于风格簇 {style}"),
+                });
+                continue;
+            }
+        }
+
         let Some(text) = item.text.as_deref() else {
             skipped.push(SkippedSample {
                 id: item.id.clone(),
@@ -247,9 +260,8 @@ mod tests {
         let mut writer = hound::WavWriter::create(path, spec).unwrap();
         let total = (seconds * sample_rate as f32) as usize;
         for i in 0..total {
-            let value =
-                ((2.0 * std::f32::consts::PI * 220.0 * i as f32 / sample_rate as f32).sin()
-                    * 8_000.0) as i16;
+            let value = ((2.0 * std::f32::consts::PI * 220.0 * i as f32 / sample_rate as f32).sin()
+                * 8_000.0) as i16;
             writer.write_sample(value).unwrap();
         }
         writer.finalize().unwrap();
@@ -339,7 +351,11 @@ mod tests {
         let mut all: Vec<usize> = batches.iter().flatten().copied().collect();
         all.sort_unstable();
         assert_eq!(all, (0..7).collect::<Vec<_>>());
-        assert!(batches.iter().all(|batch| !batch.is_empty() && batch.len() <= 3));
+        assert!(
+            batches
+                .iter()
+                .all(|batch| !batch.is_empty() && batch.len() <= 3)
+        );
     }
 
     #[test]

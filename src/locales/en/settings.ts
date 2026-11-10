@@ -1512,6 +1512,8 @@ export default {
     exporting: "Exporting…",
     exportNamePlaceholder: "Voice name",
     autoAnnotate: "Auto-transcribe audio missing text via ASR",
+    clusterStyles: "Cluster styles automatically",
+    styleCluster: "Style",
     annotating: "Annotating",
     annotateDone: "Auto-annotation finished",
     annotateSummary: "{hits} succeeded, {failed} failed, {skipped} skipped",
@@ -1521,6 +1523,14 @@ export default {
     maxFrames: "Max frames per step (0 = unlimited)",
     lora: "LoRA fine-tuning",
     loraRank: "LoRA rank",
+    loraHint:
+      "Low-rank adapters on attention/FFN linears and residual convolutions; folded into base weights on export with no inference overhead.",
+    adapterOnly: "Style adapter only",
+    adapterOnlyHint:
+      "Freeze the decoder base and train only ~13k FiLM parameters. Suited to low-end devices; exports with no inference overhead.",
+    durationAdapter: "Per-token duration / pause adapter",
+    durationAdapterHint:
+      "Trains low-rank adapters only on the duration predictor, adjusting each token's duration and pauses from context. Folded into the base weights on export with no extra inference cost.",
     resumedFrom: "Resumed training from epoch {epoch}.",
   },
   sherpa: {

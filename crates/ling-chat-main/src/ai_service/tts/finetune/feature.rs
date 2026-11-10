@@ -398,7 +398,8 @@ mod tests {
         let mut expected = 0usize;
         let mut best = f32::MAX;
         for m in 0..config.n_mels {
-            let center_mel = mel_min + (mel_max - mel_min) * (m + 1) as f32 / (config.n_mels + 1) as f32;
+            let center_mel =
+                mel_min + (mel_max - mel_min) * (m + 1) as f32 / (config.n_mels + 1) as f32;
             let distance = (mel_to_hz(center_mel) - freq).abs();
             if distance < best {
                 best = distance;

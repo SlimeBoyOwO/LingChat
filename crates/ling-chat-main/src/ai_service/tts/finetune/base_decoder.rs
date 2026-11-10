@@ -257,16 +257,16 @@ impl AttnBlock {
                 vb.pp("ff").pp("net").pp("0").pp("proj"),
             )?,
             ff_out: candle_nn::linear(config.time_hidden, channels, vb.pp("ff").pp("net").pp("2"))?,
-            ff_alpha: vb
-                .pp("ff")
-                .pp("net")
-                .pp("0")
-                .get_with_hints(config.time_hidden, "alpha", candle_nn::init::ONE)?,
-            ff_beta: vb
-                .pp("ff")
-                .pp("net")
-                .pp("0")
-                .get_with_hints(config.time_hidden, "beta", candle_nn::init::ZERO)?,
+            ff_alpha: vb.pp("ff").pp("net").pp("0").get_with_hints(
+                config.time_hidden,
+                "alpha",
+                candle_nn::init::ONE,
+            )?,
+            ff_beta: vb.pp("ff").pp("net").pp("0").get_with_hints(
+                config.time_hidden,
+                "beta",
+                candle_nn::init::ZERO,
+            )?,
         })
     }
 
@@ -301,7 +301,9 @@ impl AttnBlock {
             .contiguous()?;
 
         let scale = 1.0 / (head_dim as f64).sqrt();
-        let scores = q.matmul(&k.transpose(2, 3)?.contiguous()?)?.affine(scale, 0.0)?;
+        let scores = q
+            .matmul(&k.transpose(2, 3)?.contiguous()?)?
+            .affine(scale, 0.0)?;
         let weights = candle_nn::ops::softmax(&scores, 3)?;
         let context = weights
             .matmul(&v)?
@@ -315,11 +317,7 @@ impl AttnBlock {
         // 前馈：LayerNorm -> 参数化 GELU -> 线性 -> 残差。
         let normed = self.norm3.forward(&hidden)?.transpose(1, 2)?.contiguous()?; // [B,F,C]
         let projected = self.ff_proj.forward(&normed)?; // [B,F,time_hidden]
-        let activated = gelu_parametric(
-            &projected,
-            &self.ff_alpha,
-            &self.ff_beta,
-        )?;
+        let activated = gelu_parametric(&projected, &self.ff_alpha, &self.ff_beta)?;
         let feed = self.ff_out.forward(&activated)?; // [B,F,C]
         let feed = feed.transpose(1, 2)?.contiguous()?; // [B,C,F]
         hidden.add(&feed)
@@ -514,7 +512,10 @@ impl BaseDecoder {
             down,
             mid,
             up,
-            final_norm: GroupNormAffine::new(config.channels, vb.pp("final_block").pp("block").pp("1"))?,
+            final_norm: GroupNormAffine::new(
+                config.channels,
+                vb.pp("final_block").pp("block").pp("1"),
+            )?,
             final_block: candle_nn::conv1d(
                 config.channels,
                 config.channels,
@@ -688,8 +689,8 @@ pub fn bind_anonymous_weights(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::DType;
     use crate::ai_service::tts::finetune::onnx_weights::read_initializers;
+    use candle_core::DType;
     use std::path::Path;
 
     fn base_path() -> std::path::PathBuf {
@@ -720,7 +721,12 @@ mod tests {
             let Some(var) = slots.get(&tensor.name) else {
                 panic!("缺少参数位: {}", tensor.name);
             };
-            assert_eq!(var.dims(), tensor.dims.as_slice(), "形状不符: {}", tensor.name);
+            assert_eq!(
+                var.dims(),
+                tensor.dims.as_slice(),
+                "形状不符: {}",
+                tensor.name
+            );
         }
     }
 
@@ -765,7 +771,8 @@ mod tests {
     #[test]
     fn anonymous_decoder_weights_bind() {
         let path = base_path();
-        let map_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/tts-training/decoder_weight_map.json");
+        let map_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
         if !path.exists() || !map_path.exists() {
             return;
         }
@@ -787,7 +794,8 @@ mod tests {
     #[test]
     fn forward_matches_onnxruntime() {
         let base = base_path();
-        let map_path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data/tts-training/decoder_weight_map.json");
+        let map_path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/tts-training/decoder_weight_map.json");
         let ref_dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tools/finetune_graph/ref");
         let need = ["noisy.f32", "text.f32", "final.f32"];
         if !base.exists() || !map_path.exists() || !need.iter().all(|f| ref_dir.join(f).exists()) {
@@ -805,9 +813,13 @@ mod tests {
         {
             let slots = var_map.data();
             let slots = slots.lock().unwrap();
-            for t in tensors.iter().filter(|t| t.name.starts_with("model.decoder.")) {
+            for t in tensors
+                .iter()
+                .filter(|t| t.name.starts_with("model.decoder."))
+            {
                 let var = slots.get(&t.name).expect("命名张量缺参数位");
-                var.set(&Tensor::from_vec(t.data.clone(), t.dims.clone(), &device).unwrap()).unwrap();
+                var.set(&Tensor::from_vec(t.data.clone(), t.dims.clone(), &device).unwrap())
+                    .unwrap();
             }
         }
         bind_anonymous_weights(&var_map, &tensors, &map_path, &device).unwrap();
@@ -817,7 +829,12 @@ mod tests {
             if bytes.len() % 4 != 0 {
                 return None;
             }
-            Some(bytes.chunks_exact(4).map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]])).collect())
+            Some(
+                bytes
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+            )
         }
         let noisy = load_f32(&ref_dir.join("noisy.f32")).unwrap();
         let text = load_f32(&ref_dir.join("text.f32")).unwrap();
@@ -831,17 +848,40 @@ mod tests {
         // 逐级比对：down/mid/up 各块的 ResBlock 与 Attn 输出。
         let staged = decoder.staged_outputs(&noise_t, &text_t, &time).unwrap();
         let stage_names = [
-            "down0_res", "down0_attn", "down1_res", "down1_attn",
-            "mid0_res", "mid0_attn", "mid1_res", "mid1_attn",
-            "up0_res", "up0_attn", "up1_res", "up1_attn", "final_mel",
+            "down0_res",
+            "down0_attn",
+            "down1_res",
+            "down1_attn",
+            "mid0_res",
+            "mid0_attn",
+            "mid1_res",
+            "mid1_attn",
+            "up0_res",
+            "up0_attn",
+            "up1_res",
+            "up1_attn",
+            "final_mel",
         ];
         let stage_files = [
-            "res_down00", "attn_down00", "res_down10", "attn_down10",
-            "res_mid00", "attn_mid00", "res_mid10", "attn_mid10",
-            "res_up00", "attn_up00", "res_up10", "attn_up10",
+            "res_down00",
+            "attn_down00",
+            "res_down10",
+            "attn_down10",
+            "res_mid00",
+            "attn_mid00",
+            "res_mid10",
+            "attn_mid10",
+            "res_up00",
+            "attn_up00",
+            "res_up10",
+            "attn_up10",
             "final",
         ];
-        for ((name, file), tens) in stage_names.iter().zip(stage_files.iter()).zip(staged.iter()) {
+        for ((name, file), tens) in stage_names
+            .iter()
+            .zip(stage_files.iter())
+            .zip(staged.iter())
+        {
             let Some(r) = load_f32(&ref_dir.join(format!("{file}.f32"))) else {
                 eprintln!("{name}: 缺少基准文件 {file}");
                 continue;
@@ -863,7 +903,11 @@ mod tests {
             } else {
                 r
             };
-            let d = v.iter().zip(ref_v.iter()).map(|(a, b)| (a - b).abs()).fold(0f32, f32::max);
+            let d = v
+                .iter()
+                .zip(ref_v.iter())
+                .map(|(a, b)| (a - b).abs())
+                .fold(0f32, f32::max);
             eprintln!("{name:16} 最大差: {d:.6}");
             assert!(d < 1e-3, "阶段 {name} 与基座偏差过大: {d}");
         }
@@ -878,10 +922,7 @@ mod tests {
             .map(|(a, b)| (a - b).abs())
             .fold(0f32, f32::max);
         eprintln!("解码器前向 vs onnxruntime 最大差值: {max_diff}");
-        assert!(
-            max_diff < 1e-3,
-            "Rust 解码器与基座前向偏差过大: {max_diff}"
-        );
+        assert!(max_diff < 1e-3, "Rust 解码器与基座前向偏差过大: {max_diff}");
     }
 
     /// 手动转置卷积分解应严格等价于 candle 原生转置卷积前向（含偏置）。

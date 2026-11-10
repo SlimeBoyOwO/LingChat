@@ -292,7 +292,10 @@ pub fn train_base(
         for index in order {
             if cancel.is_some_and(|token| token.is_cancelled()) {
                 cancelled = true;
-                tracing::info!("[训练] 收到取消，提前结束（第 {} 轮，已完成 {step} 步）", epoch + 1);
+                tracing::info!(
+                    "[训练] 收到取消，提前结束（第 {} 轮，已完成 {step} 步）",
+                    epoch + 1
+                );
                 break 'outer;
             }
 
