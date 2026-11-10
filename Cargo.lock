@@ -6742,6 +6742,7 @@ dependencies = [
  "candle-core",
  "candle-nn",
  "chrono",
+ "cubecl-environment",
  "encoding_rs",
  "futures-executor",
  "futures-util",
