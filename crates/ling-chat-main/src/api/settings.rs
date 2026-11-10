@@ -55,6 +55,7 @@ pub fn get_settings_tree(app: AppHandle) -> ConfigTree {
     config::build_config_tree(&app)
 }
 
+// 钦灵：TODO，这里的逻辑不应该放在API模块中
 #[tauri::command]
 pub fn save_settings(
     app: AppHandle,

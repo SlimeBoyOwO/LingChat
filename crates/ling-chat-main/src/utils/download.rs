@@ -160,13 +160,7 @@ pub async fn download_to_file(
     Ok(bytes_done)
 }
 
-/// 构建一个预配置的 `reqwest::Client`，适合通用下载场景。
-///
-/// - 600 秒超时
-/// - 最多 10 次重定向
-/// - 标准 User-Agent
-/// - TLS 用 webpki-roots（见 [`crate::utils::tls::build_tls_config`]），
-///   绕开 rustls-platform-verifier 在 Android 上的 TLS panic
+/// 构建一个预配置的 `reqwest::Client`
 pub fn build_download_client() -> Result<reqwest::Client, String> {
     let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()

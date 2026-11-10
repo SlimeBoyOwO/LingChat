@@ -3,6 +3,8 @@ use std::path::Path;
 use anyhow::{Context, Result};
 use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, TransactionTrait};
 
+/// 钦灵：注意这部分只是对 0.3.0 版本之前的数据库进行兼容处理，所以没用seaORM，这段代码也不需要动了。
+
 /// Execute a raw SQL statement with per-step context for debugging.
 async fn exec(db: &impl ConnectionTrait, description: &str, stmt: &str) -> Result<()> {
     db.execute(Statement::from_string(DatabaseBackend::Sqlite, stmt))

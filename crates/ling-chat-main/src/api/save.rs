@@ -147,18 +147,17 @@ pub async fn list_saves(
         .into_iter()
         .map(|m| (m.identity_id, m.name))
         .collect();
-    let save_identity_names: std::collections::HashMap<i32, String> =
-        save_identity::Entity::find()
-            .all(db)
-            .await
-            .map_err(|e| format!("读取存档身份绑定失败: {}", e))?
-            .into_iter()
-            .filter_map(|m| {
-                identity_names
-                    .get(&m.identity_id)
-                    .map(|name| (m.save_id, name.clone()))
-            })
-            .collect();
+    let save_identity_names: std::collections::HashMap<i32, String> = save_identity::Entity::find()
+        .all(db)
+        .await
+        .map_err(|e| format!("读取存档身份绑定失败: {}", e))?
+        .into_iter()
+        .filter_map(|m| {
+            identity_names
+                .get(&m.identity_id)
+                .map(|name| (m.save_id, name.clone()))
+        })
+        .collect();
 
     let items: Vec<SaveListItem> = saves
         .into_iter()

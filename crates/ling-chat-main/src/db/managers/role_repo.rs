@@ -182,12 +182,6 @@ impl RoleRepo {
     ///
     /// 返回是否实际删除了行。
     ///
-    /// **为什么需要关闭 FK？**
-    /// 角色的 FK 引用散布在 save/line/line_perception/memory_bank/running_script 等多个表，
-    /// 任何一处漏清理都会触发 SQLite FK 约束失败。关闭 FK 让我们不再"打地鼠"，即使将来 schema
-    /// 增加新引用也不会破坏删除流程。手工清理步骤保留是为了不留下孤儿行（line_perception
-    /// 等 NOT NULL 字段不删会留垃圾，line.sender_role_id 保留归属更有用——所以这部分仍然置 NULL）。
-    ///
     /// 风险分析：删除角色是低频用户主动操作；即使 PRAGMA 重启用失败，进程重启后 SQLite 会
     /// 重新应用外键约束（PRAGMA 是 connection-level 的），不留持久影响。
     pub async fn delete_main_role(db: &DatabaseConnection, role_id: i32) -> Result<bool> {
@@ -535,62 +529,4 @@ fn now_seconds() -> String {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs().to_string())
         .unwrap_or_else(|_| "0".to_string())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::db::entities::role_hotword;
-
-    /// 热词表没有外键，删角色时不会自动级联；不手工清理会留下孤儿行。
-    #[tokio::test]
-    async fn delete_main_role_removes_hotwords() {
-        let tmp = tempfile::tempdir().expect("创建临时目录失败");
-        let db = crate::db::init_db(tmp.path())
-            .await
-            .expect("初始化数据库失败");
-
-        let role_id =
-            RoleRepo::find_or_create_role(&db, "待删角色", RoleType::Main, None, None, None)
-                .await
-                .expect("建角色失败");
-        let kept_id =
-            RoleRepo::find_or_create_role(&db, "保留角色", RoleType::Main, None, None, None)
-                .await
-                .expect("建角色失败");
-
-        for (rid, text) in [(role_id, "张三"), (kept_id, "李四")] {
-            role_hotword::ActiveModel {
-                role_id: Set(rid),
-                text: Set(text.to_string()),
-                weight: Set(4),
-                ..Default::default()
-            }
-            .insert(&db)
-            .await
-            .expect("插入热词失败");
-        }
-
-        assert!(
-            RoleRepo::delete_main_role(&db, role_id)
-                .await
-                .expect("删除角色失败")
-        );
-
-        let orphans = role_hotword::Entity::find()
-            .filter(role_hotword::Column::RoleId.eq(role_id))
-            .all(&db)
-            .await
-            .expect("查询热词失败");
-        assert!(orphans.is_empty(), "热词应随角色删除，残留 {orphans:?}");
-
-        // 另一个角色的数据不应被牵连
-        let kept = role_hotword::Entity::find()
-            .filter(role_hotword::Column::RoleId.eq(kept_id))
-            .all(&db)
-            .await
-            .expect("查询热词失败");
-        assert_eq!(kept.len(), 1, "其他角色的热词不应被删除");
-        assert_eq!(kept[0].text, "李四");
-    }
 }

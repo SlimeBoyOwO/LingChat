@@ -85,9 +85,6 @@ pub struct DeviceInfo {
 /// - Windows：DirectML（DXGI 枚举，device_id 与 DirectML 对齐，已验证）。
 /// - x86_64 Linux：WebGPU（Vulkan 物理设备，索引与 Dawn adapter 对齐）。
 /// - 其他平台（含 aarch64 Linux）：空列表。
-///
-/// Windows 按 `(vendor_id, device_id)` 去重——Intel 混合显卡系统会把同一核显枚举
-/// 多次（合成/渲染两个入口），去重后只保留 id 最小的。
 pub fn list_devices() -> Vec<DeviceInfo> {
     #[cfg(target_os = "windows")]
     {
@@ -137,11 +134,6 @@ pub fn list_devices() -> Vec<DeviceInfo> {
 }
 
 /// 枚举 Vulkan 物理设备（Linux/WebGPU）。
-///
-/// 设备索引与 WebGPU EP 的 `deviceId` 对齐：Dawn 的 Vulkan 后端按
-/// `vkEnumeratePhysicalDevices` 的顺序枚举 adapter，与这里一致。
-/// 运行时通过 `libvulkan.so.1` 动态加载（ash loaded feature），无 Vulkan
-/// 时返回空列表。
 #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
 fn list_vulkan_devices() -> Vec<DeviceInfo> {
     use ash::vk;
@@ -187,11 +179,6 @@ fn list_vulkan_devices() -> Vec<DeviceInfo> {
 }
 
 /// 从 settings.json 直接读取持久化的推理设备配置。
-///
-/// `key` 为配置键（如 `features.local_tts_device`）。直接读文件而非通过
-/// Tauri store——启动早期 store 可能未从磁盘加载，读文件保证任何阶段可靠。
-///
-/// 返回 `None` 表示未配置或读取失败（调用方用默认 CPU 即可）。
 pub fn read_configured_device(app: &AppHandle, key: &str) -> Option<InferenceDevice> {
     let path = settings_json_path(app)?;
     let content = std::fs::read_to_string(path).ok()?;

@@ -169,9 +169,6 @@ pub async fn get_tool_runtime_info(app: tauri::AppHandle) -> Result<ToolRuntimeI
 }
 
 /// 保存工具配置：写盘 + 热更新 + 同步权限矩阵。
-///
-/// 网页搜索启用且凭据来源可用时，自动放开 default 角色组的 `web_search`
-/// 权限；Codex 使用 OAuth，Kimi 可在执行时复用当前官方 Kimi Code 对话凭据。
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
@@ -277,9 +274,6 @@ pub async fn rebuild_embeddings(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 后台预热：逐角色全量嵌入笔记，并把 Tool RAG 的示例问句预热进缓存。
-///
-/// 预热是「用额度换体验」的动作，因此只在配置确实影响向量时被触发；期间检索照常
-/// 走当前可用后端，不阻塞对话。同一时刻只允许一个任务，新的一次保存会取消上一个。
 pub(crate) fn spawn_embedding_warm(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     if !state.embedding.is_enabled() {
