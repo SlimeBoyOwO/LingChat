@@ -1675,6 +1675,8 @@ export default {
     exporting: "匯出中…",
     exportNamePlaceholder: "音色名稱",
     autoAnnotate: "用 ASR 自動識別缺文本嘅音頻並寫入標注",
+    clusterStyles: "自動分風格",
+    styleCluster: "風格",
     annotating: "自動標注中",
     annotateDone: "自動標注完成",
     annotateSummary: "成功 {hits} 條，失敗 {failed} 條，跳過 {skipped} 條",
@@ -1684,6 +1686,13 @@ export default {
     maxFrames: "單步最大幀數（0 為不限）",
     lora: "LoRA 微調",
     loraRank: "LoRA 秩",
+    loraHint: "注意力/FFN 線性層與殘差卷積都掛低秩旁路；匯出時摺進原權重，推理無額外開銷。",
+    adapterOnly: "僅訓練風格適配器",
+    adapterOnlyHint:
+      "凍結解碼器基座，只訓練約 1.3 萬個 FiLM 參數；適合低效能裝置，匯出後無推理開銷。",
+    durationAdapter: "逐 token 時長/停頓適配",
+    durationAdapterHint:
+      "只訓練時長預測器的低秩旁路，按上下文調整每個 token 的時長與停頓；匯出時摺進原權重，推理無額外開銷。",
     resumedFrom: "已從第 {epoch} 輪繼續上次訓練。",
   },
   sherpa: {

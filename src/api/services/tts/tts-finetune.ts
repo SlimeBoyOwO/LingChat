@@ -3,12 +3,26 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
 // 端侧音色微调的数据集接口。训练与导出尚未接入，这里只覆盖导入与管理。
 
+export interface FinetuneStyleCluster {
+  cluster: number;
+  items: number;
+  total_secs: number;
+}
+
+export interface FinetuneStyleReport {
+  dataset_id: string;
+  k: number;
+  clusters: FinetuneStyleCluster[];
+}
+
 export interface FinetuneDatasetSummary {
   dataset_id: string;
   items: number;
   items_with_text: number;
   total_secs: number;
   meets_minimum: boolean;
+  /** 已分配的无监督风格簇；空表示尚未聚类。 */
+  style_clusters: FinetuneStyleCluster[];
 }
 
 export interface FinetuneDatasetStats {
@@ -38,11 +52,7 @@ export function listFinetuneDatasets() {
 }
 
 /** 导入一个仅含音频的压缩包。 */
-export function importFinetuneZip(
-  zipPath: string,
-  datasetId: string,
-  overwrite = false,
-) {
+export function importFinetuneZip(zipPath: string, datasetId: string, overwrite = false) {
   return invoke<FinetuneImportReport>("tts_finetune_import", {
     zipPath,
     datasetId,
@@ -53,6 +63,14 @@ export function importFinetuneZip(
 /** 读取单个数据集的统计。 */
 export function getFinetuneStats(datasetId: string) {
   return invoke<FinetuneDatasetStats>("tts_finetune_stats", { datasetId });
+}
+
+/** 对数据集做无监督风格聚类，簇 id 会写回 dataset.json。 */
+export function clusterFinetuneStyles(datasetId: string, clusters = 4) {
+  return invoke<FinetuneStyleReport>("tts_finetune_cluster_styles", {
+    datasetId,
+    clusters,
+  });
 }
 
 /** 删除数据集。 */
@@ -78,6 +96,8 @@ export interface FinetuneTrainOutcome {
   checkpoint: string;
   /** 从第几轮开始续训；0 表示从头训练。 */
   resumed_from: number;
+  /** 本次训练使用的风格簇；null/undefined 表示使用全部数据。 */
+  style_cluster?: number | null;
 }
 
 export interface FinetuneExportOutcome {
@@ -90,11 +110,13 @@ export function exportFinetuneVoice(
   datasetId: string,
   baseModelDir: string,
   modelName: string,
+  styleCluster?: number,
 ) {
   return invoke<FinetuneExportOutcome>("tts_finetune_export", {
     datasetId,
     baseModelDir,
     modelName,
+    styleCluster,
   });
 }
 
@@ -108,6 +130,9 @@ export function trainFinetuneDataset(
   maxFramesPerStep = 192,
   loraEnabled = false,
   loraRank = 8,
+  adapterOnly = false,
+  styleCluster?: number,
+  durationAdapter = true,
 ) {
   return invoke<FinetuneTrainOutcome>("tts_finetune_train", {
     datasetId,
@@ -118,12 +143,29 @@ export function trainFinetuneDataset(
     maxFramesPerStep,
     loraEnabled,
     loraRank,
+    adapterOnly,
+    styleCluster,
+    durationAdapter,
   });
 }
 
 /** 取消正在进行的训练。 */
 export function cancelFinetuneTraining() {
   return invoke<void>("tts_finetune_cancel");
+}
+
+export interface FinetuneActiveState {
+  /** 是否有训练正在运行。 */
+  training: boolean;
+  /** 正在训练的数据集 id（无训练时为空）。 */
+  dataset_id: string;
+  /** 最近一次上报的进度（无则为空）。 */
+  latest: FinetuneTrainingProgress | null;
+}
+
+/** 查询当前是否有训练在跑及其最新进度，供页面重建后恢复训练 UI。 */
+export function getActiveTraining() {
+  return invoke<FinetuneActiveState>("tts_finetune_active");
 }
 
 /** 订阅训练进度。 */
@@ -133,6 +175,13 @@ export function onFinetuneProgress(
   return listen<FinetuneTrainingProgress>("tts:finetune-progress", (event) =>
     callback(event.payload),
   );
+}
+
+/** 订阅训练结束（含被取消）。 */
+export function onFinetuneFinished(
+  callback: (outcome: FinetuneTrainOutcome) => void,
+): Promise<UnlistenFn> {
+  return listen<FinetuneTrainOutcome>("tts:finetune-finished", (event) => callback(event.payload));
 }
 
 export interface FinetuneAnnotateReport {
@@ -165,8 +214,7 @@ export function autoAnnotateFinetuneDataset(
 export function onFinetuneAnnotateProgress(
   callback: (progress: FinetuneAnnotateProgress) => void,
 ): Promise<UnlistenFn> {
-  return listen<FinetuneAnnotateProgress>(
-    "tts:finetune-annotate-progress",
-    (event) => callback(event.payload),
+  return listen<FinetuneAnnotateProgress>("tts:finetune-annotate-progress", (event) =>
+    callback(event.payload),
   );
 }

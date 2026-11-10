@@ -5,11 +5,12 @@
 //! 末尾分出 mel 先验与对数时长两支。权重名约定与 candle 版一致。
 
 use burn::module::Param;
-use burn::nn::conv::{Conv1d, Conv1dConfig};
 use burn::nn::PaddingConfig1d;
+use burn::nn::conv::{Conv1d, Conv1dConfig};
 use burn::prelude::*;
 use burn::tensor::activation::{relu, softmax};
 
+use super::conv_lora::ConvLora;
 use super::onnx_weights::OnnxTensor;
 
 /// 编码器超参数（burn 版，字段与 candle 版对应）。
@@ -27,6 +28,11 @@ pub struct BurnBaseEncoderConfig {
     pub n_mels: usize,
     /// 时长预测器隐层维度。
     pub duration_hidden: usize,
+    /// 时长分支的卷积旁路秩；0 表示冻结时长分支，不挂适配器。
+    ///
+    /// 旁路只挂在时长预测器（conv1/conv2/proj）上，训练时逐 token 调整对数
+    /// 时长，导出时折进 `model.encoder.proj_w.*` 的权重，推理端零改动。
+    pub duration_lora_rank: usize,
 }
 
 impl Default for BurnBaseEncoderConfig {
@@ -38,6 +44,7 @@ impl Default for BurnBaseEncoderConfig {
             ffn_hidden: 768,
             n_mels: 80,
             duration_hidden: 256,
+            duration_lora_rank: 0,
         }
     }
 }
@@ -91,9 +98,18 @@ impl Attention {
         let heads = 2;
         let head_dim = hidden / heads;
 
-        let query = self.query.forward(xs.clone()).reshape([batch, heads, head_dim, frames]);
-        let key = self.key.forward(xs.clone()).reshape([batch, heads, head_dim, frames]);
-        let value = self.value.forward(xs).reshape([batch, heads, head_dim, frames]);
+        let query = self
+            .query
+            .forward(xs.clone())
+            .reshape([batch, heads, head_dim, frames]);
+        let key = self
+            .key
+            .forward(xs.clone())
+            .reshape([batch, heads, head_dim, frames]);
+        let value = self
+            .value
+            .forward(xs)
+            .reshape([batch, heads, head_dim, frames]);
 
         // 注意力分数 [b,h,f,f]：q[b,h,f,d] @ k[b,h,f,d]^T。
         let q = query.permute([0, 1, 3, 2]);
@@ -117,7 +133,8 @@ struct FeedForward {
 impl FeedForward {
     fn new(hidden: usize, ffn_hidden: usize, device: &Device) -> Self {
         let padded = |channels_in, channels_out| {
-            Conv1dConfig::new(channels_in, channels_out, 3).with_padding(PaddingConfig1d::Explicit(1, 1))
+            Conv1dConfig::new(channels_in, channels_out, 3)
+                .with_padding(PaddingConfig1d::Explicit(1, 1))
         };
         Self {
             conv1: padded(hidden, ffn_hidden).init(device),
@@ -128,6 +145,37 @@ impl FeedForward {
     fn forward(&self, xs: Tensor<3>) -> Tensor<3> {
         let hidden = relu(self.conv1.forward(xs));
         self.conv2.forward(hidden)
+    }
+}
+
+/// 时长预测器的低秩旁路。
+///
+/// 只旁路时长分支的三层卷积，不改 mel 先验；训练时按 token 的上下文微调对数
+/// 时长，从而调整停顿与语速分布。导出折叠进 `proj_w.conv_1/conv_2/proj` 的
+/// 权重，ONNX 图结构不变。
+#[derive(Module, Debug)]
+pub struct DurationLora {
+    conv1: ConvLora,
+    conv2: ConvLora,
+    proj: ConvLora,
+}
+
+impl DurationLora {
+    pub fn new(config: &BurnBaseEncoderConfig, rank: usize, device: &Device) -> Self {
+        let rank = rank.max(1);
+        Self {
+            conv1: ConvLora::new(config.hidden, config.duration_hidden, 3, 1, 1, rank, device),
+            conv2: ConvLora::new(
+                config.duration_hidden,
+                config.duration_hidden,
+                3,
+                1,
+                1,
+                rank,
+                device,
+            ),
+            proj: ConvLora::new(config.duration_hidden, 1, 1, 1, 0, rank, device),
+        }
     }
 }
 
@@ -145,6 +193,8 @@ pub struct BurnBaseEncoder {
     duration_conv1: Conv1d,
     duration_conv2: Conv1d,
     duration_proj: Conv1d,
+    /// 时长分支的旁路；`None` 表示冻结、不参与训练。
+    duration_lora: Option<DurationLora>,
 }
 
 impl BurnBaseEncoder {
@@ -193,14 +243,18 @@ impl BurnBaseEncoder {
                 .with_padding(PaddingConfig1d::Explicit(1, 1))
                 .init(device),
             duration_proj: Conv1dConfig::new(config.duration_hidden, 1, 1).init(device),
+            duration_lora: (config.duration_lora_rank > 0)
+                .then(|| DurationLora::new(config, config.duration_lora_rank, device)),
         }
     }
 
-    /// 前向：返回 mel 先验与对数时长。
-    pub fn forward(&self, tokens: Tensor<2, Int>) -> (Tensor<3>, Tensor<2>) {
+    /// 跑完词嵌入与 Transformer，返回时长/mel 两支共用的隐状态。
+    ///
+    /// 训练时先对每条样本算一次并缓存，之后每步只跑时长分支的低秩旁路和
+    /// 可微展开，避免在设备上重复跑六层 Transformer。
+    pub fn forward_hidden(&self, tokens: Tensor<2, Int>) -> Tensor<3> {
         // 词嵌入输出 [b, seq, hidden]，转成 [b, hidden, seq]。
         let mut hidden = self.embedding.forward(tokens).transpose();
-        let [batch, _hidden_dim, frames] = hidden.dims();
 
         for index in 0..self.prenet.len() {
             let conv = relu(self.prenet[index].forward(hidden.clone()));
@@ -216,12 +270,98 @@ impl BurnBaseEncoder {
             hidden = hidden + ffn_out;
         }
 
-        let mel = self.proj_m.forward(hidden.clone());
-        let durations = relu(self.duration_conv1.forward(hidden));
-        let durations = relu(self.duration_conv2.forward(durations));
-        let proj_dur = self.duration_proj.forward(durations);
-        let durations = proj_dur.reshape([batch, frames]);
+        hidden
+    }
+
+    /// 从隐状态计算 mel 先验。
+    pub fn mel_prior_from_hidden(&self, hidden: Tensor<3>) -> Tensor<3> {
+        self.proj_m.forward(hidden)
+    }
+
+    /// 从隐状态计算逐 token 对数时长（秒）。
+    pub fn durations_from_hidden(&self, hidden: Tensor<3>) -> Tensor<2> {
+        let [batch, _channels, frames] = hidden.dims();
+        let mut durations = relu(self.duration_conv1.forward(hidden.clone()));
+        if let Some(lora) = &self.duration_lora {
+            durations = durations + lora.conv1.forward(hidden);
+        }
+        let activated = durations;
+        let mut durations = relu(self.duration_conv2.forward(activated.clone()));
+        if let Some(lora) = &self.duration_lora {
+            durations = durations + lora.conv2.forward(activated);
+        }
+        let activated = durations;
+        let mut projected = self.duration_proj.forward(activated.clone());
+        if let Some(lora) = &self.duration_lora {
+            projected = projected + lora.proj.forward(activated);
+        }
+        projected.reshape([batch, frames])
+    }
+
+    /// 前向：返回 mel 先验与对数时长。
+    pub fn forward(&self, tokens: Tensor<2, Int>) -> (Tensor<3>, Tensor<2>) {
+        let hidden = self.forward_hidden(tokens);
+        let mel = self.mel_prior_from_hidden(hidden.clone());
+        let durations = self.durations_from_hidden(hidden);
         (mel, durations)
+    }
+
+    /// 把时长旁路折叠进基座卷积权重的副本，返回 ONNX 布局的三组权重。
+    ///
+    /// 名称与基座 `model.encoder.proj_w.*` 初始izer 一致，导出时直接覆写。
+    pub fn folded_duration_weights(&self) -> Vec<(&'static str, Vec<f32>)> {
+        let mut conv1 = self.duration_conv1.clone();
+        let mut conv2 = self.duration_conv2.clone();
+        let mut proj = self.duration_proj.clone();
+        if let Some(lora) = &self.duration_lora {
+            lora.conv1.fold_into(&mut conv1);
+            lora.conv2.fold_into(&mut conv2);
+            lora.proj.fold_into(&mut proj);
+        }
+        [
+            ("model.encoder.proj_w.conv_1.weight", conv1.weight),
+            ("model.encoder.proj_w.conv_2.weight", conv2.weight),
+            ("model.encoder.proj_w.proj.weight", proj.weight),
+        ]
+        .into_iter()
+        .filter_map(|(name, weight)| {
+            weight
+                .val()
+                .to_data()
+                .try_to_vec::<f32>()
+                .ok()
+                .map(|values| (name, values))
+        })
+        .collect()
+    }
+
+    /// 旁路模块的只读引用，供检查点保存。
+    pub fn duration_lora(&self) -> Option<&DurationLora> {
+        self.duration_lora.as_ref()
+    }
+
+    /// 装载时长旁路（导出时从检查点恢复到基座编码器上）。
+    pub fn set_duration_lora(&mut self, lora: Option<DurationLora>) {
+        self.duration_lora = lora;
+    }
+
+    /// 预测一段 token 序列的总时长（秒），用于按风格簇校准语速。
+    ///
+    /// `forward` 输出的对数时长先取 exp 再求和；空序列返回 0。
+    pub fn predict_duration_secs(&self, token_ids: &[i32], device: &Device) -> Result<f32, String> {
+        if token_ids.is_empty() {
+            return Ok(0.0);
+        }
+        let tokens = Tensor::<2, Int>::from_data(
+            TensorData::new(token_ids.to_vec(), [1, token_ids.len()]),
+            device,
+        );
+        let (_mel, durations) = self.forward(tokens);
+        let values: Vec<f32> = durations
+            .to_data()
+            .try_to_vec::<f32>()
+            .map_err(|error| error.to_string())?;
+        Ok(values.iter().map(|value| value.exp()).sum())
     }
 }
 // 归一化参数名顺序，与基座图内导出顺序一致（weight 与 bias 交替）。
@@ -273,7 +413,12 @@ pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, de
 
     // 词嵌入只有 weight。
     if name == "model.encoder.emb.weight" {
-        fill2(&mut encoder.embedding.weight, &tensor.data, &tensor.dims, device);
+        fill2(
+            &mut encoder.embedding.weight,
+            &tensor.data,
+            &tensor.dims,
+            device,
+        );
         return;
     }
     // 归一化参数走 apply_normalizations，这里跳过命名样子的 norm weight/bias。
@@ -291,17 +436,32 @@ pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, de
             let w = &mut encoder.prenet[index];
             match suffix {
                 "weight" => fill3(&mut w.weight, &tensor.data, &tensor.dims, device),
-                "bias" => fill1(&mut w.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-                _ => {}
+                "bias" => fill1(
+                    &mut w.bias.as_mut().unwrap(),
+                    &tensor.data,
+                    &tensor.dims,
+                    device,
+                ),
+                _ => {},
             }
         }
         return;
     }
     if container == "model.encoder.prenet.proj" {
         match suffix {
-            "weight" => fill3(&mut encoder.prenet_proj.weight, &tensor.data, &tensor.dims, device),
-            "bias" => fill1(&mut encoder.prenet_proj.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-            _ => {}
+            "weight" => fill3(
+                &mut encoder.prenet_proj.weight,
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            "bias" => fill1(
+                &mut encoder.prenet_proj.bias.as_mut().unwrap(),
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            _ => {},
         }
         return;
     }
@@ -321,8 +481,13 @@ pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, de
         };
         match suffix {
             "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
-            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-            _ => {}
+            "bias" => fill1(
+                &mut conv.bias.as_mut().unwrap(),
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            _ => {},
         }
         return;
     }
@@ -340,16 +505,31 @@ pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, de
         };
         match suffix {
             "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
-            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-            _ => {}
+            "bias" => fill1(
+                &mut conv.bias.as_mut().unwrap(),
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            _ => {},
         }
         return;
     }
     if container == "model.encoder.proj_m" {
         match suffix {
-            "weight" => fill3(&mut encoder.proj_m.weight, &tensor.data, &tensor.dims, device),
-            "bias" => fill1(&mut encoder.proj_m.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-            _ => {}
+            "weight" => fill3(
+                &mut encoder.proj_m.weight,
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            "bias" => fill1(
+                &mut encoder.proj_m.bias.as_mut().unwrap(),
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            _ => {},
         }
         return;
     }
@@ -363,8 +543,13 @@ pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, de
         };
         match suffix {
             "weight" => fill3(&mut conv.weight, &tensor.data, &tensor.dims, device),
-            "bias" => fill1(&mut conv.bias.as_mut().unwrap(), &tensor.data, &tensor.dims, device),
-            _ => {}
+            "bias" => fill1(
+                &mut conv.bias.as_mut().unwrap(),
+                &tensor.data,
+                &tensor.dims,
+                device,
+            ),
+            _ => {},
         }
     }
 }
@@ -450,7 +635,6 @@ pub fn from_onnx_tensors(
     Ok(encoder)
 }
 
-
 #[cfg(test)]
 mod tests {
     use std::path::Path;
@@ -494,5 +678,23 @@ mod tests {
         let (mel, durations) = encoder.forward(tokens);
         assert_eq!(mel.shape().dims(), [1, 80, 5]);
         assert_eq!(durations.shape().dims(), [1, 5]);
+    }
+
+    /// 真实基座上的时长预测应为有限正值，供导出时校准语速。
+    #[test]
+    fn predicts_positive_duration_secs() {
+        let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../data/sherpa_onnx_models/matcha-icefall-zh-baker/model-steps-3.onnx");
+        if !path.exists() {
+            return;
+        }
+        let tensors = super::super::onnx_weights::read_initializers(&path).unwrap();
+        let device = train_device();
+        let config = BurnBaseEncoderConfig::default();
+        let encoder = from_onnx_tensors(&config, &tensors, &device).unwrap();
+        let seconds = encoder
+            .predict_duration_secs(&[5, 10, 20, 33], &device)
+            .unwrap();
+        assert!(seconds.is_finite() && seconds > 0.0, "时长预测应大于 0");
     }
 }

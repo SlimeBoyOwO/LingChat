@@ -134,7 +134,11 @@ pub fn train(
             let frames = sample.frames();
             let alignment = &alignments[index];
 
-            let tokens = Tensor::from_vec(sample.token_ids.clone(), (1, sample.token_ids.len()), device)?;
+            let tokens = Tensor::from_vec(
+                sample.token_ids.clone(),
+                (1, sample.token_ids.len()),
+                device,
+            )?;
             let (hidden, _) = model.forward(&tokens)?;
             let text = expand_to_frames(&hidden, alignment)?;
 
@@ -147,9 +151,13 @@ pub fn train(
                 .transpose(1, 2)?
                 .contiguous()?;
 
-            let noise = Tensor::from_vec(rng.normal_vec(frames * sample.mel[0].len()), (1, frames, sample.mel[0].len()), device)?
-                .transpose(1, 2)?
-                .contiguous()?;
+            let noise = Tensor::from_vec(
+                rng.normal_vec(frames * sample.mel[0].len()),
+                (1, frames, sample.mel[0].len()),
+                device,
+            )?
+            .transpose(1, 2)?
+            .contiguous()?;
 
             let time_value = 0.05 + rng.uniform() * 0.9;
             let time = Tensor::from_vec(vec![time_value], (1,), device)?;
@@ -233,10 +241,8 @@ fn predict_frames(
     let mut durations: Vec<usize> = seconds
         .iter()
         .map(|value| {
-            ((value * scale).round() as usize).clamp(
-                config.min_frames_per_token,
-                config.max_frames_per_token,
-            )
+            ((value * scale).round() as usize)
+                .clamp(config.min_frames_per_token, config.max_frames_per_token)
         })
         .collect();
 
@@ -316,9 +322,9 @@ impl Rng {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use super::super::corpus::CorpusStats;
     use super::super::model::MatchaConfig;
+    use super::*;
     use candle_core::DType;
     use candle_nn::VarBuilder;
 

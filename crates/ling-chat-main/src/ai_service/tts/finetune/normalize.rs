@@ -39,7 +39,11 @@ pub struct NormalizeReport {
 ///
 /// 先交给通用转码器解成 16-bit PCM 单声道 WAV（保留源采样率），再重采样、去直流、
 /// 裁静音、调响度。中途产生的临时文件在结束时删除。
-pub fn normalize_to_wav(src: &Path, dest: &Path, target_sample_rate: u32) -> Result<NormalizeReport> {
+pub fn normalize_to_wav(
+    src: &Path,
+    dest: &Path,
+    target_sample_rate: u32,
+) -> Result<NormalizeReport> {
     let temp = dest.with_extension("decode.wav");
     crate::utils::audio::transcode_to_wav_16bit(src, &temp)
         .map_err(|e| anyhow::anyhow!("{e}"))
@@ -242,9 +246,7 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let src = dir.path().join("in.wav");
         let dest = dir.path().join("out.wav");
-        let samples: Vec<f32> = (0..48_000)
-            .map(|i| (i as f32 * 0.05).sin() * 0.3)
-            .collect();
+        let samples: Vec<f32> = (0..48_000).map(|i| (i as f32 * 0.05).sin() * 0.3).collect();
         write_test_wav(&src, &samples, 48_000);
 
         let report = normalize_to_wav(&src, &dest, 22_050).unwrap();

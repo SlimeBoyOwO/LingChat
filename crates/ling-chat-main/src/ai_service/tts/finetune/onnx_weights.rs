@@ -30,7 +30,8 @@ impl OnnxTensor {
 
 /// 读取模型里所有 f32 权重张量。
 pub fn read_initializers(path: &Path) -> Result<Vec<OnnxTensor>> {
-    let bytes = std::fs::read(path).with_context(|| format!("读取 ONNX 失败: {}", path.display()))?;
+    let bytes =
+        std::fs::read(path).with_context(|| format!("读取 ONNX 失败: {}", path.display()))?;
     read_initializers_from_bytes(&bytes)
         .with_context(|| format!("解析 ONNX 失败: {}", path.display()))
 }
@@ -221,7 +222,10 @@ mod tests {
         assert_eq!(tensors.len(), 305);
 
         let params: usize = tensors.iter().map(OnnxTensor::params).sum();
-        assert!(params > 18_000_000 && params < 19_000_000, "params {params}");
+        assert!(
+            params > 18_000_000 && params < 19_000_000,
+            "params {params}"
+        );
 
         let embedding = tensors
             .iter()

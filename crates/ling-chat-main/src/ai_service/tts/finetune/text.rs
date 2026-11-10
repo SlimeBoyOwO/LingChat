@@ -12,7 +12,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 
 /// 符号表：符号到 id，以及反查表。
 #[derive(Debug, Clone)]

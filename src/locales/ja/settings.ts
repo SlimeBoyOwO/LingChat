@@ -1497,6 +1497,8 @@ export default {
     exporting: "エクスポート中…",
     exportNamePlaceholder: "音声名",
     autoAnnotate: "ASR で未テキスト音声を自動文字起こし",
+    clusterStyles: "スタイルを自動クラスタリング",
+    styleCluster: "スタイル",
     annotating: "自動文字起こし中",
     annotateDone: "自動文字起こし完了",
     annotateSummary: "成功 {hits} 件、失敗 {failed} 件、スキップ {skipped} 件",
@@ -1506,6 +1508,14 @@ export default {
     maxFrames: "1 ステップの最大フレーム数（0 で無制限）",
     lora: "LoRA ファインチューニング",
     loraRank: "LoRA ランク",
+    loraHint:
+      "Attention/FFN の線形層と残差畳み込みに低ランク旁路を付けます。書き出し時に元の重みへ折り込むため、推論コストは増えません。",
+    adapterOnly: "スタイルアダプタのみ訓練",
+    adapterOnlyHint:
+      "デコーダ基盤を凍結し、約 1.3 万個の FiLM パラメータだけを訓練します。低性能端末向けで、書き出し後の推論コストは増えません。",
+    durationAdapter: "トークン単位の長さ・間合い適応",
+    durationAdapterHint:
+      "長さ予測器にだけ低ランク旁路を付け、文脈から各トークンの長さと間合いを調整します。書き出し時に元の重みへ折り込むため、推論コストは増えません。",
     resumedFrom: "前回の訓練を {epoch} エポック目から再開しました。",
   },
   sherpa: {

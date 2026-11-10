@@ -19,6 +19,7 @@ tauri-plugin-dialog = "2"
 tauri-plugin-fs = "2"
 tauri-plugin-screenshots = { path = "../../src-tauri/plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
+tauri-plugin-notification = "2.4"
 serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
@@ -103,6 +104,10 @@ tokio-util = { workspace = true }
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
 encoding_rs = "0.8"
 pollster = "1.0.1"
+
+# 读取检查点键名：旧检查点缺少 train-state.json 时，用它反推 LoRA 旁路配置，
+# 避免导出时静默退回基座。只开 std，不启用 pytorch 读写器。
+burn-store = { version = "0.22.1", default-features = false, features = ["std"] }
 
 # 微调训练用的 burn：显式列出所需 feature 而非沿用 default（默认会带入 autotune，
 # 它在 Adreno 集成 GPU 上做测速回读会触发设备毒化 device poisoned，关掉保证训练稳定）。

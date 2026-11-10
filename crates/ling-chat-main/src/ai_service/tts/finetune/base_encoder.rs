@@ -268,7 +268,9 @@ impl AffineNorm {
         let centered = xs.broadcast_sub(&mean)?;
         let variance = centered.sqr()?.mean_keepdim(1)?;
         let normed = centered.broadcast_div(&(variance + 1e-5)?.sqrt()?)?;
-        normed.broadcast_mul(&self.weight)?.broadcast_add(&self.bias)
+        normed
+            .broadcast_mul(&self.weight)?
+            .broadcast_add(&self.bias)
     }
 }
 
@@ -336,7 +338,11 @@ pub fn bind_normalizations(
 }
 
 /// 把 ONNX 里的权重按名字填进参数表。
-pub fn bind_weights(var_map: &VarMap, tensors: &[super::onnx_weights::OnnxTensor], device: &Device) -> Result<usize> {
+pub fn bind_weights(
+    var_map: &VarMap,
+    tensors: &[super::onnx_weights::OnnxTensor],
+    device: &Device,
+) -> Result<usize> {
     let data = var_map.data();
     let guard = data.lock().unwrap();
     let mut bound = 0;
@@ -377,13 +383,8 @@ mod tests {
         BaseEncoder::new(&BaseEncoderConfig::default(), vb).unwrap();
 
         let tensors = read_initializers(&path).unwrap();
-        let names: std::collections::HashSet<String> = var_map
-            .data()
-            .lock()
-            .unwrap()
-            .keys()
-            .cloned()
-            .collect();
+        let names: std::collections::HashSet<String> =
+            var_map.data().lock().unwrap().keys().cloned().collect();
 
         let encoder_tensors: Vec<_> = tensors
             .iter()
@@ -398,7 +399,12 @@ mod tests {
                 .unwrap()
                 .get(&tensor.name)
                 .map(|var| var.dims().to_vec());
-            assert_eq!(var, Some(tensor.dims.clone()), "缺失或形状不符: {}", tensor.name);
+            assert_eq!(
+                var,
+                Some(tensor.dims.clone()),
+                "缺失或形状不符: {}",
+                tensor.name
+            );
         }
 
         assert!(names.iter().any(|name| name.ends_with("proj_m.weight")));

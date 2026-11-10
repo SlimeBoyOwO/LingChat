@@ -154,11 +154,7 @@ impl TextEncoder {
             )?);
         }
         Ok(Self {
-            embedding: candle_nn::embedding(
-                config.n_vocab,
-                config.hidden,
-                vb.pp("embedding"),
-            )?,
+            embedding: candle_nn::embedding(config.n_vocab, config.hidden, vb.pp("embedding"))?,
             blocks,
             output: candle_nn::linear(config.hidden, config.hidden, vb.pp("output"))?,
             norm: candle_nn::layer_norm(config.hidden, 1e-5, vb.pp("norm"))?,
@@ -197,8 +193,7 @@ impl DurationPredictor {
                 conv_config,
                 vb.pp(format!("conv{index}")),
             )?;
-            let norm =
-                candle_nn::layer_norm(config.hidden, 1e-5, vb.pp(format!("norm{index}")))?;
+            let norm = candle_nn::layer_norm(config.hidden, 1e-5, vb.pp(format!("norm{index}")))?;
             convolutions.push((conv, norm));
         }
         Ok(Self {
@@ -328,7 +323,14 @@ mod tests {
 
         let tokens = Tensor::from_vec(vec![1u32, 2, 3, 4, 5, 6], (2, 3), &device)?;
         let target = Tensor::from_vec(
-            vec![f32::ln(4.0), f32::ln(6.0), f32::ln(8.0), f32::ln(4.0), f32::ln(6.0), f32::ln(8.0)],
+            vec![
+                f32::ln(4.0),
+                f32::ln(6.0),
+                f32::ln(8.0),
+                f32::ln(4.0),
+                f32::ln(6.0),
+                f32::ln(8.0),
+            ],
             (2, 3),
             &device,
         )?;

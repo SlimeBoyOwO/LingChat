@@ -112,9 +112,7 @@ mod tests {
 
     #[test]
     fn amplitude_is_preserved() {
-        let input: Vec<f32> = (0..9_600)
-            .map(|i| (i as f32 * 0.01).sin() * 0.5)
-            .collect();
+        let input: Vec<f32> = (0..9_600).map(|i| (i as f32 * 0.01).sin() * 0.5).collect();
         let out = resample_mono(&input, 48_000, 48_000);
         let peak = out.iter().fold(0.0f32, |acc, s| acc.max(s.abs()));
         assert!((peak - 0.5).abs() < 0.01);

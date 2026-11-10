@@ -14,6 +14,7 @@ use anyhow::{Context, Result, bail};
 use candle_nn::VarMap;
 
 use super::burn_decoder::{self, BurnBaseDecoder};
+use super::onnx_weights::read_initializers_from_bytes;
 
 /// 把 burn `BurnBaseDecoder` 的权重写回基座 ONNX，写出新模型文件。
 ///
@@ -27,11 +28,56 @@ pub fn export_tuned_model_burn(
     weight_map: &Path,
     out: &Path,
 ) -> Result<()> {
+    export_tuned_model_burn_with_duration(decoder, base_model, weight_map, out, None)
+}
+
+/// 导出解码器，并可选地按风格簇校准时长预测器。
+///
+/// `duration_scale` 是目标语速相对基座预测的倍数（例如 1.1 表示慢 10%）。
+/// 时长预测器输出对数秒，因此把 `ln(scale)` 加进
+/// `model.encoder.proj_w.proj.bias` 即可整体缩放预测时长；不需要改图结构。
+pub fn export_tuned_model_burn_with_duration(
+    decoder: &BurnBaseDecoder,
+    base_model: &Path,
+    weight_map: &Path,
+    out: &Path,
+    duration_scale: Option<f32>,
+) -> Result<()> {
+    export_tuned_model_burn_with_adapters(decoder, &[], base_model, weight_map, out, duration_scale)
+}
+
+/// 导出解码器、编码器时长旁路与风格簇语速校准。
+///
+/// `encoder_weights` 是已经折叠好的编码器时长分支权重 `(initializer 名, ONNX
+/// 布局 f32)`；为空表示不训练时长适配。它们与解码器一样原位覆写 initializer，
+/// 不改变图结构。
+pub fn export_tuned_model_burn_with_adapters(
+    decoder: &BurnBaseDecoder,
+    encoder_weights: &[(&str, Vec<f32>)],
+    base_model: &Path,
+    weight_map: &Path,
+    out: &Path,
+    duration_scale: Option<f32>,
+) -> Result<()> {
     let bytes = std::fs::read(base_model)
         .with_context(|| format!("读取基座模型失败: {}", base_model.display()))?;
     let reverse = read_reverse_map(weight_map)?;
 
+    // 训练出的风格 FiLM 不在基座 ONNX 里。先把它折进归一化仿射副本，
+    // 后续按原语义名回读时就会自然带上风格调制。
+    let folded = decoder.folded_for_export();
+    let decoder = &folded;
+
     let mut export = bytes.to_vec();
+    // 0) 编码器时长旁路：已折叠成基座权重，直接按 initializer 名覆写。
+    for (name, flat) in encoder_weights {
+        let mut data = Vec::with_capacity(flat.len() * 4);
+        for value in flat {
+            data.extend_from_slice(&value.to_le_bytes());
+        }
+        export = replace_initializer(&export, name, &data)
+            .with_context(|| format!("替换编码器 initializer 失败: {name}"))?;
+    }
     // 1) 命名解码器张量：语义名（`model.decoder.estimator.*`）即基座 initializer 名。
     for name in decoder_initializer_names(&export)? {
         if !name.starts_with("model.decoder.estimator.") {
@@ -52,13 +98,44 @@ pub fn export_tuned_model_burn(
             .with_context(|| format!("替换 initializer 失败: {src}"))?;
     }
 
+    // 3) 按风格簇校准整体语速：只改时长投影的 bias，图结构不变。
+    if let Some(scale) = duration_scale {
+        if scale.is_finite() && scale > 0.0 && (scale - 1.0).abs() > 1e-4 {
+            match apply_duration_scale(&export, scale) {
+                Ok(updated) => export = updated,
+                Err(error) => {
+                    // 校准是增强项；换用其它基座导致参数名不同不应阻断导出。
+                    tracing::warn!("[导出] 语速校准写入失败，忽略: {error:#}");
+                },
+            }
+        }
+    }
+
     if let Some(parent) = out.parent() {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("创建输出目录失败: {}", parent.display()))?;
     }
-    std::fs::write(out, &export)
-        .with_context(|| format!("写出模型失败: {}", out.display()))?;
+    std::fs::write(out, &export).with_context(|| format!("写出模型失败: {}", out.display()))?;
     Ok(())
+}
+
+/// 把整体语速倍数写进时长预测器偏置。
+///
+/// `proj_w.proj` 是编码器最后的 1x1 卷积，输出对数秒。给它的 bias 加
+/// `ln(scale)` 等价于把所有 token 的预测时长乘以 `scale`。
+fn apply_duration_scale(export: &[u8], scale: f32) -> Result<Vec<u8>> {
+    const NAME: &str = "model.encoder.proj_w.proj.bias";
+    let tensors = read_initializers_from_bytes(export)?;
+    let tensor = tensors
+        .iter()
+        .find(|tensor| tensor.name == NAME)
+        .with_context(|| format!("基座里没有时长预测器偏置 {NAME}"))?;
+    let shift = scale.ln();
+    let mut data = Vec::with_capacity(tensor.data.len() * 4);
+    for value in &tensor.data {
+        data.extend_from_slice(&(value + shift).to_le_bytes());
+    }
+    replace_initializer(export, NAME, &data).with_context(|| format!("写入时长校准失败: {NAME}"))
 }
 
 /// 用 `read_decoder_param` 读 burn 解码器字段并转成 f32 小端字节。
@@ -81,22 +158,36 @@ fn decoder_initializer_names(model_bytes: &[u8]) -> Result<Vec<String>> {
     let graph = find_submessage(model_bytes, 0, model_bytes.len(), 7)?
         .with_context(|| "ModelProto 里没有 graph(7)")?;
     let mut names = Vec::new();
-    scan_fields(model_bytes, graph.start, graph.start + graph.len, |field, init_span| {
-        if field != 5 {
-            return true;
-        }
-        let mut name = None;
-        let _ = scan_fields(model_bytes, init_span.start, init_span.start + init_span.len, |f, sp| {
-            if f == 8 {
-                name = Some(std::str::from_utf8(&model_bytes[sp.start..sp.start + sp.len]).unwrap_or("").to_string());
+    scan_fields(
+        model_bytes,
+        graph.start,
+        graph.start + graph.len,
+        |field, init_span| {
+            if field != 5 {
+                return true;
+            }
+            let mut name = None;
+            let _ = scan_fields(
+                model_bytes,
+                init_span.start,
+                init_span.start + init_span.len,
+                |f, sp| {
+                    if f == 8 {
+                        name = Some(
+                            std::str::from_utf8(&model_bytes[sp.start..sp.start + sp.len])
+                                .unwrap_or("")
+                                .to_string(),
+                        );
+                    }
+                    true
+                },
+            );
+            if let Some(n) = name {
+                names.push(n);
             }
             true
-        });
-        if let Some(n) = name {
-            names.push(n);
-        }
-        true
-    })?;
+        },
+    )?;
     Ok(names)
 }
 
@@ -131,8 +222,7 @@ pub fn export_tuned_model(
         std::fs::create_dir_all(parent)
             .with_context(|| format!("创建输出目录失败: {}", parent.display()))?;
     }
-    std::fs::write(out, &export)
-        .with_context(|| format!("写出模型失败: {}", out.display()))?;
+    std::fs::write(out, &export).with_context(|| format!("写出模型失败: {}", out.display()))?;
     Ok(())
 }
 
@@ -161,10 +251,7 @@ fn read_reverse_map(map_path: &Path) -> Result<HashMap<String, (String, bool)>> 
 }
 
 /// 解析一个 varmap 语义名对应的基座 initializer 名与转置标记。
-fn resolve_initializer(
-    name: &str,
-    reverse: &HashMap<String, (String, bool)>,
-) -> (String, bool) {
+fn resolve_initializer(name: &str, reverse: &HashMap<String, (String, bool)>) -> (String, bool) {
     if let Some((src, transposed)) = reverse.get(name) {
         return (src.clone(), *transposed);
     }
@@ -241,31 +328,44 @@ fn find_submessage(buf: &[u8], start: usize, end: usize, target: u32) -> Result<
 /// 在 graph 区间里找指定名字 initializer 的 raw_data 绝对载荷区间。
 fn find_init_raw_data(buf: &[u8], graph: Span, tensor_name: &str) -> Result<Option<Span>> {
     let mut found = None;
-    scan_fields(buf, graph.start, graph.start + graph.len, |field, init_span| {
-        if field != 5 {
-            return true;
-        }
-        // 解析该 initializer：读名字与 raw_data。
-        let mut name = None;
-        let mut raw = None;
-        // 内层找不到名字时忽略。
-        let _ = scan_fields(buf, init_span.start, init_span.start + init_span.len, |f, sp| {
-            match f {
-                8 => {
-                    name = Some(std::str::from_utf8(&buf[sp.start..sp.start + sp.len]).unwrap_or(""));
-                },
-                9 => raw = Some(sp),
-                _ => {},
+    scan_fields(
+        buf,
+        graph.start,
+        graph.start + graph.len,
+        |field, init_span| {
+            if field != 5 {
+                return true;
             }
-            true
-        });
-        if name.as_deref() == Some(tensor_name) {
-            found = raw;
-            false
-        } else {
-            true
-        }
-    })?;
+            // 解析该 initializer：读名字与 raw_data。
+            let mut name = None;
+            let mut raw = None;
+            // 内层找不到名字时忽略。
+            let _ = scan_fields(
+                buf,
+                init_span.start,
+                init_span.start + init_span.len,
+                |f, sp| {
+                    match f {
+                        8 => {
+                            name = Some(
+                                std::str::from_utf8(&buf[sp.start..sp.start + sp.len])
+                                    .unwrap_or(""),
+                            );
+                        },
+                        9 => raw = Some(sp),
+                        _ => {},
+                    }
+                    true
+                },
+            );
+            if name.as_deref() == Some(tensor_name) {
+                found = raw;
+                false
+            } else {
+                true
+            }
+        },
+    )?;
     Ok(found)
 }
 
@@ -343,7 +443,7 @@ struct Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{Device, DType, Tensor};
+    use candle_core::{DType, Device, Tensor};
     use candle_nn::{VarBuilder, VarMap};
 
     fn base_onnx() -> std::path::PathBuf {
@@ -440,6 +540,27 @@ mod tests {
         let _ = std::fs::remove_file(&out);
     }
 
+    /// 时长校准应只改动编码器时长投影 bias，且偏移量为 ln(scale)。
+    #[test]
+    fn duration_scale_shifts_encoder_bias() {
+        let base = base_onnx();
+        if !base.exists() {
+            return;
+        }
+        let bytes = std::fs::read(&base).unwrap();
+        let scale = 1.25f32;
+        let out = apply_duration_scale(&bytes, scale).unwrap();
+        let base_tensors = read_initializers_from_bytes(&bytes).unwrap();
+        let out_tensors = read_initializers_from_bytes(&out).unwrap();
+        let name = "model.encoder.proj_w.proj.bias";
+        let before = base_tensors.iter().find(|t| t.name == name).unwrap();
+        let after = out_tensors.iter().find(|t| t.name == name).unwrap();
+        let shift = scale.ln();
+        for (a, b) in before.data.iter().zip(&after.data) {
+            assert!((a + shift - b).abs() < 1e-6, "时长 bias 偏移不正确");
+        }
+    }
+
     /// burn 导出应是无损恒等：把从基座加载的解码器写回，导出的解码器权重与基座一致。
     #[test]
     fn burn_export_is_identity_with_base_decoder() {
@@ -457,9 +578,13 @@ mod tests {
             .join("../../data/tts-training/decoder_weight_map.json");
         let device = train_device();
         let tensors = read_initializers(&base).unwrap();
-        let decoder =
-            from_onnx_tensors(&BurnBaseDecoderConfig::default(), &tensors, &map_path, &device)
-                .unwrap();
+        let decoder = from_onnx_tensors(
+            &BurnBaseDecoderConfig::default(),
+            &tensors,
+            &map_path,
+            &device,
+        )
+        .unwrap();
 
         let out = std::env::temp_dir().join("lingchat-export-burn-test.onnx");
         export_tuned_model_burn(&decoder, &base, &map_path, &out).unwrap();

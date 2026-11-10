@@ -8,7 +8,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use super::normalize::normalize_to_wav;
@@ -33,6 +33,11 @@ pub struct DatasetItem {
     pub text: Option<String>,
     /// 时长（秒）。
     pub duration_secs: f64,
+    /// 无监督风格簇 id；None 表示尚未聚类或该条未能提取特征。
+    ///
+    /// 旧版 dataset.json 没有这个字段，反序列化时按 None 处理。
+    #[serde(default)]
+    pub style_cluster: Option<u32>,
 }
 
 /// 被跳过的素材及原因。
@@ -211,6 +216,7 @@ pub fn import_zip(
             wav,
             text,
             duration_secs: report.duration_secs,
+            style_cluster: None,
         });
     }
 
@@ -250,8 +256,8 @@ pub fn import_zip(
 /// 读取已存在的数据集清单。
 pub fn load_manifest(dataset_id: &str) -> Result<DatasetManifest> {
     let path = finetune_root().join(dataset_id).join("dataset.json");
-    let bytes = std::fs::read(&path)
-        .with_context(|| format!("数据集清单不存在: {}", path.display()))?;
+    let bytes =
+        std::fs::read(&path).with_context(|| format!("数据集清单不存在: {}", path.display()))?;
     Ok(serde_json::from_slice(&bytes)?)
 }
 
@@ -298,7 +304,10 @@ pub fn persist_text_updates(root: &Path, manifest: &mut DatasetManifest) -> Resu
         root.join("dataset.json"),
         serde_json::to_vec_pretty(manifest)?,
     )?;
-    std::fs::write(root.join("metadata.csv"), build_metadata_csv(&manifest.items))?;
+    std::fs::write(
+        root.join("metadata.csv"),
+        build_metadata_csv(&manifest.items),
+    )?;
     Ok(stats)
 }
 
@@ -400,12 +409,14 @@ mod tests {
                 wav: "wavs/a.wav".into(),
                 text: Some("你好".into()),
                 duration_secs: 1.0,
+                style_cluster: None,
             },
             DatasetItem {
                 id: "b".into(),
                 wav: "wavs/b.wav".into(),
                 text: None,
                 duration_secs: 1.0,
+                style_cluster: None,
             },
         ];
         let csv = build_metadata_csv(&items);
@@ -420,6 +431,7 @@ mod tests {
             wav: "wavs/a.wav".into(),
             text: Some("你好".into()),
             duration_secs: MIN_DATASET_SECONDS,
+            style_cluster: None,
         }];
         assert!(summarize(&items).meets_minimum);
 
@@ -428,6 +440,7 @@ mod tests {
             wav: "wavs/a.wav".into(),
             text: None,
             duration_secs: MIN_DATASET_SECONDS,
+            style_cluster: None,
         }];
         assert!(!summarize(&items).meets_minimum);
     }
