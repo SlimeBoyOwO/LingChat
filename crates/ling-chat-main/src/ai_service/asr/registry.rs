@@ -236,11 +236,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn list_provider_info_has_two_providers() {
+    fn list_provider_info_has_three_providers() {
         let info = list_provider_info();
-        assert_eq!(info.len(), 2);
+        assert_eq!(info.len(), 3);
         assert!(info.iter().any(|p| p.id == "qwen-asr"));
         assert!(info.iter().any(|p| p.id == "llama-asr"));
+        assert!(info.iter().any(|p| p.id == "sherpa-asr"));
     }
 
     #[test]
