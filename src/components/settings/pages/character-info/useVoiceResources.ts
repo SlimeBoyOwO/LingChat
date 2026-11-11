@@ -2,7 +2,7 @@ import { computed, ref, type Ref } from "vue";
 import * as TtsLocal from "@/api/services/tts/tts-local";
 import * as TtsCosyvoice from "@/api/services/tts/tts-cosyvoice";
 
-/** 语音模型字段的旧位置清单，迁移时统一搬进 voice_models。 */
+/** 旧位置的语音模型字段，迁移进 voice_models。 */
 const voiceModelKeys = [
   "sva_speaker_id",
   "sbv2_name",
@@ -32,7 +32,7 @@ const voiceModelKeys = [
 
 const GSV_EMO_CATEGORIES = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"] as const;
 
-/** 角色语音资源：音色列表、语音模型字段迁移与 GSV 六情绪参考语音的草稿读写。 */
+/** 角色语音资源：音色列表、字段迁移与 GSV 情绪语音草稿。 */
 export function useVoiceResources(localSettings: Ref<any>) {
   const installedVoices = ref<TtsLocal.VoiceRecord[]>([]);
   const installedSherpaModels = ref<TtsLocal.SherpaOnnxModelRecord[]>([]);
@@ -99,7 +99,7 @@ export function useVoiceResources(localSettings: Ref<any>) {
     gsvEmoEnabled.value = !gsvEmoEnabled.value;
   };
 
-  /** 分类参考值的读写入口，与 voice_models 下的平级字段同样只落草稿。 */
+  /** 分类参考值读写：只写草稿。 */
   const gsvEmoField = (cat: string, key: "gsv_emo_texts" | "gsv_emo_voice_files") =>
     computed({
       get: () => (ensureVoiceModels()[key] as Record<string, string> | undefined)?.[cat] ?? "",
@@ -111,7 +111,7 @@ export function useVoiceResources(localSettings: Ref<any>) {
       },
     });
 
-  // 合成采样参数：空串删除键（留空=后端默认），非空转数字
+  // 采样参数：空串删除键（用后端默认），非空转数字。
   const gsvSamplingField = (key: "gsv_temperature" | "gsv_top_p" | "gsv_speed_factor") =>
     computed({
       get: () => {

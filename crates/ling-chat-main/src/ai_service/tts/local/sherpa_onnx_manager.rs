@@ -1,6 +1,4 @@
-//! Sherpa-ONNX 模型管理器
-//!
-//! 负责管理 Sherpa-ONNX 模型的下载、验证、缓存和加载状态。
+//! Sherpa-ONNX 模型管理器：扫描、解析与查询本地模型。
 
 #![allow(dead_code)]
 
@@ -11,7 +9,6 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use tokio::sync::RwLock;
 
-/// Sherpa-ONNX 模型信息
 #[derive(Debug, Clone)]
 pub struct SherpaOnnxModelInfo {
     pub model_name: String,
@@ -23,24 +20,13 @@ pub struct SherpaOnnxModelInfo {
     pub is_valid: bool,
 }
 
-/// Sherpa-ONNX 模型根目录（模型文件夹 `<name>/` 直接位于该目录下）。
-///
-/// 所有平台统一使用应用数据目录下的 `sherpa_onnx_models`
-/// （Android 为应用专属外部存储 `Android/data/<package>/files/sherpa_onnx_models`，
-/// 无需申请 MANAGE_EXTERNAL_STORAGE 权限）。
+/// 模型根目录（`<name>/` 直接位于其下）。
+/// 所有平台统一用应用数据目录下的 `sherpa_onnx_models`，无需存储权限。
 pub fn sherpa_onnx_models_root() -> PathBuf {
     crate::data_dir::get_data_dir().join("sherpa_onnx_models")
 }
 
-/// 依据模型目录本身解析实际 `model_type`。
-///
-/// 优先级：
-/// 1. 内置清单（目录名）——随包分发的模型类型是确定的；
-/// 2. `config.json` 里显式声明的 `model_type`；
-/// 3. 目录内文件特征推断（用户手动导入的模型）；
-/// 4. 传入的 `configured`（最终兜底，仍为空则取 `vits`）。
-///
-/// 这样即便角色设置里遗留了默认的错误类型（如 `vits`），也能按模型本体正确加载。
+/// 依据模型目录本身解析实际 `model_type`：内置清单 → `config.json` → 文件特征 → 传入值。
 pub fn resolve_model_type(model_dir: &Path, configured: &str) -> String {
     if let Some(name) = model_dir.file_name().and_then(|n| n.to_str()) {
         if let Some(mtype) = crate::api::tts_sherpa::catalog_model_type(name) {
@@ -73,10 +59,7 @@ pub fn resolve_model_type(model_dir: &Path, configured: &str) -> String {
     }
 }
 
-/// 按目录内文件特征推断 `model_type`（顺序即优先级，先匹配特征更强的类型）。
-///
-/// 仅覆盖能由文件布局唯一确定的类型；`kokoro` / `kitten` 共享同一组文件，
-/// 无法区分时按 `kokoro` 处理（内置清单会覆盖内置模型，不受此影响）。
+/// 按目录内文件特征推断 `model_type`；kokoro/kitten 无法区分时按 kokoro。
 fn infer_model_type(model_dir: &Path) -> Option<&'static str> {
     let has = |file: &str| model_dir.join(file).exists();
 
@@ -104,7 +87,6 @@ fn infer_model_type(model_dir: &Path) -> Option<&'static str> {
     None
 }
 
-/// Sherpa-ONNX 模型管理器
 #[derive(Debug)]
 pub struct SherpaOnnxManager {
     models: Arc<RwLock<HashMap<String, SherpaOnnxModelInfo>>>,
@@ -112,7 +94,7 @@ pub struct SherpaOnnxManager {
 }
 
 impl SherpaOnnxManager {
-    /// 创建新的模型管理器（`models_root` 即模型文件夹所在目录）
+    /// 创建模型管理器。
     pub fn new(models_root: PathBuf) -> Self {
         Self {
             models: Arc::new(RwLock::new(HashMap::new())),
@@ -120,23 +102,17 @@ impl SherpaOnnxManager {
         }
     }
 
-    /// 获取模型目录
     pub fn model_dir(&self) -> PathBuf {
         self.models_root.clone()
     }
 
-    /// 初始化模型管理器
     pub async fn initialize(&self) -> Result<()> {
-        // 创建模型目录
         tokio::fs::create_dir_all(self.model_dir()).await?;
-
-        // 扫描现有模型
         self.scan_existing_models().await?;
 
         Ok(())
     }
 
-    /// 扫描现有模型文件
     async fn scan_existing_models(&self) -> Result<()> {
         let model_dir = self.model_dir();
         if !model_dir.exists() {
@@ -144,7 +120,7 @@ impl SherpaOnnxManager {
         }
 
         let mut models = self.models.write().await;
-        // 每次扫描都从磁盘重建，避免外部删除目录后旧的“已安装”记录残留。
+        // 每次从磁盘重建，避免外部删除后残留旧记录。
         models.clear();
         let mut entries = tokio::fs::read_dir(&model_dir).await?;
 
@@ -160,7 +136,6 @@ impl SherpaOnnxManager {
         Ok(())
     }
 
-    /// 解析模型目录
     async fn parse_model_directory(&self, model_dir: &Path) -> Result<SherpaOnnxModelInfo> {
         let model_name = model_dir
             .file_name()
@@ -168,7 +143,7 @@ impl SherpaOnnxManager {
             .ok_or_else(|| anyhow!("Invalid model directory name"))?
             .to_string();
 
-        // 查找模型文件（覆盖所有支持的模型类型）
+        // 覆盖所有支持的模型类型。
         let model_files = [
             // VITS / FastSpeech2
             "model.onnx",
@@ -206,13 +181,11 @@ impl SherpaOnnxManager {
         let metadata = tokio::fs::metadata(&model_path).await?;
         let size_bytes = metadata.len();
 
-        // 解析模型类型/配置：类型以「模型目录本身」为准（内置清单 → config.json →
-        // 文件特征），避免角色设置里遗留的错误类型导致按错误类型加载。
+        // 类型以模型目录本身为准，避免角色设置里的错误类型。
         let config_path = model_dir.join("config.json");
         let (config_type, language, voice) = if config_path.exists() {
             self.load_model_config(&config_path).await?
         } else {
-            // 默认值
             (String::new(), "zh".to_string(), "female".to_string())
         };
         let model_type = resolve_model_type(model_dir, &config_type);
@@ -228,7 +201,6 @@ impl SherpaOnnxManager {
         })
     }
 
-    /// 加载模型配置
     async fn load_model_config(&self, config_path: &Path) -> Result<(String, String, String)> {
         let content = tokio::fs::read_to_string(config_path).await?;
         let config: serde_json::Value = serde_json::from_str(&content)?;
@@ -255,37 +227,31 @@ impl SherpaOnnxManager {
         ))
     }
 
-    /// 获取所有模型
     pub async fn get_models(&self) -> Vec<SherpaOnnxModelInfo> {
         let models = self.models.read().await;
         models.values().cloned().collect()
     }
 
-    /// 获取指定模型
     pub async fn get_model(&self, model_name: &str) -> Option<SherpaOnnxModelInfo> {
         let models = self.models.read().await;
         models.get(model_name).cloned()
     }
 
-    /// 检查模型是否存在
     pub async fn model_exists(&self, model_name: &str) -> bool {
         let models = self.models.read().await;
         models.contains_key(model_name)
     }
 
-    /// 添加模型
     pub async fn add_model(&self, model_info: SherpaOnnxModelInfo) -> Result<()> {
         let mut models = self.models.write().await;
         models.insert(model_info.model_name.clone(), model_info);
         Ok(())
     }
 
-    /// 删除模型（整个模型目录）
     pub async fn remove_model(&self, model_name: &str) -> Result<()> {
         let mut models = self.models.write().await;
 
         if let Some(model_info) = models.remove(model_name) {
-            // 删除模型所在的目录（而非单个文件）
             if let Some(parent) = model_info.model_path.parent() {
                 if parent.exists() {
                     tokio::fs::remove_dir_all(parent).await?;
@@ -296,37 +262,31 @@ impl SherpaOnnxManager {
         Ok(())
     }
 
-    /// 获取模型路径
     pub async fn get_model_path(&self, model_name: &str) -> Option<PathBuf> {
         let models = self.models.read().await;
         models.get(model_name).map(|info| info.model_path.clone())
     }
 
-    /// 获取模型类型
     pub async fn get_model_type(&self, model_name: &str) -> Option<String> {
         let models = self.models.read().await;
         models.get(model_name).map(|info| info.model_type.clone())
     }
 
-    /// 获取模型语言
     pub async fn get_model_language(&self, model_name: &str) -> Option<String> {
         let models = self.models.read().await;
         models.get(model_name).map(|info| info.language.clone())
     }
 
-    /// 获取模型音色
     pub async fn get_model_voice(&self, model_name: &str) -> Option<String> {
         let models = self.models.read().await;
         models.get(model_name).map(|info| info.voice.clone())
     }
 
-    /// 获取模型大小
     pub async fn get_model_size(&self, model_name: &str) -> Option<u64> {
         let models = self.models.read().await;
         models.get(model_name).map(|info| info.size_bytes)
     }
 
-    /// 验证模型完整性
     pub async fn validate_model(&self, model_name: &str) -> Result<bool> {
         let models = self.models.read().await;
         if let Some(model_info) = models.get(model_name) {
@@ -334,8 +294,7 @@ impl SherpaOnnxManager {
                 return Ok(false);
             }
 
-            // TODO: 实现更详细的模型验证
-            // 检查文件大小、模型格式等
+            // TODO: 实现更详细的模型验证（文件大小、模型格式等）。
 
             Ok(true)
         } else {
@@ -343,7 +302,6 @@ impl SherpaOnnxManager {
         }
     }
 
-    /// 获取模型存储统计
     pub async fn get_storage_stats(&self) -> Result<(u64, usize)> {
         let models = self.models.read().await;
         let total_size = models.values().map(|info| info.size_bytes).sum();
@@ -352,7 +310,6 @@ impl SherpaOnnxManager {
         Ok((total_size, model_count))
     }
 
-    /// 清理无效模型
     pub async fn cleanup_invalid_models(&self) -> Result<usize> {
         let mut models = self.models.write().await;
         let mut removed_count = 0;
@@ -383,17 +340,12 @@ mod tests {
         let temp_dir = tempdir().unwrap();
         let manager = SherpaOnnxManager::new(temp_dir.path().to_path_buf());
 
-        // 初始化
         assert!(manager.initialize().await.is_ok());
-
-        // 模型目录即传入的根目录
         assert_eq!(manager.model_dir(), temp_dir.path().to_path_buf());
 
-        // 测试空模型列表
         let models = manager.get_models().await;
         assert!(models.is_empty());
 
-        // 测试存储统计
         let (size, count) = manager.get_storage_stats().await.unwrap();
         assert_eq!(size, 0);
         assert_eq!(count, 0);
@@ -401,7 +353,7 @@ mod tests {
 
     #[test]
     fn resolve_model_type_prefers_catalog_dir() {
-        // 内置模型目录名即权威类型，忽略传入的错误默认值（如 vits）。
+        // 内置目录名即权威类型，忽略传入的错误默认值。
         let dir = Path::new("/nonexistent/sherpa_onnx_models/kokoro-int8-multi-lang-v1_1");
         assert_eq!(resolve_model_type(dir, "vits"), "kokoro");
 
@@ -414,27 +366,27 @@ mod tests {
         let temp = tempdir().unwrap();
         let root = temp.path();
 
-        // Kokoro/Kitten 特征：voices.bin + model(.int8).onnx
+        // Kokoro/Kitten：voices.bin + model(.int8).onnx
         let kokoro = root.join("my-kokoro");
         std::fs::create_dir_all(&kokoro).unwrap();
         std::fs::write(kokoro.join("model.int8.onnx"), b"x").unwrap();
         std::fs::write(kokoro.join("voices.bin"), b"x").unwrap();
         assert_eq!(resolve_model_type(&kokoro, "vits"), "kokoro");
 
-        // Matcha 特征：model-steps-*.onnx
+        // Matcha：model-steps-*.onnx
         let matcha = root.join("my-matcha");
         std::fs::create_dir_all(&matcha).unwrap();
         std::fs::write(matcha.join("model-steps-3.onnx"), b"x").unwrap();
         assert_eq!(resolve_model_type(&matcha, "vits"), "matcha");
 
-        // config.json 显式声明优先于文件推断
+        // config.json 声明优先于文件推断。
         let declared = root.join("my-declared");
         std::fs::create_dir_all(&declared).unwrap();
         std::fs::write(declared.join("model.onnx"), b"x").unwrap();
         std::fs::write(declared.join("config.json"), br#"{"model_type":"kitten"}"#).unwrap();
         assert_eq!(resolve_model_type(&declared, "vits"), "kitten");
 
-        // 无法识别时回退到配置值；配置为空则取 vits
+        // 无法识别时回退到配置值；为空取 vits。
         let plain = root.join("my-plain");
         std::fs::create_dir_all(&plain).unwrap();
         assert_eq!(resolve_model_type(&plain, "fastspeech2"), "fastspeech2");

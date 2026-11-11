@@ -1,10 +1,4 @@
-//! 读取 ONNX 里的权重张量。
-//!
-//! 只做微调需要的那部分：从 ModelProto 的 graph 里取出 initializer，解析名称、
-//! 形状和 f32 数据。不依赖 protobuf 库，按线格式直接读，避免为一次性的模型
-//! 解析引入额外依赖。
-//!
-//! 目前只接受 float 张量；整数张量（如某些索引常量）会被跳过，调用方按名称取用。
+//! 读取 ONNX 里的 f32 权重张量：直接按 protobuf 线格式解析，不引入依赖。
 
 use std::path::Path;
 
@@ -13,9 +7,7 @@ use anyhow::{Context, Result, bail};
 /// 一个权重张量。
 #[derive(Debug, Clone)]
 pub struct OnnxTensor {
-    /// 张量名，与导出时的命名一致。
     pub name: String,
-    /// 形状。
     pub dims: Vec<usize>,
     /// 按行主序展开的 f32 数据。
     pub data: Vec<f32>,
@@ -111,7 +103,7 @@ fn parse_tensor(bytes: &[u8]) -> Result<Option<OnnxTensor>> {
         }
     }
 
-    // 1 是 FLOAT。其他类型在微调里用不到，直接跳过。
+    // 只接受 FLOAT；其他类型微调用不到，跳过。
     if data_type != 1 {
         return Ok(None);
     }

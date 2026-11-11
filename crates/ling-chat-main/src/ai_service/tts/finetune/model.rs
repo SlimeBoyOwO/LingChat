@@ -1,10 +1,4 @@
-//! Matcha 声学模型的骨架。
-//!
-//! 只实现微调需要的那部分：文本编码器把 token 序列编成逐 token 的隐状态，
-//! 时长预测器给出每个 token 占多少帧。条件流匹配解码器在后续步骤接入。
-//!
-//! 结构与 matcha-icefall 系列保持一致：Transformer 文本编码器 + 卷积时长预测器，
-//! 激活用 ReLU、归一化用 LayerNorm、时长取对数后回归。
+//! Matcha 声学模型骨架：Transformer 文本编码器 + 卷积时长预测器。
 
 use candle_core::{DType, Result, Tensor};
 use candle_nn::{Conv1d, Conv1dConfig, Embedding, LayerNorm, Linear, Module, VarBuilder};
@@ -12,19 +6,12 @@ use candle_nn::{Conv1d, Conv1dConfig, Embedding, LayerNorm, Linear, Module, VarB
 /// 模型超参数。
 #[derive(Debug, Clone)]
 pub struct MatchaConfig {
-    /// 词表大小。
     pub n_vocab: usize,
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 隐层维度。
     pub hidden: usize,
-    /// 文本编码器层数。
     pub layers: usize,
-    /// 注意力头数。
     pub heads: usize,
-    /// 前馈层倍数。
     pub ffn_mult: usize,
-    /// 时长预测器卷积层数。
     pub duration_layers: usize,
 }
 
@@ -161,7 +148,7 @@ impl TextEncoder {
         })
     }
 
-    /// 前向：输入 token id（batch 乘 steps 的 U32），输出同形状的隐状态。
+    /// 前向：输入 token id（[batch, steps]），输出同形状隐状态。
     pub fn forward(&self, tokens: &Tensor) -> Result<Tensor> {
         let mut hidden = self.embedding.forward(&tokens.to_dtype(DType::U32)?)?;
         for block in &self.blocks {
@@ -202,9 +189,7 @@ impl DurationPredictor {
         })
     }
 
-    /// 前向：输入 batch 乘 steps 乘 hidden，输出 batch 乘 steps 的 log 时长。
-    ///
-    /// 负值会被压到很小的正数，避免后续取指数时出现 0 帧。
+    /// 前向：输出 log 时长；负值压到很小的正数，避免取指数后出现 0 帧。
     pub fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         let (batch, steps, _hidden) = xs.dims3()?;
         let mut hidden_states = xs.transpose(1, 2)?.contiguous()?;
@@ -315,7 +300,7 @@ mod tests {
 
     #[test]
     fn duration_regression_reduces_loss() -> Result<()> {
-        // 用固定的目标时长跑几十步，损失应该明显下降，说明反向传播与优化器都通了。
+        // 固定目标跑几十步，损失应明显下降，验证反传与优化器。
         let device = Device::Cpu;
         let var_map = VarMap::new();
         let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);

@@ -1,9 +1,4 @@
-//! 条件流匹配解码器。
-//!
-//! 输入是「加噪 mel + 文本编码器展开到帧的隐状态 + 时间步」，输出预测的速度场。
-//! 结构按参考实现来：输入投影 → 残差块 → 下采样 → 中间块 → 上采样并拼接跳连 →
-//! 残差块 → 输出投影。时间条件用正弦位置编码加一层小 MLP，再逐块投影到对应通道数
-//! 后做偏置注入。
+//! 条件流匹配解码器：输入投影 → 残差块 → 下采样 → 中间块 → 上采样跳连 → 输出投影。
 
 use candle_core::{DType, Device, Result, Tensor};
 use candle_nn::{Conv1d, Conv1dConfig, GroupNorm, LayerNorm, Linear, Module, VarBuilder};
@@ -11,13 +6,9 @@ use candle_nn::{Conv1d, Conv1dConfig, GroupNorm, LayerNorm, Linear, Module, VarB
 /// 解码器配置。
 #[derive(Debug, Clone)]
 pub struct CfmConfig {
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 文本隐状态维度。
     pub text_hidden: usize,
-    /// 基础通道数。
     pub base_channels: usize,
-    /// 时间编码维度。
     pub time_dim: usize,
 }
 
@@ -59,7 +50,7 @@ impl ResBlock {
         })
     }
 
-    /// `xs` 为 batch 乘 channels 乘 frames，`time` 为 batch 乘 time_dim。
+    /// `xs` 为 [batch, channels, frames]，`time` 为 [batch, time_dim]。
     fn forward(&self, xs: &Tensor, time: &Tensor) -> Result<Tensor> {
         let (batch, _, frames) = xs.dims3()?;
         let bias = self
@@ -150,10 +141,7 @@ impl CfmDecoder {
         })
     }
 
-    /// 前向。
-    ///
-    /// `noisy` 为 batch 乘 n_mels 乘 frames，`text` 为 batch 乘 text_hidden 乘 frames，
-    /// `time` 为 batch 维、取值 0 到 1。输出与 `noisy` 同形状的速度场。
+    /// 前向；`noisy`/`text` 为 [batch, C, frames]，`time` 取值 0 到 1。
     pub fn forward(&self, noisy: &Tensor, text: &Tensor, time: &Tensor) -> Result<Tensor> {
         let device = noisy.device();
         let embedded_time = self.embed_time(time, device)?;
@@ -201,9 +189,7 @@ pub fn flow_matching_loss(predicted: &Tensor, target: &Tensor) -> Result<Tensor>
     predicted.sub(target)?.sqr()?.mean_all()
 }
 
-/// 构造训练用的加噪样本。
-///
-/// 采用直线路径：x_t = (1 - t) * x0 + t * x1，目标速度是 x1 - x0。
+/// 构造训练用加噪样本：x_t = (1 - t) * x0 + t * x1，目标速度为 x1 - x0。
 pub fn add_noise(data: &Tensor, noise: &Tensor, time: f64) -> Result<(Tensor, Tensor)> {
     let noisy = (data.affine(1.0 - time, 0.0)? + noise.affine(time, 0.0)?)?;
     let target = noise.sub(data)?;
@@ -221,7 +207,7 @@ fn upsample_x2(xs: &Tensor, target_frames: usize) -> Result<Tensor> {
     if frames * 2 == target_frames {
         return Ok(doubled);
     }
-    // 下采样时奇数帧会差一帧，这里补齐或裁到目标长度。
+    // 下采样时奇数帧会差一帧，补齐或裁到目标长度。
     if frames * 2 > target_frames {
         doubled.narrow(2, 0, target_frames)
     } else {
@@ -318,7 +304,7 @@ mod tests {
 
     #[test]
     fn flow_matching_step_reduces_loss() -> Result<()> {
-        // 固定一组输入反复优化，网络应当能记住它，损失明显下降。
+        // 固定输入反复优化，损失应明显下降。
         let device = Device::Cpu;
         let var_map = VarMap::new();
         let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);

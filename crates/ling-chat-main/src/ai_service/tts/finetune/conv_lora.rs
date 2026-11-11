@@ -1,16 +1,7 @@
 //! 一维卷积的低秩旁路（Conv LoRA），解码器与编码器时长分支共用。
 //!
-//! 普通卷积旁路写成 `1x1 混合 -> 带原卷积核与步长的重采样`：
-//!
-//! `y[n] = sum_k (sum_c x[n*s + k - p, c] * A[c, r]) * B[r, o, k]`
-//!
-//! 与基座卷积 `sum_k x[n*s + k - p, c] * W[o, c, k]` 逐元素等价，因此可以把
-//! `delta W[o, c, k] = sum_r B[o, r, k] * A[c, r]` 直接折进基座权重，导出后
-//! 图结构与推理开销都不变。上投影零初始化，训练起点严格等于基座。
-//!
-//! 转置卷积不能把步长放在下投影上（两个转置卷积复合会改变有效步长），因此
-//! 下投影保持 `1x1 / stride=1 / padding=0`，由带原步长与卷积核的上投影负责
-//! 重采样；折叠公式为 `delta W[c, o, k] = sum_r A[c, r] * B[r, o, k]`。
+//! 步长放在上投影，下投影保持 1x1；上投影零初始化，训练起点等于基座。
+//! 转置卷积的下投影必须 `stride=1 / padding=0`，否则复合有效步长改变，无法折回基座。
 
 use burn::module::{Module, Param};
 use burn::nn::PaddingConfig1d;
@@ -26,10 +17,7 @@ pub(crate) struct ConvLora {
 }
 
 impl ConvLora {
-    /// 构造与基座卷积同形状的旁路。
-    ///
-    /// `stride` 与 `padding` 必须和基座卷积一致；步长放在上投影上，才能保证
-    /// 下投影的 1x1 混合与基座在同一个输入采样点上做低秩分解。
+    /// 构造与基座卷积同形状的旁路；`stride`、`padding` 必须与基座一致。
     pub(crate) fn new(
         input_channels: usize,
         output_channels: usize,
@@ -96,8 +84,7 @@ impl ConvTransposeLora {
         device: &Device,
     ) -> Self {
         let rank = rank.max(1);
-        // 下投影必须是 stride=1 / padding=0 的 1x1 转置卷积，才只是一个逐点
-        // 通道混合；否则复合后的有效步长会变成 stride*stride，无法折回基座。
+        // 下投影必须是 stride=1 / padding=0 的 1x1 转置卷积，否则无法折回基座。
         let down = ConvTranspose1dConfig::new([input_channels, rank], 1)
             .with_stride(1)
             .with_padding(0)
@@ -120,10 +107,7 @@ impl ConvTransposeLora {
         self.up.forward(self.down.forward(xs)) * self.scale
     }
 
-    /// 把低秩增量折进基座转置卷积权重。
-    ///
-    /// burn 与 ONNX 的转置卷积权重都是 `[channels_in, channels_out, kernel]`，
-    /// 因此折叠结果可以直接按原布局覆写导出。
+    /// 把低秩增量折进基座转置卷积权重；burn 与 ONNX 的权重布局一致，可直接覆写导出。
     pub(crate) fn fold_into(&self, base: &mut ConvTranspose1d) {
         let [in_channels, rank, _] = self.down.weight.val().dims();
         let [_, out_channels, kernel] = self.up.weight.val().dims();

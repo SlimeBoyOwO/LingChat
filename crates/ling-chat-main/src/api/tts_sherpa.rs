@@ -1,8 +1,4 @@
 //! Sherpa-ONNX 本地 TTS 模型管理：列表、下载、删除、试听合成。
-//!
-//! 模型目录固定为 `data/sherpa_onnx_models/<model_name>/`，与
-//! `ai_service::tts::local::sherpa_onnx_manager::SherpaOnnxManager` 一致。
-//! 角色把 `tts_type` 设为 `sherpa-onnx`/`sherpa` 并选择模型名后即可走该路径合成。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -75,8 +71,7 @@ fn record_from(info: &SherpaOnnxModelInfo) -> SherpaModelRecord {
     let mut display_name = entry
         .map(|e| e.display_name.to_string())
         .unwrap_or_else(|| info.model_name.clone());
-    // 桌面专用模型在 Android 上已知会输出静音/垃圾样本（kokoro int8，上游 #3754），
-    // 已在实机验证；在已装列表里直接标出来，便于用户删除后换用未量化版本。
+    // 桌面专用模型在 Android 上会输出静音/垃圾样本（kokoro int8，上游 #3754）。
     if entry
         .is_some_and(|e| e.platforms == SherpaPlatforms::DesktopOnly && cfg!(target_os = "android"))
     {
@@ -149,11 +144,7 @@ pub struct SherpaSpeakersInfo {
     pub speakers: Vec<SherpaSpeaker>,
 }
 
-/// 列出模型自带的全部说话人（音色）。
-///
-/// 读的是 ONNX metadata（`n_speakers` / `speaker_names`），不加载模型：kokoro
-/// 103 个音色也能毫秒级返回，设置页切模型时随便点。zipvoice / pocket 这类多文件
-/// 模型没有单一主模型，会返回错误，前端保持原来的四个语义档。
+/// 列出模型自带的全部说话人（读 ONNX metadata，不加载模型）；多文件模型返回错误。
 #[tauri::command]
 pub async fn sherpa_list_speakers(model_name: String) -> Result<SherpaSpeakersInfo, String> {
     let name = model_name.trim().to_string();
@@ -212,14 +203,8 @@ pub async fn sherpa_delete_model(
     Ok(())
 }
 
-// ---------------------------------------------------------------------------
-// Sherpa 模型清单
-//
-// 内置模型默认走 modelscope 的 `gomodels/sherpa` 镜像（国内直连稳定）。例外是
-// Android 需要**未量化**的 kokoro：该镜像里只有 int8 版，而 int8 在 arm64 Android
-// 上会输出静音/钉死值（上游 k2-fsa/sherpa-onnx#3754；实测同一台设备换成 fp32
-// 立刻恢复正常），那份只有 HuggingFace 上有，因此按平台分别提供。
-// ---------------------------------------------------------------------------
+// 内置模型默认走 modelscope `gomodels/sherpa` 镜像；Android 需要未量化的 kokoro
+// （int8 在 arm64 上输出静音，上游 #3754），那份只在 HuggingFace 上有。
 
 /// 模型文件的来源站点。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -349,11 +334,7 @@ fn catalog_entry(dir: &str) -> Option<&'static SherpaCatalogEntry> {
     SHERPA_CATALOG.iter().find(|entry| entry.dir == dir)
 }
 
-/// 内置清单里「模型目录名 → 适配器 model_type」。非内置（用户导入）模型返回 `None`。
-///
-/// 供模型管理器/适配器按目录反查真实类型：角色设置里遗留的 `sherpa_onnx_model_type`
-/// 默认为 `vits`，若直接采信会导致 Kokoro/ZipVoice 等模型按错误类型加载而报
-/// 「未找到模型文件」。
+/// 内置清单里「模型目录名 → model_type」；用户导入的模型返回 `None`。
 pub(crate) fn catalog_model_type(dir: &str) -> Option<&'static str> {
     catalog_entry(dir).map(|entry| entry.model_type)
 }
@@ -374,9 +355,7 @@ pub fn sherpa_catalog() -> Vec<SherpaModelRecord> {
         .collect()
 }
 
-/// 各模型目录需跳过的冗余文件（节省流量；onnx 为推理唯一所需）。
-/// - int8 vits 变体仅在无 int8 时才需要；有非 int8 则跳过 int8。
-/// - pytorch_model*.bin 与 .wav（示例音频）不是推理必需。
+/// 下载时跳过的冗余文件（pytorch 权重、示例音频等）。
 fn skip_repo_file(dir: &str, rel: &str) -> bool {
     if rel.ends_with("pytorch_model.bin") || rel.ends_with("pytorch_model_sherpa.bin") {
         return true;
@@ -408,7 +387,6 @@ struct RepoFile {
     size: u64,
 }
 
-/// 列出仓库全部文件的接口地址。
 fn repo_files_api(entry: &SherpaCatalogEntry) -> String {
     match entry.source {
         SherpaSource::ModelScope => format!(
@@ -422,7 +400,6 @@ fn repo_files_api(entry: &SherpaCatalogEntry) -> String {
     }
 }
 
-/// 单个模型文件的下载地址。
 fn repo_file_url(entry: &SherpaCatalogEntry, rel: &str) -> String {
     let rel = rel.replace(' ', "%20");
     match entry.source {
@@ -434,7 +411,7 @@ fn repo_file_url(entry: &SherpaCatalogEntry, rel: &str) -> String {
     }
 }
 
-/// 拉取某模型目录下的文件清单（过滤目录项 / 跳过项）。
+/// 拉取模型目录下的文件清单（过滤目录项与跳过项）。
 async fn fetch_repo_files(entry: &SherpaCatalogEntry) -> Result<Vec<RepoFile>, String> {
     let client = crate::utils::download::build_download_client()
         .map_err(|e| format!("创建下载客户端失败: {e}"))?;
@@ -563,7 +540,7 @@ async fn run_download(
         return Err(format!("模型 {dir} 无可下载文件（大小未知）"));
     }
 
-    // espeak-ng-data 由多个模型共享，先下载一次再按需拷贝
+    // espeak-ng-data 由多个模型共享，先下载一次再按需拷贝。
     let shared_cache = model_root.join("_cache").join("espeak-ng-data");
     let shared_espeak = dir_has_espeak(&files);
 
@@ -589,7 +566,7 @@ async fn run_download(
 
         tasks.push(tokio::spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore");
-            // espeak-ng-data：先从共享缓存下载；若已存在则直接指向目标目录
+            // espeak-ng-data 走共享缓存。
             let is_espeak = f.rel.starts_with("espeak-ng-data/");
             let sub = if is_espeak {
                 f.rel["espeak-ng-data/".len()..].to_string()
@@ -647,7 +624,7 @@ async fn run_download(
         }
     }
 
-    // 若已下过共享 espeak-ng-data，则拷贝进本模型目录（失败清理半成品并报错）
+    // 把共享 espeak-ng-data 拷进本模型目录；失败则清理半成品。
     if shared_espeak {
         let src = model_root.join("_cache").join("espeak-ng-data");
         let dst = target_dir.join("espeak-ng-data");
@@ -663,8 +640,6 @@ async fn run_download(
         let _ = tokio::fs::remove_dir_all(&target_dir).await;
         return Err(e);
     }
-    // 清理空 spec 目录项（modelscope 会有 dict/ 等空目录，无需特殊处理）
-
     let _ = mgr.initialize().await;
     Ok(())
 }
@@ -702,7 +677,7 @@ async fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(
     Ok(())
 }
 
-/// 试听合成：根据前端传入的 settings 构造 adapter 并合成一段 wav，返回临时路径。
+/// 试听合成：按前端 settings 构造 adapter，合成 WAV 并返回临时路径。
 #[derive(serde::Deserialize)]
 pub struct SherpaPreviewSettings {
     pub sherpa_onnx_model_name: Option<String>,
@@ -744,8 +719,7 @@ pub async fn test_sherpa_onnx_voice(
         .sherpa_onnx_model_type
         .clone()
         .unwrap_or_else(|| "vits".to_string());
-    // 试听文本里的假名/谚文优先于页面上选的语言：默认语言是中文，直接粘日文会让
-    // kokoro 把假名逐字当英文/中文念（实测 14 字要 9.9 秒且听不出是日文）。
+    // 试听文本里的假名/谚文优先于页面语言。
     let language = crate::ai_service::tts::text_language::detect(&text)
         .map(str::to_string)
         .or_else(|| {
@@ -780,8 +754,7 @@ pub async fn test_sherpa_onnx_voice(
     )
     .map_err(|e| e.to_string())?;
 
-    // 参考音频（零样本克隆）：音频与文本必须成对，只有其一无法生效，明确报错
-    // 以免用户误以为已启用克隆。
+    // 参考音频与文本必须成对，否则明确报错。
     let ref_audio = settings
         .sherpa_onnx_ref_audio_path
         .clone()
@@ -854,30 +827,19 @@ pub fn sherpa_onnx_ref_audio_root() -> PathBuf {
     crate::data_dir::get_data_dir().join("sherpa_onnx_ref_audio")
 }
 
-/// 导入零样本声音克隆的参考音频（替代「手填路径」）。
-///
-/// 导入会把文件复制进应用数据目录，而不是把用户选的路径原样存进角色设置：
-/// - Android：`plugin-dialog` 返回的是 `content://` URI，`std::fs` 读不了，旧实现
-///   把它直接存进角色设置，`load_reference_audio` 静默失败、用户只会觉得「选了没
-///   反应」。这里先经 SAF bridge 把 URI 落到 cache，再复制到 data 目录，此后就是
-///   普通文件路径。
-/// - 桌面端：直接用原路径复制，源文件之后被移动/删除也不影响克隆。
-///
-/// 落盘前统一用 `utils::audio` 转成 16-bit PCM WAV：零样本克隆只接受 WAV，
-/// 而且 `load_reference_audio` 是手工解析 RIFF 头、只认 16/32 位 PCM。这样
-/// mp3/flac/ogg/m4a 乃至 24 位或浮点 WAV 都能直接用，不必让用户自己转格式。
+/// 导入零样本参考音频：复制进应用数据目录（Android 经 SAF 落盘，避免 content:// 读不了），
+/// 并统一转成 16-bit PCM WAV。
 #[tauri::command]
 pub async fn import_sherpa_ref_audio(
     app: AppHandle,
     path: String,
 ) -> Result<SherpaRefAudioImport, String> {
-    // Android 的 content:// 先落到 cache；桌面端原路径直通（cleanup 为 false）。
+    // Android 的 content:// 先落到 cache；桌面端原路径直通。
     let src =
         crate::ai_service::tts::local::saf_bridge::prepare_file_import_source(&app, &path).await?;
 
     let result: Result<SherpaRefAudioImport, String> = async {
-        // 1. 落盘名：取原文件名（去掉路径分隔符与 FAT/NTFS 非法字符），扩展名固定
-        //    wav —— 转码产物一定是 WAV。
+        // 落盘名取原文件名（清理非法字符），扩展名固定 wav。
         let stem =
             crate::ai_service::tts::local::saf_bridge::sanitize_staged_filename(&src.display_name)
                 .and_then(|name| {
@@ -894,8 +856,7 @@ pub async fn import_sherpa_ref_audio(
             .await
             .map_err(|e| format!("创建参考音频目录失败: {e}"))?;
 
-        // 2. 同名不覆盖：追加 `_2`/`_3`…（旧文件可能仍被其它角色引用）。计数器兜底
-        //    上限，避免极端情况下死循环。
+        // 同名不覆盖：追加 `_2`/`_3`…（旧文件可能仍被其它角色引用）。
         let mut file_name = format!("{stem}.wav");
         let mut counter = 2u32;
         while dir.join(&file_name).exists() {
@@ -913,7 +874,7 @@ pub async fn import_sherpa_ref_audio(
             counter += 1;
         }
 
-        // 3. 转码落盘。sherpa 侧只认 WAV，格式问题都在这里消化掉。
+        // sherpa 只认 WAV，格式问题在这里消化。
         let dest = dir.join(&file_name);
         crate::utils::audio::transcode_to_wav_16bit(&src.path, &dest).map_err(|e| {
             use crate::utils::audio::TranscodeError;
@@ -959,17 +920,13 @@ pub async fn import_sherpa_ref_audio(
     result
 }
 
-/// 打开 Sherpa 模型目录（文件管理器）。
-///
-/// Android 经 `storage-permission` 插件在系统文件管理器中打开目录；
-/// 桌面端用系统默认方式（explorer / open / xdg-open）。
+/// 打开 Sherpa 模型目录（Android 经 `storage-permission`，桌面端用系统默认方式）。
 #[tauri::command]
 pub async fn open_sherpa_onnx_model_manager(app: tauri::AppHandle) -> Result<(), String> {
     let dir = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
     let _ = tokio::fs::create_dir_all(&dir).await;
 
-    // 模型目录位于应用数据目录，桌面端用系统默认方式（explorer / open /
-    // xdg-open）打开；Android 无对应系统入口（`open_folder` 直接返回 Ok）。
+    // Android 无对应系统入口（`open_folder` 直接返回 Ok）。
     let _ = app;
     crate::utils::system::open_folder(&dir.to_string_lossy())
 }
@@ -983,11 +940,7 @@ pub struct SherpaStorageStatus {
     pub model_root: String,
 }
 
-/// 检查 Sherpa-ONNX 模型目录的存储访问权限。
-///
-/// 模型目录统一位于应用数据目录（`data/sherpa_onnx_models`，Android 为应用专属
-/// 沙箱 `Android/data/<package>/files/sherpa_onnx_models`），无需任何存储权限，
-/// 因此恒返回已授权；同时返回模型根目录路径供前端展示。
+/// 模型目录位于应用数据目录，无需存储权限，恒返回已授权。
 #[tauri::command]
 pub async fn check_sherpa_storage_permission(
     _app: tauri::AppHandle,
@@ -1001,10 +954,7 @@ pub async fn check_sherpa_storage_permission(
     })
 }
 
-/// 请求 Sherpa-ONNX 模型目录的存储访问权限。
-///
-/// 模型目录位于应用数据目录，无需存储权限，恒视为已授权（保留此命令仅为前端
-/// 兼容，不再弹出任何系统授权流程）。
+/// 恒视为已授权；保留此命令仅为前端兼容。
 #[tauri::command]
 pub async fn request_sherpa_storage_permission(
     _app: tauri::AppHandle,

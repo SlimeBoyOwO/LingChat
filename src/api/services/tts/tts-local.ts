@@ -111,17 +111,17 @@ export function setEnabled(enabled: boolean): Promise<LocalTtsSwitchStatus> {
   return invoke<LocalTtsSwitchStatus>("tts_local_set_enabled", { enabled });
 }
 
-/** 热切换本地 TTS 推理设备（"cpu" | "gpu" | "npu" | "device:<id>"；DirectML 仅 Windows） */
+/** 热切换推理设备（cpu/gpu/npu/device:<id>；DirectML 仅 Windows）。 */
 export function setDevice(device: string): Promise<void> {
   return invoke<void>("tts_local_set_device", { device });
 }
 
-/** 获取当前推理设备（持久化配置） */
+/** 当前推理设备（持久化配置）。 */
 export function getDevice(): Promise<string> {
   return invoke<string>("tts_local_get_device");
 }
 
-/** 枚举 DirectML 推理设备（GPU 列表，供用户选择特定显卡） */
+/** 枚举 DirectML 设备。 */
 export interface InferenceDeviceInfo {
   id: number;
   name: string;
@@ -148,7 +148,7 @@ export async function deleteVoice(voiceId: string): Promise<void> {
   await invoke("tts_local_delete_voice", { voiceId });
 }
 
-/** 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎 */
+/** 删除 DeBERTa 共享模型并卸载引擎。 */
 export function deleteDeberta(): Promise<void> {
   return invoke("tts_local_delete_deberta");
 }
@@ -168,10 +168,6 @@ export function synthesizePreview(params: {
 }): Promise<Uint8Array> {
   return invoke<Uint8Array>("tts_local_synthesize_preview", params);
 }
-
-// ---------------------------------------------------------------------------
-// Sherpa-ONNX 本地模型管理
-// ---------------------------------------------------------------------------
 
 export interface SherpaOnnxModelRecord {
   id: string;
@@ -223,7 +219,7 @@ async function ensureSherpaProgressSubscription(): Promise<void> {
   await sherpaProgressSubscription;
 }
 
-/** 订阅 Sherpa 模型下载进度；返回取消订阅函数。 */
+/** 订阅下载进度，返回取消函数。 */
 export function onSherpaDownloadProgress(listener: ProgressListener): () => void {
   void ensureSherpaProgressSubscription();
   const unsubscribe = sherpaProgressBus.subscribe(listener);
@@ -240,10 +236,10 @@ export function listSherpaModels(): Promise<SherpaOnnxModelRecord[]> {
   return invoke<SherpaOnnxModelRecord[]>("sherpa_list_models");
 }
 
-/** 模型自带的一个说话人（sid 就是合成时传给模型的下标）。 */
+/** 说话人；sid 为合成时传给模型的下标。 */
 export interface SherpaSpeaker {
   sid: number;
-  /** 模型 metadata 里的名字（kokoro 是 `zf_001` 这类），没有名字时为空串。 */
+  /** metadata 中的名字，可能为空串。 */
   name: string;
 }
 
@@ -252,12 +248,7 @@ export interface SherpaSpeakersInfo {
   speakers: SherpaSpeaker[];
 }
 
-/**
- * 列出模型自带的全部音色。
- *
- * 后端直接读 ONNX metadata，不加载模型，所以切模型时可以随手调用；多文件模型
- * （zipvoice / pocket）没有单一主模型，会抛错，调用方保持原来的四个语义档即可。
- */
+/** 列出模型自带音色（读 ONNX metadata，不加载模型）；多文件模型会抛错，调用方退回语义档。 */
 export function listSherpaSpeakers(modelId: string): Promise<SherpaSpeakersInfo> {
   return invoke<SherpaSpeakersInfo>("sherpa_list_speakers", { modelName: modelId });
 }
@@ -270,38 +261,26 @@ export function deleteSherpaModel(modelId: string): Promise<void> {
   return invoke<void>("sherpa_delete_model", { modelId });
 }
 
-/** 参考音频导入结果。 */
 export interface SherpaRefAudioImport {
-  /** 落盘后的本地路径（写回 `sherpa_onnx_ref_audio_path`）。 */
+  /** 落盘后的本地路径。 */
   path: string;
-  /** 展示用文件名。 */
   file_name: string;
 }
 
 /**
- * 导入零样本克隆的参考音频。
- *
- * 后端会把文件复制进应用数据目录并统一转成 16-bit PCM WAV（sherpa 只吃这种格式，
- * Android 上 dialog 给的 `content://` URI 也无法直接读）；失败时可能抛出
- * `SHERPA_REF_AUDIO_UNSUPPORTED` / `SHERPA_REF_AUDIO_TOO_LONG` 两个错误码，
- * 由调用方翻译成提示。
+ * 导入参考音频：后端复制到应用数据目录并转 16-bit PCM WAV（sherpa 仅支持该格式，
+ * Android content:// 无法直读）；失败抛 SHERPA_REF_AUDIO_* 错误码。
  */
 export function importSherpaRefAudio(path: string): Promise<SherpaRefAudioImport> {
   return invoke<SherpaRefAudioImport>("import_sherpa_ref_audio", { path });
 }
 
-/** 本次会话里已迁移过的 `content://` 参考音频（同一个 URI 只导入一次，别重复落盘）。 */
+/** 会话内已迁移的 content:// 音频，避免重复落盘。 */
 const migratedRefAudio = new Map<string, SherpaRefAudioImport>();
 
 /**
- * 迁移历史遗留的 `content://` 参考音频路径（Android）。
- *
- * 早期版本把 dialog 给的路径原样写进角色设置，Android 上那是 `content://` URI：
- * Rust 的 `std::fs` 读不了，试听直接报错、聊天时的零样本克隆会静默退化。
- * 这里借已有的导入命令把它落到应用数据目录——Rust 侧经 SAF（ContentResolver）
- * 拿到真实文件名，并统一转码成 16-bit PCM WAV。
- *
- * 不是 `content://`、或迁移失败（URI 授权已失效等）时返回 `null`，调用方保留原值。
+ * 迁移历史 content:// 参考音频（Android）：std::fs 无法读取，经 SAF 落盘并转 PCM WAV。
+ * 非 content:// 或迁移失败返回 null，调用方保留原值。
  */
 export async function migrateSherpaRefAudio(path: string): Promise<SherpaRefAudioImport | null> {
   if (!path.startsWith("content://")) return null;
@@ -318,24 +297,21 @@ export async function migrateSherpaRefAudio(path: string): Promise<SherpaRefAudi
   }
 }
 
-// ---------------------------------------------------------------------------
-// Sherpa-ONNX 模型目录状态（目录固定为应用数据目录 data/sherpa_onnx_models，
-// 无需外部存储权限，granted 恒为 true，仅用于向用户展示模型存放位置）
-// ---------------------------------------------------------------------------
+// 模型目录固定为 data/sherpa_onnx_models（应用数据目录，无需外部存储权限）。
 
 export interface SherpaStorageStatus {
-  /** 是否可访问模型目录。目录位于应用数据目录，恒为 true。 */
+  /** 模型目录恒可访问（应用数据目录）。 */
   granted: boolean;
-  /** 模型根目录（用于向用户展示模型存放位置）。 */
+  /** 模型根目录。 */
   model_root: string;
 }
 
-/** 查询 Sherpa-ONNX 模型目录状态（granted + 模型根目录路径）。 */
+/** 查询模型目录状态。 */
 export function checkSherpaStoragePermission(): Promise<SherpaStorageStatus> {
   return invoke<SherpaStorageStatus>("check_sherpa_storage_permission");
 }
 
-/** 兼容保留：模型目录无需权限，恒返回已授权。 */
+/** 兼容保留：恒返回已授权。 */
 export function requestSherpaStoragePermission(): Promise<SherpaStorageStatus> {
   return invoke<SherpaStorageStatus>("request_sherpa_storage_permission");
 }

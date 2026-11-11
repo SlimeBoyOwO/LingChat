@@ -1,15 +1,4 @@
 //! TTS 适配器实现集合。
-//!
-//! 每个后端对应 Python 的一个 `*_adapter.py`：
-//! - [`sbv2`] — Style-Bert-Vits2 本地 HTTP (`/voice`)
-//! - [`sbv2api`] — SBV2 API (`/synthesize`)
-//! - [`bv2`] — Simple-Vits-API Bert-Vits2 (`/voice/bert-vits2`)
-//! - [`vits`] — Simple-Vits-API VITS (`/voice/vits`)
-//! - [`gsv`] — GPT-SoVITS (`/tts`)
-//! - [`aivis`] — AIVIS Cloud API (`/v1/tts/synthesize`)
-//! - [`fish_s2`] — Fish Audio S2 / s2.cpp (`/generate`)
-//! - [`opentts`] — OpenAI TTS API (`/v1/audio/speech`)
-//! - [`indextts`] — IndexTTS2 presets (`/voice/indextts/presets`)
 
 pub mod aivis;
 pub mod bv2;

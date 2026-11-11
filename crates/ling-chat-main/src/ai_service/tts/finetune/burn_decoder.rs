@@ -1,9 +1,4 @@
-//! 用 burn 实现的基座解码器，与 candle 版逐层对齐。
-//!
-//! 网络结构：时间 MLP、下行路径（时间条件卷积残差块 + 自注意力 + 卷积下采样）、
-//! 中部（两个残差注意力块）、上行路径（残差注意力块 + 上采样/转置卷积）、
-//! 收尾卷积与 mel 投影。转置卷积用 burn 原生实现，省去 candle 为绕开自动求导
-//! 限制而写的手工等价版本。
+//! burn 版基座解码器，结构与 candle 版逐层对齐；转置卷积直接用 burn 原生实现。
 
 use burn::module::{Module, Param};
 use burn::nn::PaddingConfig1d;
@@ -16,21 +11,13 @@ use super::conv_lora::{ConvLora, ConvTransposeLora};
 /// 解码器超参数（burn 版，字段与 candle 版对应）。
 #[derive(Debug, Clone)]
 pub struct BurnBaseDecoderConfig {
-    /// 隐层通道数。
     pub channels: usize,
-    /// 时间嵌入维度。
     pub time_dim: usize,
-    /// 时间 MLP 隐层。
     pub time_hidden: usize,
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 解码器输入通道数：加噪 mel 与先验 mel 拼接。
+    /// 加噪 mel 与先验 mel 拼接后的输入通道数。
     pub input_channels: usize,
-    /// 卷积 LoRA 秩；0 表示不挂载。
-    ///
-    /// 覆盖残差块的 conv1/conv2/res_conv、下行采样卷积、上行采样卷积、
-    /// 收尾卷积与 mel 投影。下投影是 1x1 卷积，上投影保持原卷积核/步长，
-    /// 导出时能精确折叠回基座卷积权重（转置卷积走单独的低秩形式）。
+    /// 卷积 LoRA 秩；0 不挂载。上投影保持原卷积核/步长，导出可精确折叠（转置卷积另有形式）。
     pub conv_lora_rank: usize,
 }
 
@@ -47,10 +34,7 @@ impl Default for BurnBaseDecoderConfig {
     }
 }
 
-/// 逐通道风格调制（FiLM），初始为恒等映射。
-///
-/// 训练时对归一化输出做 `y * gamma + beta`。导出前把 gamma/beta 折进归一化
-/// 自带的 weight/bias，因此导出的 ONNX 图结构不变，推理端零改动。
+/// 逐通道风格调制（FiLM），初始恒等；导出前折进归一化仿射，图结构不变。
 #[derive(Module, Debug)]
 struct StyleFilm {
     gamma: Param<Tensor<1>>,
@@ -102,13 +86,10 @@ impl StyleFilm {
     }
 }
 
-/// 分组归一化加逐通道仿射，等价 candle 的 GroupNormAffine。
-///
-/// 把通道分 8 组，组内按（通道 x 帧）做纯归一化，再施加逐通道仿射
-/// （weight/bias 形状 [channels, 1]，由匿名 onnx 常量按映射表落位）。
+/// 分组归一化加逐通道仿射；8 组，仿射常量按映射表落位。
 #[derive(Module, Debug)]
 struct GroupNormAffine {
-    /// 纯分组归一化（无内部仿射），仿射由 weight/bias 手工施加。
+    /// 纯分组归一化；仿射由 weight/bias 手工施加。
     norm: burn::nn::GroupNorm,
     weight: Param<Tensor<2>>,
     bias: Param<Tensor<2>>,
@@ -182,7 +163,7 @@ struct ResBlock {
     conv1: Conv1d,
     conv2: Conv1d,
     res_conv: Conv1d,
-    /// 卷积低秩旁路；`None` 表示未启用，导出时折进对应基座卷积。
+    /// 卷积低秩旁路；`None` 表示未启用，导出时折进基座卷积。
     conv_lora1: Option<ConvLora>,
     conv_lora2: Option<ConvLora>,
     conv_lora_res: Option<ConvLora>,
@@ -408,7 +389,6 @@ impl AttnBlock {
 }
 
 /// 参数化 GELU：u + sin(u*exp(alpha))^2 / (exp(beta) + 1e-9)。
-/// 参数化 GELU：u + sin(u*exp(alpha))^2 / (exp(beta) + 1e-9)。
 fn gelu_parametric(x: Tensor<2>, alpha: Tensor<1>, beta: Tensor<1>) -> Tensor<2> {
     let [_, cols] = x.dims();
     // 展开成 [1, cols] 与帧维广播相乘。
@@ -420,7 +400,7 @@ fn gelu_parametric(x: Tensor<2>, alpha: Tensor<1>, beta: Tensor<1>) -> Tensor<2>
     x + sin_sq / denom
 }
 
-/// 上采样算子：up_blocks.{i}.2，i=0 转置卷积，i=1 普通卷积。
+/// 上采样算子：i=0 转置卷积，i=1 普通卷积。
 #[derive(Module, Debug)]
 enum UpSampler {
     Transpose(ConvTranspose1d),
@@ -472,9 +452,8 @@ pub struct BurnBaseDecoder {
     final_norm: GroupNormAffine,
     final_block: Conv1d,
     final_proj: Conv1d,
-    /// 下行采样卷积的旁路；与元组字段分开存，保证旧检查点的键名不变。
+    /// 下行/上行采样卷积旁路；与元组字段分开存，保证旧检查点键名不变。
     down_conv_lora: Vec<Option<ConvLora>>,
-    /// 上行采样算子的旁路（转置卷积/普通卷积两种形式）。
     up_conv_lora: Vec<Option<SamplerLora>>,
     final_block_conv_lora: Option<ConvLora>,
     final_proj_conv_lora: Option<ConvLora>,
@@ -585,11 +564,7 @@ impl BurnBaseDecoder {
         }
     }
 
-    /// 返回一个把风格 FiLM 与卷积 LoRA 折叠进基座权重的副本，供 ONNX 导出使用。
-    ///
-    /// FiLM 折叠是精确等价变换：`(x*w+b)*gamma+beta == x*(w*gamma)+(b*gamma+beta)`；
-    /// 卷积 LoRA 则把 `B @ A` 低秩增量直接加到基座卷积核。导出桥仍然只认识基座
-    /// 原有的 weight/bias，因此不需要给 ONNX 图加节点。
+    /// 返回折叠了风格 FiLM 与卷积 LoRA 的副本，供导出；折叠是精确等价，ONNX 图无需加节点。
     pub fn folded_for_export(&self) -> Self {
         let mut decoder = self.clone();
         for (block, attention, _) in &mut decoder.down {
@@ -625,7 +600,7 @@ impl BurnBaseDecoder {
         decoder
     }
 
-    /// 前向：输入加噪 mel、文本隐状态与时间，输出速度场。
+    /// 前向：输出速度场。
     pub fn forward(&self, noisy: Tensor<3>, text: Tensor<3>, time: Tensor<2>) -> Tensor<3> {
         let time = self.time_mlp.forward(time);
         let mut hidden = Tensor::cat(vec![noisy, text], 1);
@@ -681,11 +656,7 @@ impl BurnBaseDecoder {
     }
 }
 
-// ---- 权重桥：从 ONNX 基座（命名张量 + decoder_weight_map.json 匿名常量）填充解码器 ----
-
-/// 把一组 float 数据装入一个线性层权重。`src` 以 `onnx::MatMul_` 开头时代表 ONNX
-/// MatMul 的 [in, out] 布局，与 burn Linear 的 `weight: [d_input, d_output]` 一致，
-/// 无需转置；其它来源（Gemm/命名）是 `[out, in]`，需转置再填。
+/// 把一组 float 数据装入线性层权重；ONNX `MatMul_` 与 burn 同布局，Gemm/命名来源需转置。
 fn set_linear_weight(
     linear: &mut burn::nn::Linear,
     data: &[f32],
@@ -712,10 +683,7 @@ fn set_linear_bias(linear: &mut burn::nn::Linear, data: &[f32], dims: &[usize], 
     }
 }
 
-/// 给卷积权重填充数据。ONNX 普通/转置卷积权重布局均为 `[c_out, c_in, k]`，而 burn
-/// 的 `Conv1d`/`ConvTranspose1d` 权重为 `[c_in, c_out, k]`，需交换前两维。
-/// 卷积权重（普通与转置卷积）布局同为 `[c_out, c_in, k]`，与 burn 的
-/// `Conv1d::weight`、`ConvTranspose1d::weight` 一致，无需转置。
+/// 给卷积权重填数据；ONNX 与 burn 的卷积权重布局一致，无需转置。
 fn set_conv_weight(conv: &mut Conv1d, data: &[f32], dims: &[usize], device: &Device) {
     let t = Tensor::<3>::from_data(TensorData::new(data.to_vec(), dims.to_vec()), device);
     conv.weight = Param::from_tensor(t);
@@ -750,11 +718,7 @@ fn set_affine_bias(affine: &mut Affine, data: &[f32], dims: &[usize], device: &D
     affine.bias = Param::from_tensor(t);
 }
 
-/// 按目标名把一个命名 ONNX 权重填入解码器对应参数。
-///
-/// 目标名沿用 candle 版的参数位路径（如
-/// `model.decoder.estimator.down_blocks.0.0.block1.block.0.weight`）。未知名字静默忽略，
-/// 便于复用基座权重。
+/// 按目标名把命名 ONNX 权重填入解码器；目标名沿用 candle 版参数位路径，未知名字忽略。
 pub fn apply_named_decoder_weight(
     decoder: &mut BurnBaseDecoder,
     name: &str,
@@ -869,10 +833,7 @@ pub fn apply_named_decoder_weight(
     }
 }
 
-/// 从块的 ONNX 子路径里剥离开头的元组索引。
-///
-/// 块内是一个元组：`0.` 开头是残差块、`1.0.` 开头是注意力块。返回剥掉
-/// 该前缀后的子路径（`block1...`、`mlp.1...`、`attn1...` 等）。不匹配返回 None。
+/// 从块的 ONNX 子路径剥离开头元组索引：`0.` 为残差块，`1.0.` 为注意力块。
 fn strip_tuple_index(after: &str) -> Option<String> {
     if let Some(rest) = after.strip_prefix("0.") {
         return Some(rest.to_string());
@@ -1210,7 +1171,7 @@ fn read_block_weight(
     None
 }
 
-/// 读上采样算子（conv 权重/偏置，转置卷积权重）。
+/// 读上采样算子权重/偏置。
 fn read_sampler_weight(sampler: &UpSampler, is_weight: bool) -> Option<Vec<f32>> {
     match sampler {
         UpSampler::Transpose(ct) => {
@@ -1230,11 +1191,7 @@ fn read_sampler_weight(sampler: &UpSampler, is_weight: bool) -> Option<Vec<f32>>
     }
 }
 
-/// 按 ONNX 语义名回读解码器某参数，返回 ONNX 布局的扁平 f32 值。
-///
-/// `name` 形如 `model.decoder.estimator.up_blocks.0.2.conv.weight`，与
-/// `apply_named_decoder_weight` 的写入目标一致。找不到对应字段返回 None。用于把
-/// 微调后的解码器权重导出回基座 ONNX。
+/// 按 ONNX 语义名回读解码器参数，返回 ONNX 布局的扁平 f32；用于导出。
 pub fn read_decoder_param(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec<f32>> {
     let base = name.strip_prefix("model.decoder.estimator.")?;
     // `ff.net.0.alpha`/`ff.net.0.beta` 是单值参数，按 weight 语义处理且保留完整子路径。
@@ -1340,12 +1297,7 @@ pub fn read_decoder_param(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec<f
     None
 }
 
-/// 从基座 ONNX 权重构建解码器：先填命名张量（卷积、线性、偏置、时间 MLP、注意力仿射、
-/// ff 常数），再按 decoder_weight_map 把匿名常量（注意力 qkv 权重、归一化仿射）落位，
-/// 其余保留随机初值。
-///
-/// `tensors` 来自 onnx_weights::read_initializers。地图文件用 candle 版的
-/// `decoder_weight_map.json`。
+/// 从基座 ONNX 构造解码器：先填命名张量，再按 `decoder_weight_map.json` 落位匿名常量。
 pub fn from_onnx_tensors(
     config: &BurnBaseDecoderConfig,
     tensors: &[super::onnx_weights::OnnxTensor],
@@ -1404,7 +1356,7 @@ mod tests {
     use super::super::burn_backend::{train_device, train_device_autodiff};
     use super::*;
 
-    /// `no_grad` 后按路径解冻时，只应恢复 FiLM 与卷积旁路参数。
+    /// `no_grad` 后按路径解冻时，只恢复 FiLM 与卷积旁路参数。
     #[test]
     fn adapter_groups_only_unfreeze_adapters() {
         let device = train_device_autodiff();
@@ -1604,8 +1556,7 @@ mod tests {
         assert!(folded.final_proj_conv_lora.is_none());
     }
 
-    /// 在当前平台设备上跑一次前向，验证形状与链路可用。
-    /// 输入 [1, 160, 5]，时间 [1, 160]，输出 [1, 80, 10]（上采样后帧数变化）。
+    /// 当前平台前向：仅校验输出通道数。
     #[test]
     fn forward_produces_velocity_field() {
         let device = train_device();
@@ -1660,7 +1611,7 @@ mod tests {
         assert_eq!(out.shape().dims::<3>()[1], 80);
     }
 
-    /// 从基座 ONNX 加载解码器后逐一回读，确认与原始 ONNX 权重一致（导出逆桥正确）。
+    /// 从基座 ONNX 加载解码器后逐一回读，确认与原始权重一致。
     #[test]
     fn read_back_matches_onnx_original() {
         let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

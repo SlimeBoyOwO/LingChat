@@ -40,8 +40,7 @@ pub trait TtsAdapter: Send + Sync {
 /// 连续合成失败多少次才禁用 TTS。
 const MAX_CONSECUTIVE_FAILURES: u32 = 3;
 
-/// TTS Provider：持有所有已初始化的适配器并按 `tts_type` 路由。
-/// 对应 Python `TTS` 类。
+/// 持有所有已初始化的适配器并按 `tts_type` 路由。
 #[derive(Clone)]
 pub struct TtsProvider {
     pub audio_format: String,
@@ -135,10 +134,7 @@ impl TtsProvider {
         tracing::info!("TTS 服务已重新启用");
     }
 
-    /// TTS 被禁用后，用当前消息在后台探测服务是否恢复。
-    ///
-    /// 探测音频不会写入文件；成功后仅重新启用 TTS，让下一条消息正常输出语音。
-    /// 同一时刻最多执行一次探测，避免多分段消息重复请求。
+    /// TTS 禁用后用当前消息在后台探测是否恢复；同一时刻最多一次。
     pub fn recover_in_background(&self, text: String, tts_type: String, emo: String) {
         if self.is_enabled() || text.trim().is_empty() {
             return;
@@ -230,10 +226,7 @@ impl TtsProvider {
         Ok(adapter)
     }
 
-    /// 合成并把字节写入 `file_path`。
-    ///
-    /// 连续失败 [`MAX_CONSECUTIVE_FAILURES`] 次才禁用 TTS —— 单句失败只回报错误，
-    /// 后面的句子仍会正常尝试合成。
+    /// 合成并写入文件；连续失败 [`MAX_CONSECUTIVE_FAILURES`] 次才禁用 TTS。
     pub async fn generate_voice(
         &self,
         text: &str,

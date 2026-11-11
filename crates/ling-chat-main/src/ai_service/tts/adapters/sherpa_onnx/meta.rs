@@ -1,13 +1,5 @@
-//! 直接从 ONNX 模型里读 metadata（`n_speakers` / `speaker_names` 等）。
-//!
-//! sherpa-onnx 加载模型时读的就是这些键（见上游 `offline-tts-vits-model.cc` 的
-//! `SHERPA_ONNX_READ_META_DATA(meta_data_.num_speakers, "n_speakers")`），它们写在
-//! ONNX `ModelProto.metadata_props`（field 14）里。这里按 protobuf 的 wire format
-//! 走一遍顶层字段，跳过 graph 等大块数据：既不用 onnxruntime，也不把模型读进内存，
-//! 所以「模型有多少个音色」是毫秒级查询 —— 设置页只是想列个列表，没必要为它加载
-//! 几百 MB 的模型（kokoro 加载一次要一两秒，安卓上更慢）。
-//!
-//! 解析失败一律报错，让调用方回退到「只有四个语义档」；不能编出一个音色列表。
+//! 直接读 ONNX metadata（`n_speakers` / `speaker_names`），不加载模型。
+//! 解析失败一律报错，由调用方回退。
 
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -64,11 +56,7 @@ pub(super) fn read_onnx_metadata(path: &Path) -> Result<BTreeMap<String, String>
     Ok(meta)
 }
 
-/// 从 metadata 里解析说话人数量与名字（下标即 sid）。
-///
-/// - `n_speakers`：sherpa 自己也读这个键，缺省是 1。
-/// - `speaker_names`：逗号分隔，顺序就是 sid（kokoro 的 `af_maple,zf_001,…`）。
-/// - `id2speaker`：老模型的写法，`0->a,1->b`，只在没有 `speaker_names` 时用。
+/// 解析说话人数量与名字（下标即 sid）；`id2speaker` 为老模型写法，仅在无 `speaker_names` 时用。
 pub(super) fn speakers_from_metadata(meta: &BTreeMap<String, String>) -> (usize, Vec<String>) {
     let mut names = metadata_names(meta);
     let num_speakers = meta
@@ -78,7 +66,7 @@ pub(super) fn speakers_from_metadata(meta: &BTreeMap<String, String>) -> (usize,
         .or_else(|| (!names.is_empty()).then_some(names.len()))
         .unwrap_or(1);
 
-    // 名字比人数少时补空串，多了就截掉：前端按「没有名字就只显示 sid」处理。
+    // 名字数量与人数对齐：少补空串、多则截掉。
     names.resize(num_speakers, String::new());
     names.truncate(num_speakers);
     (num_speakers, names)
@@ -278,7 +266,7 @@ mod tests {
             (3, vec!["a".to_string(), "b".to_string(), "c".to_string()])
         );
 
-        // 老模型只有 id2speaker，等价于 speaker_names。
+        // 老模型只有 id2speaker。
         let mut meta = BTreeMap::new();
         meta.insert("n_speakers".to_string(), "3".to_string());
         meta.insert(
@@ -294,7 +282,7 @@ mod tests {
         assert_eq!((num, names.len()), (1, 1));
         assert!(names[0].is_empty());
 
-        // 名字比 n_speakers 少/多都要对齐。
+        // 名字数量与 n_speakers 对齐。
         let mut meta = BTreeMap::new();
         meta.insert("n_speakers".to_string(), "2".to_string());
         meta.insert("speaker_names".to_string(), "a,b,c".to_string());

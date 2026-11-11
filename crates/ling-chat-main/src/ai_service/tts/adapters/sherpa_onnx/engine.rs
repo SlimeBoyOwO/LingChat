@@ -1,7 +1,4 @@
-//! 引擎构造：按模型类型定位文件、填 sherpa 的模型配置，公共部分由 [`build_engine`] 收口。
-//!
-//! 这里还有「模型目录里有什么」这类探测：`rule_fst_paths`（文本规则 FST）、
-//! `model_reads_latin`（词表认不认英文）、`kokoro_lexicons`、`zipvoice_lexicon`。
+//! 引擎构造：按模型类型定位文件并填 sherpa 配置。
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -16,8 +13,7 @@ use sherpa_onnx::{
 use super::text::is_language;
 use super::{MAX_NUM_SENTENCES, SILENCE_SCALE, SherpaTuning};
 
-/// 按模型类型创建引擎。所有实现都只是「找到文件 → 交给 sherpa」，公共配置见
-/// [`build_engine`]。
+/// 按模型类型创建引擎。
 pub(super) fn create_engine(
     model_type: &str,
     model_dir: &Path,
@@ -44,10 +40,7 @@ fn base_model_config(provider: Option<&str>) -> OfflineTtsModelConfig {
     }
 }
 
-/// 各模型共用的引擎配置：
-/// - `max_num_sentences`：我们自己切句，见 [`MAX_NUM_SENTENCES`]；
-/// - `silence_scale`：停顿缩放，见 [`SILENCE_SCALE`]；
-/// - 模型目录里的文本规则 FST（数字/日期/电话改写）。
+/// 各模型共用的引擎配置（切句、停顿缩放、规则 FST）。
 fn build_engine(model: OfflineTtsModelConfig, model_dir: &Path, label: &str) -> Result<OfflineTts> {
     let config = OfflineTtsConfig {
         model,
@@ -133,16 +126,13 @@ fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
     )
 }
 
-/// Kokoro 多语言：`voices.bin` 选音色，lexicon 决定读得出哪些文字。
-///
-/// sherpa-onnx 2.0 起不再内置 espeak-ng，`data_dir` / `lang` 都被忽略；语言完全由
-/// 模型目录里的 `lexicon*.txt` 决定。因此这里把能找到的词表全部传给 Kokoro。
+/// Kokoro 多语言：`voices.bin` 选音色，`lexicon*.txt` 决定可读文字。
+/// sherpa-onnx 2.0 起 `data_dir` / `lang` 被忽略，这里传入所有能找到的词表。
 fn create_kokoro_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
     let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
     let voices = find_file(model_dir, &["voices.bin"])?;
-    // Android/arm64 上 kokoro 的 int8 量化会输出纯静音或钉死的垃圾样本（上游
-    // k2-fsa/sherpa-onnx#3754；同一设备换 fp32 立即恢复，已在实机验证）。这里
-    // 直接报错，避免用户只听到一段静音却看不出原因。桌面端不受影响。
+    // Android/arm64 上 kokoro 的 int8 量化会输出静音/垃圾样本（上游 sherpa-onnx#3754，
+    // 实机验证换 fp32 即恢复），这里直接报错，避免用户只听到静音。
     if cfg!(target_os = "android")
         && model
             .file_name()
@@ -176,8 +166,7 @@ fn create_kokoro_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
     )
 }
 
-/// ZipVoice 零样本克隆：encoder/decoder/vocoder + 音素表（sherpa-onnx 2.0 起
-/// espeak-ng 已移除，不再需要 data_dir）。
+/// ZipVoice 零样本克隆：encoder/decoder/vocoder + 音素表。
 fn create_zipvoice_tts(
     model_dir: &Path,
     provider: Option<&str>,
@@ -187,9 +176,8 @@ fn create_zipvoice_tts(
     let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
     let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
 
-    // sherpa-onnx 2.0 起 espeak-ng 已移除，data-dir 被忽略；ZipVoice 只需要
-    // tokens + lexicon。lexicon 为空时原生侧仍会 `_Exit(-1)`，所以继续在这里
-    // 先拦成普通错误。
+    // ZipVoice 只需要 tokens + lexicon；lexicon 为空时原生侧会 `_Exit(-1)`，
+    // 这里先拦成普通错误。
     let lexicon = zipvoice_lexicon(model_dir)?;
 
     let zipvoice_config = OfflineTtsZipvoiceModelConfig {
@@ -201,14 +189,8 @@ fn create_zipvoice_tts(
         // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
         data_dir: None,
         lexicon: Some(lexicon.to_string_lossy().to_string()),
-        // 默认值必须显式写：sherpa-onnx 的 Rust 绑定这里 `Default` 全是 0.0，
-        // 而原生侧要求 feat_scale/target_rms/guidance_scale > 0（0 会被
-        // `Generate` 直接判为非法参数）。数值取上游原生默认值，见
-        // sherpa-onnx/csrc/offline-tts-zipvoice-model-config.h：
-        // `feat_scale = 0.1, t_shift = 0.5, target_rms = 0.1, guidance_scale = 1.0`。
-        // 这三个值直接决定提示梅尔缩放、解码时间步与响度归一化，偏离一个数量级
-        // 就会合成出极轻的低频噪声（实测 feat_scale=10、t_shift=0.005 时音频
-        // 均响度只有 -36 dB，频谱集中在极低频）。
+        // 必须显式写：Rust 绑定默认全是 0.0，而原生侧要求这些值 > 0（0 会被判为非法参数）。
+        // 数值取上游默认：feat_scale=0.1、t_shift=0.5、target_rms=0.1、guidance_scale=1.0。
         feat_scale: 0.1,
         t_shift: 0.5,
         target_rms: 0.1,
@@ -358,9 +340,7 @@ fn find_file(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
 }
 
 /// 能拿来读 metadata 的主模型文件，按优先级排列。
-///
-/// zipvoice / pocket 这类「多文件模型」没有单一主模型（text_encoder + fm_decoder …），
-/// 查询音色时会走 `find_model_file` 的报错分支，由调用方回退到只有语义档。
+/// 多文件模型没有单一主模型，会走报错分支由调用方回退。
 const MODEL_FILE_CANDIDATES: &[&str] = &[
     "model.onnx",
     "model.int8.onnx",
@@ -376,14 +356,7 @@ pub(super) fn find_model_file(dir: &Path) -> Result<PathBuf> {
 }
 
 /// 模型目录里可能出现的文本规则 FST，按应用顺序排列。
-///
-/// 中文模型把规则 FST 放在模型目录里，sherpa 会在分词前依次改写文本（实测
-/// `text = tn->Normalize(text)`）：阿拉伯数字「3」先被改写成「三」，再交给 lexicon。
-///
-/// 不挂这些文件时，中文模型的 CharacterLexicon 对非汉字只能丢词——设备日志里就是
-/// `Ignore OOV '3'`，用户听到的是「第 3 章」读成「第 章」。名字与顺序都照上游示例：
-/// matcha-zh 是 `phone/date/number.fst`（scripts/matcha-tts/zh/generate_samples.py），
-/// kokoro 多语种是 `phone-zh/date-zh/number-zh.fst`（scripts/kokoro/v1.1-zh/…）。
+/// 中文模型靠它在分词前改写数字/日期；不挂载时 CharacterLexicon 会丢词。
 const RULE_FST_ORDER: &[&str] = &[
     "phone.fst",
     "date.fst",
@@ -405,9 +378,7 @@ fn rule_fst_paths(model_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// 若模型目录内附带文本规则 FST（matcha-zh 的 `number/date/phone.fst`、kokoro 的
-/// `*-zh.fst` 等），自动挂载到 `OfflineTtsConfig`，使数字、日期、电话号码在读之前
-/// 先被改写成可读文本。
+/// 若模型目录内附带文本规则 FST，挂载到 `OfflineTtsConfig`。
 fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTtsConfig {
     let fsts: Vec<String> = rule_fst_paths(model_dir)
         .into_iter()
@@ -423,28 +394,14 @@ fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTts
     config
 }
 
-/// 这个模型要不要在 Rust 侧自己改写阿拉伯数字（见 [`chinese_digits`]）。
-///
-/// 模型目录里带了规则 FST 的（matcha-zh、kokoro）交给 sherpa 自己改写——它的读法更
-/// 全（还含日期、电话号码规则），不必重复处理；没带的（zipvoice / supertonic 的实现
-/// 根本不读 `rule_fsts`，别的中文模型也可能没随包带 FST）就得我们补，否则数字要么被
-/// 前端丢词，要么念错。
-///
-/// 真正动不动手还要看当次文本（纯英文台词不塞汉字数字，见 [`chinese_digits::has_han`]）。
+/// 模型目录里没有规则 FST 时需在 Rust 侧改写数字。
+/// 是否动手还看当次文本（纯英文台词不改）。
 pub(super) fn needs_digit_normalization(model_dir: &Path) -> bool {
     rule_fst_paths(model_dir).is_empty()
 }
 
-/// 模型自己认得拉丁字母 / 日文假名吗——决定汉字句子里的英文、罗马音、假名要不要剔掉。
-///
-/// 依据是「模型目录里的词表认不认识拉丁字母」：kokoro 多语言版自带英文词表
-/// （`lexicon-us-en.txt` / `lexicon-gb-en.txt`），英文片段能直接读；中文 matcha /
-/// zipvoice 的词表里一个带字母的词条都没有（实测三张中文表 66k / 68k 条，键里含
-/// 拉丁字母的条目数为 0）。
-///
-/// 先看文件名（省一次读表）：文件名里带独立的一段 `en`（`lexicon-us-en.txt`、
-/// `lexicon-zh-en.txt`）就当作认得英文。没有这种文件时再看词表内容——自定义的
-/// 中英模型可能只给一个 `lexicon.txt`，键里出现拉丁字母同样说明模型认得。
+/// 模型词表是否认拉丁字母（决定英文/罗马音是否要剔除）。
+/// 先看文件名里的独立 `en` 段，再看词表内容里是否有拉丁字母键。
 pub(super) fn model_reads_latin(model_dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(model_dir) else {
         return false;
@@ -489,15 +446,8 @@ fn find_dir_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
         .find(|p| p.is_dir())
 }
 
-/// 收集 Kokoro 需要的 lexicon 文件（逗号分隔）。
-///
-/// 顺序与官方示例一致：英文 → 中文，其余 `lexicon*.txt` 兜底追加。
-/// 英文只挂一份：`lexicon-us-en.txt` 与 `lexicon-gb-en.txt` 内容高度重叠，
-/// 同时挂载会刷出上千行 "Duplicated word ... Ignore it" 告警。
-///
-/// sherpa-onnx 2.0 起不再内置 espeak-ng，lexicon 是唯一的中文/日文音素化入口；
-/// 不挂载时合成几乎出不来有效音频（只有 0.2~0.5 秒的噪声或纯静音），因此这里必须
-/// 显式挂载。
+/// 收集 Kokoro 需要的 lexicon（逗号分隔）。
+/// 英文只挂一份，避免大量重复词告警；2.0 起 lexicon 是唯一的中日文音素化入口。
 fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
     const ENGLISH: &[&str] = &["lexicon-us-en.txt", "lexicon-gb-en.txt"];
     const CHINESE: &[&str] = &["lexicon-zh.txt"];
@@ -540,31 +490,14 @@ fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
     )
 }
 
-/// 随包的 ZipVoice 中英音素表（`字/词 → 声母0 韵母…`）在 data 目录下的相对路径。
-///
-/// 为什么必须随包带一份：sherpa-onnx 的 `MatchaTtsLexicon` 在 lexicon 为空时直接
-/// `SHERPA_ONNX_EXIT(-1)`（= `_Exit(-1)`，进程以 255 静默退出，Rust 侧捕不到），
-/// 而 ZipVoice 的 `InitFrontend()` 必然走这个类。上游官方包里的 `lexicon.txt` 并不是
-/// 模型自带文件，而是 CI 打包时用 `scripts/zipvoice/zh-en/generate_lexicon.py`
-/// （pypinyin + 中英音素转换）现场生成的；我们用的 ModelScope 镜像包
-/// （`gomodels/sherpa`）里只有 `pinyin.raw`、没有该文件，而 `pinyin.raw` 的整音节写法
-/// （`好 hao3`）与模型 `tokens.txt` 的「声母+0 / 韵母」方案（`h0 ao3`）不兼容，
-/// 不能直接拿来当 lexicon。
-///
-/// 这个文件即上述脚本的输出（68037 条），音素已逐条校验都在模型 `tokens.txt` 里。
-/// 它放在 `data/third_party/` 下随包发布（桌面端进 `bundle.resources`、移动端进
-/// `data.7z`），而不是 `include_str!` 进二进制——1.7MB 文本只有 ZipVoice 用得上，
-/// 没必要让每个构建产物都背上它。
+/// 随包 ZipVoice 中英音素表相对 data 目录的路径。
+/// sherpa 在 lexicon 为空时 `_Exit(-1)`，而镜像包不带该文件，必须随包提供。
 const ZIPVOICE_LEXICON_REL_PATH: &str = "third_party/zipvoice/lexicon-zh-en.txt";
 
-/// Git LFS 指针文件的头一行。文件走 LFS 之后，没 `git lfs pull` 的仓库里就是这份
-/// 130 字节的文本——直接当音素表读，每个字都会变成 OOV，报错却只说「不匹配」。
+/// Git LFS 指针文件首行；未 `git lfs pull` 时会被误当音素表。
 const LFS_POINTER_HEADER: &str = "version https://git-lfs.github.com/spec/v1";
 
-/// 读取随包的中英音素表，行尾统一成 LF。
-///
-/// 行尾必须干净：`\r` 会被当成音素的一部分而全部查不到（`.gitattributes` 用 LFS 的
-/// `-text` 保证检出时不做行尾转换，这里再兜一层——手工拷贝过的副本可能不是）。
+/// 读取随包中英音素表，行尾统一成 LF（`\r` 会被当成音素的一部分）。
 fn bundled_zipvoice_lexicon(data_dir: &Path) -> Result<String> {
     let path = data_dir.join(ZIPVOICE_LEXICON_REL_PATH);
     let text = std::fs::read_to_string(&path).map_err(|e| {
@@ -586,25 +519,17 @@ fn bundled_zipvoice_lexicon(data_dir: &Path) -> Result<String> {
     })
 }
 
-/// 随包资源所在的 data 目录。
-///
-/// 正常路径是 [`crate::data_dir::get_data_dir`]（App 启动时初始化）；单测/集成测试
-/// 直接构造适配器、不走启动流程，这里退回仓库里的 `data/`（与 [`crate::data_dir`]
-/// 在 debug 模式下的解析一致）。
+/// 随包资源所在 data 目录；单测未初始化时回退到仓库 `data/`。
 fn bundled_assets_data_dir() -> PathBuf {
     crate::data_dir::try_get_data_dir()
         .cloned()
         .unwrap_or_else(|| Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data"))
 }
 
-/// 定位 ZipVoice 的 lexicon：优先模型目录自带的，缺失时写入随包的中英音素表。
-///
-/// 写回模型目录而不是临时目录，是为了让模型目录自洽（其它工具、以及下次启动
-/// 都直接命中），而且只需要写一次。
+/// 定位 ZipVoice lexicon：优先模型自带，缺失时写入随包音素表。
 fn zipvoice_lexicon(model_dir: &Path) -> Result<PathBuf> {
     if let Some(path) = find_file_optional(model_dir, &["lexicon.txt"]) {
-        // 0 字节的 lexicon 等于没有：sherpa 只在「路径为空」时报错退出，空文件则
-        // 让每个字都变成 OOV（念不出声），所以这里也按缺失处理。
+        // 0 字节 lexicon 等于没有：空文件会让每个字变 OOV，按缺失处理。
         if std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0) > 0 {
             return Ok(path);
         }
@@ -632,10 +557,7 @@ fn zipvoice_lexicon(model_dir: &Path) -> Result<PathBuf> {
     Ok(path)
 }
 
-/// 随包音素表的音素是否都被模型 `tokens.txt` 收录。
-///
-/// 防止把中英音素表塞给别的 ZipVoice 模型（例如纯英文模型）——那种情况下宁可报错，
-/// 也不要念出一堆 OOV。
+/// 校验随包音素表的音素都被模型 `tokens.txt` 收录，避免误配。
 fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
     let Ok(tokens) = std::fs::read_to_string(model_dir.join("tokens.txt")) else {
         return false;
@@ -649,20 +571,8 @@ fn zipvoice_lexicon_matches_tokens(model_dir: &Path, lexicon: &str) -> bool {
         .all(|line| line.split_whitespace().skip(1).all(|p| tokens.contains(p)))
 }
 
-/// kokoro 的说话人下标（`voices.bin` 里的顺序，含义随模型版本变化）。
-///
-/// 以前固定 0：v1.1-zh 的 0 号是英文女声 `af_maple`，中文台词也交给它念——音色本身
-/// 就不是中文的，中文的连读和句读停顿也跟着不对（同一个逗号，实测英文音色停 0.68 秒、
-/// 中文音色 0.35 秒；句内多出来的停顿另由 [`super::audio::cap_inner_silence`] 收口）。
-/// 所以中文/日文台词按设置页的「音色」挑一个中文音色：
-///
-/// - v1.1-zh（103 音色）：0-2 英文、3-57 中文女声（`zf_001`…）、58-102 中文男声
-///   （`zm_009`…）。
-/// - v1.0（53 音色）：0-19 英文、20-27 英式、28-44 其它语言、45-48 中文女声、
-///   49-52 中文男声。
-///
-/// `voice` 直接写成数字时原样采用（收口到有效范围），方便试不同音色。kokoro 没有
-/// 童声/老年声，`child` / `elderly` 与空值一样按女声处理。
+/// kokoro 的说话人下标（顺序随模型版本变化）。
+/// 103 音色：中文女声从 3 起、男声从 58 起；53 音色：45/49。数字 voice 原样采用，标签按语言映射。
 pub(super) fn kokoro_sid(language: &str, voice: &str, num_speakers: i32) -> i32 {
     let last = num_speakers.saturating_sub(1);
     if last < 0 {
@@ -702,11 +612,8 @@ pub(super) fn kokoro_sid(language: &str, voice: &str, num_speakers: i32) -> i32 
     sid.min(last)
 }
 
-/// 选传给模型的说话人下标。
-///
-/// kokoro 的 `voice` 是语义标签（female/male/…），交给 `kokoro_sid` 按语言挑；
-/// 其它模型只认纯数字 `voice`（多说话人 VITS/Kitten 靠它选音色），标签一律 0。
-/// 数字统一收口到 `0..num_speakers-1`，用户手填/旧配置越界都不会让 sherpa 报错。
+/// 选说话人下标：kokoro 按语言/标签映射，其它模型只认数字 voice。
+/// 数字统一收口到有效范围，越界不会让 sherpa 报错。
 pub(super) fn pick_sid(model_type: &str, language: &str, voice: &str, num_speakers: i32) -> i32 {
     if model_type == "kokoro" {
         return kokoro_sid(language, voice, num_speakers);
@@ -723,15 +630,14 @@ pub(super) fn pick_sid(model_type: &str, language: &str, voice: &str, num_speake
 mod tests {
     use super::*;
 
-    /// 规则 FST 的收集顺序，以及「模型目录里有没有 FST」这个判断。
+    /// 规则 FST 的收集顺序与有无判断。
     #[test]
     fn collects_rule_fsts_in_order() {
         let dir = std::env::temp_dir().join(format!("lingchat-digit-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).expect("建临时目录失败");
 
-        // 没带 FST 的模型要由我们在 Rust 侧改写数字：zipvoice / supertonic 的实现
-        // 不读 rule_fsts，数字会被丢词或念错。
+        // 没带 FST 时需在 Rust 侧改写数字。
         assert!(needs_digit_normalization(&dir));
         assert!(rule_fst_paths(&dir).is_empty());
 
@@ -777,7 +683,7 @@ mod tests {
         assert_eq!(kokoro_sid("zh", "female", 0), 0);
         assert_eq!(kokoro_sid("zh", "female", 7), 0);
 
-        // 直接写数字：原样采用（越界收口），大小写不敏感。
+        // 直接写数字：原样采用（越界收口）。
         assert_eq!(kokoro_sid("zh", "45", 103), 45);
         assert_eq!(kokoro_sid("en", "45", 103), 45);
         assert_eq!(kokoro_sid("zh", "999", 103), 102);
@@ -833,10 +739,7 @@ mod tests {
         Path::new(env!("CARGO_MANIFEST_DIR")).join("../../data")
     }
 
-    /// 造一个「假 ZipVoice 模型目录」：只会写 tokens.txt。
-    ///
-    /// `tokens_from_bundled = true` 时用随包音素表的音素生成 tokens.txt（模拟中英
-    /// 模型，音素全部命中）；否则只放无关音素（模拟别的 ZipVoice 模型）。
+    /// 造一个假 ZipVoice 模型目录（只写 tokens.txt）。
     fn fake_zipvoice_dir(tag: &str, tokens_from_bundled: bool) -> PathBuf {
         let dir =
             std::env::temp_dir().join(format!("lingchat-zipvoice-{tag}-{}", std::process::id()));
@@ -903,8 +806,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// 仓库没跑 `git lfs pull` 时，随包音素表只是 LFS 指针：要报「先 git lfs pull」，
-    /// 而不是一句「音素与 tokens.txt 不匹配」。
+    /// 仓库没跑 `git lfs pull` 时，报错要提示先 pull。
     #[test]
     fn zipvoice_lfs_pointer_is_reported_as_such() {
         let dir = std::env::temp_dir().join(format!("lingchat-lfs-{}", std::process::id()));
