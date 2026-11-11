@@ -334,7 +334,13 @@ fn default_voice_id(_inspected: &package::InspectedPackage, src: &Path) -> Strin
             }
         })
         .collect();
-    let cleaned = cleaned.trim_matches('-').to_lowercase();
+    // 与前端 normalizeVoiceId 一致，最长 64（validate_voice_id 的上限）
+    let cleaned: String = cleaned
+        .trim_matches('-')
+        .to_lowercase()
+        .chars()
+        .take(64)
+        .collect();
     if cleaned.is_empty() {
         "voice".into()
     } else {
@@ -372,6 +378,8 @@ pub async fn tts_local_import_from_path(
             Some(v) => v,
             None => default_voice_id(&inspected, &src.path),
         };
+        // id 会直接拼进 voices 目录，与删除声音走同一套校验，防止 `../` 越界写入
+        model_manager::validate_voice_id(&voice_id)?;
         let installed = package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
         let bytes = std::fs::metadata(&installed).map(|m| m.len()).unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);
