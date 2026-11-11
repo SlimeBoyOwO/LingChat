@@ -1,14 +1,5 @@
-//! 音频解码 / 转码通用工具。
-//!
-//! 目前唯一的用途是把用户导入的「零样本克隆参考音频」统一转成 WAV：
-//! sherpa-onnx 只吃 WAV，而 [`crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio`]
-//! 还要求 16/32 位 PCM（它是手工解析 RIFF 头的）。要求用户自己先转格式体验太差，
-//! 这里用 symphonia 解码、hound 重编码，一次吸收掉容器 / 编码 / 位深 / float /
-//! 多声道（输出单声道，下游本来就会下混）的差异。
-//!
-//! Opus 是唯一例外：symphonia 0.5 没有 Opus 解码器，而 `.ogg` / `.opus` 里塞
-//! Opus 极常见（Telegram / WhatsApp 的语音消息就是）。容器解析（OpusHead 里的
-//! pre-skip、声道数）仍交给 symphonia，音频包交给 libopus，见 [`transcode_opus`]。
+//! 音频解码 / 转码工具：把导入的参考音频统一转成 16-bit PCM WAV。
+//! symphonia 解码、hound 重编码；Opus 交由 libopus。
 
 use std::fs::File;
 use std::io::BufWriter;
@@ -23,21 +14,10 @@ use symphonia::core::io::MediaSourceStream;
 use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 
-/// 参考音频时长上限（秒）。
-///
-/// 零样本克隆的参考音频通常几秒到十几秒，这个上限只是防止「误选一整首歌」把
-/// 几十 MB 的 PCM 落进应用数据目录（平板的数据分区本来就吃紧）。
+/// 参考音频时长上限（秒），防止误选整首歌占满数据分区。
 pub const MAX_REFERENCE_AUDIO_SECONDS: u64 = 120;
 
-/// Opus 解码采样率。
-///
-/// Opus 的编码层固定按 48 kHz 工作（OpusHead 里的原始采样率只是元数据），libopus
-/// 也按这个值输出 PCM。参考音频保持 48 kHz 而不是降到 16 kHz：
-/// sherpa-onnx 会用 `reference_sample_rate` 把它重采样到模型采样率
-/// （zipvoice 是 24 kHz，见 `offline-tts-zipvoice-impl.h` 的
-/// `ComputeMelSpectrogram`），而它的 mel 滤波器上限是模型采样率的 1/2（12 kHz）——
-/// 若这里按 16 kHz 解码，重采样时低通截止会掉到 ~8 kHz，8–12 kHz 那一段直接没了，
-/// 克隆音色会发闷。省下来的磁盘在该路径上另有办法（见下方单声道下混）。
+/// Opus 解码采样率；保持 48 kHz，降到 16 kHz 会丢失高频让克隆音色发闷。
 const OPUS_DECODE_RATE: u32 = 48_000;
 
 /// Opus 单个包的帧数上限：120 ms @48 kHz（RFC 6716 允许的最大帧长）。
@@ -49,10 +29,7 @@ pub enum TranscodeError {
     /// 容器 / 编码识别不了或当前不支持（上层给前端「格式不支持」提示）。
     #[error("不支持的音频格式: {0}")]
     Unsupported(String),
-    /// 多声道 Opus（channel mapping family 1 及以上，例如 5.1）。
-    ///
-    /// `opus::Decoder` 只提供单/双声道解码（多声道要 `opus_multistream_decoder`），
-    /// 而语音参考音频用不到多声道，单独成一档好给前端一句能自查的提示。
+    /// 多声道 Opus（`opus::Decoder` 只支持单/双声道）。
     #[error("多声道 Opus 暂不支持（{0} 声道）")]
     OpusMultichannel(usize),
     /// 超过 [`MAX_REFERENCE_AUDIO_SECONDS`]。
@@ -63,14 +40,7 @@ pub enum TranscodeError {
     Other(String),
 }
 
-/// 把音频转成 16-bit PCM 单声道 WAV。
-///
-/// 边解边写（不把整段 PCM 攒在内存里），采样率保持源文件原样：
-/// `load_reference_audio` 接受任意采样率，并由它自己交给 sherpa 重采样。
-/// 声道固定单声道——参考音频的下游（`load_reference_audio`）无论如何都会把它
-/// 平均成单声道，立体声原样落盘只会白占一倍磁盘（平板上数据分区本就吃紧）。
-///
-/// 失败时删除写了一半的 `dest`，不在数据目录里留半成品。
+/// 把音频转成 16-bit PCM 单声道 WAV；采样率保持原样，失败时删除写了一半的 `dest`。
 pub fn transcode_to_wav_16bit(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
     let result = transcode_inner(src, dest);
     if result.is_err() {
@@ -99,9 +69,7 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
         .map_err(|e| TranscodeError::Unsupported(e.to_string()))?;
     let mut format = probed.format;
 
-    // 取第一条音频轨，而不是 `default_track()`：带视频的 mp4（用户想抽里面的
-    // 音频）和带封面的 m4a，默认轨都可能是视频/图片轨，交给解码器只会报
-    // 「不支持的编码」。有采样率就是音频轨（视频轨没有）。
+    // 取第一条有采样率的音频轨：mp4/m4a 的默认轨可能是视频/封面。
     let track = format
         .tracks()
         .iter()
@@ -110,8 +78,7 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
         .clone();
     let track_id = track.id;
 
-    // 能提前算出总时长就提前拒（wav/flac/带 Xing 头的 mp3 都给了总帧数），
-    // 免得白解码一整首歌才发现超长。
+    // 能算出总时长就提前拒，免得白解码整首歌。
     if let (Some(frames), Some(rate)) =
         (track.codec_params.n_frames, track.codec_params.sample_rate)
     {
@@ -123,8 +90,7 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
         }
     }
 
-    // Opus 交给 libopus：symphonia 只认容器不认编码（`make()` 只会回一句
-    // unsupported codec），而 `.ogg` / `.opus` 里塞 Opus 极常见。
+    // Opus 交给 libopus；symphonia 不会解码 Opus。
     if track.codec_params.codec == CODEC_TYPE_OPUS {
         return transcode_opus(&mut *format, &track, dest);
     }
@@ -162,7 +128,7 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
         let spec = *decoded.spec();
         let channels = spec.channels.count() as u16;
 
-        // 复用同一块 i16 缓冲；copy_interleaved_ref 顺带做 f32 → i16 转换。
+        // 复用 i16 缓冲；copy_interleaved_ref 顺带做 f32 → i16。
         let buffer = samples.get_or_insert_with(|| {
             let duration = decoded.capacity() as u64;
             SampleBuffer::<i16>::new(duration, spec)
@@ -175,14 +141,7 @@ fn transcode_inner(src: &Path, dest: &Path) -> Result<(), TranscodeError> {
     sink.finish()
 }
 
-/// 解码 OGG/Opus（`.ogg` / `.oga` / `.opus`）。
-///
-/// symphonia 负责拆包并告诉我们 OpusHead 里的声道数与 pre-skip，音频包本身交给
-/// libopus（`symphonia::default::get_codecs()` 里没有 Opus 解码器）。
-///
-/// 输出固定 48 kHz：Opus 的编码层就是按 48 kHz 工作的，libopus 也按这个采样率
-/// 出 PCM（`opus::Decoder::new` 也支持 16 kHz 等值，但那属于额外重采样，交给
-/// sherpa 按模型需要做更合适）。
+/// 解码 OGG/Opus；symphonia 拆包，音频包交给 libopus，输出固定 48 kHz。
 fn transcode_opus(
     format: &mut dyn FormatReader,
     track: &Track,
@@ -190,8 +149,7 @@ fn transcode_opus(
 ) -> Result<(), TranscodeError> {
     let channel_count = track.codec_params.channels.map(|c| c.count()).unwrap_or(0);
 
-    // `opus::Decoder` 只有单/双声道两种（多声道要 opus_multistream_decoder，
-    // 这个 crate 没包）。语音参考音频用不到多声道，直接给一句能自查的提示。
+    // `opus::Decoder` 只有单/双声道；多声道直接报错。
     if !(1..=2).contains(&channel_count) {
         return Err(TranscodeError::OpusMultichannel(channel_count));
     }
@@ -202,8 +160,7 @@ fn transcode_opus(
         OpusChannels::Stereo
     };
 
-    // pre-skip 是编码器的前导延迟，按 Opus 规范必须丢掉开头这些样本，
-    // 否则解出来的音频整体后移（symphonia 已从 OpusHead 读出来放在 delay 上）。
+    // pre-skip 是编码器前导延迟，必须丢掉开头这些样本，否则音频整体后移。
     let mut skip_left = track.codec_params.delay.unwrap_or(0) as usize;
 
     let mut decoder = OpusDecoder::new(OPUS_DECODE_RATE, opus_channels)
@@ -224,7 +181,7 @@ fn transcode_opus(
             continue;
         }
 
-        // 与 symphonia 那条路径一致：单个包坏掉（脏帧）跳过，不中断整段音频。
+        // 脏帧跳过，不中断整段音频。
         let Ok(decoded_frames) = decoder.decode(&packet.data, &mut pcm, false) else {
             continue;
         };
@@ -246,10 +203,7 @@ fn transcode_opus(
     sink.finish()
 }
 
-/// 边解码边写 WAV 的落盘器。
-///
-/// symphonia 与 libopus 两条解码路径都把 PCM 交给它，统一处理首次定规格、
-/// 中途换规格（级联流）、时长上限、多声道下混与写样本，避免两套重复的写入逻辑。
+/// 边解码边写 WAV；统一处理规格、时长上限、多声道下混。
 struct WavSink {
     writer: Option<hound::WavWriter<BufWriter<File>>>,
     written_frames: u64,

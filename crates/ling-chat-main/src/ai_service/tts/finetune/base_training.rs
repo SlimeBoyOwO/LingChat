@@ -1,13 +1,4 @@
-//! 基于基座模型的对齐训练。
-//!
-//! 训练沿用基座的 CFM 配方：编码器只加载基座权重、不参与梯度（时长同样固定用基座预测），
-//! 只有解码器参数被优化。这与「五分钟数据微调音色」的目标一致，且不依赖外部训练管线。
-//!
-//! 关键公式（与 MatchaTTS 源实现逐条核对过）：
-//! - 时间正弦嵌入 `SinusoidalPosEmb(dim=160, scale=1000)`，
-//!   `freq[i]=exp(-ln(10000)*i/79)`，`emb[i]=sin(1000*t*freq[i])`、`emb[80+i]=cos(...)`。
-//! - 条件流匹配：随机 `t~U(0,1)`、`z~N(0,1)`，加噪样本 `y=(1-(1-sigma)*t)z + t*x1`，
-//!   速度真值 `u=x1-(1-sigma)z`，`sigma=1e-4`，损失为速度的均方误差。
+//! 基于基座模型的对齐训练：编码器与时长冻结，只优化解码器，沿用基座 CFM 配方。
 
 use std::path::Path;
 
@@ -26,13 +17,9 @@ use super::onnx_weights::read_initializers;
 /// 训练配置。
 #[derive(Debug, Clone)]
 pub struct BaseTrainingConfig {
-    /// 训练轮数。
     pub epochs: usize,
-    /// 学习率。
     pub learning_rate: f64,
-    /// 打乱顺序与噪声的随机种子。
     pub seed: u64,
-    /// 每多少轮存一次检查点。
     pub checkpoint_every: usize,
 }
 
@@ -51,15 +38,10 @@ impl Default for BaseTrainingConfig {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BaseTrainingProgress {
-    /// 当前轮。
     pub epoch: usize,
-    /// 总轮数。
     pub total_epochs: usize,
-    /// 已完成的步数。
     pub step: usize,
-    /// 总步数。
     pub total_steps: usize,
-    /// 当前损失。
     pub loss: f32,
 }
 
@@ -67,13 +49,9 @@ pub struct BaseTrainingProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BaseTrainingOutcome {
-    /// 实际执行的步数。
     pub steps: usize,
-    /// 首步损失。
     pub initial_loss: f32,
-    /// 末步损失。
     pub final_loss: f32,
-    /// 是否被取消。
     pub cancelled: bool,
 }
 
@@ -115,10 +93,7 @@ pub fn load_decoder_weights(
     Ok(())
 }
 
-/// 生成解码器时间 MLP 的 160 维正弦嵌入，形状 `[1,160]`。
-///
-/// 公式来自 MatchaTTS `SinusoidalPosEmb(dim=160)`，`scale=1000`：
-/// `freq[i]=exp(-ln(10000)*i/79)`，`angle=1000*t*freq`，前半 sin、后半 cos。
+/// 生成解码器时间 MLP 的 160 维正弦嵌入：`freq=exp(-ln(10000)*i/79)`，前半 sin、后半 cos。
 fn base_time_embed(t: f64, device: &Device) -> Result<Tensor> {
     const HALF: usize = 80;
     let mut values = vec![0f32; HALF * 2];
@@ -132,10 +107,7 @@ fn base_time_embed(t: f64, device: &Device) -> Result<Tensor> {
     Ok(Tensor::from_vec(values, (1, HALF * 2), device)?)
 }
 
-/// 把 mel 先验按时长展开到目标帧数。
-///
-/// `mel_prior` 形状 `[1, c, tokens]`，`durations` 是编码器预测的逐 token 对数时长。
-/// 先缩放到目标帧数，再按四舍五入后的帧数重复展开。
+/// 把 mel 先验按时长展开到目标帧数；时长先缩放，再按四舍五入后的帧数重复。
 fn expand_prior(
     mel_prior: &Tensor,
     durations: &Tensor,
@@ -199,9 +171,7 @@ fn expand_prior(
     )?)
 }
 
-/// 构造训练用的噪声数据（matcha 源实现的 CFM 公式）。
-///
-/// 返回 `(noisy=y, target=u)`。`sigma=1e-4`。
+/// 构造 CFM 训练噪声，返回 `(noisy, target)`；`sigma=1e-4`。
 fn cfm_noise(mel: &Tensor, noise: &Tensor, time: f64, sigma_min: f64) -> Result<(Tensor, Tensor)> {
     let noisy = (noise.affine(1.0 - (1.0 - sigma_min) * time, 0.0)? + mel.affine(time, 0.0)?)?;
     let target = (mel - noise.affine(1.0 - sigma_min, 0.0)?)?;
@@ -209,9 +179,6 @@ fn cfm_noise(mel: &Tensor, noise: &Tensor, time: f64, sigma_min: f64) -> Result<
 }
 
 /// 执行基座对齐训练：只更新解码器，编码器与时长固定用基座预测。
-///
-/// `base_model` 是基座 ONNX 路径，从中读取权重填充编码器与解码器；
-/// `map_path` 是匿名投影权重映射表（`decoder_weight_map.json`）。
 #[allow(clippy::too_many_arguments)]
 pub fn train_base(
     corpus: &Corpus,
@@ -239,7 +206,7 @@ pub fn train_base(
     let tensors = read_initializers(base_model)
         .with_context(|| format!("读取基座权重失败: {}", base_model.display()))?;
 
-    // 编码器：独立 VarMap，只加载基座权重，不进优化器（时长与 mel 先验固定）。
+    // 编码器独立 VarMap，只加载基座权重，不进优化器。
     let encoder_vm = VarMap::new();
     let encoder_vb = VarBuilder::from_varmap(&encoder_vm, DType::F32, device);
     let encoder = BaseEncoder::new(encoder_config, encoder_vb)?;
@@ -252,7 +219,7 @@ pub fn train_base(
     load_decoder_weights(&decoder_vm, &tensors, map_path, device)
         .with_context(|| format!("填充解码器权重失败，映射表: {}", map_path.display()))?;
 
-    // 每样本预计算 mel 先验并展开到帧级：编码器冻结，整轮训练只算一次。
+    // 每样本预计算 mel 先验：编码器冻结，整轮只算一次。
     let mut priors = Vec::with_capacity(corpus.samples.len());
     for sample in &corpus.samples {
         let tokens = Tensor::from_vec(
@@ -452,7 +419,7 @@ mod tests {
         let device = Device::Cpu;
         let mel = Tensor::ones((1, 2, 4), DType::F32, &device).unwrap();
         let noise = Tensor::zeros((1, 2, 4), DType::F32, &device).unwrap();
-        // t=1 时 y = x1，t=0 时 y = (1-sigma)*z。
+        // t=1 时 y=x1，t=0 时 y=(1-sigma)*z。
         let (y1, _) = cfm_noise(&mel, &noise, 1.0, 1e-4).unwrap();
         let v: Vec<f32> = y1.flatten_all().unwrap().to_vec1().unwrap();
         assert!(v.iter().all(|x| (x - 1.0).abs() < 1e-6));
@@ -487,7 +454,7 @@ mod tests {
         }
     }
 
-    /// 集成验证：真实基座权重加载 + 只训解码器，损失应当有界且前缀匹配。
+    /// 集成验证：真实基座权重加载 + 只训解码器，损失应有界。
     #[test]
     fn train_base_loads_base_weights_and_runs() {
         let onnx = base_onnx();
@@ -523,7 +490,7 @@ mod tests {
         assert!(outcome.final_loss.is_finite(), "末损应为有限值");
     }
 
-    /// 验证手动转置卷积层确实通过自动微分收到非零梯度：该层参数在一次反向后被更新。
+    /// 验证手动转置卷积层能通过自动微分收到非零梯度。
     #[test]
     fn decoder_transpose_weight_updates_via_backward() -> Result<()> {
         let device = Device::Cpu;

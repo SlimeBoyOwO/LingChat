@@ -193,9 +193,7 @@
                       class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
                     ></div>
                   </div>
-                  <!-- 参考音频：导入（复制进应用数据目录）而不是手填路径。
-                       Android 上 dialog 返回 content:// URI，后端会经 SAF 落到
-                       data/sherpa_onnx_ref_audio/，存的是普通文件路径。 -->
+                  <!-- 参考音频：导入到应用数据目录（Android content:// 经 SAF 落盘）。 -->
                   <div
                     v-else-if="field.type === 'audio'"
                     class="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5"
@@ -685,7 +683,6 @@ async function discardDraft() {
     editRoleId.value = undefined;
   }
 }
-// 语音相关状态与操作收敛在 composable 里，这里只做接线
 const {
   installedVoices,
   cloudVoices,
@@ -803,11 +800,7 @@ const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
 
-/**
- * 当前模型自带的全部音色（读 ONNX metadata，不加载模型）。
- *
- * zipvoice / pocket 这类多文件模型没有单一主模型，命令会失败，此时退回四个语义档。
- */
+/** 模型自带音色（读 ONNX metadata，不加载模型）；多文件模型失败时退回语义档。 */
 const sherpaSpeakers = ref<TtsLocal.SherpaSpeakersInfo | null>(null);
 let sherpaSpeakersRequest = 0;
 
@@ -818,7 +811,7 @@ async function loadSherpaSpeakers(modelId: unknown) {
     sherpaSpeakers.value = null;
     return;
   }
-  // 旧模型的 sid 列表对新模型没有意义（数量/顺序都可能不同），先清掉。
+  // 旧模型的 sid 列表不再有效，先清空。
   sherpaSpeakers.value = null;
   try {
     const info = await TtsLocal.listSherpaSpeakers(id);
@@ -837,18 +830,14 @@ function currentSherpaModelId(): string {
   return String(nested ?? localSettings.value?.sherpa_onnx_model_name ?? "").trim();
 }
 
-// 模型名一变就换音色列表：选中新模型、切换角色、草稿回填都能覆盖到。
+// 模型名变化时刷新音色列表。
 watch(
   () => currentSherpaModelId(),
   (id) => void loadSherpaSpeakers(id),
   { immediate: true },
 );
 
-// sherpa-onnx 的「音色」：四个语义档（kokoro 按语言自动挑女声/男声，其它模型只当
-// 元数据）+ 模型自带的全部 sid（多说话人 VITS/Kitten 靠它选具体音色，kokoro 的
-// 103 个音色带名字）。模型 config.json 可能带出自定义值（选中模型时
-// `applySherpaModelDefaults` 会写进字段），下拉框没有匹配项会显示空白并在切换时
-// 丢掉原值，因此把当前值并进选项。空值在后端等同 female，与第一项一致。
+// Sherpa 音色：四个语义档 + 模型自带 sid；把当前值并入选项，避免下拉框空白和丢值。
 const sherpaVoiceOptions = computed<FieldOption[]>(() => {
   const current = String(ensureVoiceModels().sherpa_onnx_voice ?? "").trim();
   const options: FieldOption[] = [
@@ -869,9 +858,7 @@ const sherpaVoiceOptions = computed<FieldOption[]>(() => {
   return options;
 });
 
-/// Linux 桌面上 sherpa-onnx 只剩 CPU（GPU 只能走官方 CUDA 包，安装包 +235 MB，
-/// 已按体积取舍移除），把开关置灰并说明；Windows 上则提醒需要 DirectML 版构建
-/// （`pnpm tauri:build:win`）。详见 docs/inference-devices.md §9。
+// Linux 桌面无 GPU 后端；Windows 需 DirectML 构建，详见 docs/inference-devices.md §9。
 const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
 const gpuSwitchHint = computed(() => {
   if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
@@ -903,8 +890,7 @@ const currentTabFields = computed(() => {
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-// 选中 Sherpa 模型后带出它的类型/语言/音色。模型类型是模型自身的属性
-// （如 Kokoro 必须用 kokoro），留着默认的 vits 会导致按错误类型加载。
+// 选中模型后同步其类型/语言/音色；类型必须与模型一致。
 const applySherpaModelDefaults = (modelId: string) => {
   const model = installedSherpaModels.value.find((m) => m.id === modelId);
   if (!model) return;
@@ -914,21 +900,7 @@ const applySherpaModelDefaults = (modelId: string) => {
   if (model.voice) voiceModels.sherpa_onnx_voice = model.voice;
 };
 
-/**
- * 历史遗留的 `content://` 参考音频迁移成应用数据目录里的本地 WAV。
- *
- * 早期版本把 dialog 给的路径原样写进设置，Android 上那是 `content://` URI，
- * Rust 的 `std::fs` 读不了 —— 试听会报错，聊天时零样本克隆则静默退化成普通合成。
- * 迁移走已有的导入命令：Rust 侧经 SAF（ContentResolver）拿到真实文件名，并统一
- * 转码成 16-bit PCM WAV。
- *
- * 参考音频在字段 schema 里被标了 `isVoiceModel`，所以新位置是
- * `voice_models.sherpa_onnx_ref_audio_path`；`migrateLegacyVoiceModelFields()` 又会
- * 先于本函数把顶层的遗留键搬进去。两处都要读，结果统一写回 `voice_models` —— 只有
- * 那里会被 Rust 侧的 `build_voice_maker` 喂给 `VoiceMaker`。
- *
- * 迁移后字段值与库里存的不一致，所以底部「保存」会亮起——值要落库才真正生效。
- */
+/** 迁移历史 content:// 参考音频为应用数据目录的本地 WAV，写回 voice_models；迁移后需保存生效。 */
 const migrateLegacyRefAudioPath = async () => {
   const roleId = editRoleId.value;
   const voiceModels = ensureVoiceModels();
@@ -942,7 +914,7 @@ const migrateLegacyRefAudioPath = async () => {
   if (!legacy.startsWith("content://")) return;
   const imported = await TtsLocal.migrateSherpaRefAudio(legacy);
   if (!imported) return;
-  // 异步期间用户可能切了角色、或者自己改掉了这一项，只在仍是原值时写回。
+  // 异步期间可能切换角色或改值，只在仍是原值时写回。
   if (editRoleId.value !== roleId) return;
   if (currentRefAudio() !== legacy) return;
   voiceModels.sherpa_onnx_ref_audio_path = imported.path;
@@ -1011,19 +983,10 @@ const onRangeInput = (field: FieldSchema, event: Event): void => {
   fieldModel(field).value = value;
 };
 
-// 兼容历史遗留的取值：早期版本存的是用户手填的路径，Android 上还可能是
-// `content://` URI（末段是 percent-encoded 的 document id），统一交给公共
-// util 解码后取文件名，避免把一长串 URI 显示给用户。
+// 兼容历史路径：content:// 末段是 percent-encoded id，需解码取文件名。
 const refAudioName = (value: unknown): string => decodePathFileName(String(value ?? ""));
 
-/**
- * 导入零样本克隆的参考音频。
- *
- * 存进字段的是后端复制到应用数据目录后的本地路径（不是 dialog 给的原始路径）：
- * Android 的 `content://` URI 无法被 Rust 的 `std::fs` 读取，桌面端原始路径也会
- * 因用户移动/删除源文件而失效。后端还会顺手把音频统一转成 sherpa 要的 16-bit
- * PCM WAV，所以 mp3/flac/m4a 等格式都能直接导入。
- */
+/** 导入参考音频：字段存后端复制到应用数据目录并转成 PCM WAV 的本地路径，而非原始路径。 */
 async function importRefAudio(field: FieldSchema): Promise<void> {
   try {
     const selected = await open({ multiple: false, filters: audioDialogFilters() });
@@ -1053,19 +1016,13 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
   }
 }
 
-/** 停止参考音频试听（切换字段、重新导入、离开页面时都要停）。 */
+/** 停止参考音频试听。 */
 function stopRefAudioPlayback(): void {
   stopCurrentAudio();
   audioPlayingKey.value = null;
 }
 
-/**
- * 试听已导入的参考音频。
- *
- * 导入时后端统一转成了 WAV（mp3/m4a 等会被转码），这里让用户能直接确认转码
- * 结果是否正常。播放走公共 `playLocalAudio`：Android 上先整个 fetch 成 blob，
- * 绕开 asset 协议对大文件的分块截断。
- */
+/** 试听已导入的参考音频（导入时已转为 WAV）。 */
 async function toggleRefAudioPlayback(field: FieldSchema): Promise<void> {
   const path = String(fieldValue(field) ?? "").trim();
   if (!path) return;

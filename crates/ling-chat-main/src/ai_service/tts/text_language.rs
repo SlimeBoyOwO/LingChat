@@ -1,19 +1,8 @@
-//! 试听文本的语言判断。
-//!
-//! 中文、英文、中英混合（含数字）都不用显式指定语言：sherpa/espeak 与各远程服务
-//! 自己就能处理。日文不行——kokoro 不指定语言时会把假名逐字当英文/中文念，实测
-//! 「こんにちは、これはテストです。」(14 字) 要 9.9 秒且完全听不出是日文；显式指定
-//! `ja` 后降到 2.4 秒的正常日文（用 sense-voice 反读确认）。
-//!
-//! 所以试听时按文本里的假名/谚文自动换语言：把自己要试的文本直接粘进来就行，不必先
-//! 去改角色或全局的语言设置（那个设置会影响聊天时的语音合成）。
+//! 试听文本的语言判断：只按假名/谚文定位日文/韩文，其余沿用设置里的语言。
 
 use crate::ai_service::types::CharacterSettings;
 
-/// 从试听文本判断语言；判断不出来返回 `None`，表示沿用设置里的语言。
-///
-/// 只认「假名」「谚文」这类能定位到单一语言的字符。中文/英文/数字不参与判断：
-/// 显式写 `zh` 反而会让中英混合文本和数字的读法变差（适配器里也是这么处理的）。
+/// 从试听文本判断语言；判断不出来返回 `None`，沿用设置里的语言。
 pub(crate) fn detect(text: &str) -> Option<&'static str> {
     let mut hangul = false;
     for c in text.chars() {
@@ -37,12 +26,8 @@ pub(crate) fn detect(text: &str) -> Option<&'static str> {
     hangul.then_some("ko")
 }
 
-/// 用试听文本判断出的语言覆盖设置里的语言字段，返回实际采用的语言。
-///
-/// 只动语言字段，其余配置（音色、参考音频、语速…）原样保留。`sherpa`/`sherpa-onnx`
-/// 走 `voice_models.sherpa_onnx_lang`，其余服务走顶层 `voice_lang`；两个都写上，免得
-/// 服务类型判断不准时语言丢失（`VoiceMaker` 里 sherpa 以 `sherpa_onnx_lang` 优先，
-/// 留空才回落到 `voice_lang`）。
+/// 用试听文本判断出的语言覆盖设置，返回实际采用的语言。
+/// sherpa 写 `sherpa_onnx_language`，其余服务写 `voice_lang`。
 pub(crate) fn apply_to_settings(
     settings: &mut CharacterSettings,
     text: &str,
@@ -72,7 +57,7 @@ mod tests {
 
     #[test]
     fn does_not_mistake_chinese_punctuation_for_kana() {
-        // 「・」「ー」在中文里也用来拼外文译名，不能当成日文
+        // 「・」「ー」中文也用于外文译名，不能当日文。
         assert_eq!(detect("迈克尔・乔丹"), None);
         assert_eq!(detect("咖啡ー杯"), None);
     }

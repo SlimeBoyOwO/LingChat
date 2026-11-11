@@ -1,30 +1,21 @@
-//! 声学特征：STFT 幅度谱与 log-mel。
-//!
-//! 训练声学模型需要和基座一致的特征。这里实现最常用的一套：周期 Hann 窗、
-//! 居中反射填充、幅度谱、Slaney 归一化的三角 mel 滤波器组（与 librosa 默认一致），
-//! 最后取自然对数。纯 Rust，桌面和移动端结果一致。
+//! 声学特征：STFT 幅度谱与 log-mel，参数对齐 librosa 默认值，纯 Rust 实现。
 
 /// mel 特征配置。
 #[derive(Debug, Clone, Copy)]
 pub struct MelConfig {
-    /// 采样率。
     pub sample_rate: u32,
-    /// FFT 点数，必须是 2 的幂。
+    /// 必须是 2 的幂。
     pub n_fft: usize,
-    /// 帧移。
     pub hop_length: usize,
-    /// 窗长，不超过 n_fft。
+    /// 不超过 n_fft。
     pub win_length: usize,
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 最低频率。
     pub fmin: f32,
-    /// 最高频率。
     pub fmax: f32,
 }
 
 impl Default for MelConfig {
-    /// 与 matcha-icefall-zh-baker 一类的中文声学模型对齐。
+    /// 与 matcha-icefall-zh-baker 一类中文声学模型对齐。
     fn default() -> Self {
         Self {
             sample_rate: 22_050,
@@ -104,7 +95,7 @@ pub fn fft_in_place(re: &mut [f32], im: &mut [f32]) {
     }
 }
 
-/// 单边幅度谱，返回帧数乘频点数。
+/// 单边幅度谱。
 pub fn stft_magnitude(samples: &[f32], config: &MelConfig) -> Vec<Vec<f32>> {
     let n_fft = config.n_fft;
     if !n_fft.is_power_of_two() || samples.is_empty() {
@@ -224,7 +215,7 @@ impl MelFilterbank {
     }
 }
 
-/// 取对数后的 mel 特征，返回帧数乘通道数。
+/// log-mel 特征，返回帧数乘通道数。
 pub fn log_mel(samples: &[f32], config: &MelConfig) -> Vec<Vec<f32>> {
     let spectrum = stft_magnitude(samples, config);
     if spectrum.is_empty() {

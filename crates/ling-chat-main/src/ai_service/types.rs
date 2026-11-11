@@ -342,15 +342,13 @@ pub struct VoiceModel {
     pub gsv_voice_filename: Option<String>,
     pub gsv_gpt_model_name: Option<String>,
     pub gsv_sovits_model_name: Option<String>,
-    /// GSV 六情绪参考语音开关：开启后按情绪分类（吃惊/开心/恐惧/难过/生气/中立）
-    /// 实时切换参考音频与文本；关闭时保持原有 gsv_voice_* 行为。
+    /// GSV 六情绪参考语音开关：按情绪分类实时切换参考音频与文本。
     #[serde(default)]
     pub gsv_emo_enabled: Option<bool>,
     /// 六分类参考文本（分类名 → 文本）
     #[serde(default)]
     pub gsv_emo_texts: Option<HashMap<String, String>>,
-    /// 六分类参考音频路径（分类名 → 路径，原样透传给 GPT-SoVITS 服务端，
-    /// 由其自身文件系统解析，不做本地目录拼接）
+    /// 六分类参考音频路径（原样透传给服务端解析）。
     #[serde(default)]
     pub gsv_emo_voice_files: Option<HashMap<String, String>>,
     /// 合成采样温度，缺省 1.0（调低更稳定、更贴近参考音色）
@@ -391,18 +389,16 @@ pub struct VoiceModel {
     /// Sherpa-ONNX 语速（0.5–2.0，1.0 为原速）
     #[serde(default, rename = "sherpa_onnx_speed")]
     pub sherpa_onnx_speed: Option<f32>,
-    /// Sherpa-ONNX 推理步数（1–10，默认 4）。只有 ZipVoice 这类 flow-matching 模型读它；
-    /// 逐次生成生效，不用重建引擎。
+    /// ZipVoice 推理步数（1–10，默认 4），逐次生效。
     #[serde(default, rename = "sherpa_onnx_num_steps")]
     pub sherpa_onnx_num_steps: Option<i32>,
-    /// Sherpa-ONNX 引导强度 guidance_scale（1.0–10.0，默认 1.0）。只有 ZipVoice 读它，
-    /// 且属于模型配置：改了要重建引擎（设置页保存后会重建适配器）。
+    /// ZipVoice 引导强度（1.0–10.0，默认 1.0），改动需重建引擎。
     #[serde(default, rename = "sherpa_onnx_guidance_scale")]
     pub sherpa_onnx_guidance_scale: Option<f32>,
-    /// Sherpa-ONNX 零样本参考音频路径（保留导入的 unicode-escape 形式）
+    /// 零样本参考音频路径。
     #[serde(default, rename = "sherpa_onnx_ref_audio_path")]
     pub sherpa_onnx_ref_audio_path: Option<String>,
-    /// Sherpa-ONNX 零样本参考文本
+    /// 零样本参考文本。
     #[serde(default, rename = "sherpa_onnx_ref_text")]
     pub sherpa_onnx_ref_text: Option<String>,
 }

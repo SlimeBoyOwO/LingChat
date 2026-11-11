@@ -1,11 +1,4 @@
-//! 无监督风格聚类。
-//!
-//! 数据集不要求人工情感标签。这里从每条归一化音频里提取一组低维风格特征
-//! （log-mel 各频带的均值/标准差、时长、响度、过零率），做标准化后用确定性
-//! k-means 聚成若干簇。簇只是“风格伪标签”，训练/导出时按簇过滤即可。
-//!
-//! 特征刻意保持轻量：不引入额外的情感识别模型，端侧聚类只需要读 WAV、算一次
-//! log-mel，再把几十条样本跑一遍小 k-means。
+//! 无监督风格聚类：用轻量声学特征做确定性 k-means，生成风格伪标签。
 
 use std::collections::{BTreeMap, HashMap};
 use std::path::Path;
@@ -20,22 +13,19 @@ use super::resample::resample_mono;
 
 /// 默认风格簇数量。
 pub const DEFAULT_STYLE_CLUSTERS: usize = 4;
-/// 允许的最大簇数量，避免小数据集被切得过碎。
+/// 最大簇数量，避免小数据集被切碎。
 pub const MAX_STYLE_CLUSTERS: usize = 16;
 /// k-means 最大迭代次数。
 const KMEANS_ITERATIONS: usize = 30;
-/// 固定种子，保证同一数据集重复聚类结果一致。
+/// 固定种子，保证同一数据集聚类结果一致。
 const KMEANS_SEED: u64 = 0x5EED_5EED_51A7_1E00;
 
 /// 一个风格簇的摘要。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct StyleClusterSummary {
-    /// 簇 id。
     pub cluster: u32,
-    /// 属于该簇的样本数。
     pub items: usize,
-    /// 属于该簇的总时长（秒）。
     pub total_secs: f64,
 }
 
@@ -43,18 +33,13 @@ pub struct StyleClusterSummary {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct StyleClusterReport {
-    /// 数据集 id。
     pub dataset_id: String,
-    /// 实际使用的簇数量。
     pub k: usize,
     /// 各簇摘要，按簇 id 升序。
     pub clusters: Vec<StyleClusterSummary>,
 }
 
-/// 给数据集做一次无监督风格聚类，并把 `style_cluster` 写回 `dataset.json`。
-///
-/// 读不到或算不出特征的样本保持 `None`，后续按簇训练时会被跳过。返回的
-/// `k` 可能小于调用方请求值：样本数不足或特征完全重合时会自动收缩。
+/// 给数据集做风格聚类并写回 `dataset.json`；特征不可用的样本保持 None，k 自动收缩。
 pub fn cluster_dataset(root: &Path, requested_k: usize) -> Result<StyleClusterReport> {
     let manifest_path = root.join("dataset.json");
     let bytes = std::fs::read(&manifest_path)

@@ -1,15 +1,10 @@
-//! 音频处理：WAV 编解码、参考音频读取、首尾静音裁剪、接缝淡入淡出。
-//!
-//! 逐句合成后由 [`apply_edge_fades`] 把接缝压回静音，停顿长度则由调用处按标点精确
-//! 插入——各模型自带的片首尾静音长短不一（0.1~0.4 秒），直接拼接会让停顿忽长忽短。
+//! 音频处理：WAV 编解码、参考音频读取、静音裁剪、接缝淡入淡出。
 
 use std::path::Path;
 
 use anyhow::{Result, anyhow};
 
-/// 首尾静音最多各保留多久（秒）。中间的停顿是句读，要留着；前后的空白在多段台词的
-/// 场景里只会变成「每句都要等一会儿才开口」——zipvoice 逐次推理的段首静音实测能到
-/// 0.4 秒，各模型之间也不一致。
+/// 首尾静音最多保留的秒数；中间停顿是句读，要留着。
 pub(super) const LEAD_SILENCE_KEEP: f32 = 0.1;
 pub(super) const TRAIL_SILENCE_KEEP: f32 = 0.15;
 
@@ -32,25 +27,13 @@ fn silence_bounds(samples: &[f32]) -> (usize, usize) {
     (start, end)
 }
 
-/// 去掉首尾**全部**静音（不留余量）。
-///
-/// 逐句合成时片与片之间要插我们自己算好的停顿，各片自带的静音（0.1~0.4 秒不等，
-/// 模型之间还不一样）只会让停顿忽长忽短，所以这里一点不留；整段首尾的静音由
-/// 调用处按 [`LEAD_SILENCE_KEEP`] / [`TRAIL_SILENCE_KEEP`] 补回来。
+/// 去掉首尾全部静音；整段首尾的留白由调用处按 LEAD/TRAIL 补回。
 pub(super) fn strip_edge_silence(samples: &[f32]) -> &[f32] {
     let (start, end) = silence_bounds(samples);
     &samples[start..end]
 }
 
-/// 把一段音频**内部**超过 `max_gap` 秒的静音压到 `max_gap`。
-///
-/// 只用于短语气词合并出来的那一片（见 [`super::text::has_inner_clause_punct`]）：
-/// 「好的，今天天气真不错」交给 kokoro 一次推理时，模型会在合并处的逗号后面塞 0.35 秒
-/// 静音（英文音色 0.68 秒），而别处的逗号停顿都是我们按 [`super::text::CLAUSE_PAUSE`]
-/// 插的 0.2 秒——同一段话里两个逗号停得不一样长，听感就是「语气词后面愣一下」。
-///
-/// 只动内部静音：首尾由 [`strip_edge_silence`] 处理，语气词本身被拉长的部分（标点带来
-/// 的拖音）也保留，只是把多出来的空白删掉。
+/// 把一段音频内部超过 `max_gap` 秒的静音压到 `max_gap`（只用于合并短句的那一片）。
 pub(super) fn cap_inner_silence(samples: &mut Vec<f32>, sample_rate: i32, max_gap: f32) {
     if sample_rate <= 0 || max_gap <= 0.0 {
         return;
@@ -79,11 +62,7 @@ pub(super) fn cap_inner_silence(samples: &mut Vec<f32>, sample_rate: i32, max_ga
     *samples = out;
 }
 
-/// 给一段音频的首尾各加一小段线性淡入/淡出（时长见 [`JOINT_FADE`]）。
-///
-/// 拼接处需要它：两截波形在接缝处的幅值一般不连续（sherpa 内部就是直接把多段
-/// `insert` 到一起的），听感上就是「咔哒」一声。淡入淡出把接缝两侧压到 0，
-/// 接缝就落回静音里了。
+/// 首尾各加一小段线性淡入/淡出，压掉拼接处的「咔哒」声。
 pub(super) fn apply_edge_fades(samples: &mut [f32], sample_rate: i32) {
     if sample_rate <= 0 {
         return;
@@ -132,8 +111,7 @@ pub(super) fn f32_to_wav(samples: &[f32], sample_rate: i32) -> Vec<u8> {
 }
 
 pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
-    // Android 的 content:// URI（早期版本直接存进设置的路径）读不了，早点说清楚
-    // 该怎么办，别让用户看到下面那句「仅支持 WAV」而摸不着头脑。
+    // Android 的 content:// URI 读不了，提示用户重新导入。
     if path.to_string_lossy().starts_with("content://") {
         return Err(anyhow!(
             "参考音频是 Android 的 content:// URI，请先在语音设置里重新导入一次（会复制到应用数据目录）: {}",
@@ -141,7 +119,7 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
         ));
     }
 
-    // 仅支持 WAV 格式（sherpa-onnx 零样本克隆要求 WAV 输入）
+    // sherpa-onnx 零样本克隆仅接受 WAV。
     let ext = path
         .extension()
         .and_then(|e| e.to_str())
@@ -158,15 +136,12 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let data = std::fs::read(path)
         .map_err(|e| anyhow!("无法读取参考音频文件 {}: {}", path.display(), e))?;
 
-    // 按块流解析，而不是按固定偏移：`fmt ` 前面可能排着 `bext`（广播 WAV）、`LIST`、
-    // `JUNK` 等块（摄像/录音软件导出很常见），固定偏移在那里读到的是无关字节。
+    // 按块流解析：`fmt ` 前可能有 `bext` / `LIST` / `JUNK` 等块，固定偏移会读错。
     let wav = parse_wav(&data)
         .ok_or_else(|| anyhow!("WAV 文件结构不对（缺 fmt / data 块）: {}", path.display()))?;
     let format = wav.format;
 
-    // 采样率要原样交给 sherpa 重采样：读错一位，参考音频就等于被按错误的速度播放，
-    // 合成出来音色、语速全变（实测把 22050 的样本标成 48000，时长少一半；标成
-    // 16000，时长多三成，音色距离 41~55‰——接近「换了个人」的量级）。
+    // 采样率要原样交给 sherpa 重采样；读错会让音色、语速全变。
     if !(1..=384_000).contains(&format.sample_rate) {
         return Err(anyhow!(
             "WAV 头里的采样率不对（读到 {}），请用「导入参考音频」重新导入: {}",
@@ -185,7 +160,7 @@ pub fn load_reference_audio(path: &Path) -> Result<(Vec<f32>, i32)> {
     let samples = decode_wav_samples(&data[wav.offset..wav.offset + wav.len], &format)
         .map_err(|e| anyhow!("{e}: {}", path.display()))?;
 
-    // 多声道取平均。chunks_exact：末尾不足一帧的残字节丢掉，不能让它们单独成一帧。
+    // 多声道取平均；末尾不足一帧的残字节丢掉。
     let mono_samples = if format.channels > 1 {
         samples
             .chunks_exact(format.channels as usize)
@@ -324,7 +299,7 @@ fn decode_wav_samples(raw: &[u8], format: &WavFormat) -> Result<Vec<f32>> {
     Ok(samples)
 }
 
-/// 解析我们生成的 WAV 字节并返回 (采样率, 单声道样本数)。
+/// 解析生成的 WAV，返回 (采样率, 单声道样本数)。
 #[cfg(test)]
 pub(super) fn parse_generated_wav(wav: &[u8]) -> (u32, usize) {
     let parsed = parse_wav(wav).expect("缺 RIFF/WAVE/fmt /data 头");
@@ -352,7 +327,7 @@ pub(super) fn pcm_has_signal(wav: &[u8], threshold: u16) -> bool {
 mod tests {
     use super::*;
 
-    /// 片内长静音压到上限；短静音和波形本身不动。
+    /// 片内长静音压到上限，短静音与波形不动。
     #[test]
     fn caps_inner_silence_only() {
         let sr = 1000; // 1 个样本 = 1ms，方便数
@@ -368,7 +343,7 @@ mod tests {
         assert_eq!(samples.iter().filter(|s| s.abs() > 0.1).count(), 200);
     }
 
-    /// 拼接处的淡入淡出：首尾样本归零、中间不动，20ms 以外不受影响。
+    /// 淡入淡出：首尾归零、中间不动。
     #[test]
     fn fades_clause_edges_and_strips_silence() {
         let sample_rate = 1000; // 20ms = 20 个样本
@@ -389,8 +364,7 @@ mod tests {
         assert!(edge.iter().all(|s| *s == 0.5));
     }
 
-    /// WAV 头必须按块流解析：`fmt ` 前面多一个块（广播 WAV 的 `bext`、`LIST`）时，
-    /// 固定偏移读到的是无关字节（实测 44100Hz 被读成 sr=808464432）。
+    /// WAV 头按块流解析：`fmt ` 前多一个块时固定偏移会读错采样率。
     #[test]
     fn parses_wav_with_chunks_before_fmt() {
         let data = build_wav(&[
@@ -411,7 +385,7 @@ mod tests {
         assert_eq!(parsed.format.channels, 2);
     }
 
-    /// 参考音频的样本格式：16/24/32 位 PCM 与 32 位 float 都要按对的解释读。
+    /// 16/24/32 位 PCM 与 float 都要按正确的解释读。
     #[test]
     fn decodes_reference_audio_formats() {
         // 24 位：0x7FFFFF 是满幅正，0x800000 是满幅负。
@@ -450,7 +424,7 @@ mod tests {
         assert!(decode_wav_samples(&raw, &fmt).is_err());
     }
 
-    /// Android 早期版本存下来的 `content://` 路径要给出可操作的提示。
+    /// `content://` 路径要给出可操作的提示。
     #[test]
     fn rejects_content_uri_reference() {
         let err = load_reference_audio(Path::new("content://media/external/audio/1.wav"))
@@ -475,7 +449,7 @@ mod tests {
         wav
     }
 
-    /// 16 位 PCM 的 fmt 块内容。
+    /// 16 位 PCM 的 fmt 块。
     fn pcm16_fmt(sample_rate: u32, channels: u16) -> Vec<u8> {
         let mut fmt = Vec::new();
         fmt.extend_from_slice(&1u16.to_le_bytes()); // PCM

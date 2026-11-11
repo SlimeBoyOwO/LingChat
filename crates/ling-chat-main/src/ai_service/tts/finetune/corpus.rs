@@ -1,8 +1,4 @@
-//! 训练语料组装。
-//!
-//! 把数据集清单、文本前端和 mel 特征串起来：每条样本产出 token id 序列和
-//! log-mel 帧，供训练循环直接消费。这里同时承担长度过滤——过短或没有
-//! 文本标注的素材会被跳过并记录原因，不会让训练在坏样本上崩掉。
+//! 训练语料组装：把清单、文本前端和 mel 特征串起来，并过滤坏样本。
 
 use std::path::Path;
 
@@ -18,15 +14,11 @@ use super::text::TextFrontend;
 /// 语料组装配置。
 #[derive(Debug, Clone)]
 pub struct CorpusConfig {
-    /// mel 特征配置。
     pub mel: MelConfig,
-    /// 最少 token 数。
     pub min_tokens: usize,
-    /// 最多 token 数。
     pub max_tokens: usize,
-    /// 最少 mel 帧数。
     pub min_frames: usize,
-    /// 只使用指定风格簇的样本；None 表示使用全部样本。
+    /// 只使用指定风格簇；None 表示全部。
     pub style_cluster: Option<u32>,
 }
 
@@ -45,9 +37,7 @@ impl Default for CorpusConfig {
 /// 一条训练样本。
 #[derive(Debug, Clone)]
 pub struct TrainingSample {
-    /// 样本 id。
     pub id: String,
-    /// token id 序列。
     pub token_ids: Vec<i32>,
     /// log-mel 特征，帧数乘 mel 通道数。
     pub mel: Vec<Vec<f32>>,
@@ -76,33 +66,24 @@ impl TrainingSample {
 /// 被跳过的样本。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkippedSample {
-    /// 样本 id。
     pub id: String,
-    /// 跳过原因。
     pub reason: String,
 }
 
 /// 语料统计。
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct CorpusStats {
-    /// 有效样本数。
     pub total_samples: usize,
-    /// 总帧数。
     pub total_frames: usize,
-    /// 总 token 数。
     pub total_tokens: usize,
-    /// 总时长（秒）。
     pub total_secs: f64,
 }
 
 /// 组装好的语料。
 #[derive(Debug, Clone)]
 pub struct Corpus {
-    /// 有效样本。
     pub samples: Vec<TrainingSample>,
-    /// 跳过列表。
     pub skipped: Vec<SkippedSample>,
-    /// 统计。
     pub stats: CorpusStats,
 }
 
@@ -222,10 +203,7 @@ pub fn build_from_manifest(
     })
 }
 
-/// 把样本下标按批次切分。
-///
-/// 同一个 seed 得到同一个顺序，便于断点续训。返回的是下标而不是样本本身，
-/// 调用方按需取用，避免整批复制 mel。
+/// 把样本下标按批次切分；同一 seed 顺序一致，便于断点续训。返回下标避免复制 mel。
 pub fn make_batches(sample_count: usize, batch_size: usize, seed: u64) -> Vec<Vec<usize>> {
     if sample_count == 0 || batch_size == 0 {
         return Vec::new();
@@ -234,7 +212,7 @@ pub fn make_batches(sample_count: usize, batch_size: usize, seed: u64) -> Vec<Ve
     let mut indices: Vec<usize> = (0..sample_count).collect();
     let mut state = seed | 1;
     for i in (1..sample_count).rev() {
-        // xorshift64，够用的确定性伪随机。
+        // 确定性 xorshift64 洗牌。
         state ^= state << 13;
         state ^= state >> 7;
         state ^= state << 17;

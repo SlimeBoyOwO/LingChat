@@ -1,9 +1,4 @@
-//! 角色级 `VoiceMaker`
-//!
-//! 职责：
-//! - 根据 `VoiceModel` 配置检测每种 TTS 的可用性
-//! - 基于当前 `tts_type` 初始化对应 adapter
-//! - `generate_voice_files(segments)`：并发为每段生成音频到磁盘
+//! 角色级 `VoiceMaker`：选择并初始化 TTS 适配器，按段并发生成语音文件。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -58,8 +53,7 @@ pub struct VoiceMaker {
     audio_format: String,
     availability: TtsAvailability,
     tts_config: TtsConfig,
-    /// Local TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。由
-    /// `build_voice_maker` 注入一次，`sbv2_local` 适配器惰性引导时使用。
+    /// 本地 TTS 共享运行时；由 `build_voice_maker` 注入。
     local_runtime: Option<LocalTtsRuntime>,
     local_cloud_fallback: Option<LocalCloudFallback>,
 }
@@ -188,8 +182,7 @@ impl VoiceMaker {
         }
     }
 
-    /// 注入本地 TTS 共享运行时。由 `build_voice_maker` 在角色注册时调用，
-    /// `sbv2_local` 适配器惰性引导及云端 fallback 判断都依赖它。
+    /// 注入本地 TTS 共享运行时。
     pub fn set_local_runtime(&mut self, local_runtime: Option<LocalTtsRuntime>) {
         self.local_runtime = local_runtime;
     }
@@ -211,13 +204,8 @@ impl VoiceMaker {
         self.availability
     }
 
-    /// 该 TTS 是否按「整句」合成——即同一句被 【情绪】 标签切成几段送进去，
-    /// 语调和停顿会各自重置（生产链见 `StreamProducer`）。
-    ///
-    /// 目前只有 sherpa-onnx 走这条路径：它的情绪没有模型级入口（只有 `vits` 支持
-    /// `emotion_id`，且要模型自带该输入），情绪只落成语速与停顿（见
-    /// `sherpa_onnx::emotion_prosody`），不换音色——所以拆段合成只会亏了整句语气，
-    /// 换不来情绪差别，仍然拼回一段（合并后取该句第一个情绪标签）。
+    /// 该 TTS 是否按整句合成（情绪标签切成几段也会拼回一段）。
+    /// 目前只有 sherpa-onnx：情绪不换音色，拆段只会亏整句语气。
     pub fn uses_whole_sentence_input(&self) -> bool {
         matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
     }
@@ -247,10 +235,7 @@ impl VoiceMaker {
         // 旧参考配置：单一参考语音/文本，或仅指定了模型权重
         let gsv_legacy = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
             || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
-        // 六情绪开关开启后，至少一个分类的参考文本与音频路径都非空才额外算可用，
-        // 判定条件与合成时构建 emo_prompts 的一致，避免出现“判定可用但合成报错”。
-        // 未填全的分类在合成时回退 gsv_legacy，所以开关不能取消旧配置的可用性，
-        // 否则开关一开而分类还没填全，原本能出声的角色会连适配器都建不出来。
+        // 六情绪开关：至少一个分类配置完整才额外算可用；未填全的分类合成时回退旧配置。
         let gsv = gsv_legacy
             || (cfg.gsv_emo_enabled.unwrap_or(false)
                 && GSV_EMO_CATEGORIES
@@ -411,9 +396,7 @@ impl VoiceMaker {
                     },
                 }
                 .to_string();
-                // 六情绪参考语音：开启后按分类构造 (音频路径, 文本, 文本语言) 表，
-                // 合成时由 adapter 按当前片段情绪分类实时选择；缺省分类回退默认配置。
-                // 音频路径原样透传，由 GSV 服务端按其自身文件系统解析。
+                // 六情绪参考语音：合成时按片段情绪选择，缺省回退默认配置；路径原样透传。
                 let mut emo_prompts = HashMap::new();
                 if cfg.gsv_emo_enabled.unwrap_or(false) {
                     for cat in GSV_EMO_CATEGORIES {
@@ -528,8 +511,7 @@ impl VoiceMaker {
                     self.provider.disable();
                 } else {
                     let voice_id = cfg.cosyvoice_voice_id.clone().unwrap_or_default();
-                    // 合成模型必须与注册音色时的模型一致：优先从音色记录解析，
-                    // 找不到（音色记录被清）回退全局默认模型
+                    // 合成模型需与注册音色时一致；找不到音色记录则回退全局默认。
                     let model = self
                         .tts_config
                         .cosyvoice_voices
@@ -539,9 +521,7 @@ impl VoiceMaker {
                         .or_else(|| self.tts_config.cosyvoice_models.first().cloned())
                         .unwrap_or_else(|| "cosyvoice-v3.5-flash".to_string());
                     let mut adapter = CosyvoiceAdapter::new(api_key, model, voice_id);
-                    // 方言：仅中文生效，通过 instruction 指令触发（复刻音色需指令才输出方言）；
-                    // 其余语言：仅官方支持的语言才用 language_hints 指定合成目标语言
-                    // （es/ar 等不支持的值会触发云端报错，跳过即可）
+                    // 方言仅中文、经 instruction 触发；其余只用官方支持的语言提示。
                     if self.lang == "zh" {
                         if let Some(dialect) =
                             self.voice_dialect.clone().filter(|d| !d.trim().is_empty())
@@ -556,7 +536,7 @@ impl VoiceMaker {
                 }
             },
             "sherpa" | "sherpa-onnx" if self.availability.sherpa => {
-                // 本地 Sherpa-ONNX 模型：模型目录位于 sherpa_onnx_models_root()/<name>/。
+                // 模型目录位于 sherpa_onnx_models_root()/<name>/。
                 let model_name = cfg.sherpa_onnx_model_name.clone().unwrap_or_default();
                 let models_root =
                     crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
@@ -577,8 +557,7 @@ impl VoiceMaker {
                     .unwrap_or_else(|| "female".to_string());
                 let use_gpu = cfg.sherpa_onnx_use_gpu.unwrap_or(false);
 
-                // 推理步数 / 引导强度由角色语音设置里的两个滑动条控制（1–10），
-                // 缺失或越界时由 SherpaTuning::from_options 收敛到默认/合法范围。
+                // 推理步数 / 引导强度由两个滑动条控制；越界值由 SherpaTuning::from_options 收敛。
                 let tuning = SherpaTuning::from_options(
                     cfg.sherpa_onnx_num_steps,
                     cfg.sherpa_onnx_guidance_scale,
@@ -620,9 +599,8 @@ impl VoiceMaker {
                                         );
                                     },
                                     Err(e) => {
-                                        // Android 上早期版本的设置里可能存着 `content://` URI
-                                        // （新导入的都会先落到应用数据目录）。这里没有 AppHandle，
-                                        // 用不了 SAF 桥，只能提示用户重新导入一次。
+                                        // Android 旧配置可能存着 content:// URI；这里没有 AppHandle，
+                                        // 用不了 SAF 桥，只能提示重新导入。
                                         let hint = if ref_path.starts_with("content://") {
                                             "（该路径是 Android 的 content:// URI，请在角色设置的语音页重新导入参考音频）"
                                         } else {
@@ -680,8 +658,7 @@ impl VoiceMaker {
         }
     }
 
-    /// 编辑器使用独立 VoiceMaker 直接返回音频，不生成聊天文件或修改聊天失败计数。
-    /// 本地 TTS 的全局开关与云端回退规则与对话一致，文本按所选语言原样合成。
+    /// 编辑器试听：直接返回音频，不生成聊天文件；本地开关与云端回退规则同对话。
     pub async fn synthesize_preview(&self, text: &str, emotion: &str) -> Result<Vec<u8>> {
         if self.tts_type == "localsbv2api"
             && self
@@ -748,9 +725,7 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            // 将情绪分类器的预测标签传给 TTS 适配器。消费它的有 IndexTTS2 / Fish S2
-            // （切换情绪参考音频或情绪参数）和 sherpa-onnx（没有情绪输入，只把情绪落成
-            // 语速与停顿，见 sherpa_onnx::emotion_prosody）；其余适配器忽略该参数。
+            // 情绪标签传给适配器：IndexTTS2/Fish S2 用它换参考音频，sherpa 落成语速与停顿。
             let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {

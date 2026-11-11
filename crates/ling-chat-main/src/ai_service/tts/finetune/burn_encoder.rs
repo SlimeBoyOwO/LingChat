@@ -1,8 +1,4 @@
-//! 用 burn 实现的基座文本编码器，与 candle 版逐层对齐。
-//!
-//! 网络结构：词嵌入、三层 k=5 的 prenet 卷积（各带沿通道维的 AffineNorm）、
-//! 六层 transformer 块（卷积投影自注意力 + k=3 前馈卷积，各带残差与归一化），
-//! 末尾分出 mel 先验与对数时长两支。权重名约定与 candle 版一致。
+//! burn 版基座文本编码器，结构与权重名与 candle 版逐层对齐。
 
 use burn::module::Param;
 use burn::nn::PaddingConfig1d;
@@ -16,22 +12,13 @@ use super::onnx_weights::OnnxTensor;
 /// 编码器超参数（burn 版，字段与 candle 版对应）。
 #[derive(Debug, Clone)]
 pub struct BurnBaseEncoderConfig {
-    /// 词表大小。
     pub n_vocab: usize,
-    /// 隐层维度。
     pub hidden: usize,
-    /// Transformer 层数。
     pub layers: usize,
-    /// 前馈隐层维度。
     pub ffn_hidden: usize,
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 时长预测器隐层维度。
     pub duration_hidden: usize,
-    /// 时长分支的卷积旁路秩；0 表示冻结时长分支，不挂适配器。
-    ///
-    /// 旁路只挂在时长预测器（conv1/conv2/proj）上，训练时逐 token 调整对数
-    /// 时长，导出时折进 `model.encoder.proj_w.*` 的权重，推理端零改动。
+    /// 时长分支卷积旁路秩；0 冻结。旁路只挂 conv1/conv2/proj，导出折叠进基座权重。
     pub duration_lora_rank: usize,
 }
 
@@ -148,11 +135,7 @@ impl FeedForward {
     }
 }
 
-/// 时长预测器的低秩旁路。
-///
-/// 只旁路时长分支的三层卷积，不改 mel 先验；训练时按 token 的上下文微调对数
-/// 时长，从而调整停顿与语速分布。导出折叠进 `proj_w.conv_1/conv_2/proj` 的
-/// 权重，ONNX 图结构不变。
+/// 时长预测器的低秩旁路：只旁路 conv1/conv2/proj，导出折叠回基座权重。
 #[derive(Module, Debug)]
 pub struct DurationLora {
     conv1: ConvLora,
@@ -193,7 +176,7 @@ pub struct BurnBaseEncoder {
     duration_conv1: Conv1d,
     duration_conv2: Conv1d,
     duration_proj: Conv1d,
-    /// 时长分支的旁路；`None` 表示冻结、不参与训练。
+    /// 时长分支旁路；`None` 表示冻结。
     duration_lora: Option<DurationLora>,
 }
 
@@ -248,10 +231,7 @@ impl BurnBaseEncoder {
         }
     }
 
-    /// 跑完词嵌入与 Transformer，返回时长/mel 两支共用的隐状态。
-    ///
-    /// 训练时先对每条样本算一次并缓存，之后每步只跑时长分支的低秩旁路和
-    /// 可微展开，避免在设备上重复跑六层 Transformer。
+    /// 跑完词嵌入与 Transformer，返回两支共用的隐状态；训练时缓存以避免重复跑六层。
     pub fn forward_hidden(&self, tokens: Tensor<2, Int>) -> Tensor<3> {
         // 词嵌入输出 [b, seq, hidden]，转成 [b, hidden, seq]。
         let mut hidden = self.embedding.forward(tokens).transpose();
@@ -306,9 +286,7 @@ impl BurnBaseEncoder {
         (mel, durations)
     }
 
-    /// 把时长旁路折叠进基座卷积权重的副本，返回 ONNX 布局的三组权重。
-    ///
-    /// 名称与基座 `model.encoder.proj_w.*` 初始izer 一致，导出时直接覆写。
+    /// 把时长旁路折叠进基座卷积副本，返回 ONNX 布局权重，名称与 `model.encoder.proj_w.*` 一致。
     pub fn folded_duration_weights(&self) -> Vec<(&'static str, Vec<f32>)> {
         let mut conv1 = self.duration_conv1.clone();
         let mut conv2 = self.duration_conv2.clone();
@@ -345,9 +323,7 @@ impl BurnBaseEncoder {
         self.duration_lora = lora;
     }
 
-    /// 预测一段 token 序列的总时长（秒），用于按风格簇校准语速。
-    ///
-    /// `forward` 输出的对数时长先取 exp 再求和；空序列返回 0。
+    /// 预测 token 序列总时长（秒）：对数时长取 exp 后求和；空序列为 0。
     pub fn predict_duration_secs(&self, token_ids: &[i32], device: &Device) -> Result<f32, String> {
         if token_ids.is_empty() {
             return Ok(0.0);
@@ -397,12 +373,7 @@ fn fill1(param: &mut Param<Tensor<1>>, data: &[f32], dims: &[usize], device: &De
     *param = Param::from_tensor(t);
 }
 
-/// 按名字把一个命名 ONNX 权重张量填入编码器对应参数。
-///
-/// 只处理 `model.encoder.*.weight`；未知名字静默忽略，便于复用基座权重。
-/// 按名字把一个命名 ONNX 权重张量填入编码器对应参数。
-///
-/// 识别 `model.encoder.*.{weight,bias}`；未知名字静默忽略，便于复用基座权重。
+/// 按名字把一个命名 ONNX 权重张量填入编码器对应参数；未知名字静默忽略。
 pub fn apply_named_weight(encoder: &mut BurnBaseEncoder, tensor: &OnnxTensor, device: &Device) {
     let name = &tensor.name;
     let suffix: &str = name.rsplit('.').next().unwrap_or("");
@@ -642,7 +613,7 @@ mod tests {
     use super::super::burn_backend::train_device;
     use super::*;
 
-    /// 在当前平台设备上跑一次前向，验证形状与链路可用。
+    /// 在当前平台设备上跑一次前向，验证形状与链路。
     #[test]
     fn forward_produces_mel_and_durations() {
         let device = train_device();
@@ -658,7 +629,7 @@ mod tests {
         assert_eq!(durations.shape().dims(), [1, 5]);
     }
 
-    /// 从基座 ONNX 加载权重到 burn 编码器，验证权重桥可用且前向形状正确。
+    /// 从基座 ONNX 加载权重，验证权重桥与前向形状。
     #[test]
     fn loads_from_real_onnx_and_forwards() {
         let path = Path::new(env!("CARGO_MANIFEST_DIR"))

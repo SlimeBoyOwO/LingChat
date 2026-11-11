@@ -1,7 +1,4 @@
-//! 端侧音色微调：数据集导入、列表与删除。
-//!
-//! 只负责数据侧，训练与导出在后续接入。数据集存放在
-//! `data/sherpa_onnx_finetune/<dataset_id>/`，与训练模块共用同一目录约定。
+//! 端侧音色微调：数据集导入、训练、导出与自动标注。
 
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
@@ -37,7 +34,7 @@ pub struct FinetuneDatasetSummary {
     pub items_with_text: usize,
     pub total_secs: f64,
     pub meets_minimum: bool,
-    /// 已分配的风格簇；空表示尚未做无监督聚类。
+    /// 已分配的风格簇；空表示尚未聚类。
     pub style_clusters: Vec<StyleClusterSummary>,
 }
 
@@ -107,9 +104,7 @@ pub fn tts_finetune_stats(dataset_id: String) -> Result<DatasetStats, String> {
     Ok(manifest.stats)
 }
 
-/// 对数据集做无监督风格聚类，把簇 id 写回清单。
-///
-/// `clusters` 是期望的簇数量，缺省 4，最终会自动收缩到样本数以内。
+/// 对数据集做无监督风格聚类，把簇 id 写回清单；`clusters` 缺省 4 并自动收缩到样本数。
 #[tauri::command]
 pub async fn tts_finetune_cluster_styles(
     dataset_id: String,
@@ -133,10 +128,7 @@ pub fn tts_finetune_remove(dataset_id: String) -> Result<(), String> {
     remove_dataset(&dataset_id).map_err(|error| format!("删除数据集失败: {error:#}"))
 }
 
-/// 数据集内的检查点路径。
-///
-/// 未选择风格簇时沿用 `checkpoint.bpk`；选择簇时每个簇一份独立检查点，避免
-/// 后训的簇覆盖前一个簇。
+/// 数据集内的检查点路径；按簇独立存放，避免后训的簇覆盖前一个。
 fn dataset_checkpoint_path(root: &Path, style_cluster: Option<u32>) -> PathBuf {
     match style_cluster {
         Some(cluster) => root.join(format!("checkpoint-style-{cluster}.bpk")),
@@ -153,19 +145,18 @@ pub struct FinetuneTrainOutcome {
     pub final_loss: f32,
     pub cancelled: bool,
     pub checkpoint: String,
-    /// 从第几轮开始续训；0 表示从头训练。
+    /// 续训起始轮次；0 表示从头训练。
     pub resumed_from: usize,
-    /// 本次训练使用的风格簇；None 表示使用全部数据。
+    /// 使用的风格簇；None 表示全部数据。
     pub style_cluster: Option<u32>,
 }
 
-/// 当前训练活动状态：进程内共享，供页面重建后恢复训练侧信息。
+/// 进程内训练活动状态，供页面重建后恢复。
 struct ActiveTrainState {
     /// 取消令牌；Some 表示正在训练。
     token: Option<CancellationToken>,
-    /// 正在训练的数据集 id（无训练时为空）。
     dataset_id: Option<String>,
-    /// 最近一次上报的进度；训练中逐步更新，结束后保留最后值。
+    /// 最近一次上报的进度；结束后保留最后值。
     latest: Option<TrainingProgress>,
 }
 
@@ -184,19 +175,16 @@ fn active_train() -> &'static Mutex<ActiveTrainState> {
     ACTIVE.get_or_init(|| Mutex::new(ActiveTrainState::default()))
 }
 
-/// 当前的训练活动状态查询结果。
+/// 当前训练活动状态查询结果。
 #[derive(Debug, Clone, Serialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub struct FinetuneActiveState {
-    /// 是否有训练正在运行。
     pub training: bool,
-    /// 正在训练的数据集 id（无训练时为空）。
     pub dataset_id: String,
-    /// 最近一次上报的进度（无则为空）。
     pub latest: Option<TrainingProgress>,
 }
 
-/// 查询当前是否有训练在跑及其最新进度，供页面重建后恢复 UI 状态。
+/// 查询是否有训练在跑及其最新进度。
 #[tauri::command]
 pub fn tts_finetune_active() -> FinetuneActiveState {
     let guard = active_train().lock();
@@ -211,9 +199,7 @@ pub fn tts_finetune_active() -> FinetuneActiveState {
     }
 }
 
-/// 开始训练。
-///
-/// 基座目录需要提供 tokens.txt 与 lexicon.txt，用于把文本转成和基座一致的符号 id。
+/// 开始训练；基座目录需提供 tokens.txt 与 lexicon.txt。
 #[tauri::command]
 pub async fn tts_finetune_train(
     app: AppHandle,
@@ -257,8 +243,7 @@ pub async fn tts_finetune_train(
     let mel = MelConfig::default();
     let lora_enabled = lora_enabled.unwrap_or(false);
     let lora_rank = lora_rank.unwrap_or(8).max(1);
-    // 逐 token 时长适配默认开启：只在时长分支挂很小的旁路，导出时折叠，对
-    // 低端设备也只是一次额外的轻量前向。秩取 LoRA 秩的一半并封顶 8。
+    // 时长适配默认开启：只在时长分支挂很小的旁路，导出时折叠；秩取 LoRA 秩一半并封顶 8。
     let duration_adapter = duration_adapter.unwrap_or(true);
     let duration_rank = (lora_rank / 2).clamp(1, 8);
     let encoder_config = crate::ai_service::tts::finetune::burn_encoder::BurnBaseEncoderConfig {
@@ -303,7 +288,7 @@ pub async fn tts_finetune_train(
         };
     }
 
-    // 开始训练时发一条通知，提示用户后台训练已启动（页面若已崩也能感知）。
+    // 开始训练时发一条系统通知，页面崩了也能感知。
     notify_train(&app, "start", &dataset_id, None);
 
     let ds_for_closure = dataset_id.clone();
@@ -325,7 +310,6 @@ pub async fn tts_finetune_train(
                     if progress.step % 5 != 0 && progress.step != progress.total_steps {
                         return;
                     }
-                    // 借用 training 的进度类型，把基座训练进度转成它再发射。
                     let legacy = TrainingProgress {
                         epoch: progress.epoch,
                         total_epochs: progress.total_epochs,
@@ -334,7 +318,7 @@ pub async fn tts_finetune_train(
                         loss: progress.loss,
                         val_loss: progress.val_loss,
                     };
-                    // 记录最近进度，供页面重建后恢复；每个 epoch 末（val_loss 上报）刷新一次通知。
+                    // 记录最近进度供页面恢复；每轮末（有 val_loss）刷新一次通知。
                     if let Ok(mut guard) = active_train().lock() {
                         guard.latest = Some(legacy.clone());
                     }
@@ -357,7 +341,7 @@ pub async fn tts_finetune_train(
         .map_err(|error| format!("训练任务失败: {error}"))?
         .map_err(|error| format!("训练失败: {error:#}"))?;
 
-    // 通知前端训练已结束（含被取消），前端据此清理训练中 UI。
+    // 通知前端训练已结束（含被取消）。
     let finished = FinetuneTrainOutcome {
         steps: outcome.steps,
         initial_loss: outcome.initial_loss,
@@ -378,10 +362,7 @@ pub async fn tts_finetune_train(
     Ok(finished)
 }
 
-/// 把训练阶段用系统通知呈现给用户。
-///
-/// 用固定 id 让进度阶段覆盖同一条通知，不堆积。kind 取值 start / progress /
-/// cancelled / finished；progress 阶段用最近一次进度拼 body。
+/// 把训练阶段用系统通知呈现给用户；固定 id 让进度覆盖同一条通知。
 fn notify_train(
     app: &AppHandle,
     kind: &str,
@@ -414,7 +395,7 @@ fn notify_train(
         .show();
 }
 
-/// 在基座目录里查找声学 ONNX（形如 model-*.onnx，排除非模型文件）。
+/// 在基座目录里查找声学 ONNX（形如 model-*.onnx）。
 fn find_base_onnx(base: &PathBuf) -> Result<PathBuf, String> {
     let mut found: Vec<_> = std::fs::read_dir(base)
         .map_err(|error| format!("读取基座目录失败: {error}"))?
@@ -431,12 +412,7 @@ fn find_base_onnx(base: &PathBuf) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("基座目录缺少声学 ONNX: {}", base.display()))
 }
 
-/// 把前端传入的「基座模型目录」参数归一化为目录路径。
-///
-/// 前端给的 `model.path` 是模型目录里的声学 ONNX 文件（如
-/// `…/matcha-icefall-zh-baker/model-steps-3.onnx`），而训练/导出需要的是**整个
-/// 模型目录**（含 tokens.txt / lexicon.txt / voCos）。若传入的是文件则取父目录，
-/// 兼容两种传法。
+/// 把前端传入的「基座模型目录」归一化为目录路径；传入 ONNX 文件时取父目录。
 fn resolve_base_dir(base_model_dir: &str) -> PathBuf {
     let p = PathBuf::from(base_model_dir);
     if p.is_file() {
@@ -450,17 +426,15 @@ fn resolve_base_dir(base_model_dir: &str) -> PathBuf {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct FinetuneExportOutcome {
-    /// 生成的可选音色模型目录（相对 sherpa_onnx_models 的名字）。
+    /// 生成的音色模型目录名。
     pub model_name: String,
-    /// 模型目录的绝对路径。
+    /// 模型目录绝对路径。
     pub model_path: String,
 }
 
-/// 估计所选风格簇相对基座时长预测的语速倍数。
+/// 估计所选风格簇相对基座的语速倍数。
 ///
-/// 用数据集清单里的文本与真实音频时长，对基座编码器的时长分支做前向，
-/// 取 `真实秒数 / 预测秒数` 的中位数。这样不需要额外标签，也不会被个别
-/// 异常样本拉偏。结果限制在 0.7～1.4，避免数据噪声把语速改得离谱。
+/// 用真实秒数 / 基座预测秒数的中位数，避免异常样本拉偏；结果限制在 0.7～1.4。
 fn estimate_style_duration_scale(
     base: &Path,
     root: &Path,
@@ -523,12 +497,7 @@ fn estimate_style_duration_scale(
     Ok(Some(scale))
 }
 
-/// 把训练好的解码器导出为独立的 Sherpa 音色模型目录。
-///
-/// 读取数据集检查点，把微调后的解码器权重写回基座声学 ONNX，再把导出的声学
-/// 模型与基座配套文件（tokens/lexicon/dict/规则 FST/声码器）组装成一个自洽的
-/// `sherpa_onnx_models/<model_name>/` 目录。目录一落地即被模型管理器自动识别为
-/// 一个可选 matcha 音色，设置页可直接选中。
+/// 把训练好的解码器导出为独立 Sherpa 音色模型目录，落地即被模型管理器识别。
 #[tauri::command]
 pub async fn tts_finetune_export(
     dataset_id: String,
@@ -537,7 +506,7 @@ pub async fn tts_finetune_export(
     style_cluster: Option<u32>,
 ) -> Result<FinetuneExportOutcome, String> {
     let model_name = model_name.trim().to_string();
-    // 复用导入暂存文件的命名净化规则，保证目录名安全且可用于文件系统。
+    // 复用导入的命名净化规则，保证目录名安全。
     let sanitized =
         crate::ai_service::tts::local::saf_bridge::sanitize_staged_filename(&model_name)
             .ok_or_else(|| "请给音色起个名字".to_string())?;
@@ -567,8 +536,7 @@ pub async fn tts_finetune_export(
     use burn::module::Module;
 
     let device = crate::ai_service::tts::finetune::burn_backend::train_device();
-    // 组装解码器骨架并从检查点装载微调参数。LoRA 检查点里带旁路参数，
-    // 骨架必须先按训练状态重建同样的旁路，否则 partial load 会把它们丢掉。
+    // 按训练状态重建同样的旁路骨架，否则 partial load 会把 LoRA 参数丢掉。
     let state = load_train_state(&checkpoint);
     // 旧检查点可能没有 train-state.json；从 burnpack 键名和形状补判旁路配置。
     let detected = if state.is_none() {
@@ -619,9 +587,8 @@ pub async fn tts_finetune_export(
         match decoder.clone().try_load_file(&checkpoint) {
             Ok(loaded) => loaded,
             Err(strict_error) => {
-                // 旧版本的 LoRA 检查点没有后来新增的采样/收尾卷积旁路。只要
-                // 线性 LoRA 的秩能对上，就允许 partial 装载，让缺失的新旁路
-                // 保持零初始化（折叠后等于基座），同时把情况写进日志。
+                // 旧 LoRA 检查点没有后来新增的采样/收尾卷积旁路。线性 LoRA 秩对得上时
+                // 允许 partial 装载，缺失旁路保持零初始化（折叠后等于基座）。
                 let compatible = inspect_checkpoint_adapters(&checkpoint)
                     .map(|adapters| adapters.lora && adapters.lora_rank == lora_rank)
                     .unwrap_or(false);
@@ -650,7 +617,7 @@ pub async fn tts_finetune_export(
         .await
         .map_err(|error| format!("创建模型目录失败: {error}"))?;
 
-    // 1) 导出写进临时文件，再原子搬到模型目录的 model-steps-*.onnx。
+    // 1) 先导出到临时文件，再原子搬到模型目录。
     let tmp = root.join(".export-tmp.onnx");
     tokio::task::spawn_blocking({
         let weight_map = weight_map.clone();
@@ -661,8 +628,7 @@ pub async fn tts_finetune_export(
         let checkpoint = checkpoint.clone();
         move || {
             let device = crate::ai_service::tts::finetune::burn_backend::train_device();
-            // 先按基座重建编码器并装回时长旁路，再做语速校准：校准必须看到
-            // 训练后的逐 token 时长，而不是基座预测。
+            // 先装回时长旁路再做语速校准，校准必须看到训练后的逐 token 时长。
             let encoder = if duration_enabled {
                 let tokens_path = base.join("tokens.txt");
                 if !tokens_path.is_file() {
@@ -692,8 +658,7 @@ pub async fn tts_finetune_export(
                 None
             };
 
-            // 按所选风格簇估计语速倍数；导出时折进时长预测器偏置。
-            // 校准只是增强项，失败（例如换用参数名不同的基座）不应阻断导出。
+            // 按所选风格簇估计语速倍数并折进时长预测器；校准失败不阻断导出。
             let duration_scale = match &encoder {
                 Some(encoder) => {
                     match estimate_style_duration_scale(&base, &root, style_cluster, encoder) {
@@ -754,7 +719,7 @@ pub async fn tts_finetune_export(
             .map_err(|error| format!("复制 dict 失败: {error}"))??;
     }
 
-    // 3) 写 config.json：声明为 matcha，供模型管理器识别 type/语音。
+    // 3) 写 config.json，声明为 matcha 供模型管理器识别。
     let config = serde_json::json!({
         "model_type": "matcha",
         "language": "zh",
@@ -806,11 +771,7 @@ pub fn tts_finetune_cancel() {
     }
 }
 
-/// 把 `%f32` 单声道采样序列化为 16-bit PCM 单声道 WAV 字节（供 ASR 识别用）。
-///
-/// ASR provider 统一吃 16kHz mono PCM16（见 `asr_recognize_wav`），而微调数据集
-/// 的 WAV 是 22.05kHz，需先重采样再打包成字节。直接复用 hound 输出为内存缓冲，
-/// 不落盘临时文件。
+/// 把单声道 `f32` 采样序列化为 16-bit PCM WAV 字节（ASR 需 16kHz mono PCM16，不落盘）。
 fn wav_bytes_from_mono(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, String> {
     let spec = hound::WavSpec {
         channels: 1,
@@ -837,24 +798,13 @@ fn wav_bytes_from_mono(samples: &[f32], sample_rate: u32) -> Result<Vec<u8>, Str
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct FinetuneAnnotateReport {
-    /// 本次识别成功并写入文本的样本数。
     pub annotated: usize,
-    /// 识别失败（网络/API 报错）的样本数。
     pub failed: usize,
-    /// 因读取/重采样问题被跳过的样本数。
     pub skipped: usize,
-    /// 重算后的数据集统计。
     pub stats: DatasetStats,
 }
 
-/// 用云端 ASR 为缺失文本的音频自动标注。
-///
-/// 遍历数据集里 `text == None` 的样本，把（22.05kHz）WAV 重采样成 16kHz 后逐个
-/// 调 provider 识别，识别成功的文本写回清单并重算统计。只补缺文本的条目，
-/// 已有标注的一律不动。
-///
-/// `provider_id` 必须是已配置的 ASR provider（qwen-asr / llama-asr 等）；
-/// `language_hint` 可选语言码（如 zh / en），透传给 provider。
+/// 用云端 ASR 为缺失文本的音频自动标注；只补缺文本条目，已有标注不动。
 #[tauri::command]
 pub async fn tts_finetune_auto_annotate(
     app: AppHandle,
@@ -863,21 +813,19 @@ pub async fn tts_finetune_auto_annotate(
     provider_id: String,
     language_hint: Option<String>,
 ) -> Result<FinetuneAnnotateReport, String> {
-    // 语言提示参数保留（前端仍传），但上游 ASR API 已移除语言字段，这里不再透传。
+    // 语言提示保留参数但不再透传（上游 ASR API 已移除该字段）。
     let _ = language_hint;
     let root = finetune_root().join(&dataset_id);
     if !root.is_dir() {
         return Err(format!("数据集不存在: {dataset_id}"));
     }
 
-    // 本地优先、云端回退：只要共享模型目录里已装 SenseVoice，就用本地 sherpa
-    // （零配置、无凭据）；否则回退到前端传来的云端 provider。即使前端显式要
-    // 云端，装了本地模型也优先走本地，未装时自然落回云端。
+    // 本地优先、云端回退：装了 SenseVoice 就走本地，否则用前端传入的云端 provider。
     let local_sherpa = provider_id
         == crate::ai_service::asr::providers::sherpa::SherpaAsrProvider::ID
         || crate::ai_service::asr::providers::sherpa::SherpaAsrProvider::model_installed();
     let session = if !local_sherpa {
-        // 取 ASR 会话。未初始化（未启动/init 失败）时给明确提示。
+        // 未初始化时给出明确提示。
         let guard = state.asr_state.session.lock().await;
         Some(guard.as_ref().cloned().ok_or_else(|| {
             "ASR 未初始化，请先配置并初始化语音识别（本地 sherpa 模型则不需要）".to_string()
@@ -887,7 +835,6 @@ pub async fn tts_finetune_auto_annotate(
     };
 
     let mut manifest = load_manifest(&dataset_id).map_err(|e| format!("读取数据集失败: {e:#}"))?;
-    // 收集缺文本的样本 id，逐个处理。
     let pending: Vec<DatasetItem> = manifest
         .items
         .iter()
@@ -901,12 +848,12 @@ pub async fn tts_finetune_auto_annotate(
     let mut annotated = 0usize;
     let mut failed = 0usize;
     let mut skipped = 0usize;
-    // 单条过长音频容易拖垮识别请求，超过 32 秒直接跳过。
+    // 单条超过 32 秒易拖垮识别请求，直接跳过。
     const MAX_ASR_SECS: f64 = 32.0;
 
     for item in &pending {
         let wav_path = root.join(&item.wav);
-        // 读取 + 重采样在阻塞线程做，避免拖住 async 运行时。
+        // 读取 + 重采样放阻塞线程，避免拖住 async 运行时。
         let read = tauri::async_runtime::spawn_blocking({
             let wav_path = wav_path.clone();
             move || crate::ai_service::tts::finetune::normalize::read_wav_mono(&wav_path)
@@ -980,7 +927,7 @@ pub async fn tts_finetune_auto_annotate(
         );
     }
 
-    // 至少成功一项才落盘；完全失败则不改动清单，避免把半成品写进去。
+    // 至少成功一项才落盘，避免把半成品写进清单。
     let stats = if annotated > 0 {
         persist_text_updates(&root, &mut manifest).map_err(|e| format!("保存标注失败: {e}"))?
     } else {

@@ -291,11 +291,10 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         ai_service::tts::cloud::commands::cosyvoice_delete_voice,
         ai_service::tts::cloud::commands::cosyvoice_synthesize_preview,
         ai_service::tts::local::tts_local_set_enabled,
-        // 推理设备选择：获取当前设备 / 枚举可用设备 / 切换设备
         ai_service::tts::local::tts_local_get_device,
         ai_service::tts::local::tts_local_list_devices,
         ai_service::tts::local::tts_local_set_device,
-        // Sherpa-ONNX 本地 TTS 模型管理相关命令
+        // TTS 微调 / Sherpa 模型管理命令
         api::tts_finetune::tts_finetune_train,
         api::tts_finetune::tts_finetune_export,
         api::tts_finetune::tts_finetune_cancel,

@@ -1,10 +1,4 @@
-//! 训练循环。
-//!
-//! 微调沿用基座的时长预测结果做对齐：先用当前模型对每条文本预测一次 token 时长，
-//! 再按帧数缩放，得到可用的逐 token 帧数。这样不需要额外的人工对齐数据，也不会
-//! 让时长在训练中漂移。
-//!
-//! 单条样本一步，移动端也吃得消。检查点用 safetensors，中断后从最近一轮继续。
+//! 训练循环：用基座预测的 token 时长做对齐，单条样本一步，支持断点续训与取消。
 
 use std::path::Path;
 
@@ -21,17 +15,11 @@ use super::model::Matcha;
 /// 训练配置。
 #[derive(Debug, Clone)]
 pub struct TrainingConfig {
-    /// 训练轮数。
     pub epochs: usize,
-    /// 学习率。
     pub learning_rate: f64,
-    /// 打乱顺序与噪声的随机种子。
     pub seed: u64,
-    /// 每多少轮存一次检查点。
     pub checkpoint_every: usize,
-    /// 每个 token 最少帧数。
     pub min_frames_per_token: usize,
-    /// 每个 token 最多帧数。
     pub max_frames_per_token: usize,
 }
 
@@ -52,17 +40,12 @@ impl Default for TrainingConfig {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct TrainingProgress {
-    /// 当前轮。
     pub epoch: usize,
-    /// 总轮数。
     pub total_epochs: usize,
-    /// 已完成的步数。
     pub step: usize,
-    /// 总步数。
     pub total_steps: usize,
-    /// 当前损失。
     pub loss: f32,
-    /// 本轮验证集平均损失；每个 epoch 末上报一次，训练步中间为 None。
+    /// 每轮末上报；训练步中间为 None。
     pub val_loss: Option<f32>,
 }
 
@@ -70,13 +53,9 @@ pub struct TrainingProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct TrainingOutcome {
-    /// 实际执行的步数。
     pub steps: usize,
-    /// 首步损失。
     pub initial_loss: f32,
-    /// 末步损失。
     pub final_loss: f32,
-    /// 是否被取消。
     pub cancelled: bool,
 }
 
@@ -97,7 +76,7 @@ pub fn train(
         anyhow::bail!("语料为空，无法训练");
     }
 
-    // 先用未训练的模型预测时长，作为整轮训练的固定对齐。
+    // 先用未训练模型预测时长，作为整轮训练的固定对齐。
     let alignments = corpus
         .samples
         .iter()

@@ -1,8 +1,4 @@
-//! 训练音频归一化。
-//!
-//! 把任意格式的素材统一成训练集要求的样子：单声道、目标采样率、16-bit PCM WAV，
-//! 并做直流偏置去除、首尾静音裁剪和响度归一化。所有素材走同一条链路，避免
-//! 「有的很响、有的很轻」让训练不稳定。
+//! 训练音频归一化：统一为单声道 16-bit PCM WAV，并去直流、裁静音、调响度。
 
 use std::path::Path;
 
@@ -11,34 +7,27 @@ use serde::{Deserialize, Serialize};
 
 use super::resample::resample_mono;
 
-/// 归一化后的峰值上限。留 1 dB 余量，避免重编码时削顶。
+/// 归一化后的峰值上限（留 1 dB 余量防削顶）。
 pub const TARGET_PEAK_DBFS: f32 = -1.0;
-/// 归一化后的目标 RMS。语音训练集常用 -23 dBFS 左右。
+/// 归一化后的目标 RMS。
 pub const TARGET_RMS_DBFS: f32 = -23.0;
-/// 判定静音的阈值，用于首尾裁剪。
+/// 静音判定阈值，用于首尾裁剪。
 const SILENCE_THRESHOLD_DBFS: f32 = -45.0;
-/// 裁剪时在首尾各保留的余量，避免切掉字头字尾。
+/// 首尾保留的裁剪余量，避免切掉字头字尾。
 const TRIM_PADDING_SECS: f32 = 0.05;
 
 /// 单条归一化结果。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NormalizeReport {
-    /// 归一化后的时长（秒）。
     pub duration_secs: f64,
-    /// 归一化后的采样率。
     pub sample_rate: u32,
-    /// 归一化后的峰值电平。
     pub peak_dbfs: f32,
-    /// 归一化后的 RMS 电平。
     pub rms_dbfs: f32,
     /// 首尾静音裁掉的时长（秒）。
     pub trimmed_secs: f64,
 }
 
-/// 把 `src` 归一化并写成 `dest`。
-///
-/// 先交给通用转码器解成 16-bit PCM 单声道 WAV（保留源采样率），再重采样、去直流、
-/// 裁静音、调响度。中途产生的临时文件在结束时删除。
+/// 把 `src` 归一化并写成 `dest`；临时转码文件在结束时删除。
 pub fn normalize_to_wav(
     src: &Path,
     dest: &Path,

@@ -1,10 +1,6 @@
-//! 基于基座模型的对齐训练（burn/Vulkan 后端）。
+//! 基于基座模型的对齐训练（burn/Vulkan 后端）：冻结编码器，只更新解码器。
 //!
-//! 训练沿用基座的 CFM 配方：编码器只加载基座权重、不参与梯度（时长与 mel 先验同样
-//! 固定用基座预测），只有解码器参数被优化。这与「五分钟数据微调音色」的目标一致。
-//!
-//! 张量计算全部落在 burn 的 autodiff 设备上，物理后端固定为 Vulkan（不启用 CPU
-//! 回退，见 [`burn_backend`](super::burn_backend)）。检查点是 burn 原生 `.bpk` 格式。
+//! 固定走 Vulkan autodiff 设备，不启用 CPU 回退；检查点为 burn 原生 `.bpk`。
 
 use std::path::{Path, PathBuf};
 
@@ -30,40 +26,23 @@ use super::onnx_weights::read_initializers;
 /// 训练配置。
 #[derive(Debug, Clone)]
 pub struct BaseTrainingConfig {
-    /// 训练轮数。
     pub epochs: usize,
-    /// 学习率。
     pub learning_rate: f64,
-    /// 打乱顺序与噪声的随机种子。
     pub seed: u64,
-    /// 每多少轮存一次检查点。
     pub checkpoint_every: usize,
-    /// 每多少步触发一次显式设备内存回收。
-    ///
-    /// burn/cubecl 的 wgpu 内存池会把训练中间张量占用的页保留在池里以便复用，
-    /// 但 Adreno 这类移动 GPU 上池内已归还的空闲页若不显式交还驱动，会随步数
-    /// 累积挤占设备内存，最终 OOM。这里按步周期性触发
-    /// [`Device::memory_cleanup`]，把空闲页归还驱动，对冲「越跑越崩」。
-    /// 0 表示不开启。
+    /// 每多少步回收一次设备内存；0 关闭。Adreno 等移动 GPU 需周期归还空闲页，否则越跑越易 OOM。
     pub cleanup_every: usize,
-    /// 单个训练步允许的最大 mel 帧数，0 表示不限制。
-    ///
-    /// 解码器的时间轴注意力会在每个注意力块上建 [1, 头数, F, F] 矩阵，显存
-    /// 随帧数平方增长。移动端 GPU 显存有限，十几秒的长音频单步就能到几百 MB
-    /// 峰值而直接崩掉。这里把长样本沿时间轴切成若干不超过该帧数的片段分别
-    /// 训练，既不对素材做时长裁剪，又让单步峰值封顶。
+    /// 单步最大 mel 帧数；0 不限。时间注意力显存随帧数平方增长，超限样本按时间切片训练。
     pub max_frames_per_step: usize,
-    /// 是否用 LoRA 微调：开则只训低秩旁路（冻结其余参数），参数与显存占用远小于全量。
+    /// 只训低秩旁路（LoRA），冻结其余参数。
     pub lora_enabled: bool,
-    /// LoRA 秩；数值越小旁路参数越少、越省，但表达能力也越低。
+    /// LoRA 秩。
     pub lora_rank: usize,
-    /// 仅训练风格 FiLM 适配器：冻结解码器基座，只更新每层归一化上的逐通道
-    /// gamma/beta。参数量约一万，适合低性能设备；导出时折进归一化权重。
+    /// 只训风格 FiLM 适配器（每层归一化的逐通道 gamma/beta），导出时折进归一化权重。
     pub adapter_only: bool,
-    /// 是否训练逐 token 时长/停顿适配器。开启后编码器时长分支挂低秩旁路，
-    /// 并用可微的软展开把 CFM 损失反传到时长，导出时折进时长预测器权重。
+    /// 训逐 token 时长/停顿适配器，用可微软展开把 CFM 损失反传到时长，导出时折进时长预测器。
     pub duration_adapter: bool,
-    /// 时长适配器秩；`duration_adapter` 为真时有效。
+    /// 时长适配器秩。
     pub duration_adapter_rank: usize,
 }
 
@@ -89,17 +68,12 @@ impl Default for BaseTrainingConfig {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BaseTrainingProgress {
-    /// 当前轮。
     pub epoch: usize,
-    /// 总轮数。
     pub total_epochs: usize,
-    /// 已完成的步数。
     pub step: usize,
-    /// 总步数。
     pub total_steps: usize,
-    /// 当前损失。
     pub loss: f32,
-    /// 本轮验证集平均损失；训练步中间为 None，每轮末上报一次。
+    /// 每轮末上报一次验证集平均损失，训练步中间为 None。
     pub val_loss: Option<f32>,
 }
 
@@ -107,47 +81,32 @@ pub struct BaseTrainingProgress {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct BaseTrainingOutcome {
-    /// 实际执行的步数。
     pub steps: usize,
-    /// 首步损失。
     pub initial_loss: f32,
-    /// 末步损失。
     pub final_loss: f32,
-    /// 是否被取消。
     pub cancelled: bool,
-    /// 从第几轮开始续训；0 表示从头训练（本次没有续训）。
+    /// 续训起始轮次；0 表示本次从头训练。
     pub resumed_from: usize,
 }
 
-/// 训练检查点的配套元数据，用来在中断后从已训轮次续训。
-///
-/// 只记解码器权重没法知道「训到第几轮了」，这里用 sidecar 文件补记。指纹用于
-/// 在续训前校验训练配方是否与上次一致，避免用了不同的数据集或超参去续训上次的
-/// 结果，那相当于让两套配方混着训。
+/// 训练检查点的续训元数据，补记已训轮次并校验训练配方一致。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct TrainState {
-    /// 已完成的轮数。
     pub epochs_done: usize,
-    /// 已完成的步数。
     pub steps_done: usize,
     /// 续训配方指纹，见 [`train_fingerprint`]。
     pub fingerprint: String,
-    /// 是否启用了 LoRA；导出时据此重建旁路骨架再装载检查点。
-    ///
-    /// 旧版状态文件没有这些字段，按未启用处理。
+    /// 是否启用 LoRA，导出时据此重建旁路骨架；旧状态文件缺省为未启用。
     #[serde(default)]
     pub lora_enabled: bool,
-    /// LoRA 秩；`lora_enabled` 为真时有效。
     #[serde(default)]
     pub lora_rank: usize,
     /// 卷积 LoRA 秩；0 表示检查点里没有卷积旁路。
     #[serde(default)]
     pub conv_lora_rank: usize,
-    /// 是否只训练 FiLM 适配器。
     #[serde(default)]
     pub adapter_only: bool,
-    /// 是否训练了逐 token 时长适配器。
     #[serde(default)]
     pub duration_adapter: bool,
     /// 时长适配器秩；0 表示检查点里没有该旁路。
@@ -155,11 +114,7 @@ pub struct TrainState {
     pub duration_adapter_rank: usize,
 }
 
-/// 由检查点路径派生出配套的续训状态文件路径。
-///
-/// 默认检查点沿用旧命名 `checkpoint.bpk` → `train-state.json`，避免破坏已有
-/// 续训记录；按风格簇训练时检查点是 `checkpoint-style-<k>.bpk`，状态文件用
-/// `checkpoint-style-<k>.train-state.json`，多个簇不会互相覆盖。
+/// 由检查点路径派生续训状态文件路径；默认检查点保持旧名 `train-state.json`。
 fn train_state_path(checkpoint_path: &Path) -> PathBuf {
     let is_default = checkpoint_path
         .file_name()
@@ -175,10 +130,7 @@ fn train_state_path(checkpoint_path: &Path) -> PathBuf {
     checkpoint_path.with_file_name(format!("{stem}.train-state.json"))
 }
 
-/// 时长适配器的独立检查点路径。
-///
-/// 解码器检查点只保存解码器；编码器时长旁路放在同名的 `.duration.bpk` 里，
-/// 既不改动旧检查点结构，也方便导出时单独装载/折叠。
+/// 时长适配器的独立检查点路径（同名 `.duration.bpk`），不改动旧检查点结构。
 pub fn duration_adapter_path(checkpoint_path: &Path) -> PathBuf {
     let stem = checkpoint_path
         .file_stem()
@@ -190,11 +142,7 @@ pub fn duration_adapter_path(checkpoint_path: &Path) -> PathBuf {
 /// 验证集占原始样本量的比例（固定 20%）。
 const VAL_SPLIT_RATIO: f64 = 0.2;
 
-/// 从样本总数里按固定种子随机抽取验证集下标（其余为训练集）。
-///
-/// 用 xorshift 打乱全部下标后取前若干条为验证，保证划分可复现、且与训练
-/// 循环的按轮打乱解耦（训练每轮还会再打乱训练集内的顺序）。校验集合用
-/// `HashSet` 以便循环内 O(1) 判断某条样本是否属于验证集。
+/// 按固定种子随机抽取验证集下标（其余为训练集）。
 fn split_val_indices(sample_count: usize, seed: u64) -> std::collections::HashSet<usize> {
     let mut indices: Vec<usize> = (0..sample_count).collect();
     let mut state = seed | 0x9E37_79B9;
@@ -209,7 +157,7 @@ fn split_val_indices(sample_count: usize, seed: u64) -> std::collections::HashSe
     indices.into_iter().take(val_count).collect()
 }
 
-/// 保存续训状态。写临时文件再改名，避免中途崩溃留下半截 JSON。
+/// 保存续训状态；先写临时文件再改名，避免中途崩溃留下半截 JSON。
 pub fn save_train_state(state: &TrainState, checkpoint_path: &Path) -> Result<()> {
     let path = train_state_path(checkpoint_path);
     if let Some(parent) = path.parent() {
@@ -229,12 +177,9 @@ pub fn load_train_state(checkpoint_path: &Path) -> Option<TrainState> {
     serde_json::from_slice(&data).ok()
 }
 
-/// 计算「训练配方」指纹：一份检查点只对同一套数据集、基座与超参有效。
+/// 计算训练配方指纹：数据集、基座、学习率、单步帧上限与种子必须一致才允许续训。
 ///
-/// 把影响训练语义的要素取个稳定组合：样本 id 列表、基座 ONNX 文件信息、学习率、
-/// 单步帧上限、种子。注意**不包含轮数**——否则想「从已训 5 轮继续到 10 轮」时会
-/// 因目标轮数不同而被拒绝续训。任一非轮数字段变化，指纹就变，续训时据此拒绝
-/// 不匹配的检查点。
+/// 特意不含轮数，否则从已训 5 轮续到 10 轮会因目标轮数不同被拒绝。
 fn train_fingerprint(corpus: &Corpus, base_model: &Path, config: &BaseTrainingConfig) -> String {
     use std::collections::hash_map::DefaultHasher;
     use std::hash::{Hash, Hasher};
@@ -257,10 +202,7 @@ fn train_fingerprint(corpus: &Corpus, base_model: &Path, config: &BaseTrainingCo
     format!("{:016x}", hasher.finish())
 }
 
-/// 生成解码器时间 MLP 的 160 维正弦嵌入，形状 `[1,160]`。
-///
-/// 公式来自 MatchaTTS `SinusoidalPosEmb(dim=160)`，`scale=1000`：
-/// `freq[i]=exp(-ln(10000)*i/79)`，`angle=1000*t*freq`，前半 sin、后半 cos。
+/// 生成解码器时间 MLP 的 160 维正弦嵌入，形状 `[1,160]`（MatchaTTS SinusoidalPosEmb）。
 fn base_time_embed(t: f64, device: &Device) -> Tensor<2> {
     const HALF: usize = 80;
     let mut values = vec![0f32; HALF * 2];
@@ -274,11 +216,9 @@ fn base_time_embed(t: f64, device: &Device) -> Tensor<2> {
     Tensor::from_data(TensorData::new(values, [1, HALF * 2]), device)
 }
 
-/// 把 mel 先验按时长展开到目标帧数。
+/// 把 mel 先验按时长硬展开到目标帧数，返回 `[1, c, target_frames]`。
 ///
-/// `mel_prior` 是编码器输出的 mel 先验，形状 `[1, c, tokens]`；`durations` 是逐 token
-/// 对数时长，形状 `[1, tokens]`，先缩放到目标帧数再按四舍五入帧数重复展开。
-/// 返回 `[1, c, target_frames]` 的浮点值，由调用方落到训练设备。
+/// `mel_prior` 为 `[1, c, tokens]`，`durations` 为 `[1, tokens]` 对数时长。
 fn expand_prior(
     mel_prior: &Tensor<3>,
     durations: &Tensor<2>,
@@ -337,15 +277,7 @@ fn expand_prior(
     Ok((expanded, channels))
 }
 
-/// 可微的时长展开：按累计时长把 mel 先验软对齐到目标帧数。
-///
-/// 与 [`expand_prior`] 的硬取整不同，这里对每个输出帧计算它在累计时长轴上的
-/// 位置，再用两个 sigmoid 的差得到该帧属于各 token 的软权重。权重对 token 边界
-/// 可导，边界又由逐 token 对数时长的 cumsum 得到，因此解码器的 CFM 损失可以
-/// 一路反传到编码器的时长适配器，实现逐 token 的时长/停顿适配。
-///
-/// 输入 `mel_prior` 为 `[1, c, tokens]`，`durations` 为 `[1, tokens]` 的对数时长，
-/// 输出 `[1, c, target_frames]`。
+/// 可微的时长展开：用两个 sigmoid 之差得到每帧对各 token 的软权重，梯度可经 cumsum 回传到时长。
 fn soft_expand_prior(
     mel_prior: &Tensor<3>,
     durations: &Tensor<2>,
@@ -389,10 +321,7 @@ fn soft_expand_prior(
     mel_prior.clone().matmul(weights)
 }
 
-/// 构造训练用的噪声数据（matcha 源实现的 CFM 公式）。
-///
-/// 返回 `(noisy=y, target=u)`。`sigma_min=1e-4`：
-/// `y = (1-(1-sigma)*t)*z + t*x1`，`u = x1-(1-sigma)*z`。
+/// 构造训练噪声，返回 `(noisy, target)`（matcha CFM 公式）。
 fn cfm_noise(
     mel: &Tensor<3>,
     noise: &Tensor<3>,
@@ -414,16 +343,10 @@ fn chunk_count(frames: usize, max_frames_per_step: usize) -> usize {
     }
 }
 
-/// 从检查点文件本身探测旁路配置。
-///
-/// 正常路径优先读 `train-state.json`；这个探测只用于旧检查点或状态文件丢失时，
-/// 避免导出时把 LoRA 旁路静默丢掉、退回成基座音色。burnpack 的键名里包含
-/// `...lora.a` 与 `conv_lora*.down.weight`，形状足以反推出秩。
+/// 从检查点探测的旁路配置；用于旧检查点或状态文件丢失时避免静默丢 LoRA。
 #[derive(Debug, Clone, Copy, Default)]
 pub struct CheckpointAdapters {
-    /// 是否存在线性 LoRA。
     pub lora: bool,
-    /// 线性 LoRA 秩。
     pub lora_rank: usize,
     /// 卷积 LoRA 秩；0 表示没有。
     pub conv_lora_rank: usize,
@@ -463,10 +386,7 @@ pub fn inspect_checkpoint_adapters(checkpoint_path: &Path) -> Option<CheckpointA
     })
 }
 
-/// 从时长适配器检查点探测低秩旁路的秩。
-///
-/// 时长旁路是独立 `.duration.bpk`；状态文件缺失时可据此恢复骨架，避免严格
-/// 装载因秩不一致失败。
+/// 从时长适配器检查点探测低秩旁路秩；状态文件缺失时据此恢复骨架，避免严格装载失败。
 pub fn inspect_duration_adapter_rank(path: &Path) -> Option<usize> {
     use burn_store::{BurnpackStore, ModuleStore};
 
@@ -480,10 +400,7 @@ pub fn inspect_duration_adapter_rank(path: &Path) -> Option<usize> {
         .and_then(|tensor| tensor.shape.dims::<3>().first().copied())
 }
 
-/// 给解码器的自注意力/FFN 线性层挂上低秩旁路。
-///
-/// 训练与导出共用同一组路径，避免两边旁路集合不一致。导出前从检查点重建骨架时
-/// 也要先调用它，否则 burn 的 `allow_partial` 会静默丢掉 LoRA 参数，导出成基座。
+/// 给解码器自注意力/FFN 线性层挂低秩旁路；训练与导出必须共用同一组路径。
 pub fn apply_linear_lora(decoder: BurnBaseDecoder, rank: usize) -> BurnBaseDecoder {
     use burn::module::{Lora, Module};
     let lora_paths = [
@@ -499,10 +416,9 @@ pub fn apply_linear_lora(decoder: BurnBaseDecoder, rank: usize) -> BurnBaseDecod
     ))
 }
 
-/// 训练时同时持有解码器与编码器时长旁路，让一次 `backward` 能覆盖两者。
+/// 训练时同时持有解码器与编码器时长旁路，让一次 `backward` 覆盖两者。
 ///
-/// 编码器只有时长旁路要求梯度，其余参数冻结；`GradientsParams` 只会为需要
-/// 梯度的参数收集结果，因此优化器不会碰冻结的 Transformer 权重。
+/// 编码器仅时长旁路要求梯度，其余冻结。
 #[derive(Module, Debug)]
 struct TrainableModel {
     decoder: BurnBaseDecoder,
@@ -510,10 +426,6 @@ struct TrainableModel {
 }
 
 /// 执行基座对齐训练：只更新解码器，编码器与时长固定用基座预测。
-///
-/// `base_model` 是基座 ONNX 路径，从中读取权重填充编码器与解码器；`map_path` 是
-/// 匿名投影权重映射表（`decoder_weight_map.json`）。`device` 是物理 Vulkan 设备，
-/// 训练在其 autodiff 上下文中进行。
 #[allow(clippy::too_many_arguments)]
 pub fn train_base(
     corpus: &Corpus,
@@ -540,11 +452,10 @@ pub fn train_base(
     let tensors = read_initializers(base_model)
         .with_context(|| format!("读取基座权重失败: {}", base_model.display()))?;
 
-    // 训练固定走 Vulkan 的 autodiff 设备（不在参数里暴露，避免误传 CPU）。
+    // 固定走 Vulkan autodiff 设备，避免误传 CPU。
     let train_dev = train_device_autodiff();
 
-    // 编码器：Transformer 基座冻结，mel 先验从缓存的隐状态里取；只有启用逐
-    // token 时长适配时才解冻时长分支的低秩旁路。
+    // 编码器基座冻结；仅启用时长适配时解冻时长分支的低秩旁路。
     let mut encoder =
         load_encoder_from_onnx(encoder_config, &tensors, &train_dev).map_err(anyhow::Error::msg)?;
     encoder = encoder.no_grad();
@@ -566,18 +477,16 @@ pub fn train_base(
         );
     }
 
-    // 解码器：加载基座权重后进入训练模式（参数要求梯度）。
+    // 解码器进入训练模式（参数要求梯度）。
     let mut decoder = load_decoder_from_onnx(decoder_config, &tensors, map_path, &train_dev)
         .map_err(anyhow::Error::msg)?;
     decoder = decoder.train();
 
-    // 可选 LoRA：给自注意力 q/k/v/to_out 与 FFN 的二维权重挂低秩旁路，并冻结其余参数。
-    // burn 的 apply_lora 让 Linear 取值时自动合成 base + scale*(a@b)，前向无需改动；
-    // backward 只有旁路收到梯度，导出读到的有效权重也已把旁路折回基座，推理端零改动。
+    // LoRA：给自注意力 q/k/v/to_out 与 FFN 挂低秩旁路并冻结其余参数。
+    // apply_lora 前向自动合成 base + scale*(a@b)，导出时旁路折回基座，推理端零改动。
     if config.lora_enabled {
         decoder = apply_linear_lora(decoder, config.lora_rank);
-        // apply_lora 会冻结所有非二维参数，FiLM 是一维 gamma/beta，卷积旁路也是
-        // 三维权重，需要按路径单独解冻。
+        // apply_lora 冻结所有非二维参数，FiLM（一维）与卷积旁路（三维）需单独解冻。
         decoder = decoder
             .set_require_grad_group(burn::module::ParamGroup::from_predicate("style_film"), true)
             .set_require_grad_group(burn::module::ParamGroup::from_predicate("conv_lora"), true);
@@ -587,8 +496,7 @@ pub fn train_base(
         );
     }
 
-    // 仅训练风格适配器：冻结整个解码器基座，只让每层归一化上的 FiLM gamma/beta
-    // 接收梯度。这是低性能设备的主路径，参数量约一万，导出时折叠、无推理开销。
+    // 仅风格适配器：冻结解码器基座，只训每层 FiLM gamma/beta，导出时折叠、无推理开销。
     if config.adapter_only {
         if !config.lora_enabled {
             decoder = decoder.no_grad();
@@ -598,8 +506,7 @@ pub fn train_base(
         tracing::info!("[训练] 已启用仅风格适配器模式：冻结基座，只训练 FiLM");
     }
 
-    // 续训：如果该数据集已训过一部分且配方一致，就接着上次的权重继续，而不是
-    // 从基座重推。中途崩溃或主动取消后重新开始训练，已完成的轮次就保留下来。
+    // 续训：配方一致且未训满目标轮数时，接着上次权重继续。
     let mut resume_epochs = 0usize;
     let mut resume_steps = 0usize;
     if let Some(checkpoint) = checkpoint_path {
@@ -608,7 +515,7 @@ pub fn train_base(
             if state.fingerprint != expected {
                 tracing::warn!("[训练] 检查点与当前数据集/参数不匹配，忽略它并从基座从头训练");
             } else if state.epochs_done >= config.epochs {
-                // 上次已跑满本次要求的轮数，说明用户是要调参或换数据集重训，从头开始。
+                // 已训满目标轮数，视为重新训练。
                 tracing::info!(
                     "[训练] 检查点已完成 {} 轮，不小于目标 {} 轮，从头训练",
                     state.epochs_done,
@@ -616,7 +523,7 @@ pub fn train_base(
                 );
             } else if let Ok(loaded) = load_checkpoint(&decoder, checkpoint) {
                 decoder = loaded;
-                // 时长旁路单独存放；缺失时保留基座行为并提示，不阻断续训。
+                // 时长旁路单独存放；缺失时不阻断续训。
                 if config.duration_adapter {
                     match load_duration_adapter(
                         encoder_config,
@@ -642,8 +549,7 @@ pub fn train_base(
         }
     }
 
-    // 每样本只跑一次 Transformer 并缓存隐状态：mel 先验由冻结的 proj_m 从隐状态
-    // 得到；启用时长适配时，每步只重跑很小的时长分支，避免重复跑六层 Transformer。
+    // 每样本只跑一次 Transformer 并缓存隐状态；启用时长适配时每步只重跑很小的时长分支。
     let mut hidden_cache: Vec<Tensor<3>> = Vec::with_capacity(corpus.samples.len());
     let mut prior_tokens: Vec<Tensor<3>> = Vec::with_capacity(corpus.samples.len());
     for sample in &corpus.samples {
@@ -658,7 +564,7 @@ pub fn train_base(
         prior_tokens.push(mel_prior);
     }
 
-    // 未启用时长适配时沿用硬展开，先一次性展开到帧级；启用时改为每步可微展开。
+    // 未启用时长适配时先一次性硬展开；启用时改为每步可微展开。
     let expanded_priors: Option<Vec<Tensor<3>>> = if config.duration_adapter {
         None
     } else {
@@ -675,9 +581,7 @@ pub fn train_base(
         Some(expanded)
     };
 
-    // 训练过程中 mel 内容不变，一次性搬上设备按样本缓存。先验也能复用：未启用
-    // 时长适配时直接引用 `expanded_priors`，启用时每步从缓存的 token 先验重新
-    // 软展开，显存占用随样本量线性，对分钟级微调语料规模可接受。
+    // mel 内容不变，一次性搬上设备按样本缓存；显存随样本量线性，对分钟级语料可接受。
     let mel_frames: Vec<Tensor<3>> = corpus
         .samples
         .iter()
@@ -694,11 +598,10 @@ pub fn train_base(
         })
         .collect();
 
-    // 解码器与编码器时长旁路放进同一个模块，单次反传即可同时拿到两者梯度。
+    // 解码器与编码器时长旁路同模块，单次反传即可拿到两者梯度。
     let mut trainable = TrainableModel { decoder, encoder };
 
-    // 每个样本按单步帧数预算切成若干片段，总步数按片段数累计，进度条才准。
-    // 验证集不参与梯度更新，步骤数只按训练集累计。
+    // 步数按时间切片累计；验证集不参与梯度更新。
     let val_indices = split_val_indices(corpus.samples.len(), config.seed);
     let chunk_counts: Vec<usize> = corpus
         .samples
@@ -721,8 +624,7 @@ pub fn train_base(
         .with_grad_clipping(Some(burn::grad_clipping::GradientClippingConfig::Norm(1.0)))
         .init();
 
-    // 学习率调度：前 warmup_frac 步线性升到峰值 lr，之后沿余弦衰减到 lr*min_frac。
-    // 固定高 lr 会让 loss 在高位平台振荡且不收敛，衰减才能在末期精修到更低。
+    // 学习率调度：先线性 warmup，再余弦衰减；固定高 lr 会让 loss 在高位振荡不收敛。
     let peak_lr = config.learning_rate;
     let min_frac = 0.02f64;
     let warmup_frac = 0.05f64;
@@ -754,7 +656,7 @@ pub fn train_base(
     let mut final_loss = f32::NAN;
     let mut step = resume_steps;
     let mut cancelled = false;
-    // 每轮耗时统计：按步累加，轮末打印该轮平均每步时间与步/秒，用来校准性能。
+    // 每轮耗时统计，用于校准步/秒性能。
     let mut epoch_start = std::time::Instant::now();
     let mut epoch_step_count = 0usize;
 
@@ -780,7 +682,7 @@ pub fn train_base(
             let frames = sample.frames();
             let mel_full = &mel_frames[index];
 
-            // 沿时间轴切片：片段长度不超过预算，避免长音频的单步显存峰值爆掉。
+            // 沿时间轴切片，避免长音频单步显存峰值爆掉。
             let chunk = if config.max_frames_per_step == 0 {
                 frames
             } else {
@@ -798,8 +700,7 @@ pub fn train_base(
                 }
 
                 let len = chunk.min(frames - start);
-                // 时长适配开启时每步重新软展开，保持计算图新鲜、梯度能回传到时长；
-                // 否则直接复用预先算好的硬展开结果，省掉每步的先验展开开销。
+                // 时长适配开启时每步重新软展开，保证梯度能回传到时长；否则复用预计算的硬展开。
                 let prior_full = match &expanded_priors {
                     Some(priors) => priors[index].clone(),
                     None => {
@@ -809,8 +710,7 @@ pub fn train_base(
                         soft_expand_prior(&prior_tokens[index], &durations, frames)
                     },
                 };
-                // 整条样本不需要切分时就别走 narrow：narrow 会在设备上再拷一份，
-                // 而 clone 只是引用计数，短句样本因此少一次无谓的全量拷贝。
+                // 整条样本无需切分时不走 narrow（会在设备上再拷一份），clone 只是引用计数。
                 let (mel, prior) = if len == frames {
                     (mel_full.clone(), prior_full.clone())
                 } else {
@@ -820,7 +720,7 @@ pub fn train_base(
                     )
                 };
 
-                // 噪声只按当前片段长度生成，长样本不必先铺满整条再切。
+                // 噪声只按当前片段长度生成。
                 let noise = Tensor::<3>::random(
                     [1, len, mel_ch],
                     Distribution::Normal(0.0, 1.0),
@@ -841,14 +741,12 @@ pub fn train_base(
                 step += 1;
                 epoch_step_count += 1;
 
-                // 周期归还设备内存：把池里已无引用的页交还驱动，避免跨步累积导致的
-                // 移动端 OOM（Adreno 等设备对长期驻留的设备内存尤其敏感）。
+                // 周期归还设备内存，避免跨步累积导致移动端 OOM（Adreno 尤其敏感）。
                 if config.cleanup_every > 0 && step % config.cleanup_every == 0 {
                     train_dev.memory_cleanup();
                 }
 
-                // 只有真要上报进度时才把 loss 读回主机。每步都读等于每步强制一次
-                // 设备同步，会让 GPU 流水线停顿，是训练循环里最伤速度的写法。
+                // 仅上报进度时读回 loss；每步读会强制设备同步并拖慢 GPU 流水线。
                 if step == 1 || step % 5 == 0 || step == total_steps {
                     let value: f32 = loss.to_data().try_to_vec::<f32>()?[0];
                     if initial_loss.is_nan() {
@@ -870,8 +768,7 @@ pub fn train_base(
             }
         }
 
-        // 每轮末在验证集上算一次平均 CFM 损失（不反传，用于观察过拟合与泛化）。
-        // 与训练同口径：每个样本随机采样时间 t，MSE 取整条（长样本逐 chunk）均摊。
+        // 每轮末在验证集上算一次平均 CFM 损失（不反传），与训练同口径。
         if !val_indices.is_empty() {
             let mut val_sum = 0.0f64;
             let mut val_n = 0usize;
@@ -914,7 +811,7 @@ pub fn train_base(
                         &train_dev,
                     )
                     .transpose();
-                    // 与训练同一随机源但用独立种子偏移，避免与训练步的时间采样重合。
+                    // 与训练同一随机源但独立种子偏移，避免时间采样重合。
                     let vtime = rand_uniform(config.seed ^ step as u64 ^ 0xC0DE);
                     let (vnoisy, vtarget) = cfm_noise(&vmel, &vnoise, vtime, 1e-4);
                     let vtime_t = base_time_embed(vtime, &train_dev);
@@ -979,7 +876,7 @@ pub fn train_base(
             }
         }
 
-        // 打印本轮每步平均耗时，供校准「步/秒」性能目标。
+        // 打印本轮平均每步耗时，供校准性能目标。
         let epoch_elapsed = epoch_start.elapsed().as_secs_f64();
         epoch_start = std::time::Instant::now();
         if epoch_step_count > 0 {
@@ -1030,9 +927,7 @@ pub fn save_duration_adapter(lora: &DurationLora, checkpoint_path: &Path) -> Res
         .with_context(|| format!("保存时长适配器失败: {}", path.display()))
 }
 
-/// 装载时长适配器旁路；文件不存在时返回 None。
-///
-/// 这里必须严格装载：旁路缺失会让逐 token 时长适配静默退回基座行为。
+/// 装载时长适配器旁路；文件不存在返回 None。必须严格装载，否则会静默退回基座行为。
 pub fn load_duration_adapter(
     config: &BurnBaseEncoderConfig,
     rank: usize,
@@ -1050,10 +945,7 @@ pub fn load_duration_adapter(
     Ok(Some(loaded))
 }
 
-/// 读取解码器检查点，填进给定的解码器骨架并返回。
-///
-/// 新增 FiLM 字段后，旧检查点缺少 `style_film.*`。严格加载失败时退回到
-/// `allow_partial`，让缺失字段保留骨架里的恒等初始化，从而兼容旧检查点。
+/// 读取解码器检查点填入骨架；旧检查点缺字段时退回 partial 装载并保留恒等初始化。
 pub fn load_checkpoint(decoder: &BurnBaseDecoder, path: &Path) -> Result<BurnBaseDecoder> {
     match decoder.clone().try_load_file(path) {
         Ok(loaded) => Ok(loaded),
@@ -1071,7 +963,7 @@ pub fn load_checkpoint(decoder: &BurnBaseDecoder, path: &Path) -> Result<BurnBas
     }
 }
 
-/// xorshift 伪随机，用于时间步采样（与数据打乱解耦，避免占用 make_batches 的种子）。
+/// xorshift 伪随机，用于时间步采样（与数据打乱解耦）。
 fn rand_uniform(seed: u64) -> f64 {
     let mut v = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
     v ^= v << 13;
@@ -1084,11 +976,11 @@ fn rand_uniform(seed: u64) -> f64 {
 mod tests {
     use super::*;
 
-    /// 软展开应按相对时长分配帧：长 token 占据开始段，短 token 占据结尾段。
+    /// 软展开应按相对时长分配帧：长 token 占开始段，短 token 占结尾段。
     #[test]
     fn soft_expand_prior_assigns_frames_by_relative_duration() {
         let device = super::super::burn_backend::train_device();
-        // 两个 token：第一个时长是第二个的两倍；先验值 0 与 10 便于区分。
+        // 第一个 token 时长是第二个的两倍。
         let prior = Tensor::<3>::from_data(TensorData::new(vec![0.0, 10.0], [1, 1, 2]), &device);
         let durations =
             Tensor::<2>::from_data(TensorData::new(vec![2f32.ln(), 0.0], [1, 2]), &device);
@@ -1236,8 +1128,7 @@ mod tests {
         assert!(outcome.final_loss.is_finite(), "末损应为有限值");
     }
 
-    /// LoRA + 卷积旁路训练后，检查点应能按训练状态重建骨架并严格装载，
-    /// 导出时把卷积旁路折进基座权重。
+    /// LoRA + 卷积旁路训练后，检查点应能重建骨架严格装载，导出时折进基座权重。
     #[test]
     fn lora_checkpoint_reloads_for_export() {
         use std::path::Path;

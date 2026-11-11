@@ -8,7 +8,7 @@ export type FieldType =
   | "select"
   | "switch"
   | "audio"
-  /** 滑动条：范围有限、适合「边拖边听」的数值（如推理步数、引导强度） */
+  /** 滑动条（有界数值） */
   | "range";
 
 export interface FieldOption {
@@ -26,42 +26,41 @@ export interface FieldSchema {
   min?: number;
   max?: number;
   placeholder?: string;
-  /** 字段下方的小字说明，渲染在控件下方 */
   hint?: string;
-  /** 置灰不可改（如 Linux 桌面上 sherpa-onnx 只能用 CPU）。 */
+  /** 置灰不可改。 */
   disabled?: boolean;
-  /** 允许留空：空值写入 undefined，而非被 Number() 强转成 0 */
+  /** 允许留空：空值写 undefined，不转成 0。 */
   nullable?: boolean;
-  /** `range` 滑块在设置里还没有值时的显示值（否则会贴在 min 上看不出真实默认） */
+  /** 滑块无值时的显示值。 */
   defaultValue?: number;
   options?: FieldOption[];
-  // Dynamic options computed from refs/state; overrides options when set.
+  // 动态选项，优先于 options。
   dynamicOptions?: () => { label: string; value: string }[];
-  /** 值变后的副作用（如选中模型后带出类型/语言/音色）；v-model 已先写入值。 */
+  /** 值变后的副作用；v-model 已先写入值。 */
   onChange?: (value: string, settings: any) => void;
   visibleIf?: (settings: any) => boolean;
   isVoiceModel?: boolean;
-  // When set, the field reads/writes into localSettings.value[parent][key].
+  // 读写 localSettings.value[parent][key]。
   parent?: string;
 }
 
-/** 构建表单 schema 需要的运行期上下文：文案、形象模式选项、可用音色。 */
+/** 构建 schema 的运行期上下文。 */
 export interface SchemaContext {
   t: ComposerTranslation;
   avatarModeOptions: FieldOption[];
   cloudVoices: any[];
   installedVoices: any[];
   installedSherpaModels: any[];
-  /** 选中 Sherpa 模型后带出它的类型/语言/音色（由页面提供，写草稿）。 */
+  /** 选中模型后带出类型/语言/音色（写草稿）。 */
   applySherpaModelDefaults?: (modelId: string) => void;
-  /** Sherpa 音色下拉（固定四档 + 当前值，由页面构造）。 */
+  /** Sherpa 音色下拉（四档 + 当前值）。 */
   sherpaVoiceOptions?: FieldOption[];
-  /** 平台没有 GPU 后端时把 sherpa 的「GPU 推理」开关置灰并给提示。 */
+  /** 无 GPU 后端时置灰 GPU 开关并给提示。 */
   gpuUnsupported?: boolean;
   gpuSwitchHint?: string;
 }
 
-/** 角色信息页各 tab 的字段定义。纯数据，不含组件状态。 */
+/** 角色信息页各 tab 的字段定义（纯数据）。 */
 export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> {
   const {
     t,
@@ -126,7 +125,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         key: "avatar_mode",
         label: t("settings.characterInfo.fields.avatarMode"),
         type: "select",
-        // 没有 Live2D 模型时整项隐藏（schemas 是 computed，导入模型后自动出现）
+        // 无 Live2D 模型时隐藏。
         visibleIf: (s) => Boolean(s.live2d),
         options: avatarModeOptions,
       },
@@ -215,7 +214,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         label: t("settings.characterInfo.fields.voiceLang"),
         type: "select",
         options: [
-          // 顺序:中、英、日、德、法、俄、韩、葡(用户指定);es/ar 仅 indextts2 可见
+          // 语言顺序为中、英、日、德、法、俄、韩、葡。
           { label: t("settings.characterInfo.voiceLangOptions.zh"), value: "zh" },
           {
             label: t("settings.characterInfo.voiceLangOptions.en"),
@@ -265,7 +264,7 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
       },
 
       {
-        // 中文方言：仅语音克隆 TTS + 中文时可选
+        // 中文方言：仅克隆 TTS + 中文。
         key: "voice_dialect",
         label: t("settings.characterInfo.fields.voiceDialect"),
         type: "select",
@@ -392,7 +391,6 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         visibleIf: (s) => s.tts_type === "fishs2",
       },
 
-      // --- 云端语音克隆 (cosyvoice) ---
       {
         key: "cosyvoice_voice_id",
         parent: "voice_models",
@@ -408,7 +406,6 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         visibleIf: (s) => s.tts_type === "cosyvoice",
       },
 
-      // --- Local SBV2 (localsbv2api) ---
       {
         key: "sbv2_local_voice_id",
         parent: "voice_models",
@@ -482,7 +479,6 @@ export function buildSchemas(ctx: SchemaContext): Record<string, FieldSchema[]> 
         visibleIf: (s) => s.tts_type === "opentts",
       },
 
-      // --- Sherpa-ONNX 本地模型 ---
       {
         key: "sherpa_onnx_model_name",
         label: t("settings.characterInfo.fields.sherpaOnnxModelName"),

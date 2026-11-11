@@ -13,8 +13,7 @@ use tokio::time::{Duration, sleep};
 use crate::ai_service::tts::adapters::http_client;
 use crate::ai_service::tts::provider::TtsAdapter;
 
-/// GSV 六情绪参考语音的分类名，同时是 `gsv_emo_texts` / `gsv_emo_voice_files`
-/// 的配置键。
+/// GSV 六情绪分类名，同时是参考配置的键。
 pub const GSV_EMO_CATEGORIES: [&str; 6] = ["吃惊", "开心", "恐惧", "难过", "生气", "中立"];
 
 /// 短句阈值：不超过该字符数（不含空白）的片段沿用上一片段的分类。
@@ -22,26 +21,13 @@ const SHORT_SENTENCE_MAX_CHARS: usize = 3;
 /// 迟滞窗口：距上次合成超过该时长后不再沿用旧分类。
 const SHORT_CARRY_WINDOW: Duration = Duration::from_secs(15);
 
-/// 把情绪映射到六分类；词典里没有的词一律归入中立。
-///
-/// 需要区分「词典命中的中立」和「根本不认识」时用 [`known_emo_category`]。
+/// 把情绪映射到六分类；词典里没有的词归入中立。
 pub fn gsv_emo_category(emo: &str) -> &'static str {
     known_emo_category(emo).unwrap_or("中立")
 }
 
-/// 情绪词 → 六分类；**不在词典里**时返回 `None`。
-///
-/// 词典 = 六分类名本身（`吃惊/开心/恐惧/难过/生气/中立`，GSV 试听下拉与立绘槽位都会
-/// 直接给分类名，所以这个映射对它们必须幂等）+ 情绪模型 19 类的标签名（见
-/// `emotion_model_19emo/label_mapping.json`：兴奋、厌恶、哭泣、害怕、害羞、平静、
-/// 心动、惊讶、慌张、担心、无奈、生气、疑惑、紧张、自信、认真、调皮、难为情、
-/// 高兴）+ 提示词清单里的同义变体（慌张、担心、尴尬、紧张、高兴、自信、害怕、
-/// 害羞、认真、生气、无语、厌恶、疑惑、难为情、惊讶、情动、哭泣、调皮、平静）
-/// + 前端立绘槽位的变体（兴奋/心动/无奈/正常）+ 立绘别名（见
-/// `docs/character-editor.md`：哭泣 ↔ 伤心、难为情 ↔ 羞耻）。
-///
-/// sherpa-onnx 用它判断「上游给的情绪到底认不认识」：不认识就拿正文去问
-/// 情绪模型（见 `sherpa_onnx::text::resolve_emotion`）。
+/// 情绪词 → 六分类；不在词典里返回 `None`。
+/// 词典含六分类名、情绪模型 19 类标签、提示词/立绘的同义变体。
 pub fn known_emo_category(emo: &str) -> Option<&'static str> {
     for category in GSV_EMO_CATEGORIES {
         if category == emo {
@@ -62,9 +48,8 @@ pub fn known_emo_category(emo: &str) -> Option<&'static str> {
     })
 }
 
-/// 短句沿用上一片段的分类（迟滞），减少参考音频在短促台词间频繁跳动；
-/// 距上一次真正的分类判定超过窗口则按当前情绪分类。
-/// 返回 (分类, 是否沿用了上一片段的分类)——后者用于决定是否刷新迟滞锚点。
+/// 短句沿用上一片段的分类（迟滞），超过窗口则按当前情绪。
+/// 返回 (分类, 是否沿用)——后者决定是否刷新迟滞锚点。
 fn resolve_speak_category(
     text: &str,
     current: &str,
@@ -79,10 +64,7 @@ fn resolve_speak_category(
     }
 }
 
-/// 主参考命中分类配置、非中立且配置了中立分类时，把中立音频作为辅助参考
-/// （aux_ref_audio_paths）一起交给服务端做音色融合，让相邻句共享音色底子、
-/// 降低情绪切换的突变感。主参考回落到默认 gsv_voice_* 时不加，避免默认
-/// 音色与另一个参考混在一起。
+/// 主参考命中分类且非中立时，把中立音频作为辅助参考做音色融合。
 fn resolve_aux_refs<'a>(
     category: &str,
     primary_configured: bool,
@@ -97,10 +79,7 @@ fn resolve_aux_refs<'a>(
         .unwrap_or_default()
 }
 
-/// 合成文本预处理。
-/// 1) 结尾不是标点时按语言显式补句末标点，避免服务端自动补句号的不确定性；
-/// 2) 文本同时含中日韩字符与 ASCII 字母时返回 auto，把分词交给服务端
-///    LangSegmenter，混排句不再整句按单一语言朗读。纯数字不触发（g2p 处理）。
+/// 合成文本预处理：补句末标点；中英混排切到 `auto`。
 fn preprocess_text(text: &str, text_lang: &str) -> (String, String) {
     let trimmed = text.trim_end();
     if trimmed.is_empty() {
@@ -187,11 +166,7 @@ const WAV_TAIL_PAD_MS: f32 = 60.0;
 /// 首尾淡入淡出：5 ms，消掉裁剪点直接起振的咔哒声。
 const WAV_EDGE_FADE_MS: f32 = 5.0;
 
-/// 合成音频后处理，三件事都为了消掉逐句播放时的跳变感：
-/// 1) 裁掉首尾静音再补固定留白——不同参考音频的拖尾长短不一，直接播会让句子节奏忽快忽慢；
-/// 2) 按 RMS 对齐响度并限制峰值——情绪切换时不会忽大忽小，也不削波；
-/// 3) 首尾 5 ms 淡入淡出——裁掉静音后直接起振会有咔哒声。
-/// 只处理单声道 16-bit PCM，其他格式原样返回。
+/// 音频后处理：裁首尾静音、RMS 对齐响度、首尾淡入淡出；只处理单声道 16-bit PCM。
 fn smooth_wav(bytes: &[u8]) -> Vec<u8> {
     let Some(wav) = parse_wav_16bit(bytes) else {
         return bytes.to_vec();
@@ -403,8 +378,7 @@ impl GsvAdapter {
         Ok(())
     }
 
-    /// 设置 GPT + SoVITS 权重。对应 Python `set_model`。
-    /// 路径按服务器视角解析（可能是远程机器），不做本地校验，加载失败由服务器返回非 200。
+    /// 设置 GPT + SoVITS 权重；路径按服务器视角解析，不做本地校验。
     pub async fn set_model(&self, gpt_model_path: &str, sovits_model_path: &str) -> Result<()> {
         let client = http_client();
         let r = client
@@ -467,9 +441,7 @@ impl TtsAdapter for GsvAdapter {
         // GPT-SoVITS so Windows ROCm does not crash after the first segment.
         let _request_guard = self.request_lock.lock().await;
         self.ensure_model_loaded().await?;
-        // 开关开启时按当前片段的情绪分类切换参考语音与文本；该分类在配置里
-        // 没填全（不在 emo_prompts 表中）时回退默认 gsv_voice_* 配置。
-        // 短句沿用上一片段的分类（迟滞），避免参考音频在短促台词间频繁跳动。
+        // 按当前情绪的参考语音合成；分类未配置时回退默认，短句沿用上一分类。
         let now = Instant::now();
         let category = {
             let mut last = self.last_category.lock().expect("last_category poisoned");
@@ -478,8 +450,7 @@ impl TtsAdapter for GsvAdapter {
                 .as_ref()
                 .map(|cat| (cat.as_str(), now.duration_since(last.1)));
             let (picked, carried) = resolve_speak_category(text, gsv_emo_category(emo), prev);
-            // 只有真正做了新的分类判定才刷新锚点；短句沿用旧分类时保留旧时间，
-            // 否则连续短句会不断续命，迟滞永不过期。
+            // 只有新的分类判定才刷新锚点，否则连续短句会让迟滞永不过期。
             if !carried {
                 *last = (Some(picked.clone()), now);
             }
@@ -516,7 +487,7 @@ impl TtsAdapter for GsvAdapter {
         let bytes = match send_tts_request(&self.api_url, &body).await {
             Ok(bytes) => bytes,
             Err(error) if body.get("aux_ref_audio_paths").is_some() => {
-                // 辅助参考路径失效不应让原本能合成的句子整句失败：去掉后重试一次
+                // 辅助参考失效不应让整句失败：去掉后重试一次。
                 tracing::warn!(
                     "GPT-SoVITS request with auxiliary reference failed, retrying without it: {error}"
                 );
@@ -592,7 +563,7 @@ mod tests {
             Some(1.1),
         );
         let params = adapter.get_params();
-        // f32 配置值转 f64 有精度尾差，用近似比较
+        // f32 转 f64 有精度尾差，用近似比较。
         let close =
             |key: &str, want: f64| (params[key].as_f64().expect("应为数字") - want).abs() < 1e-5;
         assert!(close("temperature", 0.8));
@@ -602,7 +573,7 @@ mod tests {
 
     #[test]
     fn sampling_params_are_clamped() {
-        // 手输越界值在后端夹取：温度 0.1–2、top_p 0.1–1、语速 0.5–2
+        // 越界值后端夹取：温度 0.1–2、top_p 0.1–1、语速 0.5–2。
         let adapter = GsvAdapter::new(
             "http://127.0.0.1:9880".into(),
             "ref.wav".into(),
@@ -646,7 +617,7 @@ mod tests {
 
     #[test]
     fn short_sentence_carries_last_category() {
-        // 长句按当前分类，且标记为新的分类判定
+        // 长句按当前分类。
         assert_eq!(
             resolve_speak_category(
                 "今天天气真不错呢",
@@ -655,17 +626,17 @@ mod tests {
             ),
             ("开心".to_string(), false)
         );
-        // 短句无历史按当前分类
+        // 短句无历史按当前分类。
         assert_eq!(
             resolve_speak_category("嗯", "开心", None),
             ("开心".to_string(), false)
         );
-        // 短句沿用窗口内的历史分类
+        // 短句沿用窗口内的历史分类。
         assert_eq!(
             resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(2)))),
             ("生气".to_string(), true)
         );
-        // 短句超出窗口后不再沿用
+        // 超出窗口后不再沿用。
         assert_eq!(
             resolve_speak_category("嗯", "开心", Some(("生气", Duration::from_secs(20)))),
             ("开心".to_string(), false)
@@ -686,13 +657,13 @@ mod tests {
         assert_eq!(resolve_aux_refs("开心", true, &map), vec!["neutral.wav"]);
         assert!(resolve_aux_refs("中立", true, &map).is_empty());
         assert!(resolve_aux_refs("开心", true, &HashMap::new()).is_empty());
-        // 主分类回落到默认 gsv_voice_* 时不挂辅助参考
+        // 主分类回退默认时不挂辅助参考。
         assert!(resolve_aux_refs("开心", false, &map).is_empty());
     }
 
     #[test]
     fn emo_category_covers_all_prompt_emotions() {
-        // 覆盖 utils/prompt.rs 提示词清单里的全部 19 种情绪
+        // 覆盖提示词清单里的 19 种情绪。
         let cases: &[(&str, &str)] = &[
             ("慌张", "吃惊"),
             ("惊讶", "吃惊"),
@@ -717,12 +688,12 @@ mod tests {
         for (emo, want) in cases {
             assert_eq!(gsv_emo_category(emo), *want, "emotion {emo}");
         }
-        // 前端立绘槽位中的变体（不在提示词清单里）
+        // 立绘槽位中的变体。
         assert_eq!(gsv_emo_category("兴奋"), "开心");
         assert_eq!(gsv_emo_category("心动"), "开心");
         assert_eq!(gsv_emo_category("无奈"), "难过");
         assert_eq!(gsv_emo_category("正常"), "中立");
-        // 未知情绪（分类器输出的英文等标签）回退中立
+        // 未知情绪回退中立。
         assert_eq!(gsv_emo_category("AI思考"), "中立");
         assert_eq!(gsv_emo_category("neutral"), "中立");
     }
@@ -877,9 +848,7 @@ mod tests {
 
     #[test]
     fn known_emo_category_recognizes_all_model_labels() {
-        // 情绪模型 19 类的标签名（label_mapping.json 的 id2label）。
-        // 这 19 个词必须全部命中词典，否则 sherpa-onnx 会把模型输出当成
-        // 「不认识」再拿正文去猜一遍（见 sherpa_onnx::text::resolve_emotion）。
+        // 情绪模型 19 类标签必须全部命中词典，否则 sherpa 会再拿正文猜一遍。
         for label in [
             "兴奋",
             "厌恶",
@@ -910,9 +879,7 @@ mod tests {
 
     #[test]
     fn known_emo_category_recognizes_avatar_slot_emotions() {
-        // 立绘差分槽位的情绪名（api/character/avatars.rs 的 EMOTIONS，去掉「头像」）
-        // 与角色设置页试听下拉（VoicePreview.vue 的 emotions）里的词，都必须命中
-        // 词典——否则用户明确选的情绪会被「按正文重猜」覆盖掉。
+        // 立绘槽位与试听下拉的情绪词都必须命中词典，否则会被按正文重猜覆盖。
         for label in [
             "正常", "平静", "厌恶", "高兴", "担心", "生气", "紧张", "害怕", "害羞", "慌张", "认真",
             "无奈", "兴奋", "疑惑", "伤心", "心动", "调皮", "羞耻", "自信", "惊讶",
@@ -922,26 +889,26 @@ mod tests {
                 "立绘/试听里的情绪 {label} 没进词典"
             );
         }
-        // 立绘别名（哭泣 ↔ 伤心、难为情 ↔ 羞耻）与本体同类
+        // 立绘别名与本体同类。
         assert_eq!(known_emo_category("伤心"), Some("难过"));
         assert_eq!(known_emo_category("羞耻"), Some("难过"));
     }
 
     #[test]
     fn known_emo_category_separates_neutral_from_unknown() {
-        // 六分类名 → 幂等（GSV 试听下拉直接给的就是这六个词）
+        // 六分类名映射幂等。
         for category in GSV_EMO_CATEGORIES {
             assert_eq!(known_emo_category(category), Some(category), "{category}");
             assert_eq!(gsv_emo_category(category), category, "{category}");
         }
-        // 词典里的中立词 → Some("中立")；没见过的词 → None
+        // 中立词 → Some("中立")；没见过的词 → None。
         for neutral in ["中立", "正常", "平静", "认真", "疑惑"] {
             assert_eq!(known_emo_category(neutral), Some("中立"), "{neutral}");
         }
         for unknown in ["AI思考", "neutral", "", "快乐"] {
             assert_eq!(known_emo_category(unknown), None, "{unknown}");
         }
-        // 未知词的老行为不变：分类仍是中立
+        // 未知词仍归中立。
         assert_eq!(gsv_emo_category("快乐"), "中立");
     }
 }

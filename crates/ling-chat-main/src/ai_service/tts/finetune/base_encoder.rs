@@ -1,10 +1,6 @@
-//! 与基座对齐的文本编码器。
+//! 与基座对齐的文本编码器，结构照 `matcha-icefall-zh-baker` 张量清单还原。
 //!
-//! 结构照 `matcha-icefall-zh-baker` 的真实张量清单还原：词嵌入、三层 k=5 的
-//! prenet 卷积、六层卷积投影的自注意力与 k=3 的前馈卷积，最后分出 mel 先验与
-//! 时长两支。归一化没有可学习参数，按无仿射的 LayerNorm 处理。
-//!
-//! 张量名与基座一致，可以直接把 ONNX 里的权重按名字填进来。
+//! 张量名与基座一致；归一化为无仿射 LayerNorm，参数顺序按图内导出顺序还原。
 
 use candle_core::{DType, Device, Result, Tensor};
 use candle_nn::{Conv1d, Conv1dConfig, Embedding, Module, VarBuilder, VarMap};
@@ -12,17 +8,11 @@ use candle_nn::{Conv1d, Conv1dConfig, Embedding, Module, VarBuilder, VarMap};
 /// 基座编码器超参数。
 #[derive(Debug, Clone)]
 pub struct BaseEncoderConfig {
-    /// 词表大小。
     pub n_vocab: usize,
-    /// 隐层维度。
     pub hidden: usize,
-    /// Transformer 层数。
     pub layers: usize,
-    /// 前馈隐层维度。
     pub ffn_hidden: usize,
-    /// mel 通道数。
     pub n_mels: usize,
-    /// 时长预测器隐层维度。
     pub duration_hidden: usize,
 }
 
@@ -57,7 +47,7 @@ impl Attention {
         })
     }
 
-    /// 输入输出都是 batch 乘 hidden 乘 frames。
+    /// 输入输出都是 [batch, hidden, frames]。
     fn forward(&self, xs: &Tensor) -> Result<Tensor> {
         let (batch, hidden, frames) = xs.dims3()?;
         let heads = 2;
@@ -249,7 +239,7 @@ impl BaseEncoder {
     }
 }
 
-/// 带仿射参数的 LayerNorm，沿通道维归一化。参数在基座里是匿名常量，按顺序还原。
+/// 带仿射参数的 LayerNorm，沿通道维归一化；参数按图内顺序还原。
 struct AffineNorm {
     weight: Tensor,
     bias: Tensor,

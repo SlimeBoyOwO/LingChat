@@ -1,8 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 
-// 端侧音色微调的数据集接口。训练与导出尚未接入，这里只覆盖导入与管理。
-
 export interface FinetuneStyleCluster {
   cluster: number;
   items: number;
@@ -21,7 +19,7 @@ export interface FinetuneDatasetSummary {
   items_with_text: number;
   total_secs: number;
   meets_minimum: boolean;
-  /** 已分配的无监督风格簇；空表示尚未聚类。 */
+  /** 风格簇；空表示未聚类。 */
   style_clusters: FinetuneStyleCluster[];
 }
 
@@ -46,12 +44,10 @@ export interface FinetuneImportReport {
   metadata_csv: string;
 }
 
-/** 列出已导入的数据集。 */
 export function listFinetuneDatasets() {
   return invoke<FinetuneDatasetSummary[]>("tts_finetune_list");
 }
 
-/** 导入一个仅含音频的压缩包。 */
 export function importFinetuneZip(zipPath: string, datasetId: string, overwrite = false) {
   return invoke<FinetuneImportReport>("tts_finetune_import", {
     zipPath,
@@ -60,12 +56,11 @@ export function importFinetuneZip(zipPath: string, datasetId: string, overwrite 
   });
 }
 
-/** 读取单个数据集的统计。 */
 export function getFinetuneStats(datasetId: string) {
   return invoke<FinetuneDatasetStats>("tts_finetune_stats", { datasetId });
 }
 
-/** 对数据集做无监督风格聚类，簇 id 会写回 dataset.json。 */
+/** 无监督风格聚类，簇 id 写回 dataset.json。 */
 export function clusterFinetuneStyles(datasetId: string, clusters = 4) {
   return invoke<FinetuneStyleReport>("tts_finetune_cluster_styles", {
     datasetId,
@@ -73,7 +68,6 @@ export function clusterFinetuneStyles(datasetId: string, clusters = 4) {
   });
 }
 
-/** 删除数据集。 */
 export function removeFinetuneDataset(datasetId: string) {
   return invoke<void>("tts_finetune_remove", { datasetId });
 }
@@ -84,7 +78,7 @@ export interface FinetuneTrainingProgress {
   step: number;
   total_steps: number;
   loss: number;
-  /** 本轮验证集平均损失；每个 epoch 末上报一次，中间为 undefined。 */
+  /** 验证集平均损失，epoch 末上报。 */
   val_loss?: number;
 }
 
@@ -94,9 +88,9 @@ export interface FinetuneTrainOutcome {
   final_loss: number;
   cancelled: boolean;
   checkpoint: string;
-  /** 从第几轮开始续训；0 表示从头训练。 */
+  /** 续训起始轮次；0 表示从头。 */
   resumed_from: number;
-  /** 本次训练使用的风格簇；null/undefined 表示使用全部数据。 */
+  /** 使用的风格簇；空表示全部数据。 */
   style_cluster?: number | null;
 }
 
@@ -105,7 +99,7 @@ export interface FinetuneExportOutcome {
   model_path: string;
 }
 
-/** 把训练好的数据集导出为一个独立的 Sherpa 音色模型目录。 */
+/** 导出为独立的 Sherpa 音色模型目录。 */
 export function exportFinetuneVoice(
   datasetId: string,
   baseModelDir: string,
@@ -120,7 +114,7 @@ export function exportFinetuneVoice(
   });
 }
 
-/** 开始训练，基座目录需包含 tokens.txt 与 lexicon.txt。 */
+/** 开始训练；基座目录需含 tokens.txt 与 lexicon.txt。 */
 export function trainFinetuneDataset(
   datasetId: string,
   baseModelDir: string,
@@ -149,26 +143,21 @@ export function trainFinetuneDataset(
   });
 }
 
-/** 取消正在进行的训练。 */
 export function cancelFinetuneTraining() {
   return invoke<void>("tts_finetune_cancel");
 }
 
 export interface FinetuneActiveState {
-  /** 是否有训练正在运行。 */
   training: boolean;
-  /** 正在训练的数据集 id（无训练时为空）。 */
   dataset_id: string;
-  /** 最近一次上报的进度（无则为空）。 */
   latest: FinetuneTrainingProgress | null;
 }
 
-/** 查询当前是否有训练在跑及其最新进度，供页面重建后恢复训练 UI。 */
+/** 查询训练状态，供页面重建后恢复 UI。 */
 export function getActiveTraining() {
   return invoke<FinetuneActiveState>("tts_finetune_active");
 }
 
-/** 订阅训练进度。 */
 export function onFinetuneProgress(
   callback: (progress: FinetuneTrainingProgress) => void,
 ): Promise<UnlistenFn> {
@@ -177,7 +166,7 @@ export function onFinetuneProgress(
   );
 }
 
-/** 订阅训练结束（含被取消）。 */
+/** 订阅训练结束（含取消）。 */
 export function onFinetuneFinished(
   callback: (outcome: FinetuneTrainOutcome) => void,
 ): Promise<UnlistenFn> {
@@ -197,7 +186,7 @@ export interface FinetuneAnnotateProgress {
   id: string;
 }
 
-/** 用云端 ASR 为缺失文本的音频自动标注。仅处理缺文本的条目。 */
+/** 用云端 ASR 标注缺失文本的条目。 */
 export function autoAnnotateFinetuneDataset(
   datasetId: string,
   providerId: string,
@@ -210,7 +199,6 @@ export function autoAnnotateFinetuneDataset(
   });
 }
 
-/** 订阅自动标注逐条进度。 */
 export function onFinetuneAnnotateProgress(
   callback: (progress: FinetuneAnnotateProgress) => void,
 ): Promise<UnlistenFn> {

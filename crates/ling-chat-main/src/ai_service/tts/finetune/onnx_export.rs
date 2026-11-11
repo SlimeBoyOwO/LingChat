@@ -1,11 +1,6 @@
-//! 把微调后的解码器权重写回基座 ONNX，另存为自家模型。
+//! 把微调后的解码器权重原位写回基座 ONNX：只覆写同布局的 initializer，图结构不变。
 //!
-//! 解码器是基座里唯一被微调的部分，且权重形状与基座一致，因此可以把训练后
-//! 的 f32 值原位覆写进基座 `ModelProto` 同名 `initializer` 的 `raw_data` 字节段，
-//! 其余 graph 结构原样保留、长度不变。这样导出的模型与基座同结构，现有 ort
-//! 采样推理路径可直接加载，无需重搭计算图。
-//!
-//! 实现上不依赖 protobuf 库：手工扫描字段、以绝对偏移做定位与替换。
+//! 不依赖 protobuf 库，手工扫描字段并按绝对偏移替换；新数据长度必须与目标一致。
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -16,12 +11,7 @@ use candle_nn::VarMap;
 use super::burn_decoder::{self, BurnBaseDecoder};
 use super::onnx_weights::read_initializers_from_bytes;
 
-/// 把 burn `BurnBaseDecoder` 的权重写回基座 ONNX，写出新模型文件。
-///
-/// `read_decoder_param` 返回的值已是 ONNX 布局（MatMul/Gemm 转置已还原），按
-/// decoder 语义名逐一覆写：命名张量用 `tensors` 里的名字，匿名 MatMul 常量用
-/// `weight_map` 反查基座 initializer 名。最后按映射表把每个 decoder 目标写入
-/// 对应基座 initializer。
+/// 把 burn 解码器权重按语义名/映射表写回基座 ONNX。
 pub fn export_tuned_model_burn(
     decoder: &BurnBaseDecoder,
     base_model: &Path,
@@ -31,11 +21,7 @@ pub fn export_tuned_model_burn(
     export_tuned_model_burn_with_duration(decoder, base_model, weight_map, out, None)
 }
 
-/// 导出解码器，并可选地按风格簇校准时长预测器。
-///
-/// `duration_scale` 是目标语速相对基座预测的倍数（例如 1.1 表示慢 10%）。
-/// 时长预测器输出对数秒，因此把 `ln(scale)` 加进
-/// `model.encoder.proj_w.proj.bias` 即可整体缩放预测时长；不需要改图结构。
+/// 导出解码器，可选按 `duration_scale` 校准语速；给时长 bias 加 `ln(scale)` 即可整体缩放。
 pub fn export_tuned_model_burn_with_duration(
     decoder: &BurnBaseDecoder,
     base_model: &Path,
@@ -46,11 +32,7 @@ pub fn export_tuned_model_burn_with_duration(
     export_tuned_model_burn_with_adapters(decoder, &[], base_model, weight_map, out, duration_scale)
 }
 
-/// 导出解码器、编码器时长旁路与风格簇语速校准。
-///
-/// `encoder_weights` 是已经折叠好的编码器时长分支权重 `(initializer 名, ONNX
-/// 布局 f32)`；为空表示不训练时长适配。它们与解码器一样原位覆写 initializer，
-/// 不改变图结构。
+/// 导出解码器、已折叠的编码器时长旁路与语速校准；旁路为空表示不训练时长适配。
 pub fn export_tuned_model_burn_with_adapters(
     decoder: &BurnBaseDecoder,
     encoder_weights: &[(&str, Vec<f32>)],
@@ -63,13 +45,12 @@ pub fn export_tuned_model_burn_with_adapters(
         .with_context(|| format!("读取基座模型失败: {}", base_model.display()))?;
     let reverse = read_reverse_map(weight_map)?;
 
-    // 训练出的风格 FiLM 不在基座 ONNX 里。先把它折进归一化仿射副本，
-    // 后续按原语义名回读时就会自然带上风格调制。
+    // 风格 FiLM 不在基座 ONNX 里，先折进归一化仿射副本，回读时自然带上调制。
     let folded = decoder.folded_for_export();
     let decoder = &folded;
 
     let mut export = bytes.to_vec();
-    // 0) 编码器时长旁路：已折叠成基座权重，直接按 initializer 名覆写。
+    // 0) 编码器时长旁路：已折叠成基座权重，按 initializer 名覆写。
     for (name, flat) in encoder_weights {
         let mut data = Vec::with_capacity(flat.len() * 4);
         for value in flat {
@@ -78,7 +59,7 @@ pub fn export_tuned_model_burn_with_adapters(
         export = replace_initializer(&export, name, &data)
             .with_context(|| format!("替换编码器 initializer 失败: {name}"))?;
     }
-    // 1) 命名解码器张量：语义名（`model.decoder.estimator.*`）即基座 initializer 名。
+    // 1) 命名解码器张量：语义名即基座 initializer 名。
     for name in decoder_initializer_names(&export)? {
         if !name.starts_with("model.decoder.estimator.") {
             continue;
@@ -89,7 +70,7 @@ pub fn export_tuned_model_burn_with_adapters(
         export = replace_initializer(&export, &name, &new_data)
             .with_context(|| format!("替换 initializer 失败: {name}"))?;
     }
-    // 2) 匿名 MatMul 常量：语义名在 reverse 映射里，反查基座 `onnx::*` initializer。
+    // 2) 匿名 MatMul 常量：通过 reverse 映射反查基座 `onnx::*` initializer。
     for (target, (src, _)) in &reverse {
         let Some(new_data) = read_decoder_param_bytes(decoder, target) else {
             continue;
@@ -98,13 +79,13 @@ pub fn export_tuned_model_burn_with_adapters(
             .with_context(|| format!("替换 initializer 失败: {src}"))?;
     }
 
-    // 3) 按风格簇校准整体语速：只改时长投影的 bias，图结构不变。
+    // 3) 校准整体语速：只改时长投影 bias，图结构不变。
     if let Some(scale) = duration_scale {
         if scale.is_finite() && scale > 0.0 && (scale - 1.0).abs() > 1e-4 {
             match apply_duration_scale(&export, scale) {
                 Ok(updated) => export = updated,
                 Err(error) => {
-                    // 校准是增强项；换用其它基座导致参数名不同不应阻断导出。
+                    // 校准是增强项，参数名不匹配不应阻断导出。
                     tracing::warn!("[导出] 语速校准写入失败，忽略: {error:#}");
                 },
             }
@@ -119,10 +100,7 @@ pub fn export_tuned_model_burn_with_adapters(
     Ok(())
 }
 
-/// 把整体语速倍数写进时长预测器偏置。
-///
-/// `proj_w.proj` 是编码器最后的 1x1 卷积，输出对数秒。给它的 bias 加
-/// `ln(scale)` 等价于把所有 token 的预测时长乘以 `scale`。
+/// 把整体语速倍数写进时长预测器偏置；输出对数秒，bias 加 `ln(scale)` 即可整体缩放。
 fn apply_duration_scale(export: &[u8], scale: f32) -> Result<Vec<u8>> {
     const NAME: &str = "model.encoder.proj_w.proj.bias";
     let tensors = read_initializers_from_bytes(export)?;
@@ -138,9 +116,7 @@ fn apply_duration_scale(export: &[u8], scale: f32) -> Result<Vec<u8>> {
     replace_initializer(export, NAME, &data).with_context(|| format!("写入时长校准失败: {NAME}"))
 }
 
-/// 用 `read_decoder_param` 读 burn 解码器字段并转成 f32 小端字节。
-///
-/// `name` 是 decoder 语义名（`model.decoder.estimator.*` 或反查后的 `onnx::*`）。
+/// 读 burn 解码器语义名并转成 f32 小端字节。
 fn read_decoder_param_bytes(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec<u8>> {
     let flat = burn_decoder::read_decoder_param(decoder, name)?;
     let mut out = Vec::with_capacity(flat.len() * 4);
@@ -150,10 +126,7 @@ fn read_decoder_param_bytes(decoder: &BurnBaseDecoder, name: &str) -> Option<Vec
     Some(out)
 }
 
-/// 列出基座 ONNX 里属于解码器的 initializer 名，用于决定要覆写哪些张量。
-///
-/// 返回基座里所有 initializer 的名字（结构取自 graph 的 initializer 字段）。
-/// 命名张量本身就带 `model.decoder.estimator.*` 前缀；匿名 MatMul 由映射表反查。
+/// 列出基座 ONNX 里所有 initializer 名；命名张量带 `model.decoder.estimator.*` 前缀。
 fn decoder_initializer_names(model_bytes: &[u8]) -> Result<Vec<String>> {
     let graph = find_submessage(model_bytes, 0, model_bytes.len(), 7)?
         .with_context(|| "ModelProto 里没有 graph(7)")?;
@@ -191,15 +164,7 @@ fn decoder_initializer_names(model_bytes: &[u8]) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// 把训练后的解码器权重覆写进基座模型，写出新模型文件。
-///
-/// 解码器是基座里唯一被微调的部分，且权重形状与基座一致，因此可以把训练后
-/// 的 f32 值原位覆写进基座里对应的 `initializer`，其余 graph 结构原样保留、
-/// 长度不变，导出的模型与基座同结构，现有 ort 采样推理路径可直接加载。
-///
-/// `weight_map` 提供 `onnx::*` 匿名 initializer 与语义权重名的对应关系
-/// （由 `decoder_weight_map.json` 给出，其中 MatMul 权重存 [in,out]、candle 投影
-/// 存 [out,in]，替换时需转置）。命名张量（卷积/归一化等）直接同名对应，无需映射。
+/// 把 candle 解码器权重原位覆写进基座模型并写出（MatMul 按需转置为 ONNX 布局）。
 pub fn export_tuned_model(
     decoder_vm: &VarMap,
     base_model: &Path,
@@ -226,10 +191,7 @@ pub fn export_tuned_model(
     Ok(())
 }
 
-/// 从权重映射表构建「语义名 → (基座 initializer 名, 是否需转置)」的反查表。
-///
-/// 映射表 `src(onnx::*)` → `target(语义)`；导出需要按 target 找 src。命名张量
-/// 不在表里，回退为同名。
+/// 从映射表构建「语义名 → (基座 initializer 名, 是否转置)」反查表；命名张量回退为同名。
 fn read_reverse_map(map_path: &Path) -> Result<HashMap<String, (String, bool)>> {
     let bytes = std::fs::read(map_path)
         .with_context(|| format!("读取权重映射表失败: {}", map_path.display()))?;
@@ -267,8 +229,7 @@ fn var_names(decoder_vm: &VarMap) -> Result<Vec<String>> {
     Ok(data.keys().cloned().collect())
 }
 
-/// 取某个 Var 的扁平 f32 小端字节。`transposed` 为真表示是 MatMul 投影权重，
-/// candle 存 [out,in]、ONNX 存 [in,out]，导出前需转置。
+/// 取 Var 的扁平 f32 小端字节；`transposed` 时按 candle [out,in] → ONNX [in,out] 转置。
 fn var_bytes(decoder_vm: &VarMap, name: &str, transposed: bool) -> Result<Vec<u8>> {
     let data = decoder_vm
         .data()
@@ -291,9 +252,7 @@ fn var_bytes(decoder_vm: &VarMap, name: &str, transposed: bool) -> Result<Vec<u8
     Ok(out)
 }
 
-/// 在模型字节流里定位并替换某 `initializer` 的 `raw_data`(9) 字节段。
-///
-/// 新数据长度必须与目标一致，否则拒绝（防止破坏文件结构）。
+/// 定位并替换某 initializer 的 raw_data；长度不符直接拒绝，防止破坏文件结构。
 fn replace_initializer(model_bytes: &[u8], tensor_name: &str, new_data: &[u8]) -> Result<Vec<u8>> {
     let graph = find_submessage(model_bytes, 0, model_bytes.len(), 7)?
         .with_context(|| "ModelProto 里没有 graph(7)")?;
@@ -369,10 +328,7 @@ fn find_init_raw_data(buf: &[u8], graph: Span, tensor_name: &str) -> Result<Opti
     Ok(found)
 }
 
-/// 遍历一个 proto 区间内的所有字段，回调收到 (字段号, 载荷绝对Span)。
-///
-/// 回调返回 false 则提前终止。length-delimited 载荷的 Span 覆盖值字节，不含
-/// key 与长度前缀。
+/// 遍历 proto 区间内的字段；回调返回 false 提前终止。Span 仅覆盖值字节。
 fn scan_fields(
     buf: &[u8],
     start: usize,
@@ -561,7 +517,7 @@ mod tests {
         }
     }
 
-    /// burn 导出应是无损恒等：把从基座加载的解码器写回，导出的解码器权重与基座一致。
+    /// burn 导出应无损：从基座加载再写回，解码器权重与基座一致。
     #[test]
     fn burn_export_is_identity_with_base_decoder() {
         use crate::ai_service::tts::finetune::burn_backend::train_device;

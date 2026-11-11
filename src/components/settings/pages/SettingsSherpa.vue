@@ -230,7 +230,7 @@
               </div>
             </div>
             <div class="ref-audio-actions">
-              <!-- 试听已导入的参考音频：确认导入/转码结果正常（导入时统一转成 WAV） -->
+              <!-- 试听已导入的参考音频（导入时已转 WAV） -->
               <button
                 v-if="config.ref_audio_path"
                 class="btn-secondary"
@@ -356,8 +356,6 @@
               {{ t("settings.sherpaFinetune.cancel") }}
             </button>
           </div>
-          <!-- 训练参数用网格而不是单行 flex：单行在嵌套设置页里会把数字框
-               挤到只剩一位宽，值看不清也无法正常编辑。 -->
           <div class="config-grid">
             <div class="config-item">
               <label class="config-label">
@@ -603,14 +601,13 @@ import { useAsrStore } from "@/stores/modules/settings/asr";
 
 const { t } = useI18n();
 
-// 音色微调数据集管理。
 const finetuneDatasets = ref<FinetuneDatasetSummary[]>([]);
 const finetuneDatasetId = ref("");
 const finetuneImporting = ref(false);
 const finetuneError = ref("");
 const finetuneExporting = ref<string | null>(null);
 const finetuneClustering = ref<string | null>(null);
-/** 每个数据集当前选中的风格簇；没有聚类的数据集不写入，训练时使用全部数据。 */
+/** 每个数据集选中的风格簇；未聚类时不写入，训练用全部数据。 */
 const finetuneStyleCluster = ref<Record<string, number>>({});
 
 function formatFinetuneDuration(seconds: number) {
@@ -687,18 +684,17 @@ const finetuneTraining = ref(false);
 const finetuneProgress = ref<FinetuneTrainingProgress | null>(null);
 const finetuneAnnotating = ref<string | null>(null);
 const finetuneAnnotateProgress = ref<FinetuneAnnotateProgress | null>(null);
-// 微调训练参数：轮次、学习率、设备内存回收间隔（步）。
 const finetuneEpochs = ref(20);
 const finetuneLearningRate = ref(0.001);
 const finetuneCleanupEvery = ref(25);
-// 单步最大帧数：长音频按此切片段训练，0 表示不限制。
+// 单步最大帧数；0 表示不限制。
 const finetuneMaxFrames = ref(192);
-// LoRA 微调：开则只训低秩旁路，参数与显存占用远小于全量。
+// LoRA：只训低秩旁路，显存占用小。
 const finetuneLora = ref(false);
 const finetuneLoraRank = ref(8);
-// 仅训练风格 FiLM 适配器：冻结解码器基座，适合低性能设备。
+// 仅训练风格适配器，冻结解码器基座。
 const finetuneAdapterOnly = ref(false);
-// 逐 token 时长/停顿适配：只训练时长分支的低秩旁路，导出时折叠。
+// 时长适配：只训时长分支旁路，导出时折叠。
 const finetuneDurationAdapter = ref(true);
 const asrStore = useAsrStore();
 
@@ -731,7 +727,7 @@ async function autoAnnotateDataset(datasetId: string) {
   }
 }
 
-/** 页面重建后恢复后台仍在运行的训练状态：训练中 UI + 最近进度，并接续观察。 */
+/** 页面重建后恢复后台训练状态：UI、进度和监听。 */
 async function restoreTrainingState() {
   let active;
   try {
@@ -781,7 +777,7 @@ async function startFinetuneTraining(datasetId: string) {
       selectedStyleCluster(datasetId),
       finetuneDurationAdapter.value,
     );
-    // 检测到续训时给出提示，让用户知道这次是接着上次进度继续，而不是从头开始。
+    // 续训时提示从第几轮继续。
     if (outcome.resumed_from > 0) {
       finetuneError.value = t("settings.sherpaFinetune.resumedFrom", {
         epoch: outcome.resumed_from,
@@ -812,7 +808,7 @@ async function removeFinetuneDataset(datasetId: string) {
   }
 }
 
-/** 把训练好的数据集导成一个独立音色，成功后刷新模型列表使其可选。 */
+/** 导出为独立音色，成功后刷新模型列表。 */
 async function exportVoice(datasetId: string) {
   if (!finetuneBaseModel.value) {
     finetuneError.value = t("settings.sherpaFinetune.selectBase");
@@ -836,7 +832,6 @@ async function exportVoice(datasetId: string) {
       styleCluster,
     );
     await loadModels();
-    // 导出完成后自动选中新音色，方便立即试听。
     const model = availableModels.value.find((item) => item.id === outcome.model_name);
     if (model) selectModel(model);
   } catch (error) {
@@ -865,7 +860,7 @@ const playlist = ref<HTMLAudioElement | null>(null);
 const testText = ref("你好，这是一段测试语音。");
 
 let progressUnlisten: (() => void) | null = null;
-// 训练进度/完成监听（恢复路径用，页面重建后接续训练观察）。
+// 恢复路径的训练监听。
 let trainProgressUnlisten: (() => void) | null = null;
 let trainFinishedUnlisten: (() => void) | null = null;
 
@@ -875,18 +870,14 @@ const config = ref({
   voice: "female",
   use_gpu: false,
   speed: 1.0,
-  // 推理步数 / 引导强度：默认值与后端 SherpaTuning::default() 一致（4 / 1.0），
-  // 只有 ZipVoice 这类 flow-matching 模型读它们。
+  // 步数/引导强度默认值需与后端 SherpaTuning::default() 一致，仅 flow-matching 模型使用。
   num_steps: 4,
   guidance_scale: 1.0,
   ref_audio_path: "",
   ref_text: "",
 });
 
-/// Linux 桌面上 sherpa-onnx 只剩 CPU（GPU 只能走官方 CUDA 包，安装包 +235 MB，已按
-/// 体积取舍移除），置灰开关并说明；Windows 上提醒需要 DirectML 版构建
-/// （`pnpm tauri:build:win`）、Android 上提醒走 NNAPI（`pnpm android:build` 已自编）。
-/// 详见 docs/inference-devices.md §9。
+/// Linux 桌面无 GPU 后端（体积取舍），Windows 需 DirectML 构建；见 docs/inference-devices.md §9。
 const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
 const gpuSwitchHint = computed(() => {
   if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
@@ -896,15 +887,14 @@ const gpuSwitchHint = computed(() => {
 });
 
 const refAudioName = computed(() => {
-  // content:// URI 的末段是 percent-encoded 的文档 id（`primary%3AMusic%2F歌.mp3`），
-  // 交给公共 util 解码并取最后一段，避免把 `primary:…` 前缀显示给用户。
+  // content:// URI 末段是 percent-encoded 文档 id，需解码后取文件名。
   return decodePathFileName(config.value.ref_audio_path);
 });
 
 onMounted(() => {
   loadModels();
   void refreshFinetuneDatasets();
-  // 页面可能因渲染崩溃重建，主动恢复后台仍在跑的训练状态。
+  // 页面可能重建，需恢复后台训练状态。
   void restoreTrainingState();
   progressUnlisten = onSherpaDownloadProgress((progress) => {
     progressByModel.value = {
@@ -933,15 +923,14 @@ async function loadModels() {
   }
 }
 
-/** 判断是否是本地识别（ASR）模型：这类模型用于自动标注，不作为 TTS 音色。 */
+/** ASR 识别模型不参与 TTS 合成。 */
 function isAsrModel(model: SherpaOnnxModelRecord) {
   return model.model_type.startsWith("asr");
 }
 
 function selectModel(model: SherpaOnnxModelRecord) {
-  // ASR 识别模型不参与 TTS 合成，点击不应置为当前音色。
   if (isAsrModel(model)) return;
-  // 未安装的模型无本地文件，选中后试听只会失败；需先下载。
+  // 未安装的模型需先下载。
   if (!model.installed) return;
   selectedModelId.value = model.id;
   config.value.model_type = model.model_type;
@@ -950,14 +939,11 @@ function selectModel(model: SherpaOnnxModelRecord) {
   void loadSpeakers(model.id);
 }
 
-/**
- * 拉取模型的全部音色。读 metadata 是毫秒级的，但仍异步做：模型文件在慢盘/安卓上
- * 也要几百毫秒，不能卡住切模型。失败（如 zipvoice 没有单一主模型）就退回四个语义档。
- */
+/** 异步读取模型音色（读 metadata）；失败时退回语义档。 */
 async function loadSpeakers(modelId: string) {
   const request = ++speakersRequest;
   speakersLoading.value = true;
-  // 旧模型的 sid 列表对新模型没有意义（数量/顺序都可能不同），先清掉。
+  // 旧模型的 sid 列表不再有效，先清空。
   speakers.value = null;
   try {
     const info = await listSherpaSpeakers(modelId);
@@ -970,10 +956,10 @@ async function loadSpeakers(modelId: string) {
   }
 }
 
-/** 四个语义档（kokoro 按语言自动挑音色，其它模型只当元数据）。 */
+/** 四个语义档；kokoro 按语言自动挑选。 */
 const VOICE_PRESETS = ["female", "male", "child", "elderly"] as const;
 
-/** 当前值不在任何选项里（手填的数字 / 旧配置）时补一项，避免下拉框显示空白。 */
+/** 当前值不在选项里时补一项，避免下拉框空白。 */
 const voiceNotInList = computed(() => {
   const value = config.value.voice;
   if (!value || (VOICE_PRESETS as readonly string[]).includes(value)) return false;
@@ -1031,8 +1017,7 @@ async function pickRefAudio() {
     });
     if (typeof file !== "string") return;
     importingRefAudio.value = true;
-    // 导入到应用数据目录并统一转成 WAV，而不是把 dialog 给的路径原样存下来：
-    // Android 上是 content:// URI，`std::fs` 读不了，试听时参考音频不会生效。
+    // 统一导入到应用数据目录并转成 WAV：Android 的 content:// URI 无法用 std::fs 读取。
     const imported = await importSherpaRefAudio(file);
     stopRefAudioPreview();
     config.value.ref_audio_path = imported.path;
@@ -1081,12 +1066,12 @@ async function testVoice() {
       },
     );
     if (result?.audio_path) {
-      refAudioPlaying.value = false; // 合成试听与参考音频试听共用播放器
+      refAudioPlaying.value = false; // 共用播放器
       playlist.value = await playLocalAudio(result.audio_path);
       playlist.value.onended = () => {
         playlist.value = null;
       };
-      // 加载/解码失败时同样复位，否则试听按钮会一直处于禁用状态。
+      // 失败时也要复位，否则试听按钮会一直禁用。
       playlist.value.onerror = () => {
         playlist.value = null;
       };
@@ -1105,16 +1090,13 @@ function stopPreview() {
   stopCurrentAudio();
 }
 
-/** 停止参考音频试听。与合成试听共用同一个播放器（`mediaUrl` 里是单例）。 */
+/** 停止参考音频试听；播放器为单例。 */
 function stopRefAudioPreview() {
   refAudioPlaying.value = false;
   stopCurrentAudio();
 }
 
-/**
- * 试听已导入的参考音频：导入时后端统一转成了 WAV（mp3/m4a 等会转码），
- * 这里让用户直接确认转码结果是否正常。
- */
+/** 试听已导入的参考音频（导入时已转为 WAV）。 */
 async function toggleRefAudioPreview() {
   if (refAudioPlaying.value) {
     stopRefAudioPreview();
@@ -1129,7 +1111,7 @@ async function toggleRefAudioPreview() {
     const done = () => {
       if (refAudioPlaying.value) refAudioPlaying.value = false;
     };
-    // 用 addEventListener 而不是覆盖 onended：playLocalAudio 自己也挂了 onended。
+    // 用 addEventListener，避免覆盖 playLocalAudio 的 onended。
     audio.addEventListener("ended", done);
     audio.addEventListener("error", done);
   } catch (error: any) {

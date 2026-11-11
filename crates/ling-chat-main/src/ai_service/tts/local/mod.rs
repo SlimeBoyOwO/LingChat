@@ -1,4 +1,4 @@
-// Local TTS engine module (formerly the sbv2-local-tts crate, now embedded).
+//! 本地 TTS 引擎模块。
 
 pub mod adapter;
 pub mod engine;
@@ -16,10 +16,6 @@ use std::sync::Arc;
 
 pub use engine::{LocalTtsEngine, SynthesizeRequest};
 pub use paths::LocalTtsPaths;
-
-// ---------------------------------------------------------------------------
-// LocalTtsState -- Tauri managed state for the local TTS engine
-// ---------------------------------------------------------------------------
 
 use serde::Serialize;
 use std::path::{Path, PathBuf};
@@ -65,10 +61,6 @@ pub struct ImportResult {
     pub message: String,
 }
 
-// ---------------------------------------------------------------------------
-// LocalTtsSwitch -- runtime enable/disable gate
-// ---------------------------------------------------------------------------
-
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use crate::config;
@@ -78,9 +70,7 @@ pub struct LocalTtsSwitch {
     enabled: Arc<AtomicBool>,
 }
 
-/// 本地 TTS 进程内引擎的共享运行时依赖。三合一后作为单个参数
-/// 从 lib.rs → init → AIService → RoleManager → VoiceMaker 传递，
-/// 避免把 engine/paths/switch 三个散装字段逐层展开。
+/// 本地 TTS 共享运行时（引擎 + 路径 + 开关）。
 #[derive(Clone, Debug)]
 pub struct LocalTtsRuntime {
     pub engine: Arc<LocalTtsEngine>,
@@ -136,15 +126,10 @@ pub fn load_configured_enabled(app: &AppHandle) -> bool {
     read_configured_enabled(app).unwrap_or(false)
 }
 
-/// 读取持久化的推理设备配置（`features.local_tts_device`）。
-/// 返回 `None` 表示未配置（用引擎默认 CPU）。
+/// 读取持久化的推理设备配置；`None` 表示未配置（用引擎默认 CPU）。
 pub fn read_configured_device(app: &AppHandle) -> Option<sbv2_core::model::InferenceDevice> {
     crate::utils::device::read_configured_device(app, crate::config::keys::LOCAL_TTS_DEVICE)
 }
-
-// ---------------------------------------------------------------------------
-// Tauri commands -- switch management
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub fn tts_local_get_enabled(
@@ -182,7 +167,7 @@ pub async fn tts_local_set_enabled(
 
     switch.set_enabled(enabled);
 
-    // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
+    // 关闭时卸载模型释放内存；重新启用时若 DeBERTa 已安装则重建引擎。
     if enabled {
         if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
             if let Err(e) = local_state.engine.init(&local_state.paths).await {
@@ -220,9 +205,7 @@ pub fn tts_local_list_devices() -> Vec<InferenceDeviceInfo> {
     crate::utils::device::list_devices()
 }
 
-/// 热切换本地 TTS 推理硬件设备。
-/// 流程：保存配置 → 设置引擎 device → unload 全部 session → 若引擎已启用则重新 init。
-/// 下次合成（或重新 init）时用新设备重建 session。
+/// 热切换推理设备：保存配置 → 换 device → unload → 按需重新 init。
 #[tauri::command]
 pub async fn tts_local_set_device(
     app: AppHandle,
@@ -245,11 +228,9 @@ pub async fn tts_local_set_device(
         return Err(format!("保存推理设备失败: {error}"));
     }
 
-    // 设置引擎 device + 卸载重建（热切换）
     local_state.engine.set_device(device).await;
     local_state.engine.unload_all().await;
 
-    // 引擎已启用时重新初始化（用新设备）
     let enabled = load_configured_enabled(&app);
     if enabled && local_state.paths.asset_present("deberta") {
         if let Err(e) = local_state.engine.init(&local_state.paths).await {
@@ -260,10 +241,6 @@ pub async fn tts_local_set_device(
     tracing::info!("本地 TTS 推理设备已切换: {device_str}");
     Ok(())
 }
-
-// ---------------------------------------------------------------------------
-// Tauri commands -- engine operations (from the former crate)
-// ---------------------------------------------------------------------------
 
 #[tauri::command]
 pub async fn tts_local_status(state: State<'_, LocalTtsState>) -> Result<TtsLocalStatus, String> {
@@ -279,7 +256,7 @@ pub async fn tts_local_status(state: State<'_, LocalTtsState>) -> Result<TtsLoca
 #[tauri::command]
 pub async fn tts_local_list_catalog() -> Result<Vec<registry::AssetEntry>, String> {
     let all = registry::all_assets();
-    // 收集所有被其他条目捆绑的资产 ID，在前端列表中隐藏它们
+    // 隐藏被其他条目捆绑的资产。
     let bundled: std::collections::HashSet<String> = all
         .iter()
         .flat_map(|a| a.bundled_assets.iter().cloned())
@@ -299,8 +276,6 @@ pub async fn tts_local_list_installed(
         voices: model_manager::list_voices(&state.paths)?,
     })
 }
-
-// -- helpers ----------------------------------------------------------------
 
 fn install_style_vectors_for(
     paths: &LocalTtsPaths,
@@ -349,8 +324,6 @@ fn default_voice_id(_inspected: &package::InspectedPackage, src: &Path) -> Strin
     }
 }
 
-// -- import / download / delete ---------------------------------------------
-
 #[tauri::command]
 pub async fn tts_local_import_from_path(
     app: AppHandle,
@@ -365,7 +338,7 @@ pub async fn tts_local_import_from_path(
             return Err(format!("path not found: {}", src.path.display()));
         }
         let inspected = package::inspect_package(&src.path)?;
-        // 角色语音只支持直接导入 .sbv2 / .onnx 原始模型文件，不再接受 zip/7z 压缩包
+        // 只支持直接导入 .sbv2 / .onnx，不接受压缩包。
         if matches!(
             inspected.kind,
             package::PackageKind::Zip | package::PackageKind::SevenZ
@@ -415,7 +388,7 @@ pub async fn tts_local_download(
         *guard = Some(cancel.clone());
     }
 
-    // 收集所有需要下载的资产：主资产 + 捆绑资产
+    // 主资产 + 捆绑资产。
     let bundled_ids = entry.bundled_assets.clone();
     let mut to_download: Vec<registry::AssetEntry> = vec![entry];
     for bundled_id in &bundled_ids {
@@ -430,7 +403,7 @@ pub async fn tts_local_download(
             let r = download_single_asset(&app, &state, entry, cancel.clone()).await?;
             results.push(r);
         }
-        // DeBERTa 全套就位时初始化引擎
+        // DeBERTa 就位时初始化引擎。
         if state.paths.asset_present("deberta") {
             let _ = state.engine.init(&state.paths).await;
         }
@@ -446,7 +419,7 @@ pub async fn tts_local_download(
     result
 }
 
-/// 下载单个资产（Bert/Voice/StyleVectors），返回 ImportResult。
+/// 下载单个资产，返回 ImportResult。
 async fn download_single_asset(
     app: &AppHandle,
     state: &LocalTtsState,
@@ -511,8 +484,7 @@ pub async fn tts_local_delete_voice(
     model_manager::delete_voice(&state.paths, &voice_id)
 }
 
-/// 删除 DeBERTa 共享模型（deberta.onnx + tokenizer.json），并卸载引擎释放内存。
-/// 删除后可从模型下载目录重新下载。
+/// 删除 DeBERTa 共享模型并卸载引擎释放内存。
 #[tauri::command]
 pub async fn tts_local_delete_deberta(state: State<'_, LocalTtsState>) -> Result<(), String> {
     delete_deberta_asset(&state.paths)?;

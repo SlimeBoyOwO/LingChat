@@ -1,20 +1,13 @@
-//! 文本前端：把文本转成基座模型认识的符号 id 序列。
+//! 文本前端：读模型自带的 `tokens.txt` / `lexicon.txt`，把文本转成基座符号 id。
 //!
-//! 微调必须和基座用同一套符号表，否则导出的 ONNX 在推理端对不上。这里不做任何
-//! 音素化算法，只读模型自带的 `tokens.txt` 与 `lexicon.txt`：
-//!
-//! - `tokens.txt`：每行 "符号 id"，符号可以是单个汉字、拼音、音素或特殊标记。
-//! - `lexicon.txt`：每行 "词 符号1 符号2 ..."，中文模型里符号通常是带声调拼音。
-//!
-//! 切词用正向最长匹配。切不出词时退到单字条目，再退到单字符符号；都不认识的
-//! 字符直接跳过，不影响其余文本。
+//! 必须与基座使用同一套符号表；切词用正向最长匹配，未知字符跳过。
 
 use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
 
-/// 符号表：符号到 id，以及反查表。
+/// 符号表：符号到 id 及反查表。
 #[derive(Debug, Clone)]
 pub struct TokenTable {
     symbol_to_id: HashMap<String, i32>,
@@ -46,8 +39,7 @@ impl TokenTable {
             let id: i32 = id_text
                 .parse()
                 .with_context(|| format!("tokens 行的 id 不是整数: {line}"))?;
-            // sherpa 的 tokens.txt 常以仅含 id 的行打头（例如 `0`，对应换行符/占位符）。
-            // 空符号同样进查找表，保证符号总数（n_vocab）与基座模型一致。
+            // 仅含 id 的空符号行也要入表，保证 n_vocab 与基座一致。
             symbol_to_id.insert(symbol.clone(), id);
             entries.push((id, symbol));
         }
@@ -167,9 +159,7 @@ pub struct TextFrontend {
 }
 
 impl TextFrontend {
-    /// 从模型目录加载。
-    ///
-    /// `lexicon` 为 None 时退化为逐字符查符号表，适合字符级或音素级模型。
+    /// 从模型目录加载；`lexicon` 为 None 时逐字符查符号表。
     pub fn load(tokens_path: &Path, lexicon_path: Option<&Path>) -> Result<Self> {
         let tokens = TokenTable::load(tokens_path)?;
         let lexicon = lexicon_path.map(Lexicon::load).transpose()?;
@@ -186,9 +176,7 @@ impl TextFrontend {
         self.lexicon.as_ref()
     }
 
-    /// 文本转 id 序列。
-    ///
-    /// 空白字符直接丢弃；拉丁字母统一小写；无法识别的字符跳过。
+    /// 文本转 id；空白丢弃、拉丁字母小写、未知字符跳过。
     pub fn text_to_ids(&self, text: &str) -> Vec<i32> {
         let chars: Vec<char> = text.chars().collect();
         let mut ids = Vec::new();

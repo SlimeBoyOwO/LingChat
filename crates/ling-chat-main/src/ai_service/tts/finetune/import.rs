@@ -1,8 +1,6 @@
-//! 数据集导入：压缩包解包、音频与文本配对、归一化、生成清单。
+//! 数据集导入：解包压缩包、配对音频与同名 `.txt`、归一化并生成清单。
 //!
-//! 目标是把「用户丢进来一个压缩包」变成训练可直接消费的目录。约定压缩包里是
-//! 一堆音频文件，每条的文本标注放在同目录下的同名 `.txt` 里（例如 `0001.wav`
-//! 配 `0001.txt`）。没有文本的音频会保留在清单里但标记为缺文本，训练阶段会跳过。
+//! 缺少文本的音频保留在清单中，训练阶段会跳过。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,29 +11,23 @@ use serde::{Deserialize, Serialize};
 
 use super::normalize::normalize_to_wav;
 
-/// 可接受的音频扩展名。解码由通用转码器负责，这里只做筛选。
+/// 可接受的音频扩展名。
 pub const AUDIO_EXTENSIONS: &[&str] = &["wav", "mp3", "flac", "m4a", "aac", "ogg", "opus"];
 
-/// 训练集最低总时长（秒）。低于这个量微调没有意义。
+/// 训练集最低总时长（秒）。
 pub const MIN_DATASET_SECONDS: f64 = 300.0;
 
-/// 单条音频的时长上限（秒）。训练按句切分，过长的整段既对齐不准也吃内存。
+/// 单条音频时长上限（秒），过长既对齐不准也吃内存。
 pub const MAX_CLIP_SECONDS: f64 = 30.0;
 
 /// 数据集里的一条样本。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetItem {
-    /// 稳定 id，用于文件名。
     pub id: String,
-    /// 相对数据集根目录的归一化 WAV 路径。
     pub wav: String,
-    /// 文本标注；缺失时为 None。
     pub text: Option<String>,
-    /// 时长（秒）。
     pub duration_secs: f64,
-    /// 无监督风格簇 id；None 表示尚未聚类或该条未能提取特征。
-    ///
-    /// 旧版 dataset.json 没有这个字段，反序列化时按 None 处理。
+    /// 风格簇；None 表示未聚类或特征提取失败，旧清单缺省按 None 处理。
     #[serde(default)]
     pub style_cluster: Option<u32>,
 }
@@ -43,56 +35,38 @@ pub struct DatasetItem {
 /// 被跳过的素材及原因。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SkippedItem {
-    /// 原始文件名。
     pub name: String,
-    /// 跳过原因。
     pub reason: String,
 }
 
 /// 数据集统计。
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct DatasetStats {
-    /// 有效样本数。
     pub total_items: usize,
-    /// 带文本标注的样本数。
     pub items_with_text: usize,
-    /// 有效总时长（秒）。
     pub total_secs: f64,
-    /// 最低时长要求（秒）。
     pub min_required_secs: f64,
-    /// 是否达到可训练的最低要求。
     pub meets_minimum: bool,
 }
 
 /// 数据集清单，落盘为 dataset.json。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DatasetManifest {
-    /// 清单版本。
     pub version: u32,
-    /// 数据集 id。
     pub dataset_id: String,
-    /// 归一化采样率。
     pub sample_rate: u32,
-    /// 创建时间（Unix 秒）。
     pub created_at_unix: u64,
-    /// 样本列表。
     pub items: Vec<DatasetItem>,
-    /// 跳过列表。
     pub skipped: Vec<SkippedItem>,
-    /// 统计。
     pub stats: DatasetStats,
 }
 
 /// 导入结果。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ImportReport {
-    /// 数据集 id。
     pub dataset_id: String,
-    /// 数据集根目录。
     pub root: String,
-    /// 统计。
     pub stats: DatasetStats,
-    /// 跳过列表。
     pub skipped: Vec<SkippedItem>,
     /// metadata.csv 的绝对路径。
     pub metadata_csv: String,
@@ -103,10 +77,7 @@ pub fn finetune_root() -> PathBuf {
     crate::data_dir::get_data_dir().join("sherpa_onnx_finetune")
 }
 
-/// 导入一个压缩包，生成数据集。
-///
-/// `dataset_id` 只允许字母、数字、下划线和短横线；同名数据集已存在时，
-/// `overwrite` 为 false 会直接报错，避免误删用户已经导入的数据。
+/// 导入压缩包生成数据集；同名数据集存在且 `overwrite=false` 时报错，避免误删。
 pub fn import_zip(
     zip: &Path,
     dataset_id: &str,
@@ -292,11 +263,7 @@ pub fn remove_dataset(dataset_id: &str) -> Result<()> {
     Ok(())
 }
 
-/// 在样本文本被修改后重新落盘清单与 metadata.csv，并重算统计。
-///
-/// 自动标注等批量改写 `items[].text` 的流程在改完后调用：统一重算
-/// `DatasetStats`、写回 `dataset.json` 与 `metadata.csv`，避免（快照已算好的）
-/// 统计与实际文本脱节。返回重算后的统计。
+/// 文本修改后重算统计并写回 dataset.json 与 metadata.csv，避免统计与文本脱节。
 pub fn persist_text_updates(root: &Path, manifest: &mut DatasetManifest) -> Result<DatasetStats> {
     let stats = summarize(&manifest.items);
     manifest.stats = stats.clone();
