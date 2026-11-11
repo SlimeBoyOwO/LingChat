@@ -6,7 +6,6 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use anyhow::{Context, Result, bail};
-use candle_nn::VarMap;
 
 use super::burn_decoder::{self, BurnBaseDecoder};
 use super::onnx_weights::read_initializers_from_bytes;
@@ -164,33 +163,6 @@ fn decoder_initializer_names(model_bytes: &[u8]) -> Result<Vec<String>> {
     Ok(names)
 }
 
-/// 把 candle 解码器权重原位覆写进基座模型并写出（MatMul 按需转置为 ONNX 布局）。
-pub fn export_tuned_model(
-    decoder_vm: &VarMap,
-    base_model: &Path,
-    weight_map: &Path,
-    out: &Path,
-) -> Result<()> {
-    let bytes = std::fs::read(base_model)
-        .with_context(|| format!("读取基座模型失败: {}", base_model.display()))?;
-    let reverse = read_reverse_map(weight_map)?;
-
-    let mut export = bytes.to_vec();
-    for name in var_names(decoder_vm)? {
-        let (src, transposed) = resolve_initializer(&name, &reverse);
-        let new_bytes = var_bytes(decoder_vm, &name, transposed)?;
-        export = replace_initializer(&export, &src, &new_bytes)
-            .with_context(|| format!("替换 initializer 失败: {src}"))?;
-    }
-
-    if let Some(parent) = out.parent() {
-        std::fs::create_dir_all(parent)
-            .with_context(|| format!("创建输出目录失败: {}", parent.display()))?;
-    }
-    std::fs::write(out, &export).with_context(|| format!("写出模型失败: {}", out.display()))?;
-    Ok(())
-}
-
 /// 从映射表构建「语义名 → (基座 initializer 名, 是否转置)」反查表；命名张量回退为同名。
 fn read_reverse_map(map_path: &Path) -> Result<HashMap<String, (String, bool)>> {
     let bytes = std::fs::read(map_path)
@@ -210,46 +182,6 @@ fn read_reverse_map(map_path: &Path) -> Result<HashMap<String, (String, bool)>> 
         reverse.insert(target, (src.clone(), transposed));
     }
     Ok(reverse)
-}
-
-/// 解析一个 varmap 语义名对应的基座 initializer 名与转置标记。
-fn resolve_initializer(name: &str, reverse: &HashMap<String, (String, bool)>) -> (String, bool) {
-    if let Some((src, transposed)) = reverse.get(name) {
-        return (src.clone(), *transposed);
-    }
-    (name.to_string(), false)
-}
-
-/// 解码器 varmap 里登记的所有参数名。
-fn var_names(decoder_vm: &VarMap) -> Result<Vec<String>> {
-    let data = decoder_vm
-        .data()
-        .lock()
-        .map_err(|_| anyhow::anyhow!("VarMap 锁已毒化"))?;
-    Ok(data.keys().cloned().collect())
-}
-
-/// 取 Var 的扁平 f32 小端字节；`transposed` 时按 candle [out,in] → ONNX [in,out] 转置。
-fn var_bytes(decoder_vm: &VarMap, name: &str, transposed: bool) -> Result<Vec<u8>> {
-    let data = decoder_vm
-        .data()
-        .lock()
-        .map_err(|_| anyhow::anyhow!("VarMap 锁已毒化"))?;
-    let var = data
-        .get(name)
-        .with_context(|| format!("VarMap 里找不到 {name}"))?;
-    let tensor = if transposed {
-        var.as_tensor().t()?.contiguous()?
-    } else {
-        var.as_tensor().clone()
-    };
-    let flat = tensor.flatten_all()?.to_vec1::<f32>()?;
-    drop(data);
-    let mut out = Vec::with_capacity(flat.len() * 4);
-    for v in flat {
-        out.extend_from_slice(&v.to_le_bytes());
-    }
-    Ok(out)
 }
 
 /// 定位并替换某 initializer 的 raw_data；长度不符直接拒绝，防止破坏文件结构。
@@ -399,8 +331,6 @@ struct Span {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use candle_core::{DType, Device, Tensor};
-    use candle_nn::{VarBuilder, VarMap};
 
     fn base_onnx() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -423,77 +353,6 @@ mod tests {
             .expect("应找到转置卷积权重");
         // 基座转置卷积权重形状 [256,256,4]，f32 字节 = 256*256*4*4。
         assert_eq!(slot.len, 256 * 256 * 4 * 4);
-    }
-
-    #[test]
-    fn export_tuned_model_writes_decoder_and_keeps_encoder() {
-        use crate::ai_service::tts::finetune::read_initializers;
-        use crate::ai_service::tts::finetune::{BaseDecoder, export_tuned_model};
-
-        let base = base_onnx();
-        if !base.exists() {
-            return;
-        }
-        let device = Device::Cpu;
-        let mut var_map = VarMap::new();
-        let vb = VarBuilder::from_varmap(&var_map, DType::F32, &device);
-        let _decoder = BaseDecoder::new(&Default::default(), vb).unwrap();
-
-        // 把转置卷积权重覆写为一个确定常量，便于核对导出结果。
-        let wname = "model.decoder.estimator.up_blocks.0.2.conv.weight";
-        let new_weight = vec![0.5f32; 256 * 256 * 4];
-        var_map
-            .set_one(
-                wname,
-                &Tensor::from_vec(new_weight.clone(), (256, 256, 4), &device).unwrap(),
-            )
-            .unwrap();
-
-        let out = std::env::temp_dir().join("lingchat-export-test.onnx");
-        let map_path = Path::new(env!("CARGO_MANIFEST_DIR"))
-            .join("../../data/tts-training/decoder_weight_map.json");
-        export_tuned_model(&var_map, &base, &map_path, &out).unwrap();
-
-        let tensors = read_initializers(&out).unwrap();
-        let conv = tensors
-            .iter()
-            .find(|t| t.name == wname)
-            .expect("导出后应有转置卷积权重");
-        assert_eq!(conv.data, new_weight, "解码器权重应被覆写");
-
-        // 匿名 MatMul 权重（to_q）应经映射表写入，且布局转置回 ONNX 的 [in,out]。
-        let to_q_name = "model.decoder.estimator.down_blocks.0.1.0.attn1.to_q.weight";
-        let src = "onnx::MatMul_6149";
-        let exported = tensors
-            .iter()
-            .find(|t| t.name == src)
-            .expect("应导出 to_q 的匿名 initializer");
-        // candle [out,in] 转置为 ONNX [in,out]，与原 varmap 值一致。
-        let var_t = var_map
-            .data()
-            .lock()
-            .unwrap()
-            .get(to_q_name)
-            .unwrap()
-            .as_tensor()
-            .t()
-            .unwrap()
-            .contiguous()
-            .unwrap()
-            .flatten_all()
-            .unwrap()
-            .to_vec1::<f32>()
-            .unwrap();
-        assert_eq!(exported.data, var_t, "匿名 MatMul 权重应转置后导出");
-
-        // 编码器权重应保持基座原值。
-        let enc = "model.encoder.emb.weight";
-        let base_tensors = read_initializers(&base).unwrap();
-        let base_enc = base_tensors.iter().find(|t| t.name == enc).unwrap();
-        let out_enc = tensors.iter().find(|t| t.name == enc).unwrap();
-        assert_eq!(out_enc.data, base_enc.data, "编码器权重不应被改动");
-
-        let _ = std::fs::remove_file(&out);
     }
 
     /// 时长校准应只改动编码器时长投影 bias，且偏移量为 ln(scale)。

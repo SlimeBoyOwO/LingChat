@@ -1,14 +1,9 @@
 //! 端侧音色微调：数据导入、归一化与训练，全程进程内完成，不依赖外部二进制。
 
-pub mod base_decoder;
-pub mod base_encoder;
 pub mod burn_backend;
 pub mod burn_decoder;
 pub mod burn_encoder;
 pub mod burn_training;
-pub use base_decoder::{BaseDecoder, BaseDecoderConfig};
-pub use base_encoder::{BaseEncoder, BaseEncoderConfig};
-pub mod base_training;
 pub mod conv_lora;
 pub mod corpus;
 pub mod decoder;
@@ -23,9 +18,6 @@ pub mod style;
 pub mod text;
 pub mod training;
 
-pub use base_training::{
-    BaseTrainingConfig, BaseTrainingOutcome, BaseTrainingProgress, load_decoder_weights, train_base,
-};
 pub use corpus::{
     Corpus, CorpusConfig, CorpusStats, SkippedSample, TrainingSample, build_corpus, make_batches,
 };
@@ -38,7 +30,7 @@ pub use import::{
 pub use model::{Matcha, MatchaConfig};
 pub use normalize::{NormalizeReport, normalize_to_wav};
 pub use onnx_export::{
-    export_tuned_model, export_tuned_model_burn, export_tuned_model_burn_with_adapters,
+    export_tuned_model_burn, export_tuned_model_burn_with_adapters,
     export_tuned_model_burn_with_duration,
 };
 pub use onnx_weights::{OnnxTensor, read_initializers};
