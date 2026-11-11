@@ -294,17 +294,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         ai_service::tts::local::tts_local_get_device,
         ai_service::tts::local::tts_local_list_devices,
         ai_service::tts::local::tts_local_set_device,
-        // TTS 微调 / Sherpa 模型管理命令
-        api::tts_finetune::tts_finetune_train,
-        api::tts_finetune::tts_finetune_export,
-        api::tts_finetune::tts_finetune_cancel,
-        api::tts_finetune::tts_finetune_active,
-        api::tts_finetune::tts_finetune_import,
-        api::tts_finetune::tts_finetune_list,
-        api::tts_finetune::tts_finetune_stats,
-        api::tts_finetune::tts_finetune_cluster_styles,
-        api::tts_finetune::tts_finetune_remove,
-        api::tts_finetune::tts_finetune_auto_annotate,
+        // Sherpa 模型管理命令
         api::tts_sherpa::sherpa_list_models,
         api::tts_sherpa::sherpa_list_speakers,
         api::tts_sherpa::sherpa_download_model,

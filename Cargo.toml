@@ -59,22 +59,6 @@ tracing-subscriber = { version = "0.3", features = [
 [patch.crates-io]
 esaxx-rs = { path = "src-tauri/patches/esaxx-rs" }
 jpreprocess-naist-jdic = { git = "https://gh-proxy.org/github.com/shadow01a/jpreprocess", branch = "main" }
-# cubecl-wgpu 的源码不进仓库：由 scripts/patch-cubecl-wgpu.mjs 在构建前从 .crate 解包到
-# vendor/cubecl-wgpu，并禁用集成 GPU 上会踩野指针的 write_mapped 快路径
-# （Android Adreno 上训练必 SIGSEGV，详见脚本注释）。首次克隆或删掉 vendor 目录后，
-# 先跑 pnpm patch:cubecl-wgpu，否则 cargo 会因找不到该路径而报错。
-cubecl-wgpu = { path = "vendor/cubecl-wgpu" }
-# cubek-matmul 的源码同样不进仓库：由 scripts/patch-cubek-matmul.mjs 在构建前解包到
-# vendor/cubek-matmul，收紧 Strategy::Auto 的矩阵乘法降级链——Adreno 集成 GPU 共享内存每
-# cube 只有 32KB，高级 cmma 内核会超预算，补丁让降级最终落到共享内存最低的 Naive 内核。
-cubek-matmul = { path = "vendor/cubek-matmul" }
-# wgpu-hal 的源码同样不进仓库：由 scripts/patch-wgpu-hal.mjs 在构建前解包到
-# vendor/wgpu-hal，把 Android GLES 下 compute 阶段的 storage buffer 上限改按
-# GL_MAX_COMPUTE_SHADER_STORAGE_BLOCKS 上报——Adreno 顶点 stage 只有 4 会拖低整条
-# 上报，但 compute 按 GLES 3.1 下限为 8，burn 的卷积内核要 5 个 buffer，见脚本注释。
-# 首次克隆或删掉 vendor 目录后，先跑 pnpm patch:wgpu-hal，否则 cargo 报路径错误。
-wgpu-hal = { path = "vendor/wgpu-hal" }
-
 # 依赖不生成调试符号。proc-macro 每次指纹变化都要重编，PDB 体积大且无需单步调试。
 [profile.dev.build-override]
 debug = false
