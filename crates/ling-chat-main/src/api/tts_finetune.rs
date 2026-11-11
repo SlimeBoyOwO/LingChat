@@ -13,16 +13,17 @@ use crate::ai_service::tts::finetune::burn_encoder::{
     BurnBaseEncoderConfig, from_onnx_tensors as load_encoder_from_onnx,
 };
 use crate::ai_service::tts::finetune::burn_training::{
-    BaseTrainingConfig as BurnBaseTrainingConfig, BaseTrainingOutcome, apply_linear_lora,
-    duration_adapter_path, inspect_checkpoint_adapters, inspect_duration_adapter_rank,
-    load_checkpoint, load_duration_adapter, load_train_state, train_base as burn_train_base,
+    BaseTrainingConfig as BurnBaseTrainingConfig, BaseTrainingOutcome, BaseTrainingProgress,
+    apply_linear_lora, duration_adapter_path, inspect_checkpoint_adapters,
+    inspect_duration_adapter_rank, load_checkpoint, load_duration_adapter, load_train_state,
+    train_base as burn_train_base,
 };
 use crate::ai_service::tts::finetune::{
     CorpusConfig, DEFAULT_SAMPLE_RATE, DEFAULT_STYLE_CLUSTERS, DatasetItem, DatasetManifest,
     DatasetStats, ImportReport, MelConfig, StyleClusterReport, StyleClusterSummary, TextFrontend,
-    TrainingProgress, build_corpus, cluster_dataset, export_tuned_model_burn_with_adapters,
-    finetune_root, import_zip, list_datasets, load_manifest, persist_text_updates,
-    read_initializers, remove_dataset, summarize_clusters,
+    build_corpus, cluster_dataset, export_tuned_model_burn_with_adapters, finetune_root,
+    import_zip, list_datasets, load_manifest, persist_text_updates, read_initializers,
+    remove_dataset, summarize_clusters,
 };
 
 /// 数据集摘要，供前端列表展示。
@@ -168,7 +169,7 @@ struct ActiveTrainState {
     token: Option<CancellationToken>,
     dataset_id: Option<String>,
     /// 最近一次上报的进度；结束后保留最后值。
-    latest: Option<TrainingProgress>,
+    latest: Option<BaseTrainingProgress>,
 }
 
 fn active_train() -> &'static Mutex<ActiveTrainState> {
@@ -182,7 +183,7 @@ fn active_train() -> &'static Mutex<ActiveTrainState> {
 pub struct FinetuneActiveState {
     pub training: bool,
     pub dataset_id: String,
-    pub latest: Option<TrainingProgress>,
+    pub latest: Option<BaseTrainingProgress>,
 }
 
 /// 查询是否有训练在跑及其最新进度。
@@ -303,22 +304,14 @@ pub async fn tts_finetune_train(
                     if progress.step % 5 != 0 && progress.step != progress.total_steps {
                         return;
                     }
-                    let legacy = TrainingProgress {
-                        epoch: progress.epoch,
-                        total_epochs: progress.total_epochs,
-                        step: progress.step,
-                        total_steps: progress.total_steps,
-                        loss: progress.loss,
-                        val_loss: progress.val_loss,
-                    };
                     // 记录最近进度供页面恢复；每轮末（有 val_loss）刷新一次通知。
                     if let Ok(mut guard) = active_train().lock() {
-                        guard.latest = Some(legacy.clone());
+                        guard.latest = Some(progress.clone());
                     }
-                    if legacy.val_loss.is_some() {
-                        notify_train(&app_for_closure, "progress", &ds, Some(&legacy));
+                    if progress.val_loss.is_some() {
+                        notify_train(&app_for_closure, "progress", &ds, Some(progress));
                     }
-                    let _ = app_for_closure.emit("tts:finetune-progress", legacy);
+                    let _ = app_for_closure.emit("tts:finetune-progress", progress.clone());
                 },
             )
         })
@@ -360,7 +353,7 @@ fn notify_train(
     app: &AppHandle,
     kind: &str,
     dataset_id: &str,
-    progress: Option<&TrainingProgress>,
+    progress: Option<&BaseTrainingProgress>,
 ) {
     let title = match kind {
         "start" => "训练已开始".to_string(),
