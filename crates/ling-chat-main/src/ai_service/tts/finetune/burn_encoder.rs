@@ -1,4 +1,4 @@
-//! burn 版基座文本编码器，结构与权重名与 candle 版逐层对齐。
+//! burn 版基座文本编码器，结构与 ONNX 权重名逐层对齐。
 
 use burn::module::Param;
 use burn::nn::PaddingConfig1d;
@@ -9,7 +9,7 @@ use burn::tensor::activation::{relu, softmax};
 use super::conv_lora::ConvLora;
 use super::onnx_weights::OnnxTensor;
 
-/// 编码器超参数（burn 版，字段与 candle 版对应）。
+/// 编码器超参数（与基座 ONNX 结构对应）。
 #[derive(Debug, Clone)]
 pub struct BurnBaseEncoderConfig {
     pub n_vocab: usize,
@@ -36,7 +36,7 @@ impl Default for BurnBaseEncoderConfig {
     }
 }
 
-/// 沿通道维归一化并做逐通道仿射（等价 candle 的 AffineNorm）。
+/// 沿通道维归一化并做逐通道仿射。
 #[derive(Module, Debug)]
 struct AffineNorm {
     weight: Param<Tensor<3>>,

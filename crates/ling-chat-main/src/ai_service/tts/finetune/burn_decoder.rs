@@ -1,4 +1,4 @@
-//! burn 版基座解码器，结构与 candle 版逐层对齐；转置卷积直接用 burn 原生实现。
+//! burn 版基座解码器，结构与基座 ONNX 逐层对齐；转置卷积直接用 burn 原生实现。
 
 use burn::module::{Module, Param};
 use burn::nn::PaddingConfig1d;
@@ -8,7 +8,7 @@ use burn::tensor::activation::{mish, silu};
 
 use super::conv_lora::{ConvLora, ConvTransposeLora};
 
-/// 解码器超参数（burn 版，字段与 candle 版对应）。
+/// 解码器超参数（与基座 ONNX 结构对应）。
 #[derive(Debug, Clone)]
 pub struct BurnBaseDecoderConfig {
     pub channels: usize,
@@ -718,7 +718,7 @@ fn set_affine_bias(affine: &mut Affine, data: &[f32], dims: &[usize], device: &D
     affine.bias = Param::from_tensor(t);
 }
 
-/// 按目标名把命名 ONNX 权重填入解码器；目标名沿用 candle 版参数位路径，未知名字忽略。
+/// 按目标名把命名 ONNX 权重填入解码器；目标名沿用基座参数位路径，未知名字忽略。
 pub fn apply_named_decoder_weight(
     decoder: &mut BurnBaseDecoder,
     name: &str,
