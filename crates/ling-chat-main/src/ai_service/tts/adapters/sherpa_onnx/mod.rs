@@ -374,19 +374,19 @@ impl TtsAdapter for SherpaOnnxAdapter {
     }
 
     fn get_params(&self) -> HashMap<String, JsonValue> {
-        let mut params = HashMap::new();
-        params.insert("model_path".into(), json!(self.model_path));
-        params.insert("model_type".into(), json!(self.model_type));
-        params.insert("language".into(), json!(self.language));
-        params.insert("voice".into(), json!(self.voice));
-        params.insert("use_gpu".into(), json!(self.use_gpu));
-        params.insert("speed".into(), json!(self.speed));
-        params.insert("sid".into(), json!(self.sid));
-        params.insert(
-            "has_reference_audio".into(),
-            json!(self.reference_audio.is_some()),
-        );
-        params
+        HashMap::from([
+            ("model_path".into(), json!(self.model_path)),
+            ("model_type".into(), json!(self.model_type)),
+            ("language".into(), json!(self.language)),
+            ("voice".into(), json!(self.voice)),
+            ("use_gpu".into(), json!(self.use_gpu)),
+            ("speed".into(), json!(self.speed)),
+            ("sid".into(), json!(self.sid)),
+            (
+                "has_reference_audio".into(),
+                json!(self.reference_audio.is_some()),
+            ),
+        ])
     }
 }
 

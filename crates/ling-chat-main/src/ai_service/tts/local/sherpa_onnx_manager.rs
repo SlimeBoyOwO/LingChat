@@ -28,10 +28,12 @@ pub fn sherpa_onnx_models_root() -> PathBuf {
 
 /// 依据模型目录本身解析实际 `model_type`：内置清单 → `config.json` → 文件特征 → 传入值。
 pub fn resolve_model_type(model_dir: &Path, configured: &str) -> String {
-    if let Some(name) = model_dir.file_name().and_then(|n| n.to_str()) {
-        if let Some(mtype) = crate::api::tts_sherpa::catalog_model_type(name) {
-            return mtype.to_string();
-        }
+    if let Some(mtype) = model_dir
+        .file_name()
+        .and_then(|name| name.to_str())
+        .and_then(crate::api::tts_sherpa::catalog_model_type)
+    {
+        return mtype.to_string();
     }
 
     if let Ok(content) = std::fs::read_to_string(model_dir.join("config.json")) {
@@ -204,26 +206,17 @@ impl SherpaOnnxManager {
     async fn load_model_config(&self, config_path: &Path) -> Result<(String, String, String)> {
         let content = tokio::fs::read_to_string(config_path).await?;
         let config: serde_json::Value = serde_json::from_str(&content)?;
-
-        let model_type = config
-            .get("model_type")
-            .and_then(|v| v.as_str())
-            .unwrap_or("vits");
-
-        let language = config
-            .get("language")
-            .and_then(|v| v.as_str())
-            .unwrap_or("zh");
-
-        let voice = config
-            .get("voice")
-            .and_then(|v| v.as_str())
-            .unwrap_or("female");
-
+        let field = |key: &str, default: &str| {
+            config
+                .get(key)
+                .and_then(|value| value.as_str())
+                .unwrap_or(default)
+                .to_string()
+        };
         Ok((
-            model_type.to_string(),
-            language.to_string(),
-            voice.to_string(),
+            field("model_type", "vits"),
+            field("language", "zh"),
+            field("voice", "female"),
         ))
     }
 
@@ -262,44 +255,44 @@ impl SherpaOnnxManager {
         Ok(())
     }
 
+    async fn with_model<T>(
+        &self,
+        model_name: &str,
+        f: impl FnOnce(&SherpaOnnxModelInfo) -> T,
+    ) -> Option<T> {
+        self.models.read().await.get(model_name).map(f)
+    }
+
     pub async fn get_model_path(&self, model_name: &str) -> Option<PathBuf> {
-        let models = self.models.read().await;
-        models.get(model_name).map(|info| info.model_path.clone())
+        self.with_model(model_name, |info| info.model_path.clone())
+            .await
     }
 
     pub async fn get_model_type(&self, model_name: &str) -> Option<String> {
-        let models = self.models.read().await;
-        models.get(model_name).map(|info| info.model_type.clone())
+        self.with_model(model_name, |info| info.model_type.clone())
+            .await
     }
 
     pub async fn get_model_language(&self, model_name: &str) -> Option<String> {
-        let models = self.models.read().await;
-        models.get(model_name).map(|info| info.language.clone())
+        self.with_model(model_name, |info| info.language.clone())
+            .await
     }
 
     pub async fn get_model_voice(&self, model_name: &str) -> Option<String> {
-        let models = self.models.read().await;
-        models.get(model_name).map(|info| info.voice.clone())
+        self.with_model(model_name, |info| info.voice.clone()).await
     }
 
     pub async fn get_model_size(&self, model_name: &str) -> Option<u64> {
-        let models = self.models.read().await;
-        models.get(model_name).map(|info| info.size_bytes)
+        self.with_model(model_name, |info| info.size_bytes).await
     }
 
     pub async fn validate_model(&self, model_name: &str) -> Result<bool> {
         let models = self.models.read().await;
-        if let Some(model_info) = models.get(model_name) {
-            if !model_info.model_path.exists() {
-                return Ok(false);
-            }
-
-            // TODO: 实现更详细的模型验证（文件大小、模型格式等）。
-
-            Ok(true)
-        } else {
-            Err(anyhow!("Model not found: {}", model_name))
-        }
+        let info = models
+            .get(model_name)
+            .ok_or_else(|| anyhow!("Model not found: {}", model_name))?;
+        // TODO: 实现更详细的模型验证（文件大小、模型格式等）。
+        Ok(info.model_path.exists())
     }
 
     pub async fn get_storage_stats(&self) -> Result<(u64, usize)> {
@@ -312,21 +305,9 @@ impl SherpaOnnxManager {
 
     pub async fn cleanup_invalid_models(&self) -> Result<usize> {
         let mut models = self.models.write().await;
-        let mut removed_count = 0;
-
-        let invalid_models: Vec<String> = models
-            .iter()
-            .filter(|(_, info)| !info.is_valid)
-            .map(|(name, _)| name.clone())
-            .collect();
-
-        for model_name in invalid_models {
-            if models.remove(&model_name).is_some() {
-                removed_count += 1;
-            }
-        }
-
-        Ok(removed_count)
+        let before = models.len();
+        models.retain(|_, info| info.is_valid);
+        Ok(before - models.len())
     }
 }
 

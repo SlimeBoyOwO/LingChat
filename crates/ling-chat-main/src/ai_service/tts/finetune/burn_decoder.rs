@@ -155,6 +155,19 @@ impl TimeMlp {
     }
 }
 
+fn conv1d(
+    in_channels: usize,
+    out_channels: usize,
+    kernel: usize,
+    stride: usize,
+    device: &Device,
+) -> Conv1d {
+    Conv1dConfig::new(in_channels, out_channels, kernel)
+        .with_stride(stride)
+        .with_padding(PaddingConfig1d::Explicit(kernel / 2, kernel / 2))
+        .init(device)
+}
+
 /// 时间条件卷积残差块。
 #[derive(Module, Debug)]
 struct ResBlock {
@@ -185,13 +198,9 @@ impl ResBlock {
             (rank > 0).then(|| ConvLora::new(input_channels, channels, 1, 1, 0, rank, device));
         Self {
             time_proj: LinearConfig::new(config.time_hidden, channels).init(device),
-            conv1: Conv1dConfig::new(input_channels, channels, 3)
-                .with_padding(PaddingConfig1d::Explicit(1, 1))
-                .init(device),
-            conv2: Conv1dConfig::new(channels, channels, 3)
-                .with_padding(PaddingConfig1d::Explicit(1, 1))
-                .init(device),
-            res_conv: Conv1dConfig::new(input_channels, channels, 1).init(device),
+            conv1: conv1d(input_channels, channels, 3, 1, device),
+            conv2: conv1d(channels, channels, 3, 1, device),
+            res_conv: conv1d(input_channels, channels, 1, 1, device),
             conv_lora1,
             conv_lora2,
             conv_lora_res,
@@ -475,10 +484,7 @@ impl BurnBaseDecoder {
             down.push((
                 ResBlock::new(input_channels, config, device),
                 AttnBlock::new(config, device),
-                Conv1dConfig::new(config.channels, config.channels, 3)
-                    .with_stride(stride)
-                    .with_padding(PaddingConfig1d::Explicit(1, 1))
-                    .init(device),
+                conv1d(config.channels, config.channels, 3, stride, device),
             ));
             down_conv_lora.push((rank > 0).then(|| {
                 ConvLora::new(config.channels, config.channels, 3, stride, 1, rank, device)
@@ -519,11 +525,7 @@ impl BurnBaseDecoder {
                 )
             } else {
                 (
-                    UpSampler::Conv(
-                        Conv1dConfig::new(config.channels, config.channels, 3)
-                            .with_padding(PaddingConfig1d::Explicit(1, 1))
-                            .init(device),
-                    ),
+                    UpSampler::Conv(conv1d(config.channels, config.channels, 3, 1, device)),
                     (rank > 0).then(|| {
                         SamplerLora::Conv(ConvLora::new(
                             config.channels,
@@ -551,10 +553,8 @@ impl BurnBaseDecoder {
             mid,
             up,
             final_norm: GroupNormAffine::new(config.channels, 8, device),
-            final_block: Conv1dConfig::new(config.channels, config.channels, 3)
-                .with_padding(PaddingConfig1d::Explicit(1, 1))
-                .init(device),
-            final_proj: Conv1dConfig::new(config.channels, config.n_mels, 1).init(device),
+            final_block: conv1d(config.channels, config.channels, 3, 1, device),
+            final_proj: conv1d(config.channels, config.n_mels, 1, 1, device),
             down_conv_lora,
             up_conv_lora,
             final_block_conv_lora: (rank > 0)
