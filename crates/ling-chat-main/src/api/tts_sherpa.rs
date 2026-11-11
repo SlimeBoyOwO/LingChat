@@ -629,9 +629,17 @@ async fn run_download(
         let src = model_root.join("_cache").join("espeak-ng-data");
         let dst = target_dir.join("espeak-ng-data");
         if src.exists() {
-            if let Err(e) = copy_dir_tree(&src, &dst).await {
+            let copied = tokio::task::spawn_blocking(move || {
+                crate::utils::archive::copy_dir_recursive(&src, &dst)
+            })
+            .await
+            .map_err(|error| format!("复制 espeak-ng-data 任务失败: {error}"))
+            .and_then(|result| {
+                result.map_err(|error| format!("复制 espeak-ng-data 失败: {error}"))
+            });
+            if let Err(error) = copied {
                 let _ = tokio::fs::remove_dir_all(&target_dir).await;
-                return Err(e);
+                return Err(error);
             }
         }
     }
@@ -646,35 +654,6 @@ async fn run_download(
 
 fn dir_has_espeak(files: &[RepoFile]) -> bool {
     files.iter().any(|f| f.rel.starts_with("espeak-ng-data/"))
-}
-
-async fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    tokio::fs::create_dir_all(dst)
-        .await
-        .map_err(|e| format!("mkdir {dst:?}: {e}"))?;
-    let mut entries = tokio::fs::read_dir(src)
-        .await
-        .map_err(|e| format!("read_dir {src:?}: {e}"))?;
-    let mut items = Vec::new();
-    while let Ok(Some(entry)) = entries.next_entry().await {
-        items.push(entry.path());
-    }
-    for path in items {
-        let file_name = path.file_name().unwrap_or_default();
-        let dest = dst.join(file_name);
-        let is_dir = tokio::fs::metadata(&path)
-            .await
-            .map(|m| m.is_dir())
-            .unwrap_or(false);
-        if is_dir {
-            Box::pin(copy_dir_tree(&path, &dest)).await?;
-        } else {
-            tokio::fs::copy(&path, &dest)
-                .await
-                .map_err(|e| format!("复制文件失败 {path:?} -> {dest:?}: {e}"))?;
-        }
-    }
-    Ok(())
 }
 
 /// 试听合成：按前端 settings 构造 adapter，合成 WAV 并返回临时路径。
@@ -699,6 +678,10 @@ pub struct SherpaPreviewResult {
     pub audio_path: String,
 }
 
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|value| !value.trim().is_empty())
+}
+
 /// 试听合成命令（前端 `test_sherpa_onnx_voice`）。
 #[tauri::command]
 pub async fn test_sherpa_onnx_voice(
@@ -706,10 +689,7 @@ pub async fn test_sherpa_onnx_voice(
     text: String,
     settings: SherpaPreviewSettings,
 ) -> Result<Option<SherpaPreviewResult>, String> {
-    let model_name = settings
-        .sherpa_onnx_model_name
-        .clone()
-        .filter(|s| !s.trim().is_empty())
+    let model_name = non_empty(settings.sherpa_onnx_model_name.clone())
         .ok_or_else(|| "未选择 Sherpa 模型".to_string())?;
 
     let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
@@ -722,18 +702,10 @@ pub async fn test_sherpa_onnx_voice(
     // 试听文本里的假名/谚文优先于页面语言。
     let language = crate::ai_service::tts::text_language::detect(&text)
         .map(str::to_string)
-        .or_else(|| {
-            settings
-                .sherpa_onnx_lang
-                .clone()
-                .filter(|s| !s.trim().is_empty())
-        })
+        .or_else(|| non_empty(settings.sherpa_onnx_lang.clone()))
         .unwrap_or_else(|| "zh".to_string());
-    let voice = settings
-        .sherpa_onnx_voice
-        .clone()
-        .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(|| "female".to_string());
+    let voice =
+        non_empty(settings.sherpa_onnx_voice.clone()).unwrap_or_else(|| "female".to_string());
     let use_gpu = settings.sherpa_onnx_use_gpu.unwrap_or(false);
 
     let tts_config = crate::config::app_config::AppConfig::load(&app)
@@ -755,14 +727,8 @@ pub async fn test_sherpa_onnx_voice(
     .map_err(|e| e.to_string())?;
 
     // 参考音频与文本必须成对，否则明确报错。
-    let ref_audio = settings
-        .sherpa_onnx_ref_audio_path
-        .clone()
-        .filter(|s| !s.trim().is_empty());
-    let ref_text = settings
-        .sherpa_onnx_ref_text
-        .clone()
-        .filter(|s| !s.trim().is_empty());
+    let ref_audio = non_empty(settings.sherpa_onnx_ref_audio_path.clone());
+    let ref_text = non_empty(settings.sherpa_onnx_ref_text.clone());
     match (&ref_audio, &ref_text) {
         (Some(ref_path), Some(ref_text)) => {
             let p = PathBuf::from(ref_path);
@@ -940,18 +906,21 @@ pub struct SherpaStorageStatus {
     pub model_root: String,
 }
 
+fn sherpa_storage_status() -> SherpaStorageStatus {
+    SherpaStorageStatus {
+        granted: true,
+        model_root: crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+            .to_string_lossy()
+            .into_owned(),
+    }
+}
+
 /// 模型目录位于应用数据目录，无需存储权限，恒返回已授权。
 #[tauri::command]
 pub async fn check_sherpa_storage_permission(
     _app: tauri::AppHandle,
 ) -> Result<SherpaStorageStatus, String> {
-    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
-        .to_string_lossy()
-        .to_string();
-    Ok(SherpaStorageStatus {
-        granted: true,
-        model_root,
-    })
+    Ok(sherpa_storage_status())
 }
 
 /// 恒视为已授权；保留此命令仅为前端兼容。
@@ -959,11 +928,5 @@ pub async fn check_sherpa_storage_permission(
 pub async fn request_sherpa_storage_permission(
     _app: tauri::AppHandle,
 ) -> Result<SherpaStorageStatus, String> {
-    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
-        .to_string_lossy()
-        .to_string();
-    Ok(SherpaStorageStatus {
-        granted: true,
-        model_root,
-    })
+    Ok(sherpa_storage_status())
 }

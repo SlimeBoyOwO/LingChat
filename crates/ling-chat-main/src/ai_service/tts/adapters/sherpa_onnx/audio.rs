@@ -248,48 +248,31 @@ fn parse_fmt_chunk(body: &[u8]) -> Option<WavFormat> {
     })
 }
 
+fn decode_chunks<const N: usize>(raw: &[u8], f: impl Fn([u8; N]) -> f32) -> Vec<f32> {
+    raw.as_chunks::<N>()
+        .0
+        .iter()
+        .map(|&bytes| f(bytes))
+        .collect()
+}
+
 /// 把 WAV 的样本数据解码成 -1.0~1.0 的 f32。
 fn decode_wav_samples(raw: &[u8], format: &WavFormat) -> Result<Vec<f32>> {
     const PCM: u16 = 1;
     const FLOAT: u16 = 3;
 
-    let samples: Vec<f32> = match (format.format_tag, format.bits_per_sample) {
+    let samples = match (format.format_tag, format.bits_per_sample) {
         // 8 位 WAV 是无符号 PCM，中点 128。
         (PCM, 8) => raw.iter().map(|&b| (b as f32 - 128.0) / 128.0).collect(),
-        (PCM, 16) => raw
-            .as_chunks::<2>()
-            .0
-            .iter()
-            .map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32_768.0)
-            .collect(),
-        (PCM, 24) => raw
-            .as_chunks::<3>()
-            .0
-            .iter()
-            .map(|b| {
-                // 24 位小端、手工符号扩展。
-                let v = ((b[2] as i8 as i32) << 16) | ((b[1] as i32) << 8) | b[0] as i32;
-                v as f32 / 8_388_608.0
-            })
-            .collect(),
-        (PCM, 32) => raw
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|b| i32::from_le_bytes([b[0], b[1], b[2], b[3]]) as f32 / 2_147_483_648.0)
-            .collect(),
-        (FLOAT, 32) => raw
-            .as_chunks::<4>()
-            .0
-            .iter()
-            .map(|b| f32::from_le_bytes(*b))
-            .collect(),
-        (FLOAT, 64) => raw
-            .as_chunks::<8>()
-            .0
-            .iter()
-            .map(|b| f64::from_le_bytes(*b) as f32)
-            .collect(),
+        (PCM, 16) => decode_chunks::<2>(raw, |b| i16::from_le_bytes(b) as f32 / 32_768.0),
+        (PCM, 24) => decode_chunks::<3>(raw, |b| {
+            // 24 位小端、手工符号扩展。
+            let v = ((b[2] as i8 as i32) << 16) | ((b[1] as i32) << 8) | b[0] as i32;
+            v as f32 / 8_388_608.0
+        }),
+        (PCM, 32) => decode_chunks::<4>(raw, |b| i32::from_le_bytes(b) as f32 / 2_147_483_648.0),
+        (FLOAT, 32) => decode_chunks::<4>(raw, |b| f32::from_le_bytes(b)),
+        (FLOAT, 64) => decode_chunks::<8>(raw, |b| f64::from_le_bytes(b) as f32),
         (tag, bits) => {
             return Err(anyhow!(
                 "不支持的 WAV 编码（format tag = {tag}、位深 = {bits} 位；支持 PCM 8/16/24/32 与 float 32/64）"

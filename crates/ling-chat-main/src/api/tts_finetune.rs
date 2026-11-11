@@ -136,6 +136,16 @@ fn dataset_checkpoint_path(root: &Path, style_cluster: Option<u32>) -> PathBuf {
     }
 }
 
+fn load_base_frontend(base: &Path) -> Result<TextFrontend, String> {
+    let tokens = base.join("tokens.txt");
+    if !tokens.is_file() {
+        return Err(format!("基座目录缺少 tokens.txt: {}", base.display()));
+    }
+    let lexicon = base.join("lexicon.txt");
+    TextFrontend::load(&tokens, lexicon.is_file().then_some(lexicon).as_deref())
+        .map_err(|error| format!("加载基座词表失败: {error:#}"))
+}
+
 /// 训练结果。
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
@@ -152,22 +162,13 @@ pub struct FinetuneTrainOutcome {
 }
 
 /// 进程内训练活动状态，供页面重建后恢复。
+#[derive(Default)]
 struct ActiveTrainState {
     /// 取消令牌；Some 表示正在训练。
     token: Option<CancellationToken>,
     dataset_id: Option<String>,
     /// 最近一次上报的进度；结束后保留最后值。
     latest: Option<TrainingProgress>,
-}
-
-impl Default for ActiveTrainState {
-    fn default() -> Self {
-        Self {
-            token: None,
-            dataset_id: None,
-            latest: None,
-        }
-    }
 }
 
 fn active_train() -> &'static Mutex<ActiveTrainState> {
@@ -221,18 +222,10 @@ pub async fn tts_finetune_train(
     }
 
     let base = resolve_base_dir(&base_model_dir);
-    let tokens_path = base.join("tokens.txt");
-    if !tokens_path.is_file() {
-        return Err(format!("基座目录缺少 tokens.txt: {}", base.display()));
-    }
-    let lexicon_path = base.join("lexicon.txt");
-    let lexicon = lexicon_path.is_file().then_some(lexicon_path);
+    let frontend = load_base_frontend(&base)?;
 
     // 基座 ONNX：目录下形如 model-steps-3.onnx 的声学模型。
     let onnx_path = find_base_onnx(&base)?;
-
-    let frontend = TextFrontend::load(&tokens_path, lexicon.as_deref())
-        .map_err(|error| format!("加载基座词表失败: {error:#}"))?;
     let corpus_config = CorpusConfig {
         style_cluster,
         ..Default::default()
@@ -447,14 +440,10 @@ fn estimate_style_duration_scale(
     let manifest: DatasetManifest =
         serde_json::from_slice(&bytes).map_err(|error| format!("解析数据集清单失败: {error}"))?;
 
-    let tokens_path = base.join("tokens.txt");
-    if !tokens_path.is_file() {
+    if !base.join("tokens.txt").is_file() {
         return Ok(None);
     }
-    let lexicon_path = base.join("lexicon.txt");
-    let lexicon = lexicon_path.is_file().then_some(lexicon_path);
-    let frontend = TextFrontend::load(&tokens_path, lexicon.as_deref())
-        .map_err(|error| format!("加载基座词表失败: {error:#}"))?;
+    let frontend = load_base_frontend(base)?;
 
     let device = crate::ai_service::tts::finetune::burn_backend::train_device();
 
@@ -464,10 +453,8 @@ fn estimate_style_duration_scale(
         if ratios.len() >= 32 {
             break;
         }
-        if let Some(cluster) = style_cluster {
-            if item.style_cluster != Some(cluster) {
-                continue;
-            }
+        if style_cluster.is_some_and(|cluster| item.style_cluster != Some(cluster)) {
+            continue;
         }
         let Some(text) = item.text.as_deref() else {
             continue;
@@ -630,17 +617,7 @@ pub async fn tts_finetune_export(
             let device = crate::ai_service::tts::finetune::burn_backend::train_device();
             // 先装回时长旁路再做语速校准，校准必须看到训练后的逐 token 时长。
             let encoder = if duration_enabled {
-                let tokens_path = base.join("tokens.txt");
-                if !tokens_path.is_file() {
-                    return Err(format!(
-                        "基座目录缺少 tokens.txt，无法导出时长适配: {}",
-                        base.display()
-                    ));
-                }
-                let lexicon_path = base.join("lexicon.txt");
-                let lexicon = lexicon_path.is_file().then_some(lexicon_path);
-                let frontend = TextFrontend::load(&tokens_path, lexicon.as_deref())
-                    .map_err(|error| format!("加载基座词表失败: {error:#}"))?;
+                let frontend = load_base_frontend(&base)?;
                 let tensors = read_initializers(&onnx_path)
                     .map_err(|error| format!("读取基座权重失败: {error:#}"))?;
                 let config = BurnBaseEncoderConfig {
@@ -711,12 +688,12 @@ pub async fn tts_finetune_export(
             .map_err(|error| format!("复制 {} 失败: {error}", src.display()))?;
     }
     if base.join("dict").is_dir() {
-        let proto = copy_dir_tree;
         let src = base.join("dict");
         let dst = dest_dir.join("dict");
-        tokio::task::spawn_blocking(move || proto(&src, &dst))
+        tokio::task::spawn_blocking(move || crate::utils::archive::copy_dir_recursive(&src, &dst))
             .await
-            .map_err(|error| format!("复制 dict 失败: {error}"))??;
+            .map_err(|error| format!("复制 dict 任务失败: {error}"))?
+            .map_err(|error| format!("复制 dict 失败: {error}"))?;
     }
 
     // 3) 写 config.json，声明为 matcha 供模型管理器识别。
@@ -736,29 +713,6 @@ pub async fn tts_finetune_export(
         model_name: sanitized.clone(),
         model_path: dest_dir.to_string_lossy().to_string(),
     })
-}
-
-/// 递归拷贝一个目录树。
-fn copy_dir_tree(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
-    std::fs::create_dir_all(dst)
-        .map_err(|error| format!("创建目录 {} 失败: {error}", dst.display()))?;
-    for entry in std::fs::read_dir(src)
-        .map_err(|error| format!("读取目录 {} 失败: {error}", src.display()))?
-    {
-        let entry = entry.map_err(|error| format!("读取目录项失败: {error}"))?;
-        let from = entry.path();
-        let to = dst.join(entry.file_name());
-        let ty = entry
-            .file_type()
-            .map_err(|error| format!("读取文件类型失败: {error}"))?;
-        if ty.is_dir() {
-            copy_dir_tree(&from, &to)?;
-        } else {
-            std::fs::copy(&from, &to)
-                .map_err(|error| format!("复制 {} 失败: {error}", from.display()))?;
-        }
-    }
-    Ok(())
 }
 
 /// 取消正在进行的训练。

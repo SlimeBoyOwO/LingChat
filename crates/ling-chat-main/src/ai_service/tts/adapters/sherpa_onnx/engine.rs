@@ -62,17 +62,15 @@ fn create_vits_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTt
     let tokens_file = find_file(model_dir, &["tokens.txt"])?;
 
     let vits_config = OfflineTtsVitsModelConfig {
-        model: Some(model_file.to_string_lossy().to_string()),
-        lexicon: find_file_optional(model_dir, &["lexicon.txt"])
-            .map(|p| p.to_string_lossy().to_string()),
-        tokens: Some(tokens_file.to_string_lossy().to_string()),
+        model: Some(path_string(model_file)),
+        lexicon: optional_file_string(model_dir, &["lexicon.txt"]),
+        tokens: Some(path_string(tokens_file)),
         // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
         data_dir: None,
         noise_scale: 0.667,
         noise_scale_w: 0.8,
         length_scale: 1.0,
-        dict_dir: find_dir_optional(model_dir, &["dict-dir", "dict"])
-            .map(|p| p.to_string_lossy().to_string()),
+        dict_dir: optional_dir_string(model_dir, &["dict-dir", "dict"]),
     };
 
     build_engine(
@@ -104,16 +102,15 @@ fn create_matcha_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
     )?;
 
     let matcha_config = OfflineTtsMatchaModelConfig {
-        acoustic_model: Some(acoustic_model.to_string_lossy().to_string()),
-        vocoder: Some(vocoder.to_string_lossy().to_string()),
-        lexicon: find_file_optional(model_dir, &["lexicon.txt"])
-            .map(|p| p.to_string_lossy().to_string()),
-        tokens: Some(tokens_file.to_string_lossy().to_string()),
+        acoustic_model: Some(path_string(acoustic_model)),
+        vocoder: Some(path_string(vocoder)),
+        lexicon: optional_file_string(model_dir, &["lexicon.txt"]),
+        tokens: Some(path_string(tokens_file)),
         // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
         data_dir: None,
         noise_scale: 0.667,
         length_scale: 1.0,
-        dict_dir: find_dir_optional(model_dir, &["dict"]).map(|p| p.to_string_lossy().to_string()),
+        dict_dir: optional_dir_string(model_dir, &["dict"]),
     };
 
     build_engine(
@@ -146,12 +143,11 @@ fn create_kokoro_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
         ));
     }
     let kokoro_config = OfflineTtsKokoroModelConfig {
-        model: Some(model.to_string_lossy().to_string()),
-        voices: Some(voices.to_string_lossy().to_string()),
-        tokens: find_file_optional(model_dir, &["tokens.txt"])
-            .map(|p| p.to_string_lossy().to_string()),
+        model: Some(path_string(model)),
+        voices: Some(path_string(voices)),
+        tokens: optional_file_string(model_dir, &["tokens.txt"]),
         length_scale: 1.0,
-        dict_dir: find_dir_optional(model_dir, &["dict"]).map(|p| p.to_string_lossy().to_string()),
+        dict_dir: optional_dir_string(model_dir, &["dict"]),
         lexicon: kokoro_lexicons(model_dir),
         ..Default::default()
     };
@@ -181,14 +177,13 @@ fn create_zipvoice_tts(
     let lexicon = zipvoice_lexicon(model_dir)?;
 
     let zipvoice_config = OfflineTtsZipvoiceModelConfig {
-        tokens: find_file_optional(model_dir, &["tokens.txt"])
-            .map(|p| p.to_string_lossy().to_string()),
-        encoder: Some(encoder.to_string_lossy().to_string()),
-        decoder: Some(decoder.to_string_lossy().to_string()),
-        vocoder: Some(vocoder.to_string_lossy().to_string()),
+        tokens: optional_file_string(model_dir, &["tokens.txt"]),
+        encoder: Some(path_string(encoder)),
+        decoder: Some(path_string(decoder)),
+        vocoder: Some(path_string(vocoder)),
         // sherpa-onnx 2.0 起忽略 data_dir（espeak-ng 已移除）。
         data_dir: None,
-        lexicon: Some(lexicon.to_string_lossy().to_string()),
+        lexicon: Some(path_string(lexicon)),
         // 必须显式写：Rust 绑定默认全是 0.0，而原生侧要求这些值 > 0（0 会被判为非法参数）。
         // 数值取上游默认：feat_scale=0.1、t_shift=0.5、target_rms=0.1、guidance_scale=1.0。
         feat_scale: 0.1,
@@ -214,10 +209,9 @@ fn create_kitten_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
     let voices = find_file(model_dir, &["voices.bin"])?;
 
     let kitten_config = OfflineTtsKittenModelConfig {
-        model: Some(model.to_string_lossy().to_string()),
-        voices: Some(voices.to_string_lossy().to_string()),
-        tokens: find_file_optional(model_dir, &["tokens.txt"])
-            .map(|p| p.to_string_lossy().to_string()),
+        model: Some(path_string(model)),
+        voices: Some(path_string(voices)),
+        tokens: optional_file_string(model_dir, &["tokens.txt"]),
         ..Default::default()
     };
 
@@ -234,41 +228,22 @@ fn create_kitten_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
 /// Pocket：一组 onnx + `vocab.json` / `token_scores.json`。
 fn create_pocket_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
     let pocket_config = OfflineTtsPocketModelConfig {
-        lm_flow: Some(
-            find_file(model_dir, &["lm_flow.int8.onnx", "lm_flow.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        lm_main: Some(
-            find_file(model_dir, &["lm_main.int8.onnx", "lm_main.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        encoder: Some(
-            find_file(model_dir, &["encoder.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        decoder: Some(
-            find_file(model_dir, &["decoder.int8.onnx", "decoder.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        text_conditioner: Some(
-            find_file(model_dir, &["text_conditioner.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        vocab_json: Some(
-            find_file(model_dir, &["vocab.json"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        token_scores_json: Some(
-            find_file(model_dir, &["token_scores.json"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
+        lm_flow: Some(file_string(
+            model_dir,
+            &["lm_flow.int8.onnx", "lm_flow.onnx"],
+        )?),
+        lm_main: Some(file_string(
+            model_dir,
+            &["lm_main.int8.onnx", "lm_main.onnx"],
+        )?),
+        encoder: Some(file_string(model_dir, &["encoder.onnx"])?),
+        decoder: Some(file_string(
+            model_dir,
+            &["decoder.int8.onnx", "decoder.onnx"],
+        )?),
+        text_conditioner: Some(file_string(model_dir, &["text_conditioner.onnx"])?),
+        vocab_json: Some(file_string(model_dir, &["vocab.json"])?),
+        token_scores_json: Some(file_string(model_dir, &["token_scores.json"])?),
         voice_embedding_cache_capacity: 8,
     };
 
@@ -285,35 +260,16 @@ fn create_pocket_tts(model_dir: &Path, provider: Option<&str>) -> Result<Offline
 /// Supertonic：duration_predictor / text_encoder / vector_estimator / vocoder。
 fn create_supertonic_tts(model_dir: &Path, provider: Option<&str>) -> Result<OfflineTts> {
     let supertonic_config = OfflineTtsSupertonicModelConfig {
-        duration_predictor: Some(
-            find_file(model_dir, &["duration_predictor.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        text_encoder: Some(
-            find_file(model_dir, &["text_encoder.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        vector_estimator: Some(
-            find_file(model_dir, &["vector_estimator.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        vocoder: Some(
-            find_file(model_dir, &["vocoder.onnx", "vocoder_f16.onnx"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        tts_json: Some(
-            find_file(model_dir, &["tts.json"])?
-                .to_string_lossy()
-                .to_string(),
-        ),
-        unicode_indexer: find_file_optional(model_dir, &["unicode_indexer.json"])
-            .map(|p| p.to_string_lossy().to_string()),
-        voice_style: find_file_optional(model_dir, &["voice_style.onnx"])
-            .map(|p| p.to_string_lossy().to_string()),
+        duration_predictor: Some(file_string(model_dir, &["duration_predictor.onnx"])?),
+        text_encoder: Some(file_string(model_dir, &["text_encoder.onnx"])?),
+        vector_estimator: Some(file_string(model_dir, &["vector_estimator.onnx"])?),
+        vocoder: Some(file_string(
+            model_dir,
+            &["vocoder.onnx", "vocoder_f16.onnx"],
+        )?),
+        tts_json: Some(file_string(model_dir, &["tts.json"])?),
+        unicode_indexer: optional_file_string(model_dir, &["unicode_indexer.json"]),
+        voice_style: optional_file_string(model_dir, &["voice_style.onnx"]),
     };
 
     build_engine(
@@ -326,17 +282,13 @@ fn create_supertonic_tts(model_dir: &Path, provider: Option<&str>) -> Result<Off
     )
 }
 fn find_file(dir: &Path, candidates: &[&str]) -> Result<PathBuf> {
-    for name in candidates {
-        let path = dir.join(name);
-        if path.exists() {
-            return Ok(path);
-        }
-    }
-    Err(anyhow!(
-        "在 {} 中未找到模型文件，候选: {:?}",
-        dir.display(),
-        candidates
-    ))
+    find_file_optional(dir, candidates).ok_or_else(|| {
+        anyhow!(
+            "在 {} 中未找到模型文件，候选: {:?}",
+            dir.display(),
+            candidates
+        )
+    })
 }
 
 /// 能拿来读 metadata 的主模型文件，按优先级排列。
@@ -382,14 +334,14 @@ fn rule_fst_paths(model_dir: &Path) -> Vec<PathBuf> {
 fn with_rule_files(mut config: OfflineTtsConfig, model_dir: &Path) -> OfflineTtsConfig {
     let fsts: Vec<String> = rule_fst_paths(model_dir)
         .into_iter()
-        .map(|path| path.to_string_lossy().to_string())
+        .map(path_string)
         .collect();
     if !fsts.is_empty() {
         // sherpa 侧按逗号切分，依次 Normalize。
         config.rule_fsts = Some(fsts.join(","));
     }
     if let Some(far) = find_file_optional(model_dir, &["rulefst.far", "rule.far"]) {
-        config.rule_fars = Some(far.to_string_lossy().to_string());
+        config.rule_fars = Some(path_string(far));
     }
     config
 }
@@ -403,25 +355,16 @@ pub(super) fn needs_digit_normalization(model_dir: &Path) -> bool {
 /// 模型词表是否认拉丁字母（决定英文/罗马音是否要剔除）。
 /// 先看文件名里的独立 `en` 段，再看词表内容里是否有拉丁字母键。
 pub(super) fn model_reads_latin(model_dir: &Path) -> bool {
-    let Ok(entries) = std::fs::read_dir(model_dir) else {
-        return false;
-    };
-    let mut unnamed: Vec<PathBuf> = Vec::new();
-    for entry in entries.flatten() {
-        let path = entry.path();
-        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-            continue;
-        };
-        if !(name.starts_with("lexicon") && name.ends_with(".txt")) {
-            continue;
-        }
-        if name.split(['-', '_', '.']).any(|part| part == "en") {
-            return true;
-        }
-        unnamed.push(path);
+    let paths = lexicon_files(model_dir);
+    if paths.iter().any(|path| {
+        path.file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.split(['-', '_', '.']).any(|part| part == "en"))
+    }) {
+        return true;
     }
     // 词表内容里出现拉丁字母的键，同样说明模型自己认得（查到一个就收工）。
-    unnamed.iter().any(|path| {
+    paths.iter().any(|path| {
         std::fs::read_to_string(path).is_ok_and(|text| {
             text.lines().any(|line| {
                 line.split_whitespace()
@@ -446,6 +389,41 @@ fn find_dir_optional(dir: &Path, candidates: &[&str]) -> Option<PathBuf> {
         .find(|p| p.is_dir())
 }
 
+fn path_string(path: PathBuf) -> String {
+    path.to_string_lossy().into_owned()
+}
+
+fn file_string(dir: &Path, candidates: &[&str]) -> Result<String> {
+    Ok(path_string(find_file(dir, candidates)?))
+}
+
+fn optional_file_string(dir: &Path, candidates: &[&str]) -> Option<String> {
+    find_file_optional(dir, candidates).map(path_string)
+}
+
+fn optional_dir_string(dir: &Path, candidates: &[&str]) -> Option<String> {
+    find_dir_optional(dir, candidates).map(path_string)
+}
+
+fn lexicon_files(dir: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
+    };
+    let mut files: Vec<PathBuf> = entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.is_file()
+                && path
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(|name| name.starts_with("lexicon") && name.ends_with(".txt"))
+        })
+        .collect();
+    files.sort();
+    files
+}
+
 /// 收集 Kokoro 需要的 lexicon（逗号分隔）。
 /// 英文只挂一份，避免大量重复词告警；2.0 起 lexicon 是唯一的中日文音素化入口。
 fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
@@ -460,34 +438,19 @@ fn kokoro_lexicons(model_dir: &Path) -> Option<String> {
     }
 
     // 自定义模型可能只带 lexicon.txt 之类，兜底扫描目录内其余 lexicon*.txt。
-    if let Ok(entries) = std::fs::read_dir(model_dir) {
-        let mut extra: Vec<PathBuf> = entries
-            .flatten()
-            .map(|entry| entry.path())
-            .filter(|path| {
-                path.is_file()
-                    && path
-                        .file_name()
-                        .and_then(|name| name.to_str())
-                        .is_some_and(|name| name.starts_with("lexicon") && name.ends_with(".txt"))
-                    && !files.contains(path)
-                    && !ENGLISH.iter().any(|name| path.ends_with(name))
-            })
-            .collect();
-        extra.sort();
-        files.extend(extra);
+    for path in lexicon_files(model_dir) {
+        if !files.contains(&path) && !ENGLISH.iter().any(|name| path.ends_with(name)) {
+            files.push(path);
+        }
     }
 
-    if files.is_empty() {
-        return None;
-    }
-    Some(
+    (!files.is_empty()).then(|| {
         files
-            .iter()
-            .map(|path| path.to_string_lossy().to_string())
+            .into_iter()
+            .map(path_string)
             .collect::<Vec<_>>()
-            .join(","),
-    )
+            .join(",")
+    })
 }
 
 /// 随包 ZipVoice 中英音素表相对 data 目录的路径。
