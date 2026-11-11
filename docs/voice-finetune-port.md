@@ -73,15 +73,20 @@ up_blocks.N.2              上采样卷积（kernel 4）
 final_block / final_proj   收尾卷积与 mel 投影
 ```
 
-## 移植顺序
+## 当前实现
 
-1. 编码器：词嵌入 + prenet + 6 层（1x1 卷积投影的自注意力、k=3 的 FFN 卷积、前后归一化）。用真实权重做逐张量形状校验。
-2. 时长预测器：位于编码器输出之后，需先从张量清单里确认其命名。
-3. 解码器：down / mid / up 三种块加时间 MLP，结构按块内张量逐一还原。
-4. 权重绑定：读取 initializer，按名字填入 candle 参数表；折平常量单独处理。
-5. 导出：只导出声学部分（文本到 mel），采样循环放在 Rust 侧，避免把步数烘进图。
+- `burn_encoder.rs` / `burn_decoder.rs`：按基座 ONNX 的权重名装载编码器、解码器；编码器主干默认冻结。
+- `burn_training.rs`：CFM 对齐训练，固定 Vulkan（桌面/Android）或 Metal（Apple）autodiff，不回落 CPU；支持解码器 LoRA、`adapter_only` 风格 FiLM、逐 token 时长适配和断点续训。
+- `conv_lora.rs`：卷积/转置卷积 LoRA，导出时折叠成等价卷积权重。
+- `onnx_export.rs`：把解码器、风格 FiLM、LoRA、时长分支折叠后写回基座 ONNX，只替换 initializer，不改图结构。
+- `import.rs` / `normalize.rs` / `feature.rs` / `style.rs` / `corpus.rs`：数据集导入、重采样与响度归一化、mel 特征、确定性 k-means 风格聚类、语料构建。
+- `text.rs` / `onnx_weights.rs`：基座词表/lexicon 前端与 ONNX initializer 读取。
 
-## 现状
+## 训练与导出流程
 
-- 权重读取已实现并对着真实文件验证（`finetune::onnx_weights`）。
-- 训练侧的模型与解码器是简化结构，只能验证训练管线，装不进基座权重，移植时需要替换。
+1. 导入数据集：解压音频，统一采样率与响度，校验文本和音频时长。
+2. 风格聚类：默认 4 簇、最多 16 簇；每簇使用独立检查点和续训状态。
+3. 构建语料：文本前端 tokenize，提取 mel，按基座时长预测得到对齐帧数。
+4. 训练：编码器主干冻结，更新解码器；可选 LoRA、`adapter_only` 风格 FiLM；时长适配额外训练编码器时长分支的低秩旁路。
+5. 导出：折叠 FiLM / Conv LoRA / 时长分支，写回基座 ONNX 的 initializer，生成模型管理器可识别的 matcha 模型目录。
+6. 全程在 Rust 进程内完成，不依赖外部训练二进制；训练设备不走 CPU 回退。
