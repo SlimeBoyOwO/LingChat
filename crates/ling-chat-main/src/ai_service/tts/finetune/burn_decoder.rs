@@ -1333,7 +1333,7 @@ pub fn from_onnx_tensors(
         let Some(target) = info.get("target").and_then(|v| v.as_str()) else {
             continue;
         };
-        // 只处理解码器路径；编码器匿名归一化由 base_encoder 单独处理。
+        // 只处理解码器路径；编码器匿名归一化由 burn_encoder 单独处理。
         if !target.starts_with("model.decoder.") {
             continue;
         }
