@@ -200,6 +200,8 @@ data/game_data/skills/**
 !data/plugins/
 data/plugins/*
 !data/plugins/tavily/
+!data/plugins/keenable/
+!data/plugins/keenable/**
 !data/plugins/mc_maid_bridge/
 !data/plugins/mc_maid_bridge/**
 # 插件目录整体取反后，上面通用的 Python 缓存规则会被盖掉，这里补回来
