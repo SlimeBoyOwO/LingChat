@@ -86,9 +86,7 @@ pub fn setup(
     data_dir::init_data_dir(app.handle());
     crate::app::platform::early_log("setup: 数据目录已解析");
 
-    // cubecl 的 kernel 编译缓存默认放在用户缓存目录；Android 进程没有 HOME，
-    // 会回退到普通应用不可写的 /data/local/tmp。这里显式指到应用私有 cache，
-    // 让缓存能跨进程保留。失败只告警，不阻塞启动。
+    // Android 无 HOME 时 cubecl 会回退到不可写目录，这里指到应用私有 cache。
     match app.path().app_cache_dir() {
         Ok(cache) => {
             ai_service::tts::finetune::burn_backend::configure_cache_root(&cache.join("cubecl"));

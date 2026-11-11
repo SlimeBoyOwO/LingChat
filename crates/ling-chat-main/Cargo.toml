@@ -109,9 +109,7 @@ pollster = "1.0.1"
 # 避免导出时静默退回基座。只开 std，不启用 pytorch 读写器。
 burn-store = { version = "0.22.1", default-features = false, features = ["std"] }
 
-# 显式设置 cubecl 的持久化缓存根目录。Android 进程通常没有 HOME/XDG 缓存目录，
-# cubecl 会回退到普通应用不可写的 /data/local/tmp，导致 kernel 编译缓存只能留在
-# 内存里，冷启动反复重编。这里只开 std，版本与 burn 传递依赖保持一致。
+# Android 无 HOME 时 cubecl 会回退到不可写目录；显式指定缓存根目录。
 cubecl-environment = { version = "0.11.3", default-features = false, features = ["std"] }
 
 # 微调训练用的 burn：显式列出所需 feature 而非沿用 default（默认会带入 autotune，
