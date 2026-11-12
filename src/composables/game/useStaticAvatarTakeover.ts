@@ -41,8 +41,8 @@ export type TakeoverStatus = "active" | "inactive" | "fail";
 export interface StaticAvatarTakeoverOptions {
   /** 是否允许接管：有光源 + 舞台已启用。 */
   enabled: () => boolean;
-  /** 舞台像素 / CSS 像素，即 canvas.width / canvas.clientWidth。 */
-  scale: () => number;
+  /** 舞台画布。矩形要换算进它的坐标系，dpr 与祖先缩放也从它身上量。 */
+  canvas: () => HTMLCanvasElement | null;
   /** 优先接管哪个角色；找不到就取第一个有可见立绘的。 */
   roleId?: () => string | number | null | undefined;
   /** 状态回调，只用于日志。 */
@@ -131,18 +131,25 @@ export function useStaticAvatarTakeover(
   }
 
   /**
-   * 立绘内容矩形。
+   * 立绘内容矩形，单位为舞台像素（canvas backing store）。
    *
-   * 注意量的是 **`<img>` 自己的矩形**，不是容器：`ImageAcrossFade` 已经把
+   * 注意量的是 `<img>` 自己的矩形，不是容器：`ImageAcrossFade` 已经把
    * 适配后的尺寸算在 `<img>` 上了（实测容器 589×790、`<img>` 589×785）。
    * 按容器套 contain 会再缩一次，人物整体往下偏 5px。
    * 这里对 img 自身再跑一遍 `imageRectInBox`：比例相符时是恒等变换，
    * 若某套衣服用了 `auto NN%` 之类的取景方式，也能兜住。
+   *
+   * 坐标必须换算进画布自己的坐标系。全局缩放是 `transform: scale` 打在 `#app` 上
+   * （见 `useZoom`），`getBoundingClientRect()` 给的是缩放后的视觉坐标，而画布
+   * backing store 按布局像素 × dpr 分配 —— 不除掉缩放，缩放不是 100% 时人物矩形
+   * 会整体偏大偏位。投屏窗口的角色层还额外套了一层 `translateX`，所以要先减画布原点。
    */
   function measure(
     img: HTMLImageElement,
     natural?: { width: number; height: number },
   ): Rect4 | null {
+    const canvas = options.canvas();
+    if (!canvas || !canvas.clientWidth) return null;
     // 几何取 DOM 里那个 img 的盒子；尺寸比例优先用传入的自然尺寸
     // （刚 load 出来的 Image 不在文档里，getBoundingClientRect 全是 0）
     const box = img.getBoundingClientRect();
@@ -151,15 +158,26 @@ export function useStaticAvatarTakeover(
     const nh = natural?.height || img.naturalHeight;
     if (!nw || !nh) return null;
 
+    const cRect = canvas.getBoundingClientRect();
+    // 画布视觉宽 / 布局宽 = 祖先 transform 的缩放，没有缩放时就是 1
+    const zoom = cRect.width / canvas.clientWidth || 1;
+    const dpr = canvas.width / canvas.clientWidth || 1;
+
+    // 还原成画布坐标系下的布局像素
+    const w = box.width / zoom;
+    const h = box.height / zoom;
+    const left = (box.left - cRect.left) / zoom;
+    const top = (box.top - cRect.top) / zoom;
+
     const fit: Fit = fitFromObjectFit(getComputedStyle(img).objectFit || "contain");
-    const inner = imageRectInBox(box.width / box.height, nw / nh, fit);
-    const scale = options.scale() || 1;
+    // 宽高比不受缩放影响，inner 拿到的是相对比例
+    const inner = imageRectInBox(w / h, nw / nh, fit);
 
     return [
-      (box.left + inner.x * box.width) * scale,
-      (box.top + inner.y * box.height) * scale,
-      inner.width * box.width * scale,
-      inner.height * box.height * scale,
+      (left + inner.x * w) * dpr,
+      (top + inner.y * h) * dpr,
+      inner.width * w * dpr,
+      inner.height * h * dpr,
     ];
   }
 
@@ -183,14 +201,19 @@ export function useStaticAvatarTakeover(
     for (const img of hiddenImages) img.style.visibility = "hidden";
   }
 
+  /** 把藏起来的立绘还给 DOM。`hide()` 会整体重写 `hiddenImages`，所以换容器前必须先调它。 */
+  function restore(): void {
+    for (const img of hiddenImages) img.style.visibility = "";
+    hiddenImages = [];
+  }
+
   function release(): void {
     if (timer) {
       window.clearInterval(timer);
       timer = 0;
     }
     loadToken++;
-    for (const img of hiddenImages) img.style.visibility = "";
-    hiddenImages = [];
+    restore();
     container = null;
     loadedSrc = "";
     lastRectKey = "";
@@ -297,6 +320,9 @@ export function useStaticAvatarTakeover(
     }
 
     // 先量再藏：上一步任何失败，DOM 立绘都还是原样
+    // 切到另一个容器（换角色）时，上一个容器的 <img> 仍挂在 DOM 上，
+    // 不还回去它就永远停在 visibility:hidden —— 表现为切角色后前一个立绘凭空消失
+    if (container && container !== el) restore();
     container = el;
     loadedSrc = src;
     image.value = loaded;

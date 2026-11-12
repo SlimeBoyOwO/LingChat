@@ -73,11 +73,7 @@ const DEPTH_MAX_DIM = 512;
 
 const takeover = useStaticAvatarTakeover({
   enabled: () => enabled.value && hasLights.value,
-  scale: () => {
-    const canvas = canvasRef.value;
-    if (!canvas || !canvas.clientWidth) return 1;
-    return canvas.width / canvas.clientWidth;
-  },
+  canvas: () => canvasRef.value,
   roleId: () => gameStore.currentInteractRoleId ?? null,
   onStatus: (status, detail) => {
     if (status === "active") console.info("[lighting] 静态立绘已接管", detail ?? "");
