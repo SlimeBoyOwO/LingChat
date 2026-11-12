@@ -221,7 +221,7 @@ export function useStageRenderer(input: StageRendererInput) {
         renderer.render({
           stage: { width: STAGE_W, height: STAGE_H },
           backgroundRect: bgRect,
-          characterRect: charRect,
+          characterRects: [charRect],
           lights: [],
           global: {
             master: 1,
@@ -241,7 +241,7 @@ export function useStageRenderer(input: StageRendererInput) {
       renderer.render({
         stage: { width: STAGE_W, height: STAGE_H },
         backgroundRect: bgRect,
-        characterRect: charRect,
+        characterRects: [charRect],
         lights: input.lights().map((l) => ({ ...l, enabled: l.enabled !== false })),
         global: input.globalParams(),
         compositing: input.compositingParams(),

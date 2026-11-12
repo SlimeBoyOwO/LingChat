@@ -59,7 +59,7 @@ export interface StaticAvatarTakeover {
   active: Ref<boolean>;
   /** 交给 `renderer.setCharacter()` 的图。 */
   image: ShallowRef<LoadedImage | null>;
-  /** 立绘内容矩形（舞台像素），交给 `render()` 的 `characterRect`。 */
+  /** 立绘内容矩形（舞台像素），交给 `render()` 的 `characterRects`。 */
   rect: ShallowRef<Rect4 | null>;
   /** 当前接管的图片来源，用来做法线/深度贴图缓存键。 */
   source: Ref<string>;

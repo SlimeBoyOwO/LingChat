@@ -214,9 +214,8 @@ function draw(): void {
     overlay: overlayParams.value,
     stage: { width, height },
     backgroundRect: bgRect,
-    // 零尺寸矩形 = 着色器走「纯背景」分支（Live2D、接管失败、或还没量到）
-    characterRect:
-      takeover.active.value && takeover.rect.value ? takeover.rect.value : [0, 0, 0, 0],
+    // 空数组 = 着色器走「纯背景」分支（Live2D、接管失败、或还没量到）
+    characterRects: takeover.active.value && takeover.rect.value ? [takeover.rect.value] : [],
   });
 }
 

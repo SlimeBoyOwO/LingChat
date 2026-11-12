@@ -263,8 +263,8 @@ void main() {
   litSrgb = 1.0 - (1.0 - litSrgb) * (1.0 - wrapAmt);
 
   if (uCharOnly > 0.5) {
-    // 没有立绘（纯背景场景）：输出已着色的背景，让调色 / overlay / 泛光继续生效。
-    // 原来这里输出 litSrgb * tex.a，无角色时 tex.a = 0，整幅画面会是全透明。
+    // uCharOnly 是设计稿指标pass的开关（抽角色像素），场景路径恒传 0；
+    // 纯背景走上面的零矩形早退，误传 1 会因 bgScene 被置零而整屏输出黑
     gl_FragColor = vec4(bgScene, 1.0);
     return;
   }
