@@ -70,7 +70,6 @@
     "resources": {
       ".bundled_resources/game_data/": "data/.official/game_data/",
       ".bundled_resources/third_party/": "data/third_party/",
-      ".bundled_resources/tts-training/": "data/tts-training/",
       ".bundled_resources/data_manifest.json": "data/.official/data_manifest.json"
     }
   }

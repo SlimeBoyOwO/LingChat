@@ -4,7 +4,7 @@
 //! 与 TTS 共享的 `sherpa_onnx_models` 目录就地加载（目录里的 SenseVoice 模型
 //! 也是从 SettingsSherpa 下载页装下来的），首次识别时懒加载并缓存引擎。
 //!
-//! 用途：微调数据集自动标注。数据是预录固定音频，用一次性离线识别最合适，
+//! 用途：离线语音识别。数据是预录固定音频，用一次性离线识别最合适，
 //! 不涉及流式与端点检测，所以只实现 [`AsrProvider::recognize`]，不走云端会话
 //! 链路。识别输入约定与其它 provider 一致：16kHz mono PCM16 WAV 字节。
 
@@ -14,13 +14,11 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use async_trait::async_trait;
-use sherpa_onnx::{
-    OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig,
-};
+use sherpa_onnx::{OfflineRecognizer, OfflineRecognizerConfig, OfflineSenseVoiceModelConfig};
 
-use crate::ai_service::asr::provider_meta::AsrConfigField;
 use crate::ai_service::asr::error::AsrError;
 use crate::ai_service::asr::provider::AsrProvider;
+use crate::ai_service::asr::provider_meta::AsrConfigField;
 use crate::ai_service::asr::provider_types::{AsrOptions, AsrResult};
 
 /// 目录名里含该关键词即识别为 SenseVoice（目录含版本号等后缀变体时不至于找不到）。
@@ -53,11 +51,6 @@ impl SherpaAsrProvider {
             engine: Mutex::new(None),
             attempts_since_load_attempt: AtomicUsize::new(0),
         }
-    }
-
-    /// 是否已下载 SenseVoice 模型（用于自动标注时「本地优先、云端回退」判断）。
-    pub fn model_installed() -> bool {
-        Self::resolve_model_paths().is_some()
     }
 
     /// 检查共享模型目录里是否已下载 SenseVoice 模型，合并出识别所需路径。
@@ -177,7 +170,9 @@ impl AsrProvider for SherpaAsrProvider {
             if cached.is_some() {
                 cached
             } else {
-                let attempts = self.attempts_since_load_attempt.fetch_add(1, Ordering::Relaxed);
+                let attempts = self
+                    .attempts_since_load_attempt
+                    .fetch_add(1, Ordering::Relaxed);
                 if attempts % REBUILD_COOLDOWN == 0 {
                     let built = Self::build_engine();
                     if built.is_some() {

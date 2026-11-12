@@ -159,11 +159,8 @@ data/data_manifest.json
 # 只在模型缺 lexicon.txt 时写回模型目录。
 !data/third_party/zipvoice/
 !data/third_party/zipvoice/**
-# 微调训练的解码器匿名权重映射表：运行时依赖（训练/导出都要读），随包分发。
-# 只纳入映射表本身，tts-training 下的语料/音频大数据保持忽略。
-data/tts-training/*
-!data/tts-training/
-!data/tts-training/decoder_weight_map.json
+# 本地微调语料/中间产物不纳入版本库。
+data/tts-training/
 # 忽略 game_data/backgrounds/ 下的所有内容，但不忽略该目录本身，并保留指定的几个背景图
 data/game_data/backgrounds/**
 !data/game_data/backgrounds/

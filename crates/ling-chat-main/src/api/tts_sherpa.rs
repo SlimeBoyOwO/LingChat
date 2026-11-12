@@ -307,9 +307,8 @@ const SHERPA_CATALOG: &[SherpaCatalogEntry] = &[
         model_type: "zipvoice",
         platforms: SherpaPlatforms::All,
     },
-    // 本地离线 ASR（SenseVoice）：用于微调数据集自动标注，与 TTS 音色共用
-    // 该下载页。model_type 以 `asr_` 前缀区分，适配器与角色音色列表据此
-    // 识别「这是识别模型，不是用于合成的音色」。
+    // 本地离线 ASR（SenseVoice）：与 TTS 音色共用该下载页。model_type 以
+    // `asr_` 前缀区分，适配器与角色音色列表据此识别「这是识别模型，不是合成音色」。
     SherpaCatalogEntry {
         dir: "sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17",
         repo: "gomodels/sherpa",
