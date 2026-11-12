@@ -31,6 +31,32 @@
               class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
             />
           </label>
+          <label class="flex flex-col gap-1.5 text-sm">
+            {{ t("imageGeneration.referenceImage") }}
+            <input
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              :disabled="busy"
+              @change="loadReference"
+            />
+          </label>
+          <div
+            v-if="referenceImage"
+            class="flex items-center gap-3 rounded-lg border border-white/15 p-2"
+          >
+            <img
+              :src="referenceImage"
+              :alt="t('imageGeneration.referenceImage')"
+              class="h-20 w-32 rounded object-contain"
+            />
+            <button
+              :disabled="busy"
+              class="rounded border border-white/20 px-3 py-1 text-sm"
+              @click="referenceImage = null"
+            >
+              {{ t("imageGeneration.removeReference") }}
+            </button>
+          </div>
           <label class="flex flex-col gap-1.5 text-sm"
             >{{ t("imageGeneration.prompt") }}
             <textarea
@@ -99,6 +125,29 @@ const applyBackground = ref(false);
 const result = ref<GeneratedImage | null>(null);
 const error = ref("");
 const busy = ref(false);
+const referenceImage = ref<string | null>(null);
+async function loadReference(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  if (!file) return;
+  if (file.size > 24 * 1024 * 1024) {
+    error.value = t("imageGeneration.referenceTooLarge");
+    input.value = "";
+    return;
+  }
+  try {
+    referenceImage.value = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(String(reader.result));
+      reader.onerror = () => reject(new Error(t("imageGeneration.referenceReadFailed")));
+      reader.readAsDataURL(file);
+    });
+    error.value = "";
+  } catch (cause) {
+    error.value = String(cause);
+  }
+  input.value = "";
+}
 onMounted(async () => {
   try {
     settings.value = (await getToolSettings()).image_generation;
@@ -129,6 +178,7 @@ async function generate() {
       prompt.value.trim(),
       name.value.trim(),
       applyBackground.value,
+      referenceImage.value,
     );
     emit("generated", result.value);
   } catch (cause) {

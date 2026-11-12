@@ -27,6 +27,7 @@ pub struct ImageProviderInfo {
     pub id: String,
     pub label: String,
     pub custom: bool,
+    pub protocol: &'static str,
 }
 
 #[derive(Clone, Serialize)]
@@ -34,6 +35,8 @@ pub struct ImageModelCatalog {
     pub models: Vec<String>,
     pub source: String,
     pub warning: String,
+    pub allow_automatic: bool,
+    pub novelai_metadata: Option<super::novelai::NovelAiMetadata>,
 }
 
 static CATALOGS: LazyLock<Mutex<HashMap<String, (Instant, ImageModelCatalog)>>> =
@@ -45,11 +48,19 @@ pub fn list_providers(app: &AppHandle) -> Vec<ImageProviderInfo> {
             id: DEFAULT_PROVIDER.into(),
             label: "Codex 订阅".into(),
             custom: false,
+            protocol: "codex",
         },
         ImageProviderInfo {
             id: "openai-compatible".into(),
             label: "OpenAI compatible".into(),
             custom: true,
+            protocol: "openai",
+        },
+        ImageProviderInfo {
+            id: "novelai".into(),
+            label: "NovelAI".into(),
+            custom: false,
+            protocol: "novelai",
         },
     ];
     result.extend(
@@ -60,6 +71,7 @@ pub fn list_providers(app: &AppHandle) -> Vec<ImageProviderInfo> {
                 id: format!("profile:{}", p.id),
                 label: p.label,
                 custom: false,
+                protocol: "openai",
             }),
     );
     result
@@ -113,7 +125,7 @@ fn connection(app: &AppHandle, settings: &ImageGenerationSettings) -> Result<Con
     })
 }
 
-fn validate_url(raw: &str) -> Result<Url> {
+pub(super) fn validate_url(raw: &str) -> Result<Url> {
     let url = Url::parse(raw).context("请填写完整的供应商 HTTP(S) 地址")?;
     ensure!(
         matches!(url.scheme(), "http" | "https")
@@ -130,6 +142,9 @@ pub async fn list_models(
     settings: &ImageGenerationSettings,
     refresh: bool,
 ) -> Result<ImageModelCatalog> {
+    if settings.provider == "novelai" {
+        return super::novelai::list_models(&settings.novelai, refresh).await;
+    }
     let conn = connection(app, settings)?;
     let source = if !settings.models_url.is_empty() {
         settings.models_url.clone()
@@ -170,10 +185,11 @@ pub async fn list_models(
             response.status()
         );
         let bytes = limited_body(response, 4 * 1024 * 1024).await?;
-        let (models, warning) = if conn.codex && settings.models_url.is_empty() {
+        let (models, warning, allow_automatic) = if conn.codex && settings.models_url.is_empty() {
             (
                 parse_official_catalog(std::str::from_utf8(&bytes)?)?,
                 "公开图片目录；实际调用权限以订阅账号回执为准".to_string(),
+                true,
             )
         } else {
             parse_api_catalog(&serde_json::from_slice(&bytes).context("模型接口未返回有效 JSON")?)?
@@ -182,6 +198,8 @@ pub async fn list_models(
             models,
             source: source.clone(),
             warning,
+            allow_automatic,
+            novelai_metadata: None,
         })
     }
     .await;
@@ -229,7 +247,7 @@ fn parse_official_catalog(html: &str) -> Result<Vec<String>> {
     Ok(models)
 }
 
-fn parse_api_catalog(payload: &Value) -> Result<(Vec<String>, String)> {
+fn parse_api_catalog(payload: &Value) -> Result<(Vec<String>, String, bool)> {
     let entries = payload
         .get("data")
         .or_else(|| payload.get("models"))
@@ -237,6 +255,7 @@ fn parse_api_catalog(payload: &Value) -> Result<(Vec<String>, String)> {
         .context("模型目录缺少 data 或 models 数组")?;
     let mut all = Vec::new();
     let mut images = Vec::new();
+    let mut candidates = Vec::new();
     for entry in entries {
         let id = entry.as_str().or_else(|| {
             entry
@@ -263,20 +282,23 @@ fn parse_api_catalog(payload: &Value) -> Result<(Vec<String>, String)> {
                 .is_some_and(|values| values.iter().any(|v| v.as_str() == Some("image")));
         if image {
             images.push(id.to_string());
+        } else if id.to_lowercase().contains("image") || id.to_lowercase().contains("diffusion") {
+            candidates.push(id.to_string());
         }
     }
     ensure!(!all.is_empty(), "供应商没有返回可选模型");
     if images.is_empty() {
         Ok((
-            all,
-            "供应商未标注图像输出能力；请按其说明选择生图模型，也可手动输入模型 ID".into(),
+            candidates,
+            "供应商未声明图片输出能力，按名称展示候选；请选择生图模型，获取不到时可手动填写模型编号".into(),
+            false,
         ))
     } else {
-        Ok((images, String::new()))
+        Ok((images, String::new(), true))
     }
 }
 
-async fn limited_body(response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
+pub(super) async fn limited_body(response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
     ensure!(
         response
             .content_length()
@@ -298,10 +320,26 @@ pub(super) async fn generate(
     settings: &ImageGenerationSettings,
     model: &str,
     prompt: &str,
+    reference: Option<&[u8]>,
 ) -> Result<String> {
+    if settings.provider == "novelai" {
+        return super::novelai::generate(
+            &settings.novelai,
+            model,
+            prompt,
+            reference,
+            settings.timeout_secs,
+        )
+        .await;
+    }
     let conn = connection(app, settings)?;
     let http = build_proxied_client(settings.timeout_secs).await?;
-    let mut request = http.post(format!("{}/images/generations", conn.base));
+    let route = if reference.is_some() {
+        "images/edits"
+    } else {
+        "images/generations"
+    };
+    let mut request = http.post(format!("{}/{route}", conn.base));
     let mut secret = conn.key;
     if conn.codex {
         let credential = codex_auth::get_valid_credential(&http)
@@ -321,16 +359,40 @@ pub(super) async fn generate(
         body["size"] = json!("auto");
         body["quality"] = json!("auto");
     }
+    if !conn.codex {
+        body["n"] = json!(1);
+    }
     for (field, value) in [("size", &settings.size), ("quality", &settings.quality)] {
         if !value.is_empty() {
             body[field] = json!(value);
         }
     }
-    let response = request
-        .json(&body)
-        .send()
-        .await
-        .context("发送图片生成请求失败")?;
+    let request = if let Some(image) = reference {
+        if conn.codex {
+            body["images"] = json!([{"image_url": format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(image))}]);
+            request.json(&body)
+        } else {
+            let mut form = reqwest::multipart::Form::new().part(
+                "image",
+                reqwest::multipart::Part::bytes(image.to_vec())
+                    .file_name("reference.png")
+                    .mime_str("image/png")?,
+            );
+            for (key, value) in body.as_object().unwrap() {
+                form = form.text(
+                    key.clone(),
+                    value
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| value.to_string()),
+                );
+            }
+            request.multipart(form)
+        }
+    } else {
+        request.json(&body)
+    };
+    let response = request.send().await.context("发送图片生成请求失败")?;
     let status = response.status();
     let bytes = limited_body(
         response,
@@ -396,12 +458,13 @@ mod tests {
 
     #[test]
     fn api_catalog_uses_output_capabilities_instead_of_model_names() {
-        let (models, warning) = parse_api_catalog(&json!({"data": [
+        let (models, warning, automatic) = parse_api_catalog(&json!({"data": [
             {"id": "some-chat"}, {"id": "a-new-picture-model", "output_modalities": ["image"]}
         ]}))
         .unwrap();
         assert_eq!(models, ["a-new-picture-model"]);
         assert!(warning.is_empty());
+        assert!(automatic);
         assert!(
             !parse_api_catalog(&json!({"data": [{"id": "unknown"}]}))
                 .unwrap()

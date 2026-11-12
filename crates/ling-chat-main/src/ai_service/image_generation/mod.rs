@@ -1,5 +1,6 @@
 //! 背景页面与聊天工具共用的图片生成服务。
 
+mod novelai;
 mod providers;
 
 use std::io::Cursor;
@@ -17,6 +18,7 @@ use crate::ai_service::game_system::world_actions;
 use crate::ai_service::tools::atomic_replace;
 use crate::api::scene::{CreateSceneRequest, SceneInfo, create_scene};
 
+pub use novelai::NovelAiSettings;
 pub use providers::{ImageModelCatalog, ImageProviderInfo, list_models, list_providers};
 
 static GENERATION: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
@@ -32,6 +34,7 @@ pub struct ImageGenerationSettings {
     pub size: String,
     pub quality: String,
     pub timeout_secs: u64,
+    pub novelai: NovelAiSettings,
 }
 
 impl Default for ImageGenerationSettings {
@@ -45,6 +48,7 @@ impl Default for ImageGenerationSettings {
             size: String::new(),
             quality: String::new(),
             timeout_secs: 300,
+            novelai: NovelAiSettings::default(),
         }
     }
 }
@@ -61,6 +65,14 @@ impl ImageGenerationSettings {
         self.size = self.size.trim().to_string();
         self.quality = self.quality.trim().to_string();
         self.timeout_secs = self.timeout_secs.clamp(30, 900);
+        self.novelai.normalize();
+    }
+
+    pub fn validate(&self) -> Result<()> {
+        if self.provider == "novelai" {
+            self.novelai.validate()?;
+        }
+        Ok(())
     }
 }
 
@@ -72,6 +84,8 @@ pub struct GenerateImageRequest {
     pub name: String,
     #[serde(default)]
     pub apply_background: bool,
+    #[serde(default)]
+    pub reference_image: Option<String>,
 }
 
 #[derive(Clone, Serialize)]
@@ -90,9 +104,26 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
         .map_err(|_| anyhow::anyhow!("已有图片正在生成，请稍后重试"))?;
     let mut settings = app.state::<AppState>().tool_settings.get().image_generation;
     settings.normalize();
+    settings.validate()?;
+    let reference = if let Some(encoded) = request.reference_image.as_deref() {
+        let bytes = decode_image(encoded)?;
+        Some(
+            tokio::task::spawn_blocking(move || validate_image(&bytes))
+                .await
+                .context("参考图解码失败")??,
+        )
+    } else {
+        None
+    };
     let model = if settings.model.is_empty() {
-        list_models(app, &settings, false)
-            .await?
+        let catalog = list_models(app, &settings, false)
+            .await
+            .context("无法获取图片模型目录，请手动填写模型编号")?;
+        ensure!(
+            catalog.allow_automatic,
+            "供应商没有确认图片输出能力，请先选择或填写生图模型编号"
+        );
+        catalog
             .models
             .into_iter()
             .next()
@@ -102,7 +133,13 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
     };
     let payload = tokio::time::timeout(
         std::time::Duration::from_secs(settings.timeout_secs),
-        providers::generate(app, &settings, &model, request.prompt.trim()),
+        providers::generate(
+            app,
+            &settings,
+            &model,
+            request.prompt.trim(),
+            reference.as_deref(),
+        ),
     )
     .await
     .context("图片生成超时，请稍后检查供应商状态")??;
@@ -153,8 +190,19 @@ fn decode_image(encoded: &str) -> Result<Vec<u8>> {
         encoded.len() <= providers::MAX_RESPONSE_BYTES,
         "图片数据超过大小限制"
     );
+    let encoded = encoded.trim();
+    let encoded = if encoded.starts_with("data:") {
+        let (header, data) = encoded.split_once(',').context("图片 data URL 无效")?;
+        ensure!(
+            header.starts_with("data:image/") && header.ends_with(";base64"),
+            "图片必须使用 Base64 图像格式"
+        );
+        data
+    } else {
+        encoded
+    };
     base64::engine::general_purpose::STANDARD
-        .decode(encoded.trim())
+        .decode(encoded)
         .context("图片接口返回了无效 Base64 数据")
 }
 

@@ -7,9 +7,19 @@
 - 默认使用 Codex 订阅，复用“大模型管理”的登录状态及刷新流程，不需要再填写 API Key。
 - 可选择已经配置的 OpenAI / LM Studio 供应商，也可选择 OpenAI compatible，填写其他兼容服务的基础地址及凭据。生图模型独立于聊天模型，不会覆盖聊天模型配置。
 - 模型候选来自在线目录，没有内置图片模型列表。Codex 使用官方公开图片模型目录；公开候选不等于订阅账号已获得调用权限，实际以生成接口回执为准。
-- 兼容供应商使用自身的 models 接口。供应商返回图像输出能力时按能力筛选；未提供能力信息时显示目录并提示用户选择其支持的图片模型。也支持手动填写模型 ID。
+- 兼容供应商使用自身的 models 接口。供应商返回图像输出能力时按能力筛选；未提供能力信息时按名称展示图片模型候选，要求用户明确选择。匹配不到时不混入聊天模型，可直接手动填写模型编号。手动指定模型的生成请求不依赖模型目录成功。
 - 模型目录成功结果在进程内缓存。刷新失败只保留上次真实获取的结果并显示提示；没有成功缓存时报告错误。自定义目录支持 JSON 的 data/models 数组。公开目录不会接收 Codex 登录凭据；兼容服务的 API Key 仅发送到自身同源目录。
 - 模型留空时选择在线目录的首个候选；明确选择的模型不会被静默替换。尺寸、质量、超时与自定义模型目录可以在更多选项里设置。
+
+## NovelAI
+
+供应商中可以选择 NovelAI，使用独立的 Persistent API Token、接口地址和参数，不会复用或覆盖 OpenAI 兼容服务的密钥。默认供应商仍为 Codex。
+
+NovelAI 的模型编号从官方当前网页发布的模型定义中读取，不执行网页脚本，也不维护固定模型名单。刷新会重新发现网页当前资源地址，解析模型编号、参数版本及流式能力；公开页面和脚本不接收令牌。支持自定义模型目录与手动填写模型编号。
+
+高级设置可修改宽高、采样步数、CFG、采样器、种子、负面提示词、参考图强度、传输方式及附加 JSON 参数。自动传输根据在线模型信息选择 JSON/ZIP 或 SSE；流式响应必须包含最终图片事件，失败或中断不会把预览图保存为最终结果。ZIP 只在内存中读取图片，不按归档内路径解压到文件系统。
+
+NovelAI 参数优先使用在线发现的协议信息，也可用附加 JSON 显式覆盖协议参数，适配自定义接口或后续扩展。当前功能每次只生成一张图片。
 
 ## 生成结果
 
@@ -17,6 +27,8 @@
 
 界面可选择生成后切换背景。聊天工具通过 prompt、可选 name 和 apply_background 参数调用；供应商、模型、端点、凭据及保存路径都不允许由聊天工具参数覆盖。工具执行超时来自生图配置，避免被普通工具默认的两秒超时中断。
 
+背景窗口还支持上传参考图片。OpenAI 兼容接口使用标准 images/edits multipart 请求；Codex 使用订阅图片编辑协议；NovelAI 使用 img2img，并将参考图适配到请求画布尺寸。参考图不写入配置，聊天工具不能通过参数读取任意本地文件。
+
 生成接口不自动重试，避免不确定的网络错误导致重复扣费；同一时刻仅允许一个生成请求。图片生成完成后广播 image-generation:completed，背景页面据此更新列表。
 
-协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。
+协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、[NovelAI Image API](https://image.novelai.net/docs/index.html)、[NovelAI 模型说明](https://docs.novelai.net/en/image/models/)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。
