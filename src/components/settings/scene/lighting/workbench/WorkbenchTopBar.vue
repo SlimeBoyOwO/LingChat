@@ -5,6 +5,7 @@ defineProps<{
   dirty: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  activeTab: "lighting" | "assets";
 }>();
 
 const emit = defineEmits<{
@@ -45,14 +46,18 @@ const emit = defineEmits<{
     </div>
 
     <nav class="top-tabs">
-      <button type="button" class="top-tab is-active" @click="emit('switch-tab', 'lighting')">
+      <button
+        type="button"
+        class="top-tab"
+        :class="{ 'is-active': activeTab === 'lighting' }"
+        @click="emit('switch-tab', 'lighting')"
+      >
         光影编辑
       </button>
       <button
         type="button"
         class="top-tab"
-        disabled
-        title="素材管理尚未接入"
+        :class="{ 'is-active': activeTab === 'assets' }"
         @click="emit('switch-tab', 'assets')"
       >
         素材管理

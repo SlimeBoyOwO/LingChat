@@ -982,7 +982,7 @@ const handleSubmit = () => {
       overlay_radius: formData.overlayRadius,
       overlay_opacity: formData.overlayOpacity / 100,
       overlay_target: formData.overlayTarget,
-      // 只取高级面板管的五个新字段。整对象展开会把上面按旧滑块算出的
+      // 只取高级面板管的字段。整对象展开会把上面按旧滑块算出的
       // character/background/light_x 等覆盖回打开面板时的旧值，导致旧 UI 调参失效。
       ...(advancedLighting.value
         ? {
@@ -991,6 +991,8 @@ const handleSubmit = () => {
             compositing: advancedLighting.value.compositing,
             material: advancedLighting.value.material,
             camera: advancedLighting.value.camera,
+            // 角色专属光影也归工作台管，漏了它每角色的配置存一次就丢一次
+            role_sets: advancedLighting.value.role_sets,
           }
         : {}),
     };

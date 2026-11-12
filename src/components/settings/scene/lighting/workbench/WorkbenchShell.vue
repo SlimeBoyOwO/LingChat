@@ -7,15 +7,19 @@
  * 布局与控件状态在子组件里，Shell 不持有任何「散字段」。
  */
 import { computed, onUnmounted, ref, watch } from "vue";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import type {
   LightSource,
   LightingCompositingParams,
   LightingGlobalParams,
   LightingMaterialParams,
   LightingParams,
+  LightingSet,
 } from "@/api/services/scene";
+import { useGameStore } from "@/stores/modules/game";
+import { avatarFolderParams } from "@/composables/role/useRoleAvatar";
 import { useSceneLighting } from "../useSceneLighting";
-import { DEFAULT_COMPOSITING, DEFAULT_GLOBAL, DEFAULT_MATERIAL } from "../types";
+import { DEFAULT_COMPOSITING, DEFAULT_GLOBAL, DEFAULT_MATERIAL, type RoleAsset } from "../types";
 import { MAX_LIGHTS } from "@/render/lighting/lights";
 import LightingJsonModal from "../LightingJsonModal.vue";
 import "./workbench.css";
@@ -23,6 +27,7 @@ import WorkbenchTopBar from "./WorkbenchTopBar.vue";
 import WorkbenchStatusBar from "./WorkbenchStatusBar.vue";
 import PresetList from "./PresetList.vue";
 import LightList from "./LightList.vue";
+import AssetRoleList from "./AssetRoleList.vue";
 import CanvasStage from "./CanvasStage.vue";
 import PropertyPanel from "./PropertyPanel.vue";
 import { useWorkbenchUi } from "./useWorkbenchUi";
@@ -56,7 +61,8 @@ const {
   isDirty,
   applyPreset,
   revertCurrentPreset,
-  initFromLighting,
+  loadSet,
+  exportSet,
   setShot,
   addLight,
   removeLight,
@@ -95,6 +101,124 @@ const showJsonModal = ref(false);
 const jsonInitialText = ref("");
 const saveOpen = ref(false);
 const saveName = ref("");
+
+const gameStore = useGameStore();
+
+// —— 素材管理：每个角色一套专属光影 ——
+
+/** 顶栏 tab：光影编辑 / 素材管理 */
+const activeTab = ref<"lighting" | "assets">("lighting");
+/** 正在编辑谁的光影；null = 场景默认那套 */
+const editRoleId = ref<number | null>(null);
+/** 角色专属光影草稿，键是 roleId 字符串。只有配过的角色才在里面 */
+const roleSets = ref<Record<string, LightingSet>>({});
+/**
+ * 场景默认那套的草稿。
+ *
+ * 文档态只有一份，切去编辑角色时它装的是角色那套；不另存一份的话，
+ * 回到场景目标或保存时顶层字段就会被角色的参数顶掉。
+ */
+const sceneDraft = ref<LightingSet | null>(null);
+/** 角色立绘缩略图，按 roleId 缓存；空串 = 取不到 */
+const rolePreviews = ref<Record<string, string>>({});
+const previewsLoading = ref(false);
+let previewsLoaded = false;
+/** 素材侧的改动（换目标 / 清配置），文档态的 isDirty 管不到这些 */
+const assetsDirty = ref(false);
+
+const roleAssets = computed<RoleAsset[]>(() =>
+  Object.values(gameStore.gameRoles)
+    .slice()
+    .sort((a, b) => a.roleId - b.roleId)
+    .map((role) => ({
+      roleId: role.roleId,
+      name: role.roleName || `角色 ${role.roleId}`,
+      preview: rolePreviews.value[String(role.roleId)] ?? "",
+      configured: !!roleSets.value[String(role.roleId)],
+    })),
+);
+
+const activeRoleName = computed(
+  () => roleAssets.value.find((r) => r.roleId === editRoleId.value)?.name ?? "",
+);
+
+/** 画布与法线/深度都跟着编辑目标走，否则给 A 配光却看着 B 的脸 */
+const canvasCharacterSrc = computed(() => {
+  if (editRoleId.value === null) return props.characterSrc ?? null;
+  return rolePreviews.value[String(editRoleId.value)] || props.characterSrc || null;
+});
+
+async function resolveRolePreviews() {
+  previewsLoading.value = true;
+  await Promise.all(
+    Object.values(gameStore.gameRoles).map(async (role) => {
+      const key = String(role.roleId);
+      if (key in rolePreviews.value) return;
+      try {
+        const path = await invoke<string>("get_avatar_file", avatarFolderParams(role));
+        rolePreviews.value[key] = convertFileSrc(path);
+      } catch {
+        rolePreviews.value[key] = "";
+      }
+    }),
+  );
+  previewsLoading.value = false;
+}
+
+/** 存档里的 role_sets 一样不可信：键不是 roleId、或一盏灯都没有的条目直接丢 */
+function sanitizeRoleSets(raw: LightingParams["role_sets"]): Record<string, LightingSet> {
+  const out: Record<string, LightingSet> = {};
+  if (!raw || typeof raw !== "object") return out;
+  for (const [key, value] of Object.entries(raw)) {
+    if (!/^\d+$/.test(key)) continue;
+    if (!value || !Array.isArray(value.lights) || value.lights.length === 0) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
+/** 把当前文档态存回它自己的目标槽。没动过的角色不落条目，继续跟随场景默认 */
+function stashEditTarget() {
+  const doc = exportSet();
+  if (editRoleId.value === null) {
+    sceneDraft.value = doc;
+    return;
+  }
+  const key = String(editRoleId.value);
+  if (isDirty.value || roleSets.value[key]) {
+    roleSets.value[key] = doc;
+    assetsDirty.value = true;
+  }
+}
+
+function pickEditTarget(roleId: number | null) {
+  activeTab.value = "lighting";
+  if (roleId === editRoleId.value) return;
+  stashEditTarget();
+  editRoleId.value = roleId;
+  // 法线/深度是按立绘生成的，换人就得重来
+  customNormal.value = null;
+  customDepth.value = null;
+  const key = roleId === null ? "" : String(roleId);
+  // 没配过的角色从场景默认那份起步，改了才算专属
+  loadSet(roleId === null ? sceneDraft.value : (roleSets.value[key] ?? sceneDraft.value));
+}
+
+function clearRoleSet(roleId: number) {
+  const key = String(roleId);
+  if (!roleSets.value[key]) return;
+  delete roleSets.value[key];
+  assetsDirty.value = true;
+  if (editRoleId.value === roleId) loadSet(sceneDraft.value);
+  toast("已清除专属光影，该角色改回跟随场景默认");
+}
+
+function onSwitchTab(tab: "lighting" | "assets") {
+  activeTab.value = tab;
+  if (tab !== "assets" || previewsLoaded) return;
+  previewsLoaded = true;
+  void resolveRolePreviews();
+}
 
 const currentFavorite = computed(() => favoritePresetIds.value.includes(curPresetId.value));
 
@@ -195,10 +319,6 @@ function onMarquee(box: { x0: number; y0: number; x1: number; y1: number }) {
   });
   selectedLightIndex.value = best;
   toast(`框选到 ${hit.length} 盏灯`);
-}
-
-function onSwitchTab(tab: "lighting" | "assets") {
-  if (tab === "assets") toast("素材管理尚未接入");
 }
 
 function onAddLight(type: LightSource["type"]) {
@@ -303,7 +423,14 @@ function onRevertPreset() {
 
 function handleSave() {
   if (lights.value.length === 0) applyPreset("neutral");
-  emit("save", toLightingParams(props.initialLighting || undefined));
+  stashEditTarget();
+  // 顶层五组永远是场景那套；正在编辑角色时文档态装的是角色那份，得用草稿
+  const params = toLightingParams(
+    props.initialLighting || undefined,
+    sceneDraft.value ?? undefined,
+  );
+  if (Object.keys(roleSets.value).length) params.role_sets = { ...roleSets.value };
+  emit("save", params);
   emit("close");
 }
 
@@ -337,7 +464,12 @@ watch(
   () => props.isOpen,
   (open) => {
     if (open) {
-      initFromLighting(props.initialLighting);
+      activeTab.value = "lighting";
+      editRoleId.value = null;
+      assetsDirty.value = false;
+      roleSets.value = sanitizeRoleSets(props.initialLighting?.role_sets);
+      loadSet(props.initialLighting);
+      sceneDraft.value = exportSet();
       window.addEventListener("keydown", onKeydown);
     } else {
       window.removeEventListener("keydown", onKeydown);
@@ -345,6 +477,14 @@ watch(
       customDepth.value = null;
       highlightIds.value = [];
       saveOpen.value = false;
+      activeTab.value = "lighting";
+      editRoleId.value = null;
+      assetsDirty.value = false;
+      roleSets.value = {};
+      sceneDraft.value = null;
+      // 立绘会跟着换装 / 换表情变，下次打开重新解析
+      previewsLoaded = false;
+      rolePreviews.value = {};
     }
   },
   { immediate: true },
@@ -359,9 +499,10 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
       <div class="wb-root wb-window">
         <WorkbenchTopBar
           :scene-name="sceneName"
-          :dirty="isDirty"
+          :dirty="isDirty || assetsDirty"
           :can-undo="canUndo"
           :can-redo="canRedo"
+          :active-tab="activeTab"
           @undo="undo"
           @redo="redo"
           @import="openImport"
@@ -372,33 +513,44 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
         <div class="wb-body">
           <aside class="wb-left">
-            <PresetList
-              class="wb-left-presets"
-              :presets="presets"
-              :cur-preset-id="curPresetId"
-              :favorite-ids="favoritePresetIds"
-              @select="onSelectPreset"
-              @toggle-favorite="toggleFavoritePreset"
-              @save-as="openSaveDialog"
-            />
-            <LightList
-              class="wb-left-lights"
-              :lights="lights"
-              :selected-index="selectedLightIndex"
-              @select="selectedLightIndex = $event"
-              @add="onAddLight"
-              @remove="onRemoveLight"
-              @duplicate="onDuplicateLight"
-              @toggle-enabled="onToggleEnabled"
-              @toggle-key="toggleKeyLight"
-              @move="onMoveLight"
+            <template v-if="activeTab === 'lighting'">
+              <PresetList
+                class="wb-left-presets"
+                :presets="presets"
+                :cur-preset-id="curPresetId"
+                :favorite-ids="favoritePresetIds"
+                @select="onSelectPreset"
+                @toggle-favorite="toggleFavoritePreset"
+                @save-as="openSaveDialog"
+              />
+              <LightList
+                class="wb-left-lights"
+                :lights="lights"
+                :selected-index="selectedLightIndex"
+                @select="selectedLightIndex = $event"
+                @add="onAddLight"
+                @remove="onRemoveLight"
+                @duplicate="onDuplicateLight"
+                @toggle-enabled="onToggleEnabled"
+                @toggle-key="toggleKeyLight"
+                @move="onMoveLight"
+              />
+            </template>
+            <AssetRoleList
+              v-else
+              class="wb-left-assets"
+              :roles="roleAssets"
+              :active-role-id="editRoleId"
+              :loading="previewsLoading"
+              @pick="pickEditTarget"
+              @clear="clearRoleSet"
             />
           </aside>
 
           <CanvasStage
             class="wb-center"
             :background-src="backgroundSrc"
-            :character-src="characterSrc"
+            :character-src="canvasCharacterSrc"
             :lights="lights"
             :global-params="globalParams"
             :compositing-params="compositingParams"
@@ -434,7 +586,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
             :global-params="globalParams"
             :compositing-params="compositingParams"
             :material-params="materialParams"
-            :character-src="characterSrc"
+            :character-src="canvasCharacterSrc"
             :normal-src="customNormal"
             :depth-src="customDepth"
             :expand-air="expandAir"
@@ -468,6 +620,12 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
         <!-- 底部动作区（保存 / 取消） -->
         <div class="wb-footer">
           <span class="wb-footer-hint">
+            <template v-if="editRoleId !== null">
+              <span class="wb-footer-target">正在编辑「{{ activeRoleName }}」的专属光影</span>
+              <button type="button" class="wb-footer-back" @click="pickEditTarget(null)">
+                回到场景默认
+              </button>
+            </template>
             {{ lights.length }} 盏灯 · {{ rightTab === "props" ? "属性" : "历史记录" }}
           </span>
           <button type="button" class="wb-btn" @click="emit('close')">取消</button>
@@ -565,6 +723,11 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   flex-shrink: 0;
 }
 
+.wb-left-assets {
+  flex: 1;
+  min-height: 0;
+}
+
 .wb-center {
   flex: 1;
   min-width: 0;
@@ -591,6 +754,24 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
   margin-right: auto;
   font-size: 10.5px;
   color: var(--wb-muted);
+}
+
+.wb-footer-target {
+  color: var(--wb-accent);
+  font-weight: 600;
+}
+
+.wb-footer-back {
+  margin: 0 6px 0 4px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 10px;
+  color: var(--wb-text-2);
+}
+
+.wb-footer-back:hover {
+  background: var(--wb-hover);
+  color: var(--wb-accent);
 }
 
 .wb-dialog-mask {

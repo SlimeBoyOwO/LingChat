@@ -7,6 +7,7 @@ import type {
   LightingGlobalParams,
   LightingMaterialParams,
   LightingParams,
+  LightingSet,
   LightingShot,
 } from "@/api/services/scene";
 import {
@@ -100,6 +101,18 @@ interface LightingSnapshot {
   camera: LightingCameraParams;
   selectedLightIndex: number;
   curPresetId: string;
+}
+
+/**
+ * loadSet 的入参形状：场景那份 LightingParams 与角色那份 LightingSet 的五组字段同名，
+ * 只是可空性不同，取宽的那一边两边就都能传。
+ */
+interface LightingSetLike {
+  lights?: LightSource[] | null;
+  global?: LightingGlobalParams | null;
+  compositing?: LightingCompositingParams | null;
+  material?: LightingMaterialParams | null;
+  camera?: LightingCameraParams | null;
 }
 
 export function useSceneLighting() {
@@ -411,30 +424,34 @@ export function useSceneLighting() {
     return true;
   }
 
-  // Initialize from existing SceneInfo.lighting or default
-  function initFromLighting(initial: LightingParams | null | undefined) {
+  /**
+   * 载入一套光影并把它当成新的基线。
+   *
+   * 打开工作台（场景那份 LightingParams）与切换编辑目标（某个角色的 LightingSet）
+   * 走的是同一条路：形状不同但五组字段同名，所以入参放宽成 LightingSetLike。
+   */
+  function loadSet(incoming: LightingSetLike | null | undefined) {
     // 零灯是非法状态：场景会走 WebGL 路径却没有任何光源，画面被压成一片黑。
     // 这类数据只可能来自旧版本或导入了坏的 JSON，一律回落到 neutral 预设。
-    const incoming = initial?.lights;
-    const cleaned = Array.isArray(incoming)
-      ? normalizeLights(JSON.parse(JSON.stringify(incoming)))
+    const cleaned = Array.isArray(incoming?.lights)
+      ? normalizeLights(JSON.parse(JSON.stringify(incoming?.lights)))
       : [];
     if (cleaned.length > 0) {
       lights.value = cleaned;
       // 缺某个可选分组时回落默认值。写成 `if (initial?.global)` 的话，缺组的场景会沿用
       // 上一个场景残留的参数 —— 面板是复用的，状态不会自己清，看着就像「串场景」。
       // 这里只补缺、不夹数值：存档里的值可能来自校准预设，夹一次就变脸。
-      globalParams.value = { ...DEFAULT_GLOBAL, ...initial?.global };
-      compositingParams.value = { ...DEFAULT_COMPOSITING, ...initial?.compositing };
-      materialParams.value = { ...DEFAULT_MATERIAL, ...initial?.material };
-      cameraParams.value = { ...DEFAULT_CAMERA, ...initial?.camera };
+      globalParams.value = { ...DEFAULT_GLOBAL, ...incoming?.global };
+      compositingParams.value = { ...DEFAULT_COMPOSITING, ...incoming?.compositing };
+      materialParams.value = { ...DEFAULT_MATERIAL, ...incoming?.material };
+      cameraParams.value = { ...DEFAULT_CAMERA, ...incoming?.camera };
       selectedLightIndex.value = defaultSelectedIndex();
     } else {
       // Default to neutral preset
       applyPreset("neutral");
     }
 
-    // 换场景必须清栈并重置基线，否则 Ctrl+Z 会把上一个场景的灯恢复到当前场景上
+    // 换场景 / 换编辑目标都必须清栈并重置基线，否则 Ctrl+Z 会把上一份的灯恢复到当前这份上
     if (historyTimer) {
       clearTimeout(historyTimer);
       historyTimer = null;
@@ -443,6 +460,17 @@ export function useSceneLighting() {
     redoStack.value = [];
     current = captureSnapshot();
     isDirty.value = false;
+  }
+
+  /** 当前文档态的那一套，供切换编辑目标时整存整取。灯过一遍闸门，与保存口径一致。 */
+  function exportSet(): LightingSet {
+    return {
+      lights: normalizeLights(JSON.parse(JSON.stringify(lights.value))),
+      global: { ...globalParams.value },
+      compositing: { ...compositingParams.value },
+      material: { ...materialParams.value },
+      camera: { ...cameraParams.value },
+    };
   }
 
   // Camera framing selection
@@ -513,7 +541,17 @@ export function useSceneLighting() {
   }
 
   // Export full lighting parameters object matching backend API
-  function toLightingParams(legacyBase?: Partial<LightingParams>): LightingParams {
+  /**
+   * 拼出存档用的 LightingParams。
+   *
+   * `set` 用于「当前文档态不是场景那套」的场合（正在编辑某个角色的专属光影），
+   * 不传就取文档态。旧滤镜字段一律沿用 legacyBase，避免高级面板把它们算回默认。
+   */
+  function toLightingParams(
+    legacyBase?: Partial<LightingParams>,
+    set?: LightingSet,
+  ): LightingParams {
+    const doc = set ?? exportSet();
     return {
       character: legacyBase?.character || {
         brightness: 1,
@@ -542,11 +580,11 @@ export function useSceneLighting() {
       overlay_target: legacyBase?.overlay_target || "both",
       // 保存边界也过一遍闸门：渲染打包会截断到 MAX_LIGHTS，存档不截断就会留下
       // 「在存档里、却永远不参与预览」的幽灵灯
-      lights: normalizeLights(JSON.parse(JSON.stringify(lights.value))),
-      global: { ...globalParams.value },
-      compositing: { ...compositingParams.value },
-      material: { ...materialParams.value },
-      camera: { ...cameraParams.value },
+      lights: doc.lights,
+      global: doc.global,
+      compositing: doc.compositing,
+      material: doc.material,
+      camera: doc.camera,
     };
   }
 
@@ -799,7 +837,8 @@ export function useSceneLighting() {
     applyPreset,
     overrideCurrentPreset,
     revertCurrentPreset,
-    initFromLighting,
+    loadSet,
+    exportSet,
     setShot,
     addLight,
     removeLight,

@@ -9,6 +9,16 @@ import type {
 
 export type PresetCategory = "all" | "favorite" | "daily" | "atmosphere" | "drama" | "dark";
 
+/** 素材管理里的一行角色素材。 */
+export interface RoleAsset {
+  roleId: number;
+  name: string;
+  /** 立绘缩略图地址，空串 = 还没解析出来 */
+  preview: string;
+  /** 是否已有专属光影 */
+  configured: boolean;
+}
+
 export interface LightingPreset {
   id: string;
   name: string;
