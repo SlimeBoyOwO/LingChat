@@ -271,6 +271,22 @@ async function start(): Promise<void> {
 
 watch(backgroundSrc, (src) => void applyBackground(src));
 
+// 说话人切换时重新挑接管对象。WebGL 只有一个角色纹理槽，不重挑就会一直照旧角色、
+// 新说话人反而没光。新立绘可能还在解码，解码完再补一次接管。
+watch(
+  () => gameStore.currentInteractRoleId,
+  () => {
+    if (!(enabled.value && hasLights.value)) return;
+    void takeover.sync();
+    const el = document.querySelector<HTMLElement>(
+      `[data-lighting-avatar][data-role-id="${String(gameStore.currentInteractRoleId ?? "")}"]`,
+    );
+    for (const img of el?.querySelectorAll("img") ?? []) {
+      if (!img.complete) img.addEventListener("load", () => void takeover.sync(), { once: true });
+    }
+  },
+);
+
 watch(
   hasLights,
   async (has) => {
