@@ -299,7 +299,10 @@ fn parse_frontend_models(script: &str) -> Result<(Vec<String>, NovelAiMetadata)>
             .captures_iter(block)
             .filter(|c| {
                 let key = c[1].to_lowercase();
-                !key.contains("custom") && !key.contains("test") && !c[2].contains("inpainting")
+                !key.contains("custom")
+                    && !key.contains("test")
+                    && !key.contains("unknown")
+                    && !c[2].contains("inpainting")
             })
             .map(|c| c[2].to_string())
             .collect();
@@ -308,11 +311,12 @@ fn parse_frontend_models(script: &str) -> Result<(Vec<String>, NovelAiMetadata)>
         }
     }
     ensure!(!models.is_empty(), "没有图片模型枚举");
-    // 网页中的显示别名不一定是 API 模型，排除显式映射到另一 API 编号的别名。
+    // 网页同时导出别名的双向转换，只排除扩展了 API 编号的显示别名。
+    // 反向转换（API 编号 -> 显示别名）不能用于隐藏实际可调用的模型。
     let aliases = Regex::new(r#"return["']([^"']+)["']===\w+\?["']([^"']+)["']:void 0"#)?;
     let hidden: HashSet<_> = aliases
         .captures_iter(script)
-        .filter(|c| models.iter().any(|id| id == &c[2]))
+        .filter(|c| c[1].starts_with(&format!("{}-", &c[2])) && models.iter().any(|id| id == &c[2]))
         .map(|c| c[1].to_string())
         .collect();
     models.retain(|id| !hidden.contains(id));
@@ -625,6 +629,12 @@ mod tests {
         assert_eq!(models[0], "new-picture-100");
         assert_eq!(metadata.parameters_version, Some(8));
         assert_eq!(metadata.streaming_models, ["new-picture-100"]);
+    }
+    #[test]
+    fn reciprocal_display_aliases_keep_the_api_model_and_drop_placeholders() {
+        let script = r#"a=((X={}).old="nai-diffusion",X.full="picture-99-full",X.display="picture-99-full-medium",X.unknown="unknown",X);function a(W){return"picture-99-full-medium"===W?"picture-99-full":void 0}function b(W){return"picture-99-full"===W?"picture-99-full-medium":void 0}"#;
+        let (models, _) = parse_frontend_models(script).unwrap();
+        assert_eq!(models, ["picture-99-full", "nai-diffusion"]);
     }
     #[test]
     fn parses_json_and_sse_images_and_rejects_error_after_preview() {
