@@ -758,6 +758,9 @@ const previewAvatarUrl = ref("");
 // ---- reset ----
 
 function resetLighting() {
+  // 高级面板的五个分组一起清。只重置旧滑块的话，提交时仍会把工作台上一次调出的
+  // lights/global/compositing/material/camera 合并回去，「恢复默认」等于没恢复
+  advancedLighting.value = null;
   formData.lightingEnabled = true;
   formData.overlayEnabled = false;
   formData.charBrightness = DEF.brightness;
@@ -841,9 +844,9 @@ watch(
         formData.overlayTarget = l.overlay_target || "both";
         showLighting.value = true;
       } else {
-        formData.lightingEnabled = false;
-        advancedLighting.value = null;
+        // 先 reset 再关开关：resetLighting 会把 lightingEnabled 置回 true
         resetLighting();
+        formData.lightingEnabled = false;
         showLighting.value = false;
       }
       resolveAvatar();
@@ -851,10 +854,10 @@ watch(
       formData.sceneName = "";
       formData.sceneImage = "";
       formData.sceneDescription = "";
-      formData.lightingEnabled = false;
-      // 新建场景必须清掉上一个场景的高级光影参数，否则它会跟着 submit 写进新场景
-      advancedLighting.value = null;
+      // 新建场景必须清掉上一个场景的高级光影参数，否则它会跟着 submit 写进新场景。
+      // 先 reset 再关开关：resetLighting 会把 lightingEnabled 置回 true
       resetLighting();
+      formData.lightingEnabled = false;
       showLighting.value = false;
       resolveAvatar();
     }

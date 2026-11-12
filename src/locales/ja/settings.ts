@@ -861,7 +861,6 @@ export default {
         fullscreen: "⛶ 全画面プレビュー",
         fullscreenTitle: "全画面プレビューに入る",
         fullscreenToast: "LingChat 全画面プレビュー - 終了するには",
-        radarTitle: "光源レーダー",
         currentPreset: "現在プリセット:",
         customPreset: "カスタム",
         selectedLight: "選択光源:",

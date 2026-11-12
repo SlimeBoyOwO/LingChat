@@ -845,7 +845,6 @@ export default {
         fullscreen: "⛶ 純享全螢幕",
         fullscreenTitle: "進入純享全螢幕檢視",
         fullscreenToast: "LingChat 純享全螢幕 - 如要結束全螢幕模式，請按",
-        radarTitle: "光照方向盤",
         currentPreset: "當前預設:",
         customPreset: "自訂",
         selectedLight: "選中光源:",

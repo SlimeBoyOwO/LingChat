@@ -879,7 +879,6 @@ export default {
         fullscreen: "⛶ Pure Fullscreen",
         fullscreenTitle: "Enter Pure Fullscreen View",
         fullscreenToast: "LingChat Pure Fullscreen - To exit fullscreen mode, press",
-        radarTitle: "Light Radar",
         currentPreset: "Current Preset:",
         customPreset: "Custom",
         selectedLight: "Selected Light:",

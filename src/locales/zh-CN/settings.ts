@@ -1122,7 +1122,6 @@ export default {
         fullscreen: "⛶ 纯享全屏",
         fullscreenTitle: "进入纯享全屏检视",
         fullscreenToast: "LingChat 纯享全屏 - 若要退出全屏模式，请按",
-        radarTitle: "光照方向盘",
         currentPreset: "当前预设:",
         customPreset: "自定义",
         selectedLight: "选中光源:",
