@@ -31,7 +31,7 @@ import {
   generatePseudoDepth,
   generatePseudoNormal,
 } from "@/render/lighting";
-import { loadTexImage } from "@/render/lighting/loadImage";
+import { loadTexImage, type LoadedImage } from "@/render/lighting/loadImage";
 import { useStaticAvatarTakeover } from "@/composables/game/useStaticAvatarTakeover";
 import {
   acquireLightingStage,
@@ -97,18 +97,18 @@ const takeover = useStaticAvatarTakeover({
 });
 
 /** 生成（或从缓存取）法线/深度，避免每次换表情都重算。 */
-function mapsFor(src: string, img: HTMLImageElement) {
+function mapsFor(src: string, loaded: LoadedImage) {
   const cached = mapCache.get(src);
   if (cached) return cached;
 
-  const longest = Math.max(img.naturalWidth, img.naturalHeight) || 1;
+  const longest = Math.max(loaded.width, loaded.height) || 1;
   const scale = longest > DEPTH_MAX_DIM ? DEPTH_MAX_DIM / longest : 1;
   const depth = generatePseudoDepth(
-    img,
-    Math.max(1, Math.round(img.naturalWidth * scale)),
-    Math.max(1, Math.round(img.naturalHeight * scale)),
+    loaded.source,
+    Math.max(1, Math.round(loaded.width * scale)),
+    Math.max(1, Math.round(loaded.height * scale)),
   );
-  const normal = generatePseudoNormal(img, NORMAL_MAX_DIM);
+  const normal = generatePseudoNormal(loaded.source, NORMAL_MAX_DIM);
 
   if (mapCache.size >= MAP_CACHE_MAX) {
     const oldest = mapCache.keys().next().value;
@@ -380,16 +380,16 @@ watch(
 );
 
 // 接管到的立绘换了图（表情/换装）→ 灌纹理。缓存命中时是同步的
-watch(takeover.image, (img) => {
-  if (!renderer || !img) return;
+watch(takeover.image, (loaded) => {
+  if (!renderer || !loaded) return;
   const src = takeover.source.value;
   try {
-    const maps = mapsFor(src, img);
-    renderer.setCharacter(img, maps);
+    const maps = mapsFor(src, loaded);
+    renderer.setCharacter(loaded.source, maps);
   } catch (err) {
     // 生成失败就交给渲染器自己算 auto，再不行它会回退平法线
     console.warn("[lighting] 立绘贴图准备失败，交回渲染器处理:", err);
-    renderer.setCharacter(img, { normal: "auto", depth: "auto" });
+    renderer.setCharacter(loaded.source, { normal: "auto", depth: "auto" });
   }
   draw();
 });

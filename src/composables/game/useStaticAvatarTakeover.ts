@@ -9,7 +9,9 @@
  * 三条硬约束：
  *  1. 矩形必须用 `imageRectInBox()` 还原 —— `<img>` 是 `object-fit: contain` +
  *     `center bottom`，元素盒子里的留白不是人物。拿元素盒子当矩形，人物会被拉扁。
- *  2. 只隐藏两层 `<img>`，不碰 `ImageAcrossFade` 的 overlay 槽 —— 触摸区域在那一层。
+ *  2. 只隐藏 `<img>`，不碰 `ImageAcrossFade` 的 overlay 槽 —— 触摸区域在那一层。
+ *     隐藏必须反复补：`ImageAcrossFade` 换图是「销毁旧 img、按 v-if 新建 img」，
+ *     接管那一刻的快照下一帧就全废了。
  *  3. 任何一步失败都保持 DOM 原样：宁可没光，也不能把立绘弄没。
  */
 
@@ -20,6 +22,7 @@ import {
   imageRectInBox,
   type Fit,
 } from "@/components/game/standard/touch-regions";
+import { loadTexImage, type LoadedImage } from "@/render/lighting/loadImage";
 
 /** `[x, y, width, height]`，单位为舞台像素。 */
 export type Rect4 = [number, number, number, number];
@@ -53,7 +56,7 @@ export interface StaticAvatarTakeover {
   /** 是否已接管（DOM 图已隐藏、canvas 在画人物）。 */
   active: Ref<boolean>;
   /** 交给 `renderer.setCharacter()` 的图。 */
-  image: ShallowRef<HTMLImageElement | null>;
+  image: ShallowRef<LoadedImage | null>;
   /** 立绘内容矩形（舞台像素），交给 `render()` 的 `characterRect`。 */
   rect: ShallowRef<Rect4 | null>;
   /** 当前接管的图片来源，用来做法线/深度贴图缓存键。 */
@@ -72,6 +75,24 @@ function killSwitchOff(): boolean {
   }
 }
 
+/**
+ * 图层有效不透明度：从 img 一路乘到容器。
+ *
+ * `ImageAcrossFade` 把渐变打在**层 div** 上，img 自己的 opacity 恒为 1；而瞬切
+ * 路径（`needsInstantSwap` 判定为换姿势）不清空旧层，两层会同时挂着 img。
+ * 只看 img 自己的 opacity 就会挑中那张已经淡出的旧图 —— 画布停在上一张表情上，
+ * 之后换回原来的表情也追不回来。
+ */
+function effectiveOpacity(img: HTMLElement, root: HTMLElement): number {
+  let opacity = 1;
+  let el: HTMLElement | null = img;
+  while (el && el !== root) {
+    opacity *= Number.parseFloat(getComputedStyle(el).opacity) || 0;
+    el = el.parentElement;
+  }
+  return opacity;
+}
+
 /** 不透明的那一层。淡入期间两层同时存在，取更清晰的那张。 */
 function pickVisibleImage(container: HTMLElement): HTMLImageElement | null {
   const imgs = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
@@ -79,7 +100,7 @@ function pickVisibleImage(container: HTMLElement): HTMLImageElement | null {
   let bestOpacity = -1;
   for (const img of imgs) {
     if (!img.complete || !img.naturalWidth) continue;
-    const opacity = Number.parseFloat(getComputedStyle(img).opacity) || 0;
+    const opacity = effectiveOpacity(img, container);
     if (opacity > bestOpacity) {
       best = img;
       bestOpacity = opacity;
@@ -88,22 +109,11 @@ function pickVisibleImage(container: HTMLElement): HTMLImageElement | null {
   return best;
 }
 
-function loadImage(src: string): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    // asset 协议带 ACAO，开 anonymous 才能 `texImage2D` 不被判脏画布
-    img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img.naturalWidth ? img : null);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
 export function useStaticAvatarTakeover(
   options: StaticAvatarTakeoverOptions,
 ): StaticAvatarTakeover {
   const active = ref(false);
-  const image = shallowRef<HTMLImageElement | null>(null);
+  const image = shallowRef<LoadedImage | null>(null);
   const rect = shallowRef<Rect4 | null>(null);
   const source = ref("");
 
@@ -195,13 +205,22 @@ export function useStaticAvatarTakeover(
     );
   }
 
-  function hide(): void {
+  /**
+   * 把容器里的 `<img>` 全藏起来，已藏过的跳过。
+   *
+   * 角色层绘制在光影画布之上，漏一张就是「场景吃光、人物不吃光」：画布里那份
+   * 打光的立绘被 DOM 里这份原图盖住。换表情必然新建 img，所以每次 tick 都要补。
+   */
+  function ensureHidden(): void {
     if (!container) return;
-    hiddenImages = Array.from(container.querySelectorAll<HTMLImageElement>("img"));
-    for (const img of hiddenImages) img.style.visibility = "hidden";
+    for (const img of container.querySelectorAll<HTMLImageElement>("img")) {
+      if (img.style.visibility === "hidden") continue;
+      img.style.visibility = "hidden";
+      hiddenImages.push(img);
+    }
   }
 
-  /** 把藏起来的立绘还给 DOM。`hide()` 会整体重写 `hiddenImages`，所以换容器前必须先调它。 */
+  /** 把藏起来的立绘还给 DOM。换容器前必须先调它，否则前一个角色会永久隐身。 */
   function restore(): void {
     for (const img of hiddenImages) img.style.visibility = "";
     hiddenImages = [];
@@ -227,10 +246,10 @@ export function useStaticAvatarTakeover(
   /** 表情/换装换了图：重新灌纹理，别让画布停在旧立绘上。 */
   async function reload(src: string): Promise<void> {
     const token = ++loadToken;
-    const loaded = await loadImage(src);
+    const loaded = await loadTexImage(src);
     if (token !== loadToken) return;
-    if (!loaded) {
-      status("fail", `立绘加载失败 ${src}`);
+    if (!loaded || loaded.tainted) {
+      status("fail", loaded ? `立绘图会污染画布 ${src}` : `立绘加载失败 ${src}`);
       release();
       return;
     }
@@ -251,6 +270,9 @@ export function useStaticAvatarTakeover(
     if (timer) return;
     timer = window.setInterval(() => {
       if (!active.value || !container) return;
+
+      // 先补藏再量：新建的 img 晚一帧藏就会盖在画布上闪一下原图
+      ensureHidden();
 
       const img = pickVisibleImage(container);
       if (!img) return;
@@ -282,8 +304,9 @@ export function useStaticAvatarTakeover(
       return;
     }
 
-    // 已经在同一个容器上跑着，只补一次测量
+    // 已经在同一个容器上跑着，只补一次隐藏和测量
     if (active.value && container === el && image.value) {
+      ensureHidden();
       const domImg = pickVisibleImage(el);
       const next = domImg ? measure(domImg, image.value) : null;
       if (next && changed(rect.value, next)) {
@@ -306,10 +329,10 @@ export function useStaticAvatarTakeover(
     }
 
     const token = ++loadToken;
-    const loaded = await loadImage(src);
+    const loaded = await loadTexImage(src);
     if (token !== loadToken) return;
-    if (!loaded) {
-      status("fail", `立绘加载失败 ${src}`);
+    if (!loaded || loaded.tainted) {
+      status("fail", loaded ? `立绘图会污染画布 ${src}` : `立绘加载失败 ${src}`);
       return;
     }
 
@@ -329,7 +352,7 @@ export function useStaticAvatarTakeover(
     source.value = src;
     rect.value = next;
     lastRectKey = rectKey(next);
-    hide();
+    ensureHidden();
     active.value = true;
     status(
       "active",
