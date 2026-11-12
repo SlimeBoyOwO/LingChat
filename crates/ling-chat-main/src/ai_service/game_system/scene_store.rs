@@ -323,6 +323,12 @@ pub struct LightingParams {
     /// 相机 / 景别参数。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub camera: Option<CameraParams>,
+    /// 角色专属光影，键是 roleId 的字符串形式。
+    ///
+    /// 后端只负责原样存取：每套的形状由前端 `LightingSet` 定义，这里用 Value 透传，
+    /// 免得前端加字段时旧版本后端把它吃掉（存一次就永久丢数据）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub role_sets: Option<std::collections::HashMap<String, Value>>,
 }
 
 impl<'de> Deserialize<'de> for LightingParams {
@@ -369,6 +375,8 @@ impl<'de> Deserialize<'de> for LightingParams {
                 material: Option<MaterialParams>,
                 #[serde(default)]
                 camera: Option<CameraParams>,
+                #[serde(default)]
+                role_sets: Option<std::collections::HashMap<String, Value>>,
             }
             let nf: NewFormat = serde_json::from_value(val).map_err(de::Error::custom)?;
             return Ok(LightingParams {
@@ -388,6 +396,7 @@ impl<'de> Deserialize<'de> for LightingParams {
                 compositing: nf.compositing,
                 material: nf.material,
                 camera: nf.camera,
+                role_sets: nf.role_sets,
             });
         }
 
@@ -463,6 +472,9 @@ impl<'de> Deserialize<'de> for LightingParams {
             camera: val
                 .get("camera")
                 .and_then(|v| serde_json::from_value::<CameraParams>(v.clone()).ok()),
+            role_sets: val.get("role_sets").and_then(|v| {
+                serde_json::from_value::<std::collections::HashMap<String, Value>>(v.clone()).ok()
+            }),
         })
     }
 }
@@ -690,8 +702,36 @@ mod tests {
     fn lighting_subparams_none_are_skipped_on_serialize() {
         let p = LightingParams::default();
         let v = serde_json::to_value(&p).unwrap();
-        for key in ["lights", "global", "compositing", "material", "camera"] {
+        for key in [
+            "lights",
+            "global",
+            "compositing",
+            "material",
+            "camera",
+            "role_sets",
+        ] {
             assert!(v.get(key).is_none(), "{} 为 None 时不应写出", key);
         }
+    }
+
+    /// 角色专属光影原样透传：往返后每套的灯与参数都不掉字段。
+    #[test]
+    fn lighting_role_sets_roundtrip() {
+        let json = format!(
+            r##"{{{},"role_sets":{{"3":{{"lights":[{{"id":"r3","type":"point","color":"#8fd0ff","intensity":1.6,"x":0.3,"y":0.4,"z":0.6,"radius":1.0,"softness":0.5}}],"global":{{"master":1.2,"char_exposure":0.8}},"camera":{{"shot":"cu","zoom":1.5,"focus_y":0.2,"dof":1.0}}}}}}}}"##,
+            NEW_FILTER
+        );
+        let p1: LightingParams = serde_json::from_str(&json).unwrap();
+        let sets = p1.role_sets.as_ref().expect("应解析出 role_sets");
+        assert_eq!(sets.len(), 1);
+        assert!(sets.contains_key("3"));
+
+        let s = serde_json::to_string(&p1).unwrap();
+        let p2: LightingParams = serde_json::from_str(&s).unwrap();
+        let again = p2.role_sets.expect("往返后 role_sets 应保留");
+        let set = again.get("3").unwrap();
+        assert_eq!(set["lights"][0]["color"], "#8fd0ff");
+        assert_eq!(set["global"]["char_exposure"], 0.8);
+        assert_eq!(set["camera"]["shot"], "cu");
     }
 }

@@ -92,6 +92,20 @@ export interface LightingCameraParams {
   dof: number;
 }
 
+/**
+ * 一整套 2.5D 光影参数。
+ *
+ * 场景默认那套直接摊在 LightingParams 上，角色专属那套按 roleId 存在 role_sets 里，
+ * 两边共用这个形状，工作台切换编辑目标时整存整取。
+ */
+export interface LightingSet {
+  lights: LightSource[];
+  global: LightingGlobalParams;
+  compositing: LightingCompositingParams;
+  material: LightingMaterialParams;
+  camera: LightingCameraParams;
+}
+
 export interface LightingParams {
   character: FilterParams;
   background: FilterParams;
@@ -114,6 +128,12 @@ export interface LightingParams {
   material?: LightingMaterialParams | null;
   /** 相机 / 景别参数。 */
   camera?: LightingCameraParams | null;
+  /**
+   * 角色专属光影，键是 roleId 的字符串形式。
+   *
+   * 只在单角色对话时生效（渲染器只有一个立绘纹理槽）；没配的角色回落场景默认那套。
+   */
+  role_sets?: Record<string, LightingSet> | null;
 }
 
 /** 场景室内外标注（LLM 建场景时自动标注一次，场景卡上可点击修改）。 */
