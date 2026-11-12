@@ -1,147 +1,162 @@
 <template>
-  <div class="flex flex-col gap-4 text-sm text-white/85">
-    <label class="flex flex-col gap-1.5">
-      {{ t("imageGeneration.provider") }}
-      <select
-        :value="modelValue.provider"
-        class="rounded-lg border border-white/20 bg-slate-900 px-3 py-2"
+  <div class="space-y-4 text-sm">
+    <ToolField :label="t('imageGeneration.provider')">
+      <ToolSelect
+        :model-value="modelValue.provider"
         :disabled="disabled"
-        @change="changeProvider(($event.target as HTMLSelectElement).value)"
+        :aria-label="t('imageGeneration.provider')"
+        @update:model-value="changeProvider"
       >
+        <option v-if="!selectedProvider" :value="modelValue.provider" disabled>
+          {{ t("imageGeneration.providerUnavailable") }}
+        </option>
         <option v-for="provider in providers" :key="provider.id" :value="provider.id">
           {{ provider.label }}
         </option>
-      </select>
-    </label>
-    <template v-if="custom">
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.baseUrl") }}
-        <input
-          :value="modelValue.base_url"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
+      </ToolSelect>
+    </ToolField>
+    <template v-if="selectedProvider?.custom">
+      <ToolField :label="t('imageGeneration.baseUrl')">
+        <ToolInput
+          :model-value="modelValue.base_url"
           :disabled="disabled"
-          @change="update('base_url', ($event.target as HTMLInputElement).value)"
+          @update:model-value="update('base_url', String($event))"
         />
-      </label>
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.apiKey") }}
-        <input
+      </ToolField>
+      <ToolField :label="t('imageGeneration.apiKey')">
+        <ToolInput
           type="password"
           autocomplete="off"
-          :value="modelValue.api_key"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
+          :model-value="modelValue.api_key"
           :disabled="disabled"
-          @change="update('api_key', ($event.target as HTMLInputElement).value)"
+          @update:model-value="update('api_key', String($event))"
         />
-      </label>
+      </ToolField>
     </template>
     <NovelAiConfig
       v-if="isNovelAi && modelValue.novelai"
       :model-value="modelValue.novelai"
       :disabled="disabled"
+      :hide-negative-tags="hideNegativeTags"
       @update:model-value="update('novelai', $event)"
     />
-    <label class="flex flex-col gap-1.5">
-      {{ t("imageGeneration.model") }}
-      <div class="flex gap-2">
-        <input
-          :value="modelValue.model"
-          :list="modelListId"
-          :placeholder="modelPlaceholder"
-          class="min-w-0 flex-1 rounded-lg border border-white/20 bg-black/25 px-3 py-2"
+    <ToolField :label="t('imageGeneration.model')" :hint="t('imageGeneration.modelHint')">
+      <div class="flex flex-wrap items-start gap-2">
+        <ToolInput
+          v-if="manualModel"
+          :model-value="modelValue.model"
+          :placeholder="t('imageGeneration.manualModel')"
+          :aria-label="t('imageGeneration.model')"
+          autocomplete="off"
+          class="min-w-0 flex-1"
           :disabled="disabled"
-          @input="update('model', ($event.target as HTMLInputElement).value)"
+          @update:model-value="update('model', String($event))"
         />
-        <datalist :id="modelListId">
-          <option v-for="model in catalog?.models ?? []" :key="model" :value="model" />
-        </datalist>
-        <button
-          type="button"
-          class="rounded-lg border border-cyan-300/30 bg-cyan-300/10 px-3 py-2 text-cyan-100 disabled:opacity-40"
-          :disabled="loading || disabled"
+        <ToolSelect
+          v-else
+          :model-value="modelValue.model"
+          :aria-label="t('imageGeneration.model')"
+          class="min-w-0 flex-1"
+          :disabled="disabled"
+          @update:model-value="update('model', $event)"
+        >
+          <option value="" :disabled="catalog?.allow_automatic === false">
+            {{
+              catalog?.allow_automatic === false
+                ? t("imageGeneration.manualModel")
+                : t("imageGeneration.autoModel")
+            }}
+          </option>
+          <option
+            v-if="modelValue.model && !catalog?.models.includes(modelValue.model)"
+            :value="modelValue.model"
+          >
+            {{ modelValue.model }}
+          </option>
+          <option v-for="model in catalog?.models ?? []" :key="model" :value="model">
+            {{ model }}
+          </option>
+        </ToolSelect>
+        <ToolActionButton
+          class="mt-2 shrink-0"
+          :disabled="loading || disabled || !selectedProvider"
           @click="refreshModels(true)"
         >
           {{ loading ? t("imageGeneration.loading") : t("imageGeneration.refreshModels") }}
-        </button>
+        </ToolActionButton>
       </div>
-      <select
-        v-if="catalog?.models.length"
-        class="rounded-lg border border-white/20 bg-slate-900 px-3 py-2"
-        :value="modelValue.model"
-        :disabled="disabled"
-        @change="update('model', ($event.target as HTMLSelectElement).value)"
-      >
-        <option value="" :disabled="!catalog.allow_automatic">{{ modelPlaceholder }}</option>
-        <option
-          v-if="modelValue.model && !catalog.models.includes(modelValue.model)"
-          :value="modelValue.model"
-        >
-          {{ modelValue.model }}
-        </option>
-        <option v-for="model in catalog.models" :key="model" :value="model">{{ model }}</option>
-      </select>
-    </label>
-    <p class="text-xs text-white/55">{{ t("imageGeneration.modelHint") }}</p>
-    <p v-if="catalog?.warning" class="text-xs text-amber-200">{{ catalog.warning }}</p>
+    </ToolField>
+    <ToolActionButton
+      v-if="catalog?.models.length"
+      :disabled="disabled"
+      @click="manualModel = !manualModel"
+    >
+      {{ manualModel ? t("imageGeneration.chooseModel") : t("imageGeneration.enterModel") }}
+    </ToolActionButton>
+    <p v-if="catalog?.warning" class="text-xs leading-relaxed text-amber-200">
+      {{ catalog.warning }}
+    </p>
     <p v-if="error" role="alert" class="text-sm text-red-300">{{ error }}</p>
-    <details class="rounded-lg border border-white/10 p-3">
-      <summary class="cursor-pointer text-white/65">{{ t("imageGeneration.advanced") }}</summary>
-      <div class="mt-3 grid gap-3 sm:grid-cols-2">
-        <label v-if="!isNovelAi" class="flex flex-col gap-1"
-          >{{ t("imageGeneration.size") }}
-          <input
-            :value="modelValue.size"
+    <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+      <summary class="text-brand cursor-pointer text-sm font-medium">
+        {{ t("imageGeneration.advanced") }}
+      </summary>
+      <div class="mt-4 grid gap-4 sm:grid-cols-2">
+        <ToolField v-if="!isNovelAi" :label="t('imageGeneration.size')">
+          <ToolInput
+            :model-value="modelValue.size"
             :disabled="disabled"
-            class="rounded border border-white/20 bg-black/25 px-2 py-1.5"
-            @change="update('size', ($event.target as HTMLInputElement).value)"
+            @update:model-value="update('size', String($event))"
           />
-        </label>
-        <label v-if="!isNovelAi" class="flex flex-col gap-1"
-          >{{ t("imageGeneration.quality") }}
-          <input
-            :value="modelValue.quality"
+        </ToolField>
+        <ToolField v-if="!isNovelAi" :label="t('imageGeneration.quality')">
+          <ToolInput
+            :model-value="modelValue.quality"
             :disabled="disabled"
-            class="rounded border border-white/20 bg-black/25 px-2 py-1.5"
-            @change="update('quality', ($event.target as HTMLInputElement).value)"
+            @update:model-value="update('quality', String($event))"
           />
-        </label>
-        <label class="flex flex-col gap-1"
-          >{{ t("imageGeneration.timeout") }}
-          <input
+        </ToolField>
+        <ToolField :label="t('imageGeneration.timeout')">
+          <ToolInput
             type="number"
             min="30"
             max="900"
-            :value="modelValue.timeout_secs"
+            :model-value="modelValue.timeout_secs"
             :disabled="disabled"
-            class="rounded border border-white/20 bg-black/25 px-2 py-1.5"
-            @change="update('timeout_secs', Number(($event.target as HTMLInputElement).value))"
+            @update:model-value="update('timeout_secs', Number($event))"
           />
-        </label>
-        <label class="flex flex-col gap-1"
-          >{{ t("imageGeneration.catalogUrl") }}
-          <input
-            :value="isNovelAi ? modelValue.novelai?.models_url : modelValue.models_url"
+        </ToolField>
+        <ToolField :label="t('imageGeneration.catalogUrl')">
+          <ToolInput
+            :model-value="
+              isNovelAi ? (modelValue.novelai?.models_url ?? '') : modelValue.models_url
+            "
             :disabled="disabled"
-            class="rounded border border-white/20 bg-black/25 px-2 py-1.5"
-            @change="updateCatalogUrl(($event.target as HTMLInputElement).value)"
+            @update:model-value="updateCatalogUrl(String($event))"
           />
-        </label>
+        </ToolField>
       </div>
       <NovelAiConfig
         v-if="isNovelAi && modelValue.novelai"
         :model-value="modelValue.novelai"
         :disabled="disabled"
         advanced
-        @update:model-value="update('novelai', $event)"
         class="mt-4"
+        @update:model-value="update('novelai', $event)"
       />
-      <p class="mt-2 text-xs text-white/50">{{ t("imageGeneration.advancedHint") }}</p>
+      <p class="mt-3 text-xs leading-relaxed text-white/50">
+        {{ t("imageGeneration.advancedHint") }}
+      </p>
     </details>
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, useId, watch } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
+import ToolField from "@/components/settings/tools/fields/ToolField.vue";
+import ToolInput from "@/components/settings/tools/fields/ToolInput.vue";
+import ToolSelect from "@/components/settings/tools/fields/ToolSelect.vue";
+import ToolActionButton from "@/components/settings/tools/ToolActionButton.vue";
 import NovelAiConfig from "./NovelAiConfig.vue";
 import {
   listImageModels,
@@ -150,26 +165,24 @@ import {
   type ImageModelCatalog,
   type ImageProviderInfo,
 } from "@/api/services/image-generation";
-const props = defineProps<{ modelValue: ImageGenerationSettings; disabled?: boolean }>();
+const props = defineProps<{
+  modelValue: ImageGenerationSettings;
+  disabled?: boolean;
+  hideNegativeTags?: boolean;
+}>();
 const emit = defineEmits<{ "update:modelValue": [value: ImageGenerationSettings] }>();
 const { t } = useI18n();
 const providers = ref<ImageProviderInfo[]>([]);
 const catalog = ref<ImageModelCatalog | null>(null);
 const error = ref("");
 const loading = ref(false);
-const modelListId = useId();
-const custom = computed(
-  () => providers.value.find((p) => p.id === props.modelValue.provider)?.custom,
+const manualModel = ref(false);
+const selectedProvider = computed(() =>
+  providers.value.find((p) => p.id === props.modelValue.provider),
 );
-const isNovelAi = computed(
-  () => providers.value.find((p) => p.id === props.modelValue.provider)?.protocol === "novelai",
-);
-const modelPlaceholder = computed(() =>
-  error.value || catalog.value?.allow_automatic === false
-    ? t("imageGeneration.manualModel")
-    : t("imageGeneration.autoModel"),
-);
+const isNovelAi = computed(() => selectedProvider.value?.protocol === "novelai");
 let revision = 0;
+let refreshTimer: ReturnType<typeof setTimeout> | undefined;
 function update<K extends keyof ImageGenerationSettings>(
   key: K,
   value: ImageGenerationSettings[K],
@@ -177,24 +190,37 @@ function update<K extends keyof ImageGenerationSettings>(
   emit("update:modelValue", { ...props.modelValue, [key]: value });
 }
 function changeProvider(provider: string) {
+  manualModel.value = false;
   emit("update:modelValue", { ...props.modelValue, provider, model: "", models_url: "" });
 }
 function updateCatalogUrl(value: string) {
-  if (isNovelAi.value && props.modelValue.novelai) {
+  if (isNovelAi.value && props.modelValue.novelai)
     update("novelai", { ...props.modelValue.novelai, models_url: value });
-  } else {
-    update("models_url", value);
-  }
+  else update("models_url", value);
 }
 async function refreshModels(force: boolean) {
+  clearTimeout(refreshTimer);
+  if (!selectedProvider.value) {
+    error.value = t("imageGeneration.providerUnavailable");
+    return;
+  }
   const request = ++revision;
   loading.value = true;
   error.value = "";
   try {
     const result = await listImageModels({ ...props.modelValue }, force);
-    if (request === revision) catalog.value = result;
+    if (request !== revision) return;
+    catalog.value = result;
+    if (
+      (!result.models.length && !result.allow_automatic) ||
+      (props.modelValue.model && !result.models.includes(props.modelValue.model))
+    )
+      manualModel.value = true;
   } catch (cause) {
-    if (request === revision) error.value = String(cause);
+    if (request === revision) {
+      error.value = String(cause);
+      manualModel.value = true;
+    }
   } finally {
     if (request === revision) loading.value = false;
   }
@@ -212,21 +238,32 @@ watch(
   ],
   () => {
     revision++;
+    clearTimeout(refreshTimer);
     catalog.value = null;
     error.value = "";
     loading.value = false;
-    if (!custom.value || props.modelValue.base_url.trim()) void refreshModels(false);
+    if (
+      selectedProvider.value &&
+      (!selectedProvider.value.custom || props.modelValue.base_url.trim())
+    )
+      refreshTimer = setTimeout(() => void refreshModels(false), 400);
   },
 );
 onMounted(async () => {
   try {
     providers.value = await listImageProviders();
-    if (!custom.value || props.modelValue.base_url.trim()) await refreshModels(false);
+    if (
+      !selectedProvider.value ||
+      !selectedProvider.value.custom ||
+      props.modelValue.base_url.trim()
+    )
+      await refreshModels(false);
   } catch (cause) {
     error.value = String(cause);
   }
 });
 onBeforeUnmount(() => {
   revision++;
+  clearTimeout(refreshTimer);
 });
 </script>

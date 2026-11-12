@@ -1,4 +1,15 @@
 export default {
+  positiveTags: "正のタグ",
+  negativeTags: "負のタグ（Undesired Content）",
+  positiveTagsHint: "例：scenery, library, wooden shelves, warm lighting, no humans",
+  negativeTagsPlaceholder: "例：blurry, lowres, text, watermark",
+  tagsHint:
+    "英語のタグをカンマで区切り、被写体と重要な特徴から構図・背景・画風の順に記入します。重み構文はそのまま保持されます。",
+  negativeTagsHint:
+    "避けたい内容を指定します。LLM ツールは既定値を変更せず、生成ごとに上書きできます。",
+  providerUnavailable: "画像生成プロバイダーを選択してください",
+  enterModel: "モデル ID を手動入力",
+  chooseModel: "オンライン一覧から選択",
   manualModel: "画像モデル ID を選択または入力",
   novelaiToken: "NovelAI Persistent API Token",
   novelaiDefaultUrl: "空欄の場合は NovelAI 公式 URL を使用",

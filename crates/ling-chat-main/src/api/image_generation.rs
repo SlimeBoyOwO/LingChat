@@ -6,8 +6,8 @@ use crate::ai_service::image_generation::{
 use tauri::{AppHandle, Manager};
 
 #[tauri::command]
-pub fn list_image_generation_providers(app: AppHandle) -> Vec<ImageProviderInfo> {
-    image_generation::list_providers(&app)
+pub fn list_image_generation_providers() -> Vec<ImageProviderInfo> {
+    image_generation::list_providers()
 }
 
 #[tauri::command]

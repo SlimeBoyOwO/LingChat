@@ -14,7 +14,7 @@ use tauri::AppHandle;
 use tokio::sync::Mutex;
 
 use super::ImageGenerationSettings;
-use crate::ai_service::llm::{codex_auth, provider_config::load_providers};
+use crate::ai_service::llm::codex_auth;
 use crate::utils::proxy::build_proxied_client;
 
 pub(super) const DEFAULT_PROVIDER: &str = "codex";
@@ -42,8 +42,8 @@ pub struct ImageModelCatalog {
 static CATALOGS: LazyLock<Mutex<HashMap<String, (Instant, ImageModelCatalog)>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
-pub fn list_providers(app: &AppHandle) -> Vec<ImageProviderInfo> {
-    let mut result = vec![
+pub fn list_providers() -> Vec<ImageProviderInfo> {
+    vec![
         ImageProviderInfo {
             id: DEFAULT_PROVIDER.into(),
             label: "Codex 订阅".into(),
@@ -62,19 +62,7 @@ pub fn list_providers(app: &AppHandle) -> Vec<ImageProviderInfo> {
             custom: false,
             protocol: "novelai",
         },
-    ];
-    result.extend(
-        load_providers(app)
-            .into_iter()
-            .filter(|p| matches!(p.provider.as_str(), "openai" | "lmstudio"))
-            .map(|p| ImageProviderInfo {
-                id: format!("profile:{}", p.id),
-                label: p.label,
-                custom: false,
-                protocol: "openai",
-            }),
-    );
-    result
+    ]
 }
 
 struct Connection {
@@ -83,7 +71,7 @@ struct Connection {
     key: String,
 }
 
-fn connection(app: &AppHandle, settings: &ImageGenerationSettings) -> Result<Connection> {
+fn connection(settings: &ImageGenerationSettings) -> Result<Connection> {
     if settings.provider == DEFAULT_PROVIDER {
         return Ok(Connection {
             codex: true,
@@ -91,28 +79,11 @@ fn connection(app: &AppHandle, settings: &ImageGenerationSettings) -> Result<Con
             key: String::new(),
         });
     }
-    let (base, key) = if settings.provider == "openai-compatible" {
-        (settings.base_url.clone(), settings.api_key.clone())
-    } else {
-        let id = settings
-            .provider
-            .strip_prefix("profile:")
-            .context("未知的图片供应商")?;
-        let profile = load_providers(app)
-            .into_iter()
-            .find(|p| p.id == id)
-            .context("图片供应商配置已删除，请重新选择")?;
-        ensure!(
-            matches!(profile.provider.as_str(), "openai" | "lmstudio"),
-            "该供应商协议尚不支持图片生成"
-        );
-        let base = if profile.base_url.trim().is_empty() && profile.provider == "openai" {
-            "https://api.openai.com/v1".into()
-        } else {
-            profile.base_url
-        };
-        (base, profile.api_key)
-    };
+    ensure!(
+        settings.provider == "openai-compatible",
+        "请重新选择图片生成供应商"
+    );
+    let (base, key) = (settings.base_url.clone(), settings.api_key.clone());
     let url = validate_url(&base)?;
     ensure!(
         url.query().is_none() && url.fragment().is_none(),
@@ -138,14 +109,14 @@ pub(super) fn validate_url(raw: &str) -> Result<Url> {
 }
 
 pub async fn list_models(
-    app: &AppHandle,
+    _app: &AppHandle,
     settings: &ImageGenerationSettings,
     refresh: bool,
 ) -> Result<ImageModelCatalog> {
     if settings.provider == "novelai" {
         return super::novelai::list_models(&settings.novelai, refresh).await;
     }
-    let conn = connection(app, settings)?;
+    let conn = connection(settings)?;
     let source = if !settings.models_url.is_empty() {
         settings.models_url.clone()
     } else if conn.codex {
@@ -316,7 +287,7 @@ pub(super) async fn limited_body(response: reqwest::Response, limit: usize) -> R
 }
 
 pub(super) async fn generate(
-    app: &AppHandle,
+    _app: &AppHandle,
     settings: &ImageGenerationSettings,
     model: &str,
     prompt: &str,
@@ -332,7 +303,7 @@ pub(super) async fn generate(
         )
         .await;
     }
-    let conn = connection(app, settings)?;
+    let conn = connection(settings)?;
     let http = build_proxied_client(settings.timeout_secs).await?;
     let route = if reference.is_some() {
         "images/edits"
@@ -445,6 +416,22 @@ pub(super) async fn generate(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn chat_and_vision_profiles_are_not_image_providers() {
+        assert_eq!(
+            list_providers()
+                .iter()
+                .map(|p| p.id.as_str())
+                .collect::<Vec<_>>(),
+            ["codex", "openai-compatible", "novelai"]
+        );
+        let settings = ImageGenerationSettings {
+            provider: "profile:vision-only".into(),
+            ..Default::default()
+        };
+        assert!(connection(&settings).is_err());
+    }
 
     #[test]
     fn official_catalog_is_dynamic_deduplicated_and_excludes_dated_variants() {

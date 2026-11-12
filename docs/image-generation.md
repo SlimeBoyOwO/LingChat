@@ -5,7 +5,7 @@
 ## 供应商与模型
 
 - 默认使用 Codex 订阅，复用“大模型管理”的登录状态及刷新流程，不需要再填写 API Key。
-- 可选择已经配置的 OpenAI / LM Studio 供应商，也可选择 OpenAI compatible，填写其他兼容服务的基础地址及凭据。生图模型独立于聊天模型，不会覆盖聊天模型配置。
+- 可选择 OpenAI compatible，填写支持图片生成的兼容服务基础地址及凭据。聊天或视觉配置不会自动加入生图供应商列表；图片理解能力不代表服务提供生图接口。生图模型独立于聊天模型，不会覆盖聊天模型配置。
 - 模型候选来自在线目录，没有内置图片模型列表。Codex 使用官方公开图片模型目录；公开候选不等于订阅账号已获得调用权限，实际以生成接口回执为准。
 - 兼容供应商使用自身的 models 接口。供应商返回图像输出能力时按能力筛选；未提供能力信息时按名称展示图片模型候选，要求用户明确选择。匹配不到时不混入聊天模型，可直接手动填写模型编号。手动指定模型的生成请求不依赖模型目录成功。
 - 模型目录成功结果在进程内缓存。刷新失败只保留上次真实获取的结果并显示提示；没有成功缓存时报告错误。自定义目录支持 JSON 的 data/models 数组。公开目录不会接收 Codex 登录凭据；兼容服务的 API Key 仅发送到自身同源目录。
@@ -21,6 +21,10 @@ NovelAI 的模型编号从官方当前网页发布的模型定义中读取，不
 
 NovelAI 参数优先使用在线发现的协议信息，也可用附加 JSON 显式覆盖协议参数，适配自定义接口或后续扩展。当前功能每次只生成一张图片。
 
+选择 NovelAI 后，生成窗口提供正向 tags 和负向 tags（Undesired Content）。按英文逗号分隔标签，主体与重要特征靠前，再补充构图、环境和风格；输入中的权重语法原样传递，不强制改写或拼接预设 tags。负向内容同时发送到 negative_prompt 和 v4_negative_prompt 的基础描述。
+
+generate_image 的工具定义会随当前供应商更新：NovelAI 使用 tags 说明，并提供可选 negative_prompt。省略时使用保存的负向 tags；传空字符串可仅在本次清空，覆盖值不写回默认配置。其他供应商继续使用自然语言图片描述。
+
 ## 生成结果
 
 界面和工具共用生成、认证、模型发现、响应校验及保存流程。支持接口返回 Base64 或图片 URL；下载 URL 时不转发生成接口凭据。结果必须能解码为图片，并在大小及分辨率限制内，随后转换为 PNG，以独立文件名保存到背景目录并注册场景。生成失败不会创建空场景或覆盖已有图片。
@@ -31,4 +35,4 @@ NovelAI 参数优先使用在线发现的协议信息，也可用附加 JSON 显
 
 生成接口不自动重试，避免不确定的网络错误导致重复扣费；同一时刻仅允许一个生成请求。图片生成完成后广播 image-generation:completed，背景页面据此更新列表。
 
-协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、[NovelAI Image API](https://image.novelai.net/docs/index.html)、[NovelAI 模型说明](https://docs.novelai.net/en/image/models/)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。
+协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、[NovelAI Image API](https://image.novelai.net/docs/index.html)、[NovelAI 模型说明](https://docs.novelai.net/en/image/models/)、[Tagging](https://docs.novelai.net/en/image/tags/)、[Undesired Content](https://docs.novelai.net/en/image/undesiredcontent/)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。

@@ -69,6 +69,13 @@ impl ImageGenerationSettings {
     }
 
     pub fn validate(&self) -> Result<()> {
+        ensure!(
+            matches!(
+                self.provider.as_str(),
+                "codex" | "openai-compatible" | "novelai"
+            ),
+            "请重新选择图片生成供应商"
+        );
         if self.provider == "novelai" {
             self.novelai.validate()?;
         }
@@ -80,6 +87,8 @@ impl ImageGenerationSettings {
 #[serde(deny_unknown_fields)]
 pub struct GenerateImageRequest {
     pub prompt: String,
+    #[serde(default)]
+    pub negative_prompt: Option<String>,
     #[serde(default)]
     pub name: String,
     #[serde(default)]
@@ -105,6 +114,15 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
     let mut settings = app.state::<AppState>().tool_settings.get().image_generation;
     settings.normalize();
     settings.validate()?;
+    if let Some(negative) = request.negative_prompt.as_deref() {
+        ensure!(
+            settings.provider == "novelai",
+            "当前图片供应商不支持独立负向 tags"
+        );
+        ensure!(negative.chars().count() <= 32_000, "负向 tags 过长");
+        // 本次调用的覆盖值不写回共享配置。
+        settings.novelai.negative_prompt = negative.trim().into();
+    }
     let reference = if let Some(encoded) = request.reference_image.as_deref() {
         let bytes = decode_image(encoded)?;
         Some(

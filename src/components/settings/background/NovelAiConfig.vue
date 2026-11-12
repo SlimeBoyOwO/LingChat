@@ -1,117 +1,115 @@
 <template>
-  <div class="grid gap-3 sm:grid-cols-2">
+  <div class="grid gap-4 sm:grid-cols-2">
     <template v-if="!advanced">
-      <label class="flex flex-col gap-1.5 sm:col-span-2">
-        {{ t("imageGeneration.novelaiToken") }}
-        <input
+      <ToolField :label="t('imageGeneration.novelaiToken')" class="sm:col-span-2">
+        <ToolInput
           type="password"
           autocomplete="off"
-          :value="modelValue.api_key"
+          :model-value="modelValue.api_key"
           :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('api_key', value($event))"
+          @update:model-value="update('api_key', String($event))"
         />
-      </label>
-      <label class="flex flex-col gap-1.5 sm:col-span-2">
-        {{ t("imageGeneration.baseUrl") }}
-        <input
-          :value="modelValue.base_url"
+      </ToolField>
+      <ToolField :label="t('imageGeneration.baseUrl')" class="sm:col-span-2">
+        <ToolInput
+          :model-value="modelValue.base_url"
           :placeholder="t('imageGeneration.novelaiDefaultUrl')"
           :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('base_url', value($event))"
+          @update:model-value="update('base_url', String($event))"
         />
-      </label>
+      </ToolField>
+      <ToolField
+        v-if="!hideNegativeTags"
+        :label="t('imageGeneration.negativeTags')"
+        :hint="t('imageGeneration.negativeTagsHint')"
+        class="sm:col-span-2"
+      >
+        <ToolTextarea
+          :rows="3"
+          :model-value="modelValue.negative_prompt"
+          :disabled="disabled"
+          :placeholder="t('imageGeneration.negativeTagsPlaceholder')"
+          @update:model-value="update('negative_prompt', $event)"
+        />
+      </ToolField>
     </template>
     <template v-else>
-      <label v-for="field in numericFields" :key="field.key" class="flex flex-col gap-1.5">
-        {{ t("imageGeneration." + field.label) }}
-        <input
+      <ToolField
+        v-for="field in numericFields"
+        :key="field.key"
+        :label="t('imageGeneration.' + field.label)"
+      >
+        <ToolInput
           type="number"
-          :value="modelValue[field.key]"
+          :model-value="modelValue[field.key]"
           :disabled="disabled"
           :min="field.min"
           :max="field.max"
           :step="field.step"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update(field.key, Number(value($event)))"
+          @update:model-value="update(field.key, Number($event))"
         />
-      </label>
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.sampler") }}
-        <input
-          :value="modelValue.sampler"
+      </ToolField>
+      <ToolField :label="t('imageGeneration.sampler')">
+        <ToolInput
+          :model-value="modelValue.sampler"
           :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('sampler', value($event))"
+          @update:model-value="update('sampler', String($event))"
         />
-      </label>
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.seed") }}
-        <input
+      </ToolField>
+      <ToolField :label="t('imageGeneration.seed')">
+        <ToolInput
           type="number"
-          :value="modelValue.seed ?? ''"
+          :model-value="modelValue.seed ?? ''"
           :disabled="disabled"
           min="0"
           max="4294967295"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('seed', value($event).trim() ? Number(value($event)) : null)"
+          @update:model-value="update('seed', String($event).trim() ? Number($event) : null)"
         />
-      </label>
-      <label class="flex flex-col gap-1.5 sm:col-span-2">
-        {{ t("imageGeneration.negativePrompt") }}
-        <textarea
-          rows="2"
-          :value="modelValue.negative_prompt"
+      </ToolField>
+      <ToolField :label="t('imageGeneration.transport')">
+        <ToolSelect
+          :model-value="modelValue.transport"
           :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('negative_prompt', value($event))"
-        />
-      </label>
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.transport") }}
-        <select
-          :value="modelValue.transport"
-          :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-slate-900 px-3 py-2"
-          @change="update('transport', value($event) as NovelAiSettings['transport'])"
+          @update:model-value="update('transport', $event as NovelAiSettings['transport'])"
         >
           <option value="auto">{{ t("imageGeneration.transportAuto") }}</option>
           <option value="json">JSON / ZIP</option>
           <option value="sse">SSE</option>
-        </select>
-      </label>
-      <label class="flex flex-col gap-1.5">
-        {{ t("imageGeneration.frontendUrl") }}
-        <input
-          :value="modelValue.frontend_url"
+        </ToolSelect>
+      </ToolField>
+      <ToolField :label="t('imageGeneration.frontendUrl')">
+        <ToolInput
+          :model-value="modelValue.frontend_url"
           :disabled="disabled"
           :placeholder="t('imageGeneration.novelaiDefaultUrl')"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-          @change="update('frontend_url', value($event))"
+          @update:model-value="update('frontend_url', String($event))"
         />
-      </label>
-      <label class="flex flex-col gap-1.5 sm:col-span-2">
-        {{ t("imageGeneration.parametersJson") }}
-        <textarea
-          rows="4"
+      </ToolField>
+      <ToolField :label="t('imageGeneration.parametersJson')" class="sm:col-span-2">
+        <ToolTextarea
+          :rows="4"
           spellcheck="false"
-          :value="modelValue.parameters_json"
+          class="font-mono"
+          :model-value="modelValue.parameters_json"
           :disabled="disabled"
-          class="rounded-lg border border-white/20 bg-black/25 px-3 py-2 font-mono"
-          @change="update('parameters_json', value($event))"
+          @update:model-value="update('parameters_json', $event)"
         />
-      </label>
+      </ToolField>
     </template>
   </div>
 </template>
 <script setup lang="ts">
 import { useI18n } from "vue-i18n";
 import type { NovelAiSettings } from "@/api/services/image-generation";
+import ToolField from "@/components/settings/tools/fields/ToolField.vue";
+import ToolInput from "@/components/settings/tools/fields/ToolInput.vue";
+import ToolSelect from "@/components/settings/tools/fields/ToolSelect.vue";
+import ToolTextarea from "@/components/settings/tools/fields/ToolTextarea.vue";
 const props = defineProps<{
   modelValue: NovelAiSettings;
   advanced?: boolean;
   disabled?: boolean;
+  hideNegativeTags?: boolean;
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: NovelAiSettings] }>();
 const { t } = useI18n();
@@ -123,9 +121,6 @@ const numericFields = [
   { key: "strength", label: "strength", min: 0, max: 1, step: 0.05 },
   { key: "noise", label: "noise", min: 0, max: 1, step: 0.05 },
 ] as const;
-function value(event: Event) {
-  return (event.target as HTMLInputElement).value;
-}
 function update<K extends keyof NovelAiSettings>(key: K, value: NovelAiSettings[K]) {
   emit("update:modelValue", { ...props.modelValue, [key]: value });
 }

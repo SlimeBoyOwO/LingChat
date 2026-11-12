@@ -1,4 +1,14 @@
 export default {
+  positiveTags: "正向 tags",
+  negativeTags: "负向 tags（Undesired Content）",
+  positiveTagsHint: "例如：scenery, library, wooden shelves, warm lighting, no humans",
+  negativeTagsPlaceholder: "例如：blurry, lowres, text, watermark",
+  tagsHint: "以英文逗号分隔 tags，先写主体和重要特征，再补充构图、背景与风格；权重语法会原样保留。",
+  negativeTagsHint:
+    "填写不希望出现的内容。界面使用此配置；LLM 工具可为单次生成覆盖，不改写这里的默认值。",
+  providerUnavailable: "请重新选择生图供应商",
+  enterModel: "手动填写模型编号",
+  chooseModel: "从在线列表选择",
   manualModel: "请选择或填写生图模型编号",
   novelaiToken: "NovelAI Persistent API Token",
   novelaiDefaultUrl: "留空使用 NovelAI 官方地址",

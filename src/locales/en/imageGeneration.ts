@@ -1,4 +1,15 @@
 export default {
+  positiveTags: "Positive tags",
+  negativeTags: "Negative tags (Undesired Content)",
+  positiveTagsHint: "For example: scenery, library, wooden shelves, warm lighting, no humans",
+  negativeTagsPlaceholder: "For example: blurry, lowres, text, watermark",
+  tagsHint:
+    "Separate tags with English commas. Start with the subject and key features, then composition, setting, and style. Weight syntax is preserved.",
+  negativeTagsHint:
+    "Describe what to avoid. The UI uses this default; an LLM tool call can override it for one generation without changing this setting.",
+  providerUnavailable: "Please select an image generation provider",
+  enterModel: "Enter a model ID manually",
+  chooseModel: "Choose from the online list",
   manualModel: "Select or enter an image model ID",
   novelaiToken: "NovelAI Persistent API Token",
   novelaiDefaultUrl: "Blank uses the official NovelAI URL",

@@ -57,7 +57,14 @@ export const generateImage = (
   name: string,
   applyBackground = false,
   referenceImage: string | null = null,
+  negativePrompt: string | null = null,
 ) =>
   invoke<GeneratedImage>("generate_image", {
-    request: { prompt, name, apply_background: applyBackground, reference_image: referenceImage },
+    request: {
+      prompt,
+      name,
+      apply_background: applyBackground,
+      reference_image: referenceImage,
+      negative_prompt: negativePrompt,
+    },
   });

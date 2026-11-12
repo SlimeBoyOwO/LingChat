@@ -1,113 +1,109 @@
 <template>
-  <Teleport to="body">
+  <BaseModal
+    :show="true"
+    :title="t('imageGeneration.title')"
+    theme="glass"
+    size="lg"
+    :busy="busy"
+    @close="emit('close')"
+  >
+    <template #icon><ImagePlus :size="22" /></template>
+    <ImageGenerationConfig v-if="settings" v-model="settings" :disabled="busy" hide-negative-tags />
+    <ToolField :label="t('imageGeneration.name')">
+      <ToolInput v-model="name" :disabled="busy" />
+    </ToolField>
+    <ToolField :label="t('imageGeneration.referenceImage')">
+      <input
+        type="file"
+        accept="image/png,image/jpeg,image/webp"
+        class="glass-input mt-2"
+        :disabled="busy"
+        @change="loadReference"
+      />
+    </ToolField>
     <div
-      class="fixed inset-0 z-9998 flex items-center justify-center bg-black/50 p-4 backdrop-blur-md"
-      @click.self="!busy && emit('close')"
+      v-if="referenceImage"
+      class="flex items-center gap-3 rounded-xl border border-white/10 bg-white/5 p-3"
     >
-      <section
-        role="dialog"
-        aria-modal="true"
-        :aria-label="t('imageGeneration.title')"
-        class="flex max-h-[92dvh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-white/20 bg-slate-900/95 text-white shadow-2xl"
-      >
-        <header class="flex items-center justify-between border-b border-white/10 px-5 py-4">
-          <h3 class="font-bold">{{ t("imageGeneration.title") }}</h3>
-          <button
-            :disabled="busy"
-            :aria-label="t('imageGeneration.close')"
-            class="rounded px-3 py-1 text-white/65 disabled:opacity-30"
-            @click="emit('close')"
-          >
-            ×
-          </button>
-        </header>
-        <div class="space-y-4 overflow-y-auto p-5">
-          <ImageGenerationConfig v-if="settings" v-model="settings" :disabled="busy" />
-          <label class="flex flex-col gap-1.5 text-sm"
-            >{{ t("imageGeneration.name") }}
-            <input
-              v-model="name"
-              :disabled="busy"
-              class="rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-            />
-          </label>
-          <label class="flex flex-col gap-1.5 text-sm">
-            {{ t("imageGeneration.referenceImage") }}
-            <input
-              type="file"
-              accept="image/png,image/jpeg,image/webp"
-              :disabled="busy"
-              @change="loadReference"
-            />
-          </label>
-          <div
-            v-if="referenceImage"
-            class="flex items-center gap-3 rounded-lg border border-white/15 p-2"
-          >
-            <img
-              :src="referenceImage"
-              :alt="t('imageGeneration.referenceImage')"
-              class="h-20 w-32 rounded object-contain"
-            />
-            <button
-              :disabled="busy"
-              class="rounded border border-white/20 px-3 py-1 text-sm"
-              @click="referenceImage = null"
-            >
-              {{ t("imageGeneration.removeReference") }}
-            </button>
-          </div>
-          <label class="flex flex-col gap-1.5 text-sm"
-            >{{ t("imageGeneration.prompt") }}
-            <textarea
-              v-model="prompt"
-              rows="4"
-              :disabled="busy"
-              :placeholder="t('imageGeneration.promptHint')"
-              class="resize-y rounded-lg border border-white/20 bg-black/25 px-3 py-2"
-            />
-          </label>
-          <label class="flex items-center gap-2 text-sm"
-            ><input v-model="applyBackground" type="checkbox" :disabled="busy" />{{
-              t("imageGeneration.applyBackground")
-            }}</label
-          >
-          <p v-if="error" role="alert" class="text-sm text-red-300">{{ error }}</p>
-          <div v-if="result" class="rounded-xl border border-white/15 p-3">
-            <img
-              :src="convertFileSrc(result.path)"
-              :alt="result.scene.scene_name"
-              class="max-h-80 w-full rounded-lg object-contain"
-            />
-            <p class="mt-2 text-sm text-emerald-200">
-              {{ t("imageGeneration.saved", { name: result.scene.scene_name }) }}
-            </p>
-          </div>
-        </div>
-        <footer class="flex justify-end gap-3 border-t border-white/10 px-5 py-4">
-          <button
-            :disabled="busy || !settings"
-            class="rounded-lg border border-white/20 px-4 py-2 disabled:opacity-40"
-            @click="save"
-          >
-            {{ t("imageGeneration.saveSettings") }}
-          </button>
-          <button
-            :disabled="busy || !settings || !prompt.trim()"
-            class="rounded-lg bg-cyan-400/80 px-5 py-2 font-semibold text-slate-950 disabled:opacity-40"
-            @click="generate"
-          >
-            {{ busy ? t("imageGeneration.generating") : t("imageGeneration.generate") }}
-          </button>
-        </footer>
-      </section>
+      <img
+        :src="referenceImage"
+        :alt="t('imageGeneration.referenceImage')"
+        class="h-20 w-32 rounded-lg object-contain"
+      />
+      <ToolActionButton :disabled="busy" @click="referenceImage = null">{{
+        t("imageGeneration.removeReference")
+      }}</ToolActionButton>
     </div>
-  </Teleport>
+    <ToolField
+      :label="t(isNovelAi ? 'imageGeneration.positiveTags' : 'imageGeneration.prompt')"
+      :hint="isNovelAi ? t('imageGeneration.tagsHint') : undefined"
+    >
+      <ToolTextarea
+        v-model="prompt"
+        :rows="4"
+        :disabled="busy"
+        :placeholder="
+          t(isNovelAi ? 'imageGeneration.positiveTagsHint' : 'imageGeneration.promptHint')
+        "
+      />
+    </ToolField>
+    <ToolField
+      v-if="isNovelAi && settings?.novelai"
+      :label="t('imageGeneration.negativeTags')"
+      :hint="t('imageGeneration.negativeTagsHint')"
+    >
+      <ToolTextarea
+        v-model="settings.novelai.negative_prompt"
+        :rows="3"
+        :disabled="busy"
+        :placeholder="t('imageGeneration.negativeTagsPlaceholder')"
+      />
+    </ToolField>
+    <ToolToggleRow
+      :checked="applyBackground"
+      :label="t('imageGeneration.applyBackground')"
+      :disabled="busy"
+      variant="bare"
+      @change="applyBackground = $event"
+    />
+    <p v-if="error" role="alert" class="text-sm text-red-300">{{ error }}</p>
+    <div v-if="result" class="rounded-xl border border-white/10 bg-white/5 p-3">
+      <img
+        :src="convertFileSrc(result.path)"
+        :alt="result.scene.scene_name"
+        class="max-h-80 w-full rounded-lg object-contain"
+      />
+      <p class="mt-2 text-sm text-emerald-200">
+        {{ t("imageGeneration.saved", { name: result.scene.scene_name }) }}
+      </p>
+    </div>
+    <template #footer>
+      <div class="flex flex-wrap justify-end gap-3">
+        <ToolActionButton :disabled="busy || !settings" @click="save">{{
+          t("imageGeneration.saveSettings")
+        }}</ToolActionButton>
+        <button
+          class="btn-sm-primary rounded-full px-5 py-2.5 text-sm"
+          :disabled="busy || !settings || !prompt.trim()"
+          @click="generate"
+        >
+          {{ busy ? t("imageGeneration.generating") : t("imageGeneration.generate") }}
+        </button>
+      </div>
+    </template>
+  </BaseModal>
 </template>
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
+import { ImagePlus } from "@lucide/vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { useI18n } from "vue-i18n";
+import BaseModal from "@/components/ui/BaseModal.vue";
+import ToolField from "@/components/settings/tools/fields/ToolField.vue";
+import ToolInput from "@/components/settings/tools/fields/ToolInput.vue";
+import ToolTextarea from "@/components/settings/tools/fields/ToolTextarea.vue";
+import ToolToggleRow from "@/components/settings/tools/ToolToggleRow.vue";
+import ToolActionButton from "@/components/settings/tools/ToolActionButton.vue";
 import { getToolSettings } from "@/api/services/tool-settings";
 import {
   generateImage,
@@ -119,6 +115,7 @@ import ImageGenerationConfig from "./ImageGenerationConfig.vue";
 const emit = defineEmits<{ close: []; generated: [result: GeneratedImage] }>();
 const { t } = useI18n();
 const settings = ref<ImageGenerationSettings | null>(null);
+const isNovelAi = computed(() => settings.value?.provider === "novelai");
 const name = ref("");
 const prompt = ref("");
 const applyBackground = ref(false);
@@ -156,7 +153,7 @@ onMounted(async () => {
   }
 });
 async function save() {
-  if (!settings.value) return;
+  if (!settings.value || busy.value) return;
   error.value = "";
   busy.value = true;
   try {
@@ -179,6 +176,7 @@ async function generate() {
       name.value.trim(),
       applyBackground.value,
       referenceImage.value,
+      isNovelAi.value ? (settings.value.novelai?.negative_prompt ?? "") : null,
     );
     emit("generated", result.value);
   } catch (cause) {
