@@ -73,13 +73,11 @@ impl LlmProviderConfig {
         !self.model.is_empty()
     }
 
-    /// 判断该 provider 是否走 genai 的 OpenAI 兼容 / Gemini 多模态路径，从而
-    /// 能原生承载图片内容。kimi_code / codex 有独立 provider 实现，暂不支持
-    /// 在对话消息里直接注入图片，仍需走旁白转述。
-    pub fn is_genai_multimodal_capable(&self) -> bool {
+    /// 判断对话协议能否直接承载图片，包括 Codex 的 Responses 输入。
+    pub fn is_native_multimodal_capable(&self) -> bool {
         matches!(
             self.provider.to_lowercase().as_str(),
-            "openai" | "deepseek" | "lmstudio" | "gemini"
+            "openai" | "deepseek" | "lmstudio" | "gemini" | "codex"
         )
     }
 
@@ -289,8 +287,7 @@ pub fn native_vision_enabled(app: &AppHandle) -> bool {
     let Some(chat) = resolve_chat_provider(app) else {
         return false;
     };
-    // 对话请求本身要能承载图片内容（kimi_code / codex 是独立协议，暂不支持）
-    if !chat.is_genai_multimodal_capable() {
+    if !chat.is_native_multimodal_capable() {
         return false;
     }
     chat.support_vision || resolve_vision_provider(app).is_some_and(|v| v.id == chat.id)
