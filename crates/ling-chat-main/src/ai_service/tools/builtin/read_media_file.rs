@@ -431,10 +431,12 @@ async fn analyze_media(
 ) -> Result<String, ToolError> {
     let http = crate::ai_service::llm::factory::build_http_client(VISION_REQUEST_TIMEOUT_SECS)
         .map_err(|error| ToolError::Execution(format!("创建视觉请求客户端失败: {error}")))?;
-    let target = crate::ai_service::llm::vision::VisionTarget::from_provider(provider);
+    let target = crate::ai_service::llm::vision::VisionTarget::from_provider(
+        provider,
+        VISION_REQUEST_TIMEOUT_SECS,
+    );
 
-    // 图片走 genai（OpenAI 兼容 adapter）；视频保留手写 reqwest（genai 不支持
-    // video_url）。两条路径都收敛在 `llm::vision`，这里只负责分派。
+    // 协议分流与订阅认证统一由 llm::vision 处理。
     let result = match kind {
         MediaKind::Image(_) => {
             crate::ai_service::llm::vision::analyze_image(
