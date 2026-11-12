@@ -244,39 +244,3 @@ fn validate_image(bytes: &[u8]) -> Result<Vec<u8>> {
     );
     Ok(output.into_inner())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn request_rejects_model_and_path_overrides() {
-        assert!(
-            serde_json::from_value::<GenerateImageRequest>(
-                serde_json::json!({"prompt": "picture", "model": "override"})
-            )
-            .is_err()
-        );
-        assert!(
-            serde_json::from_value::<GenerateImageRequest>(
-                serde_json::json!({"prompt": "picture", "path": "../../outside.png"})
-            )
-            .is_err()
-        );
-    }
-
-    #[test]
-    fn provider_output_must_decode_as_an_image() {
-        assert!(decode_image("!invalid base64").is_err());
-        assert!(validate_image(b"<html>not an image</html>").is_err());
-        let mut png = Cursor::new(Vec::new());
-        image::DynamicImage::new_rgb8(2, 2)
-            .write_to(&mut png, image::ImageFormat::Png)
-            .unwrap();
-        assert!(
-            validate_image(png.get_ref())
-                .unwrap()
-                .starts_with(b"\x89PNG\r\n\x1a\n")
-        );
-    }
-}

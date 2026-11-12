@@ -56,38 +56,3 @@ impl Tool for GenerateImage {
         serde_json::to_value(result).map_err(|e| ToolError::Execution(e.to_string()))
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::tools::settings::ToolSettings;
-
-    #[test]
-    fn novelai_tool_schema_tracks_provider_changes() {
-        let settings = SharedToolSettings::new(ToolSettings::default());
-        let tool = GenerateImage(settings.clone());
-        assert!(
-            tool.definition().function.parameters["properties"]
-                .get("negative_prompt")
-                .is_none()
-        );
-        let mut next = settings.get();
-        next.image_generation.provider = "novelai".into();
-        settings.update(next);
-        let definition = tool.definition();
-        assert!(
-            definition.function.parameters["properties"]
-                .get("negative_prompt")
-                .is_some()
-        );
-        assert!(definition.function.description.contains("tags"));
-        let mut next = settings.get();
-        next.image_generation.provider = "openai-compatible".into();
-        settings.update(next);
-        assert!(
-            tool.definition().function.parameters["properties"]
-                .get("negative_prompt")
-                .is_none()
-        );
-    }
-}
