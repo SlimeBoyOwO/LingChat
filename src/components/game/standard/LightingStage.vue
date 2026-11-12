@@ -51,7 +51,6 @@ const canvasKey = ref(0);
 const enabled = ref(false);
 
 const lighting = computed(() => gameStore.currentScene?.lighting ?? null);
-const hasLights = computed(() => (lighting.value?.lights?.length ?? 0) > 0);
 
 /**
  * 多角色同台时只给场景打光。
@@ -60,6 +59,38 @@ const hasLights = computed(() => (lighting.value?.lights?.length ?? 0) > 0);
  * 保持原图色温，看着像「光影坏了」。单角色时才接管立绘。
  */
 const singleRole = computed(() => gameStore.presentRolesList.length === 1);
+
+/** 台上那个角色；多角色同台时为 null（此时不吃专属光影） */
+const stageRoleId = computed(() =>
+  singleRole.value ? (gameStore.presentRolesList[0]?.roleId ?? null) : null,
+);
+
+/**
+ * 实际生效的那套光影。
+ *
+ * 单角色对话时优先用工作台给这个角色配的专属那套，没配就回落场景默认；
+ * 多角色同台一律用场景默认（见 singleRole）。旧的 CSS 滤镜与叠加层字段是场景级的，
+ * 所以整份展开后只覆盖 2.5D 的五组。
+ */
+const activeSet = computed(() => {
+  const l = lighting.value;
+  if (!l) return null;
+  const set = stageRoleId.value === null ? null : l.role_sets?.[String(stageRoleId.value)];
+  if (!set || !Array.isArray(set.lights) || set.lights.length === 0) return l;
+  return {
+    ...l,
+    lights: set.lights,
+    global: set.global,
+    compositing: set.compositing,
+    material: set.material,
+    camera: set.camera,
+  };
+});
+
+/** 当前吃的是不是某个角色的专属光影，只用于日志与状态行 */
+const usesRoleSet = computed(() => !!activeSet.value && activeSet.value !== lighting.value);
+
+const hasLights = computed(() => (activeSet.value?.lights?.length ?? 0) > 0);
 
 /**
  * 旧的 overlay 径向渐变异色层。字段一直在 LightingParams 里，只是 2.5D 路径
@@ -175,11 +206,11 @@ function draw(): void {
   ];
 
   renderer.render({
-    lights: lighting.value?.lights ?? [],
-    global: lighting.value?.global ?? null,
-    compositing: lighting.value?.compositing ?? null,
-    material: lighting.value?.material ?? null,
-    camera: lighting.value?.camera ?? null,
+    lights: activeSet.value?.lights ?? [],
+    global: activeSet.value?.global ?? null,
+    compositing: activeSet.value?.compositing ?? null,
+    material: activeSet.value?.material ?? null,
+    camera: activeSet.value?.camera ?? null,
     overlay: overlayParams.value,
     stage: { width, height },
     backgroundRect: bgRect,
@@ -331,7 +362,10 @@ async function startStage(): Promise<void> {
   const stage = syncCanvasSize();
   console.info(
     `[lighting] WebGL 生效：场景「${gameStore.currentScene?.scene_name ?? "?"}」` +
-      `${lighting.value?.lights?.length ?? 0} 盏灯 · ${stage.width}x${stage.height} · ` +
+      `${activeSet.value?.lights?.length ?? 0} 盏灯 · ${stage.width}x${stage.height} · ` +
+      (usesRoleSet.value
+        ? `角色「${gameStore.presentRolesList[0]?.roleName ?? stageRoleId.value}」专属光影 · `
+        : "场景默认光影 · ") +
       (singleRole.value
         ? `立绘${takeover.active.value ? "已接管" : "未接管（仍走 DOM）"}`
         : "多角色同台，只给场景打光"),
@@ -362,6 +396,16 @@ watch(singleRole, () => {
   if (renderer) void takeover.sync();
 });
 
+// 换人 / 换那套光影时留一行，方便回答「为什么这个角色的光和上一个不一样」
+watch([stageRoleId, usesRoleSet], () => {
+  if (!renderer) return;
+  console.info(
+    usesRoleSet.value
+      ? `[lighting] 改用角色「${gameStore.presentRolesList[0]?.roleName ?? stageRoleId.value}」的专属光影`
+      : "[lighting] 改用场景默认光影",
+  );
+});
+
 watch(
   hasLights,
   async (has) => {
@@ -380,11 +424,11 @@ watch(
   { immediate: true },
 );
 
-// 灯位/强度变化时重绘；不需要 rAF，场景参数不是逐帧动画。
-// 舞台已经退回 CSS 时（renderer 为 null）改参数要能把它重新拉起来，
+// 灯位/强度变化、或切到另一个角色（专属光影换了那套）时重绘；不需要 rAF，
+// 场景参数不是逐帧动画。舞台已经退回 CSS 时（renderer 为 null）要能把它重新拉起来，
 // 否则「先失败一次、之后怎么调都没反应」。
 watch(
-  lighting,
+  activeSet,
   () => {
     if (renderer) draw();
     else void start();
