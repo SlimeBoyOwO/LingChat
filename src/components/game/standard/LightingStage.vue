@@ -134,7 +134,8 @@ let acquired = false;
 let loadToken = 0;
 /** start() 会被背景到位、参数变化等多条路触发，用旗标挡住并发重入 */
 let starting = false;
-let retryTimers: number[] = [];
+/** 接管补捞心跳的定时器 id，0 = 没在跑 */
+let heartbeat = 0;
 
 /**
  * 按设备像素比取画布尺寸。
@@ -188,34 +189,31 @@ function draw(): void {
   });
 }
 
-function clearRetries(): void {
-  for (const t of retryTimers) window.clearTimeout(t);
-  retryTimers = [];
+function stopTakeoverHeartbeat(): void {
+  if (heartbeat) window.clearInterval(heartbeat);
+  heartbeat = 0;
 }
 
 /**
- * 接管首次失败多半是暂时的：立绘还在解码、或盒子还没布局（clientWidth 为 0）。
- * 失败后 ticker 不会启动，没人再补 —— 整场对话立绘都不吃光。这里按退避补三次。
+ * 接管补捞心跳。
+ *
+ * 有界重试会超窗：真实链路里立绘要 invoke 取路径、再解码 2304x3072 的大图，
+ * 慢机器上两秒打不住，超窗之后就没人再补 —— 切角色 / 说话 / 换表情任何一次
+ * 错过都会变成长期不吃光。舞台活着期间每 600ms 补一次 sync，接管上就空转，
+ * 代价是一次 querySelectorAll，换来自愈。
  */
-function retryTakeover(): void {
-  clearRetries();
-  let delay = 200;
-  for (let i = 0; i < 3; i++) {
-    const wait = delay;
-    retryTimers.push(
-      window.setTimeout(() => {
-        if (!renderer || takeover.active.value) return;
-        void takeover.sync();
-      }, wait),
-    );
-    delay *= 3;
-  }
+function startTakeoverHeartbeat(): void {
+  if (heartbeat) return;
+  heartbeat = window.setInterval(() => {
+    if (!renderer || takeover.active.value) return;
+    void takeover.sync();
+  }, 600);
 }
 
 function teardown(): void {
   // 顺序要紧：先把立绘还给 DOM，再拆渲染器 —— 否则中途失败时人物会消失
   takeover.release();
-  clearRetries();
+  stopTakeoverHeartbeat();
   if (acquired) {
     releaseLightingStage();
     acquired = false;
@@ -325,9 +323,9 @@ async function startStage(): Promise<void> {
     return;
   }
 
-  // 背景就绪后再试接管立绘；失败只是「人物不吃光」，不影响背景
+  // 背景就绪后再试接管立绘；没接上就靠心跳一直补捞
   await takeover.sync();
-  if (!takeover.active.value) retryTakeover();
+  startTakeoverHeartbeat();
 
   // 一行说清当前状态，方便在控制台一眼判断卡在哪一环
   const stage = syncCanvasSize();

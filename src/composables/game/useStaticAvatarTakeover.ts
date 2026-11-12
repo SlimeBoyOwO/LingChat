@@ -125,36 +125,9 @@ export function useStaticAvatarTakeover(
   let loadToken = 0;
   let loadedSrc = "";
   let lastRectKey = "";
-  let retryTimers: number[] = [];
 
   function status(next: TakeoverStatus, detail?: string) {
     options.onStatus?.(next, detail);
-  }
-
-  function clearRetries(): void {
-    for (const t of retryTimers) window.clearTimeout(t);
-    retryTimers = [];
-  }
-
-  /**
-   * 目标立绘还没解码 / 还没布局时按退避补几次。
-   *
-   * 切角色那一帧新容器已经挂上、图还在解码，sync 只能空手而归；不补的话
-   * 之后没有任何东西会再触发接管 —— 新角色整场都不吃光。
-   */
-  function scheduleRetry(): void {
-    clearRetries();
-    let delay = 150;
-    for (let i = 0; i < 3; i++) {
-      const wait = delay;
-      retryTimers.push(
-        window.setTimeout(() => {
-          if (active.value || !options.enabled()) return;
-          void sync();
-        }, wait),
-      );
-      delay *= 3;
-    }
   }
 
   function findContainer(): HTMLElement | null {
@@ -260,7 +233,6 @@ export function useStaticAvatarTakeover(
       window.clearInterval(timer);
       timer = 0;
     }
-    clearRetries();
     loadToken++;
     restore();
     container = null;
@@ -317,7 +289,12 @@ export function useStaticAvatarTakeover(
       }
 
       const next = measure(img, image.value ?? undefined);
-      if (!next) return;
+      if (!next) {
+        // 量不到矩形 = 图被 display:none（Live2D 模型就绪后藏掉占位立绘）或画布没尺寸。
+        // 继续画就是给模型盖一张打光的静态鬼影，立刻下线等心跳重判
+        release();
+        return;
+      }
       const key = rectKey(next);
       if (key === lastRectKey && !changed(rect.value, next)) return;
       lastRectKey = key;
@@ -357,10 +334,9 @@ export function useStaticAvatarTakeover(
 
     const img = pickVisibleImage(el);
     if (!img) {
-      // 新角色的图还在解码：指向旧容器的绑定先下线，解码完由重试补接管
+      // 新角色的图还在解码：指向旧容器的绑定先下线，补捞由调用方心跳负责
       if (active.value && container !== el) release();
       status("inactive", "立绘图还没解码完");
-      scheduleRetry();
       return;
     }
 
@@ -382,7 +358,6 @@ export function useStaticAvatarTakeover(
     if (!next) {
       if (active.value && container !== el) release();
       status("inactive", "立绘盒子尺寸为 0（还没布局）");
-      scheduleRetry();
       return;
     }
 
@@ -398,7 +373,6 @@ export function useStaticAvatarTakeover(
     lastRectKey = rectKey(next);
     ensureHidden();
     active.value = true;
-    clearRetries();
     status(
       "active",
       `${Math.round(next[2])}x${Math.round(next[3])} @ ${Math.round(next[0])},${Math.round(next[1])}`,
