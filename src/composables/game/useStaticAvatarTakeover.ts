@@ -13,6 +13,8 @@
  *     隐藏必须反复补：`ImageAcrossFade` 换图是「销毁旧 img、按 v-if 新建 img」，
  *     接管那一刻的快照下一帧就全废了。
  *  3. 任何一步失败都保持 DOM 原样：宁可没光，也不能把立绘弄没。
+ *  4. 绑定必须跟着角色上下场走：容器被 Vue 卸载（切角色 / 角色退场）时立刻释放。
+ *     画布上那份纹理没人管下线的话，上一任角色就会「钉」在场景上不走。
  */
 
 import { onBeforeUnmount, ref, shallowRef, type Ref, type ShallowRef } from "vue";
@@ -123,9 +125,36 @@ export function useStaticAvatarTakeover(
   let loadToken = 0;
   let loadedSrc = "";
   let lastRectKey = "";
+  let retryTimers: number[] = [];
 
   function status(next: TakeoverStatus, detail?: string) {
     options.onStatus?.(next, detail);
+  }
+
+  function clearRetries(): void {
+    for (const t of retryTimers) window.clearTimeout(t);
+    retryTimers = [];
+  }
+
+  /**
+   * 目标立绘还没解码 / 还没布局时按退避补几次。
+   *
+   * 切角色那一帧新容器已经挂上、图还在解码，sync 只能空手而归；不补的话
+   * 之后没有任何东西会再触发接管 —— 新角色整场都不吃光。
+   */
+  function scheduleRetry(): void {
+    clearRetries();
+    let delay = 150;
+    for (let i = 0; i < 3; i++) {
+      const wait = delay;
+      retryTimers.push(
+        window.setTimeout(() => {
+          if (active.value || !options.enabled()) return;
+          void sync();
+        }, wait),
+      );
+      delay *= 3;
+    }
   }
 
   function findContainer(): HTMLElement | null {
@@ -231,6 +260,7 @@ export function useStaticAvatarTakeover(
       window.clearInterval(timer);
       timer = 0;
     }
+    clearRetries();
     loadToken++;
     restore();
     container = null;
@@ -270,6 +300,11 @@ export function useStaticAvatarTakeover(
     if (timer) return;
     timer = window.setInterval(() => {
       if (!active.value || !container) return;
+      // 容器被卸了（切角色 / 角色退场）：旧纹理立刻下线，别钉在场景上
+      if (!container.isConnected) {
+        release();
+        return;
+      }
 
       // 先补藏再量：新建的 img 晚一帧藏就会盖在画布上闪一下原图
       ensureHidden();
@@ -297,6 +332,10 @@ export function useStaticAvatarTakeover(
       return;
     }
 
+    // 绑定的容器被 Vue 卸了（切角色 / 角色退场）：先下线再按当前角色重找，
+    // 否则画布会拿着已卸载容器的旧纹理旧矩形，把上一任角色钉在场景上
+    if (active.value && container && !container.isConnected) release();
+
     const el = findContainer();
     if (!el) {
       if (active.value) release();
@@ -318,7 +357,10 @@ export function useStaticAvatarTakeover(
 
     const img = pickVisibleImage(el);
     if (!img) {
+      // 新角色的图还在解码：指向旧容器的绑定先下线，解码完由重试补接管
+      if (active.value && container !== el) release();
       status("inactive", "立绘图还没解码完");
+      scheduleRetry();
       return;
     }
 
@@ -338,7 +380,9 @@ export function useStaticAvatarTakeover(
 
     const next = measure(img, loaded);
     if (!next) {
+      if (active.value && container !== el) release();
       status("inactive", "立绘盒子尺寸为 0（还没布局）");
+      scheduleRetry();
       return;
     }
 
@@ -354,6 +398,7 @@ export function useStaticAvatarTakeover(
     lastRectKey = rectKey(next);
     ensureHidden();
     active.value = true;
+    clearRetries();
     status(
       "active",
       `${Math.round(next[2])}x${Math.round(next[3])} @ ${Math.round(next[0])},${Math.round(next[1])}`,

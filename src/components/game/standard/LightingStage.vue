@@ -54,6 +54,14 @@ const lighting = computed(() => gameStore.currentScene?.lighting ?? null);
 const hasLights = computed(() => (lighting.value?.lights?.length ?? 0) > 0);
 
 /**
+ * 多角色同台时只给场景打光。
+ *
+ * WebGL 只有一个角色纹理槽，多角色受光先不做；硬挑一个接管，另一个角色就会
+ * 保持原图色温，看着像「光影坏了」。单角色时才接管立绘。
+ */
+const singleRole = computed(() => gameStore.presentRolesList.length === 1);
+
+/**
  * 旧的 overlay 径向渐变异色层。字段一直在 LightingParams 里，只是 2.5D 路径
  * 之前没消费它 —— 不接的话，开了工作台的场景会丢掉原来那层双色光晕。
  */
@@ -85,7 +93,7 @@ const NORMAL_MAX_DIM = 768;
 const DEPTH_MAX_DIM = 512;
 
 const takeover = useStaticAvatarTakeover({
-  enabled: () => enabled.value && hasLights.value,
+  enabled: () => enabled.value && hasLights.value && singleRole.value,
   canvas: () => canvasRef.value,
   roleId: () => gameStore.currentInteractRoleId ?? null,
   onStatus: (status, detail) => {
@@ -326,7 +334,9 @@ async function startStage(): Promise<void> {
   console.info(
     `[lighting] WebGL 生效：场景「${gameStore.currentScene?.scene_name ?? "?"}」` +
       `${lighting.value?.lights?.length ?? 0} 盏灯 · ${stage.width}x${stage.height} · ` +
-      `立绘${takeover.active.value ? "已接管" : "未接管（仍走 DOM）"}`,
+      (singleRole.value
+        ? `立绘${takeover.active.value ? "已接管" : "未接管（仍走 DOM）"}`
+        : "多角色同台，只给场景打光"),
   );
   draw();
 }
@@ -348,6 +358,11 @@ watch(
     }
   },
 );
+
+// 角色上下场：多角色只打场景，回到单角色再恢复接管
+watch(singleRole, () => {
+  if (renderer) void takeover.sync();
+});
 
 watch(
   hasLights,
