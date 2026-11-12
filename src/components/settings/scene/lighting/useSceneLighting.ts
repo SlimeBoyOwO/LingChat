@@ -19,10 +19,78 @@ import {
   type LightingPreset,
 } from "./types";
 import { BUILTIN_PRESETS } from "./presetsData";
+// 灯数上限与渲染打包共用同一个常量，否则存档与预览的截断口径会各走一套
+import { MAX_LIGHTS } from "@/render/lighting/lights";
 
 const LS_OVERRIDE_KEY = "lingchat.lighting.builtinOverrides";
 const LS_FAV_KEY = "lingchat.lighting.favoritePresets";
 const LS_CUSTOM_KEY = "lingchat.lighting.customPresets";
+
+// ---- 导入校验的量程表 ----
+// 外部 JSON 一律不可信：缺字段会让舞台里的 l.x.toFixed() 抛错，类型错的字段会让
+// Rust 侧反序列化失败并静默丢弃整组 lights（用户看到的是「保存了但不生效」）。
+//
+// 这几个表放在模块级而不是 composable 里：`loadCustomPresets()` 在 composable 体内
+// 就要执行，而它依赖 `sanitizePreset` → 依赖这些常量，同作用域后置声明会撞 TDZ。
+
+const LIGHT_TYPES: ReadonlyArray<LightSource["type"]> = ["point", "directional", "spot", "ambient"];
+
+const PRESET_CATS: ReadonlyArray<string> = ["daily", "atmosphere", "drama", "dark"];
+
+/**
+ * 量程的唯一口径：UI 滑块范围（workbench 里的 ParamSlider）与 `api/services/scene.ts`
+ * 的字段注释。两者取并集，且必须容纳 `DEFAULT_NEW_LIGHT` 与 `presetsData` 的校准值 ——
+ * 校验表比它们紧，导出再导入就会把校准预设悄悄改掉（方位角 335 被夹成 180 那类）。
+ */
+const LIGHT_LIMITS: Record<string, [number, number]> = {
+  intensity: [0, 3],
+  x: [0, 1],
+  y: [0, 1],
+  z: [0, 1.5],
+  radius: [0, 2.2],
+  softness: [0, 1],
+  azimuth: [0, 360],
+  elevation: [-10, 90],
+  cone: [0, 180],
+  penumbra: [0, 1],
+};
+
+const GROUP_LIMITS: Record<string, Record<string, [number, number]>> = {
+  global: {
+    master: [0, 2],
+    ambient_blend: [0, 1],
+    albedo_protect: [0, 1],
+    soft_knee: [0, 1],
+    lift: [0, 1],
+    mono: [0, 1],
+    saturation: [0, 2],
+    contrast: [0, 2],
+    tint_hue: [-180, 180],
+    tint_amount: [0, 1],
+    char_exposure: [0, 2],
+    bg_exposure: [0, 2],
+  },
+  compositing: {
+    light_wrap: [0, 1.5],
+    rim_width: [0, 40],
+    bloom_int: [0, 2.5],
+    bloom_thresh: [0.2, 1],
+  },
+  material: {
+    normal_strength: [0, 2],
+    cel_thresh: [0, 1],
+    cel_softness: [0, 0.5],
+    spec_int: [0, 1.5],
+    spec_gloss: [1, 128],
+    self_shadow_int: [0, 1],
+  },
+  camera: {
+    zoom: [0.5, 2.5],
+    focus_y: [-0.5, 1],
+    // 渲染器按 dof / 6 归一化模糊半径，校准预设最高用到 4.5
+    dof: [0, 6],
+  },
+};
 
 interface LightingSnapshot {
   lights: LightSource[];
@@ -203,15 +271,36 @@ export function useSceneLighting() {
       const list = JSON.parse(raw);
       if (!Array.isArray(list)) return;
       list.forEach((p) => {
-        if (!p || typeof p !== "object" || !p.id) return;
-        if (presets.value.some((x) => x.id === p.id)) return;
-        presets.value.push({ ...p, builtin: false });
+        // localStorage 和外部 JSON 一样不可信：手改过或旧版本留下的坏数据不洗就进状态，
+        // 等于从旁边绕过了整套导入校验（灯数超限、字段类型错）
+        const clean = sanitizePreset(p);
+        if (!clean) return;
+        if (presets.value.some((x) => x.id === clean.id)) return;
+        presets.value.push(clean);
       });
     } catch {
       // 存档坏了就当没有自定义预设
     }
   }
   loadCustomPresets();
+
+  /** 按 id 合并写入自定义预设存档。写不进 localStorage 也不影响本会话可用。 */
+  function persistCustomPresets(incoming: LightingPreset[]) {
+    if (!incoming.length) return;
+    try {
+      const raw = localStorage.getItem(LS_CUSTOM_KEY);
+      const parsed = raw ? JSON.parse(raw) : [];
+      const merged: unknown[] = Array.isArray(parsed) ? parsed : [];
+      for (const p of incoming) {
+        const i = merged.findIndex((x) => x && (x as LightingPreset).id === p.id);
+        if (i >= 0) merged[i] = p;
+        else merged.push(p);
+      }
+      localStorage.setItem(LS_CUSTOM_KEY, JSON.stringify(merged));
+    } catch {
+      // 存不进就算了
+    }
+  }
 
   /** 把当前参数快照存成新预设并切过去。 */
   function createCustomPreset(name: string): LightingPreset | null {
@@ -233,16 +322,7 @@ export function useSceneLighting() {
     };
 
     presets.value.push(preset);
-    try {
-      const raw = localStorage.getItem(LS_CUSTOM_KEY);
-      const list = raw ? JSON.parse(raw) : [];
-      localStorage.setItem(
-        LS_CUSTOM_KEY,
-        JSON.stringify(Array.isArray(list) ? [...list, preset] : [preset]),
-      );
-    } catch {
-      // 存不进 localStorage 也让它在本会话里可用
-    }
+    persistCustomPresets([preset]);
     applyPreset(preset.id);
     return preset;
   }
@@ -275,7 +355,7 @@ export function useSceneLighting() {
     globalParams.value = { ...p.global };
     compositingParams.value = { ...p.compositing };
     materialParams.value = { ...p.material };
-    lights.value = JSON.parse(JSON.stringify(p.lights));
+    lights.value = normalizeLights(JSON.parse(JSON.stringify(p.lights)));
 
     selectedLightIndex.value = defaultSelectedIndex();
     isDirty.value = true;
@@ -293,11 +373,15 @@ export function useSceneLighting() {
     };
     Object.assign(cur, patch);
     cur._overridden = true;
+    return persistOverridePatch(cur.id, patch);
+  }
 
+  /** 内置预设的改动只存 patch，与 `loadOverrides` 的 `Object.assign` 口径一致。 */
+  function persistOverridePatch(id: string, patch: Partial<LightingPreset>): boolean {
     try {
       const stored = localStorage.getItem(LS_OVERRIDE_KEY);
       const overrides = stored ? JSON.parse(stored) : {};
-      overrides[cur.id] = patch;
+      overrides[id] = patch;
       localStorage.setItem(LS_OVERRIDE_KEY, JSON.stringify(overrides));
       return true;
     } catch {
@@ -332,12 +416,18 @@ export function useSceneLighting() {
     // 零灯是非法状态：场景会走 WebGL 路径却没有任何光源，画面被压成一片黑。
     // 这类数据只可能来自旧版本或导入了坏的 JSON，一律回落到 neutral 预设。
     const incoming = initial?.lights;
-    if (Array.isArray(incoming) && incoming.length > 0) {
-      lights.value = JSON.parse(JSON.stringify(incoming)).slice(0, 8);
-      if (initial?.global) globalParams.value = { ...initial.global };
-      if (initial?.compositing) compositingParams.value = { ...initial.compositing };
-      if (initial?.material) materialParams.value = { ...initial.material };
-      if (initial?.camera) cameraParams.value = { ...initial.camera };
+    const cleaned = Array.isArray(incoming)
+      ? normalizeLights(JSON.parse(JSON.stringify(incoming)))
+      : [];
+    if (cleaned.length > 0) {
+      lights.value = cleaned;
+      // 缺某个可选分组时回落默认值。写成 `if (initial?.global)` 的话，缺组的场景会沿用
+      // 上一个场景残留的参数 —— 面板是复用的，状态不会自己清，看着就像「串场景」。
+      // 这里只补缺、不夹数值：存档里的值可能来自校准预设，夹一次就变脸。
+      globalParams.value = { ...DEFAULT_GLOBAL, ...initial?.global };
+      compositingParams.value = { ...DEFAULT_COMPOSITING, ...initial?.compositing };
+      materialParams.value = { ...DEFAULT_MATERIAL, ...initial?.material };
+      cameraParams.value = { ...DEFAULT_CAMERA, ...initial?.camera };
       selectedLightIndex.value = defaultSelectedIndex();
     } else {
       // Default to neutral preset
@@ -369,7 +459,7 @@ export function useSceneLighting() {
   // Light management
   /** 新增一盏灯；`pos` 用于「点画布放置光源」时直接落在点击位置。 */
   function addLight(type: LightType, pos?: { x: number; y: number }): boolean {
-    if (lights.value.length >= 8) return false;
+    if (lights.value.length >= MAX_LIGHTS) return false;
     const count = lights.value.length + 1;
     const nameMap: Record<LightType, string> = {
       point: `点光源 #${count}`,
@@ -379,7 +469,7 @@ export function useSceneLighting() {
     };
     const template = DEFAULT_NEW_LIGHT[type];
     const newL: LightSource = {
-      id: `light-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      id: newLightId(lights.value.length),
       name: nameMap[type],
       ...template,
     };
@@ -450,7 +540,9 @@ export function useSceneLighting() {
       overlay_radius: legacyBase?.overlay_radius ?? 50,
       overlay_opacity: legacyBase?.overlay_opacity ?? 0.5,
       overlay_target: legacyBase?.overlay_target || "both",
-      lights: JSON.parse(JSON.stringify(lights.value)),
+      // 保存边界也过一遍闸门：渲染打包会截断到 MAX_LIGHTS，存档不截断就会留下
+      // 「在存档里、却永远不参与预览」的幽灵灯
+      lights: normalizeLights(JSON.parse(JSON.stringify(lights.value))),
       global: { ...globalParams.value },
       compositing: { ...compositingParams.value },
       material: { ...materialParams.value },
@@ -472,64 +564,14 @@ export function useSceneLighting() {
     return JSON.stringify(data, null, 2);
   }
 
-  // ---- 导入校验 ----
-  // 外部 JSON 一律不可信：缺字段会让舞台里的 l.x.toFixed() 抛错，类型错的字段会让
-  // Rust 侧反序列化失败并静默丢弃整组 lights（用户看到的是「保存了但不生效」）。
-
-  const LIGHT_TYPES: ReadonlyArray<LightSource["type"]> = [
-    "point",
-    "directional",
-    "spot",
-    "ambient",
-  ];
-
-  const LIGHT_LIMITS: Record<string, [number, number]> = {
-    intensity: [0, 3],
-    x: [0, 1],
-    y: [0, 1],
-    z: [0, 1],
-    radius: [0, 1.5],
-    softness: [0, 1],
-    azimuth: [-180, 180],
-    elevation: [0, 90],
-    cone: [0, 180],
-    penumbra: [0, 1],
-  };
-
-  const GROUP_LIMITS: Record<string, Record<string, [number, number]>> = {
-    global: {
-      master: [0, 2],
-      ambient_blend: [0, 1],
-      albedo_protect: [0, 1],
-      soft_knee: [0, 1],
-      lift: [0, 1],
-      mono: [0, 1],
-    },
-    compositing: {
-      light_wrap: [0, 1.5],
-      rim_width: [0, 40],
-      bloom_int: [0, 2.5],
-      bloom_thresh: [0.2, 1],
-    },
-    material: {
-      normal_strength: [0, 2],
-      cel_thresh: [0, 1],
-      cel_softness: [0, 0.5],
-      spec_int: [0, 1],
-      spec_gloss: [1, 128],
-      self_shadow_int: [0, 1],
-    },
-    camera: {
-      zoom: [0.5, 2.5],
-      focus_y: [-0.5, 1],
-      dof: [0, 1],
-    },
-  };
-
   function clampNum(value: unknown, fallback: number, lo: number, hi: number): number {
     const n = typeof value === "number" ? value : Number(value);
     if (!Number.isFinite(n)) return fallback;
     return Math.min(hi, Math.max(lo, n));
+  }
+
+  function newLightId(index: number): string {
+    return `light-${Date.now().toString(36)}-${index}-${Math.random().toString(36).slice(2, 6)}`;
   }
 
   /** 洗一盏灯：缺字段按灯型默认值补齐，数值 clamp，未知灯型直接丢。 */
@@ -541,9 +583,8 @@ export function useSceneLighting() {
 
     const base = DEFAULT_NEW_LIGHT[type] as unknown as Record<string, unknown>;
     const out: Record<string, unknown> = {
-      id: `light-import-${Date.now().toString(36)}-${index}-${Math.random()
-        .toString(36)
-        .slice(2, 6)}`,
+      // 已有合法 id 就留着：拖拽、选中、撤销都按 id 认灯，每次导入都换 id 会断掉这些关联
+      id: typeof o.id === "string" && o.id.trim() ? o.id.trim() : newLightId(index),
       name: typeof o.name === "string" && o.name.trim() ? o.name.trim() : `光源 #${index + 1}`,
       type,
       enabled: o.enabled !== false,
@@ -555,6 +596,27 @@ export function useSceneLighting() {
       out[key] = clampNum(o[key], base[key] as number, lo, hi);
     }
     return out as unknown as LightSource;
+  }
+
+  /**
+   * 灯数与结构的统一闸门：初始化、预设应用、JSON 导入、最终保存四个边界都过一遍。
+   *
+   * 只管结构与数量，不碰数值 —— 校准预设的数值一旦被夹，导出再导入就变了脸。
+   * 数值合法性是 `normalizeLight` 的活，只在数据不可信（外部 JSON / localStorage）时走。
+   */
+  function normalizeLights(list: LightSource[]): LightSource[] {
+    const out: LightSource[] = [];
+    const seen = new Set<string>();
+    for (const l of list) {
+      if (!l || typeof l !== "object") continue;
+      if (!LIGHT_TYPES.includes(l.type)) continue;
+      let id = typeof l.id === "string" && l.id.trim() ? l.id.trim() : "";
+      if (!id || seen.has(id)) id = newLightId(out.length);
+      seen.add(id);
+      out.push({ ...l, id });
+      if (out.length >= MAX_LIGHTS) break;
+    }
+    return out;
   }
 
   /** 同 normalizeLight，用于 global / compositing / material / camera。 */
@@ -580,10 +642,8 @@ export function useSceneLighting() {
   }
 
   // ---- JSON 导入（先校验、后落地）----
-  // 外部 JSON 一律不可信。原则：**校验全部通过前不碰现有状态**，
+  // 外部 JSON 一律不可信。原则：校验全部通过前不碰现有状态，
   // 否则一份坏数据会把面板改成半新半旧，用户只能重开面板。
-
-  const PRESET_CATS: ReadonlyArray<string> = ["daily", "atmosphere", "drama", "dark"];
 
   /** 洗一条预设：id/name 必须存在，灯光至少一盏合法，其余分组按默认值补齐。 */
   function sanitizePreset(raw: unknown): LightingPreset | null {
@@ -594,10 +654,11 @@ export function useSceneLighting() {
     if (!id || !name) return null;
 
     const lightsRaw = Array.isArray(o.lights) ? o.lights : [];
-    const cleaned = lightsRaw
-      .map((item, i) => normalizeLight(item, i))
-      .filter((l): l is LightSource => l !== null)
-      .slice(0, 8);
+    const cleaned = normalizeLights(
+      lightsRaw
+        .map((item, i) => normalizeLight(item, i))
+        .filter((l): l is LightSource => l !== null),
+    );
     if (cleaned.length === 0) return null;
 
     const cam = normalizeGroup(o.camera, DEFAULT_CAMERA, GROUP_LIMITS.camera);
@@ -646,11 +707,27 @@ export function useSceneLighting() {
       if (!cleaned.length) {
         return { ok: false, message: "预设包里没有一条合法预设（缺 id/name 或灯光全非法）" };
       }
+      // 导入的预设包要落盘，否则刷新即丢。撞上内置 id 的走 builtinOverrides
+      // （与「覆盖当前预设」同一条路），新 id 走自定义存档。
+      const customs: LightingPreset[] = [];
       cleaned.forEach((p) => {
         const target = presets.value.find((x) => x.id === p.id);
-        if (target) Object.assign(target, p);
+        // 保留 builtin 标记：洗过的预设一律带 builtin:false，覆盖上去会让内置预设变得可删
+        if (target) Object.assign(target, p, { builtin: target.builtin });
         else presets.value.push(p);
+        if (BUILTIN_PRESETS.some((b) => b.id === p.id)) {
+          persistOverridePatch(p.id, {
+            camera: p.camera,
+            global: p.global,
+            compositing: p.compositing,
+            material: p.material,
+            lights: p.lights,
+          });
+        } else {
+          customs.push(p);
+        }
       });
+      persistCustomPresets(customs);
       applyPreset(cleaned[0].id);
       const tail = skipped ? `，跳过 ${skipped} 条非法` : "";
       return { ok: true, message: `已导入 ${cleaned.length} 条预设${tail}` };
@@ -670,12 +747,14 @@ export function useSceneLighting() {
 
     let nextLights: LightSource[] | null = null;
     let droppedLights = 0;
+    let cappedLights = 0;
     if (Array.isArray(obj.lights)) {
-      const normalized = obj.lights
+      const valid = obj.lights
         .map((item, i) => normalizeLight(item, i))
-        .filter((l): l is LightSource => l !== null)
-        .slice(0, 8);
-      droppedLights = Math.max(0, obj.lights.length - normalized.length);
+        .filter((l): l is LightSource => l !== null);
+      const normalized = normalizeLights(valid);
+      droppedLights = obj.lights.length - valid.length;
+      cappedLights = valid.length - normalized.length;
       if (normalized.length === 0) {
         // 一盏都不合法就整体拒绝，否则会留下「2.5D 路径 + 零盏灯」的空白场景
         return { ok: false, message: "灯光数据全部非法，已拒绝导入" };
@@ -700,6 +779,7 @@ export function useSceneLighting() {
     const parts = ["已应用配置"];
     if (nextLights) parts.push(`${nextLights.length} 盏灯`);
     if (droppedLights) parts.push(`跳过 ${droppedLights} 盏非法灯`);
+    if (cappedLights) parts.push(`超出 ${MAX_LIGHTS} 盏上限，截断 ${cappedLights} 盏`);
     return { ok: true, message: parts.join(" · ") };
   }
 
