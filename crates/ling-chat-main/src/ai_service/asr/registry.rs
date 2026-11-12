@@ -45,12 +45,11 @@ pub fn list_provider_info() -> Vec<ProviderInfo> {
             regions: Vec::new(),
         },
         // 本地离线 sherpa-onnx ASR：零配置，模型从共享的 sherpa 模型下载页装好后即用。
-        // 仅供微调数据集自动标注；不参与设置页里的聊天时的实时语音识别，故不要求
-        // ASR 会话初始化。
+        // 不参与聊天实时语音识别，故不要求 ASR 会话初始化。
         ProviderInfo {
             id: SherpaAsrProvider::ID,
             display_name: SherpaAsrProvider::DISPLAY,
-            description: "本地 sherpa-onnx 离线识别（SenseVoice，用于自动标注）",
+            description: "本地 sherpa-onnx 离线识别（SenseVoice）",
             supports_streaming: false,
             config_fields: Vec::new(),
             regions: Vec::new(),
