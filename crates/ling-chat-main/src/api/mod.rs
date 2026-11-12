@@ -12,6 +12,7 @@ pub mod codex;
 pub mod font;
 pub mod game;
 pub mod hotword;
+pub mod image_generation;
 pub mod live2d;
 pub mod locale;
 pub mod memory;

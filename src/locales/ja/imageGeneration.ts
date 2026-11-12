@@ -1,0 +1,32 @@
+export default {
+  open: "背景を生成",
+  title: "画像を生成",
+  provider: "画像プロバイダー",
+  baseUrl: "API ベース URL",
+  apiKey: "API キー（ローカルでは省略可）",
+  model: "画像モデル",
+  autoModel: "オンライン一覧の最初のモデルを使用",
+  loading: "取得中…",
+  refreshModels: "モデルを更新",
+  modelHint:
+    "モデル一覧はオンラインで取得します。モデル ID の手入力も可能です。背景設定と LLM ツールは同じ設定を使用します。",
+  advanced: "詳細設定",
+  size: "サイズ（空欄は既定値）",
+  quality: "画質（空欄は既定値）",
+  timeout: "タイムアウト（秒）",
+  catalogUrl: "カスタムモデル一覧 URL（任意）",
+  advancedHint:
+    "プロバイダーが対応する値を入力してください。カスタム一覧は JSON data/models 配列を使用します。公開一覧に購読認証情報は送信されません。",
+  name: "画像 / シーン名（任意）",
+  prompt: "画像の説明",
+  promptHint: "場面、スタイル、構図、照明などを説明してください…",
+  applyBackground: "生成した背景に切り替える",
+  close: "閉じる",
+  saved: "背景・シーンライブラリに保存しました：{name}",
+  saveSettings: "画像設定を保存",
+  generate: "画像を生成",
+  generating: "生成中…",
+  toolName: "画像生成",
+  toolHelp:
+    "選択したプロバイダーとモデルで画像を生成し、背景・シーンライブラリに保存します。ユーザーの依頼に応じて背景を切り替えられます。",
+};

@@ -1,0 +1,32 @@
+export default {
+  open: "Generate background",
+  title: "Generate image",
+  provider: "Image provider",
+  baseUrl: "API base URL",
+  apiKey: "API key (optional for local services)",
+  model: "Image model",
+  autoModel: "Use the first model from the online catalog",
+  loading: "Loading…",
+  refreshModels: "Refresh models",
+  modelHint:
+    "Model choices are fetched online. You can also enter a supported model ID. Background generation and the LLM tool share these settings.",
+  advanced: "More options",
+  size: "Size (blank uses provider default)",
+  quality: "Quality (blank uses provider default)",
+  timeout: "Timeout (seconds)",
+  catalogUrl: "Custom model catalog URL (optional)",
+  advancedHint:
+    "Use values supported by your provider. Custom catalogs accept JSON data/models arrays. Public catalogs never receive subscription credentials.",
+  name: "Image / scene name (optional)",
+  prompt: "Image description",
+  promptHint: "Describe the scene, style, composition and lighting…",
+  applyBackground: "Switch to the generated background",
+  close: "Close",
+  saved: "Saved to the background and scene library: {name}",
+  saveSettings: "Save image settings",
+  generate: "Generate image",
+  generating: "Generating…",
+  toolName: "Image generation",
+  toolHelp:
+    "Generate an image using the selected provider and model, save it to the background/scene library, and optionally switch backgrounds when requested.",
+};

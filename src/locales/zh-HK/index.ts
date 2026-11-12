@@ -13,6 +13,7 @@ import ui from "./ui";
 import views from "./views";
 
 export default {
+  imageGeneration,
   advance,
   api,
   scriptEditor,
@@ -26,3 +27,4 @@ export default {
   ui,
   views,
 };
+import imageGeneration from "./imageGeneration";
