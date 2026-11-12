@@ -51,8 +51,7 @@ const emit = defineEmits<{
   (e: "update:tool", tool: CanvasTool): void;
   (e: "update:showGizmo", v: boolean): void;
   (e: "update:showGrid", v: boolean): void;
-  (e: "update:lightPos", payload: { index: number; x: number; y: number }): void;
-  (e: "update:backgroundSrc", src: string): void;
+  (e: "update:lightPos", payload: { id: string; x: number; y: number }): void;
   (e: "setShot", shot: LightingShot): void;
   (e: "place-light", payload: { x: number; y: number }): void;
   (e: "marquee", payload: { x0: number; y0: number; x1: number; y1: number }): void;
@@ -72,7 +71,6 @@ const { canvasRef, isComparing, bgSize, lastError } = useStageRenderer({
 });
 
 const frameRef = ref<HTMLDivElement | null>(null);
-const bgFileRef = ref<HTMLInputElement | null>(null);
 
 const panX = ref(0);
 const panY = ref(0);
@@ -82,16 +80,21 @@ const stageTransform = computed(() => ({
 }));
 
 // —— 拖拽：灯点 or 手形平移 ——
+// 灯点拖拽持 id 而不是下标：拖拽途中撤销/删灯会把整表替换，
+// 持下标就会把坐标写给另一盏灯
 
-let dragging: { kind: "light"; index: number } | { kind: "pan"; x: number; y: number } | null =
-  null;
+let dragging: { kind: "light"; id: string } | { kind: "pan"; x: number; y: number } | null = null;
 
-function onPinDown(index: number, e: MouseEvent) {
+function onPinDown(id: string, e: MouseEvent) {
   e.stopPropagation();
-  emit("update:selectedLightIndex", index);
-  dragging = { kind: "light", index };
+  emit(
+    "update:selectedLightIndex",
+    props.lights.findIndex((l) => l.id === id),
+  );
+  dragging = { kind: "light", id };
   window.addEventListener("mousemove", onDragMove);
   window.addEventListener("mouseup", onDragEnd);
+  window.addEventListener("blur", onDragEnd);
 }
 
 function onViewportDown(e: MouseEvent) {
@@ -99,6 +102,7 @@ function onViewportDown(e: MouseEvent) {
   dragging = { kind: "pan", x: e.clientX - panX.value, y: e.clientY - panY.value };
   window.addEventListener("mousemove", onDragMove);
   window.addEventListener("mouseup", onDragEnd);
+  window.addEventListener("blur", onDragEnd);
 }
 
 function onDragMove(e: MouseEvent) {
@@ -114,7 +118,7 @@ function onDragMove(e: MouseEvent) {
   const nx = (e.clientX - rect.left) / rect.width;
   const ny = (e.clientY - rect.top) / rect.height;
   emit("update:lightPos", {
-    index: dragging.index,
+    id: dragging.id,
     x: +Math.max(0.02, Math.min(0.98, nx)).toFixed(3),
     y: +Math.max(0.02, Math.min(0.98, ny)).toFixed(3),
   });
@@ -124,6 +128,7 @@ function onDragEnd() {
   dragging = null;
   window.removeEventListener("mousemove", onDragMove);
   window.removeEventListener("mouseup", onDragEnd);
+  window.removeEventListener("blur", onDragEnd);
 }
 
 // —— 视口操作 ——
@@ -144,18 +149,6 @@ function fitCanvas() {
   emit("update:zoom", 1);
   panX.value = 0;
   panY.value = 0;
-}
-
-function triggerBgUpload() {
-  bgFileRef.value?.click();
-}
-
-function onBgFile(e: Event) {
-  const file = (e.target as HTMLInputElement).files?.[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = (evt) => emit("update:backgroundSrc", String(evt.target?.result || ""));
-  reader.readAsDataURL(file);
 }
 
 // —— 全屏预览 ——
@@ -192,6 +185,10 @@ onUnmounted(() => {
   window.removeEventListener("keydown", onFullscreenKey);
   window.removeEventListener("mousemove", onMarqueeMove);
   window.removeEventListener("mouseup", onMarqueeUp);
+  // 拖拽中卸载会漏掉这两个监听，之后每次鼠标移动都会继续 emit 坐标
+  window.removeEventListener("mousemove", onDragMove);
+  window.removeEventListener("mouseup", onDragEnd);
+  window.removeEventListener("blur", onDragEnd);
 });
 
 // —— 放置光源 / 框选 ——
@@ -307,11 +304,9 @@ const pins = computed(() =>
       :scene-name="sceneName"
       :shot="cameraParams.shot"
       @set-shot="emit('setShot', $event)"
-      @pick-bg="triggerBgUpload"
       @compare-hold="isComparing = $event"
       @fit="fitCanvas"
     />
-    <input ref="bgFileRef" type="file" accept="image/*" hidden @change="onBgFile" />
 
     <div v-if="lastError && !isFullscreen" class="stage-error" :title="lastError">
       <svg viewBox="0 0 16 16" width="11" height="11" fill="none" stroke="currentColor">
@@ -345,7 +340,7 @@ const pins = computed(() =>
           :key="pin.l.id"
           class="stage-pin"
           :style="{ left: `${pin.l.x * 100}%`, top: `${pin.l.y * 100}%` }"
-          @mousedown="onPinDown(pin.i, $event)"
+          @mousedown="onPinDown(pin.l.id, $event)"
         >
           <span
             class="stage-pin-dot"

@@ -828,6 +828,10 @@ export class SceneLightingRenderer {
       gl.deleteTexture(tex);
     }
     this.disposed = true;
+    // deleteFramebuffer / deleteTexture 只还 GPU 资源，上下文本身要等 canvas 被 GC
+    // 才释放。反复开关工作台会累积上下文（Chromium 约 16 个上限，会挤掉别的 canvas），
+    // 这里主动 lose 掉。
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
   }
 }
 

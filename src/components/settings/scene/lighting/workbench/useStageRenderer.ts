@@ -66,7 +66,8 @@ function loadImg(src: string, anonymous: boolean): Promise<HTMLImageElement | nu
   return new Promise((resolve) => {
     const img = new Image();
     if (anonymous) img.crossOrigin = "anonymous";
-    img.onload = () => resolve(img);
+    // onload 也可能带着一张解码失败的图（naturalWidth 为 0），喂给 WebGL 只会全黑
+    img.onload = () => resolve(img.naturalWidth ? img : null);
     img.onerror = () => resolve(null);
     img.src = src;
   });
@@ -135,6 +136,8 @@ export function useStageRenderer(input: StageRendererInput) {
   let disposed = false;
   let bgToken = 0;
   let charToken = 0;
+  let normalToken = 0;
+  let depthToken = 0;
   let rafId = 0;
 
   const customNormalImg = { src: "", img: null as TexImageSource | null };
@@ -148,8 +151,11 @@ export function useStageRenderer(input: StageRendererInput) {
       customNormalImg.src = nSrc;
       customNormalImg.img = null;
       if (nSrc) {
+        const token = ++normalToken;
         jobs.push(
           loadSmart(nSrc).then((r) => {
+            // 快速切换时旧请求可能后到，会把旧图写给新 src
+            if (token !== normalToken) return;
             customNormalImg.img = r && !r.tainted ? r.source : null;
           }),
         );
@@ -159,8 +165,10 @@ export function useStageRenderer(input: StageRendererInput) {
       customDepthImg.src = dSrc;
       customDepthImg.img = null;
       if (dSrc) {
+        const token = ++depthToken;
         jobs.push(
           loadSmart(dSrc).then((r) => {
+            if (token !== depthToken) return;
             customDepthImg.img = r && !r.tainted ? r.source : null;
           }),
         );
@@ -198,9 +206,12 @@ export function useStageRenderer(input: StageRendererInput) {
     }
 
     // ---- 背景 ----
+    // 占住 token：等待期间 backgroundSrc 的 watcher 可能也在加载同一张或另一张图，
+    // 不比对就会让 mount 的旧结果盖掉 watcher 的新结果
     const bgSrc = input.backgroundSrc();
+    const bgTokenAtMount = ++bgToken;
     const bgLoaded = bgSrc ? await loadSmart(bgSrc) : null;
-    if (disposed || !renderer) return;
+    if (disposed || !renderer || bgTokenAtMount !== bgToken) return;
 
     if (bgLoaded && !bgLoaded.tainted) {
       try {
@@ -213,8 +224,10 @@ export function useStageRenderer(input: StageRendererInput) {
         resourceError.value = `场景底图不可用：${(err as Error).message.slice(0, 60)}`;
       }
     } else if (bgLoaded?.tainted) {
-      resourceError.value = "场景底图跨源受限，无法上传到 WebGL；请用「换图」选本地图片";
+      resourceError.value = "场景底图跨源受限，无法上传到 WebGL";
       displayError();
+    } else {
+      resourceError.value = "场景底图加载失败，已回退到占位底图";
     }
 
     // 背景彻底拿不到就用占位底图，保证画布不是全黑（且不会因为 SVG 上传失败）
@@ -232,8 +245,9 @@ export function useStageRenderer(input: StageRendererInput) {
     // ---- 立绘 ----
     const charSrc = input.characterSrc();
     if (charSrc) {
+      const charTokenAtMount = ++charToken;
       const ch = await loadSmart(charSrc);
-      if (disposed || !renderer) return;
+      if (disposed || !renderer || charTokenAtMount !== charToken) return;
       if (ch && !ch.tainted) {
         charImg = ch.source;
         await applyCharacter();
@@ -331,7 +345,7 @@ export function useStageRenderer(input: StageRendererInput) {
       if (token !== bgToken || disposed || !renderer) return;
       if (!loaded) return;
       if (loaded.tainted) {
-        resourceError.value = "场景底图跨源受限，无法上传到 WebGL；请用「换图」选本地图片";
+        resourceError.value = "场景底图跨源受限，无法上传到 WebGL";
         displayError();
         return;
       }

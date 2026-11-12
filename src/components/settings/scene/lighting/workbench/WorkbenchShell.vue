@@ -16,6 +16,7 @@ import type {
 } from "@/api/services/scene";
 import { useSceneLighting } from "../useSceneLighting";
 import { DEFAULT_COMPOSITING, DEFAULT_GLOBAL, DEFAULT_MATERIAL } from "../types";
+import { MAX_LIGHTS } from "@/render/lighting/lights";
 import LightingJsonModal from "../LightingJsonModal.vue";
 import "./workbench.css";
 import WorkbenchTopBar from "./WorkbenchTopBar.vue";
@@ -85,7 +86,6 @@ const {
   toast,
 } = useWorkbenchUi();
 
-const customBgSrc = ref<string | null>(null);
 /** 用户上传的法线/深度图；null = 自动生成 */
 const customNormal = ref<string | null>(null);
 const customDepth = ref<string | null>(null);
@@ -153,8 +153,8 @@ function resetGlobal() {
 
 // —— 灯光增删 ——
 
-function onLightPos(payload: { index: number; x: number; y: number }) {
-  const l = lights.value[payload.index];
+function onLightPos(payload: { id: string; x: number; y: number }) {
+  const l = lights.value.find((it) => it.id === payload.id);
   if (!l) return;
   l.x = payload.x;
   l.y = payload.y;
@@ -163,7 +163,9 @@ function onLightPos(payload: { index: number; x: number; y: number }) {
 
 function onPlaceLight(pos: { x: number; y: number }) {
   const ok = addLight("point", pos);
-  toast(ok ? `已放一盏点光（${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}）` : "最多 8 盏灯");
+  toast(
+    ok ? `已放一盏点光（${pos.x.toFixed(2)}, ${pos.y.toFixed(2)}）` : `最多 ${MAX_LIGHTS} 盏灯`,
+  );
 }
 
 /** 框选：命中的灯高亮，选中离矩形中心最近那盏 */
@@ -200,12 +202,12 @@ function onSwitchTab(tab: "lighting" | "assets") {
 }
 
 function onAddLight(type: LightSource["type"]) {
-  if (!addLight(type)) toast("最多 8 盏灯");
+  if (!addLight(type)) toast(`最多 ${MAX_LIGHTS} 盏灯`);
 }
 
 function onDuplicateLight(index: number) {
-  if (lights.value.length >= 8) {
-    toast("最多 8 盏灯");
+  if (lights.value.length >= MAX_LIGHTS) {
+    toast(`最多 ${MAX_LIGHTS} 盏灯`);
     return;
   }
   const src = lights.value[index];
@@ -256,24 +258,30 @@ function openImport() {
 
 const MAX_IMPORT_CHARS = 2_000_000;
 
-function applyJson(raw: string) {
+function applyJson(raw: string): boolean {
   if (!raw || !raw.trim()) {
     toast("导入失败：内容为空");
-    return;
+    return false;
   }
   if (raw.length > MAX_IMPORT_CHARS) {
     toast(`导入失败：JSON 超过 ${Math.round(MAX_IMPORT_CHARS / 1000)}k 字符`);
-    return;
+    return false;
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
   } catch (err) {
     toast(`导入失败：不是合法 JSON（${(err as Error).message.slice(0, 40)}）`);
-    return;
+    return false;
   }
   const result = importJson(parsed);
   toast(result.ok ? `✓ ${result.message}` : `导入失败：${result.message}`);
+  return result.ok;
+}
+
+/** 导入弹窗只在成功后关：失败时留着文本，用户能照着原因改完再试 */
+function onApplyJson(raw: string) {
+  if (applyJson(raw)) showJsonModal.value = false;
 }
 
 function openSaveDialog() {
@@ -333,7 +341,6 @@ watch(
       window.addEventListener("keydown", onKeydown);
     } else {
       window.removeEventListener("keydown", onKeydown);
-      customBgSrc.value = null;
       customNormal.value = null;
       customDepth.value = null;
       highlightIds.value = [];
@@ -390,7 +397,7 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
 
           <CanvasStage
             class="wb-center"
-            :background-src="customBgSrc || backgroundSrc"
+            :background-src="backgroundSrc"
             :character-src="characterSrc"
             :lights="lights"
             :global-params="globalParams"
@@ -413,7 +420,6 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
             @update:tool="canvasTool = $event"
             @update:show-gizmo="showGizmo = $event"
             @update:show-grid="showGrid = $event"
-            @update:background-src="customBgSrc = $event"
             @update:light-pos="onLightPos"
             @set-shot="setShot"
             @place-light="onPlaceLight"
@@ -498,9 +504,9 @@ onUnmounted(() => window.removeEventListener("keydown", onKeydown));
       <LightingJsonModal
         :is-open="showJsonModal"
         :initial-json="jsonInitialText"
-        :all-presets-json="JSON.stringify({ version: '4.0', presets }, null, 2)"
+        :all-presets-json="JSON.stringify({ version: 4, presets }, null, 2)"
         @close="showJsonModal = false"
-        @apply="applyJson"
+        @apply="onApplyJson"
       />
     </div>
   </Teleport>

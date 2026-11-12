@@ -24,6 +24,17 @@ watch(
   },
 );
 
+// 相同内容再次打开时 initialJson 不变、watch 不触发，会留着上次取消的编辑。
+// 关不关窗由父级按导入结果决定，这里只管每次打开时重置。
+watch(
+  () => props.isOpen,
+  (open) => {
+    if (!open) return;
+    textContent.value = props.initialJson;
+    statusMsg.value = "";
+  },
+);
+
 function handleCopy() {
   if (!textContent.value.trim()) return;
   navigator.clipboard.writeText(textContent.value).then(() => {
@@ -31,31 +42,32 @@ function handleCopy() {
   });
 }
 
-function handleDownloadSingle() {
-  if (!textContent.value.trim()) return;
-  const blob = new Blob([textContent.value], {
-    type: "application/json;charset=utf-8",
-  });
+function download(blob: Blob, filename: string) {
   const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "scene-lighting-config.json";
+  const url = URL.createObjectURL(blob);
+  a.href = url;
+  a.download = filename;
   document.body.appendChild(a);
   a.click();
   a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function handleDownloadSingle() {
+  if (!textContent.value.trim()) return;
+  download(
+    new Blob([textContent.value], { type: "application/json;charset=utf-8" }),
+    "scene-lighting-config.json",
+  );
   statusMsg.value = "✓ 单项配置已下载";
 }
 
 function handleDownloadAll() {
-  textContent.value = props.allPresetsJson;
-  const blob = new Blob([props.allPresetsJson], {
-    type: "application/json;charset=utf-8",
-  });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "presets-v4.0-calibrated.json";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
+  // 不碰 textContent：用户可能正在编辑导入内容，打包下载不该把它冲掉
+  download(
+    new Blob([props.allPresetsJson], { type: "application/json;charset=utf-8" }),
+    "presets-v4.0-calibrated.json",
+  );
   statusMsg.value = "✓ 已打包全量 15 款预设并下载";
 }
 
@@ -82,11 +94,13 @@ function handleApply() {
   }
   try {
     JSON.parse(raw);
-    emit("apply", raw);
-    emit("close");
   } catch (err: unknown) {
     statusMsg.value = `⚠ JSON 格式错误: ${(err as Error).message}`;
+    return;
   }
+  // 只负责把内容交出去；关窗由父级在 importJson 成功后决定，
+  // 否则校验失败时弹窗已关，用户连改的机会都没有
+  emit("apply", raw);
 }
 </script>
 

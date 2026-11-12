@@ -100,7 +100,17 @@ function isFull(): boolean {
         </span>
 
         <span class="light-row-name wb-ellipsis">{{ shortName(l, idx) }}</span>
-        <span v-if="l.is_key" class="light-row-key" title="主光">主</span>
+        <!-- 主光入口：角色受光方向以它为准。之前这里只是个只读徽标，
+             toggle-key 声明了却从不 emit，用户没有任何指定主光的手段 -->
+        <button
+          type="button"
+          class="light-row-key"
+          :class="{ 'is-key': l.is_key }"
+          :title="l.is_key ? '取消主光' : '设为主光'"
+          @click.stop="emit('toggle-key', idx)"
+        >
+          主
+        </button>
 
         <span class="light-row-value">{{ l.intensity.toFixed(2) }}</span>
 
@@ -255,7 +265,19 @@ function isFull(): boolean {
   font-size: 9px;
   line-height: 1;
   padding: 1.5px 3px;
+  border: none;
   border-radius: 3px;
+  cursor: pointer;
+  background: transparent;
+  color: var(--wb-muted);
+}
+
+.light-row-key:hover {
+  background: var(--wb-hover);
+  color: var(--wb-text-2);
+}
+
+.light-row-key.is-key {
   background: var(--wb-accent-weak);
   color: var(--wb-accent);
 }

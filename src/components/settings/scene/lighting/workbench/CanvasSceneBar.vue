@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 画布上方的场景条：场景名（可换本地底图）+ 景别下拉 + 前后对比 + 适应画布。
+ * 画布上方的场景条：场景名 + 景别下拉 + 前后对比 + 适应画布。
  *
  * 景别做下拉而不是一排按钮，是因为稿上就是「中景 ▾」；展开态照微交互稿：
  * 白底卡片、当前项紫字 + 浅紫底 + 勾。
@@ -16,7 +16,6 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: "set-shot", shot: LightingShot): void;
-  (e: "pick-bg"): void;
   (e: "compare-hold", active: boolean): void;
   (e: "fit"): void;
 }>();
@@ -60,12 +59,11 @@ onUnmounted(() => {
         <rect x="2" y="3.2" width="12" height="9.6" rx="1.6" stroke-width="1.2" />
         <path d="M2 9.6 5.6 6.4l2.8 2.4 2.2-1.8L14 9.2" stroke-width="1.2" />
       </svg>
-      <button type="button" class="stage-scene" title="更换本地场景底图" @click="emit('pick-bg')">
+      <!-- 场景名只做展示。早先点它会弹文件选择换本地底图，但那条路只影响预览、
+           不进存档，属于半吊子行为，入口已删 -->
+      <span class="stage-scene" :title="sceneName || '场景底图'">
         {{ sceneName || "场景底图" }}
-        <svg viewBox="0 0 16 16" width="9" height="9" fill="none" stroke="currentColor">
-          <path d="M4 6.5 8 10.5 12 6.5" stroke-width="1.6" stroke-linecap="round" />
-        </svg>
-      </button>
+      </span>
 
       <span class="stage-divider" />
 
