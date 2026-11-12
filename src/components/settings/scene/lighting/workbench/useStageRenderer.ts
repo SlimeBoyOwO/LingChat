@@ -1,13 +1,10 @@
 /**
  * 画布渲染接线。
  *
- * 图片加载是这里最容易出事的一环，规则写死：
- * 1. **先按 CORS 方式加载**（`crossOrigin="anonymous"`）。Tauri 的 asset:// 支持带 ACAO，
- *    这样拿到的图是「干净」的，WebGL 能上传、也能读像素生成法线/深度。
- * 2. 失败再退回普通加载，并**探测画布是否被污染**：污染图 `texImage2D` 会直接抛
- *    SecurityError，等于整块画布全黑——所以宁可不画，也不能把脏图喂给 WebGL。
- * 3. 两条都不行再试 `fetch → createImageBitmap`（换一条路拿干净位图）。
- * 任何一步失败都不抛到组件外，只记 `lastError`，由界面显示原因。
+ * 图片加载统一走 `loadTexImage`（见 @/render/lighting/loadImage）：先按 CORS 加载，
+ * 失败退 fetch 解码，再失败才普通加载并探测画布是否被污染 —— 污染图喂给 WebGL
+ * 会让整块画布全黑，宁可不画。任何一步失败都不抛到组件外，只记 `lastError`，
+ * 由界面显示原因。
  */
 import { onMounted, onUnmounted, ref, watch } from "vue";
 import type {
@@ -18,6 +15,7 @@ import type {
   LightingMaterialParams,
 } from "@/api/services/scene";
 import { SceneLightingRenderer } from "@/render/lighting";
+import { loadTexImage } from "@/render/lighting/loadImage";
 import { calcBgRect, calcCharRect, type Size } from "./layoutStage";
 
 /** 舞台固定分辨率：渲染内核按这个尺寸建 FBO，显示尺寸交给 CSS。 */
@@ -52,70 +50,6 @@ export interface StageRendererInput {
   compareOriginal: () => boolean;
   normalSrc?: () => string | null | undefined;
   depthSrc?: () => string | null | undefined;
-}
-
-interface LoadedImage {
-  source: TexImageSource;
-  width: number;
-  height: number;
-  /** true = 画布被污染，WebGL 不能上传 */
-  tainted: boolean;
-}
-
-function loadImg(src: string, anonymous: boolean): Promise<HTMLImageElement | null> {
-  return new Promise((resolve) => {
-    const img = new Image();
-    if (anonymous) img.crossOrigin = "anonymous";
-    // onload 也可能带着一张解码失败的图（naturalWidth 为 0），喂给 WebGL 只会全黑
-    img.onload = () => resolve(img.naturalWidth ? img : null);
-    img.onerror = () => resolve(null);
-    img.src = src;
-  });
-}
-
-/** 画一张 1×1 再读回来，能读就是干净图 */
-function isReadable(source: TexImageSource): boolean {
-  try {
-    const c = document.createElement("canvas");
-    c.width = 1;
-    c.height = 1;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
-    if (!ctx) return false;
-    ctx.drawImage(source as CanvasImageSource, 0, 0, 1, 1);
-    ctx.getImageData(0, 0, 1, 1);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function loadSmart(src: string): Promise<LoadedImage | null> {
-  // 1) 带 CORS 的图片（Tauri asset:// 若允许 ACAO，这条就成）
-  const anon = await loadImg(src, true);
-  if (anon) {
-    return { source: anon, width: anon.naturalWidth, height: anon.naturalHeight, tainted: false };
-  }
-  // 2) fetch 取字节再解码：位图天然是「干净」的，WebGL 和读像素都不受跨源限制
-  try {
-    const res = await fetch(src);
-    if (res.ok) {
-      const bmp = await createImageBitmap(await res.blob());
-      return { source: bmp, width: bmp.width, height: bmp.height, tainted: false };
-    }
-  } catch {
-    /* 跨源且无 ACAO 时 fetch 也会失败，继续往下 */
-  }
-  // 3) 普通加载：能显示，但可能污染画布 —— 交给调用方判断，绝不喂给 WebGL
-  const plain = await loadImg(src, false);
-  if (plain) {
-    return {
-      source: plain,
-      width: plain.naturalWidth,
-      height: plain.naturalHeight,
-      tainted: !isReadable(plain),
-    };
-  }
-  return null;
 }
 
 export function useStageRenderer(input: StageRendererInput) {
@@ -153,7 +87,7 @@ export function useStageRenderer(input: StageRendererInput) {
       if (nSrc) {
         const token = ++normalToken;
         jobs.push(
-          loadSmart(nSrc).then((r) => {
+          loadTexImage(nSrc).then((r) => {
             // 快速切换时旧请求可能后到，会把旧图写给新 src
             if (token !== normalToken) return;
             customNormalImg.img = r && !r.tainted ? r.source : null;
@@ -167,7 +101,7 @@ export function useStageRenderer(input: StageRendererInput) {
       if (dSrc) {
         const token = ++depthToken;
         jobs.push(
-          loadSmart(dSrc).then((r) => {
+          loadTexImage(dSrc).then((r) => {
             if (token !== depthToken) return;
             customDepthImg.img = r && !r.tainted ? r.source : null;
           }),
@@ -210,7 +144,7 @@ export function useStageRenderer(input: StageRendererInput) {
     // 不比对就会让 mount 的旧结果盖掉 watcher 的新结果
     const bgSrc = input.backgroundSrc();
     const bgTokenAtMount = ++bgToken;
-    const bgLoaded = bgSrc ? await loadSmart(bgSrc) : null;
+    const bgLoaded = bgSrc ? await loadTexImage(bgSrc) : null;
     if (disposed || !renderer || bgTokenAtMount !== bgToken) return;
 
     if (bgLoaded && !bgLoaded.tainted) {
@@ -246,7 +180,7 @@ export function useStageRenderer(input: StageRendererInput) {
     const charSrc = input.characterSrc();
     if (charSrc) {
       const charTokenAtMount = ++charToken;
-      const ch = await loadSmart(charSrc);
+      const ch = await loadTexImage(charSrc);
       if (disposed || !renderer || charTokenAtMount !== charToken) return;
       if (ch && !ch.tainted) {
         charImg = ch.source;
@@ -341,7 +275,7 @@ export function useStageRenderer(input: StageRendererInput) {
     async (src) => {
       if (!renderer || !src) return;
       const token = ++bgToken;
-      const loaded = await loadSmart(src);
+      const loaded = await loadTexImage(src);
       if (token !== bgToken || disposed || !renderer) return;
       if (!loaded) return;
       if (loaded.tainted) {
@@ -375,7 +309,7 @@ export function useStageRenderer(input: StageRendererInput) {
         scheduleRender();
         return;
       }
-      const ch = await loadSmart(src);
+      const ch = await loadTexImage(src);
       if (token !== charToken || disposed || !renderer) return;
       if (ch && !ch.tainted) {
         charImg = ch.source;

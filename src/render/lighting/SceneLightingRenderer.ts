@@ -374,6 +374,9 @@ export class SceneLightingRenderer {
       preserveDrawingBuffer: true,
     });
     if (!gl) throw new Error("当前环境不支持 WebGL");
+    // 上下文已经丢了（上一任 dispose 时主动 loseContext，或 GPU 重置）：此时 shader
+    // 编译会静默失败，抛出来的只有一句没有日志的「编译失败」，很难查到真正原因
+    if (gl.isContextLost()) throw new Error("画布的 WebGL 上下文已丢失，需要换一块画布");
     this.gl = gl;
 
     this.bgProgram = linkProgram(gl, BACKGROUND_FRAGMENT_SHADER, BG_UNIFORMS);
