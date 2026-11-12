@@ -1,4 +1,5 @@
 export default {
+  providerSettings: "Select a provider on the left to configure its model and generation settings",
   positiveTags: "Positive tags",
   negativeTags: "Negative tags (Undesired Content)",
   positiveTagsHint: "For example: scenery, library, wooden shelves, warm lighting, no humans",

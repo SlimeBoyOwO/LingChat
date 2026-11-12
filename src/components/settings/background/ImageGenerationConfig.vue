@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-4 text-sm">
-    <ToolField :label="t('imageGeneration.provider')">
+    <ToolField v-if="!hideProvider" :label="t('imageGeneration.provider')">
       <ToolSelect
         :model-value="modelValue.provider"
         :disabled="disabled"
@@ -169,10 +169,13 @@ const props = defineProps<{
   modelValue: ImageGenerationSettings;
   disabled?: boolean;
   hideNegativeTags?: boolean;
+  hideProvider?: boolean;
+  providers?: ImageProviderInfo[];
 }>();
 const emit = defineEmits<{ "update:modelValue": [value: ImageGenerationSettings] }>();
 const { t } = useI18n();
-const providers = ref<ImageProviderInfo[]>([]);
+const fetchedProviders = ref<ImageProviderInfo[]>([]);
+const providers = computed(() => props.providers ?? fetchedProviders.value);
 const catalog = ref<ImageModelCatalog | null>(null);
 const error = ref("");
 const loading = ref(false);
@@ -235,6 +238,8 @@ watch(
     props.modelValue.novelai?.base_url,
     props.modelValue.novelai?.models_url,
     props.modelValue.novelai?.frontend_url,
+    selectedProvider.value?.id,
+    providers.value,
   ],
   () => {
     revision++;
@@ -242,6 +247,11 @@ watch(
     catalog.value = null;
     error.value = "";
     loading.value = false;
+    if (providers.value.length && !selectedProvider.value) {
+      error.value = t("imageGeneration.providerUnavailable");
+      manualModel.value = true;
+      return;
+    }
     if (
       selectedProvider.value &&
       (!selectedProvider.value.custom || props.modelValue.base_url.trim())
@@ -249,13 +259,18 @@ watch(
       refreshTimer = setTimeout(() => void refreshModels(false), 400);
   },
 );
+watch(
+  () => props.modelValue.provider,
+  () => {
+    manualModel.value = false;
+  },
+);
 onMounted(async () => {
   try {
-    providers.value = await listImageProviders();
+    if (props.providers === undefined) fetchedProviders.value = await listImageProviders();
     if (
-      !selectedProvider.value ||
-      !selectedProvider.value.custom ||
-      props.modelValue.base_url.trim()
+      selectedProvider.value &&
+      (!selectedProvider.value.custom || props.modelValue.base_url.trim())
     )
       await refreshModels(false);
   } catch (cause) {

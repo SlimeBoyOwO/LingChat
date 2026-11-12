@@ -1,4 +1,5 @@
 export default {
+  providerSettings: "左側でプロバイダーを選び、右側でモデルと生成パラメーターを設定します",
   positiveTags: "正のタグ",
   negativeTags: "負のタグ（Undesired Content）",
   positiveTagsHint: "例：scenery, library, wooden shelves, warm lighting, no humans",

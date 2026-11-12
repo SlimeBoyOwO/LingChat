@@ -1,4 +1,5 @@
 export default {
+  providerSettings: "選擇左側供應商，在右側設定模型與生成參數",
   positiveTags: "正向 tags",
   negativeTags: "負向 tags（Undesired Content）",
   positiveTagsHint: "例如：scenery, library, wooden shelves, warm lighting, no humans",
