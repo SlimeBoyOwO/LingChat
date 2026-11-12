@@ -228,12 +228,19 @@ impl ToolRag {
         top_k: usize,
         min_score: f32,
     ) -> Result<Vec<(String, f32)>> {
-        if !self.is_enabled() {
-            return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
-        }
         let query = query.trim();
         if query.is_empty() {
             return Err(anyhow!("检索关键词为空"));
+        }
+
+        // 工具清单已经公开名称；模型按名称索取时，不应再被语义排序挤掉。
+        let named = named_tools(query, candidates, top_k);
+        if !named.is_empty() {
+            self.touch(role, &named);
+            return Ok(named.into_iter().map(|name| (name, 1.0)).collect());
+        }
+        if !self.is_enabled() {
+            return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
         }
 
         let corpus = build_corpus(candidates);
@@ -349,6 +356,34 @@ fn select_hits(scored: &mut Vec<(String, f32)>, top_k: usize, min_score: f32) {
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.retain(|(_, score)| *score >= min_score);
     scored.truncate(top_k);
+}
+
+fn named_tools(query: &str, candidates: &[ToolDefinition], top_k: usize) -> Vec<String> {
+    let query = query.to_ascii_lowercase();
+    let identifier = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-');
+    let mut hits: Vec<_> = candidates
+        .iter()
+        .filter(|def| !is_resident(&def.function.name))
+        .filter_map(|def| {
+            let name = def.function.name.to_ascii_lowercase();
+            if name.is_empty() {
+                return None;
+            }
+            let position = query.match_indices(&name).find_map(|(start, _)| {
+                let end = start + name.len();
+                let before = start
+                    .checked_sub(1)
+                    .and_then(|index| query.as_bytes().get(index));
+                let after = query.as_bytes().get(end);
+                (!before.is_some_and(|byte| identifier(*byte))
+                    && !after.is_some_and(|byte| identifier(*byte)))
+                .then_some(start)
+            })?;
+            Some((position, def.function.name.clone()))
+        })
+        .collect();
+    hits.sort_by_key(|(position, _)| *position);
+    hits.into_iter().take(top_k).map(|(_, name)| name).collect()
 }
 
 /// 一条工具的检索语料。
@@ -548,5 +583,86 @@ fn short_purpose(description: &str) -> String {
             truncated.push('…');
             truncated
         },
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    struct UnavailableEmbedder;
+    impl Embedder for UnavailableEmbedder {
+        fn is_enabled(&self) -> bool {
+            false
+        }
+        fn dimension(&self) -> Option<usize> {
+            None
+        }
+        fn namespace(&self) -> Option<String> {
+            None
+        }
+        fn embed(&self, _: &str) -> Result<Vec<f32>> {
+            panic!("named lookup must not embed")
+        }
+        fn embed_batch(&self, _: &[String]) -> Result<Vec<Vec<f32>>> {
+            panic!("named lookup must not embed")
+        }
+    }
+
+    fn candidate(name: &str) -> ToolDefinition {
+        ToolDefinition::new(name, "工具用途", json!({"type":"object","properties":{}}))
+    }
+
+    #[tokio::test]
+    async fn explicit_scene_switch_is_activated_without_semantic_ranking() {
+        let rag = ToolRag::new(Arc::new(UnavailableEmbedder));
+        let candidates = vec![candidate("generate_image"), candidate("scene_switch")];
+        let hits = rag
+            .search_and_activate(
+                Some("role"),
+                "请获取 scene_switch 工具的完整参数，我需要切换到已有的夜晚场景",
+                &candidates,
+                5,
+                f32::NEG_INFINITY,
+            )
+            .await
+            .unwrap();
+        assert_eq!(hits, [("scene_switch".to_string(), 1.0)]);
+        let allowed = HashSet::from(["scene_switch".to_string()]);
+        assert!(effective_allowed(&allowed, &rag, Some("role"), true).contains("scene_switch"));
+        assert!(effective_allowed(&HashSet::new(), &rag, Some("role"), true).is_empty());
+    }
+
+    #[test]
+    fn named_lookup_keeps_permission_and_identifier_boundaries() {
+        let candidates = vec![candidate("scene_switch")];
+        assert_eq!(
+            named_tools("请用SCENE_SWITCH切换场景", &candidates, 5),
+            ["scene_switch"]
+        );
+        assert!(
+            named_tools(
+                "scene_switch_extra my_scene_switch scene_switcher",
+                &candidates,
+                5
+            )
+            .is_empty()
+        );
+        assert!(named_tools("execute_command", &candidates, 5).is_empty());
+        assert!(named_tools("scene_switch", &candidates, 0).is_empty());
+    }
+
+    #[test]
+    fn named_lookup_preserves_query_order_and_limit() {
+        let candidates = vec![candidate("scene_switch"), candidate("scene_list")];
+        assert_eq!(
+            named_tools(
+                "先 scene_list，再 scene_switch，最后 scene_list",
+                &candidates,
+                1
+            ),
+            ["scene_list"]
+        );
     }
 }
