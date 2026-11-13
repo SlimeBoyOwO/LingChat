@@ -18,6 +18,7 @@ import { listen } from "@tauri-apps/api/event";
 import { onBeforeUnmount, onMounted, provide, readonly, ref, watch } from "vue";
 
 import { useCharacterEditorApi } from "@/composables/useCharacterEditor";
+import { lightingStageActive } from "@/composables/game/useSceneLightingStage";
 const { getLive2dFilePath, getLive2dVariantAssets } = useCharacterEditorApi();
 import type { GameRole } from "@/stores/modules/game/state";
 import {
@@ -195,9 +196,19 @@ function motionBindingEquals(
   );
 }
 
+/**
+ * 该角色此刻要不要建模型。
+ *
+ * 比 `prefersLive2d` 多一道闸：光影舞台活着时静态立绘才能被接管吃光，
+ * 模型继续画只会盖在打光的立绘上面。与 GameRoleAvatar 的展示分支共用同一旗标。
+ */
+function wantsModel(role: GameRole): boolean {
+  return !lightingStageActive.value && prefersLive2d(role, props.mode);
+}
+
 function variantNameFor(role: GameRole): string | null {
   const settings = role.live2d;
-  if (!settings || !prefersLive2d(role, props.mode)) return null;
+  if (!settings || !wantsModel(role)) return null;
   const clothes = !role.clothesName || role.clothesName === "默认" ? "default" : role.clothesName;
   const mapped = settings.clothes_variants[clothes];
   return mapped || settings.default_variant;
@@ -751,7 +762,9 @@ function requestSequenceFor(roleId: number) {
 async function syncRoles() {
   // 形象由角色设定决定（主对话/桌宠各自一项），切成静态立绘的角色在此被排除，
   // 模型根本不加载；全部排除时下面会 destroyApplication()。
-  const liveRoles = props.roles.filter((role) => prefersLive2d(role, props.mode));
+  // 带光场景里光影舞台接管了渲染，Live2D 拿不到每帧位图，人物会不吃光 ——
+  // 舞台活着期间整体让位给静态立绘，舞台卸载后模型自动回来。
+  const liveRoles = props.roles.filter((role) => wantsModel(role));
   const liveIds = new Set(liveRoles.map((role) => role.roleId));
   let failedChanged = false;
   for (const roleId of [...failedRoleIds]) {
@@ -917,6 +930,9 @@ watch(
 // 投屏全局缩放 / 垂直偏移变化时重新布局（滑块拖动即时生效，复用 queueSync 幂等重排；
 // 水平偏移由投屏窗口 CSS translateX 处理，不在此触发）
 watch(() => [props.castScale, props.castOffsetY] as const, queueSync);
+
+// 光影舞台起 / 停：模型与静态立绘互换，必须重排一次
+watch(lightingStageActive, queueSync);
 
 // 帧率上限设置热更新：设置窗口改完即时生效，无需重进桌宠模式
 watch(

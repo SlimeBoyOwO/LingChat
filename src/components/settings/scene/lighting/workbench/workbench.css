@@ -1,0 +1,451 @@
+/* 光影工作台 · 设计令牌与共用样式
+ *
+ * 全部挂在 .wb-root 下，不污染应用其它区域。
+ * 配色取自 Figma 稿：浅底 + 紫主色。深色应用里的这一块是「白色工作台」，
+ * 边框与文字层级靠灰阶区分，强调色只出现在选中态与主按钮上。
+ */
+
+.wb-root {
+  --wb-bg: #f5f5f7;
+  --wb-surface: #ffffff;
+  --wb-surface-2: #fafafc;
+  --wb-canvas: #ececf1;
+  --wb-border: #e8e8ee;
+  --wb-border-strong: #dcdce4;
+  --wb-text: #17171c;
+  --wb-text-2: #55555f;
+  --wb-muted: #8e8e99;
+  --wb-faint: #b6b6c0;
+  --wb-accent: #6e56f8;
+  --wb-accent-hover: #5b45e0;
+  --wb-accent-weak: #f2efff;
+  --wb-accent-border: #ded6ff;
+  --wb-hover: #f3f3f7;
+  --wb-danger: #e05555;
+
+  --wb-r-sm: 6px;
+  --wb-r-md: 9px;
+  --wb-r-lg: 12px;
+
+  background: var(--wb-bg);
+  color: var(--wb-text);
+  font-size: 12px;
+  line-height: 1.45;
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", Roboto,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wb-root *,
+.wb-root *::before,
+.wb-root *::after {
+  box-sizing: border-box;
+}
+
+/* ── 面板骨架 ───────────────────────────────────────── */
+
+.wb-sidebar {
+  background: var(--wb-surface);
+  border-right: 1px solid var(--wb-border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.wb-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  flex-shrink: 0;
+}
+
+.wb-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--wb-text-2);
+  letter-spacing: 0.02em;
+}
+
+.wb-section-count {
+  font-size: 10px;
+  color: var(--wb-faint);
+  font-variant-numeric: tabular-nums;
+}
+
+.wb-section-tail {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+/* ── 通用控件 ───────────────────────────────────────── */
+
+.wb-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: var(--wb-r-sm);
+  color: var(--wb-muted);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.wb-icon-btn:hover {
+  background: var(--wb-hover);
+  color: var(--wb-text);
+}
+
+.wb-icon-btn:disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+.wb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--wb-r-md);
+  background: var(--wb-surface);
+  color: var(--wb-text-2);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  transition:
+    background 0.12s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+
+.wb-btn:hover {
+  background: var(--wb-hover);
+  border-color: var(--wb-border-strong);
+  color: var(--wb-text);
+}
+
+.wb-btn:active {
+  transform: translateY(0.5px);
+}
+
+.wb-btn-primary {
+  background: var(--wb-accent);
+  border-color: var(--wb-accent);
+  color: #fff;
+}
+
+.wb-btn-primary:hover {
+  background: var(--wb-accent-hover);
+  border-color: var(--wb-accent-hover);
+  color: #fff;
+}
+
+.wb-btn-ghost {
+  border-color: transparent;
+  background: transparent;
+}
+
+.wb-btn-block {
+  width: 100%;
+}
+
+.wb-input {
+  height: 26px;
+  padding: 0 8px;
+  border: 1px solid var(--wb-border-strong);
+  border-radius: var(--wb-r-md);
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  font-size: 11.5px;
+  outline: none;
+  transition:
+    border-color 0.12s ease,
+    box-shadow 0.12s ease;
+}
+
+.wb-input::placeholder {
+  color: var(--wb-faint);
+}
+
+.wb-input:focus {
+  border-color: var(--wb-accent);
+  box-shadow: 0 0 0 3px rgb(110 86 248 / 12%);
+}
+
+/* 分段控件（远景/中景…、缩放旁的小按钮组） */
+.wb-seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  background: var(--wb-bg);
+  border-radius: var(--wb-r-md);
+}
+
+.wb-seg-item {
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  color: var(--wb-text-2);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+
+.wb-seg-item:hover {
+  color: var(--wb-text);
+}
+
+.wb-seg-item.is-active {
+  background: var(--wb-surface);
+  color: var(--wb-text);
+  box-shadow: 0 1px 2px rgb(23 23 28 / 8%);
+}
+
+/* ── 参数行 ─────────────────────────────────────────── */
+
+.wb-param {
+  padding: 5px 10px;
+}
+
+.wb-param-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 20px;
+}
+
+.wb-param-label {
+  font-size: 11.5px;
+  color: var(--wb-text-2);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wb-param-label.is-resettable:hover {
+  color: var(--wb-accent);
+}
+
+.wb-param-value {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wb-num {
+  width: 54px;
+  height: 20px;
+  padding: 0 5px;
+  text-align: right;
+  border: 1px solid transparent;
+  border-radius: var(--wb-r-sm);
+  background: transparent;
+  color: var(--wb-text);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  outline: none;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+
+.wb-num:hover {
+  border-color: var(--wb-border-strong);
+}
+
+.wb-num:focus {
+  background: var(--wb-surface);
+  border-color: var(--wb-accent);
+}
+
+/* 滑块：细轨道 + 紫色已填充段 + 小圆点 */
+.wb-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  margin: 2px 0 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.wb-slider::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(
+    to right,
+    var(--wb-accent) 0%,
+    var(--wb-accent) var(--wb-fill, 50%),
+    #e6e6ec var(--wb-fill, 50%),
+    #e6e6ec 100%
+  );
+}
+
+.wb-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -4px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--wb-accent);
+  box-shadow: 0 1px 2px rgb(23 23 28 / 18%);
+  transition: transform 0.1s ease;
+}
+
+.wb-slider:hover::-webkit-slider-thumb {
+  transform: scale(1.12);
+}
+
+.wb-slider:active::-webkit-slider-thumb {
+  transform: scale(1.2);
+}
+
+.wb-slider::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: #e6e6ec;
+}
+
+.wb-slider::-moz-range-progress {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--wb-accent);
+}
+
+.wb-slider::-moz-range-thumb {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2px solid var(--wb-accent);
+}
+
+/* 颜色行 */
+.wb-swatch {
+  width: 22px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1px solid var(--wb-border-strong);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 60%);
+  flex-shrink: 0;
+  padding: 0;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+
+.wb-swatch input[type="color"] {
+  position: absolute;
+  inset: -6px;
+  width: 200%;
+  height: 200%;
+  border: none;
+  padding: 0;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.wb-hex {
+  font-size: 11px;
+  color: var(--wb-text-2);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+/* 开关 */
+.wb-switch {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 999px;
+  background: #dcdce4;
+  transition: background 0.14s ease;
+  flex-shrink: 0;
+}
+
+.wb-switch.is-on {
+  background: var(--wb-accent);
+}
+
+.wb-switch::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgb(23 23 28 / 20%);
+  transition: transform 0.14s ease;
+}
+
+.wb-switch.is-on::after {
+  transform: translateX(12px);
+}
+
+/* ── 折叠 / 提示 ────────────────────────────────────── */
+
+.wb-more {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 5px 10px 7px;
+  font-size: 11px;
+  color: var(--wb-muted);
+  transition: color 0.12s ease;
+}
+
+.wb-more:hover {
+  color: var(--wb-accent);
+}
+
+.wb-empty {
+  padding: 14px 10px;
+  color: var(--wb-muted);
+  font-size: 11.5px;
+  text-align: center;
+}
+
+.wb-ellipsis {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 细滚动条，避免浅色面板里出现系统深色滚动条 */
+.wb-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: #d6d6de transparent;
+}
+
+.wb-scroll::-webkit-scrollbar {
+  width: 7px;
+}
+
+.wb-scroll::-webkit-scrollbar-thumb {
+  background: #d6d6de;
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.wb-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}

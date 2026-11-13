@@ -9,6 +9,8 @@
       <FullAccessWarning />
     </div>
     <GameBackground></GameBackground>
+    <!-- 光影舞台自持 WebGL 上下文与接管心跳，不跟角色舞台一起卸载就漏了轻量模式的内存释放 -->
+    <LightingStage v-if="!uiStore.liteMode" />
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <!-- 轻量模式卸载整个角色舞台：Pixi Application、Live2D 模型与 WebGL 上下文随之释放 -->
     <GameRolesStage
@@ -78,7 +80,7 @@ import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { Button } from "../base";
-import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
+import { GameBackground, GameDialog, GameRolesStage, LightingStage } from "../game/standard";
 import LoadingTransition from "./LoadingTransition.vue";
 
 import FullAccessWarning from "@/components/tools/FullAccessWarning.vue";
