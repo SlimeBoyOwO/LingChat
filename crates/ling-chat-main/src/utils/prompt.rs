@@ -610,15 +610,6 @@ fn action_re() -> &'static Regex {
 }
 
 /// 对一轮回复做纠偏检测，返回需要插入的系统提示文本（无问题则为空）。
-///
-/// 四类判据互相独立：格式缺失（情绪标签 / 正文 / 第二语言翻译）、台词数量越界
-/// （[`ReplyLengthMode::correction_text`]）、台词全都带动作、情绪标签过长。
-/// 自由档只是不检查条数，其余判据照常检查。
-///
-/// `expect_translation` 表示本局要求模型输出第二语言翻译（即系统提示词里的
-/// 日语翻译那一行）：为 false 时该行本就不该出现，缺了不算格式错误。
-/// 文案与 [`ReplyLengthMode::correction_text`] 同源，由调用方统一走
-/// `PromptRole::System` 包装后插入。
 pub fn correction_texts(
     mode: ReplyLengthMode,
     round: &RoundReply,

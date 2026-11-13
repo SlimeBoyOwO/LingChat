@@ -1243,3 +1243,408 @@ fn now_str() -> String {
 fn current_time_ms() -> u64 {
     chrono::Utc::now().timestamp_millis() as u64
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::ai_service::types::LineBase;
+
+    const ROLE: i32 = 1;
+    const PLAYER: i32 = 0;
+    const OTHER_ROLE: i32 = 2;
+    const AI_NAME: &str = "小雪";
+
+    fn line(attribute: LineAttribute, content: &str, sender: Option<i32>) -> GameLine {
+        GameLine::from_base(
+            LineBase {
+                content: content.to_string(),
+                attribute: attribute.into(),
+                sender_role_id: sender,
+                ..Default::default()
+            },
+            vec![ROLE],
+        )
+    }
+
+    fn player(content: &str) -> GameLine {
+        line(LineAttribute::User, content, Some(PLAYER))
+    }
+
+    fn ai(content: &str) -> GameLine {
+        line(LineAttribute::Assistant, content, Some(ROLE))
+    }
+
+    fn system_line(content: &str) -> GameLine {
+        line(LineAttribute::System, content, None)
+    }
+
+    fn tool_request(ids: &[&str]) -> GameLine {
+        let mut current = ai("");
+        current.base.tool_call = Some(call_payload(ids));
+        current
+    }
+
+    fn tool_result(call_id: &str) -> GameLine {
+        line(
+            LineAttribute::Tool,
+            &format!("{{\"tool_call_id\":\"{call_id}\"}}"),
+            Some(ROLE),
+        )
+    }
+
+    fn call_payload(ids: &[&str]) -> String {
+        let calls: Vec<_> = ids
+            .iter()
+            .map(|call_id| {
+                serde_json::json!({
+                    "id": call_id,
+                    "type": "function",
+                    "function": { "name": "noop", "arguments": "{}" }
+                })
+            })
+            .collect();
+        serde_json::to_string(&calls).unwrap()
+    }
+
+    fn all_visible_indices(lines: &[GameLine]) -> Vec<usize> {
+        (0..lines.len()).collect()
+    }
+
+    fn system_with_window(recent_window: usize) -> PersistentMemorySystem {
+        let llm: LlmSlot = Arc::new(tokio::sync::RwLock::new(None));
+        PersistentMemorySystem::new(
+            ROLE,
+            &GameMemoryBank::default(),
+            llm,
+            true,
+            4,
+            recent_window,
+            MemorySectionLimits::default(),
+            AI_NAME,
+        )
+    }
+
+    // ── 保留区边界 ──
+
+    #[test]
+    fn tail_start_falls_back_to_current_turn_user() {
+        let lines = vec![player("一"), ai("二"), player("三"), ai("四")];
+        // 保留两条时，起点回退到最近一轮玩家发言，保证生成中的回合完整保留。
+        assert_eq!(safe_tail_start(&lines, &all_visible_indices(&lines), 2), 2);
+    }
+
+    #[test]
+    fn tail_start_keeps_whole_run_of_player_lines() {
+        let lines = vec![player("一"), player("二"), ai("三")];
+        // 连续多条玩家台词（含上下文注入）作为一个整体保留。
+        assert_eq!(safe_tail_start(&lines, &all_visible_indices(&lines), 1), 0);
+    }
+
+    #[test]
+    fn tail_start_walks_back_over_unterminated_tool_chain() {
+        let lines = vec![
+            ai("开场"),
+            tool_request(&["c1"]),
+            tool_result("c1"),
+            ai("结论"),
+        ];
+        // 窗口内没有玩家台词时，沿工具事务回退到调用请求本身。
+        assert_eq!(safe_tail_start(&lines, &all_visible_indices(&lines), 3), 1);
+    }
+
+    // ── 工具事务完整性 ──
+
+    #[test]
+    fn parallel_tool_results_may_arrive_out_of_order() {
+        let lines = vec![
+            tool_request(&["c1", "c2"]),
+            tool_result("c2"),
+            tool_result("c1"),
+        ];
+        assert!(completed_tool_transactions(&lines, 0, lines.len(), ROLE));
+    }
+
+    #[test]
+    fn plain_dialogue_is_a_complete_transaction() {
+        let lines = vec![player("一"), ai("二")];
+        assert!(completed_tool_transactions(&lines, 0, lines.len(), ROLE));
+    }
+
+    #[test]
+    fn incomplete_tool_transaction_is_rejected() {
+        let missing_result = vec![tool_request(&["c1"]), ai("我接着说")];
+        assert!(!completed_tool_transactions(
+            &missing_result,
+            0,
+            missing_result.len(),
+            ROLE
+        ));
+
+        let interrupted = vec![tool_request(&["c1"]), player("催问")];
+        assert!(!completed_tool_transactions(
+            &interrupted,
+            0,
+            interrupted.len(),
+            ROLE
+        ));
+
+        let system_event = vec![
+            tool_request(&["c1"]),
+            system_line("事件"),
+            tool_result("c1"),
+        ];
+        assert!(!completed_tool_transactions(
+            &system_event,
+            0,
+            system_event.len(),
+            ROLE
+        ));
+    }
+
+    #[test]
+    fn malformed_tool_payload_is_rejected() {
+        // 结果行缺少调用 id。
+        let orphan_result = vec![
+            tool_request(&["c1"]),
+            line(LineAttribute::Tool, "{}", Some(ROLE)),
+        ];
+        assert!(!completed_tool_transactions(
+            &orphan_result,
+            0,
+            orphan_result.len(),
+            ROLE
+        ));
+
+        // 调用 id 重复。
+        let duplicated = vec![tool_request(&["c1", "c1"])];
+        assert!(!completed_tool_transactions(
+            &duplicated,
+            0,
+            duplicated.len(),
+            ROLE
+        ));
+
+        // 调用内容无法解析。
+        let mut broken = ai("");
+        broken.base.tool_call = Some("not json".into());
+        let broken_lines = vec![broken, tool_result("c1")];
+        assert!(!completed_tool_transactions(
+            &broken_lines,
+            0,
+            broken_lines.len(),
+            ROLE
+        ));
+    }
+
+    #[test]
+    fn lines_hidden_from_role_do_not_affect_pairing() {
+        let mut bystander = line(
+            LineAttribute::Assistant,
+            "旁白角色自言自语",
+            Some(OTHER_ROLE),
+        );
+        bystander.perceived_role_ids = Vec::new();
+        let lines = vec![tool_request(&["c1"]), bystander, tool_result("c1")];
+        assert!(completed_tool_transactions(&lines, 0, lines.len(), ROLE));
+    }
+
+    #[test]
+    fn tool_call_ids_only_parse_real_calls() {
+        assert_eq!(tool_call_ids(&ai("普通台词")).unwrap(), None);
+
+        let empty_call = {
+            let mut current = ai("");
+            current.base.tool_call = Some("  ".into());
+            current
+        };
+        assert_eq!(tool_call_ids(&empty_call).unwrap(), None);
+
+        // 没有 tool_call 字段时，仍可从头部的 JSON 数组恢复调用 id。
+        let inline = ai(&call_payload(&["c9"]));
+        assert_eq!(
+            tool_call_ids(&inline).unwrap(),
+            Some(HashSet::from(["c9".to_string()]))
+        );
+
+        let empty_array = {
+            let mut current = ai("");
+            current.base.tool_call = Some("[]".into());
+            current
+        };
+        assert!(tool_call_ids(&empty_array).is_err());
+
+        let blank_id = {
+            let mut current = ai("");
+            current.base.tool_call = Some(call_payload(&[""]));
+            current
+        };
+        assert!(tool_call_ids(&blank_id).is_err());
+    }
+
+    // ── 归档计划 ──
+
+    #[test]
+    fn plan_is_absent_without_demand_or_history() {
+        let system = system_with_window(2);
+        let lines = vec![player("一"), ai("二"), player("三"), ai("四")];
+        assert_eq!(system.plan_compression(&lines, 0, lines.len(), false), None);
+        assert_eq!(
+            system.plan_compression(&lines, lines.len(), lines.len(), true),
+            None
+        );
+    }
+
+    #[test]
+    fn plan_archives_up_to_previous_turn() {
+        let system = system_with_window(2);
+        let lines = vec![
+            player("一"),
+            ai("二"),
+            player("三"),
+            ai("四"),
+            player("五"),
+            ai("六"),
+        ];
+        let plan = system
+            .plan_compression(&lines, 0, lines.len(), true)
+            .expect("达到阈值应当给出归档计划");
+        assert_eq!(plan.archive_end, 4);
+        assert_eq!(plan.visible_count, 4);
+    }
+
+    #[test]
+    fn plan_archives_whole_overlong_turn_only_when_completed() {
+        let system = system_with_window(1);
+        let lines = vec![
+            player("旧话题"),
+            ai("旧回复"),
+            player("新话题"),
+            tool_request(&["c1"]),
+            tool_result("c1"),
+            ai("本轮收尾"),
+        ];
+        // 整轮已确认完成：超长回合可以整体归档。
+        let done = system
+            .plan_compression(&lines, 0, lines.len(), true)
+            .expect("完整超长回合应当可整体归档");
+        assert_eq!(done.archive_end, lines.len());
+
+        // 尾部尚未确认完成：归档止于本轮玩家台词之前。
+        let running = system
+            .plan_compression(&lines, 0, lines.len() - 1, true)
+            .expect("生成中的回合仍应归档更早的历史");
+        assert_eq!(running.archive_end, 2);
+    }
+
+    #[test]
+    fn plan_waits_for_missing_tool_result() {
+        let system = system_with_window(1);
+        let lines = vec![player("一"), ai("二"), player("三"), tool_request(&["c1"])];
+        assert_eq!(
+            system.plan_compression(&lines, 0, lines.len(), true),
+            None,
+            "工具结果未回全时不能把调用链切开"
+        );
+    }
+
+    #[test]
+    fn plan_retains_system_line_next_to_kept_turn() {
+        let system = system_with_window(1);
+        let lines = vec![
+            player("一"),
+            ai("二"),
+            player("三"),
+            ai("四"),
+            system_line("场景变化"),
+        ];
+        let plan = system
+            .plan_compression(&lines, 0, lines.len(), true)
+            .expect("达到阈值应当给出归档计划");
+        assert_eq!(plan.archive_end, 4);
+    }
+
+    // ── 摘要文本与注入视图 ──
+
+    #[test]
+    fn archive_lines_label_every_speaker_kind() {
+        assert_eq!(
+            format_archive_line(&player("喜欢草莓"), ROLE, AI_NAME),
+            "玩家发言：喜欢草莓"
+        );
+
+        let mut named = player("我搬家了");
+        named.base.display_name = Some("阿明".into());
+        assert_eq!(
+            format_archive_line(&named, ROLE, AI_NAME),
+            "玩家（阿明）发言：我搬家了"
+        );
+
+        assert_eq!(
+            format_archive_line(&ai("我记住了"), ROLE, AI_NAME),
+            "角色（小雪）发言：我记住了"
+        );
+
+        let mut bystander = line(LineAttribute::Assistant, "路过打个招呼", Some(OTHER_ROLE));
+        bystander.base.display_name = Some("莉莉".into());
+        assert_eq!(
+            format_archive_line(&bystander, ROLE, AI_NAME),
+            "角色（莉莉）发言：路过打个招呼"
+        );
+
+        assert_eq!(
+            format_archive_line(&tool_result("c1"), ROLE, AI_NAME),
+            "工具返回数据（不是玩家或角色发言）：{\"tool_call_id\":\"c1\"}"
+        );
+
+        let event = line(LineAttribute::User, "玩家上线了", Some(OTHER_ROLE));
+        assert_eq!(
+            format_archive_line(&event, ROLE, AI_NAME),
+            "系统事件提供的上下文（不是玩家发言）：玩家上线了"
+        );
+
+        assert_eq!(format_archive_line(&system_line("设定"), ROLE, AI_NAME), "");
+    }
+
+    #[test]
+    fn archive_line_drops_content_beyond_turn_end() {
+        // 旧存档里模型越界替玩家写下的段落不该进摘要，否则会被反复喂回上下文。
+        let overrun = ai("今天天气不错\nuser:\n我替你说\n说得对");
+        assert_eq!(
+            format_archive_line(&overrun, ROLE, AI_NAME),
+            "角色（小雪）发言：今天天气不错"
+        );
+    }
+
+    #[test]
+    fn context_view_skips_placeholder_sections() {
+        assert_eq!(
+            meaningful_section("  暂无用户特征记录。  ", "暂无用户特征记录。"),
+            None
+        );
+        assert_eq!(
+            meaningful_section("对花生过敏", "暂无用户特征记录。"),
+            Some("对花生过敏")
+        );
+
+        // 全新记忆库四段都是占位，不产生任何注入。
+        assert_eq!(
+            render_memory_context_text(&GameMemoryBank::default(), AI_NAME),
+            ""
+        );
+
+        let bank = GameMemoryBank {
+            data: crate::ai_service::types::GameMemoryBankData {
+                short_term: "暂无近期对话摘要。".into(),
+                long_term: "一起逛过动物园".into(),
+                user_info: "对花生过敏".into(),
+                promises: "暂无未完成的约定。".into(),
+            },
+            ..Default::default()
+        };
+        let text = render_memory_context_text(&bank, AI_NAME);
+        assert!(text.starts_with("【历史记忆参考资料】"));
+        assert!(text.contains("【玩家资料】对花生过敏"));
+        assert!(text.contains("【角色经历与共同事件】一起逛过动物园"));
+        assert!(text.contains("【较早对话摘要】无"));
+    }
+}

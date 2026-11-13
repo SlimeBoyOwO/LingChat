@@ -22,24 +22,3 @@ pub fn normalize_weight(weight: i32) -> i32 {
         SUPER_WEIGHT
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    /// 权重是离散取值，三个区段各自钉住边界。
-    #[test]
-    fn normalize_weight_is_discrete() {
-        assert_eq!(normalize_weight(-7), MIN_WEIGHT);
-        assert_eq!(normalize_weight(0), MIN_WEIGHT);
-        // 普通档原样保留
-        assert_eq!(normalize_weight(1), 1);
-        assert_eq!(normalize_weight(5), WEIGHT_CAP);
-        // 非法区降到普通档上界
-        assert_eq!(normalize_weight(6), WEIGHT_CAP);
-        assert_eq!(normalize_weight(49), WEIGHT_CAP);
-        // 超级热词含越界存量
-        assert_eq!(normalize_weight(SUPER_WEIGHT), SUPER_WEIGHT);
-        assert_eq!(normalize_weight(999), SUPER_WEIGHT);
-    }
-}

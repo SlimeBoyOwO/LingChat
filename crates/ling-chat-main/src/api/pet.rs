@@ -111,19 +111,6 @@ pub fn update_solid_regions(rects: Vec<Rect>, state: tauri::State<'_, HitTestSta
 
 /// 桌宠点击穿透轮询：全局轮询鼠标位置，只有落在前端上报的 solid 区域内才接收鼠标事件，
 /// 其余透明区域把点击让给底下的窗口。
-///
-/// 原本用 Win32 的 GetCursorPos，因此整段是 cfg(windows) 独占，macOS 上桌宠窗口
-/// 会整块挡住底下窗口的点击。cursor_position() 与 set_ignore_cursor_events() 都是
-/// Tauri 的跨平台 API，改用前者后三个桌面平台可以共用同一个循环。
-/// （Linux 未实测：X11 / Wayland 下最差情况是 API 返回 Err，本轮直接跳过。）
-///
-/// 把气泡窗重新提到最前。
-///
-/// `always_on_top` 只是把窗口标记为 topmost，**同一 topmost 组内的前后顺序**会随焦点
-/// 变化丢失：用户点了别的窗口后，气泡窗可能落到后面。而 tao 的 `set_always_on_top`
-/// 只在标志**变化**时才调 `SetWindowPos`，重复设 true 是无操作 —— 所以必须自己调。
-///
-/// `SWP_NOACTIVATE` 保证重申置顶不会抢走用户当前窗口的焦点。
 #[cfg(target_os = "windows")]
 fn raise_bubble(app: &AppHandle) {
     use windows::Win32::Foundation::HWND;
@@ -226,12 +213,7 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                         }
                     });
 
-                    // 向桌宠前端广播全局鼠标位置：桌宠窗口非全屏，DOM
-                    // pointermove 在鼠标移出窗口后停发，Live2D 视线会冻结在
-                    // 最后一次窗口内位置。这里把窗口内逻辑坐标（即 webview
-                    // 视口坐标）发给前端驱动视线，与 DOM clientX/Y 同坐标系。
-                    // 视线弹簧在前端 ticker 内持续插值，广播间隔变大不影响
-                    // 追踪平滑度，因此只在位移 ≥1px 时发送。
+                    // 向桌宠前端广播全局鼠标位置
                     let moved = match last_emitted {
                         Some((lx, ly)) => {
                             (logical_x - lx).abs() >= 1.0 || (logical_y - ly).abs() >= 1.0
@@ -477,13 +459,6 @@ fn watch_pet_window(app: &AppHandle) {
     });
 }
 /// 退出全屏，并等到它真正结束。
-///
-/// 窗口处于全屏时，平台会吞掉后续的 `set_decorations` / `set_size`：
-/// tao 在 macOS 上是 `if fullscreen { return; }` 直接跳过，只把 decorations
-/// 记进状态；等真正退出全屏时，`restore_state_from_fullscreen` 又用的是
-/// **进入全屏那一刻保存的** style mask，中途记下的状态就丢了。Windows 侧
-/// 机制不同（改 `MARKER_DECORATIONS` 标志位），但同样会和全屏标志打架。
-/// 结果就是全屏状态下进出桌宠模式，窗口边框会消失。
 #[cfg(desktop)]
 async fn leave_fullscreen(window: &tauri::WebviewWindow) {
     if !window.is_fullscreen().unwrap_or(false) {
@@ -532,22 +507,12 @@ fn restore_normal_geometry(window: &tauri::WebviewWindow) {
 
 /// macOS：把主窗口标题栏样式重新断言为 Overlay（titlebar 透明 + FullSizeContentView，
 /// 窗口圆角、红绿灯悬浮）。
-///
-/// 桌宠模式进出时 `set_decorations` 会异步重建 style mask（走主线程 GCD 队列），
-/// 丢掉 Overlay 依赖的 FullSizeContentView，窗口会变回「有标题栏 + 直角角」、
-/// 红绿灯被挤出画面；而 `set_title_bar_style` 是同步读当前 mask 再叠加，
-/// mask 未落地时调用会读到旧态。恢复流程要在 mask 落地后、几何恢复后各断言一次。
 #[cfg(target_os = "macos")]
 fn reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
     let _ = window.set_title_bar_style(tauri::TitleBarStyle::Overlay);
 }
 
 /// macOS：等待 `set_decorations(true)` 异步重建的 style mask 落地，再断言 Overlay。
-///
-/// tao 的 mask 重建没有完成回调，只能固定退让 80ms——这个时延依赖 tao 的异步
-/// 实现细节，若上游改为同步应用 mask 可移除等待。仅在退出桌宠紧跟
-/// `set_decorations(true)` 之后调用一次；几何恢复（set_size/set_position）后
-/// 的最终断言直接用 `reassert_overlay_title_bar`，不要重复等待。
 #[cfg(target_os = "macos")]
 async fn wait_decoration_mask_then_reassert_overlay_title_bar(window: &tauri::WebviewWindow) {
     tokio::time::sleep(std::time::Duration::from_millis(80)).await;

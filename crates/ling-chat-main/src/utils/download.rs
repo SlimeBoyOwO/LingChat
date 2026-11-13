@@ -100,7 +100,12 @@ pub async fn download_to_file(
             .unwrap_or_else(|_| "<unreadable response body>".into());
         let body = body.trim();
         let snippet = if body.len() > 512 {
-            format!("{}...", &body[..512])
+            // 按字节截断可能切在多字节字符中间导致 panic，回退到最近的字符边界
+            let mut end = 512;
+            while !body.is_char_boundary(end) {
+                end -= 1;
+            }
+            format!("{}...", &body[..end])
         } else {
             body.to_string()
         };
@@ -160,13 +165,7 @@ pub async fn download_to_file(
     Ok(bytes_done)
 }
 
-/// 构建一个预配置的 `reqwest::Client`，适合通用下载场景。
-///
-/// - 600 秒超时
-/// - 最多 10 次重定向
-/// - 标准 User-Agent
-/// - TLS 用 webpki-roots（见 [`crate::utils::tls::build_tls_config`]），
-///   绕开 rustls-platform-verifier 在 Android 上的 TLS panic
+/// 构建一个预配置的 `reqwest::Client`
 pub fn build_download_client() -> Result<reqwest::Client, String> {
     let tls_config = crate::utils::tls::build_tls_config()?;
     reqwest::Client::builder()

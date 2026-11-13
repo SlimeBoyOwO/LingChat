@@ -1,34 +1,6 @@
 //! 角色压缩包 (zip / 7z) 解压/压缩统一接口。
 //!
 //! 配套架构说明位于 `docs/utils/archive.md`，本文件聚焦公共 API 的契约。
-//!
-//! # 解压安全防线
-//!
-//! 仅检查总大小无法识别 ZIP 炸弹。类似 42.zip、35.zip 的递归压缩包中，
-//! 每个条目都可能具有极高压缩率，解压与压缩大小之比可超过 1000。
-//!
-//! 1. **条目数量** — `entry_index < MAX_ENTRY_COUNT`（默认 1000）
-//! 2. **压缩比** — `uncompressed / compressed <= MAX_COMPRESSION_RATIO`（默认 100）← 关键防线
-//!
-//! # 路径遍历防御
-//!
-//! 任何条目名包含 `..`、以 `/` 或 `\` 开头、Windows 盘符或 UNC 路径时，
-//! 直接拒绝。同时跳过 macOS 元数据 (`__MACOSX/`、`._*`、`.DS_Store`)。
-//!
-//! # 调用示例
-//!
-//! ```text
-//! use ling_chat::utils::archive::{compress, ArchiveFormat, extract_zip, resolve_target, ConflictPolicy};
-//! //!
-//! compress(src_dir, ArchiveFormat::Zip, &out_zip, &[], &[], &|ev| {
-//!     println!("[{} {}/{}] {}", ev.phase, ev.index, ev.total, ev.name);
-//! })?;
-//!
-//! let token = CancellationToken::new();
-//! let summary = extract_zip(&out_zip, &dest, &token, &|ev| { /* ... */ })?;
-//! let res = resolve_target(&dest, &archive_top_dir, ConflictPolicy::Rename)?;
-//! # Ok::<(), archive::ArchiveError>(())
-//! ```
 
 use std::fs::File;
 use std::io::{self, Read};
@@ -44,15 +16,9 @@ use serde::Serialize;
 pub const MAX_ENTRY_COUNT: usize = 1000;
 
 /// 单条目压缩比上限（解压后字节 / 压缩前字节）。
-///
-/// 经验值 100 足以应对正常 deflate 条目，同时击退 42.zip / 35.zip 类递归炸弹。
-/// 压缩大小为 0 时跳过此检查（避免异常元数据误报）。
 pub const MAX_COMPRESSION_RATIO: u64 = 100;
 
 // 文件名最大字节数；超出由 [`sanitize_entry_name`] 拒绝。
-/// 归档格式枚举，决定走 `zip` crate 还是 `sevenz_rust2` 的解/压路径。
-///
-/// 通过 `serde(rename_all = "lowercase")` 序列化为小写字符串，便于前后端约定。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum ArchiveFormat {

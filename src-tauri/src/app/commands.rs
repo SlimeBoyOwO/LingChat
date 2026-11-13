@@ -313,6 +313,8 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::asr::asr_stream_audio_chunk,
         api::asr::asr_stop_streaming,
         api::asr::asr_cancel_streaming,
+        #[cfg(desktop)]
+        crate::app::tray::enter_tray_mode,
         exit_app,
     ])
 }

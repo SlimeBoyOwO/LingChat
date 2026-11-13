@@ -27,10 +27,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, onUnmounted } from "vue";
 import { useRoute } from "vue-router";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { useSettingsStore } from "./stores/modules/settings";
+import { useUIStore } from "./stores/modules/ui/ui";
 import CursorEffects from "./components/effects/CursorEffects.vue";
 import RouteFadeMask from "./components/ui/RouteFadeMask.vue";
 import Notification from "./components/ui/Notification.vue";
@@ -57,6 +59,16 @@ const route = useRoute();
 const isMainWindow = getCurrentWindow().label === "main";
 
 const settingsStore = useSettingsStore();
+
+// 托盘还原主窗口后退出轻量模式，角色舞台随之重新挂载（仅主窗口）
+const uiStore = useUIStore();
+let unlistenLiteModeExit: UnlistenFn | null = null;
+if (isMainWindow) {
+  listen("lite-mode:exit", () => uiStore.setLiteMode(false)).then((unlisten) => {
+    unlistenLiteModeExit = unlisten;
+  });
+}
+onUnmounted(() => unlistenLiteModeExit?.());
 // 光标特效只在主界面提供：桌宠是同窗口的透明小窗，气泡/投屏/日志/TODO 小组件是独立窗口，
 // 这些场景既没有视线内的鼠标操作，也没必要保留覆盖层与 WebGL 上下文
 const cursorFxEnabled = computed(() => isMainWindow && route.path !== "/pet");

@@ -30,9 +30,6 @@ fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
 #[cfg(target_os = "android")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     use tauri_plugin_android_fs::{AndroidFsExt, AppDir};
-    // Android: 应用专属外部存储 (AppStorage + AppDir::Data)
-    // 对应 /storage/emulated/0/Android/data/<package>/files
-    // 无需额外权限，卸载应用时自动清理
     app.android_fs()
         .app_storage()
         .resolve_path(None, AppDir::Data)
@@ -42,12 +39,6 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 #[cfg(target_os = "ios")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
-    // iOS：使用沙盒内的 Documents 目录（<container>/Documents）。
-    // 配合 src-tauri/Info.ios.plist 中的 UIFileSharingEnabled /
-    // LSSupportsOpeningDocumentsInPlace，用户可以在系统「文件」App 里
-    // 直接看到并访问整个 data/ 目录（游戏数据、语音、截图等）。
-    // 注意不要改回 app_data_dir()（Library/Application Support），
-    // 那部分对「文件」App 不可见。
     app.path()
         .document_dir()
         .expect("failed to resolve document_dir on iOS")
@@ -134,19 +125,6 @@ fn seed_desktop(
 }
 
 /// 通过 tauri-plugin-fs 读取打包的 data.7z 并解压到 data_dir。
-///
-/// 所有游戏资源文件在构建时被打包成一个 7z（ASCII 文件名），
-/// 该 7z 由构建脚本放入移动端资源目录。
-/// 这种方式从根本上避开了 asset:// 协议处理中文路径的问题。
-///
-/// 路径差异（实测：iOS 的 resource_dir() 返回的就是 bundle 内的 assets/ 目录，
-/// 因此两端统一读 `{resource_dir}/data/data.7z`）：
-/// - Android：data.7z 在 APK 的 assets/data/data.7z，resource_dir() 即 assets 根
-///   → 读取 `{resource_dir}/data/data.7z`
-/// - iOS：data.7z 在 `gen/apple/assets/data/data.7z`，XcodeGen 的 folder reference
-///   把 `assets/` **整个目录**拷进 app bundle 后即 resource_dir()
-///   → 读取 `{resource_dir}/data/data.7z`（不要再拼一层 `assets/`，否则变成
-///   `<bundle>/assets/assets/data/data.7z` 导致播种失败）
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
     use anyhow::Context;
@@ -161,11 +139,6 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
     let base = resource_dir.to_string_lossy();
     let base = base.trim_end_matches('/');
 
-    // 读取 data.7z（唯一需要从 asset:// 读取的文件，纯 ASCII 路径）
-    // iOS：tauri 的 resource_dir() 返回 bundle 内的 assets/ 目录
-    //   （gen/apple/assets/ 以 folder reference 打进 bundle 后即 resource_dir），
-    //   因此 data.7z 的读取路径是 {resource_dir}/data/data.7z。
-    // Android：resource_dir() 即 APK assets 根，同样读 {resource_dir}/data/data.7z。
     let archive_asset = format!("{}/data/data.7z", base);
 
     let archive_bytes = app

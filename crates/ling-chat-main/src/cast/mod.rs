@@ -15,6 +15,8 @@
 //! - `cast_start` / `cast_stop` — 启停 MJPEG 服务
 //! - `cast_get_status` — 查询状态与局域网地址
 //! - `cast_get_snapshot` — 读取当前场景快照（供投屏窗口打开时播种）
+//!
+//! 钦灵：注意本模块是纯 AI 制作，维护性较差，日后根据需求再改动
 
 pub mod capture;
 pub mod mic;

@@ -1,8 +1,4 @@
 //! CPU 性能检测模块
-//!
-//! 初次启动时检测 CPU 型号并划分性能等级。
-//! 前端负责将检测结果缓存到 localStorage，后续启动直接读取缓存，
-//! 不再重复调用后端。后端仅维持会话级内存缓存。
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;

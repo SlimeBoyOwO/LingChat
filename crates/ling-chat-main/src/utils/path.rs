@@ -82,9 +82,6 @@ fn remove_empty_directory_tree(dir: &Path) -> Result<(), String> {
 }
 
 /// 将目录树中的所有普通文件扁平移动到目标目录。
-///
-/// 移动前会完整检查同名冲突；只有全部重命名成功后才逐层删除空目录。
-/// 任一失败都会直接返回错误，绝不会使用 `remove_dir_all` 清理源目录。
 pub fn move_directory_files_to(source_dir: &Path, target_dir: &Path) -> Result<usize, String> {
     let mut files = Vec::new();
     collect_regular_files(source_dir, &mut files)?;
@@ -124,10 +121,6 @@ pub fn move_directory_files_to(source_dir: &Path, target_dir: &Path) -> Result<u
 }
 
 /// 将角色资源路径解析为绝对路径。
-///
-/// 游戏自有角色：相对路径统一放在 `data/game_data/characters` 下，绝对路径保持不变。
-/// 插件角色：`resource_folder` 编码为 `plugin:<id>/<folder>`，解析到
-/// `data/plugins/<id>/characters/<folder>`（运行时直读，不复制）。
 pub fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
     if let Some(rest) = resource_path.strip_prefix("plugin:") {
         if let Some((plugin_id, folder)) = rest.split_once('/') {
@@ -157,9 +150,6 @@ pub fn ensure_dirs(dirs: &[&Path]) -> Result<(), String> {
 }
 
 /// 路径穿越防护：验证 canonical 路径是否以预期的基础目录开头。
-///
-/// 原为 `api/mod.rs` 下的共享辅助，迁到 utils 后各域（编辑器路径解析、
-/// 局域网同步、字体/素材校验等）都能复用。
 pub fn validate_path_in_base(resolved: &Path, base: &Path) -> Result<(), String> {
     let canon_resolved = resolved
         .canonicalize()
