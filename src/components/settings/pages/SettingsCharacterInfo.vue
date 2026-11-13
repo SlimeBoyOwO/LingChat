@@ -5,451 +5,401 @@
       class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
       @click="handleClose"
     >
-      <div
-        class="glass-effect flex h-[85dvh] w-full max-w-4xl flex-col overflow-hidden rounded-3xl text-white"
-        @click.stop
+      <SettingsModalLayout
+        :title="$t('settings.characterInfo.header.title', { title: headerTitle })"
+        :subtitle="$t('settings.characterInfo.header.subtitle')"
+        :busy="saving || resourceBusy > 0"
+        @close="handleClose"
       >
-        <!-- Header -->
-        <div class="flex items-center justify-between border-b border-white/10 bg-white/5 p-6">
-          <div class="flex items-center gap-4">
+        <template #icon><Icon icon="setting" /></template>
+        <template #sidebar>
+          <SettingsSidebar
+            v-model="activeTab"
+            :tabs="tabs"
+            :label="$t('settings.characterInfo.header.title', { title: headerTitle })"
+            :disabled="saving || resourceBusy > 0"
+          />
+        </template>
+        <div v-if="loading" class="flex h-full items-center justify-center">
+          <div
+            class="h-10 w-10 animate-spin rounded-full border-3 border-white/10 border-t-[#5e72e4]"
+          ></div>
+        </div>
+
+        <fieldset
+          v-else
+          :inert="saving || resourceBusy > 0"
+          :disabled="saving || resourceBusy > 0"
+          class="mx-auto max-w-3xl min-w-0 space-y-6 border-0 p-0"
+        >
+          <p
+            class="rounded-xl border border-cyan-200/15 bg-cyan-400/5 p-3 text-xs leading-relaxed text-cyan-100/70"
+          >
+            {{ t("settings.characterInfo.draft.hint") }}
+          </p>
+          <WorldbookEditor
+            v-if="editId"
+            v-show="activeTab === 'worldbook'"
+            ref="worldbookEditor"
+            v-model="worldbook"
+            :baseline="worldbookBaseline"
+            :load-error="worldbookError"
+          />
+          <PetLayoutEditor
+            v-if="activeTab === 'pet' && props.roleId"
+            v-model="localSettings"
+            :role-id="props.roleId"
+            :clothes="draftClothes"
+          />
+          <RoleLayoutEditor
+            v-if="activeTab === 'visuals' && props.roleId"
+            v-model="localSettings"
+            :role-id="props.roleId"
+            :clothes="draftClothes"
+          />
+          <!-- Data-Driven Form -->
+          <div v-if="currentTabConfig" class="space-y-4">
             <div
-              class="flex h-12 w-12 items-center justify-center rounded-xl bg-white/10 shadow-inner"
+              v-for="(field, index) in currentTabFields"
+              :key="index"
+              class="flex flex-col gap-2"
             >
-              <Icon icon="setting" />
-            </div>
-            <div>
-              <h2 class="m-0 text-xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
-                {{ $t("settings.characterInfo.header.title", { title: headerTitle }) }}
-              </h2>
-              <p class="m-0 text-sm text-white/50">
-                {{ $t("settings.characterInfo.header.subtitle") }}
+              <label :for="field.key" class="text-[13px] font-medium text-white/60">{{
+                field.label
+              }}</label>
+              <input
+                v-if="field.type === 'text' || field.type === 'number'"
+                :id="field.key"
+                v-model="fieldModel(field).value"
+                :type="field.type"
+                :step="field.step"
+                :min="field.min"
+                :max="field.max"
+                :placeholder="field.placeholder"
+                class="glass-input"
+              />
+              <DialogueExamplesEditor
+                v-else-if="field.type === 'examples'"
+                v-model="fieldModel(field).value"
+                :user-name="localSettings.user_name || gameStore.userName"
+                :character-name="localSettings.ai_name || ''"
+              />
+              <textarea
+                v-else-if="field.type === 'textarea'"
+                :id="field.key"
+                v-model="fieldModel(field).value"
+                :rows="field.rows || 4"
+                class="glass-input font-mono"
+              ></textarea>
+              <select
+                v-else-if="field.type === 'select'"
+                :id="field.key"
+                v-model="fieldModel(field).value"
+                class="glass-input"
+              >
+                <option
+                  v-for="opt in resolveFieldOptions(field)"
+                  :key="opt.value"
+                  :value="opt.value"
+                  class="bg-[#333] text-white"
+                >
+                  {{ opt.label }}
+                </option>
+              </select>
+              <!-- 开关：轨道是第二个 label，滑块用 peer-checked 联动 -->
+              <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
+                <input
+                  :id="field.key"
+                  v-model="fieldModel(field).value"
+                  type="checkbox"
+                  class="peer sr-only"
+                />
+                <label
+                  :for="field.key"
+                  class="peer-checked:border-brand peer-checked:bg-brand block h-5 w-9 cursor-pointer rounded-full border border-white/20 bg-white/10 transition-colors"
+                ></label>
+                <div
+                  class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
+                ></div>
+              </div>
+              <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
+                {{ field.hint }}
               </p>
             </div>
           </div>
-          <button
-            class="flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-none bg-white/10 text-white transition-all duration-200 hover:rotate-90 hover:bg-white/20"
-            @click="handleClose"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              width="24"
-              height="24"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
 
-        <!-- Content -->
-        <div class="flex flex-1 flex-row overflow-hidden">
-          <!-- Sidebar -->
-          <div
-            class="tab-sidebar-scroll flex w-44 shrink-0 flex-col gap-2 overflow-y-auto border-r border-white/10 bg-black/10 p-3"
-          >
-            <button
-              v-for="tab in tabs"
-              :key="tab.id"
-              class="w-full cursor-pointer rounded-xl border-none bg-transparent px-4 py-2.5 text-left font-medium text-white/60 transition-all duration-200 hover:bg-white/5 hover:text-white"
-              :class="{
-                'bg-[rgba(94,114,228,0.2)] font-semibold! text-[#79d9ff]!': activeTab === tab.id,
-              }"
-              @click="activeTab = tab.id"
+          <!-- 关系（AI 角色视角）：角色间关系写 relations.yml，角色对玩家身份的关系写数据库 -->
+          <CharacterRelationsEditor
+            v-if="activeTab === 'basic' && props.roleId"
+            ref="relationsEditor"
+            :role-id="props.roleId"
+            :character-folder="String(localSettings.character_folder || '')"
+          />
+
+          <!-- GSV 六情绪参考语音：填全的分类按情绪切换，未填全的仍回退到 gsv_voice_filename / gsv_voice_text -->
+          <div v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'" class="space-y-4">
+            <div
+              class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4"
             >
-              {{ tab.label }}
+              <div>
+                <h3 class="text-sm font-bold text-white/70">
+                  {{ $t("settings.characterInfo.gsvEmo.title") }}
+                </h3>
+                <p class="mt-1 text-xs text-white/40">
+                  {{ $t("settings.characterInfo.gsvEmo.description") }}
+                </p>
+              </div>
+              <button
+                role="switch"
+                :aria-checked="gsvEmoEnabled"
+                class="cursor-pointer rounded-lg border-none px-3.5 py-1.5 text-xs transition-colors"
+                :class="
+                  gsvEmoEnabled
+                    ? 'bg-[#5e72e4] text-white hover:bg-[#4a5acf]'
+                    : 'bg-white/10 text-white/60 hover:bg-white/20'
+                "
+                @click="toggleGsvEmo"
+              >
+                {{
+                  gsvEmoEnabled
+                    ? $t("settings.characterInfo.gsvEmo.enable")
+                    : $t("settings.characterInfo.gsvEmo.disable")
+                }}
+              </button>
+            </div>
+
+            <!-- 合成采样参数：留空=后端默认 1.0，调低更稳定、更贴近参考音色 -->
+            <div
+              class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-3"
+            >
+              <div class="flex flex-col gap-2">
+                <label class="text-[13px] font-medium text-white/60">
+                  {{ $t("settings.characterInfo.gsvEmo.temperature") }}
+                </label>
+                <input
+                  v-model="gsvTemperature"
+                  type="number"
+                  step="0.05"
+                  min="0.1"
+                  max="2"
+                  :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                  class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-[13px] font-medium text-white/60">
+                  {{ $t("settings.characterInfo.gsvEmo.topP") }}
+                </label>
+                <input
+                  v-model="gsvTopP"
+                  type="number"
+                  step="0.05"
+                  min="0.1"
+                  max="1"
+                  :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                  class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                />
+              </div>
+              <div class="flex flex-col gap-2">
+                <label class="text-[13px] font-medium text-white/60">
+                  {{ $t("settings.characterInfo.gsvEmo.speed") }}
+                </label>
+                <input
+                  v-model="gsvSpeedFactor"
+                  type="number"
+                  step="0.05"
+                  min="0.5"
+                  max="2"
+                  :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
+                  class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
+                />
+              </div>
+              <p class="col-span-full text-xs text-white/40">
+                {{ $t("settings.characterInfo.gsvEmo.samplingDesc") }}
+              </p>
+            </div>
+
+            <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
+            <details class="rounded-xl border border-white/10 bg-white/5 p-4">
+              <summary class="cursor-pointer text-sm font-bold text-white/70">
+                {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
+              </summary>
+              <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
+                {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
+              </p>
+            </details>
+
+            <div v-if="gsvEmoEnabled" class="space-y-3">
+              <div
+                v-for="cat in GSV_EMO_CATEGORIES"
+                :key="cat"
+                class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2"
+              >
+                <div class="flex flex-col gap-2">
+                  <label class="text-[13px] font-medium text-white/60">
+                    {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.voiceFile") }}
+                  </label>
+                  <input
+                    v-model="gsvEmoField(cat, 'gsv_emo_voice_files').value"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.gsvEmo.voiceFilePlaceholder')"
+                    class="glass-input"
+                  />
+                </div>
+                <div class="flex flex-col gap-2">
+                  <label class="text-[13px] font-medium text-white/60">
+                    {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.text") }}
+                  </label>
+                  <input
+                    v-model="gsvEmoField(cat, 'gsv_emo_texts').value"
+                    type="text"
+                    :placeholder="$t('settings.characterInfo.gsvEmo.textPlaceholder')"
+                    class="glass-input"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <VoicePreview
+            v-if="activeTab === 'voice' && props.roleId"
+            :role-id="props.roleId"
+            :model-value="localSettings"
+          />
+
+          <AvatarManager
+            v-if="activeTab === 'avatars' && props.roleId"
+            :role-id="props.roleId"
+            :clothes="clothesList"
+            :resource-clothes="draftClothes"
+            :initial-costume="avatarCostume"
+          />
+
+          <Live2DSettings
+            v-if="activeTab === 'live2d' && props.roleId"
+            v-model="localSettings.live2d"
+            :role-id="props.roleId"
+            :character-folder="localSettings.character_folder || ''"
+            :clothes="clothesList"
+            :scale="Number(localSettings.scale) || 1"
+            :offset-x="Number(localSettings.offset_x) || 0"
+            :offset-y="Number(localSettings.offset_y) || 0"
+          />
+
+          <CostumeManager
+            v-if="activeTab === 'clothes' && props.roleId"
+            v-model="localSettings"
+            :role-id="props.roleId"
+            @changed="onCostumeChanged"
+            @edit-avatars="openCostumeAvatars"
+          />
+
+          <!-- Touch Tab：这里只做入口与概览 -->
+          <div v-if="activeTab === 'touch'" class="space-y-4">
+            <p class="text-[13px] leading-relaxed text-white/50">
+              {{ $t("settings.characterInfo.touch.hint") }}
+            </p>
+            <button
+              class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
+              :disabled="clothesLoading"
+              @click="touchEditorVisible = true"
+            >
+              {{ $t("settings.characterInfo.touch.open") }}
             </button>
           </div>
 
-          <!-- Tab Panels -->
-          <div class="relative flex-1 overflow-y-auto p-6">
-            <div v-if="loading" class="flex h-full items-center justify-center">
-              <div
-                class="h-10 w-10 animate-spin rounded-full border-3 border-white/10 border-t-[#5e72e4]"
-              ></div>
-            </div>
-
-            <fieldset
-              v-else
-              :inert="saving || resourceBusy > 0"
-              :disabled="saving || resourceBusy > 0"
-              class="mx-auto max-w-3xl min-w-0 space-y-6 border-0 p-0"
-            >
-              <p
-                class="rounded-xl border border-cyan-200/15 bg-cyan-400/5 p-3 text-xs leading-relaxed text-cyan-100/70"
-              >
-                {{ t("settings.characterInfo.draft.hint") }}
-              </p>
-              <WorldbookEditor
-                v-if="editId"
-                v-show="activeTab === 'worldbook'"
-                ref="worldbookEditor"
-                v-model="worldbook"
-                :baseline="worldbookBaseline"
-                :load-error="worldbookError"
-              />
-              <PetLayoutEditor
-                v-if="activeTab === 'pet' && props.roleId"
-                v-model="localSettings"
-                :role-id="props.roleId"
-                :clothes="draftClothes"
-              />
-              <RoleLayoutEditor
-                v-if="activeTab === 'visuals' && props.roleId"
-                v-model="localSettings"
-                :role-id="props.roleId"
-                :clothes="draftClothes"
-              />
-              <!-- Data-Driven Form -->
-              <div v-if="currentTabConfig" class="space-y-4">
-                <div
-                  v-for="(field, index) in currentTabFields"
-                  :key="index"
-                  class="flex flex-col gap-2"
-                >
-                  <label :for="field.key" class="text-[13px] font-medium text-white/60">{{
-                    field.label
-                  }}</label>
-                  <input
-                    v-if="field.type === 'text' || field.type === 'number'"
-                    :id="field.key"
-                    v-model="fieldModel(field).value"
-                    :type="field.type"
-                    :step="field.step"
-                    :min="field.min"
-                    :max="field.max"
-                    :placeholder="field.placeholder"
-                    class="glass-input"
-                  />
-                  <DialogueExamplesEditor
-                    v-else-if="field.type === 'examples'"
-                    v-model="fieldModel(field).value"
-                    :user-name="localSettings.user_name || gameStore.userName"
-                    :character-name="localSettings.ai_name || ''"
-                  />
-                  <textarea
-                    v-else-if="field.type === 'textarea'"
-                    :id="field.key"
-                    v-model="fieldModel(field).value"
-                    :rows="field.rows || 4"
-                    class="glass-input font-mono"
-                  ></textarea>
-                  <select
-                    v-else-if="field.type === 'select'"
-                    :id="field.key"
-                    v-model="fieldModel(field).value"
-                    class="glass-input"
-                  >
-                    <option
-                      v-for="opt in resolveFieldOptions(field)"
-                      :key="opt.value"
-                      :value="opt.value"
-                      class="bg-[#333] text-white"
-                    >
-                      {{ opt.label }}
-                    </option>
-                  </select>
-                  <!-- 开关：轨道是第二个 label，滑块用 peer-checked 联动 -->
-                  <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
-                    <input
-                      :id="field.key"
-                      v-model="fieldModel(field).value"
-                      type="checkbox"
-                      class="peer sr-only"
-                    />
-                    <label
-                      :for="field.key"
-                      class="peer-checked:border-brand peer-checked:bg-brand block h-5 w-9 cursor-pointer rounded-full border border-white/20 bg-white/10 transition-colors"
-                    ></label>
-                    <div
-                      class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
-                    ></div>
-                  </div>
-                  <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
-                    {{ field.hint }}
-                  </p>
-                </div>
-              </div>
-
-              <!-- 关系（AI 角色视角）：角色间关系写 relations.yml，角色对玩家身份的关系写数据库 -->
-              <CharacterRelationsEditor
-                v-if="activeTab === 'basic' && props.roleId"
-                ref="relationsEditor"
-                :role-id="props.roleId"
-                :character-folder="String(localSettings.character_folder || '')"
-              />
-
-              <!-- GSV 六情绪参考语音：填全的分类按情绪切换，未填全的仍回退到 gsv_voice_filename / gsv_voice_text -->
-              <div
-                v-if="activeTab === 'voice' && localSettings.tts_type === 'gsv'"
-                class="space-y-4"
-              >
-                <div
-                  class="flex items-center justify-between rounded-xl border border-white/10 bg-white/5 p-4"
-                >
-                  <div>
-                    <h3 class="text-sm font-bold text-white/70">
-                      {{ $t("settings.characterInfo.gsvEmo.title") }}
-                    </h3>
-                    <p class="mt-1 text-xs text-white/40">
-                      {{ $t("settings.characterInfo.gsvEmo.description") }}
-                    </p>
-                  </div>
-                  <button
-                    role="switch"
-                    :aria-checked="gsvEmoEnabled"
-                    class="cursor-pointer rounded-lg border-none px-3.5 py-1.5 text-xs transition-colors"
-                    :class="
-                      gsvEmoEnabled
-                        ? 'bg-[#5e72e4] text-white hover:bg-[#4a5acf]'
-                        : 'bg-white/10 text-white/60 hover:bg-white/20'
-                    "
-                    @click="toggleGsvEmo"
-                  >
-                    {{
-                      gsvEmoEnabled
-                        ? $t("settings.characterInfo.gsvEmo.enable")
-                        : $t("settings.characterInfo.gsvEmo.disable")
-                    }}
-                  </button>
-                </div>
-
-                <!-- 合成采样参数：留空=后端默认 1.0，调低更稳定、更贴近参考音色 -->
-                <div
-                  class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-3"
-                >
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">
-                      {{ $t("settings.characterInfo.gsvEmo.temperature") }}
-                    </label>
-                    <input
-                      v-model="gsvTemperature"
-                      type="number"
-                      step="0.05"
-                      min="0.1"
-                      max="2"
-                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">
-                      {{ $t("settings.characterInfo.gsvEmo.topP") }}
-                    </label>
-                    <input
-                      v-model="gsvTopP"
-                      type="number"
-                      step="0.05"
-                      min="0.1"
-                      max="1"
-                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    />
-                  </div>
-                  <div class="flex flex-col gap-2">
-                    <label class="text-[13px] font-medium text-white/60">
-                      {{ $t("settings.characterInfo.gsvEmo.speed") }}
-                    </label>
-                    <input
-                      v-model="gsvSpeedFactor"
-                      type="number"
-                      step="0.05"
-                      min="0.5"
-                      max="2"
-                      :placeholder="$t('settings.characterInfo.gsvEmo.samplingPlaceholder')"
-                      class="form-control rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5 text-sm text-white transition-all duration-200 outline-none"
-                    />
-                  </div>
-                  <p class="col-span-full text-xs text-white/40">
-                    {{ $t("settings.characterInfo.gsvEmo.samplingDesc") }}
-                  </p>
-                </div>
-
-                <!-- 参考音频制作建议：折叠展示，引导录出更贴近真人的参考音 -->
-                <details class="rounded-xl border border-white/10 bg-white/5 p-4">
-                  <summary class="cursor-pointer text-sm font-bold text-white/70">
-                    {{ $t("settings.characterInfo.gsvEmo.refGuideTitle") }}
-                  </summary>
-                  <p class="mt-3 text-xs leading-relaxed whitespace-pre-line text-white/40">
-                    {{ $t("settings.characterInfo.gsvEmo.refGuide") }}
-                  </p>
-                </details>
-
-                <div v-if="gsvEmoEnabled" class="space-y-3">
-                  <div
-                    v-for="cat in GSV_EMO_CATEGORIES"
-                    :key="cat"
-                    class="grid grid-cols-1 gap-3 rounded-xl border border-white/10 bg-white/5 p-4 md:grid-cols-2"
-                  >
-                    <div class="flex flex-col gap-2">
-                      <label class="text-[13px] font-medium text-white/60">
-                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.voiceFile") }}
-                      </label>
-                      <input
-                        v-model="gsvEmoField(cat, 'gsv_emo_voice_files').value"
-                        type="text"
-                        :placeholder="$t('settings.characterInfo.gsvEmo.voiceFilePlaceholder')"
-                        class="glass-input"
-                      />
-                    </div>
-                    <div class="flex flex-col gap-2">
-                      <label class="text-[13px] font-medium text-white/60">
-                        {{ cat }} · {{ $t("settings.characterInfo.gsvEmo.text") }}
-                      </label>
-                      <input
-                        v-model="gsvEmoField(cat, 'gsv_emo_texts').value"
-                        type="text"
-                        :placeholder="$t('settings.characterInfo.gsvEmo.textPlaceholder')"
-                        class="glass-input"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <VoicePreview
-                v-if="activeTab === 'voice' && props.roleId"
-                :role-id="props.roleId"
-                :model-value="localSettings"
-              />
-
-              <AvatarManager
-                v-if="activeTab === 'avatars' && props.roleId"
-                :role-id="props.roleId"
-                :clothes="clothesList"
-                :resource-clothes="draftClothes"
-                :initial-costume="avatarCostume"
-              />
-
-              <Live2DSettings
-                v-if="activeTab === 'live2d' && props.roleId"
-                v-model="localSettings.live2d"
-                :role-id="props.roleId"
-                :character-folder="localSettings.character_folder || ''"
-                :clothes="clothesList"
-                :scale="Number(localSettings.scale) || 1"
-                :offset-x="Number(localSettings.offset_x) || 0"
-                :offset-y="Number(localSettings.offset_y) || 0"
-              />
-
-              <CostumeManager
-                v-if="activeTab === 'clothes' && props.roleId"
-                v-model="localSettings"
-                :role-id="props.roleId"
-                @changed="onCostumeChanged"
-                @edit-avatars="openCostumeAvatars"
-              />
-
-              <!-- Touch Tab：这里只做入口与概览 -->
-              <div v-if="activeTab === 'touch'" class="space-y-4">
-                <p class="text-[13px] leading-relaxed text-white/50">
-                  {{ $t("settings.characterInfo.touch.hint") }}
-                </p>
-                <button
-                  class="cursor-pointer rounded-lg border-none bg-[#5e72e4] px-3 py-1.5 text-xs text-white transition-colors hover:bg-[#4a5acf]"
-                  :disabled="clothesLoading"
-                  @click="touchEditorVisible = true"
-                >
-                  {{ $t("settings.characterInfo.touch.open") }}
-                </button>
-              </div>
-
-              <HotwordSettings
-                v-if="activeTab === 'hotword' && props.roleId"
-                v-model="hotwordDraft"
-                :role-id="props.roleId"
-                :model-capability="modelCapability"
-                scope="role"
-                :save-hotwords="saveHotwordRows"
-              />
-            </fieldset>
-          </div>
-        </div>
+          <HotwordSettings
+            v-if="activeTab === 'hotword' && props.roleId"
+            v-model="hotwordDraft"
+            :role-id="props.roleId"
+            :model-capability="modelCapability"
+            scope="role"
+            :save-hotwords="saveHotwordRows"
+          />
+        </fieldset>
 
         <!-- Footer -->
-        <div class="flex justify-between gap-3 border-t border-white/10 bg-white/5 p-4">
-          <!-- 危险操作区：删除角色 -->
-          <div class="flex items-center">
-            <button
-              :disabled="deleteState.disabled || loading || saving || resourceBusy > 0"
-              :title="
-                deleteState.disabled
-                  ? deleteState.reason
-                  : t('settings.characterInfo.delete.button')
-              "
-              :class="[
-                'rounded-[20px] border px-4 py-2 text-sm font-medium transition-all duration-200',
-                deleteState.disabled
-                  ? 'cursor-not-allowed border-white/10 bg-white/5 text-white/25'
-                  : `border-red-400/30 bg-red-500/15 text-red-200 hover:-translate-y-px hover:bg-red-500/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)]`,
-              ]"
-              @click="deleteState.disabled ? null : handleDelete()"
-            >
-              <span class="inline-flex items-center gap-1.5">
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  stroke-width="2"
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                >
-                  <polyline points="3 6 5 6 21 6"></polyline>
-                  <path
-                    d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
-                  ></path>
-                  <line x1="10" y1="11" x2="10" y2="17"></line>
-                  <line x1="14" y1="11" x2="14" y2="17"></line>
-                </svg>
-                {{ t("settings.characterInfo.delete.button") }}
-              </span>
-            </button>
-          </div>
+        <template #footer>
+          <div class="flex justify-between gap-3">
+            <!-- 危险操作区：删除角色 -->
+            <div class="flex items-center">
+              <button
+                :disabled="deleteState.disabled || loading || saving || resourceBusy > 0"
+                :title="
+                  deleteState.disabled
+                    ? deleteState.reason
+                    : t('settings.characterInfo.delete.button')
+                "
+                :class="[
+                  'rounded-[20px] border px-4 py-2 text-sm font-medium transition-all duration-200',
+                  deleteState.disabled
+                    ? 'cursor-not-allowed border-white/10 bg-white/5 text-white/25'
+                    : `border-red-400/30 bg-red-500/15 text-red-200 hover:-translate-y-px hover:bg-red-500/30 hover:shadow-[0_4px_12px_rgba(239,68,68,0.3)]`,
+                ]"
+                @click="deleteState.disabled ? null : handleDelete()"
+              >
+                <span class="inline-flex items-center gap-1.5">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    stroke-width="2"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  >
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path
+                      d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"
+                    ></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                  </svg>
+                  {{ t("settings.characterInfo.delete.button") }}
+                </span>
+              </button>
+            </div>
 
-          <!-- 普通操作：取消/保存 -->
-          <div class="flex gap-3">
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
-              @click="handleClose"
-            >
-              {{ $t("settings.characterInfo.footer.cancel") }}
-            </button>
-            <button
-              class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
-              :disabled="saving || loading || resourceBusy > 0 || !loaded || !editId"
-              @click="saveSettings"
-            >
-              <span
-                v-if="saving"
-                class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
-              ></span>
-              {{
-                saving
-                  ? $t("settings.characterInfo.footer.saving")
-                  : $t("settings.characterInfo.footer.save")
-              }}
-            </button>
+            <!-- 普通操作：取消/保存 -->
+            <div class="flex gap-3">
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-white/10 px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:bg-white/20"
+                @click="handleClose"
+              >
+                {{ $t("settings.characterInfo.footer.cancel") }}
+              </button>
+              <button
+                class="cursor-pointer rounded-[20px] border-none bg-[#5e72e4] px-5 py-2 text-sm font-medium text-white transition-all duration-200 hover:enabled:-translate-y-px hover:enabled:bg-[#4a5acf] hover:enabled:shadow-[0_4px_12px_rgba(94,114,228,0.3)] disabled:cursor-not-allowed disabled:opacity-60"
+                :disabled="saving || loading || resourceBusy > 0 || !loaded || !editId"
+                @click="saveSettings"
+              >
+                <span
+                  v-if="saving"
+                  class="mr-2 inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-white/30 border-t-white"
+                ></span>
+                {{
+                  saving
+                    ? $t("settings.characterInfo.footer.saving")
+                    : $t("settings.characterInfo.footer.save")
+                }}
+              </button>
+            </div>
           </div>
-        </div>
-
-        <!-- 触摸区域编辑器 -->
-        <TouchRegionsEditor
-          :user-name="gameStore.userName"
-          v-if="touchEditorVisible"
-          :body-part="localSettings.body_part"
-          :clothes="draftClothes"
-          @apply="onTouchRegionsApply"
-          @close="touchEditorVisible = false"
-        />
-      </div>
+        </template>
+        <template #overlay>
+          <!-- 触摸区域编辑器 -->
+          <TouchRegionsEditor
+            :user-name="gameStore.userName"
+            v-if="touchEditorVisible"
+            :body-part="localSettings.body_part"
+            :clothes="draftClothes"
+            @apply="onTouchRegionsApply"
+            @close="touchEditorVisible = false"
+          />
+        </template>
+      </SettingsModalLayout>
     </div>
   </Transition>
 </template>
@@ -477,6 +427,8 @@ import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { Icon } from "../../base";
+import SettingsModalLayout from "@/components/ui/SettingsModalLayout.vue";
+import SettingsSidebar from "@/components/ui/SettingsSidebar.vue";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
 import HotwordSettings from "../character/HotwordSettings.vue";
 import Live2DSettings from "../character/Live2DSettings.vue";
@@ -1063,24 +1015,3 @@ onUnmounted(() => {
   void discardDraft().catch(console.error);
 });
 </script>
-
-<style scoped>
-/* Vertical sidebar: thin custom scrollbar (Webkit + Firefox). */
-.tab-sidebar-scroll {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-}
-.tab-sidebar-scroll::-webkit-scrollbar {
-  width: 6px;
-}
-.tab-sidebar-scroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-.tab-sidebar-scroll::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.18);
-  border-radius: 3px;
-}
-.tab-sidebar-scroll::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.32);
-}
-</style>

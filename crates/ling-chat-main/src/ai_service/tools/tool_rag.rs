@@ -228,12 +228,19 @@ impl ToolRag {
         top_k: usize,
         min_score: f32,
     ) -> Result<Vec<(String, f32)>> {
-        if !self.is_enabled() {
-            return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
-        }
         let query = query.trim();
         if query.is_empty() {
             return Err(anyhow!("检索关键词为空"));
+        }
+
+        // 工具清单已经公开名称；模型按名称索取时，不应再被语义排序挤掉。
+        let named = named_tools(query, candidates, top_k);
+        if !named.is_empty() {
+            self.touch(role, &named);
+            return Ok(named.into_iter().map(|name| (name, 1.0)).collect());
+        }
+        if !self.is_enabled() {
+            return Err(anyhow!("文本嵌入引擎未启用，无法检索工具"));
         }
 
         let corpus = build_corpus(candidates);
@@ -349,6 +356,34 @@ fn select_hits(scored: &mut Vec<(String, f32)>, top_k: usize, min_score: f32) {
     scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     scored.retain(|(_, score)| *score >= min_score);
     scored.truncate(top_k);
+}
+
+fn named_tools(query: &str, candidates: &[ToolDefinition], top_k: usize) -> Vec<String> {
+    let query = query.to_ascii_lowercase();
+    let identifier = |byte: u8| byte.is_ascii_alphanumeric() || matches!(byte, b'_' | b'-');
+    let mut hits: Vec<_> = candidates
+        .iter()
+        .filter(|def| !is_resident(&def.function.name))
+        .filter_map(|def| {
+            let name = def.function.name.to_ascii_lowercase();
+            if name.is_empty() {
+                return None;
+            }
+            let position = query.match_indices(&name).find_map(|(start, _)| {
+                let end = start + name.len();
+                let before = start
+                    .checked_sub(1)
+                    .and_then(|index| query.as_bytes().get(index));
+                let after = query.as_bytes().get(end);
+                (!before.is_some_and(|byte| identifier(*byte))
+                    && !after.is_some_and(|byte| identifier(*byte)))
+                .then_some(start)
+            })?;
+            Some((position, def.function.name.clone()))
+        })
+        .collect();
+    hits.sort_by_key(|(position, _)| *position);
+    hits.into_iter().take(top_k).map(|(_, name)| name).collect()
 }
 
 /// 一条工具的检索语料。
