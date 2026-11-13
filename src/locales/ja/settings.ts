@@ -1526,6 +1526,12 @@ export default {
       "mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な音声に対応（WebM を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
     refText: "参照テキスト",
     refTextPlaceholder: "参照音声に対応するテキスト……",
+    refTranscribe: "テキストを認識",
+    refTranscribing: "認識中…",
+    refTranscribeFailed: "参照テキストの認識に失敗しました",
+    refTranscribeNoModel:
+      "ローカル音声認識モデルが未インストールです。先にモデル一覧から SenseVoice をダウンロードしてください",
+    refTranscribeEmpty: "テキストを認識できませんでした。参照テキストを手動で入力してください",
     test: "試聴",
     testPlaceholder: "試聴するテキストを入力（仮名・ハングルは自動で言語判定）……",
     synthesizing: "合成中…",

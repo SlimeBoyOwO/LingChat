@@ -255,11 +255,7 @@
               <button
                 v-if="config.ref_audio_path"
                 class="btn-secondary btn-danger"
-                @click="
-                  stopRefAudioPreview();
-                  config.ref_audio_path = '';
-                  config.ref_text = '';
-                "
+                @click="clearRefAudio"
               >
                 <X :size="16" /> {{ t("settings.sherpa.refClear") }}
               </button>
@@ -267,7 +263,20 @@
           </div>
 
           <div v-if="config.ref_audio_path" class="ref-text-group">
-            <label class="config-label">{{ t("settings.sherpa.refText") }}</label>
+            <div class="ref-text-header">
+              <label class="config-label">{{ t("settings.sherpa.refText") }}</label>
+              <button
+                class="ref-transcribe-btn"
+                :disabled="refTranscribing"
+                @click="transcribeRefAudio"
+              >
+                {{
+                  refTranscribing
+                    ? t("settings.sherpa.refTranscribing")
+                    : t("settings.sherpa.refTranscribe")
+                }}
+              </button>
+            </div>
             <input
               v-model="config.ref_text"
               type="text"
@@ -342,6 +351,7 @@ import {
   downloadSherpaModel,
   deleteSherpaModel,
   importSherpaRefAudio,
+  transcribeSherpaRefAudio,
   onSherpaDownloadProgress,
   type SherpaOnnxModelRecord,
   type SherpaSpeakersInfo,
@@ -368,6 +378,9 @@ const speakersLoading = ref(false);
 /** 并发切模型时只认最后一次请求的结果。 */
 let speakersRequest = 0;
 const importingRefAudio = ref(false);
+const refTranscribing = ref(false);
+/** 只接受最后一次识别结果，避免切换音频后旧结果覆盖新文本。 */
+let refTranscribeSequence = 0;
 const refAudioPlaying = ref(false);
 const playlist = ref<HTMLAudioElement | null>(null);
 const testText = ref("你好，这是一段测试语音。");
@@ -524,10 +537,13 @@ async function pickRefAudio() {
     const imported = await importSherpaRefAudio(file);
     stopRefAudioPreview();
     config.value.ref_audio_path = imported.path;
+    // 换音频后旧文本不再对应，先清空再自动识别。
+    config.value.ref_text = "";
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
       message: imported.file_name,
     });
+    void transcribeRefAudio();
   } catch (error: any) {
     const rawMessage = typeof error === "string" ? error : error?.message || String(error);
     console.error("选择参考音频失败:", error);
@@ -542,6 +558,37 @@ async function pickRefAudio() {
     });
   } finally {
     importingRefAudio.value = false;
+  }
+}
+
+/** 用本地 SenseVoice 识别参考音频并填入；识别期间手动改过文本则不覆盖。 */
+async function transcribeRefAudio() {
+  const path = config.value.ref_audio_path;
+  if (!path) return;
+
+  const sequence = ++refTranscribeSequence;
+  const before = config.value.ref_text;
+  refTranscribing.value = true;
+  try {
+    const text = await transcribeSherpaRefAudio(path);
+    if (sequence !== refTranscribeSequence) return;
+    if (config.value.ref_audio_path !== path) return;
+    if (config.value.ref_text !== before) return;
+    config.value.ref_text = text;
+  } catch (error: any) {
+    if (sequence !== refTranscribeSequence) return;
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
+    console.error("识别参考文本失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_ASR_NO_MODEL: t("settings.sherpa.refTranscribeNoModel"),
+      SHERPA_REF_ASR_EMPTY: t("settings.sherpa.refTranscribeEmpty"),
+    };
+    uiStore.showError({
+      title: t("settings.sherpa.refTranscribeFailed"),
+      message: codeMessages[rawMessage] ?? rawMessage,
+    });
+  } finally {
+    if (sequence === refTranscribeSequence) refTranscribing.value = false;
   }
 }
 
@@ -591,6 +638,14 @@ async function testVoice() {
 function stopPreview() {
   playlist.value = null;
   stopCurrentAudio();
+}
+
+function clearRefAudio() {
+  refTranscribeSequence++;
+  refTranscribing.value = false;
+  stopRefAudioPreview();
+  config.value.ref_audio_path = "";
+  config.value.ref_text = "";
 }
 
 /** 停止参考音频试听；播放器为单例。 */
@@ -987,6 +1042,28 @@ const formatSize = (bytes: number): string => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.ref-text-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ref-transcribe-btn {
+  color: rgba(139, 92, 246, 0.9);
+  font-size: 11px;
+  transition: color 0.15s;
+}
+
+.ref-transcribe-btn:hover:not(:disabled) {
+  color: white;
+}
+
+.ref-transcribe-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
 .test-section {

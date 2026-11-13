@@ -240,14 +240,24 @@
                       v-if="fieldValue(field)"
                       type="button"
                       class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
-                      @click="
-                        stopRefAudioPlayback();
-                        fieldModel(field).value = '';
-                      "
+                      @click="clearRefAudio(field)"
                     >
                       {{ t("settings.sherpa.refClear") }}
                     </button>
                   </div>
+                  <button
+                    v-if="fieldValue(field)"
+                    type="button"
+                    class="self-start text-[12px] text-[#8ea2ff] transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="audioTranscribingKey === field.key"
+                    @click="transcribeRefAudio(field)"
+                  >
+                    {{
+                      audioTranscribingKey === field.key
+                        ? t("settings.sherpa.refTranscribing")
+                        : t("settings.sherpa.refTranscribe")
+                    }}
+                  </button>
                   <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
                     {{ field.hint }}
                   </p>
@@ -626,6 +636,10 @@ let clothesSequence = 0;
 let loadSequence = 0;
 /** 正在导入参考音频的字段 key（同一时刻只会有一个导入在进行）。 */
 const audioImportingKey = ref<string | null>(null);
+/** 正在识别参考音频文本的字段 key。 */
+const audioTranscribingKey = ref<string | null>(null);
+/** 只接受最后一次识别结果，避免切换音频后旧结果覆盖新文本。 */
+let refTranscribeSequence = 0;
 /** 正在试听参考音频的字段 key（同一时刻只会有一个在播放）。 */
 const audioPlayingKey = ref<string | null>(null);
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
@@ -995,10 +1009,13 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
     const imported = await TtsLocal.importSherpaRefAudio(selected);
     stopRefAudioPlayback();
     fieldModel(field).value = imported.path;
+    // 换音频后旧文本不再对应，先清空再自动识别。
+    setRefText("");
     uiStore.showSuccess({
       title: t("settings.sherpa.refLoaded"),
       message: imported.file_name,
     });
+    void transcribeRefAudio(field);
   } catch (error: any) {
     const rawMessage = typeof error === "string" ? error : error?.message || String(error);
     console.error("[SettingsCharacterInfo] 导入参考音频失败:", error);
@@ -1014,6 +1031,58 @@ async function importRefAudio(field: FieldSchema): Promise<void> {
   } finally {
     audioImportingKey.value = null;
   }
+}
+
+/** 参考文本统一写在 voice_models，自动识别与手动输入共用同一字段。 */
+function setRefText(text: string): void {
+  ensureVoiceModels().sherpa_onnx_ref_text = text;
+}
+
+function getRefText(): string {
+  return String(ensureVoiceModels().sherpa_onnx_ref_text ?? "");
+}
+
+/** 用本地 SenseVoice 识别参考音频并填入参考文本；手动编辑过的文本不会被覆盖。 */
+async function transcribeRefAudio(field: FieldSchema): Promise<void> {
+  const path = String(fieldValue(field) ?? "").trim();
+  if (!path) return;
+
+  const sequence = ++refTranscribeSequence;
+  const roleId = editRoleId.value;
+  const before = getRefText();
+  audioTranscribingKey.value = field.key;
+  try {
+    const text = await TtsLocal.transcribeSherpaRefAudio(path);
+    if (sequence !== refTranscribeSequence) return;
+    if (editRoleId.value !== roleId) return;
+    if (String(fieldValue(field) ?? "").trim() !== path) return;
+    if (getRefText() !== before) return;
+    setRefText(text);
+  } catch (error: any) {
+    if (sequence !== refTranscribeSequence) return;
+    if (editRoleId.value !== roleId) return;
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
+    console.error("[SettingsCharacterInfo] 识别参考文本失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_ASR_NO_MODEL: t("settings.sherpa.refTranscribeNoModel"),
+      SHERPA_REF_ASR_EMPTY: t("settings.sherpa.refTranscribeEmpty"),
+    };
+    uiStore.showError({
+      title: t("settings.sherpa.refTranscribeFailed"),
+      message: codeMessages[rawMessage] ?? rawMessage,
+    });
+  } finally {
+    if (sequence === refTranscribeSequence) audioTranscribingKey.value = null;
+  }
+}
+
+/** 清除参考音频时同步清掉旧文本，避免保存成不匹配的组合。 */
+function clearRefAudio(field: FieldSchema): void {
+  refTranscribeSequence++;
+  audioTranscribingKey.value = null;
+  stopRefAudioPlayback();
+  fieldModel(field).value = "";
+  setRefText("");
 }
 
 /** 停止参考音频试听。 */

@@ -275,6 +275,14 @@ export function importSherpaRefAudio(path: string): Promise<SherpaRefAudioImport
   return invoke<SherpaRefAudioImport>("import_sherpa_ref_audio", { path });
 }
 
+/**
+ * 用本地 SenseVoice 识别参考音频，返回参考文本。
+ * 未安装模型时抛 `SHERPA_REF_ASR_NO_MODEL`，识别为空时抛 `SHERPA_REF_ASR_EMPTY`。
+ */
+export function transcribeSherpaRefAudio(path: string): Promise<string> {
+  return invoke<string>("transcribe_sherpa_ref_audio", { path });
+}
+
 /** 会话内已迁移的 content:// 音频，避免重复落盘。 */
 const migratedRefAudio = new Map<string, SherpaRefAudioImport>();
 

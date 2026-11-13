@@ -1541,6 +1541,12 @@ export default {
       "mp3 / wav / flac / m4a / aac / ogg (Opus, Vorbis) and other common audio are supported (except WebM). The file is converted to WAV and copied into the app data directory",
     refText: "Reference text",
     refTextPlaceholder: "Transcription of the reference audio...",
+    refTranscribe: "Recognize text",
+    refTranscribing: "Recognizing...",
+    refTranscribeFailed: "Failed to recognize the reference text",
+    refTranscribeNoModel:
+      "The local ASR model is not installed. Download SenseVoice from the model list first",
+    refTranscribeEmpty: "No text was recognized. Please enter the reference text manually",
     test: "Test",
     testPlaceholder: "Enter text to synthesize (kana/hangul switches the language)...",
     synthesizing: "Synthesizing...",

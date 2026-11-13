@@ -53,6 +53,11 @@ impl SherpaAsrProvider {
         }
     }
 
+    /// 共享模型目录里是否已安装可用的 SenseVoice 模型。
+    pub fn model_available() -> bool {
+        Self::resolve_model_paths().is_some()
+    }
+
     /// 检查共享模型目录里是否已下载 SenseVoice 模型，合并出识别所需路径。
     fn resolve_model_paths() -> Option<(PathBuf, PathBuf)> {
         let root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
