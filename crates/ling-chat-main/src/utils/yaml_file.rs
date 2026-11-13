@@ -1,13 +1,4 @@
 //! 剧本文件读写：YAML ⇄ JSON、原子写、备份。
-//!
-//! 前端只操作 JSON —— 这样只有 Rust 一侧存在 YAML 语义，不会出现两套解析
-//! 行为分歧，也顺便绕开了 `fs` 插件 scope 覆盖不到剧本目录的问题。
-//!
-//! 所有写入都是「写临时文件 → fsync → rename」，并在覆盖前留一份 `.bak`。
-//! 原型编辑器是 `open(f, "w")` 直接截断后再写，中途崩溃或断电会把章节清零。
-//!
-//! 原为 `api/script_editor/io.rs`，迁到 utils 后成为通用的 YAML 文件工具。
-//! 除剧本外也服务角色设定（见 `resolve_settings_file`）。
 
 use std::fs;
 use std::io::Write;
@@ -32,9 +23,6 @@ pub fn resolve_settings_file(character_dir: &Path) -> PathBuf {
 }
 
 /// 读 YAML 文件并转成 JSON 值。
-///
-/// 空文件 / 只有注释的文件会得到 `Value::Null`，这里统一归一成空对象，
-/// 免得调用方到处判空。
 pub fn read_yaml_as_json(path: &Path) -> Result<JsonValue, String> {
     let text = fs::read_to_string(path)
         .map_err(|e| format!("无法读取 {:?}: {}（文件必须是 UTF-8）", path, e))?;
@@ -56,9 +44,6 @@ pub fn write_json_as_yaml(path: &Path, value: &JsonValue) -> Result<(), String> 
 }
 
 /// 确保目标文件的父目录存在。
-///
-/// `script_paths::resolve_*` 刻意不建目录（解析路径不该有副作用），所以真正要写盘的
-/// 调用方需要显式调它一次。
 pub fn ensure_parent_dir(path: &Path) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("无法创建目录 {:?}: {}", parent, e))?;
@@ -67,9 +52,6 @@ pub fn ensure_parent_dir(path: &Path) -> Result<(), String> {
 }
 
 /// 覆盖前留一份 `<原名>.bak`。
-///
-/// 只保留最近一份 —— 真正的历史由编辑器的撤销栈负责，`.bak` 只是防「写坏了
-/// 而且已经关掉编辑器」这一种情况。
 fn backup_if_exists(path: &Path) -> Result<(), String> {
     if !path.is_file() {
         return Ok(());
@@ -81,8 +63,6 @@ fn backup_if_exists(path: &Path) -> Result<(), String> {
 }
 
 /// 原子写：同目录临时文件 → fsync → rename。
-///
-/// 临时文件必须与目标同目录，否则 rename 可能跨设备而退化成非原子的复制。
 fn atomic_write(path: &Path, bytes: &[u8]) -> Result<(), String> {
     let dir = path
         .parent()
@@ -132,9 +112,6 @@ pub fn write_story_config(script_dir: &Path, config: &JsonValue) -> Result<(), S
 }
 
 /// 取一个章节文档，归一成 `{ name, events }`。
-///
-/// 引擎只读这两个键（`Chapter::new`），其余顶层键一律忽略；这里把它们原样
-/// 保留在 `extra` 里，写回时不丢作者的自定义字段。
 pub struct ChapterDoc {
     pub name: Option<String>,
     pub events: Vec<JsonValue>,

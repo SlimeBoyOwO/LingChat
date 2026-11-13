@@ -44,6 +44,9 @@ export default {
     edit: "Edit",
     delete: "Delete",
     create: "New identity",
+    editorTitle: "Edit identity card",
+    editorCreateTitle: "New identity card",
+    editorSubtitle: "Name and subtitle decide how characters address you",
     cancel: "Cancel",
     save: "Save",
     addRelation: "+ Add impression",
@@ -457,6 +460,7 @@ export default {
   characterInfo: {
     header: {
       title: "{title} - Edit Config",
+      untitled: "Character",
       subtitle: "Edit the character's detailed settings",
     },
     saveConfirm:
@@ -472,11 +476,15 @@ export default {
       live2d: "Live2D",
       pet: "Desktop Pet",
       voice: "Voice Settings",
+      hotword: "Speech Recognition Hotwords",
     },
     relations: {
       title: "Relationship / how they see them",
       hint: 'Describe how this character sees each party (relationship) — write a full sentence with the other person as "them": e.g. "They are my childhood friend." Each character keeps an independent view; changes are stored in the save and never modify the character card.',
       missing: "Target no longer exists ({key})",
+      affectionPlaceholder: "Affection",
+      affectionHint:
+        "The number on a My Identity row is this character's starting affection for that identity (-100..100). Leave it empty to follow the character card default.",
       msg: {
         savedTitle: "Impression saved",
         savedMsg: "This character's impression (relationship) has been updated",
@@ -486,6 +494,11 @@ export default {
     fields: {
       aiName: "AI Name",
       aiSubtitle: "AI Subtitle",
+      userName: 'Name this character calls "me"',
+      userSubtitle: 'Subtitle this character uses for "me"',
+      initialAffection: "Default starting affection",
+      initialAffectionHint:
+        "Starting affection for new conversations (-100..100). Once the database has a value for an identity, that value wins; leave empty to leave it unset.",
       title: "Character Title",
       info: "Character Bio",
       systemPrompt: "System Prompt",
@@ -583,6 +596,15 @@ export default {
       voiceFilePlaceholder: "Audio path accessible from the GSV server (e.g. /refs/开心.wav)",
       text: "Reference text",
       textPlaceholder: "Text spoken in the reference audio",
+      samplingDesc:
+        "Leave blank to use the defaults. Lower temperature and top_p make output steadier and closer to the reference timbre; speech rate can be tuned per emotion (e.g. angry 1.1, sad 0.9).",
+      temperature: "Temperature",
+      topP: "Top-p",
+      speed: "Speed factor",
+      samplingPlaceholder: "Default",
+      refGuideTitle: "Reference audio recording tips",
+      refGuide:
+        'Keep each clip 3–10 seconds, dry (no reverb or background noise), one speaker, natural pace.\nRecord all six categories in the same session if possible, otherwise the timbre jumps when switching emotions.\nThe reference text must match the audio word for word (including fillers like "ah" or "mm"); mismatches cause the largest quality loss.',
     },
     touch: {
       hint: "Draw the areas that can be touched on the artwork, and give each part a line to send to the AI. Every outfit keeps its own set. This applies to static artwork only — a Live2D model's touchable areas come from its own configuration.",
@@ -604,6 +626,27 @@ export default {
       apply: "Save and Close",
       discardTitle: "Discard Changes",
       discardMessage: "There are unapplied changes. Close anyway?",
+    },
+    hotword: {
+      modelUnsupported:
+        "The current model {model} does not support inline hotwords, so they will be ignored",
+      listTitle: "Hotword List",
+      count: "{count} entries · limit {max}",
+      roleHint:
+        "Only applies to this character. The word list changes with the character; character names are added automatically.",
+      roleAppendHint:
+        "Character names are injected automatically: the main character and present characters are added at recognition time with weight 5, at the front of the list. Supporting characters are recognized correctly in multi-character scenes.",
+      add: "Add Hotword",
+      empty: 'No hotwords yet. Click "Add Hotword" to create one',
+      colText: "Word",
+      colWeight: "Weight",
+      weight: {
+        super: "50 (super)",
+      },
+      delete: "Delete",
+      tooLongChars: "Too long: {count} characters (max {max}). Saving will be rejected",
+      tooLongSegments: "Too many segments: {count} (max {max}). Saving will be rejected",
+      tooMany: "Too many hotwords: {count} (max {max}). Saving will be rejected",
     },
     live2d: {
       importDirectory: "Import Model Folder",
@@ -983,18 +1026,8 @@ export default {
       desc: "When on, memory is automatically compressed; restart LingChat after saving to apply",
     },
     voiceSound: {
-      title: "Voice Sound Effects",
-      desc: "Enable dialogue sound effects when no VITS voice is available",
-    },
-    engineDownload: {
-      title: "Voice Inference Engine Download (SBV2)",
-      cpuHint:
-        "CPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      cpu: "CPU Inference",
-      nvidia: "NVIDIA GPU Inference",
-      amdHint:
-        "AMD GPU inference uses SBV2-API. You need to change sbv2 to sbv2api in settings.yml; it can also be changed in the character settings",
-      amd: "AMD GPU Inference",
+      title: "Dialogue Sound Effects",
+      desc: "Play random dialogue sound effects while the character speaks (suppressed when a voice is configured)",
     },
     back: {
       title: "Back to Main Menu",
@@ -1438,15 +1471,16 @@ export default {
 
   asr: {
     title: "Speech Recognition",
-    pttKey: "Voice Hotkey",
+    sections: { inputMethod: "Input method" },
+    pttKey: "Hold-to-talk hotkey",
     pttKeyHint:
-      "Hold to talk, tap to toggle recording; toggles auto-listen when auto voice recognition is on. Single keys work (typing in chat will also trigger them — function keys or combos recommended)",
+      "Hold this key to talk and release to stop recording. Avoid single letter keys while typing in chat. This hotkey has high priority; if it conflicts with another key, set a key combination.",
     pttKeyCapture: "Press new hotkey… (Esc to cancel)",
     pttKeyInvalid: "This key cannot be bound: Enter is used to send messages",
     pttKeyReset: "Reset to default",
-    pttGlobal: "Hotkey works when unfocused",
+    pttGlobal: "Global hotkey",
     pttGlobalHint:
-      "Hotkey stays active when the window is not in focus (global shortcut). Binding bare letter/digit keys will intercept that key in other apps — use at your own risk",
+      "Also triggers voice input when another app is in the foreground; requires system-level key permission",
     pttGlobalError: "Global hotkey registration failed: {reason}",
     pttGlobalNotRegistered: "The key may be taken by another app — the global hotkey is not active",
     status: {
@@ -1459,11 +1493,21 @@ export default {
       vadLoaded: "VAD model",
       vadLoadedOk: "Loaded",
       vadLoadedNo: "Not loaded",
+      service: "Recognition service",
+      serviceOk: "OK",
+      serviceError: "Error",
+      serviceUnchecked: "Not checked",
+      hotkey: "Global hotkey",
+      hotkeyOk: "Registered",
+      hotkeyMissing: "Not registered",
     },
     voiceInput: "Voice input",
-    voiceInputHint: "Master switch: when off, voice input is fully disabled (auto and manual mic)",
-    autoListen: "Enable automatic speech recognition",
-    autoListenHint: "Auto-listen to microphone and convert user speech to text",
+    voiceInputHint:
+      "When enabled, you can use hold-to-talk, the global hotkey, or auto-listen for voice input",
+    voiceInputHintMobile: "When enabled, you can use hold-to-talk or auto-listen for voice input",
+    autoListen: "Auto-listen",
+    autoListenHint:
+      "Continuously monitors ambient sound, starts recording when speech is detected, and stops automatically when you finish",
     vadSilence: "Silence timeout (ms)",
     vadSilenceHint:
       "Wait this long after you stop speaking before ending the recording (default 800ms; higher values are less likely to cut off mid-sentence)",
@@ -1475,27 +1519,122 @@ export default {
       "Write per-frame speech probability (frame/prob/len) to the log page, for diagnosing speech recognition that never triggers. Off by default; about 1 line per second while recording",
     sendMode: {
       title: "After recognition",
-      fillOnly: "Fill input box (recommended)",
-      autoSend: "Auto send",
+      fillOnly: "Fill input box",
+      autoSend: "Send directly",
+      fillOnlyHint: "The recognition result is written into the input box",
+      autoSendHint: "Sends the recognition result as a message immediately",
+    },
+    hotwords: {
+      sectionTitle: "Hotwords",
+      description:
+        "Hotwords improve recognition accuracy for proper nouns. Global hotwords apply to all roles; the library is categorized source material and is maintained independently once copied; role hotwords are managed in Role Settings → Speech Recognition Hotwords.",
+    },
+    refreshStatus: "Refresh status",
+    refreshing: "Refreshing…",
+    save: {
+      saving: "Saving…",
+      saved: "Saved",
+      failed: "Save failed",
+    },
+    manage: "Manage",
+    globalHotword: {
+      title: "Global Hotwords",
+      open: "Manage global hotwords",
+      hint: "Sent with every recognition and merged with scene role hotwords (higher weight wins)",
+      rowHint: "Shared by all roles and appended to the end of the word list during recognition",
+      dialog: {
+        title: "Global Hotwords",
+        subtitle: "Shared by all roles and appended to the end of the word list",
+        loadFailed: "Failed to load global hotwords",
+        saveFailed: "Failed to save global hotwords",
+        weightHint:
+          "Weights 1–5 are normal hotwords; higher values mean stronger preference. 50 is a super hotword with higher recall, but at most 50 are sent per request; the remainder is downgraded automatically, not dropped.",
+        footerHint: "Takes effect immediately after saving",
+        footer: { cancel: "Cancel", save: "Save", saving: "Saving…" },
+      },
+    },
+    hotwordLibrary: {
+      title: "Hotword Library",
+      open: "Manage hotword library",
+      hint: "Store words by category and pick them for any role or the global list; adding copies the entry, so the two stay independent afterwards",
+      rowHint: "Categorized source words that can be copied to role or global hotwords",
+      dialog: {
+        title: "Hotword Library",
+        subtitle: "Organize words by category for roles and the global list",
+        loadFailed: "Failed to load the hotword library",
+        saveFailed: "Failed to save the hotword library",
+        footer: {
+          cancel: "Cancel",
+          save: "Save",
+          saving: "Saving…",
+          count: "{count} entries · {categories} categories · limit {max}",
+        },
+        categories: {
+          all: "All",
+          uncategorized: "Uncategorized",
+          unnamed: "(unnamed)",
+          new: "New category",
+          delete: "Delete category",
+          deleteConfirm:
+            "Delete this category and its {count} entries? Words already copied to roles or the global list are unaffected.",
+          namePlaceholder: "Category name",
+        },
+        words: {
+          add: "Add word",
+          searchPlaceholder: "Search words",
+          empty: "No words yet",
+          colCategory: "Category",
+          hint: "Filter with a category on the left or the search box; words can be edited inline.",
+        },
+        validation: {
+          checkForm: "Fix the highlighted category names first",
+          emptyName: "Category name cannot be empty",
+          duplicateName: "Duplicate category name",
+          nameTooLong: "Category name is too long",
+          tooManyWords: "{count} entries exceed the limit of {max}; remove some first",
+          tooManyCategories: "{count} categories exceed the limit of {max}; remove some first",
+        },
+      },
+      pickButton: "Add from library",
+      picker: {
+        title: "Add from library",
+        allCategories: "All categories",
+        uncategorized: "Uncategorized",
+        searchPlaceholder: "Search words",
+        selectAll: "Select all",
+        clear: "Clear",
+        existing: "Already added",
+        selected: "{count} selected",
+        remaining: "{count} slots left",
+        limitReached: "Limit reached — deselect to add more",
+        add: "Add",
+        cancel: "Cancel",
+        empty: "The library is empty — add words in “Manage hotword library” first",
+      },
+    },
+    advanced: {
+      title: "Advanced & diagnostics",
+      description:
+        "These parameters affect recording segmentation and debugging; the defaults suit most cases.",
     },
     streamMode: "Streaming Recognition",
     streamModeHint: "Shows recognized text in real time while speaking",
-    streamModeHintLocal:
-      "Uploads the recording after you finish speaking, then shows results progressively (llama-server result streaming)",
     streamNotSupported: "The selected model does not support streaming recognition",
     provider: {
       title: "Speech Recognition",
       providerSelect: "Service",
       modelRefresh: "Refresh model list",
+      modelSelect: "Model",
       modelListFailed: "Failed to load model list: {err}",
-      test: "Test connection",
-      testing: "Recording… please speak (4s)",
+      test: "Test connection (4s recording)",
       testingStop: "Stop & recognize",
-      testSuccess: "Connected",
-      testResult: "Recognized: {text}",
+      testSuccess: "Voice test: {text}",
       testNoSpeech: "No speech detected, please retry",
       testFailed: "Failed: {err}",
+      streamNotSupportedLocal: "Streaming recognition is not yet supported locally",
       presetHint: "Selecting a model auto-fills the endpoint; only the API Key is required",
+      inlineHotwordLimit: "Inline hotwords: up to about {count} (estimate)",
+      promptBiasNoLimit: "Hotwords are applied via prompt context bias — no count limit",
     },
     errors: {
       ASR_MODEL_MISSING: "VAD model not found",
@@ -1510,6 +1649,54 @@ export default {
       ASR_MISSING_CREDENTIALS: "Please fill in the API Key for this provider",
       ASR_STREAMING_UNSUPPORTED: "Streaming recognition is not supported by this model",
     },
+  },
+  hotwordImport: {
+    entry: "Batch Import",
+    dialog: {
+      title: "Batch Import Hotwords",
+      subtitle: "Paste a word list; save after validation",
+      placeholder: "One entry per line: index.term(weight)\n1.钦灵(5)\n2.deepseek(2)",
+      invalidCount: "{count} invalid lines",
+      noInvalid: "No invalid lines",
+      overCapacityCount: "{count} over capacity",
+      listOverLimit: "The current list exceeds its limit. Remove some entries before importing.",
+      line: "Line {line}",
+      weight: "Weight",
+      more: "{count} more issues",
+      reason: {
+        badFormat: "Format must be index.term(weight)",
+        tooLongChars: "Exceeds {max} characters (currently {count})",
+        tooLongSegments: "Exceeds {max} segments (currently {count})",
+        overCapacity: "Exceeds capacity and was not imported",
+      },
+      targetCategory: "Target category",
+      libraryOnly: "Library only",
+      uncategorized: "Uncategorized",
+      unnamed: "(unnamed)",
+      cancel: "Cancel",
+      save: "Save",
+      saving: "Saving…",
+      noRows: "No importable entries",
+      appendHint:
+        "New words are appended to the end of the list; earlier words are kept first when capacity is tight.",
+      duplicateCategoryHint:
+        "Duplicate words keep their original category and only update weight; the target category applies to new words only.",
+      saveScopeHint: "Saving also writes existing edits and deletions in the current hotword list.",
+    },
+    notification: {
+      title: "Saved {count} hotwords",
+      libraryTitle: "Saved {count} entries",
+      scopeRole: "Role hotwords",
+      scopeGlobal: "Global hotwords",
+      scopeLibrary: "Hotword library",
+    },
+  },
+  hotwordBatch: {
+    entry: "Batch Delete",
+    exit: "Exit Batch",
+    selectAll: "Select All",
+    clearSelection: "Clear Selection",
+    deleteSelected: "Delete Selected ({count})",
   },
   memoryDebug: {
     recallTitle: "Historical memory retrieval (RAG)",

@@ -1,9 +1,4 @@
 //! 本地 HTTP 代理自动探测。
-//!
-//! Codex 后端（chatgpt.com / auth.openai.com）在境内网络必须走代理。
-//! 本模块按「环境变量优先 → 常见本地端口探测」的顺序寻找可用代理，
-//! 并对候选代理做真实 HTTPS 出网验证；结果缓存 10 分钟，避免每次
-//! 请求都重新扫描端口。
 
 use std::net::{SocketAddr, TcpStream};
 use std::sync::Mutex;
@@ -104,9 +99,6 @@ pub async fn detect_proxy() -> Option<String> {
 }
 
 /// 构建自动走代理的 reqwest Client（Codex 链路专用）。
-///
-/// 与 factory 的 `build_http_client` 相同使用 webpki-roots TLS，
-/// 额外按探测结果注入 `reqwest::Proxy::all`。
 pub async fn build_proxied_client(timeout_secs: u64) -> Result<Client> {
     let tls_config = build_tls_config().map_err(anyhow::Error::msg)?;
     let mut builder = Client::builder()

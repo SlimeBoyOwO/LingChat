@@ -14,6 +14,50 @@ use crate::utils::prompt::PromptRole;
 
 use super::PromptLine;
 
+/// 天气层特效的变化判定。清空值（None / none / 空串）统一视作同一状态，
+/// 避免 AI 写 None、天气同步写 None 时被当成两次变化。
+pub fn weather_changed(from: &str, to: &str) -> bool {
+    canonical_weather(from) != canonical_weather(to)
+}
+
+fn canonical_weather(effect: &str) -> &str {
+    if matches!(effect, "None" | "none" | "") {
+        "None"
+    } else {
+        effect
+    }
+}
+
+/// 天气变化的旁白文案：进入某种天气时描述新天气，清空时描述旧天气结束。
+///
+/// 用固定模板而不是让模型现写：天气是画面事实，旁白只负责把事实说清楚，
+/// 且这条旁白在下一轮对话无条件落表，不宜再依赖一次额外的 LLM 调用。
+pub fn weather_change_text(from: &str, to: &str) -> Option<String> {
+    if !weather_changed(from, to) {
+        return None;
+    }
+    let target = canonical_weather(to);
+    let text = if target == "None" {
+        match canonical_weather(from) {
+            "Drizzle" | "Rain" | "Thunderstorm" => "雨停了",
+            "Snow" | "Blizzard" => "雪停了",
+            "Fog" => "雾散了",
+            _ => return None,
+        }
+    } else {
+        match target {
+            "Drizzle" => "外面下起了细雨",
+            "Rain" => "雨落了下来",
+            "Thunderstorm" => "天色一沉，雷雨来了",
+            "Snow" => "雪花落了下来",
+            "Blizzard" => "风雪大作",
+            "Fog" => "雾气漫了上来",
+            _ => return None,
+        }
+    };
+    Some(text.to_string())
+}
+
 impl GameStatus {
     /// 播一条「感情档位」旁白。
     pub async fn add_affection_state_narration(

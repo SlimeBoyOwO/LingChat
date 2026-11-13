@@ -210,10 +210,11 @@
         <!-- 分割线：青蓝色发光线条，亮段从左向右流动（同源桌宠外框 sweep-glow-ring） -->
         <div class="dialog-divider-glow my-1.5"></div>
 
-        <!-- 关系未填时的提示条：位于输入区上方，点击打开引导模态 -->
+        <!-- 关系未填时的提示条：位于输入区上方，点击打开引导模态。
+             背景保持不透明，避免分割线/背景图从半透明底色里透出来切断文字。 -->
         <button
           v-if="!relationGuardReady"
-          class="mx-auto mb-1.5 block cursor-pointer rounded-full border border-amber-300/40 bg-amber-900/60 px-4 py-1.5 text-xs font-medium text-amber-100 backdrop-blur-md transition-colors hover:bg-amber-800/70"
+          class="relative z-10 mx-auto my-1.5 block max-w-[92%] cursor-pointer rounded-full border border-amber-300/50 bg-amber-950 px-4 py-1.5 text-center text-xs font-medium text-amber-50 shadow-lg shadow-black/40 transition-colors hover:bg-amber-900"
           @click="openRelationModal"
         >
           {{ relationTipText }}

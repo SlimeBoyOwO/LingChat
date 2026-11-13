@@ -36,12 +36,17 @@ pub struct GameStatus {
     pub background: String,
     pub present_pic: String,
     pub background_music: String,
+    /// 氛围层粒子特效
     pub background_effect: String,
+    /// 天气层粒子特效（由天气同步写入；与氛围层互不覆盖）
+    pub weather_effect: String,
 
     /// 当前用户选择的场景 ID（对应 scenes.json 中的场景）
     pub current_scene_id: Option<String>,
     /// 上一次 process_message 处理时的场景 ID，用于检测场景切换
     pub last_processed_scene_id: Option<String>,
+    /// 上一次对话时的天气层特效，用于在下一轮对话检测天气变化并生成旁白
+    pub last_processed_weather_effect: String,
 
     pub global_variables: HashMap<String, Value>,
     pub completed_scripts: HashSet<String>,
@@ -87,8 +92,10 @@ impl GameStatus {
             present_pic: String::new(),
             background_music: String::new(),
             background_effect: String::new(),
+            weather_effect: "None".into(),
             current_scene_id: None,
             last_processed_scene_id: None,
+            last_processed_weather_effect: "None".into(),
             global_variables: HashMap::new(),
             completed_scripts: HashSet::new(),
             last_dialog_time: None,
@@ -381,6 +388,7 @@ impl GameStatus {
             background: self.background.clone(),
             background_music: self.background_music.clone(),
             background_effect: self.background_effect.clone(),
+            weather_effect: self.weather_effect.clone(),
             current_scene_id: self.current_scene_id.clone(),
             global_variables: self.global_variables.clone(),
             completed_scripts: self.completed_scripts.iter().cloned().collect(),
@@ -394,6 +402,8 @@ impl GameStatus {
         self.background = snapshot.background.clone();
         self.background_music = snapshot.background_music.clone();
         self.background_effect = snapshot.background_effect.clone();
+        self.weather_effect = snapshot.weather_effect.clone();
+        self.last_processed_weather_effect = snapshot.weather_effect.clone();
         self.current_scene_id = snapshot.current_scene_id.clone();
         self.global_variables = snapshot.global_variables.clone();
         self.completed_scripts = snapshot.completed_scripts.iter().cloned().collect();
@@ -425,6 +435,8 @@ pub struct GameStatusSnapshot {
     pub background_music: String,
     #[serde(default = "default_background_effect")]
     pub background_effect: String,
+    #[serde(default = "default_weather_effect")]
+    pub weather_effect: String,
     #[serde(default)]
     pub current_scene_id: Option<String>,
     #[serde(default)]
@@ -445,4 +457,7 @@ fn default_background_music() -> String {
 }
 fn default_background_effect() -> String {
     "none".into()
+}
+fn default_weather_effect() -> String {
+    "None".into()
 }

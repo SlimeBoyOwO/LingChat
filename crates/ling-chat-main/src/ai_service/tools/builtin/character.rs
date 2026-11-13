@@ -3,13 +3,11 @@ use serde_json::{Value, json};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::AppState;
-use crate::ai_service::game_system::player_identity::{effective_user_alias, runtime_relations};
-use crate::ai_service::types::{LineAttributeExt, LineBase, ToolDefinition};
+use crate::ai_service::types::ToolDefinition;
 use crate::api::character::{ClothesItem, read_character_settings, scan_clothes};
 use crate::config::AppConfig;
-use crate::db::entities::line::LineAttribute;
 use crate::db::managers::role_repo::RoleRepo;
-use crate::utils::prompt::{PromptOptions, sys_prompt_builder_by_settings_with_player};
+use crate::utils::prompt::PromptOptions;
 
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
 use crate::ai_service::tools::{ensure_no_args, game_status_handle};
@@ -138,58 +136,15 @@ impl Tool for CharacterSwitch {
         gs.get_role(&state.db, role_id)
             .await
             .map_err(|e| ToolError::Execution(format!("加载角色 {role_id} 失败: {e}")))?;
-        let (role_name, system_prompt) = {
-            let loaded = gs
-                .role_manager
-                .get_loaded(role_id)
-                .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 加载后不可用")))?;
-            let name = loaded.display_name.clone().unwrap_or(fallback_role_name);
-            let speaker_relations = runtime_relations::load_effective(
-                &crate::api::data_dir(),
-                &loaded.settings.character_folder,
-                &gs,
-            );
-            let alias = effective_user_alias(
-                &loaded.settings,
-                gs.player.identity_id.as_deref(),
-                &gs.player.user_name,
-            );
-            let player_block =
-                crate::ai_service::game_system::player_identity::persona::player_block_for(
-                    &gs,
-                    role_id,
-                    &loaded.settings,
-                    &alias,
-                    &speaker_relations,
-                );
-
-            let prompt = sys_prompt_builder_by_settings_with_player(
-                &loaded.settings,
-                &alias,
-                &player_block,
-                prompt_options,
-            );
-            (name, prompt)
-        };
-
-        let has_system_prompt = gs.line_list.iter().any(|line| {
-            matches!(line.attribute(), LineAttribute::System)
-                && line.sender_role_id() == Some(role_id)
-        });
-        if !has_system_prompt {
-            gs.add_line(
-                &state.db,
-                LineBase {
-                    content: system_prompt,
-                    attribute: LineAttributeExt(LineAttribute::System),
-                    sender_role_id: Some(role_id),
-                    display_name: Some(role_name.clone()),
-                    ..Default::default()
-                },
-            )
-            .await
-            .map_err(|e| ToolError::Execution(format!("初始化角色 {role_id} 人设失败: {e}")))?;
-        }
+        // 人设行不在这里拼：随后的 rebuild_and_refresh 会按当前阵容整行重建
+        // （找不到该角色的 SYSTEM 行时会自行插入一条）
+        let role_name = gs
+            .role_manager
+            .get_loaded(role_id)
+            .ok_or_else(|| ToolError::Execution(format!("角色 {role_id} 加载后不可用")))?
+            .display_name
+            .clone()
+            .unwrap_or(fallback_role_name);
 
         // 与前端 character:switch 的语义保持一致：目标角色原本不在场时，视为
         // 单角色替换；若已在多人场景中，则只切换当前说话者而保留其他在场角色。
@@ -216,7 +171,10 @@ impl Tool for CharacterSwitch {
             "roleId": role_id,
             "characterName": role_name,
         });
-        if let Err(e) = app.emit("character:switch", &payload) {
+        if let Err(e) = app.emit(
+            crate::ai_service::game_system::world_actions::EVENT_CHARACTER_SWITCH,
+            &payload,
+        ) {
             tracing::warn!("emit character:switch 失败: {e}");
         }
 
@@ -417,7 +375,10 @@ impl Tool for CharacterSetClothes {
 
         // 事件无条件发：即使后端判定「已经是这套」，重发一次也能纠正前端可能的陈旧状态
         let payload = json!({"roleId": role_id, "clothesName": target});
-        if let Err(e) = app.emit("character:clothes-changed", &payload) {
+        if let Err(e) = app.emit(
+            crate::ai_service::game_system::world_actions::EVENT_CLOTHES_CHANGED,
+            &payload,
+        ) {
             tracing::warn!("emit character:clothes-changed 失败: {e}");
         }
 

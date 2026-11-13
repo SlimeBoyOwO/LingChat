@@ -23,21 +23,21 @@ use crate::ai_service::asr::provider::{
 };
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
+use crate::db::entities::hotword_weight;
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_code(s).ok_or_else(|| format!("invalid source: {s}"))
 }
 
-/// 命令层的热词入参，兼容两种 JSON 形态：
+/// 命令层的热词入参，兼容纯词表与带权重两种 JSON 形态：
 ///
 /// ```json
-/// ["量子计算", "Anthropic"]                    // 纯词表，用默认权重
-/// [{"text": "量子计算", "weight": 5}]          // 带权重
+/// ["量子计算", "Anthropic"]
+/// [{"text": "量子计算", "weight": 5}]
 /// ```
 ///
-/// **这是热词的唯一入口**：ASR 设置页已不再有热词设置，热词归角色
-/// （每个角色独立、存数据库），接入时只需在调用处填这个参数，
-/// **provider 侧零改动**。前端目前一律传 `None`。
+/// 热词归角色，前端录音时快照场景热词经此参数传入
+/// （`composables/asr/hotwords.ts`）。
 #[derive(serde::Deserialize)]
 #[serde(untagged)]
 pub enum HotwordInput {
@@ -46,28 +46,79 @@ pub enum HotwordInput {
 }
 
 impl HotwordInput {
-    fn into_hotword(self) -> Hotword {
-        match self {
-            Self::Text(t) => Hotword::new(t),
-            Self::Weighted { text, weight } => match weight {
-                Some(w) => Hotword::with_weight(text, w),
-                None => Hotword::new(text),
-            },
-        }
+    /// 拆成 `(text, weight)` 并把权重归一到 `[1, 5] ∪ {50}`。
+    /// 归一必须在入参口做，`build_options` 按 `text` 取 max 需在同一口径下比较。
+    fn into_parts(self) -> (String, u8) {
+        let raw = match self {
+            Self::Text(text) => (text, Hotword::DEFAULT_WEIGHT),
+            Self::Weighted { text, weight } => (text, weight.unwrap_or(Hotword::DEFAULT_WEIGHT)),
+        };
+        let normalized = hotword_weight::normalize_weight(i32::from(raw.1)) as u8;
+        (raw.0, normalized)
     }
 }
 
-/// 组装一次识别调用的参数。空词条（含只输空白的）直接丢弃。
-fn build_options(language_hint: Option<String>, hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
-    AsrOptions {
-        language_hint,
-        hotwords: hotwords
-            .unwrap_or_default()
-            .into_iter()
-            .map(HotwordInput::into_hotword)
-            .filter(|h| !h.text.trim().is_empty())
-            .collect(),
+/// 组装一次识别调用的参数。空词条丢弃，按 trim 后的 `text` 归并取 max，
+/// 超级词条超限时由 [`demote_excess_super`] 降级。
+fn build_options(hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
+    // provider 按先出现者建词表（qwen 的 `or_insert_with`），不归并会保留先出现的权重。
+    let mut merged: Vec<(String, u8)> = Vec::new();
+    for (text, weight) in hotwords
+        .unwrap_or_default()
+        .into_iter()
+        .map(HotwordInput::into_parts)
+    {
+        let text = text.trim();
+        if text.is_empty() {
+            continue;
+        }
+        match merged.iter_mut().find(|(t, _)| t.as_str() == text) {
+            Some(exist) => exist.1 = exist.1.max(weight),
+            None => merged.push((text.to_string(), weight)),
+        }
     }
+
+    AsrOptions {
+        hotwords: demote_excess_super(
+            merged
+                .into_iter()
+                .map(|(text, weight)| Hotword::with_weight(text, weight))
+                .collect(),
+        ),
+    }
+}
+
+/// 超级热词（`weight == SUPER_WEIGHT`）一次请求最多 [`SUPER_COUNT_LIMIT`] 个，
+/// 超出的降级为普通档上界而非丢弃，避免连带丢掉后面的普通热词。
+///
+/// 这是发送层的兜底，不是保存校验：各作用域各自合规也可能并集超限。
+fn demote_excess_super(hotwords: Vec<Hotword>) -> Vec<Hotword> {
+    use hotword_weight::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP};
+
+    let total = hotwords
+        .iter()
+        .filter(|h| i32::from(h.weight) == SUPER_WEIGHT)
+        .count();
+    if total <= SUPER_COUNT_LIMIT {
+        return hotwords;
+    }
+    tracing::warn!(
+        "[ASR] 超级热词（weight={SUPER_WEIGHT}）共 {total} 个，超过上限 {SUPER_COUNT_LIMIT}，\
+         超出部分已降级为 {WEIGHT_CAP}"
+    );
+    let mut seen = 0usize;
+    hotwords
+        .into_iter()
+        .map(|mut h| {
+            if i32::from(h.weight) == SUPER_WEIGHT {
+                seen += 1;
+                if seen > SUPER_COUNT_LIMIT {
+                    h.weight = WEIGHT_CAP as u8;
+                }
+            }
+            h
+        })
+        .collect()
 }
 
 /// 错误转前端可读字符串：`{"code":"<i18n_code>","detail":"<详情>"}` JSON。
@@ -187,7 +238,6 @@ pub async fn asr_vad_process_chunk(
 pub async fn asr_recognize_wav(
     provider_id: String,
     wav_bytes: Vec<u8>,
-    language_hint: Option<String>,
     hotwords: Option<Vec<HotwordInput>>,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
@@ -201,7 +251,7 @@ pub async fn asr_recognize_wav(
     let p = resolve_provider(&providers, &provider_id, &app, &http)
         .await
         .map_err(|e| err_to_user(&e))?;
-    let opts = build_options(language_hint, hotwords);
+    let opts = build_options(hotwords);
     tracing::info!(
         "[ASR] 发送音频到 {provider_id}: {} bytes, {} 条热词",
         wav_bytes.len(),
@@ -256,7 +306,7 @@ pub async fn asr_recognize_wav_stream(
     let on_partial: Option<PartialCallback> = Some(std::sync::Arc::new(move |text: &str| {
         let _ = app_handle.emit("asr://stream_partial", text.to_string());
     }));
-    let opts = build_options(None, hotwords);
+    let opts = build_options(hotwords);
     let result = tokio::select! {
         result = p.stream_recognize(wav_bytes, &opts, on_partial) => result,
         _ = cancel_child.cancelled() => Err(AsrError::Canceled),
@@ -311,7 +361,6 @@ pub async fn asr_cancel(state: tauri::State<'_, AppState>) -> Result<(), String>
 #[tauri::command]
 pub async fn asr_start_streaming(
     provider_id: String,
-    language_hint: Option<String>,
     hotwords: Option<Vec<HotwordInput>>,
     app: AppHandle,
     state: tauri::State<'_, AppState>,
@@ -350,7 +399,7 @@ pub async fn asr_start_streaming(
     } else {
         creds.model.clone()
     };
-    let opts = build_options(language_hint, hotwords);
+    let opts = build_options(hotwords);
     session
         .start_streaming(&app, &provider_id, &creds, &model, &opts)
         .await

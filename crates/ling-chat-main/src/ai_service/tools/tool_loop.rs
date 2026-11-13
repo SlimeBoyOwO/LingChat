@@ -17,7 +17,9 @@ use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
-use crate::utils::prompt::{ReplyLengthMode, scan_reply_shape};
+use crate::utils::prompt::{
+    ReplyLengthMode, ensure_memory_recall_policy_in_context, scan_reply_shape,
+};
 
 use super::executor::{ToolContext, ToolExecutor};
 use super::registry::ToolRegistry;
@@ -712,7 +714,9 @@ async fn current_role_context(
         RecallStamp::capture(&gs, role.display_name.clone().unwrap_or_default())?,
         &role.memory,
     );
-    Ok((role.memory.clone(), role.display_name.clone()))
+    let mut context = role.memory.clone();
+    ensure_memory_recall_policy_in_context(&mut context);
+    Ok((context, role.display_name.clone()))
 }
 
 fn rebase_after_character_switch(

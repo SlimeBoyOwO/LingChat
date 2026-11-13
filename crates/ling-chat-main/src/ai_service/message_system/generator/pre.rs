@@ -10,6 +10,7 @@ use crate::ai_service::game_system::memory::recall::{
     RecallSession, RecallStamp, inject_references,
 };
 use crate::ai_service::game_system::scene_store::SceneStore;
+use crate::ai_service::game_system::status_ops::narration::{weather_change_text, weather_changed};
 use crate::ai_service::game_system::status_ops::{PromptLine, apply_temporary};
 use crate::ai_service::god_agent::capabilities::{
     speaker::{self as god_speaker, SpeakerView},
@@ -21,7 +22,7 @@ use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage, ToolDefin
 use crate::api::data_dir;
 use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
-use crate::utils::prompt::PromptRole;
+use crate::utils::prompt::{PromptRole, ensure_memory_recall_policy_in_context};
 
 use super::{GeneratorSource, MessageGenerator, UserMessageContext};
 
@@ -100,6 +101,32 @@ impl MessageGenerator {
         Ok(())
     }
 
+    /// Step 1.6: 检测天气层变化。
+    ///
+    /// 切换特效本身不写旁白——设置页、天气同步、模型都可能连续改动，逐次落表
+    /// 会刷屏。统一等到下一轮对话再与上次对话时的天气比对，有变化才补一句。
+    pub(super) async fn detect_weather_change(&self) -> Result<()> {
+        let mut gs = self.deps.game_status.lock().await;
+        // 剧本自己安排演出，试玩不落台词表：只对齐基线，不补旁白
+        if gs.script_status.is_some() || self.deps.is_preview {
+            gs.last_processed_weather_effect = gs.weather_effect.clone();
+            return Ok(());
+        }
+        if !weather_changed(&gs.last_processed_weather_effect, &gs.weather_effect) {
+            return Ok(());
+        }
+
+        let to = gs.weather_effect.clone();
+        let from = std::mem::replace(&mut gs.last_processed_weather_effect, to.clone());
+        if let Some(text) = weather_change_text(&from, &to) {
+            let line = PromptLine::new(PromptRole::Narrator, text)
+                .display_name("系统")
+                .into_base();
+            let _ = gs.add_line(&self.deps.db, line).await;
+        }
+        Ok(())
+    }
+
     /// Step 2: 根据 current_role_id 获取当前角色的 memory 上下文。
     pub(super) async fn get_current_context(
         &self,
@@ -116,6 +143,8 @@ impl MessageGenerator {
             let role = gs.get_role(&self.deps.db, rid).await?;
             // 好感度不再逐轮注入上下文；变化时以旁白台词写入历史（见 maybe_evaluate_affection）
             let mut context = role.memory.clone();
+            // 旧存档的 SYSTEM 台词可能没有记忆规则；只修正本次请求副本，不改写历史指纹。
+            ensure_memory_recall_policy_in_context(&mut context);
             // 世界书注入（上游）：随本轮上下文进，不写回记忆
             if let Some(book) = &role.worldbook {
                 book.inject(&mut context, user_input);
@@ -156,7 +185,7 @@ impl MessageGenerator {
             match snapshot {
                 Ok(snapshot) => {
                     if let Some(response) = snapshot.response {
-                        inject_references(&mut context, &recall.references(&response)?);
+                        inject_references(&mut context, &recall.references(&response)?.references);
                     }
                 },
                 Err(error) => tracing::warn!("自动记忆检索失败，继续普通聊天: {error}"),

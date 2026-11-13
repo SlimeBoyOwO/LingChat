@@ -34,9 +34,11 @@ const routeAllowsBgm = computed(
   () => route.path === "/chat" || route.path === "/pet" || uiStore.gameLayerCount > 0,
 );
 
-// 手动暂停 或 当前路由不该出声 → 暂停。
+// 手动暂停 或 当前路由不该出声 或 轻量模式 → 暂停。
 // 只暂停不重置，<audio> 与 currentTime 都保留，回到允许场景时接着原进度播
-const bgmPaused = computed(() => uiStore.bgMusicPaused || !routeAllowsBgm.value);
+const bgmPaused = computed(
+  () => uiStore.bgMusicPaused || uiStore.liteMode || !routeAllowsBgm.value,
+);
 
 // 原始路径 → 可播放 URL（Android 走 blob），由本层统一做转换。
 // immediate：本层在启动时即挂载，currentBackgroundMusic 可能已被存档恢复

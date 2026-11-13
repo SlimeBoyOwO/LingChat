@@ -89,6 +89,11 @@ export async function selectBackgroundEffect(effect: string): Promise<void> {
   return invoke("select_background_effect", { effect });
 }
 
+/** 用户手动选择天气层特效：只同步后端状态，供下一轮对话检测天气变化。 */
+export async function selectWeatherEffect(effect: string): Promise<void> {
+  return invoke("select_weather_effect", { effect });
+}
+
 export async function setSceneAwareness(enabled: boolean): Promise<void> {
   return invoke("set_scene_awareness", { enabled });
 }

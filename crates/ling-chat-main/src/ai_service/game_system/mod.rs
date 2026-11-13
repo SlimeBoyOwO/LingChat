@@ -6,3 +6,4 @@ pub mod role_manager;
 pub mod scene_store;
 pub mod script_engine;
 pub mod status_ops;
+pub mod world_actions;

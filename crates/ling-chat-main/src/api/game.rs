@@ -7,6 +7,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_store::StoreExt;
 
 use crate::AppState;
+use crate::ai_service::game_system::player_identity::bootstrap::apply_bound_identity_for_role;
 use crate::ai_service::game_system::player_identity::{effective_user_alias, runtime_relations};
 use crate::ai_service::game_system::scene_store::SceneStore;
 use crate::ai_service::game_system::status_ops::PromptLine;
@@ -43,6 +44,8 @@ pub struct WebInitData {
     pub onstage_roles_ids: Vec<i32>,
     pub background: String,
     pub background_effect: String,
+    /// 天气层特效；与氛围层分开恢复，避免一层覆盖另一层
+    pub weather_effect: String,
     pub background_music: String,
     pub current_scene_id: Option<String>,
     pub current_scene: Option<super::scene::SceneInfo>,
@@ -358,6 +361,13 @@ pub async fn select_character(app: AppHandle, character_id: i32) -> Result<WebIn
     // 1b. 换角色是会话边界：旧剧本必须真正停掉。否则它会一直阻塞在输入通道上，
     super::script::abort_running_script(&app).await;
 
+    // 1c. 角色卡绑定了专属玩家身份时自动启用（只改当前身份指针，不生成旁白）。
+    if let Err(e) =
+        apply_bound_identity_for_role(&state.db, &crate::api::data_dir(), character_id).await
+    {
+        tracing::warn!("切换角色时应用绑定身份失败: {e}");
+    }
+
     // 2. 读取 AppConfig 构建 PromptOptions
     let app_config = AppConfig::load(&app).unwrap_or_default();
     let prompt_options = PromptOptions::from_config(&app_config);
@@ -473,6 +483,7 @@ pub(crate) async fn build_web_init_data(
         onstage_roles,
         background,
         background_effect,
+        weather_effect,
         background_music,
         scene_awareness_enabled,
         player_identity_id,
@@ -589,6 +600,7 @@ pub(crate) async fn build_web_init_data(
             onstage_roles,
             gs.background.clone(),
             gs.background_effect.clone(),
+            gs.weather_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
             player_identity_id,
@@ -628,6 +640,7 @@ pub(crate) async fn build_web_init_data(
         onstage_roles,
         background,
         background_effect,
+        weather_effect,
         background_music,
         current_scene_id,
         current_scene,
@@ -697,11 +710,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
                 &role.settings.character_folder,
                 &gs,
             );
-            let alias = effective_user_alias(
-                &role.settings,
-                gs.player.identity_id.as_deref(),
-                &gs.player.user_name,
-            );
+            let alias = effective_user_alias(&role.settings, &gs.player.user_name);
             let player_block =
                 crate::ai_service::game_system::player_identity::persona::player_block_for(
                     &gs,
@@ -791,6 +800,8 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
 
     let state = app.state::<AppState>();
     let db = &state.db;
+    // 阵容变化后要重建在场角色的人设行，配置在锁外读取
+    let prompt_options = PromptOptions::from_config(&AppConfig::load(&app).unwrap_or_default());
 
     let (role_name, switched_to) = {
         let svc = state.ai_service.lock().await;
@@ -835,9 +846,16 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
             }
         }
 
-        gs.refresh_memories(db)
-            .await
-            .map_err(|e| format!("刷新记忆失败: {}", e))?;
+        // 阵容变了：在场角色人设行里的「你眼里的其他角色」全部过期，
+        // 与加入场景、切换说话者保持同一处理（内部会刷新记忆）
+        crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
+            &mut gs,
+            db,
+            &crate::api::data_dir(),
+            prompt_options,
+        )
+        .await
+        .map_err(|e| format!("重建在场角色人设行失败: {}", e))?;
 
         tracing::info!("角色 {} ({}) 退出场景", role_id, name);
         (name, switched_to)
@@ -850,7 +868,10 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
             "roleId": target_id,
             "characterName": target_name,
         });
-        if let Err(e) = app.emit("character:switch", &payload) {
+        if let Err(e) = app.emit(
+            crate::ai_service::game_system::world_actions::EVENT_CHARACTER_SWITCH,
+            &payload,
+        ) {
             tracing::warn!("emit character:switch 失败: {e}");
         }
     }

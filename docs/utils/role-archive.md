@@ -29,8 +29,10 @@
                                             (每条目 emit role:import-progress)
                                          6. 落盘到 data/game_data/characters/<name>/
                                          7. DB 写入/更新 role 记录
-                                         8. rescan_roles 重新同步索引
-                                         9. emit('role:list-updated')
+                                         8. 热词旁挂已停用：不读、不回写
+                                            (旧旁挂文件原样留在角色目录)
+                                         9. rescan_roles 重新同步索引
+                                        10. emit('role:list-updated')
                        │
                        │  监听 role:import-progress 更新 store
                        │  监听 role:import-error  标记 phase=error
@@ -53,8 +55,12 @@ ZIP 与 7z 共用过滤后的文件清单，进度总数不包含草稿或回滚
                        │          { roleId, format, destPath })
                        ▼
                                          1. 查 DB 拿 role.resource_folder
-                                         2. compress(src_dir, format, temp)
-                                            (每条目 emit role:import-progress)
+                                         2. compress_excluding_root_entries(src_dir, format, temp)
+                                            (按名排除源目录第一层的：
+                                             .editor-drafts/、.editor-trash/、
+                                             残留的 .lingchat_hotwords.json；
+                                             热词旁挂已停用、不注入；
+                                             每条目 emit role:export-progress)
                                          3. 拷贝到 destPath
                                             ├─ 普通路径   → tokio::fs::copy
                                             └─ content:// → android-fs 写 SAF
@@ -125,24 +131,30 @@ idle─┤     └─► error ─► (dismiss)
 
 ### 6.1 模块拆分（`crates/ling-chat-main/src/api/role_archive/`）
 
-| 文件                 | 职责                                                                                                                                                                |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`             | 5 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、再导出                                                                                                   |
-| `state.rs`           | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例                                    |
-| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`restore_backup`、`parse_format`、`parse_policy` |
-| `export_pipeline.rs` | `compress_role_to_temp`、`sanitize_file_name`                                                                                                                       |
+| 文件                 | 职责                                                                                                                                                                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`             | 6 个 Tauri 命令、公开类型 `ImportResult` / `ExportResult`、热词旁挂文件（`.lingchat_hotwords.json`）的名称 / 版本 / 结构体、再导出                                                                                                                                   |
+| `state.rs`           | 再导出 `utils::archive` 的 `ArchiveImportState`（别名 `RoleArchiveState`）与两个 RAII 守卫；实体已上移，与插件导入共用同一份实例                                                                                                                                     |
+| `import_pipeline.rs` | `do_import`、`write_temp_archive`、`prepare_import_source`、`sanitize_role_folder_name`、`find_role_id_by_folder`、`restore_backup`、`restore_hotwords_for_import`（保留桩，当前无调用点）、`read_sidecar_into_db`、`write_hotwords`、`parse_format`、`parse_policy` |
+| `export_pipeline.rs` | `compress_role_to_temp`、`compress_role_dir`（按名排除热词旁挂残留）、`sanitize_file_name`                                                                                                                                                                           |
+
+**热词旁挂（`.lingchat_hotwords.json`）已停用**（原因见 [`docs/asr/README.md` §3.9](../asr/README.md#39-归档热词不随角色包移动)）：导出不注入、导入不回写；残留在角色目录里的旧旁挂文件会在下次导出时按名排除。`mod.rs` 的名称 / 版本 / 结构体与 `read_sidecar_into_db` / `restore_hotwords_for_import` 保留，供将来恢复。
+
+**导出排除项共三个**，都按**源目录第一层名字**匹配（走 `compress_excluding_root_entries`，不改动嵌套内容）：`.editor-drafts/`、`.editor-trash/`（本地编辑流程的产物，不属于角色内容）、`.lingchat_hotwords.json`（已停用功能的残留）。旁挂那条尤其要留：导入侧有意不删磁盘上的旧旁挂文件，不排除就会被原样打回新包，在还写回旁挂的旧版客户端上重新入库——旁挂停用就白做了。
+
+> ⚠️ 不要改用通用 `compress` 的 `exclude_names` 参数做这三项排除：那个参数按**归档内完整相对路径**精确匹配（相对 `src_dir`、`/` 分隔，含子目录），是给 `extra_entries` 那套「同名内存条目顶掉磁盘文件」用的。目录一旦被导入侧重命名（`sanitize_role_folder_name`），路径匹配就失效，草稿会被打进导出包。
 
 ### 6.2 归档工具（`crates/ling-chat-main/src/utils/archive/`）
 
-| 文件              | 职责                                                                                                                                           |
-| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| `mod.rs`          | 公共类型 `ArchiveFormat` / `ConflictPolicy` / `ArchiveError` / `EntryEvent` / `ExtractSummary` / `TargetResolution`、公开 API 再导出           |
-| `safety.rs`       | `check_entry_safety`（条数 + 压缩比）、`sanitize_entry_name`、`safe_join`（防 zip-slip）                                                       |
-| `resolve.rs`      | `resolve_target`（冲突策略 → 最终目标路径）                                                                                                    |
-| `extract.rs`      | `extract_zip` / `extract_sevenz`，消费 `CancellationToken`                                                                                     |
-| `compress.rs`     | `compress`（zip / 7z 入口），跳过 macOS metadata                                                                                               |
-| `staging.rs`      | 角色 / 插件导入共用：`list_content_entries`、`locate_extracted_root`（压缩包套一层文件夹的判定）、`relocate_dir`（rename 重试 + 递归复制回退） |
-| `import_state.rs` | `ArchiveImportState`（全局单实例并发锁 + `tasks`）、`ImportingGuard` / `TaskRemoveGuard`；角色与插件导入共用，故全局同时只有一个解压任务       |
+| 文件              | 职责                                                                                                                                                                                                       |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mod.rs`          | 公共类型 `ArchiveFormat` / `ConflictPolicy` / `ArchiveError` / `EntryEvent` / `ExtractSummary` / `TargetResolution`、公开 API 再导出                                                                       |
+| `safety.rs`       | `check_entry_safety`（条数 + 压缩比）、`sanitize_entry_name`、`safe_join`（防 zip-slip）                                                                                                                   |
+| `resolve.rs`      | `resolve_target`（冲突策略 → 最终目标路径）                                                                                                                                                                |
+| `extract.rs`      | `extract_zip` / `extract_sevenz`，消费 `CancellationToken`                                                                                                                                                 |
+| `compress.rs`     | 两个入口：`compress`（支持 `extra_entries` 内存条目注入 + 按归档内完整路径排除）与 `compress_excluding_root_entries`（按源目录第一层名字排除）；共用内层 `compress_files` 写 zip / 7z，跳过 macOS metadata |
+| `staging.rs`      | 角色 / 插件导入共用：`list_content_entries`、`locate_extracted_root`（压缩包套一层文件夹的判定）、`relocate_dir`（rename 重试 + 递归复制回退）                                                             |
+| `import_state.rs` | `ArchiveImportState`（全局单实例并发锁 + `tasks`）、`ImportingGuard` / `TaskRemoveGuard`；角色与插件导入共用，故全局同时只有一个解压任务                                                                   |
 
 ## 7. 并发与取消
 
@@ -186,7 +198,7 @@ Tauri 命令层把所有错误转成 `String`，前端通过 `invoke` 的 `Promi
 
 | 文件                                                            | 用途                   |
 | --------------------------------------------------------------- | ---------------------- |
-| `crates/ling-chat-main/src/api/role_archive/mod.rs`             | 5 个 Tauri 命令 + 类型 |
+| `crates/ling-chat-main/src/api/role_archive/mod.rs`             | 6 个 Tauri 命令 + 类型 |
 | `crates/ling-chat-main/src/api/role_archive/state.rs`           | 全局状态与守卫         |
 | `crates/ling-chat-main/src/api/role_archive/import_pipeline.rs` | 导入流水线             |
 | `crates/ling-chat-main/src/api/role_archive/export_pipeline.rs` | 导出流水线             |

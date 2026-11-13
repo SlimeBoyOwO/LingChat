@@ -208,6 +208,8 @@ impl RecallSession {
             .unwrap_or_else(|error| error.into_inner());
         budget.scope = None;
         budget.sources.clear();
+        // 重建上下文会撤掉旧引用，去重记录也要清理；已消耗的预算仍按整轮累计。
+        budget.seen.clear();
     }
 
     /// 切换角色后用新上下文重置引用和预算，避免继承旧角色的记忆。
@@ -304,7 +306,7 @@ impl RecallSession {
         }
     }
 
-    pub fn references(&self, response: &MemorySearchResponse) -> Result<Vec<RecallReference>> {
+    pub fn references(&self, response: &MemorySearchResponse) -> Result<RecallSelection> {
         let stamp = self.stamp.read().unwrap_or_else(|error| error.into_inner());
         ensure!(
             stamp.save_id == Some(response.scope_key.save_id)
@@ -318,15 +320,21 @@ impl RecallSession {
         if let Some(scope) = &budget.scope {
             ensure!(scope == &response.scope_key, "记忆来源在本轮内已变化");
         }
-        let mut references = Vec::new();
+        let mut selection = RecallSelection::default();
         // 同一段正文只注入一次，条数和字符数均按整个回合累计。
         for hit in &response.result.hits {
             let key = memory_version(&hit.hit.chunk.content)?;
             let characters = hit.reference.chars().count();
-            if budget.hits >= 5 || budget.characters + characters > 1800 || !budget.seen.insert(key)
-            {
+            // 先识别已提供的正文，预算已满时也能准确说明空引用的原因。
+            if budget.seen.contains(&key) {
+                selection.already_provided += 1;
                 continue;
             }
+            if budget.hits >= 5 || budget.characters + characters > 1800 {
+                selection.budget_excluded += 1;
+                continue;
+            }
+            budget.seen.insert(key);
             budget.characters += characters;
             budget.hits += 1;
             for source in &hit.hit.chunk.sources {
@@ -334,16 +342,23 @@ impl RecallSession {
                     budget.sources.push(source.clone());
                 }
             }
-            references.push(RecallReference {
+            selection.references.push(RecallReference {
                 reference: hit.reference.clone(),
                 explanation: hit.explanation.clone(),
             });
         }
-        if !references.is_empty() {
+        if !selection.references.is_empty() {
             budget.scope = Some(response.scope_key.clone());
         }
-        Ok(references)
+        Ok(selection)
     }
+}
+
+#[derive(Default)]
+pub struct RecallSelection {
+    pub references: Vec<RecallReference>,
+    pub already_provided: usize,
+    pub budget_excluded: usize,
 }
 
 #[derive(Clone, Debug, Serialize)]

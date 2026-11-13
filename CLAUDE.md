@@ -86,7 +86,7 @@ Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个 crate：
 
 ## 参考文档
 
-各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、笔记检索（`notes-retrieval.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
+各功能的权威文档位于 `docs/`：插件（`plugin-dev-guide.md`）、脚本编辑器（`script-editor/`）、Live2D 创作（`live2d/`）、函数调用工具（`function_call/`）、ASR 热词（`asr/`）、LLM 预设（`llm-provider-presets.md`）、i18n（`i18n.md`）、本地 TTS API（`local-tts-api.md`）、笔记检索（`notes-retrieval.md`）、推理设备（`inference-devices.md`）、Android（`android/`）、iOS（`ios-build.md`）、更新逻辑（`自动更新逻辑.md`）、Rust 构建耗时优化（`build-performance.md`）
 
 ## 关键约定（本部分务必人工维护）
 
@@ -95,7 +95,8 @@ Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个 crate：
 - 遵循 MVP 原则，不要过度设计，不要过度实现，不过度优化，不要过度封装，开发中能先用简洁的方式实现就不要用过于复杂的方法，随着开发和需求动态调整代码结构设计。
 - Rust 格式化字符串优先内联捕获变量：tracing等宏里用 `{role_id}` 直接捕获同名变量，优先于位置参数写法（可读性更高）。复杂表达式（字段访问 / 方法调用）不能内联，先绑定局部变量或继续用 `{}` 位置参数。新写的代码一律用这种风格；顺手改旧代码时也可以替换，但不要为此单独发起纯风格重构。
 - 代码注释、commit message、变量命名倾向中文。commit 用cc前缀 + 中文：`feat：xxx`、`fix：xxx`、`chore: xxx`、`build：xxx`、`refactor: xxx`（注意前缀中文冒号用全角）。**commit 用单行标题**，不加正文、**不要加 `Co-Authored-By:` 尾注**。
-- 格式化：用户明确不要求，格式检查不作为验收依据，格式化在提交时由 husky + lint-staged 处理 -换行/编码：`.gitattributes` 强制文本文件 LF + UTF-8（Windows 脚本 CRLF）。媒体/大文件走 Git LFS，不要提交大的二进制
+- 格式化：不要求做，不作为验收依据，会在提交时自动化处理
 - 样式优先用 Tailwind CSS v4，而不是传统css：项目用 `@tailwindcss/vite` 4.x，CSS-first 配置，v4 语法与 v3 有差异，不确定时可查网络或 context7 文档，官方库 ID：`/websites/tailwindcss`（无需再 resolve-library-id）
 - provider 预设：LLM 服务商快捷配置在 `src/constants/llm-presets.ts`，改这个数组即可，勿动组件。
-- 无论任何时候，面对比较模糊的需求/提问时，你应当调用提问工具（优先，可多次）或输出最终回复，以中断对话的方式向用户提问，明确具体需求，不要自己私自做决定，或是采取忽略用户需求的方法推进plan和功能落地。用户需求不合理时你有责任中断实现并提醒用户且给出更佳的方法，除非用户二次明确指出需求，你必须服从用户。
+- 无论任何时候，面对比较模糊的需求/提问（没有涉及具体代码/函数/plan文件都可以算模糊，范围大一点）时，你应当调用提问工具（优先，可多次）或输出最终回复，以中断对话的方式向用户提问，明确具体需求，不要自己私自做决定，或是采取忽略用户需求的方法推进plan和功能落地。用户需求不合理时你有责任中断实现并提醒用户且给出更佳的方法，除非用户二次明确指出需求，你必须服从用户。
+- 为本项目写issue/pr时comment务必精简，明了，不涉及程序具体运行逻辑和内部函数，请专注于程序运行逻辑，算法讨论。核心修改介绍不超过50字，展开介绍不超过200字，除非用户另外要求

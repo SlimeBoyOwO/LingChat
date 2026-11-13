@@ -136,47 +136,6 @@
         </p>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.engineDownload.title')" size="small">
-        <template #header>
-          <Download :size="20" />
-        </template>
-        <div class="flex gap-3">
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.cpuHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.cpu") }}</Button
-          >
-          <Button
-            type="big"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/Style-Bert-VITS2-CUDA/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.nvidia") }}</Button
-          >
-          <Button
-            type="big"
-            :title="$t('settings.text.engineDownload.amdHint')"
-            @click="
-              openWebsite(
-                'https://www.modelscope.cn/models/lingchat-research-studio/SBV2-API/files',
-              )
-            "
-            >{{ $t("settings.text.engineDownload.amd") }}</Button
-          >
-        </div>
-        <p class="mt-3 text-sm leading-relaxed text-white/50">
-          现在更推荐使用本软件自带的内置 TTS 模型，本处提供的 TTS
-          引擎需要自行下载，可以参考文档了解详细信息。
-        </p>
-      </MenuItem>
-
       <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
         <template #header>
           <GlassWater :size="20" />
@@ -197,6 +156,17 @@
         </Toggle>
       </MenuItem>
 
+      <!-- 轻量模式 demo：仅桌面端开发模式，用于验证隐藏到托盘后能回收多少内存 -->
+      <MenuItem v-if="isDevMode && !isMobileDevice" title="轻量模式（Dev）" size="small">
+        <template #header>
+          <Gauge :size="20" />
+        </template>
+        <div class="w-full space-y-2">
+          <p class="text-sm text-gray-50/70">卸载角色舞台后隐藏主窗口，点击托盘图标还原。</p>
+          <Button type="big" @click="enterLiteMode">隐藏到托盘</Button>
+        </div>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.memory.title')" size="small">
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
@@ -210,13 +180,6 @@
         <template #header>
           <Star :size="20" />
         </template>
-      </MenuItem>
-
-      <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
-        <template #header>
-          <Earth :size="20" />
-        </template>
-        <Toggle @change="voiceSound">{{ $t("settings.text.voiceSound.desc") }}</Toggle>
       </MenuItem>
 
       <MenuItem :title="$t('settings.text.back.title')" size="small">
@@ -494,6 +457,7 @@ import { useUpdater } from "@/composables/useUpdater";
 import { eventQueue } from "@/core/events/event-queue";
 import { applyWebInitData } from "@/stores/modules/game/actions";
 import { useLlmProvidersStore } from "@/stores/modules/llm-providers";
+import { isMobile } from "@/utils/platform";
 import type { DialogView } from "@/types/lanSync";
 import { getVersion } from "@tauri-apps/api/app";
 import { invoke } from "@tauri-apps/api/core";
@@ -506,8 +470,6 @@ import {
   Bug,
   ClipboardList,
   Combine,
-  Download,
-  Earth,
   Gauge,
   GlassWater,
   HardDrive,
@@ -522,7 +484,7 @@ import {
   Zap,
 } from "@lucide/vue";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../../stores/modules/game";
@@ -537,6 +499,7 @@ const router = useRouter();
 const { t } = useI18n();
 // 模板里不能用 import.meta（模板表达式按非 module 解析），这里提前取出
 const isDevMode = import.meta.env.DEV;
+const isMobileDevice = isMobile();
 const uiStore = useUIStore();
 const roleStore = useRoleArchiveStore();
 const settingsStore = useSettingsStore();
@@ -549,6 +512,15 @@ const ttsOrphanFiles = ref(0);
 const ttsOrphanSize = ref("0 B");
 const lastCleanupInfo = ref<{ deleted: number; timestamp: number } | null>(null);
 let ttsCacheRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+/** 轻量模式 demo：先卸载角色舞台让 Pixi/Live2D 释放，再把主窗口隐藏到托盘。
+ *  托盘只在桌面端提供，移动端不渲染入口。 */
+async function enterLiteMode() {
+  uiStore.setLiteMode(true);
+  await nextTick();
+  await invoke("enter_tray_mode");
+}
+
 /** 「对话长度」档位变化事件监听句柄，卸载时解绑 */
 let unlistenReplyLength: UnlistenFn | null = null;
 /** 读取档位期间若收到变化事件，旧响应不能把新档位盖回去 */
@@ -1116,10 +1088,6 @@ const textSpeedSample = ref<number>(settingsStore.textSpeed);
 const textSpeedChange = (data: number) => {
   settingsStore.update("text.speed", data);
   textSpeedSample.value = data;
-};
-
-const voiceSound = (data: boolean) => {
-  settingsStore.update("audio.chatEffectSound", data);
 };
 
 const toggleSedentaryReminder = (data: boolean) => {

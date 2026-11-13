@@ -1,7 +1,7 @@
 //! 局域网设备发现（mDNS 注册+浏览 + UDP 广播+监听）。
 //!
 //! 架构：
-//! - `Announcer` 在启动时创建**唯一**的 `ServiceDaemon`
+//! - `Announcer` 在启动时创建唯一的 `ServiceDaemon`
 //! - 注册和浏览复用同一个 daemon（不再每次创建新的）
 //! - 停止时：`daemon.shutdown()` 干净退出 daemon 线程
 //! - mDNS daemon 线程随 `Announcer` 生命周期创建和销毁
@@ -225,9 +225,6 @@ async fn start_udp_listener(
 // ─── 发现对等设备 ────────────────────────────────────────────
 
 /// 扫描局域网设备，排除自身 instance。
-///
-/// 复用 `Announcer` 持有的 daemon（不创建新的），UDP 结果排在 mDNS 之前。
-/// 去重时后出现的覆盖先出现的。
 pub async fn discover_peers(
     _app: &AppHandle,
     daemon: &ServiceDaemon,
@@ -425,10 +422,6 @@ async fn send_udp_broadcast(my_instance_id: &str) -> Result<Vec<PeerInfo>, Strin
 // ─── 获取本机局域网 IP ───────────────────────────────────────
 
 /// 获取本机可用于 LAN 同步的 IPv4 地址列表。
-///
-/// - 排除虚拟网卡 / 特殊网段（Hyper-V、WSL、VPN、Docker 等）
-/// - 优先返回常见局域网地址（192.168.x.x / 10.x.x.x / 172.16-31.x.x）
-/// - 其余非排除地址排在末尾
 pub fn get_local_ips() -> Result<Vec<String>, String> {
     let ifaces = if_addrs::get_if_addrs().map_err(|e| format!("获取网卡列表失败: {e}"))?;
 

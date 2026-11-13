@@ -1,4 +1,13 @@
-//! 将关键词、标签和向量三路候选合并，再按相关性、来源及上下文预算筛选。
+//! 记忆混合检索引擎。
+//!
+//! 输入是已经加载并限制在授权范围内的索引文档、查询、可选查询向量和检索设置；
+//! 输出是带命中解释和筛选诊断的结果。本模块只做内存计算，不访问数据库、不做
+//! 角色权限判断，也不负责加载或刷新索引。
+//!
+//! 检索先分别计算关键词、标签和向量三路信号，再按各路名次做倒数排名融合，避免
+//! 不同量纲的分数直接相加。候选生成阶段会先按查询日期过滤，随后进行 RRF 排序，
+//! 再依次经过相关性阈值、近期上下文去重、同文档数量限制和字符预算筛选；部分筛选
+//! 原因会写入诊断信息，方便调试页面解释为什么没有返回某条记忆。
 
 use std::collections::{BTreeSet, HashMap, HashSet};
 
@@ -62,7 +71,7 @@ impl SearchSettings {
 
     pub fn version(&self) -> Result<String, SearchError> {
         self.validate()?;
-        Ok(memory_version(&("hybrid-rrf-v2", self))?)
+        Ok(memory_version(&("hybrid-rrf-v3", self))?)
     }
 }
 
@@ -318,6 +327,28 @@ pub fn hybrid_search(
             }
         }
     }
+    // 明确回顾旧问题时保留原排序，其他查询减少纯问句抢占资料预算的机会。
+    let recalling_questions = [
+        "问过",
+        "问了",
+        "提问",
+        "什么问题",
+        "哪些问题",
+        "怎么问",
+        "previous question",
+        "last question",
+        "what did i ask",
+    ]
+    .iter()
+    .any(|phrase| query.original.contains(phrase));
+    for candidate in &mut candidates {
+        if !recalling_questions
+            && candidate.hit.kind == MemoryKind::Raw
+            && question_only(&candidate.canonical)
+        {
+            candidate.hit.score *= 0.25;
+        }
+    }
     candidates.sort_by(|left, right| {
         right
             .hit
@@ -521,6 +552,24 @@ fn canonical(text: &str) -> String {
         .collect::<Vec<_>>()
         .join("\n");
     lines.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
+fn question_only(text: &str) -> bool {
+    let mut found = false;
+    for sentence in text.split_inclusive(['。', '！', '？', '.', '!', '?', '；', ';', '\n']) {
+        let sentence = sentence.trim();
+        if sentence.is_empty() {
+            continue;
+        }
+        // 混有陈述、引语或补充信息时保留原排序，不凭一个问号判断整块没有事实。
+        if !sentence.ends_with(['？', '?'])
+            || sentence.contains([',', '，', ':', '：', '"', '“', '「', '（', '('])
+        {
+            return false;
+        }
+        found = true;
+    }
+    found
 }
 
 fn bigrams(text: &str) -> BTreeSet<String> {

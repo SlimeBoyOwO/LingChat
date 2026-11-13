@@ -20,6 +20,7 @@ use tokio::sync::Mutex;
 use tokio_util::sync::CancellationToken;
 
 use ling_chat_main::ai_service::tools::registry::ToolRegistry;
+use ling_chat_main::ai_service::tools::settings::SharedToolSettings;
 use ling_chat_main::plugin_contract::PluginResourceEntry;
 
 use super::python_backend;
@@ -36,6 +37,8 @@ use crate::ws::WsCommand;
 /// 禁用时注销。`store` 保存扫描结果与持久化状态。
 pub struct PluginManager {
     registry: Arc<ToolRegistry>,
+    /// 工具级白名单：插件工具默认全部启用，用户在设置页取消勾选后不再授权。
+    tool_settings: SharedToolSettings,
     /// data 根目录（权限配置文件所在处）。
     data_dir: PathBuf,
     /// 插件记录与集中状态文件。
@@ -59,9 +62,14 @@ pub struct PluginManager {
 impl PluginManager {
     /// 创建管理器并扫描目录加载所有插件（含启停状态）。
     /// `data_dir` 是 data 根目录，`root` 是 data/plugins。
-    pub fn new(data_dir: PathBuf, registry: Arc<ToolRegistry>) -> Self {
+    pub fn new(
+        data_dir: PathBuf,
+        registry: Arc<ToolRegistry>,
+        tool_settings: SharedToolSettings,
+    ) -> Self {
         let manager = Self {
             registry,
+            tool_settings,
             store: PluginStore::new(data_dir.join("plugins")),
             data_dir,
             signals: RwLock::new(SignalRegistry::new()),
@@ -92,7 +100,7 @@ impl PluginManager {
         };
         for (id, mut record) in scanned {
             if record.state.enabled && record.error.is_none() {
-                match tools::register_tools(&self.registry, &record) {
+                match tools::register_tools(&self.registry, &self.tool_settings, &record) {
                     Ok(()) => {},
                     Err(e) => record.error = Some(e),
                 }
@@ -267,10 +275,12 @@ impl PluginManager {
         // （见 `disable_with_reason`，顺序反了会被这里冲掉）。
         record.startup_error = None;
         if enabled {
-            tools::register_tools(&self.registry, record).inspect_err(|_e| {
-                record.state.enabled = false;
-                self.store.persist_state(id, &record.state);
-            })?;
+            tools::register_tools(&self.registry, &self.tool_settings, record).inspect_err(
+                |_e| {
+                    record.state.enabled = false;
+                    self.store.persist_state(id, &record.state);
+                },
+            )?;
         } else {
             tools::unregister_tools(&self.registry, record);
         }

@@ -1,3 +1,4 @@
+pub mod hotword_repo;
 pub mod memory_index_repo;
 pub mod memory_repo;
 pub mod role_repo;

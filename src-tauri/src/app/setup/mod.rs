@@ -124,5 +124,12 @@ pub fn setup(
     // 依赖完整 AppState 的后台任务与处理器。
     background::run(app, &rt, &local_tts, auto_save_manager)?;
 
+    // 系统托盘（桌面端）：轻量模式隐藏/还原主窗口的入口。
+    // Linux 缺少 appindicator 时托盘可能不可用，不应影响主功能启动。
+    #[cfg(desktop)]
+    if let Err(e) = crate::app::tray::setup(app) {
+        tracing::warn!("系统托盘初始化失败（非致命错误）: {e}");
+    }
+
     Ok(())
 }

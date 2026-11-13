@@ -9,8 +9,9 @@ pub struct Model {
     pub document_id: String,
     pub ordinal: i64,
     pub version: String,
-    #[sea_orm(column_type = "Text")]
-    pub payload: String,
+    /// 正文中的 UTF-8 字节范围，左闭右开；正文和来源从所属文档还原。
+    pub start_byte: i64,
+    pub end_byte: i64,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

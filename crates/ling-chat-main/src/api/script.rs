@@ -223,10 +223,6 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
         return Ok(());
     }
 
-    // No `input` event pending. If a `choices` event with `allow_free: true` is
-    // waiting, the user typing into the dialogue box *is* their choice — route it
-    // to the choice channel. Previously this returned Err, the frontend only
-    // logged it, and the script blocked on `choice_tx` forever.
     if channels.choice_allow_free {
         if let Some(tx) = channels.choice_tx.take() {
             channels.choice_allow_free = false;
@@ -236,8 +232,6 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
     }
 
     if channels.choice_tx.is_some() {
-        // A choice is pending but does not accept free input. Reject without
-        // consuming the sender so the option buttons stay usable.
         return Err("当前的选项不接受自由输入，请点击一个选项".to_string());
     }
 

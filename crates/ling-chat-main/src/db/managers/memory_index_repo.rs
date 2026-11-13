@@ -2,7 +2,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use anyhow::{Result, ensure};
+use anyhow::{Context, Result, ensure};
 use ling_chat_notes::memory::{
     EmbeddingVersion, IndexedMemoryChunk, IndexedMemoryDocument, MemoryChunk, MemoryDocument,
     MemoryEmbeddingRecord, MemoryScope, MemoryScopeKey, memory_version,
@@ -107,21 +107,42 @@ impl MemoryIndexRepo {
             .collect();
 
         let expected_model_version = memory_version(model)?;
+        let mut next_offsets = HashMap::new();
         for row in chunks {
-            let Ok(chunk) = serde_json::from_str::<MemoryChunk>(&row.payload) else {
+            let Some(document) = documents.get_mut(&row.document_id) else {
                 continue;
             };
-            let Some(document) = documents.get_mut(&chunk.document_id) else {
+            let (Ok(start_byte), Ok(end_byte), Ok(ordinal)) = (
+                usize::try_from(row.start_byte),
+                usize::try_from(row.end_byte),
+                u32::try_from(row.ordinal),
+            ) else {
                 continue;
             };
-            if chunk.id != row.id
-                || chunk.version != row.version
-                || chunk.document_id != row.document_id
-                || i64::from(chunk.ordinal) != row.ordinal
+            // 范围必须连续且落在字符边界上；坏块留给下一次增量同步重建。
+            if start_byte != *next_offsets.get(&row.document_id).unwrap_or(&0)
+                || start_byte >= end_byte
+                || ordinal as usize != document.chunks.len()
+            {
+                continue;
+            }
+            let Some(content) = document.document.content.get(start_byte..end_byte) else {
+                continue;
+            };
+            let chunk = MemoryChunk {
+                id: row.id,
+                document_id: row.document_id.clone(),
+                ordinal,
+                content: content.to_owned(),
+                version: row.version,
+                sources: document.document.sources.clone(),
+            };
+            if chunk.id != format!("{}:{ordinal}", row.document_id)
                 || !scope.allows_chunk(&document.document, &chunk)
             {
                 continue;
             }
+            next_offsets.insert(row.document_id, end_byte);
             let embedding = embeddings
                 .get(&chunk.id)
                 .and_then(|embedding| {
@@ -175,21 +196,35 @@ impl MemoryIndexRepo {
                 scope.allows_document(&item.document),
                 "索引文档来源已经失效"
             );
-            let mut ids = HashSet::new();
-            let mut ordinals = HashSet::new();
-            for item_chunk in &item.chunks {
+            let mut offset = 0usize;
+            for (ordinal, item_chunk) in item.chunks.iter().enumerate() {
+                let chunk = &item_chunk.chunk;
                 ensure!(
-                    scope.allows_chunk(&item.document, &item_chunk.chunk),
+                    scope.allows_chunk(&item.document, chunk),
                     "索引分块来源已经失效"
                 );
+                let end = offset
+                    .checked_add(chunk.content.len())
+                    .context("分块范围溢出")?;
+                // 用累计字节位置写范围，重复段落也能定位；来源统一继承所属文档。
                 ensure!(
-                    ids.insert(&item_chunk.chunk.id) && ordinals.insert(item_chunk.chunk.ordinal),
-                    "分块身份重复"
+                    chunk.ordinal as usize == ordinal
+                        && chunk.id == format!("{}:{ordinal}", item.document.id)
+                        && chunk.sources == item.document.sources
+                        && !chunk.content.is_empty()
+                        && item.document.content.get(offset..end) == Some(chunk.content.as_str()),
+                    "分块必须按顺序完整引用文档正文和来源"
                 );
+                offset = end;
                 if let Some(embedding) = &item_chunk.embedding {
                     embedding.validate_for(&item_chunk.chunk)?;
                 }
             }
+            ensure!(
+                offset == item.document.content.len()
+                    || (item.chunks.is_empty() && item.document.content.trim().is_empty()),
+                "分块未覆盖完整文档"
+            );
         }
         let transaction = db.begin().await?;
         ensure!(
@@ -240,17 +275,23 @@ impl MemoryIndexRepo {
             })
             .exec(&transaction)
             .await?;
+            let mut start_byte = 0i64;
             for item_chunk in &item.chunks {
                 let chunk = &item_chunk.chunk;
+                let end_byte = start_byte
+                    .checked_add(i64::try_from(chunk.content.len())?)
+                    .context("分块范围溢出")?;
                 memory_chunk::Entity::insert(memory_chunk::ActiveModel {
                     id: Set(chunk.id.clone()),
                     document_id: Set(chunk.document_id.clone()),
                     ordinal: Set(i64::from(chunk.ordinal)),
                     version: Set(chunk.version.clone()),
-                    payload: Set(serde_json::to_string(chunk)?),
+                    start_byte: Set(start_byte),
+                    end_byte: Set(end_byte),
                 })
                 .exec(&transaction)
                 .await?;
+                start_byte = end_byte;
                 if let Some(embedding) = &item_chunk.embedding {
                     memory_embedding::Entity::insert(memory_embedding::ActiveModel {
                         chunk_id: Set(chunk.id.clone()),

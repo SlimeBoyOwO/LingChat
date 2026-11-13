@@ -19,7 +19,8 @@ use crate::ai_service::skill_agent::command_executor;
 use crate::ai_service::tools::builtin::web_search::WebSearchTool;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
-use crate::ai_service::tools::settings::ToolSettings;
+use crate::ai_service::tools::registry::ToolRegistry;
+use crate::ai_service::tools::settings::{TOOL_GROUPS, ToolSettings};
 use crate::api::character::read_character_settings;
 use crate::db::managers::role_repo::RoleRepo;
 
@@ -27,7 +28,69 @@ use crate::db::managers::role_repo::RoleRepo;
 #[tauri::command]
 pub async fn get_tool_settings(app: tauri::AppHandle) -> Result<ToolSettings, String> {
     let state = app.state::<AppState>();
-    Ok(state.tool_settings.get())
+    let mut settings = state.tool_settings.get();
+    // 旧配置没有工具级白名单，返回前按整组开关展开，前端拿到的永远是显式清单。
+    settings.fill_enabled_tools_from_groups();
+    Ok(settings)
+}
+
+/// 收集注册表中由插件提供的工具名（内置聊天工具不计入）。
+fn plugin_tool_names(registry: &ToolRegistry) -> Vec<String> {
+    registry
+        .definitions()
+        .into_iter()
+        .map(|definition| definition.function.name)
+        .filter(|name| !ToolSettings::is_builtin_chat_tool(name))
+        .collect()
+}
+
+/// 工具分组目录。工具名与分组由后端提供，前端只负责展示文案。
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolGroupCatalog {
+    group: String,
+    tools: Vec<String>,
+    supported: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolCatalog {
+    groups: Vec<ToolGroupCatalog>,
+    /// 始终下发的常驻工具，不参与工具级白名单。
+    resident_tools: Vec<String>,
+    /// 当前已注册、但不属于内置聊天工具的工具（插件提供）。
+    plugin_tools: Vec<String>,
+}
+
+#[tauri::command]
+pub async fn get_tool_catalog(app: tauri::AppHandle) -> Result<ToolCatalog, String> {
+    let state = app.state::<AppState>();
+    let mut groups: Vec<ToolGroupCatalog> = TOOL_GROUPS
+        .iter()
+        .map(|(group, tools)| ToolGroupCatalog {
+            group: (*group).to_string(),
+            tools: tools.iter().map(|tool| (*tool).to_string()).collect(),
+            supported: ToolSettings::group_supported_on_current_platform(group),
+        })
+        .collect();
+    // 网页搜索有独立配置，不在 TOOL_GROUPS 中，单独作为一组下发。
+    groups.insert(
+        0,
+        ToolGroupCatalog {
+            group: "web_search".to_string(),
+            tools: vec!["web_search".to_string()],
+            supported: true,
+        },
+    );
+
+    let plugin_tools = plugin_tool_names(&state.tool_registry);
+
+    Ok(ToolCatalog {
+        groups,
+        resident_tools: vec!["tool_search".to_string()],
+        plugin_tools,
+    })
 }
 
 /// 设置页使用的运行时诊断信息。尤其用于 Android：工具配置按设备保存，
@@ -106,9 +169,6 @@ pub async fn get_tool_runtime_info(app: tauri::AppHandle) -> Result<ToolRuntimeI
 }
 
 /// 保存工具配置：写盘 + 热更新 + 同步权限矩阵。
-///
-/// 网页搜索启用且凭据来源可用时，自动放开 default 角色组的 `web_search`
-/// 权限；Codex 使用 OAuth，Kimi 可在执行时复用当前官方 Kimi Code 对话凭据。
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
@@ -132,9 +192,18 @@ pub async fn save_tool_settings(
         spawn_embedding_warm(&app);
     }
 
-    // 同步权限矩阵：启用的工具组/web_search 放开给 default 角色组，关闭的收回
+    // 同步权限矩阵：启用的工具组/web_search 放开给 default 角色组，关闭的收回。
+    // 插件工具不在 TOOL_GROUPS 中，按插件白名单单独处理；两者都处理完再统一收尾，
+    // 避免内置工具全关时 default 组被提前关掉。
+    let plugin_tools = plugin_tool_names(&state.tool_registry);
     state.tool_registry.update_permissions(|permissions| {
         settings.sync_to_permissions(permissions);
+        for name in &plugin_tools {
+            let allowed = settings.plugin_tool_enabled(name);
+            permissions.set_tool_allowed_for_default_group(name, allowed);
+            permissions.set_tool_allowed_for_proactive_scene(name, allowed);
+        }
+        ToolSettings::finalize_default_group(permissions);
         if let Err(e) = permissions.save(&data_dir.join(CONFIG_FILE_NAME)) {
             tracing::warn!("保存工具权限配置失败: {e}");
         }
@@ -205,9 +274,6 @@ pub async fn rebuild_embeddings(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 后台预热：逐角色全量嵌入笔记，并把 Tool RAG 的示例问句预热进缓存。
-///
-/// 预热是「用额度换体验」的动作，因此只在配置确实影响向量时被触发；期间检索照常
-/// 走当前可用后端，不阻塞对话。同一时刻只允许一个任务，新的一次保存会取消上一个。
 pub(crate) fn spawn_embedding_warm(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     if !state.embedding.is_enabled() {

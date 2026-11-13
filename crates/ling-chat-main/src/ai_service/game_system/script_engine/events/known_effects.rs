@@ -4,11 +4,8 @@
 //! 唯一真相是前端注册表 src/components/game/standard/particles/index.ts。
 //!
 //! 特效由前端渲染，Rust 不参与，这份清单只用来让剧本编辑器给作者报
-//! 「这不是内置特效」。正因为如此它必须是派生品 —— 手抄一份的话，抄漏的
-//! 症状只是警告不再触发，不报错，很难查。
-//!
-//! 前端把特效分成氛围与天气两层，这里刻意拍平：剧本只写一个特效值，
-//! 落在哪一层由前端决定。
+//! 「这不是内置特效」，以及让后端判断某个特效属于哪一层。正因为如此它
+//! 必须是派生品 —— 手抄一份的话，抄漏的症状只是判断失灵，不报错，很难查。
 
 /// 全部内置特效的 key，顺序与注册表一致。
 ///
@@ -28,3 +25,15 @@ pub const KNOWN_EFFECTS: &[&str] = &[
     "Blizzard",
     "Fog",
 ];
+
+/// 天气层特效的 key。氛围层与天气层各自单选、互不覆盖。
+///
+/// 前端按这个集合决定特效落在哪一层；后端据此把天气名的特效写进
+/// `weather_effect`，从而能检测天气变化并生成旁白。
+pub const WEATHER_EFFECTS: &[&str] =
+    &["Drizzle", "Rain", "Thunderstorm", "Snow", "Blizzard", "Fog"];
+
+/// 是否天气层特效（大小写敏感，与前端按 === 比较一致）。
+pub fn is_weather_effect(effect: &str) -> bool {
+    WEATHER_EFFECTS.contains(&effect)
+}

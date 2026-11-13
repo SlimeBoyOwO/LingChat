@@ -7,12 +7,10 @@
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tauri::Emitter;
 
 use crate::ai_service::types::ToolDefinition;
 
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
-use crate::ai_service::tools::game_status_handle;
 
 /// set_background_effect：设置背景粒子特效。
 pub struct SetBackgroundEffect;
@@ -103,22 +101,18 @@ impl Tool for SetBackgroundEffect {
             )));
         }
 
-        let gs = game_status_handle(&app).await;
-        gs.lock().await.background_effect = effect.clone();
-
         // 注意：这里刻意不走剧本引擎的 script:background-effect 通道——那个事件
         // 会被前端放进对话事件队列顺序消费，还会翻转 currentStatus；聊天中的
         // 氛围特效是即时状态，走队列会插队在还没显示的台词前面、把状态机搅乱。
-        // 走独立的 ambient:effect，前端直达监听只改特效状态、不碰队列。
-        let payload = json!({
-            "type": "ambient_effect",
-            "effect": effect,
-            "duration": duration,
-        });
+        // 世界动作层广播的是独立的 ambient:effect，前端直达监听只改特效状态。
+        crate::ai_service::game_system::world_actions::apply_effect(
+            &app,
+            crate::ai_service::game_system::world_actions::EffectOrigin::Ai,
+            &effect,
+            duration,
+        )
+        .await;
         tracing::info!("[SetBackgroundEffect] 切换特效: {effect}（ambient:effect 已广播）");
-        if let Err(e) = app.emit("ambient:effect", &payload) {
-            tracing::warn!("emit ambient effect 失败: {e}");
-        }
 
         Ok(json!({"ok": true, "effect": effect}))
     }

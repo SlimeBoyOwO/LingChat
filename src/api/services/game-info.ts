@@ -8,7 +8,8 @@ export interface CharacterSettings {
   ai_subtitle: string;
   user_name: string;
   user_subtitle: string;
-  user_aliases?: Record<string, { name: string; subtitle: string }>;
+  /** 角色卡的默认初始好感度；数据库里已有该身份的覆写时以数据库为准 */
+  initial_affection?: number | null;
   character_id: number | null;
   thinking_message: string;
   scale: number;
@@ -69,6 +70,8 @@ export interface WebInitData {
   onstage_roles: CharacterSettings[];
   background: string;
   background_effect: string;
+  /** 天气层特效；与氛围层分开恢复 */
+  weather_effect: string;
   background_music: string;
   current_scene_id: string | null;
   current_scene: SceneInfo | null;

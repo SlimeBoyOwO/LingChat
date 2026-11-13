@@ -1,4 +1,8 @@
 pub mod adventure_unlock;
+pub mod global_hotword;
+pub mod hotword_category;
+pub mod hotword_weight;
+pub mod library_hotword;
 pub mod line;
 pub mod line_perception;
 pub mod memory_bank;
@@ -8,6 +12,8 @@ pub mod memory_embedding;
 pub mod memory_index_state;
 pub mod player_identity;
 pub mod role;
+pub mod role_hotword;
+pub mod role_identity_relation;
 pub mod running_script;
 pub mod save;
 pub mod save_identity;

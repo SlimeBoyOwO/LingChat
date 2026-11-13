@@ -49,7 +49,7 @@ export const DEFAULT_SETTINGS = {
   },
   // 显示设置
   display: {
-    currentBackground: "@/assets/images/default_bg.jpg", // 当前背景图片
+    currentBackground: "@/assets/images/default_bg.webp", // 当前背景图片
     backgroundEffect: "StarField", // 氛围特效名称
     weatherEffect: "None", // 天气特效名称，与氛围特效相互独立
     mainMenuStarsEnabled: true, // 主菜单星星粒子开关
@@ -436,9 +436,14 @@ export const useSettingsStore = defineStore("settings", {
     // 氛围层已经没有的 key —— 不报错，但什么也不显示。这里把它归位。
     // 写成不变量而不是一次性迁移：任何来源的越界值都会在读取时被纠正
     afterHydrate: (store: SettingsState) => {
-      if (!isWeatherEffect(store.display.backgroundEffect)) return;
-      store.display.weatherEffect = store.display.backgroundEffect;
-      store.display.backgroundEffect = "None";
+      if (isWeatherEffect(store.display.backgroundEffect)) {
+        store.display.weatherEffect = store.display.backgroundEffect;
+        store.display.backgroundEffect = "None";
+      }
+      // 默认背景从 JPG 换成了 WebP，旧标识归位到当前文件名
+      if (store.display.currentBackground === "@/assets/images/default_bg.jpg") {
+        store.display.currentBackground = "@/assets/images/default_bg.webp";
+      }
     },
   },
 });

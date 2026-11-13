@@ -353,6 +353,15 @@ pub struct VoiceModel {
     /// 由其自身文件系统解析，不做本地目录拼接）
     #[serde(default)]
     pub gsv_emo_voice_files: Option<HashMap<String, String>>,
+    /// 合成采样温度，缺省 1.0（调低更稳定、更贴近参考音色）
+    #[serde(default)]
+    pub gsv_temperature: Option<f32>,
+    /// 采样阈值 top_p，缺省 1.0
+    #[serde(default)]
+    pub gsv_top_p: Option<f32>,
+    /// 语速倍率，缺省 1.0
+    #[serde(default)]
+    pub gsv_speed_factor: Option<f32>,
     pub aivis_model_uuid: Option<String>,
     pub opentts_voice: Option<String>,
     pub fish_s2_voice: Option<String>,
@@ -523,18 +532,6 @@ fn default_live2d_gain() -> f64 {
     1.0
 }
 
-/// 某个身份下，该角色对「我」的称呼与副标题。
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct UserAlias {
-    #[serde(default)]
-    pub name: String,
-    #[serde(default)]
-    pub subtitle: String,
-    /// 该身份专属的初始好感度覆写；None 表示用卡片默认 `initial_affection`。
-    #[serde(default)]
-    pub initial_affection: Option<i32>,
-}
-
 /// 角色设定模型，对应 Python `CharacterSettings`。
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct CharacterSettings {
@@ -542,13 +539,11 @@ pub struct CharacterSettings {
     pub ai_name: String,
     #[serde(default)]
     pub ai_subtitle: Option<String>,
+    /// 该角色默认对「我」的称呼。
     #[serde(default = "default_user_name")]
     pub user_name: String,
     #[serde(default)]
     pub user_subtitle: Option<String>,
-    /// per-身份的「该角色对我（用户）的称呼/副标题」覆写，键为身份卡 id。
-    #[serde(default)]
-    pub user_aliases: HashMap<String, UserAlias>,
     #[serde(default)]
     pub title: Option<String>,
     #[serde(default)]
@@ -671,7 +666,6 @@ impl Default for CharacterSettings {
             ai_subtitle: Some(String::new()),
             user_name: default_user_name(),
             user_subtitle: Some(String::new()),
-            user_aliases: HashMap::new(),
             title: None,
             info: None,
             body_part: None,

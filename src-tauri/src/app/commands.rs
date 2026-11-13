@@ -68,6 +68,13 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::character::set_role_avatar_static,
         api::character::delete_character,
         api::character::open_characters_folder,
+        api::hotword::get_role_hotwords,
+        api::hotword::get_scene_hotwords,
+        api::hotword::save_role_hotwords,
+        api::hotword::get_global_hotwords,
+        api::hotword::save_global_hotwords,
+        api::hotword::get_hotword_library,
+        api::hotword::save_hotword_library,
         api::live2d::import_live2d,
         api::live2d::get_live2d_file,
         api::live2d::inspect_live2d,
@@ -85,6 +92,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::scene::delete_scene,
         api::scene::select_scene,
         api::scene::select_background_effect,
+        api::scene::select_weather_effect,
         api::scene::set_scene_awareness,
         api::scene::set_scene_location_type,
         api::scene::get_weather_sync_config,
@@ -214,6 +222,7 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::schedule::preview_proactive_interest_range,
         api::proactive_set_can_deliver,
         api::tool_settings::get_tool_settings,
+        api::tool_settings::get_tool_catalog,
         api::tool_settings::get_tool_runtime_info,
         api::tool_settings::save_tool_settings,
         api::tool_settings::test_web_search,
@@ -305,6 +314,8 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::asr::asr_stream_audio_chunk,
         api::asr::asr_stop_streaming,
         api::asr::asr_cancel_streaming,
+        #[cfg(desktop)]
+        crate::app::tray::enter_tray_mode,
         exit_app,
     ])
 }

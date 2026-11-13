@@ -9,11 +9,7 @@ import { isWeatherEffect } from "@/components/game/standard/particles";
 // 通知类型
 export type NotificationType = "error" | "success" | "info" | "warning";
 export type ScheduleViewType =
-  | "schedule_groups"
-  | "schedule_details"
-  | "todo_groups"
-  | "todo_detail"
-  | "calendar";
+  "schedule_groups" | "schedule_details" | "todo_groups" | "todo_detail" | "calendar";
 
 // 通知状态接口
 interface NotificationState {
@@ -54,6 +50,8 @@ interface UIState {
   currentSoundEffect: string;
   currentAvatarAudio: string;
   autoMode: boolean;
+  /** 轻量模式：主窗口隐藏到托盘时卸载渲染侧重资源 */
+  liteMode: boolean;
 
   // 环境音轨道列表（多轨并行，最多8轨）
   ambientTracks: Array<{
@@ -90,7 +88,7 @@ interface UIState {
 }
 
 // 默认 avatar
-const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.png";
+const DEFAULT_AVATAR = "/characters/诺一钦灵/头像.webp";
 
 // 防抖相关
 const notificationDebounceMap = new Map<string, number>();
@@ -125,6 +123,7 @@ export const useUIStore = defineStore("ui", {
     currentSoundEffect: "None",
     currentAvatarAudio: "None",
     autoMode: false,
+    liteMode: false,
 
     // 环境音轨道列表初始值
     ambientTracks: [],
@@ -209,6 +208,13 @@ export const useUIStore = defineStore("ui", {
   },
 
   actions: {
+    setLiteMode(enabled: boolean) {
+      this.liteMode = enabled;
+      if (enabled) {
+        // 轻量模式下没有页面接收语音，顺手清掉待播放的音频地址
+        this.currentAvatarAudio = "None";
+      }
+    },
     setCurrentBackground(background: string) {
       useSettingsStore().setCurrentBackground(background);
     },
@@ -371,7 +377,7 @@ export const useUIStore = defineStore("ui", {
         type,
         title,
         message,
-        avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.png`,
+        avatarUrl: avatarUrl || `/characters/${this.currentCharacterFolder}/头像.webp`,
         duration,
       };
 

@@ -48,9 +48,6 @@ pub fn init(data_dir: &Path, enable: bool) {
 }
 
 /// 将模型名等片段清洗成合法的文件名片段
-///
-/// 模型名可能包含路径分隔符（`/`、`\`）或其他 Windows 文件名非法字符，
-/// 直接拼进文件名会导致写入失败或落到不存在的子目录。
 fn sanitize_for_filename(s: &str) -> String {
     let cleaned: String = s
         .chars()
@@ -70,8 +67,6 @@ fn sanitize_for_filename(s: &str) -> String {
 }
 
 /// 记录 LLM 请求体到文件
-///
-/// 如果开关未开启或目录未初始化，直接返回。
 pub fn log_request_body(provider_name: &str, body: &serde_json::Value) {
     if !ENABLED.load(Ordering::Acquire) {
         return;
@@ -94,7 +89,6 @@ pub fn log_request_body(provider_name: &str, body: &serde_json::Value) {
 }
 
 /// 文件日志开关是否开启。调用方据此决定要不要做请求体序列化
-/// （请求可能带 base64 图片，无谓的序列化代价不低）。
 pub fn file_log_enabled() -> bool {
     ENABLED.load(Ordering::Acquire)
 }
@@ -110,7 +104,7 @@ pub fn push_request_summary(rendered: String) {
     queue.push_back(rendered);
 }
 
-/// 取最近若干条请求摘要，**最新的在前**（看日志时最关心的那条离顶部最近）。
+/// 取最近若干条请求摘要，最新的在前（看日志时最关心的那条离顶部最近）。
 pub fn recent_request_summaries() -> Vec<String> {
     RECENT_REQUESTS
         .lock()
