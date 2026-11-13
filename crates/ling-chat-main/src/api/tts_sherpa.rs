@@ -1,4 +1,5 @@
-//! Sherpa-ONNX 本地 TTS 模型管理：列表、下载、删除、试听合成。
+//! Sherpa-ONNX 本地 TTS 模型管理：列表、下载、删除、试听合成，
+//! 以及零样本参考音频导入与本地 ASR 识别。
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -7,6 +8,8 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::sync::{Mutex, RwLock};
 
+use crate::ai_service::asr::provider::{AsrOptions, AsrProvider};
+use crate::ai_service::asr::providers::sherpa::SherpaAsrProvider;
 use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_ref_audio;
 use crate::ai_service::tts::adapters::sherpa_onnx::{
     SherpaOnnxAdapter, SherpaSpeaker, SherpaTuning,
@@ -883,6 +886,34 @@ pub async fn import_sherpa_ref_audio(
     }
 
     result
+}
+
+/// 用本地 SenseVoice 识别零样本参考音频，返回可直接填入参考文本的整段文字。
+#[tauri::command]
+pub async fn transcribe_sherpa_ref_audio(path: String) -> Result<String, String> {
+    let path = path.trim();
+    if path.is_empty() {
+        return Err("参考音频路径为空".to_string());
+    }
+    if !SherpaAsrProvider::model_available() {
+        return Err("SHERPA_REF_ASR_NO_MODEL".to_string());
+    }
+
+    let wav = tokio::fs::read(path)
+        .await
+        .map_err(|e| format!("读取参考音频失败: {e}"))?;
+    let provider = SherpaAsrProvider::new();
+    let result = provider
+        .recognize(wav, &AsrOptions::default())
+        .await
+        .map_err(|e| format!("参考音频识别失败: {e}"))?;
+    let text = result.text.trim().to_string();
+    if text.is_empty() {
+        return Err("SHERPA_REF_ASR_EMPTY".to_string());
+    }
+
+    tracing::info!("[tts_sherpa] 参考音频识别完成: {} 字", text.chars().count());
+    Ok(text)
 }
 
 /// 打开 Sherpa 模型目录（Android 经 `storage-permission`，桌面端用系统默认方式）。
