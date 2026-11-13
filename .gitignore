@@ -204,6 +204,10 @@ data/plugins/*
 !data/plugins/keenable/**
 !data/plugins/mc_maid_bridge/
 !data/plugins/mc_maid_bridge/**
+
+# QQ 桥接插件（OneBot v11）
+!data/plugins/qq_onebot/
+!data/plugins/qq_onebot/**
 # 插件目录整体取反后，上面通用的 Python 缓存规则会被盖掉，这里补回来
 data/plugins/**/__pycache__/
 data/plugins/**/*.py[cod]
