@@ -124,6 +124,7 @@ export const tipCategories: TipCategory[] = [
       t("api.easterEggs.tips.dev.27"),
       t("api.easterEggs.tips.dev.28"),
       t("api.easterEggs.tips.dev.29"),
+      t("api.easterEggs.tips.dev.30"),
     ],
   },
   {
