@@ -136,10 +136,36 @@ impl BudgetOutcome {
     }
 }
 
+/// token 数上界：wide（CJK / 韩文 / 全角）字符在 UTF-8 里至少 3 字节，
+/// 每字节最多 0.85/3 ≈ 0.283 token；其余字符每字节最多 0.3 token（ASCII 1 字节）。
+/// 因此 `字节数 * 3 / 10 + 4` 恒不小于 [`estimate_tokens`] 的精确值，
+/// 且比按「字符数 ≤ 字节数」推的 `字节数 * 85 / 100` 紧约 2.8 倍 —— 中文为主的剧本历史靠它才能真正命中快路径。
+pub(crate) fn estimate_tokens_upper_bound(messages: &[LlmMessage]) -> usize {
+    messages
+        .iter()
+        .map(|msg| {
+            let mut bytes = msg.content.len();
+            if let Some(calls) = msg.tool_calls.as_deref() {
+                for call in calls {
+                    bytes += call.function.name.len() + call.function.arguments.len();
+                }
+            }
+            bytes * 3 / 10 + 4
+        })
+        .sum()
+}
+
 /// 按窗口收束一次，到水位才动手；丢不下去返回 [`BudgetOutcome::TooLong`]。顺序（先丢最不可惜的）：
 pub fn apply_context_budget(messages: &mut Vec<LlmMessage>, window: usize) -> BudgetOutcome {
     let cap = input_cap(window);
     let trigger = cap * TRIGGER_PERCENT / 100;
+
+    // 快路径：连上界都到不了水位，就不必逐字符数一遍历史。
+    // 精确值 ≤ 上界 < trigger，与原实现必定返回 Untouched 等价；messages 一个字节都不动。
+    let upper = estimate_tokens_upper_bound(messages);
+    if upper < trigger {
+        return BudgetOutcome::Untouched { tokens: upper };
+    }
 
     let before = estimate_tokens(messages);
     if before < trigger {
