@@ -6,6 +6,10 @@
  * 边缘光、自阴影。Live2D 拿不到每帧位图，所以那条路径只打了背景；
  * 静态立绘（`avatar_mode: image`）有现成的 `<img>`，可以直接喂纹理。
  *
+ * 多角色：每个在场角色各占一个槽，各自找容器、量矩形、灌纹理。槽序 = 传入的
+ * `roleIds()` 顺序（即舞台前后序，0 在最底层），与渲染器 `characterRects` 下标对齐。
+ * 某个角色接管失败只影响它自己，其余角色照常吃光。
+ *
  * 三条硬约束：
  *  1. 矩形必须用 `imageRectInBox()` 还原 —— `<img>` 是 `object-fit: contain` +
  *     `center bottom`，元素盒子里的留白不是人物。拿元素盒子当矩形，人物会被拉扁。
@@ -25,6 +29,7 @@ import {
   type Fit,
 } from "@/components/game/standard/touch-regions";
 import { loadTexImage, type LoadedImage } from "@/render/lighting/loadImage";
+import { MAX_CHARACTERS } from "@/render/lighting";
 
 /** `[x, y, width, height]`，单位为舞台像素。 */
 export type Rect4 = [number, number, number, number];
@@ -48,25 +53,44 @@ export interface StaticAvatarTakeoverOptions {
   enabled: () => boolean;
   /** 舞台画布。矩形要换算进它的坐标系，dpr 与祖先缩放也从它身上量。 */
   canvas: () => HTMLCanvasElement | null;
-  /** 优先接管哪个角色；找不到就取第一个有可见立绘的。 */
-  roleId?: () => string | number | null | undefined;
+  /** 在场角色 id，按舞台前后序（0 在最底层）。超出渲染器槽上限的截断。 */
+  roleIds: () => readonly (string | number)[];
   /** 状态回调，只用于日志。 */
   onStatus?: (status: TakeoverStatus, detail?: string) => void;
 }
 
+/** 单个角色槽的对外快照。下标即渲染器槽号。 */
+export interface TakeoverSlot {
+  roleId: string;
+  active: boolean;
+  image: LoadedImage | null;
+  rect: Rect4 | null;
+  source: string;
+}
+
 export interface StaticAvatarTakeover {
-  /** 是否已接管（DOM 图已隐藏、canvas 在画人物）。 */
+  /** 是否有任一槽已接管（DOM 图已隐藏、canvas 在画人物）。 */
   active: Ref<boolean>;
-  /** 交给 `renderer.setCharacter()` 的图。 */
-  image: ShallowRef<LoadedImage | null>;
-  /** 立绘内容矩形（舞台像素），交给 `render()` 的 `characterRects`。 */
-  rect: ShallowRef<Rect4 | null>;
-  /** 当前接管的图片来源，用来做法线/深度贴图缓存键。 */
-  source: Ref<string>;
-  /** 按当前状态启动或释放。启用条件变化、场景切换后调一次。 */
+  /** 各角色槽快照，按 `roleIds()` 序；槽号 = 下标。 */
+  slots: ShallowRef<readonly TakeoverSlot[]>;
+  /** 按当前状态启动或释放。启用条件变化、角色上下场后调一次。 */
   sync: () => Promise<void>;
-  /** 强制释放（组件卸载时自己会调）。 */
+  /** 强制释放全部槽（组件卸载时自己会调）。 */
   release: () => void;
+}
+
+/** 槽的内部可变状态。对外只发快照，避免渲染器读到半截状态。 */
+interface SlotState {
+  roleId: string;
+  container: HTMLElement | null;
+  hiddenImages: HTMLImageElement[];
+  loadToken: number;
+  loadedSrc: string;
+  lastRectKey: string;
+  active: boolean;
+  image: LoadedImage | null;
+  rect: Rect4 | null;
+  source: string;
 }
 
 function killSwitchOff(): boolean {
@@ -115,31 +139,39 @@ export function useStaticAvatarTakeover(
   options: StaticAvatarTakeoverOptions,
 ): StaticAvatarTakeover {
   const active = ref(false);
-  const image = shallowRef<LoadedImage | null>(null);
-  const rect = shallowRef<Rect4 | null>(null);
-  const source = ref("");
+  const slots = shallowRef<readonly TakeoverSlot[]>([]);
 
-  let container: HTMLElement | null = null;
-  let hiddenImages: HTMLImageElement[] = [];
+  let states: SlotState[] = [];
   let timer = 0;
-  let loadToken = 0;
-  let loadedSrc = "";
-  let lastRectKey = "";
+  let lastSig = "";
 
   function status(next: TakeoverStatus, detail?: string) {
     options.onStatus?.(next, detail);
   }
 
-  function findContainer(): HTMLElement | null {
-    const all = Array.from(document.querySelectorAll<HTMLElement>(CONTAINER_SELECTOR));
-    if (!all.length) return null;
+  function publish(): void {
+    // 心跳每轮都调 sync，但状态没变就别发新快照，免得舞台白重绘
+    const sig = states
+      .map((s) => `${s.roleId}:${s.active ? 1 : 0}:${s.source}:${s.rect ? rectKey(s.rect) : ""}`)
+      .join("|");
+    if (sig === lastSig) return;
+    lastSig = sig;
+    slots.value = states.map((s) => ({
+      roleId: s.roleId,
+      active: s.active,
+      image: s.image,
+      rect: s.rect,
+      source: s.source,
+    }));
+    active.value = states.some((s) => s.active);
+  }
 
-    const want = options.roleId?.() ?? null;
-    if (want) {
-      const hit = all.find((el) => el.dataset.roleId === String(want));
-      if (hit) return hit;
+  function findContainer(roleId: string): HTMLElement | null {
+    const all = document.querySelectorAll<HTMLElement>(CONTAINER_SELECTOR);
+    for (const el of all) {
+      if (el.dataset.roleId === roleId) return el;
     }
-    return all.find((el) => pickVisibleImage(el)) ?? all[0];
+    return null;
   }
 
   /**
@@ -213,19 +245,31 @@ export function useStaticAvatarTakeover(
    * 角色层绘制在光影画布之上，漏一张就是「场景吃光、人物不吃光」：画布里那份
    * 打光的立绘被 DOM 里这份原图盖住。换表情必然新建 img，所以每次 tick 都要补。
    */
-  function ensureHidden(): void {
-    if (!container) return;
-    for (const img of container.querySelectorAll<HTMLImageElement>("img")) {
+  function ensureHidden(s: SlotState): void {
+    if (!s.container) return;
+    for (const img of s.container.querySelectorAll<HTMLImageElement>("img")) {
       if (img.style.visibility === "hidden") continue;
       img.style.visibility = "hidden";
-      hiddenImages.push(img);
+      s.hiddenImages.push(img);
     }
   }
 
-  /** 把藏起来的立绘还给 DOM。换容器前必须先调它，否则前一个角色会永久隐身。 */
-  function restore(): void {
-    for (const img of hiddenImages) img.style.visibility = "";
-    hiddenImages = [];
+  /** 把藏起来的立绘还给 DOM。释放槽前必须先调它，否则那个角色会永久隐身。 */
+  function restore(s: SlotState): void {
+    for (const img of s.hiddenImages) img.style.visibility = "";
+    s.hiddenImages = [];
+  }
+
+  function releaseSlot(s: SlotState): void {
+    s.loadToken++;
+    restore(s);
+    s.container = null;
+    s.loadedSrc = "";
+    s.lastRectKey = "";
+    s.active = false;
+    s.image = null;
+    s.rect = null;
+    s.source = "";
   }
 
   function release(): void {
@@ -233,154 +277,176 @@ export function useStaticAvatarTakeover(
       window.clearInterval(timer);
       timer = 0;
     }
-    loadToken++;
-    restore();
-    container = null;
-    loadedSrc = "";
-    lastRectKey = "";
-    if (active.value) status("inactive");
-    active.value = false;
-    image.value = null;
-    rect.value = null;
-    source.value = "";
+    const wasActive = active.value;
+    for (const s of states) releaseSlot(s);
+    states = [];
+    publish();
+    if (wasActive) status("inactive");
   }
 
-  /** 表情/换装换了图：重新灌纹理，别让画布停在旧立绘上。 */
-  async function reload(src: string): Promise<void> {
-    const token = ++loadToken;
+  /** 表情/换装换了图：重新灌纹理，别让画布停在旧立绘上。只影响这一个槽。 */
+  async function reload(s: SlotState, src: string): Promise<void> {
+    const token = ++s.loadToken;
     const loaded = await loadTexImage(src);
-    if (token !== loadToken) return;
+    if (token !== s.loadToken || !states.includes(s)) return;
     if (!loaded || loaded.tainted) {
       status("fail", loaded ? `立绘图会污染画布 ${src}` : `立绘加载失败 ${src}`);
-      release();
+      releaseSlot(s);
+      publish();
       return;
     }
-    loadedSrc = src;
-    image.value = loaded;
-    source.value = src;
-    const domImg = container ? pickVisibleImage(container) : null;
+    s.loadedSrc = src;
+    s.image = loaded;
+    s.source = src;
+    const domImg = s.container ? pickVisibleImage(s.container) : null;
     if (domImg) {
       const next = measure(domImg, loaded);
       if (next) {
-        rect.value = next;
-        lastRectKey = rectKey(next);
+        s.rect = next;
+        s.lastRectKey = rectKey(next);
       }
     }
+    publish();
+  }
+
+  /** 已绑定的槽补一次隐藏和测量；矩形真动了才发快照。 */
+  function remeasure(s: SlotState): void {
+    if (!s.container) return;
+    ensureHidden(s);
+    const domImg = pickVisibleImage(s.container);
+    const next = domImg ? measure(domImg, s.image ?? undefined) : null;
+    if (next && changed(s.rect, next)) {
+      s.rect = next;
+      s.lastRectKey = rectKey(next);
+      publish();
+    }
+  }
+
+  /** 给一个还没绑定的槽找容器、灌纹理、藏图、激活。任何一步失败都保持 DOM 原样。 */
+  async function bindSlot(s: SlotState): Promise<void> {
+    const el = findContainer(s.roleId);
+    if (!el) return;
+    const img = pickVisibleImage(el);
+    if (!img) return; // 图还在解码，心跳下一轮再补
+    const src = img.currentSrc || img.src;
+    if (!src) return;
+
+    const token = ++s.loadToken;
+    const loaded = await loadTexImage(src);
+    if (token !== s.loadToken || !states.includes(s)) return;
+    if (!loaded || loaded.tainted) {
+      status("fail", loaded ? `立绘图会污染画布 ${src}` : `立绘加载失败 ${src}`);
+      return;
+    }
+    const next = measure(img, loaded);
+    if (!next) return; // 盒子尺寸为 0（还没布局），心跳再补
+
+    // 先量再藏：上一步任何失败，DOM 立绘都还是原样
+    s.container = el;
+    s.loadedSrc = src;
+    s.image = loaded;
+    s.source = src;
+    s.rect = next;
+    s.lastRectKey = rectKey(next);
+    ensureHidden(s);
+    s.active = true;
+    status(
+      "active",
+      `角色 ${s.roleId} ${Math.round(next[2])}x${Math.round(next[3])} @ ${Math.round(next[0])},${Math.round(next[1])}`,
+    );
+    publish();
+    startTicker();
   }
 
   function startTicker(): void {
     if (timer) return;
     timer = window.setInterval(() => {
-      if (!active.value || !container) return;
-      // 容器被卸了（切角色 / 角色退场）：旧纹理立刻下线，别钉在场景上
-      if (!container.isConnected) {
-        release();
-        return;
-      }
+      let dirty = false;
+      for (const s of states) {
+        if (!s.active || !s.container) continue;
+        // 容器被卸了（切角色 / 角色退场）：旧纹理立刻下线，别钉在场景上
+        if (!s.container.isConnected) {
+          releaseSlot(s);
+          dirty = true;
+          continue;
+        }
 
-      // 先补藏再量：新建的 img 晚一帧藏就会盖在画布上闪一下原图
-      ensureHidden();
+        // 先补藏再量：新建的 img 晚一帧藏就会盖在画布上闪一下原图
+        ensureHidden(s);
 
-      const img = pickVisibleImage(container);
-      if (!img) return;
-      if (img.currentSrc && img.currentSrc !== loadedSrc) {
-        void reload(img.currentSrc);
-        return;
-      }
+        const img = pickVisibleImage(s.container);
+        if (!img) continue;
+        if (img.currentSrc && img.currentSrc !== s.loadedSrc) {
+          void reload(s, img.currentSrc);
+          continue;
+        }
 
-      const next = measure(img, image.value ?? undefined);
-      if (!next) {
-        // 量不到矩形 = 图被 display:none（Live2D 模型就绪后藏掉占位立绘）或画布没尺寸。
-        // 继续画就是给模型盖一张打光的静态鬼影，立刻下线等心跳重判
-        release();
-        return;
+        const next = measure(img, s.image ?? undefined);
+        if (!next) {
+          // 量不到矩形 = 图被 display:none（Live2D 模型就绪后藏掉占位立绘）或画布没尺寸。
+          // 继续画就是给模型盖一张打光的静态鬼影，立刻下线等心跳重判
+          releaseSlot(s);
+          dirty = true;
+          continue;
+        }
+        const key = rectKey(next);
+        if (key === s.lastRectKey && !changed(s.rect, next)) continue;
+        s.lastRectKey = key;
+        s.rect = next;
+        dirty = true;
       }
-      const key = rectKey(next);
-      if (key === lastRectKey && !changed(rect.value, next)) return;
-      lastRectKey = key;
-      rect.value = next;
+      if (dirty) publish();
     }, TICK_MS);
   }
 
   async function sync(): Promise<void> {
     const want = options.enabled() && !killSwitchOff();
     if (!want) {
-      if (active.value) release();
+      if (states.length) release();
       return;
     }
 
-    // 绑定的容器被 Vue 卸了（切角色 / 角色退场）：先下线再按当前角色重找，
-    // 否则画布会拿着已卸载容器的旧纹理旧矩形，把上一任角色钉在场景上
-    if (active.value && container && !container.isConnected) release();
-
-    const el = findContainer();
-    if (!el) {
-      if (active.value) release();
-      status("inactive", "页面上没有静态立绘容器（Live2D 或未挂载）");
-      return;
-    }
-
-    // 已经在同一个容器上跑着，只补一次隐藏和测量
-    if (active.value && container === el && image.value) {
-      ensureHidden();
-      const domImg = pickVisibleImage(el);
-      const next = domImg ? measure(domImg, image.value) : null;
-      if (next && changed(rect.value, next)) {
-        rect.value = next;
-        lastRectKey = rectKey(next);
+    // 按当前在场序重建槽列表：留下的角色复用旧状态（纹理不重灌），
+    // 退场的角色立刻释放，新上场的补一个空槽
+    const ids = options.roleIds().map(String).slice(0, MAX_CHARACTERS);
+    const next: SlotState[] = [];
+    for (const id of ids) {
+      const existing = states.find((s) => s.roleId === id);
+      if (existing) {
+        next.push(existing);
+      } else {
+        next.push({
+          roleId: id,
+          container: null,
+          hiddenImages: [],
+          loadToken: 0,
+          loadedSrc: "",
+          lastRectKey: "",
+          active: false,
+          image: null,
+          rect: null,
+          source: "",
+        });
       }
-      return;
     }
-
-    const img = pickVisibleImage(el);
-    if (!img) {
-      // 新角色的图还在解码：指向旧容器的绑定先下线，补捞由调用方心跳负责
-      if (active.value && container !== el) release();
-      status("inactive", "立绘图还没解码完");
-      return;
+    for (const s of states) {
+      if (!next.includes(s)) releaseSlot(s);
     }
+    states = next;
 
-    const src = img.currentSrc || img.src;
-    if (!src) {
-      status("inactive", "立绘没有 src");
-      return;
+    for (const s of states) {
+      // 绑定的容器被 Vue 卸了：先下线再重找，别拿已卸载容器的旧纹理旧矩形
+      if (s.active && s.container && !s.container.isConnected) releaseSlot(s);
+      if (s.active && s.container && s.image) {
+        remeasure(s);
+      } else {
+        void bindSlot(s);
+      }
     }
-
-    const token = ++loadToken;
-    const loaded = await loadTexImage(src);
-    if (token !== loadToken) return;
-    if (!loaded || loaded.tainted) {
-      status("fail", loaded ? `立绘图会污染画布 ${src}` : `立绘加载失败 ${src}`);
-      return;
-    }
-
-    const next = measure(img, loaded);
-    if (!next) {
-      if (active.value && container !== el) release();
-      status("inactive", "立绘盒子尺寸为 0（还没布局）");
-      return;
-    }
-
-    // 先量再藏：上一步任何失败，DOM 立绘都还是原样
-    // 切到另一个容器（换角色）时，上一个容器的 <img> 仍挂在 DOM 上，
-    // 不还回去它就永远停在 visibility:hidden —— 表现为切角色后前一个立绘凭空消失
-    if (container && container !== el) restore();
-    container = el;
-    loadedSrc = src;
-    image.value = loaded;
-    source.value = src;
-    rect.value = next;
-    lastRectKey = rectKey(next);
-    ensureHidden();
-    active.value = true;
-    status(
-      "active",
-      `${Math.round(next[2])}x${Math.round(next[3])} @ ${Math.round(next[0])},${Math.round(next[1])}`,
-    );
-    startTicker();
+    publish();
   }
 
   onBeforeUnmount(release);
 
-  return { active, image, rect, source, sync, release };
+  return { active, slots, sync, release };
 }

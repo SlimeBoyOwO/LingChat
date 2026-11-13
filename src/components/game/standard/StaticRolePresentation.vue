@@ -39,7 +39,7 @@ withDefaults(
     objectFit: string;
     /**
      * 角色 id。只作为 `data-role-id` 透出，给光影接管层按角色定位用
-     * （同一屏多角色时，WebGL 只有一个角色纹理槽，只能挑一个）。
+     * （多角色同台时每个角色各占一个立绘槽，靠它把容器和槽对上）。
      */
     roleId?: string | number;
   }>(),

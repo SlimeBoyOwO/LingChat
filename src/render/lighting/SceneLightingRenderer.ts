@@ -69,6 +69,9 @@ export interface SceneLightingFrame {
    * 绘制顺序即数组顺序：0 在最底层，后面的槽叠在前面之上；空数组 = 纯背景。
    * 未上传或零尺寸的槽跳过。 */
   characterRects: readonly Rect[];
+  /** 各槽专属光影，下标与 `characterRects` 对齐；null/缺省用帧级那套。
+   * 多角色同台时背景恒用帧级（场景默认），角色专属只落在各自立绘上。 */
+  characterSets?: readonly (CharacterLightingSet | null)[];
   lights: readonly LightSource[];
   global?: LightingGlobalParams | null;
   compositing?: LightingCompositingParams | null;
@@ -105,6 +108,17 @@ export interface SceneOverlayParams {
 export interface CharacterMaps {
   normal?: TexImageSource | "auto" | null;
   depth?: TexImageSource | "auto" | null;
+}
+
+/**
+ * 单个立绘槽的专属光影。只覆盖角色 pass，背景 pass 恒用帧级那套。
+ * 缺省的组回落帧级默认值；`camera` 不参与（景深只作用于背景）。
+ */
+export interface CharacterLightingSet {
+  lights: readonly LightSource[];
+  global?: LightingGlobalParams | null;
+  compositing?: LightingCompositingParams | null;
+  material?: LightingMaterialParams | null;
 }
 
 /** CSS mix-blend-mode → 着色器里的模式编码，见 postProcess.ts 的 blendMode()。 */
@@ -659,16 +673,38 @@ export class SceneLightingRenderer {
     const sceneB = this.sceneTargetB;
     if (!sceneA || !sceneB) return;
 
-    const entries: { slot: CharacterSlot; rect: Rect }[] = [];
+    const entries: {
+      slot: CharacterSlot;
+      rect: Rect;
+      packed: ReturnType<typeof packLights>;
+      global: LightingGlobalParams;
+      compositing: LightingCompositingParams;
+      material: LightingMaterialParams;
+    }[] = [];
     const rectCount = Math.min(frame.characterRects.length, this.characters.length);
     for (let i = 0; i < rectCount; i++) {
       const slot = this.characters[i];
       const rect = frame.characterRects[i];
-      if (slot.ready && rect[2] > 0 && rect[3] > 0) entries.push({ slot, rect });
+      if (!(slot.ready && rect[2] > 0 && rect[3] > 0)) continue;
+      const set = frame.characterSets?.[i];
+      if (set) {
+        const g = { ...DEFAULT_GLOBAL, ...(set.global ?? {}) };
+        const c = { ...DEFAULT_COMPOSITING, ...(set.compositing ?? {}) };
+        const m = { ...DEFAULT_MATERIAL, ...(set.material ?? {}) };
+        entries.push({
+          slot,
+          rect,
+          packed: packLights(set.lights, stage.width, stage.height, g.master),
+          global: g,
+          compositing: c,
+          material: m,
+        });
+      } else {
+        entries.push({ slot, rect, packed, global: globalParams, compositing, material });
+      }
     }
 
     gl.useProgram(this.charProgram.program);
-    this.applyLightUniforms(this.charProgram, packed);
     const cu = this.charProgram.uniforms;
     gl.uniform1i(cu.uCharTex ?? null, 0);
     gl.uniform1i(cu.uBgSceneTex ?? null, 1);
@@ -676,24 +712,13 @@ export class SceneLightingRenderer {
     gl.uniform1i(cu.uNormalTex ?? null, 3);
     gl.uniform1i(cu.uDepthTex ?? null, 4);
     this.bindTextureUnit(2, wrapB.tex);
-    gl.uniform1f(cu.uNormalStrength ?? null, material.normal_strength);
-    gl.uniform1f(cu.uCelThresh ?? null, material.cel_thresh);
-    gl.uniform1f(cu.uCelSoftness ?? null, material.cel_softness);
-    gl.uniform1f(cu.uSpecInt ?? null, material.spec_int);
-    gl.uniform1f(cu.uSpecGloss ?? null, material.spec_gloss);
-    gl.uniform1f(cu.uSelfShadowInt ?? null, material.self_shadow_int);
     gl.uniform2f(cu.uStageSize ?? null, stage.width, stage.height);
-    gl.uniform1f(cu.uAlbedoProtect ?? null, globalParams.albedo_protect);
-    gl.uniform1f(cu.uSoftKnee ?? null, globalParams.soft_knee);
-    gl.uniform1f(cu.uLift ?? null, globalParams.lift);
-    gl.uniform1f(cu.uAmbientBlend ?? null, globalParams.ambient_blend);
-    gl.uniform1f(cu.uCharExposure ?? null, globalParams.char_exposure ?? 1);
-    gl.uniform1f(cu.uLightWrap ?? null, compositing.light_wrap);
-    gl.uniform1f(cu.uRimWidth ?? null, compositing.rim_width);
     gl.uniform3f(cu.uBgAvgSrgb ?? null, avg[0], avg[1], avg[2]);
     // 场景路径恒走「背景+角色」分支：uCharOnly=1 是设计稿里指标pass的语义
     // （黑底抽角色像素），拿来当纯背景开关会整屏输出黑
     gl.uniform1f(cu.uCharOnly ?? null, 0);
+    // 帧级参数先铺一遍：纯背景 pass（无立绘）也要有合法 uniform
+    this.applyCharacterParams(packed, globalParams, compositing, material);
 
     let readTex = bgSceneTex;
     let writeTarget = sceneA;
@@ -704,6 +729,8 @@ export class SceneLightingRenderer {
       gl.viewport(0, 0, writeTarget.width, writeTarget.height);
       this.bindTextureUnit(1, readTex);
       if (entry) {
+        // 每槽用自己的那套光；没配专属的槽回落帧级（场景默认）
+        this.applyCharacterParams(entry.packed, entry.global, entry.compositing, entry.material);
         this.bindTextureUnit(0, entry.slot.texture);
         this.bindTextureUnit(3, entry.slot.normalTexture);
         this.bindTextureUnit(4, entry.slot.depthTexture);
@@ -714,8 +741,14 @@ export class SceneLightingRenderer {
           entry.rect[2],
           entry.rect[3],
         );
-        gl.uniform1f(cu.uHasNormal ?? null, entry.slot.normalReady && material.use_normal ? 1 : 0);
-        gl.uniform1f(cu.uHasDepth ?? null, entry.slot.depthReady && material.use_depth ? 1 : 0);
+        gl.uniform1f(
+          cu.uHasNormal ?? null,
+          entry.slot.normalReady && entry.material.use_normal ? 1 : 0,
+        );
+        gl.uniform1f(
+          cu.uHasDepth ?? null,
+          entry.slot.depthReady && entry.material.use_depth ? 1 : 0,
+        );
       } else {
         // 没有立绘：零矩形让全屏早退，把已着色的背景抄进场景目标，
         // 后面的调色 / overlay / 泛光才有输入
@@ -810,6 +843,32 @@ export class SceneLightingRenderer {
     gl.uniform3fv(u["uLAxis[0]"] ?? null, packed.axes);
     gl.uniform1fv(u["uLCos[0]"] ?? null, packed.cos);
     gl.uniform1fv(u["uLPen[0]"] ?? null, packed.pen);
+  }
+
+  /** 角色 pass 的灯光 + 材质 + 全局 + 合成参数。每槽各调一次，槽间互不串味。
+   * 不含纹理单元、舞台尺寸、背景平均色与 uCharRect —— 那些是帧级或逐槽几何。 */
+  private applyCharacterParams(
+    packed: ReturnType<typeof packLights>,
+    globalParams: LightingGlobalParams,
+    compositing: LightingCompositingParams,
+    material: LightingMaterialParams,
+  ): void {
+    const gl = this.gl;
+    this.applyLightUniforms(this.charProgram, packed);
+    const cu = this.charProgram.uniforms;
+    gl.uniform1f(cu.uNormalStrength ?? null, material.normal_strength);
+    gl.uniform1f(cu.uCelThresh ?? null, material.cel_thresh);
+    gl.uniform1f(cu.uCelSoftness ?? null, material.cel_softness);
+    gl.uniform1f(cu.uSpecInt ?? null, material.spec_int);
+    gl.uniform1f(cu.uSpecGloss ?? null, material.spec_gloss);
+    gl.uniform1f(cu.uSelfShadowInt ?? null, material.self_shadow_int);
+    gl.uniform1f(cu.uAlbedoProtect ?? null, globalParams.albedo_protect);
+    gl.uniform1f(cu.uSoftKnee ?? null, globalParams.soft_knee);
+    gl.uniform1f(cu.uLift ?? null, globalParams.lift);
+    gl.uniform1f(cu.uAmbientBlend ?? null, globalParams.ambient_blend);
+    gl.uniform1f(cu.uCharExposure ?? null, globalParams.char_exposure ?? 1);
+    gl.uniform1f(cu.uLightWrap ?? null, compositing.light_wrap);
+    gl.uniform1f(cu.uRimWidth ?? null, compositing.rim_width);
   }
 
   private blur(

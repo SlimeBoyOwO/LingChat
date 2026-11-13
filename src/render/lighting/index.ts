@@ -13,7 +13,12 @@ export { BackgroundLightingRenderer } from "./LightingRenderer";
 export type { BackgroundLightingInput, BackgroundRect, StageSize } from "./LightingRenderer";
 
 export { SceneLightingRenderer, MAX_CHARACTERS } from "./SceneLightingRenderer";
-export type { CharacterMaps, Rect, SceneLightingFrame } from "./SceneLightingRenderer";
+export type {
+  CharacterMaps,
+  CharacterLightingSet,
+  Rect,
+  SceneLightingFrame,
+} from "./SceneLightingRenderer";
 
 export { createFlatNormalTexture, generatePseudoDepth, generatePseudoNormal } from "./pseudoDepth";
 

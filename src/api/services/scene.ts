@@ -131,7 +131,8 @@ export interface LightingParams {
   /**
    * 角色专属光影，键是 roleId 的字符串形式。
    *
-   * 只在单角色对话时生效（渲染器只有一个立绘纹理槽）；没配的角色回落场景默认那套。
+   * 单角色对话时连背景一起用这套；多角色同台时背景恒用场景默认，这套只作用于
+   * 该角色自己的立绘。没配的角色回落场景默认那套。
    */
   role_sets?: Record<string, LightingSet> | null;
 }
