@@ -38,6 +38,9 @@ export default {
     live2dFpsUnlimited: "無制限",
     live2dFpsCustom: "カスタム",
     live2dFpsReset: "デフォルトに戻す",
+    clickJellyTitle: "Live2D でゼリー演出を有効化",
+    clickJellyDesc:
+      "Live2D モデルのみに適用されます。オフにすると待機中のクリックはモデル本来のタッチモーションのみになり、静止画には影響しません。",
   },
   history: {
     title: "会話履歴",

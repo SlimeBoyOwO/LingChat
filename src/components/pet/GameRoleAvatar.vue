@@ -38,8 +38,11 @@
         data-tauri-drag-region="false" 是刻意的：Tauri 注入的 drag.js 对「裸属性」要求
         事件目标就是标注元素本身（el === composedPath[0]），而下面的头像图片容器铺满整个框，
         事件目标永远是子元素，官方路径其实从未触发过；"false" 让 drag.js 显式跳过，避免它与
-        下面的 startWindowDrag 形成双路径。CSS 选择器 [data-tauri-drag-region] 匹配任意值，
-        Windows 的 -webkit-app-region: drag 保持原样。
+        下面的 startWindowDrag 形成双路径。
+
+        这块不再挂 -webkit-app-region: drag。Windows 上它会把头像变成系统拖拽区，
+        鼠标按下由窗口管理器接管，webview 拿不到 pointerdown/mousedown，按下反馈要等到
+        松手才随整串事件一起送达。拖拽统一走下面的 startWindowDrag（与 macOS 同一条路径）。
       -->
       <div
         class="avatar-breath-frame relative z-10 flex h-full w-full items-center justify-center overflow-hidden transition-colors duration-300"
@@ -136,9 +139,9 @@ const uiStore = useUIStore();
 const frameless = computed(() => !!role.value.petFrameless);
 
 // ─── 窗口拖曳 ────────────────────────────────────────────────
-// macOS 的 WKWebView 不支持 -webkit-app-region: drag，桌宠窗口因此完全拖不动。
-// 这里手动接管：按下后位移超过阈值才进入原生窗口拖曳，未超过则保持为普通点击
-// （头像的 click 仍会派发，"点击头像推进对话"不受影响）。
+// 全平台都走这里（头像框不再是 -webkit-app-region: drag 的系统拖拽区）：
+// 按下后位移超过阈值才进入原生窗口拖曳，未超过则保持为普通点击
+// （按下反馈与 click 都能立即派发，"点击头像推进对话"不受影响）。
 const DRAG_THRESHOLD_PX = 4;
 
 const startWindowDrag = (e: MouseEvent) => {
@@ -262,9 +265,5 @@ const handleAvatarClick = () => emit("avatar-click");
   /* 性能：常驻旋转动画提升为独立合成层，避免每帧走主线程重绘
       （mask+gradient 光栅化结果被缓存，旋转退化为纯 GPU 纹理变换，视觉不变） */
   will-change: transform;
-}
-
-[data-tauri-drag-region] {
-  -webkit-app-region: drag;
 }
 </style>

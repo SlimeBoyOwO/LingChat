@@ -45,6 +45,7 @@
               :PET_SCALE_MAX="PET_SCALE_MAX"
               :petVolume="petVolume"
               :live2dFps="petLive2dFps"
+              :live2dClickJelly="petLive2dClickJelly"
               :petBubbleSide="petBubbleSide"
               @updateScale="updateScale"
               @resetScale="resetScale"
@@ -52,6 +53,7 @@
               @resetVolume="resetVolume"
               @updateLive2dFps="updateLive2dFps"
               @resetLive2dFps="resetLive2dFps"
+              @updateLive2dClickJelly="updateLive2dClickJelly"
               @updateBubbleSide="updateBubbleSide"
             />
             <HistoryTab
@@ -95,6 +97,7 @@ import TodoTab from "../components/tabs/TodoTab.vue";
 const PET_SCALE_EVENT = "pet-scale-changed";
 const PET_VOLUME_EVENT = "pet-volume-changed";
 const PET_LIVE2D_FPS_EVENT = "pet-live2d-fps-changed";
+const PET_JELLY_EVENT = "pet-jelly-changed";
 const PET_BUBBLE_SIDE_EVENT = "pet-bubble-side-changed";
 const DIALOG_HISTORY_EVENT = "dialog-history-changed";
 const DARK_MODE_KEY = "lingchat-dark-mode";
@@ -159,6 +162,7 @@ const tabs = computed(() => [
 const petScale = computed(() => settingsStore.pet.scale);
 const petVolume = computed(() => settingsStore.characterVolume);
 const petLive2dFps = computed(() => settingsStore.pet.live2dFps ?? 30);
+const petLive2dClickJelly = computed(() => settingsStore.pet.live2dClickJelly !== false);
 const petBubbleSide = computed(() => settingsStore.pet.bubbleSide);
 
 const syncMaximizedState = async () => {
@@ -203,6 +207,11 @@ const updateLive2dFps = async (fps: number) => {
 
 const resetLive2dFps = async () => {
   await updateLive2dFps(DEFAULT_SETTINGS.pet.live2dFps);
+};
+
+const updateLive2dClickJelly = async (enabled: boolean) => {
+  settingsStore.setPetLive2dClickJelly(enabled);
+  await appWindow.emit(PET_JELLY_EVENT, { enabled });
 };
 
 const updateBubbleSide = async (side: BubbleSide) => {
