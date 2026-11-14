@@ -32,10 +32,38 @@ pub(super) fn create_engine(
     }
 }
 
-/// 各模型共用的执行提供方设置（CPU 时为空）。
+/// TTS 推理线程数上限。
+///
+/// 短句合成里固定调度开销占比更高，线程开到 4 个以上收益不再增加，反而可能因
+/// 过度订阅变慢；同时留出核心给音频播放、UI 和其它推理任务，避免移动端发热和卡顿。
+const MAX_TTS_THREADS: usize = 4;
+
+/// 本次进程可用的 TTS 推理线程数。
+///
+/// sherpa 的 Rust 绑定 `Default` 会把 `num_threads` 留成 0，C API 再回退成 1；
+/// 这里显式填成按 CPU 核数限制后的值，让 ORT 的 intra/inter-op 线程池真正并行。
+fn tts_num_threads() -> i32 {
+    // 调试用覆盖，方便对比 1/2/4/8 线程的耗时；正式配置仍走自动值。
+    if let Ok(raw) = std::env::var("LINGCHAT_TTS_THREADS") {
+        if let Ok(n) = raw.trim().parse::<usize>() {
+            let n = n.clamp(1, 32) as i32;
+            tracing::debug!("Sherpa-ONNX TTS 线程数由 LINGCHAT_TTS_THREADS 覆盖: {n}");
+            return n;
+        }
+    }
+
+    let n = std::thread::available_parallelism()
+        .map(|n| n.get().min(MAX_TTS_THREADS))
+        .unwrap_or(1) as i32;
+    tracing::debug!("Sherpa-ONNX TTS 推理线程数: {n}（CPU 核数上限 {MAX_TTS_THREADS}）");
+    n
+}
+
+/// 各模型共用的执行提供方与线程设置（CPU 时 provider 为空）。
 fn base_model_config(provider: Option<&str>) -> OfflineTtsModelConfig {
     OfflineTtsModelConfig {
         provider: provider.map(str::to_string),
+        num_threads: tts_num_threads(),
         ..Default::default()
     }
 }
