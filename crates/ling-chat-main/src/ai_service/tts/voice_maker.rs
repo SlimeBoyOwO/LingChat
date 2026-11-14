@@ -2,7 +2,9 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use anyhow::Result;
 use futures_util::future::join_all;
@@ -56,6 +58,8 @@ pub struct VoiceMaker {
     /// 本地 TTS 共享运行时；由 `build_voice_maker` 注入。
     local_runtime: Option<LocalTtsRuntime>,
     local_cloud_fallback: Option<LocalCloudFallback>,
+    /// 后台预热是否已启动；失败时复位，允许下次加载/保存设置时重试。
+    warmup_started: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug)]
@@ -179,6 +183,7 @@ impl VoiceMaker {
             tts_config,
             local_runtime: None,
             local_cloud_fallback: None,
+            warmup_started: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -212,6 +217,56 @@ impl VoiceMaker {
 
     pub fn is_enabled(&self) -> bool {
         self.provider.is_enabled() && !self.tts_type.is_empty()
+    }
+
+    /// 仅 Sherpa-ONNX 需要预热；其它后端保持原有按需初始化行为。
+    fn can_warmup(&self) -> bool {
+        self.is_enabled() && matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
+    }
+
+    /// 预热当前适配器。失败只返回错误，不影响 TTS 的启用状态。
+    pub async fn warmup(&self) -> Result<()> {
+        if !self.can_warmup() {
+            return Ok(());
+        }
+        self.provider.warmup(&self.tts_type).await
+    }
+
+    /// 在后台预热，供角色加载、语音设置保存后调用。
+    ///
+    /// 同一份 `VoiceMaker` 只预热一次；失败时复位标记，后续保存设置仍可重试。
+    pub fn spawn_warmup(&self, reason: &str) {
+        if !self.can_warmup() || self.warmup_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.spawn_warmup_task(reason);
+    }
+
+    fn spawn_warmup_task(&self, reason: &str) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            self.warmup_started.store(false, Ordering::Release);
+            return;
+        };
+
+        let maker = self.clone();
+        let reason = reason.to_string();
+        handle.spawn(async move {
+            let started = Instant::now();
+            match maker.warmup().await {
+                Ok(()) => tracing::info!(
+                    "TTS 预热完成: type={}, reason={reason}, 用时={:?}",
+                    maker.tts_type,
+                    started.elapsed()
+                ),
+                Err(error) => {
+                    maker.warmup_started.store(false, Ordering::Release);
+                    tracing::warn!(
+                        "TTS 预热失败（不影响后续合成）: type={}, reason={reason}, {error}",
+                        maker.tts_type
+                    );
+                },
+            }
+        });
     }
 
     pub fn temp_dir(&self) -> &Path {
@@ -651,10 +706,12 @@ impl VoiceMaker {
     ) {
         self.lang = lang.into();
         self.provider = TtsProvider::new(&self.audio_format);
+        self.warmup_started.store(false, Ordering::Release);
         if let Err(e) = self.set_tts_settings(cfg, tts_type, name) {
             tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
         } else {
             tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
+            self.spawn_warmup("语音语言切换");
         }
     }
 

@@ -2,12 +2,14 @@
 
 use std::collections::HashMap;
 use std::path::Path;
+use std::sync::Arc;
+use std::time::Instant;
 
 use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
-use sherpa_onnx::{GenerationConfig, OfflineTts};
+use sherpa_onnx::GenerationConfig;
 
 use crate::ai_service::tts::provider::TtsAdapter;
 use crate::config::tts::TtsConfig;
@@ -15,6 +17,7 @@ use crate::config::tts::TtsConfig;
 mod audio;
 mod engine;
 mod meta;
+mod shared;
 mod text;
 
 pub use audio::load_reference_audio;
@@ -23,6 +26,7 @@ use audio::{
     strip_edge_silence,
 };
 use engine::{model_reads_latin, needs_digit_normalization, pick_sid};
+use shared::SharedSherpaEngine;
 use text::{
     CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
     readable_scripts, reads_han_as_chinese, resolve_emotion, split_clauses, strip_unreadable,
@@ -116,7 +120,8 @@ pub fn list_speakers(model_dir: &Path) -> Result<Vec<SherpaSpeaker>> {
 }
 
 pub struct SherpaOnnxAdapter {
-    tts: Option<OfflineTts>,
+    /// 同一模型配置的适配器共享这一份引擎；角色级参数仍留在下面各字段。
+    engine: Arc<SharedSherpaEngine>,
     /// 传给模型的说话人下标（kokoro 按语言/音色挑，其它模型可用数字 voice 指定）。
     sid: i32,
     speed: f32,
@@ -158,42 +163,46 @@ impl SherpaOnnxAdapter {
         );
 
         let provider = Self::provider_for(use_gpu);
-
-        let engine = |provider: Option<&str>| {
-            engine::create_engine(&model_type, model_dir, provider, tuning)
-        };
-
-        let tts = match engine(provider) {
-            Ok(tts) => {
-                if let Some(p) = provider {
-                    tracing::info!("Sherpa-ONNX 使用推理后端: {p}");
-                }
-                tts
-            },
-            Err(e) => match provider {
-                // GPU/专用后端初始化失败时静默回退到 CPU，保证可用性。
-                Some(_) => {
-                    tracing::warn!("Sherpa-ONNX 后端初始化失败（{e}），回退到 CPU 推理");
-                    engine(None)?
+        let key = shared::EngineKey::new(model_dir, &model_type, provider, tuning);
+        let (engine, reused) = shared::get_or_create(key, || {
+            let create = |provider: Option<&str>| {
+                engine::create_engine(&model_type, model_dir, provider, tuning)
+            };
+            let tts = match create(provider) {
+                Ok(tts) => {
+                    if let Some(p) = provider {
+                        tracing::info!("Sherpa-ONNX 使用推理后端: {p}");
+                    }
+                    tts
                 },
-                None => return Err(e),
-            },
-        };
+                Err(e) => match provider {
+                    // GPU/专用后端初始化失败时静默回退到 CPU，保证可用性。
+                    Some(_) => {
+                        tracing::warn!("Sherpa-ONNX 后端初始化失败（{e}），回退到 CPU 推理");
+                        create(None)?
+                    },
+                    None => return Err(e),
+                },
+            };
+            Ok(SharedSherpaEngine::new(tts))
+        })?;
+        if reused {
+            tracing::debug!("Sherpa-ONNX 复用已加载模型: {model_path}");
+        }
 
-        let sr = tts.sample_rate();
+        let sr = engine.sample_rate;
         // 中文模型若目录里没带规则 FST，数字需在送进 sherpa 前改写。
         let digit_normalization = needs_digit_normalization(model_dir);
         // 假名/谚文按目标语言保留；日文/韩文模型读自己的文字不需要英文词表。
         let scripts = readable_scripts(&language, model_reads_latin(model_dir));
         // 说话人数量来自模型 metadata；具体选择见 `pick_sid`。
-        let sid = pick_sid(&model_type, &language, &voice, tts.num_speakers());
+        let sid = pick_sid(&model_type, &language, &voice, engine.tts.num_speakers());
         tracing::info!(
-            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, voice={voice}, sid={sid}, provider={:?}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}",
-            provider.unwrap_or("cpu")
+            "Sherpa-ONNX 初始化完成: model_type={model_type}, language={language}, voice={voice}, sid={sid}, sample_rate={sr}, 数字改写={digit_normalization}, 可读文字={scripts:?}, 共享={reused}"
         );
 
         Ok(Self {
-            tts: Some(tts),
+            engine,
             sid,
             speed: 1.0,
             num_steps: tuning.num_steps,
@@ -256,16 +265,25 @@ impl SherpaOnnxAdapter {
     pub fn set_speed(&mut self, speed: f32) {
         self.speed = speed;
     }
+
+    /// 预热用的最短文本：只求走通一次分词 + 推理 + 声码器，不追求语义。
+    fn warmup_text(&self) -> &'static str {
+        let language = self.language.trim().to_ascii_lowercase();
+        if language.starts_with("ja") {
+            "こんにちは。"
+        } else if language.starts_with("ko") {
+            "안녕하세요."
+        } else if language.starts_with("zh") || language.is_empty() {
+            "你好。"
+        } else {
+            "Hello."
+        }
+    }
 }
 
 #[async_trait]
 impl TtsAdapter for SherpaOnnxAdapter {
     async fn generate_voice(&self, text: &str, emo: &str) -> Result<Vec<u8>> {
-        let tts = self
-            .tts
-            .as_ref()
-            .ok_or_else(|| anyhow!("Sherpa-ONNX 引擎未初始化"))?;
-
         // 情绪只调语速与停顿；上游没给或不认识时按正文补一次预测。
         let emotion = resolve_emotion(
             emo,
@@ -316,8 +334,13 @@ impl TtsAdapter for SherpaOnnxAdapter {
         // 统一按标点切句、逐句推理再拼回；英文缩写另有保护（见 [`split_clauses`]）。
         let clauses = split_clauses(text);
 
+        // 同一模型可能被多个角色共享；串行化原生合成，避免并发进入同一个
+        // `OfflineTts` 实例。不同模型仍有各自的锁，可以并行。
+        let _guard = self.engine.generate_lock.lock().await;
+        let tts = &self.engine.tts;
+
         let mut assembled: Vec<f32> = Vec::new();
-        let mut sample_rate = tts.sample_rate();
+        let mut sample_rate = self.engine.sample_rate;
 
         for (clause, pause, _) in clauses {
             // 清掉读不出来的字符，并收掉中文/日文里无意义的空格。
@@ -371,6 +394,20 @@ impl TtsAdapter for SherpaOnnxAdapter {
         samples.extend_from_slice(&trail);
 
         Ok(f32_to_wav(&samples, sample_rate))
+    }
+
+    async fn warmup(&self) -> Result<()> {
+        // 模型加载发生在构造阶段，但 ORT 的算子/内存池、ZipVoice 的参考音频特征
+        // 都要到第一次 generate 才真正初始化；这里丢弃一次极短音频即可预热。
+        let started = Instant::now();
+        let audio = self.generate_voice(self.warmup_text(), "中立").await?;
+        tracing::debug!(
+            "Sherpa-ONNX 预热完成: model_type={}, 音频字节={}, 用时={:?}",
+            self.model_type,
+            audio.len(),
+            started.elapsed()
+        );
+        Ok(())
     }
 
     fn get_params(&self) -> HashMap<String, JsonValue> {
@@ -538,6 +575,59 @@ mod tests {
         eprintln!("输出文件: {}", out.display());
     }
 
+    /// 同一模型配置的角色必须复用同一份引擎；音色、语速等角色级参数不影响共享。
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    #[ignore = "需要真实 sherpa 模型目录（SHERPA_TEST_MODEL_DIR）"]
+    async fn same_model_adapters_share_engine() {
+        let model_dir = test_model_dir();
+        assert!(
+            !model_dir.is_empty() && Path::new(&model_dir).exists(),
+            "模型目录不存在，请设置 SHERPA_TEST_MODEL_DIR: {model_dir}"
+        );
+
+        let first = SherpaOnnxAdapter::new(
+            TtsConfig::default(),
+            model_dir.clone(),
+            "matcha".to_string(),
+            "zh".to_string(),
+            "female".to_string(),
+            false,
+            SherpaTuning::default(),
+        )
+        .expect("初始化第一个适配器失败");
+
+        // 非 ZipVoice 模型不读取 tuning，语言/音色也不参与引擎构造；这些都应命中同一缓存。
+        let second = SherpaOnnxAdapter::new(
+            TtsConfig::default(),
+            model_dir,
+            "matcha".to_string(),
+            "zh".to_string(),
+            "male".to_string(),
+            false,
+            SherpaTuning {
+                num_steps: 9,
+                guidance_scale: 4.0,
+            },
+        )
+        .expect("初始化第二个适配器失败");
+
+        assert!(
+            Arc::ptr_eq(&first.engine, &second.engine),
+            "相同模型配置的适配器没有共享引擎"
+        );
+
+        let (a, b) = tokio::join!(
+            first.generate_voice("你好，世界。", ""),
+            second.generate_voice("这是共享引擎测试。", "")
+        );
+        let (a, b) = (
+            a.expect("第一个适配器合成失败"),
+            b.expect("第二个适配器合成失败"),
+        );
+        assert!(audio::pcm_has_signal(&a, 200), "第一个适配器输出疑似全静音");
+        assert!(audio::pcm_has_signal(&b, 200), "第二个适配器输出疑似全静音");
+    }
+
     /// 完整跑一遍 Matcha 合成，覆盖 CPU 与 GPU 回退路径；依赖真实模型，默认忽略。
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     #[ignore = "需要真实 sherpa 模型目录（SHERPA_TEST_MODEL_DIR）"]
@@ -560,6 +650,7 @@ mod tests {
             )
             .unwrap_or_else(|e| panic!("use_gpu={use_gpu} 初始化失败: {e}"));
 
+            adapter.warmup().await.expect("预热失败");
             let wav = adapter
                 .generate_voice("你好，世界。这是一段语音合成测试。", "")
                 .await

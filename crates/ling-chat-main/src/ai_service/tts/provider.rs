@@ -35,6 +35,12 @@ pub trait TtsAdapter: Send + Sync {
     async fn generate_voice_stream(&self, _text: &str) -> Option<Vec<u8>> {
         None
     }
+
+    /// 预热适配器：加载模型/声线，或跑一次极短推理，消除首次合成的冷启动。
+    /// 当前仅 Sherpa-ONNX 实现；其它后端默认无需预热。
+    async fn warmup(&self) -> Result<()> {
+        Ok(())
+    }
 }
 
 /// 连续合成失败多少次才禁用 TTS。
@@ -224,6 +230,15 @@ impl TtsProvider {
             other => return Err(anyhow!("未知的 TTS 类型: {other}")),
         };
         Ok(adapter)
+    }
+
+    /// 按 `tts_type` 预热对应适配器。预热失败只记日志，不计入合成失败次数。
+    pub async fn warmup(&self, tts_type: &str) -> Result<()> {
+        if !self.is_enabled() || tts_type.trim().is_empty() {
+            return Ok(());
+        }
+        let adapter = self.select(tts_type)?;
+        adapter.warmup().await
     }
 
     /// 合成并写入文件；连续失败 [`MAX_CONSECUTIVE_FAILURES`] 次才禁用 TTS。

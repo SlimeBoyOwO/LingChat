@@ -281,6 +281,9 @@ impl GameRoleManager {
             &self.tts_config,
             self.local_tts.as_ref(),
         );
+        if let Some(maker) = &voice_maker {
+            maker.spawn_warmup(&format!("角色 {role_id} 加载"));
+        }
 
         tracing::info!(
             "角色的服装各个优先级的设置如下：{}, {}, {}",
@@ -688,6 +691,10 @@ impl GameRoleManager {
         role.settings.voice_lang = settings.voice_lang.clone();
         role.settings.voice_models = settings.voice_models.clone();
         role.voice_maker = voice_maker;
+
+        if let Some(maker) = role.voice_maker.as_ref() {
+            maker.spawn_warmup(&format!("角色 {role_id} 语音设置保存"));
+        }
 
         tracing::info!(
             "角色 {} TTS 已实时刷新: type={}, lang={}, ready={}",
