@@ -61,6 +61,23 @@
         </Button>
       </div>
 
+      <details class="mb-4 rounded-xl border border-white/10 bg-black/15 p-4">
+        <summary class="cursor-pointer text-sm font-semibold text-white">
+          {{ $t("settings.memoryDebug.recallTitle") }}
+        </summary>
+        <p class="mt-2 text-xs leading-5 text-white/60">
+          {{ $t("settings.memoryDebug.recallHint") }}
+        </p>
+        <p v-if="recallError" class="mt-2 text-sm text-red-300">{{ recallError }}</p>
+        <pre
+          v-else-if="recallSnapshot"
+          class="mt-3 max-h-96 overflow-auto text-xs break-words whitespace-pre-wrap text-white/80"
+          >{{ JSON.stringify(recallSnapshot, null, 2) }}</pre>
+        <p v-else class="mt-2 text-sm text-white/60">
+          {{ $t("settings.memoryDebug.recallEmpty") }}
+        </p>
+      </details>
+
       <p v-if="error" class="mb-4 rounded-lg border border-red-400/40 bg-red-500/10 p-3 text-sm">
         {{ error }}
       </p>
@@ -286,6 +303,7 @@ import { useUIStore } from "@/stores/modules/ui/ui";
 import { i18n } from "@/locales";
 import {
   getMemoryDebugOverview,
+  getMemoryRecallSnapshot,
   getRoleMemorySnapshot,
   type GameMemoryBankData,
   type MemoryDebugRole,
@@ -298,6 +316,8 @@ const uiStore = useUIStore();
 
 const overview = ref<Awaited<ReturnType<typeof getMemoryDebugOverview>> | null>(null);
 const snapshot = ref<RoleMemorySnapshot | null>(null);
+const recallSnapshot = ref<Awaited<ReturnType<typeof getMemoryRecallSnapshot>>>(null);
+const recallError = ref("");
 const selectedRoleId = ref<number | null>(null);
 const loading = ref(false);
 const error = ref("");
@@ -412,6 +432,13 @@ const selectRole = async (roleId: number) => {
 const refreshAll = async () => {
   loading.value = true;
   error.value = "";
+  recallSnapshot.value = null;
+  recallError.value = "";
+  try {
+    recallSnapshot.value = await getMemoryRecallSnapshot();
+  } catch (error) {
+    recallError.value = String(error);
+  }
   try {
     const data = await getMemoryDebugOverview();
     overview.value = data;

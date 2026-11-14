@@ -5,8 +5,8 @@ use std::sync::Arc;
 use anyhow::{Result, anyhow};
 use sea_orm::DatabaseConnection;
 
-use crate::ai_service::game_system::memory_builder::MemoryBuilder;
-use crate::ai_service::game_system::persistent_memory_system::{
+use crate::ai_service::game_system::memory::builder::MemoryBuilder;
+use crate::ai_service::game_system::memory::persistent::{
     MemorySectionLimits, MemorySystemSnapshot, PersistentMemorySystem,
 };
 use crate::ai_service::game_system::player_identity::effective_user_alias;

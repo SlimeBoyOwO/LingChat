@@ -59,6 +59,8 @@ pub const AUTO_SAVE_INTERVAL_SECS: &str = "features.auto_save_interval_secs";
 
 // ========== 功能开关（记忆系统） ==========
 pub const USE_PERSISTENT_MEMORY: &str = "features.use_persistent_memory";
+pub const MEMORY_RAG_ENABLED: &str = "features.memory_rag_enabled";
+pub const MEMORY_RAG_TIMEOUT_MS: &str = "features.memory_rag_timeout_ms";
 pub const MEMORY_UPDATE_INTERVAL: &str = "features.memory_update_interval";
 pub const MEMORY_RECENT_WINDOW: &str = "features.memory_recent_window";
 /// 上下文窗口内没有 user 消息时，是否在裁切后的首条 assistant 前注入一条 user「继续」。

@@ -17,6 +17,7 @@ anyhow = { workspace = true }
 tracing = { workspace = true }
 tempfile = "3"
 thiserror = "2"
+sha2 = "0.10"
 
 # 向量检索：复用系统 SQLite（与主 crate 的 sqlx 共享 libsqlite3-sys 0.30），
 # sqlite-vec 扩展由 cc 静态编译进二进制。

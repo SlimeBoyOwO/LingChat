@@ -390,6 +390,7 @@ export default {
       schedule_update_todo: "編輯待辦",
       schedule_delete_todo: "刪除待辦",
       memory_get_current: "檢索記憶",
+      memory_search: "檢索歷史記憶",
       memory_get_notes: "檢索筆記",
       memory_add_note: "寫入筆記",
       memory_update_note: "編輯筆記",

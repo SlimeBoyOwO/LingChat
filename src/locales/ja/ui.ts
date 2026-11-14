@@ -417,6 +417,7 @@ export default {
       schedule_update_todo: "ToDo 編集",
       schedule_delete_todo: "ToDo 削除",
       memory_get_current: "記憶を検索",
+      memory_search: "過去の記憶を検索",
       memory_get_notes: "メモを検索",
       memory_add_note: "メモを書き込む",
       memory_update_note: "メモを編集",

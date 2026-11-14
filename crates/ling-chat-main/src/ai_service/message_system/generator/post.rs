@@ -144,8 +144,9 @@ impl MessageGenerator {
         });
     }
 
-    /// 把待落位的近期记忆写进台词表。剧本路径跳过：那边不进好感度评估，
-    /// 也不持 generation_lock。
+    /// 把待落位的近期记忆写进台词表。剧本路径跳过：剧本不进好感度评估；
+    /// generation_lock 由脚本事件在外层持有，本方法只处理普通聊天的待落位记忆，
+    /// 不重复获取生成锁。
     pub(super) async fn flush_recent_memories(&self) {
         if matches!(
             self.deps.source,
