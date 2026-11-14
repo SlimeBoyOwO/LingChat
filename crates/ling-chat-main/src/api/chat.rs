@@ -54,8 +54,7 @@ async fn relation_ready_now(app: &AppHandle) -> bool {
     if role_ids.is_empty() {
         return true;
     }
-    let identity_id = gs.player.identity_id.clone().unwrap_or_default();
-    let statuses = relation_ready_all(&gs, &crate::api::data_dir(), &identity_id, &role_ids);
+    let statuses = relation_ready_all(&gs, gs.player.player_role_id, &role_ids);
     statuses.iter().all(|s| s.role_side && s.identity_side)
 }
 
@@ -529,9 +528,7 @@ pub async fn rollback_conversation(
             .line_list
             .iter()
             .position(|line| {
-                if line.base.sender_role_id == Some(0)
-                    && matches!(line.attribute(), LineAttribute::User)
-                {
+                if matches!(line.attribute(), LineAttribute::User) {
                     count += 1;
                     count == message_seq
                 } else {

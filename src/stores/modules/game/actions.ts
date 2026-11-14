@@ -238,7 +238,7 @@ export function applyWebInitData(state: GameState, gameInfo: WebInitData): void 
   const settingsStore = useSettingsStore();
 
   // 「我」的名字来自身份卡；旧后端不返回时回退到 character_settings
-  state.playerIdentityId = gameInfo.player_identity_id ?? null;
+  state.playerRoleId = gameInfo.player_role_id ?? null;
   state.playerPrompt = gameInfo.player_identity?.prompt ?? "";
   state.userName = gameInfo.player_identity?.name || characterInfo.user_name;
   state.userSubtitle = gameInfo.player_identity?.subtitle ?? characterInfo.user_subtitle;

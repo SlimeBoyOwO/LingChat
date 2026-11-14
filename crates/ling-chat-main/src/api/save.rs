@@ -8,6 +8,7 @@ use crate::ai_service::game_system::player_identity::IdentityStore;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
+use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptOptions;
 
@@ -137,26 +138,16 @@ pub async fn list_saves(
     let data_dir = super::data_dir();
     let screenshots_dir = data_dir.join("screenshots");
 
-    // 身份名解析：一次查索引表 + 一次查绑定表（替代逐档查询的 N+1）。
-    use crate::db::entities::{player_identity, save_identity};
+    // 身份名解析：一次查玩家角色表（替代逐档查询的 N+1）。
+    use crate::db::entities::role::{self, RoleType};
     use sea_orm::entity::prelude::*;
-    let identity_names: std::collections::HashMap<String, String> = player_identity::Entity::find()
+    let player_role_names: std::collections::HashMap<i32, String> = role::Entity::find()
+        .filter(role::Column::RoleType.eq(RoleType::Player))
         .all(db)
         .await
-        .map_err(|e| format!("读取身份索引失败: {}", e))?
+        .map_err(|e| format!("读取玩家角色失败: {}", e))?
         .into_iter()
-        .map(|m| (m.identity_id, m.name))
-        .collect();
-    let save_identity_names: std::collections::HashMap<i32, String> = save_identity::Entity::find()
-        .all(db)
-        .await
-        .map_err(|e| format!("读取存档身份绑定失败: {}", e))?
-        .into_iter()
-        .filter_map(|m| {
-            identity_names
-                .get(&m.identity_id)
-                .map(|name| (m.save_id, name.clone()))
-        })
+        .map(|m| (m.id, m.name))
         .collect();
 
     let items: Vec<SaveListItem> = saves
@@ -169,7 +160,9 @@ pub async fn list_saves(
             } else {
                 None
             };
-            let identity_name = save_identity_names.get(&s.id).cloned();
+            let identity_name = s
+                .player_role_id
+                .and_then(|role_id| player_role_names.get(&role_id).cloned());
 
             SaveListItem {
                 id: s.id,
@@ -212,13 +205,11 @@ pub async fn create_save(
     let save_id = save_model.id;
 
     {
-        let identity_id = service.game_status.lock().await.player.identity_id.clone();
-        if let Some(ref id) = identity_id {
-            if !id.trim().is_empty() {
-                SaveRepo::upsert_save_identity(db, save_id, id)
-                    .await
-                    .map_err(|e| format!("记录身份失败: {}", e))?;
-            }
+        let player_role_id = service.game_status.lock().await.player.player_role_id;
+        if player_role_id.is_some() {
+            SaveRepo::update_save_player_role(db, save_id, player_role_id)
+                .await
+                .map_err(|e| format!("记录玩家角色失败: {}", e))?;
         }
     }
 
@@ -396,69 +387,55 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
     let app_config = AppConfig::load(&app).unwrap_or_default();
     let prompt_options = PromptOptions::from_config(&app_config);
 
-    // 6b. 恢复本存档使用的「我的身份」；必须放在 `init_game_status` 之前。
-    // 老存档没有绑定记录时保持开局引导解析出的主身份。
-    let save_identity_id = {
-        let identity_store = IdentityStore::new(&crate::api::data_dir());
-        match SaveRepo::get_save_identity(db, save_id).await {
-            Ok(Some(id)) => {
-                if identity_store.find_by_id(&id).is_some() {
-                    if let Err(e) = identity_store.set_current_id(&id) {
-                        tracing::warn!("恢复存档身份失败: {e}");
-                    }
-                    Some(id)
-                } else {
-                    tracing::warn!("存档引用的身份 {id} 不存在，沿用当前身份");
-                    None
-                }
-            },
-            Ok(None) => None,
-            Err(e) => {
-                tracing::warn!("读取存档身份失败: {e}");
-                None
-            },
+    // 6b. 恢复本存档使用的玩家角色；必须放在 `init_game_status` 之前。
+    // 老存档没有绑定记录时回落到主身份，再没有就保持开局引导解析出的身份。
+    let data_dir = crate::api::data_dir();
+    let fallback_player_role_id = if save_model.player_role_id.is_none() {
+        let store = IdentityStore::new(&data_dir);
+        match store.primary_identity() {
+            Some(card) => RoleRepo::get_role_by_identity_id(db, &card.id)
+                .await
+                .ok()
+                .flatten()
+                .map(|role| role.id),
+            None => None,
         }
+    } else {
+        None
     };
+    let player_role_id = save_model.player_role_id.or(fallback_player_role_id);
 
     service
         .init_game_status(Some(main_role_id), prompt_options)
         .await
         .map_err(|e| format!("初始化游戏状态失败: {}", e))?;
 
-    // 开局引导会优先按角色目录的默认身份装配；读档必须以 save_identity 为准，
+    // 开局引导会优先按角色目录的默认身份装配；读档必须以存档绑定为准，
     // 这里在载入台词前把本局身份覆盖回来，后续快照/好感度按这个身份解析。
-    if let Some(id) = save_identity_id.as_deref() {
-        let identity_store = IdentityStore::new(&crate::api::data_dir());
-        if let Some(identity) = identity_store.find_by_id(id) {
-            // 身份卡 prompt 为空时，沿用角色卡里抽出的「我的设定」，与开局引导的兜底一致。
-            let fallback_prompt = {
-                let gs = service.game_status.lock().await;
-                gs.role_manager
-                    .get_loaded(main_role_id)
-                    .map(|role| {
-                        let (_, extracted) = crate::utils::prompt::extract_player_setting(
-                            role.settings.system_prompt.as_deref().unwrap_or_default(),
-                        );
-                        extracted.unwrap_or_default()
-                    })
-                    .unwrap_or_default()
-            };
-            {
-                let mut gs = service.game_status.lock().await;
-                gs.player.user_name = identity.display_name().to_string();
-                gs.player.user_subtitle = identity.subtitle.clone();
-                gs.player.user_prompt = if identity.prompt.trim().is_empty() {
-                    fallback_prompt
-                } else {
-                    identity.prompt.clone()
-                };
-                gs.player.identity_id = Some(identity.id.clone());
-                gs.player.relations = identity.relations.clone();
-            }
-            if let Err(e) = identity_store.set_current_id(&identity.id) {
-                tracing::warn!("恢复存档身份失败: {e}");
-            }
-        }
+    if let Some(role_id) = player_role_id {
+        // 身份卡 prompt 为空时，沿用角色卡里抽出的「我的设定」，与开局引导的兜底一致。
+        let fallback_prompt = {
+            let gs = service.game_status.lock().await;
+            gs.role_manager
+                .get_loaded(main_role_id)
+                .map(|role| {
+                    let (_, extracted) = crate::utils::prompt::extract_player_setting(
+                        role.settings.system_prompt.as_deref().unwrap_or_default(),
+                    );
+                    extracted.unwrap_or_default()
+                })
+                .unwrap_or_default()
+        };
+        let mut gs = service.game_status.lock().await;
+        crate::ai_service::game_system::player_identity::bootstrap::apply_player_role(
+            &mut gs,
+            db,
+            &data_dir,
+            role_id,
+            fallback_prompt,
+        )
+        .await
+        .map_err(|e| format!("恢复存档玩家角色失败: {e}"))?;
     }
 
     let _ = service
@@ -472,8 +449,38 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         .await
         .map_err(|e| format!("载入台词失败: {}", e))?;
 
-    // 8. 恢复 GameStatus 快照
-    let snapshot: GameStatusSnapshot = serde_json::from_str(&save_model.status).unwrap_or_default();
+    // 8. 恢复 GameStatus 快照；先把旧身份键迁移成角色 id。
+    let mut snapshot: GameStatusSnapshot =
+        serde_json::from_str(&save_model.status).unwrap_or_default();
+    let identity_to_role: std::collections::HashMap<String, i32> = RoleRepo::get_player_roles(db)
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|role| role.identity_id.map(|id| (id, role.id)))
+        .collect();
+    let folder_to_role: std::collections::HashMap<String, i32> = {
+        use crate::db::entities::role::{self, RoleType};
+        use sea_orm::entity::prelude::*;
+        role::Entity::find()
+            .filter(role::Column::RoleType.is_in([RoleType::Main, RoleType::Npc]))
+            .all(db)
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .filter_map(|role| role.resource_folder.map(|folder| (folder, role.id)))
+            .collect()
+    };
+    if crate::ai_service::game_system::player_identity::runtime_relations::migrate_legacy_vars(
+        &mut snapshot.global_variables,
+        &identity_to_role,
+        &folder_to_role,
+    ) {
+        if let Ok(snapshot_json) = serde_json::to_string(&snapshot) {
+            if let Err(e) = SaveRepo::update_save_status(db, save_id, &snapshot_json).await {
+                tracing::warn!("回写旧档身份键失败: {e}");
+            }
+        }
+    }
     service.game_status.lock().await.apply_snapshot(&snapshot);
 
     service.game_status.lock().await.script_status = resume_script.clone();

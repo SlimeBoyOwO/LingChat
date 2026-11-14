@@ -53,9 +53,7 @@ impl MessageGenerator {
         let seq = Some(
             gs.line_list
                 .iter()
-                .filter(|l| {
-                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
-                })
+                .filter(|l| matches!(l.attribute(), LineAttribute::User))
                 .count() as u32,
         );
 

@@ -158,7 +158,6 @@ impl Tool for CharacterSwitch {
         crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
             &mut gs,
             &state.db,
-            &crate::api::data_dir(),
             prompt_options,
         )
         .await

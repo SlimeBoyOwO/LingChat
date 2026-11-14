@@ -110,7 +110,12 @@ impl AIService {
             .settings
             .clone();
 
-        let boot = resolve_player_bootstrap(&self.data_dir, &gs, &settings);
+        if let Ok(ids) =
+            crate::db::managers::role_repo::RoleRepo::get_player_role_ids(&self.db).await
+        {
+            gs.role_manager.set_player_role_ids(ids);
+        }
+        let boot = resolve_player_bootstrap(&self.db, &self.data_dir, &gs, &settings).await;
 
         let ai_prompt = sys_prompt_builder_with_player(
             &boot.alias,
@@ -168,8 +173,8 @@ impl AIService {
     /// 播种初始好感
     pub async fn seed_initial_affection(&mut self, cid: i32) -> Result<()> {
         let mut gs = self.game_status.lock().await;
-        let identity_id = gs.player.identity_id.clone();
-        gs.seed_identity_affection(&self.db, cid, identity_id.as_deref())
+        let player_role_id = gs.player.player_role_id;
+        gs.seed_player_affection(&self.db, cid, player_role_id)
             .await?;
         Ok(())
     }

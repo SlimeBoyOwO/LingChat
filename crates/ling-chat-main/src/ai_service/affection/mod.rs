@@ -37,22 +37,22 @@ pub fn var_key(role_id: i32) -> String {
     format!("{VAR_KEY_PREFIX}{role_id}")
 }
 
-/// （角色 × 身份）专属键：`affection.{role_id}.{identity_id}`；没有身份时回落旧键。
-pub fn var_key_for(role_id: i32, identity_id: Option<&str>) -> String {
-    match identity_id.map(str::trim).filter(|s| !s.is_empty()) {
+/// （角色 × 玩家角色）专属键：`affection.{role_id}.{player_role_id}`；没有玩家角色时回落旧键。
+pub fn var_key_for(role_id: i32, player_role_id: Option<i32>) -> String {
+    match player_role_id {
         Some(id) => format!("{VAR_KEY_PREFIX}{role_id}.{id}"),
         None => var_key(role_id),
     }
 }
 
-/// 按（角色 × 身份）解析存档里的好感度值：优先该身份专属键，其次旧档共享键
+/// 按（角色 × 玩家角色）解析存档里的好感度值：优先专属键，其次旧档共享键
 /// （旧键是「全身份共享默认」，某身份写过专属值后各走各的）。
 pub fn resolve_var<'a>(
     vars: &'a HashMap<String, serde_json::Value>,
     role_id: i32,
-    identity_id: Option<&str>,
+    player_role_id: Option<i32>,
 ) -> Option<&'a serde_json::Value> {
-    let key = var_key_for(role_id, identity_id);
+    let key = var_key_for(role_id, player_role_id);
     if let Some(v) = vars.get(&key) {
         return Some(v);
     }

@@ -102,7 +102,7 @@ export interface GameState {
 
   userName: string;
   userSubtitle: string;
-  playerIdentityId: string | null;
+  playerRoleId: number | null;
   playerPrompt: string;
   /** 本局绑定的存档 id（null = 还没开存档） */
   activeSaveId: number | null;
@@ -155,7 +155,7 @@ export const state: GameState = {
 
   userName: "",
   userSubtitle: "",
-  playerIdentityId: null,
+  playerRoleId: null,
   playerPrompt: "",
   activeSaveId: null,
 

@@ -402,7 +402,7 @@ watch(
 );
 // 切换当前玩家身份后判定结果会变
 watch(
-  () => gameStore.playerIdentityId,
+  () => gameStore.playerRoleId,
   () => void checkRelationReady(),
 );
 </script>

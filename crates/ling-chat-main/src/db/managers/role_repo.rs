@@ -17,7 +17,7 @@ use crate::db::entities::role::{
     self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
 };
 use crate::db::entities::role_hotword;
-use crate::db::entities::role_identity_relation;
+use crate::db::entities::role_relation;
 use crate::db::entities::running_script;
 use crate::db::entities::save;
 use crate::db::managers::memory_repo::MemoryRepo;
@@ -25,9 +25,9 @@ use crate::db::managers::save_repo::SaveRepo;
 
 pub struct RoleRepo;
 
-/// 角色对某个玩家身份的一行数据：认知文本 + 初始好感度覆写。
+/// 角色对另一个角色的一行认知：文本 + 初始好感度覆写。
 #[derive(Clone, Debug, Default, PartialEq)]
-pub struct IdentityRelation {
+pub struct RoleRelation {
     pub text: String,
     pub initial_affection: Option<i32>,
 }
@@ -245,11 +245,8 @@ impl RoleRepo {
         let result = role::Entity::delete_by_id(role_id).exec(db).await?;
         let rows_affected = result.rows_affected > 0;
 
-        // 11. 清该角色对玩家身份的关系行
-        role_identity_relation::Entity::delete_many()
-            .filter(role_identity_relation::Column::RoleId.eq(role_id))
-            .exec(db)
-            .await?;
+        // 11. 清该角色的认知关系行（两侧）
+        Self::delete_relations_touching(db, role_id).await?;
 
         // 12. 成功路径：显式重新启用 FK 并 disarm guard（避免重复 enable）
         enable_fk(db).await?;
@@ -343,13 +340,13 @@ impl RoleRepo {
         Ok(Some(settings))
     }
 
-    /// 某角色对各玩家身份的关系行（identity_id → 认知文本 + 初始好感度覆写）。
-    pub async fn load_identity_relations(
+    /// 某角色作为 subject 的全部认知行（目标角色 id → 文本 + 初始好感）。
+    pub async fn load_relations(
         db: &DatabaseConnection,
         role_id: i32,
-    ) -> Result<HashMap<String, IdentityRelation>> {
-        let rows = role_identity_relation::Entity::find()
-            .filter(role_identity_relation::Column::RoleId.eq(role_id))
+    ) -> Result<HashMap<i32, RoleRelation>> {
+        let rows = role_relation::Entity::find()
+            .filter(role_relation::Column::RoleId.eq(role_id))
             .all(db)
             .await?;
         Ok(rows
@@ -357,8 +354,8 @@ impl RoleRepo {
             .filter(|row| !row.text.trim().is_empty() || row.initial_affection.is_some())
             .map(|row| {
                 (
-                    row.identity_id,
-                    IdentityRelation {
+                    row.target_role_id,
+                    RoleRelation {
                         text: row.text,
                         initial_affection: row.initial_affection,
                     },
@@ -367,36 +364,34 @@ impl RoleRepo {
             .collect())
     }
 
-    /// 仅在缺失时写入关系，迁移用，避免每次启动覆盖用户编辑。
-    pub async fn ensure_identity_relation(
+    /// 仅在缺失时写入关系，迁移用，避免覆盖用户编辑。
+    pub async fn ensure_relation(
         db: &DatabaseConnection,
         role_id: i32,
-        identity_id: &str,
+        target_role_id: i32,
         text: &str,
     ) -> Result<bool> {
         let text = text.trim();
-        let identity_id = identity_id.trim();
-        if identity_id.is_empty() || text.is_empty() {
+        if text.is_empty() {
             return Ok(false);
         }
-        let existing =
-            role_identity_relation::Entity::find_by_id((role_id, identity_id.to_string()))
-                .one(db)
-                .await?;
+        let existing = role_relation::Entity::find_by_id((role_id, target_role_id))
+            .one(db)
+            .await?;
         match existing {
             Some(row) => {
                 if !row.text.trim().is_empty() {
                     return Ok(false);
                 }
-                let mut active: role_identity_relation::ActiveModel = row.into();
+                let mut active: role_relation::ActiveModel = row.into();
                 active.text = Set(text.to_string());
                 active.updated_at = Set(now_seconds());
                 active.update(db).await?;
             },
             None => {
-                role_identity_relation::ActiveModel {
+                role_relation::ActiveModel {
                     role_id: Set(role_id),
-                    identity_id: Set(identity_id.to_string()),
+                    target_role_id: Set(target_role_id),
                     text: Set(text.to_string()),
                     initial_affection: Set(None),
                     updated_at: Set(now_seconds()),
@@ -408,39 +403,33 @@ impl RoleRepo {
         Ok(true)
     }
 
-    /// 仅在缺失时写入身份专属初始好感度，迁移用；数据库已有值时无视角色卡设定。
-    pub async fn ensure_identity_affection(
+    /// 仅在缺失时写入目标专属初始好感度，迁移用。
+    pub async fn ensure_relation_affection(
         db: &DatabaseConnection,
         role_id: i32,
-        identity_id: &str,
+        target_role_id: i32,
         value: i32,
     ) -> Result<bool> {
-        let identity_id = identity_id.trim();
-        if identity_id.is_empty() {
-            return Ok(false);
-        }
-        let existing =
-            role_identity_relation::Entity::find_by_id((role_id, identity_id.to_string()))
-                .one(db)
-                .await?;
+        let existing = role_relation::Entity::find_by_id((role_id, target_role_id))
+            .one(db)
+            .await?;
         match existing {
             Some(row) => {
                 if row.initial_affection.is_some() {
                     return Ok(false);
                 }
-                let mut active: role_identity_relation::ActiveModel = row.into();
+                let mut active: role_relation::ActiveModel = row.into();
                 active.initial_affection = Set(Some(value));
                 active.updated_at = Set(now_seconds());
                 active.update(db).await?;
             },
             None => {
-                role_identity_relation::ActiveModel {
+                role_relation::ActiveModel {
                     role_id: Set(role_id),
-                    identity_id: Set(identity_id.to_string()),
+                    target_role_id: Set(target_role_id),
                     text: Set(String::new()),
                     initial_affection: Set(Some(value)),
                     updated_at: Set(now_seconds()),
-                    ..Default::default()
                 }
                 .insert(db)
                 .await?;
@@ -449,62 +438,58 @@ impl RoleRepo {
         Ok(true)
     }
 
-    /// 用给定的 identity_id → 关系行整体替换某角色的数据（文本与好感度都空视为删除）。
-    pub async fn replace_identity_relations(
+    /// 用给定的 target_role_id → 关系行整体替换某角色的数据（文本与好感度都空视为删除）。
+    pub async fn replace_relations(
         db: &DatabaseConnection,
         role_id: i32,
-        relations: &HashMap<String, IdentityRelation>,
+        relations: &HashMap<i32, RoleRelation>,
     ) -> Result<()> {
-        let cleaned: HashMap<&str, (String, Option<i32>)> = relations
+        let cleaned: HashMap<i32, (String, Option<i32>)> = relations
             .iter()
             .map(|(id, value)| {
                 (
-                    id.trim(),
+                    *id,
                     (value.text.trim().to_string(), value.initial_affection),
                 )
             })
-            .filter(|(id, (text, affection))| {
-                !id.is_empty() && (!text.is_empty() || affection.is_some())
-            })
+            .filter(|(_, (text, affection))| !text.is_empty() || affection.is_some())
             .collect();
 
-        let existing = role_identity_relation::Entity::find()
-            .filter(role_identity_relation::Column::RoleId.eq(role_id))
+        let existing = role_relation::Entity::find()
+            .filter(role_relation::Column::RoleId.eq(role_id))
             .all(db)
             .await?;
         for row in existing {
-            if cleaned.contains_key(row.identity_id.as_str()) {
+            if cleaned.contains_key(&row.target_role_id) {
                 continue;
             }
-            role_identity_relation::Entity::delete_by_id((role_id, row.identity_id))
+            role_relation::Entity::delete_by_id((role_id, row.target_role_id))
                 .exec(db)
                 .await?;
         }
 
-        for (identity_id, (text, affection)) in cleaned {
-            let existing =
-                role_identity_relation::Entity::find_by_id((role_id, identity_id.to_string()))
-                    .one(db)
-                    .await?;
+        for (target_role_id, (text, affection)) in cleaned {
+            let existing = role_relation::Entity::find_by_id((role_id, target_role_id))
+                .one(db)
+                .await?;
             match existing {
                 Some(row) => {
                     if row.text == text && row.initial_affection == affection {
                         continue;
                     }
-                    let mut active: role_identity_relation::ActiveModel = row.into();
+                    let mut active: role_relation::ActiveModel = row.into();
                     active.text = Set(text);
                     active.initial_affection = Set(affection);
                     active.updated_at = Set(now_seconds());
                     active.update(db).await?;
                 },
                 None => {
-                    role_identity_relation::ActiveModel {
+                    role_relation::ActiveModel {
                         role_id: Set(role_id),
-                        identity_id: Set(identity_id.to_string()),
+                        target_role_id: Set(target_role_id),
                         text: Set(text),
                         initial_affection: Set(affection),
                         updated_at: Set(now_seconds()),
-                        ..Default::default()
                     }
                     .insert(db)
                     .await?;
@@ -514,13 +499,71 @@ impl RoleRepo {
         Ok(())
     }
 
-    /// 角色删除时清理它的身份关系行。
-    pub async fn delete_identity_relations(db: &DatabaseConnection, role_id: i32) -> Result<()> {
-        role_identity_relation::Entity::delete_many()
-            .filter(role_identity_relation::Column::RoleId.eq(role_id))
+    /// 删除以该角色为 subject 的关系行。
+    pub async fn delete_relations(db: &DatabaseConnection, role_id: i32) -> Result<()> {
+        role_relation::Entity::delete_many()
+            .filter(role_relation::Column::RoleId.eq(role_id))
             .exec(db)
             .await?;
         Ok(())
+    }
+
+    /// 删除任意一端指向该角色的关系行（角色删除用）。
+    pub async fn delete_relations_touching(db: &DatabaseConnection, role_id: i32) -> Result<()> {
+        role_relation::Entity::delete_many()
+            .filter(role_relation::Column::RoleId.eq(role_id))
+            .exec(db)
+            .await?;
+        role_relation::Entity::delete_many()
+            .filter(role_relation::Column::TargetRoleId.eq(role_id))
+            .exec(db)
+            .await?;
+        Ok(())
+    }
+
+    pub async fn get_player_roles(db: &DatabaseConnection) -> Result<Vec<RoleModel>> {
+        Ok(role::Entity::find()
+            .filter(role::Column::RoleType.eq(RoleType::Player))
+            .all(db)
+            .await?)
+    }
+
+    /// 全部玩家角色 id，用于把玩家从 AI 角色链路里排除。
+    pub async fn get_player_role_ids(db: &DatabaseConnection) -> Result<Vec<i32>> {
+        Ok(role::Entity::find()
+            .select_only()
+            .column(role::Column::Id)
+            .filter(role::Column::RoleType.eq(RoleType::Player))
+            .into_tuple()
+            .all(db)
+            .await?)
+    }
+
+    pub async fn get_role_by_identity_id(
+        db: &DatabaseConnection,
+        identity_id: &str,
+    ) -> Result<Option<RoleModel>> {
+        Ok(role::Entity::find()
+            .filter(role::Column::IdentityId.eq(identity_id))
+            .one(db)
+            .await?)
+    }
+
+    /// 删除玩家角色行及其引用：存档解绑、台词改回 0、关系两侧清理。
+    pub async fn delete_player_role(db: &DatabaseConnection, role_id: i32) -> Result<bool> {
+        save::Entity::update_many()
+            .col_expr(save::Column::PlayerRoleId, Expr::value(Option::<i32>::None))
+            .filter(save::Column::PlayerRoleId.eq(role_id))
+            .exec(db)
+            .await?;
+        line::Entity::update_many()
+            .col_expr(line::Column::SenderRoleId, Expr::value(Some(0)))
+            .filter(line::Column::SenderRoleId.eq(role_id))
+            .exec(db)
+            .await?;
+        Self::delete_relations_touching(db, role_id).await?;
+        let result = role::Entity::delete_by_id(role_id).exec(db).await?;
+        Ok(result.rows_affected > 0)
     }
 }
 

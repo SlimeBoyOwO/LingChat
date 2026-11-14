@@ -7,8 +7,8 @@ use std::collections::HashSet;
 use std::path::Path;
 
 use sea_orm::{
-    ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait, SqlErr, Statement,
-    TransactionTrait,
+    ColumnTrait, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait,
+    QueryFilter, SqlErr, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use tracing::{info, warn};
@@ -363,9 +363,75 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         || records.hotword_categories.is_some()
         || records.library_hotwords.is_some();
 
+    // 玩家角色是本地身份卡的投影，不参与整表镜像；先建立远端 id → 本地 id 映射，
+    // 供存档与台词里的玩家角色引用翻译。
+    let local_players = role::Entity::find()
+        .filter(role::Column::RoleType.eq(role::RoleType::Player))
+        .all(&txn)
+        .await
+        .map_err(|e| format!("读取本地玩家角色失败: {e}"))?;
+    let local_by_identity: std::collections::HashMap<String, i32> = local_players
+        .iter()
+        .filter_map(|r| r.identity_id.clone().map(|id| (id, r.id)))
+        .collect();
+    let mut remote_player_map: std::collections::HashMap<i64, i32> =
+        std::collections::HashMap::new();
+    let mut remote_player_ids: std::collections::HashSet<i64> = std::collections::HashSet::new();
+    for row in &records.roles {
+        if row.get("role_type").and_then(Value::as_str) != Some("player") {
+            continue;
+        }
+        let Some(remote_id) = row.get("id").and_then(Value::as_i64) else {
+            continue;
+        };
+        remote_player_ids.insert(remote_id);
+        let Some(identity_id) = row.get("identity_id").and_then(Value::as_str) else {
+            continue;
+        };
+        if let Some(local_id) = local_by_identity.get(identity_id) {
+            remote_player_map.insert(remote_id, *local_id);
+        }
+    }
+    let mut saves = records.saves.clone();
+    for row in &mut saves {
+        translate_player_ref(
+            row,
+            "player_role_id",
+            &remote_player_map,
+            &remote_player_ids,
+            Value::Null,
+        );
+    }
+    let mut lines = records.lines.clone();
+    for row in &mut lines {
+        translate_player_ref(
+            row,
+            "sender_role_id",
+            &remote_player_map,
+            &remote_player_ids,
+            Value::from(0),
+        );
+    }
+    let remote_roles: Vec<Value> = records
+        .roles
+        .iter()
+        .filter(|row| row.get("role_type").and_then(Value::as_str) != Some("player"))
+        .cloned()
+        .collect();
+
     // ─── DELETE 全部行（子表 → 父表顺序） ────────────────
     for table in DELETE_ORDER {
-        let count = delete_all(&txn, table).await?;
+        let count = if table == "role" {
+            txn.execute(Statement::from_string(
+                DatabaseBackend::Sqlite,
+                "DELETE FROM role WHERE role_type <> 'player'".to_string(),
+            ))
+            .await
+            .map_err(|e| format!("清空非玩家角色失败: {e}"))?
+            .rows_affected()
+        } else {
+            delete_all(&txn, table).await?
+        };
         if count > 0 {
             info!("已清除 {}: {} 行", table, count);
         }
@@ -380,7 +446,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     }
 
     // ─── INSERT 全部行（父表 → 子表顺序） ────────────────
-    import_rows!(&txn, &records.roles, role, imported);
+    import_rows!(&txn, &remote_roles, role, imported);
     import_rows_normalized::<role_hotword::Entity, _, _>(
         &txn,
         records.role_hotwords.as_deref().unwrap_or(&[]),
@@ -411,10 +477,10 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         &mut imported,
     )
     .await?;
-    import_rows!(&txn, &records.saves, save, imported);
+    import_rows!(&txn, &saves, save, imported);
     import_rows!(&txn, &records.running_scripts, running_script, imported);
     import_rows!(&txn, &records.adventure_unlocks, adventure_unlock, imported);
-    import_rows!(&txn, &records.lines, line, imported);
+    import_rows!(&txn, &lines, line, imported);
     import_rows!(&txn, &records.memory_banks, memory_bank, imported);
     import_rows!(&txn, &records.line_perceptions, line_perception, imported);
 
@@ -431,6 +497,30 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         .map_err(|e| format!("提交事务失败: {e}"))?;
 
     Ok(imported)
+}
+
+/// 把远端玩家角色 id 翻译成本地 id；远端玩家行不存在时写 fallback。
+fn translate_player_ref(
+    row: &mut Value,
+    field: &str,
+    map: &std::collections::HashMap<i64, i32>,
+    remote_player_ids: &std::collections::HashSet<i64>,
+    fallback: Value,
+) {
+    let Some(obj) = row.as_object_mut() else {
+        return;
+    };
+    let Some(remote_id) = obj.get(field).and_then(Value::as_i64) else {
+        return;
+    };
+    if !remote_player_ids.contains(&remote_id) {
+        return;
+    }
+    let local = map
+        .get(&remote_id)
+        .map(|id| Value::from(*id))
+        .unwrap_or(fallback);
+    obj.insert(field.to_string(), local);
 }
 
 /// 删除表中的全部行。

@@ -118,7 +118,7 @@ impl GameStatus {
         let var = crate::ai_service::affection::resolve_var(
             &self.global_variables,
             role_id,
-            self.player.identity_id.as_deref(),
+            self.player.player_role_id,
         )
         .cloned();
         let role = self.role_manager.get_role(db, role_id).await?;
@@ -151,13 +151,14 @@ impl GameStatus {
 
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
     pub async fn add_line(&mut self, db: &DatabaseConnection, mut line: LineBase) -> Result<()> {
-        // 玩家台词行自动归属当前身份；旁白/系统行不归属（换身份后旧行保留原名）。
+        // 玩家台词行直接指向当前玩家角色；旁白/系统行保持 0 哨兵。
         if matches!(line.attribute.inner(), LineAttribute::User)
-            && line.sender_role_id == Some(0)
-            && line.identity_id.is_none()
+            && matches!(line.sender_role_id, None | Some(0))
             && !matches!(line.display_name.as_deref(), Some("旁白") | Some("系统"))
         {
-            line.identity_id = self.player.identity_id.clone();
+            if let Some(player_role_id) = self.player.player_role_id {
+                line.sender_role_id = Some(player_role_id);
+            }
         }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         self.add_line_perceived(db, line, perceived).await
@@ -416,10 +417,8 @@ impl GameStatus {
         self.present_role_ids = snapshot.present_role_ids.iter().copied().collect();
         self.onstage_role_ids = snapshot.present_role_ids.clone();
         self.scene_awareness_enabled = snapshot.scene_awareness_enabled;
-        self.role_manager.overlay_affections_from_vars(
-            &self.global_variables,
-            self.player.identity_id.as_deref(),
-        );
+        self.role_manager
+            .overlay_affections_from_vars(&self.global_variables, self.player.player_role_id);
     }
 }
 

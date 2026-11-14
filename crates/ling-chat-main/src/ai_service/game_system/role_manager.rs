@@ -52,10 +52,12 @@ pub struct GameRoleManager {
     memory_inject_continue_user: bool,
     /// 角色服装覆盖（session store → register_role_by_id 时优先读取）
     clothes_overrides: HashMap<i32, String>,
-    /// 角色对玩家身份的关系镜像（DB `role_identity_relation` → 键 `me:<身份id>`），按角色文件夹缓存。
-    identity_relations: HashMap<String, HashMap<String, String>>,
-    /// 角色对各身份的初始好感度覆写（DB 同一张表），按角色文件夹缓存。
-    identity_affections: HashMap<String, HashMap<String, i32>>,
+    /// 角色对另一个角色的认知镜像（subject role id → target role id → 文本）。
+    relations: HashMap<i32, HashMap<i32, String>>,
+    /// 角色对各目标的初始好感度覆写（同一张关系表）。
+    relation_affections: HashMap<i32, HashMap<i32, i32>>,
+    /// 全部玩家角色 id；用于把玩家从 AI 角色链路里排除。 TODO：这里判断玩家逻辑比较唐，可以优化
+    player_role_ids: HashSet<i32>,
 }
 
 impl GameRoleManager {
@@ -86,8 +88,9 @@ impl GameRoleManager {
             memory_limits,
             memory_inject_continue_user,
             clothes_overrides: HashMap::new(),
-            identity_relations: HashMap::new(),
-            identity_affections: HashMap::new(),
+            relations: HashMap::new(),
+            relation_affections: HashMap::new(),
+            player_role_ids: HashSet::new(),
         }
     }
 
@@ -147,35 +150,49 @@ impl GameRoleManager {
     pub fn reset_roles(&mut self) {
         self.loaded_roles.clear();
         self.memory_bank_systems.clear();
-        self.identity_relations.clear();
-        self.identity_affections.clear();
+        self.relations.clear();
+        self.relation_affections.clear();
     }
 
-    /// 该角色对玩家身份的关系（键 `me:<身份 id>`）；未加载时返回 None。
-    pub fn identity_relations_for(&self, role_folder: &str) -> Option<&HashMap<String, String>> {
-        self.identity_relations.get(role_folder)
+    /// 该角色作为 subject 的认知；未加载时返回 None。
+    pub fn relations_for(&self, role_id: i32) -> Option<&HashMap<i32, String>> {
+        self.relations.get(&role_id)
     }
 
-    /// 该角色对某身份的初始好感度覆写；没有覆写或角色未加载时返回 None。
-    pub fn identity_affection_of_role(&self, role_id: i32, identity_id: &str) -> Option<i32> {
-        let folder = &self.loaded_roles.get(&role_id)?.settings.character_folder;
-        self.identity_affections
-            .get(folder)
-            .and_then(|map| map.get(identity_id))
+    /// 该角色对某目标的初始好感度覆写；没有覆写或角色未加载时返回 None。
+    pub fn relation_affection_of_role(&self, role_id: i32, target_role_id: i32) -> Option<i32> {
+        self.relation_affections
+            .get(&role_id)
+            .and_then(|map| map.get(&target_role_id))
             .copied()
     }
 
     /// 设置页保存关系后刷新会话镜像。
-    pub fn set_identity_relations(
+    pub fn set_role_relations(
         &mut self,
-        role_folder: &str,
-        relations: HashMap<String, String>,
-        affections: HashMap<String, i32>,
+        role_id: i32,
+        relations: HashMap<i32, String>,
+        affections: HashMap<i32, i32>,
     ) {
-        self.identity_relations
-            .insert(role_folder.to_string(), relations);
-        self.identity_affections
-            .insert(role_folder.to_string(), affections);
+        self.relations.insert(role_id, relations);
+        self.relation_affections.insert(role_id, affections);
+    }
+
+    pub fn set_player_role_ids(&mut self, ids: Vec<i32>) {
+        self.player_role_ids = ids.into_iter().collect();
+    }
+
+    pub fn is_player_role(&self, role_id: i32) -> bool {
+        self.player_role_ids.contains(&role_id)
+    }
+
+    /// 0 是历史玩家哨兵，其余以角色类型判断。
+    pub fn is_player_sender(&self, sender: Option<i32>) -> bool {
+        match sender {
+            Some(0) => true,
+            Some(id) => self.is_player_role(id),
+            None => false,
+        }
     }
 
     pub fn clear_role_memory(&mut self, role_id: i32) {
@@ -244,6 +261,9 @@ impl GameRoleManager {
     async fn register_role_by_id(&mut self, db: &DatabaseConnection, role_id: i32) -> Result<()> {
         let role = RoleRepo::get_role_by_id(db, role_id).await?;
         let role = role.ok_or_else(|| anyhow!("角色 ID {} 未在数据库中找到", role_id))?;
+        if role.role_type == crate::db::entities::role::RoleType::Player {
+            anyhow::bail!("玩家角色不能作为 AI 角色加载: {role_id}");
+        }
 
         let settings = RoleRepo::get_role_settings_by_id(db, &self.data_dir, role.id).await?;
         let settings = settings.ok_or_else(|| anyhow!("角色 ID {} 的设置相关文件缺失", role_id))?;
@@ -282,25 +302,23 @@ impl GameRoleManager {
 
         tracing::info!("角色 {} 的服装设置为：{}", role.id, clothes);
 
-        // 角色对玩家身份的关系与初始好感度覆写都存数据库，加载角色时一并取回会话镜像。
-        let identity_rows = RoleRepo::load_identity_relations(db, role.id).await?;
-        let identity_relations = identity_rows
+        // 角色认知与初始好感度覆写都存数据库，加载角色时一并取回会话镜像。
+        let relation_rows = RoleRepo::load_relations(db, role.id).await?;
+        let relations = relation_rows
             .iter()
             .filter(|(_, value)| !value.text.trim().is_empty())
-            .map(|(identity_id, value)| (format!("me:{identity_id}"), value.text.clone()))
+            .map(|(target_role_id, value)| (*target_role_id, value.text.clone()))
             .collect::<HashMap<_, _>>();
-        let identity_affections = identity_rows
+        let affections = relation_rows
             .into_iter()
-            .filter_map(|(identity_id, value)| {
+            .filter_map(|(target_role_id, value)| {
                 value
                     .initial_affection
-                    .map(|affection| (identity_id, affection))
+                    .map(|affection| (target_role_id, affection))
             })
             .collect::<HashMap<_, _>>();
-        self.identity_relations
-            .insert(settings.character_folder.clone(), identity_relations);
-        self.identity_affections
-            .insert(settings.character_folder.clone(), identity_affections);
+        self.relations.insert(role.id, relations);
+        self.relation_affections.insert(role.id, affections);
 
         let new_role = GameRole {
             role_id: Some(role.id),
@@ -338,14 +356,15 @@ impl GameRoleManager {
     pub fn overlay_affections_from_vars(
         &mut self,
         vars: &HashMap<String, serde_json::Value>,
-        identity_id: Option<&str>,
+        player_role_id: Option<i32>,
     ) {
         for role in self.loaded_roles.values_mut() {
             let Some(rid) = role.role_id else {
                 continue;
             };
-            if let Some(state) = crate::ai_service::affection::resolve_var(vars, rid, identity_id)
-                .and_then(crate::ai_service::affection::state_from_value)
+            if let Some(state) =
+                crate::ai_service::affection::resolve_var(vars, rid, player_role_id)
+                    .and_then(crate::ai_service::affection::state_from_value)
             {
                 role.affection = state.vector;
                 role.negative = state.negative;
@@ -413,17 +432,18 @@ impl GameRoleManager {
             Some(n) if n < lines.len() => &lines[lines.len() - n..],
             _ => lines,
         };
-        // 收集涉及到的角色 ID
+        // 收集涉及到的角色 ID；玩家角色（含历史 0 哨兵）不参与记忆同步。
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
             if let Some(sid) = line.sender_role_id() {
-                // 跳过 id 为 0 的角色（ 0 代表的是玩家，不参与记忆同步）
-                if sid != 0 {
+                if !self.is_player_sender(Some(sid)) {
                     involved_ids.insert(sid);
                 }
             }
             for rid in &line.perceived_role_ids {
-                involved_ids.insert(*rid);
+                if !self.is_player_role(*rid) {
+                    involved_ids.insert(*rid);
+                }
             }
         }
 
@@ -499,7 +519,7 @@ impl GameRoleManager {
             let built = MemoryBuilder::new(rid)
                 .with_continue_user(self.memory_inject_continue_user)
                 .with_player_alias(alias)
-                .with_player_identity(player.identity_id.clone())
+                .with_player_role(player.player_role_id)
                 .build(&final_sliced);
 
             // 阶段 4: 写入角色记忆

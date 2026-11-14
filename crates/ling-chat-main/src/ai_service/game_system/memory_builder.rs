@@ -11,7 +11,7 @@ pub struct MemoryBuilder {
     /// 关闭时只裁切、不注入（首条会是 assistant，OpenAI 兼容端点接受，Gemini 会 400）。
     inject_continue_user: bool,
     player_alias: Option<String>,
-    player_identity_id: Option<String>,
+    player_role_id: Option<i32>,
 }
 
 enum BufferKind {
@@ -25,7 +25,7 @@ impl MemoryBuilder {
             target_role_id,
             inject_continue_user: false,
             player_alias: None,
-            player_identity_id: None,
+            player_role_id: None,
         }
     }
 
@@ -34,8 +34,8 @@ impl MemoryBuilder {
         self
     }
 
-    pub fn with_player_identity(mut self, identity_id: Option<String>) -> Self {
-        self.player_identity_id = identity_id;
+    pub fn with_player_role(mut self, player_role_id: Option<i32>) -> Self {
+        self.player_role_id = player_role_id;
         self
     }
 
@@ -159,13 +159,12 @@ impl MemoryBuilder {
                             .iter()
                             .map(|l| {
                                 let name = match l.sender_role_id() {
-                                    Some(0)
-                                        if self
-                                            .player_alias
-                                            .as_deref()
-                                            .is_some_and(|s| !s.is_empty())
-                                            && l.base.identity_id.is_some()
-                                            && l.base.identity_id == self.player_identity_id =>
+                                    Some(sid)
+                                        if Some(sid) == self.player_role_id
+                                            && self
+                                                .player_alias
+                                                .as_deref()
+                                                .is_some_and(|s| !s.is_empty()) =>
                                     {
                                         self.player_alias.as_deref().unwrap_or_default()
                                     },

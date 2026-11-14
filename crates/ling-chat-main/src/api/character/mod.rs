@@ -694,10 +694,9 @@ pub async fn update_role_settings(
         let service = state.ai_service.lock().await;
         let mut gs = service.game_status.lock().await;
 
-        let identity_id = gs.player.identity_id.clone();
-        let affection_override = identity_id
-            .as_deref()
-            .and_then(|id| gs.role_manager.identity_affection_of_role(role_id, id));
+        let player_role_id = gs.player.player_role_id;
+        let affection_override =
+            player_role_id.and_then(|id| gs.role_manager.relation_affection_of_role(role_id, id));
         let old_initial = gs.role_manager.get_loaded(role_id).and_then(|role| {
             crate::ai_service::affection::effective_initial_affection(
                 &role.settings,
@@ -721,7 +720,6 @@ pub async fn update_role_settings(
             crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
                 &mut gs,
                 db,
-                &crate::api::data_dir(),
                 prompt_options,
             )
             .await
@@ -739,7 +737,7 @@ pub async fn update_role_settings(
             if let Some(init) = new_initial.filter(|v| *v != old) {
                 // 补发一次变更事件：面板即时刷新新值（本路径不经过上帝 Agent）。
                 let payload = gs
-                    .sync_identity_affection_initial(db, role_id, identity_id.as_deref(), init)
+                    .sync_player_affection_initial(db, role_id, player_role_id, init)
                     .await;
                 let _ = app.emit("affection:changed", payload);
             }

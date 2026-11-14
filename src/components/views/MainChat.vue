@@ -177,7 +177,7 @@ const blockedRoleList = computed(() =>
 const meName = computed(() => gameStore.userName || "我");
 
 watch(
-  [() => gameStore.mainRoleId, () => gameStore.playerIdentityId],
+  [() => gameStore.mainRoleId, () => gameStore.playerRoleId],
   ([roleId]) => void refreshRelationReady(roleId),
   { immediate: true },
 );

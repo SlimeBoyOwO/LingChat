@@ -194,8 +194,6 @@ pub struct LineBase {
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
-    /// 该玩家台词行归属的「我的身份」id；旁白/系统/旧数据为 None。
-    pub identity_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -916,12 +914,12 @@ pub struct Player {
     pub user_name: String,
     pub user_subtitle: String,
     pub user_prompt: String,
-    /// 当前「我的身份」的不可变 id。`None` = 尚未选择身份（使用合成身份）。
+    /// 当前玩家角色（身份卡）的 role id；None 表示还没有可用身份。
     #[serde(default)]
-    pub identity_id: Option<String>,
-    /// 当前身份对其他对象的关系，键为 `ai:<角色文件夹>` / `me:<身份 id>`。
+    pub player_role_id: Option<i32>,
+    /// 当前玩家角色对其他角色的认知，键为目标 role id。
     #[serde(default)]
-    pub relations: HashMap<String, String>,
+    pub relations: HashMap<i32, String>,
 }
 
 // ==========================================

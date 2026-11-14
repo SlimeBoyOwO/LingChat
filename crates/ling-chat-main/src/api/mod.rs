@@ -117,6 +117,7 @@ pub fn resolve_role_dir_in(
                 .join(resource_folder))
         },
         RoleType::System | RoleType::User => Err("系统角色没有磁盘资源目录".to_string()),
+        RoleType::Player => Err("玩家角色没有角色卡目录".to_string()),
     }
 }
 

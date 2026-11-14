@@ -7,8 +7,7 @@
 //! 两类共用：按 (user_name, user_subtitle) 去重，为每张老卡建立专属身份卡，并把角色文件夹
 //! 记进身份卡的 `source_folders`（绑定只存在身份卡里，角色 yml 不出现身份 id）。
 //! 「以下是我的设定」正文写进身份卡 prompt / `ai:<角色文件夹>` 关系；角色侧认知存数据库
-//! `role_identity_relation`，并从 `relations.yml` 的历史 `me:<身份id>` 键迁入。
-//! `player_identity` 索引表由 `sync_player_identities` 跟随文件更新。
+//! `role_relation`。身份卡由 `sync_player_roles` 投影成玩家角色行。
 //!
 //! 迁移完成后写 `_primary_identity.json`；之后的启动只做增量补齐，不再新建主身份。
 
@@ -17,14 +16,13 @@ use std::fs;
 use std::path::Path;
 
 use anyhow::{Context, Result};
-use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, PaginatorTrait, QueryFilter};
+use sea_orm::{ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter};
 
 use super::bootstrap::legacy_player_prompt;
-use super::{IdentityStore, PlayerIdentity, RelationEndpoint, role_relations};
+use super::{IdentityStore, PlayerIdentity};
 use crate::ai_service::types::CharacterSettings;
 use crate::api::resolve_role_dir_in;
 use crate::db::entities::role::{self, RoleType};
-use crate::db::entities::{line, player_identity, save_identity};
 use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::yaml_file::{read_yaml_as_json, resolve_settings_file, write_json_as_yaml};
 
@@ -177,7 +175,7 @@ async fn run_incremental(
     }
     store.set_current_id(&primary.id)?;
     // 导入老卡等增量场景同样要刷新身份索引表。
-    crate::db::role_sync::sync_player_identities(db, data_dir).await?;
+    crate::db::role_sync::sync_player_roles(db, data_dir).await?;
 
     let report = MigrationReport {
         mode: "incremental".to_string(),
@@ -208,7 +206,7 @@ async fn migrate_a(
     }
     store.set_current_id(&primary.id)?;
     store.write_primary_marker(&primary.id, "A")?;
-    crate::db::role_sync::sync_player_identities(db, data_dir).await?;
+    crate::db::role_sync::sync_player_roles(db, data_dir).await?;
 
     let report = MigrationReport {
         mode: "A".to_string(),
@@ -251,7 +249,7 @@ async fn migrate_b(
     primary = store.save(&primary)?;
     store.set_current_id(&primary.id)?;
     store.write_primary_marker(&primary.id, "B")?;
-    crate::db::role_sync::sync_player_identities(db, data_dir).await?;
+    crate::db::role_sync::sync_player_roles(db, data_dir).await?;
 
     let report = MigrationReport {
         mode: "B".to_string(),
@@ -298,20 +296,10 @@ async fn has_identity_data(store: &IdentityStore, db: &DatabaseConnection) -> bo
     if !store.list().is_empty() {
         return true;
     }
-    if save_identity::Entity::find().count(db).await.unwrap_or(0) > 0 {
-        return true;
-    }
-    if line::Entity::find()
-        .filter(line::Column::IdentityId.is_not_null())
-        .filter(line::Column::IdentityId.ne(""))
-        .count(db)
+    RoleRepo::get_player_roles(db)
         .await
-        .unwrap_or(0)
-        > 0
-    {
-        return true;
-    }
-    player_identity::Entity::find().count(db).await.unwrap_or(0) > 0
+        .map(|roles| !roles.is_empty())
+        .unwrap_or(false)
 }
 
 /// 把正文合并进身份卡 prompt：空段或已包含时返回 false。
@@ -423,30 +411,8 @@ async fn sync_role_card(
         outcome.cleaned = true;
     }
 
-    // 把 relations.yml 里历史 `me:<身份id>` 键搬进数据库，再从文件里摘掉。
-    if let Some(role_id) = role_id {
-        let raw_relations = role_relations::load_raw(data_dir, folder);
-        let mut kept = HashMap::new();
-        let mut moved = false;
-        for (key, text) in raw_relations {
-            if let Some(identity_id) = key.strip_prefix("me:") {
-                moved = true;
-                if store.find_by_id(identity_id.trim()).is_some() {
-                    RoleRepo::ensure_identity_relation(db, role_id, identity_id, &text).await?;
-                }
-            } else {
-                kept.insert(key, text);
-            }
-        }
-        if moved {
-            role_relations::save(data_dir, folder, &kept)
-                .with_context(|| format!("清理角色侧关系失败 {folder}"))?;
-            outcome.cleaned = true;
-        }
-    }
-
-    let mut identity_id = registry.bound_identity(folder).map(str::to_string);
-    if let Some(bound) = identity_id.as_deref() {
+    let bound_identity = registry.bound_identity(folder).map(str::to_string);
+    if let Some(bound) = bound_identity.as_deref() {
         tracing::debug!("角色卡 {folder} 已绑定身份 {bound}");
     } else if registry.is_deleted(folder) {
         tracing::info!("角色卡 {folder} 的专属身份已被删除，按用户意图不再重建");
@@ -458,7 +424,7 @@ async fn sync_role_card(
                 primary.source_folders.push(folder.to_string());
                 outcome.primary_changed = true;
             }
-            let ai_key = RelationEndpoint::Ai(folder.to_string()).key();
+            let ai_key = format!("ai:{folder}");
             if !body.trim().is_empty()
                 && primary
                     .relations
@@ -478,7 +444,7 @@ async fn sync_role_card(
                 card.source_folders.push(folder.to_string());
                 changed = true;
             }
-            let ai_key = RelationEndpoint::Ai(folder.to_string()).key();
+            let ai_key = format!("ai:{folder}");
             if !body.trim().is_empty()
                 && card
                     .relations
@@ -502,7 +468,7 @@ async fn sync_role_card(
         } else {
             let mut relations = HashMap::new();
             if !body.trim().is_empty() {
-                relations.insert(RelationEndpoint::Ai(folder.to_string()).key(), body.clone());
+                relations.insert(format!("ai:{folder}"), body.clone());
             }
             let card = PlayerIdentity {
                 id: String::new(),
@@ -526,18 +492,17 @@ async fn sync_role_card(
         };
 
         // 该角色对这张身份的认知存数据库；已有非空文本不覆盖。
-        if let Some(role_id) = role_id {
-            RoleRepo::ensure_identity_relation(db, role_id, &bound_id, &body).await?;
+        let player_role_id = match store.find_by_id(&bound_id) {
+            Some(card) => Some(crate::db::role_sync::ensure_player_role(db, &card).await?),
+            None => None,
+        };
+        if let (Some(role_id), Some(player_role_id)) = (role_id, player_role_id) {
+            RoleRepo::ensure_relation(db, role_id, player_role_id, &body).await?;
+            if let Some(value) = settings.initial_affection {
+                RoleRepo::ensure_relation_affection(db, role_id, player_role_id, value).await?;
+            }
         }
-        identity_id = Some(bound_id);
         outcome.identity_bound = true;
-    }
-
-    // 角色卡 yml 的初始好感度只用于初始化数据库里的身份覆写，已有值时不覆盖。
-    if let (Some(role_id), Some(identity_id), Some(value)) =
-        (role_id, identity_id.as_deref(), settings.initial_affection)
-    {
-        RoleRepo::ensure_identity_affection(db, role_id, identity_id, value).await?;
     }
 
     if outcome.cleaned {

@@ -10,9 +10,7 @@ use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
-use crate::ai_service::game_system::player_identity::{
-    RelationEndpoint, resolve_relation, runtime_relations,
-};
+use crate::ai_service::game_system::player_identity::{resolve_relation, runtime_relations};
 use crate::ai_service::game_system::status_ops::{RecentMemory, RecentMemoryAnchor};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
 use crate::ai_service::tools::builtin::god_agent::UPDATE_AFFECTION;
@@ -52,15 +50,16 @@ impl NpcAffectionView {
             .filter_map(|&id| gs.role_manager.get_loaded(id))
             .filter_map(|r| {
                 let role_id = r.role_id?;
-                let folder = r.settings.character_folder.clone();
-                let player_relation = resolve_relation(
-                    &RelationEndpoint::Ai(folder.clone()),
-                    &RelationEndpoint::Me(gs.player.identity_id.clone().unwrap_or_default()),
-                    &runtime_relations::load_effective(&crate::api::data_dir(), &folder, gs),
-                    &HashMap::new(),
-                    None,
-                )
-                .map(|view| view.text);
+                let player_relation = gs.player.player_role_id.and_then(|player_role_id| {
+                    resolve_relation(
+                        role_id,
+                        player_role_id,
+                        &runtime_relations::load_effective(role_id, gs),
+                        &HashMap::new(),
+                        None,
+                    )
+                    .map(|view| view.text)
+                });
                 Some(NpcAffectionView {
                     role_id,
                     name: r

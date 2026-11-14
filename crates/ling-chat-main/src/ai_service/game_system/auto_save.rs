@@ -25,9 +25,9 @@ pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
         // 角色回复：assistant 且归属某角色（工具调用的空内容载体行 sender 为空，排除）
         LineAttribute::Assistant => line.base.sender_role_id.is_some(),
-        // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
+        // 玩家发言：非旁白/系统/剧情内容（0 是旧档哨兵，新档指向玩家角色）
         LineAttribute::User => {
-            line.base.sender_role_id == Some(0)
+            line.base.sender_role_id.is_some()
                 && !line
                     .base
                     .content
@@ -248,14 +248,14 @@ impl AutoSaveManager {
             }
         }
 
-        // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
+        // 记录本局使用的玩家角色，否则读自动存档会沿用全局当前身份。
         {
-            let identity_id = service.game_status.lock().await.player.identity_id.clone();
-            if let Some(ref id) = identity_id {
-                if !id.trim().is_empty() {
-                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
-                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
-                    }
+            let player_role_id = service.game_status.lock().await.player.player_role_id;
+            if player_role_id.is_some() {
+                if let Err(e) =
+                    SaveRepo::update_save_player_role(&self.db, save_id, player_role_id).await
+                {
+                    tracing::warn!("[AutoSave] 记录本局玩家角色失败: {e}");
                 }
             }
         }

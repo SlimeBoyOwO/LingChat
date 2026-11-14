@@ -33,6 +33,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261030_000001_create_role_identity_relation::Migration),
             // 该表追加初始好感度覆写列。
             Box::new(m20261030_000002_add_role_identity_affection::Migration),
+            // 玩家身份并入 role：身份表、存档绑定、认知关系与台词归属一次迁移。
+            Box::new(m20261114_000001_merge_player_identity_into_role::Migration),
         ]
     }
 }
@@ -57,3 +59,4 @@ pub mod m20261020_000001_add_line_round_id;
 pub mod m20261023_000001_library_hotword_unique_per_category;
 pub mod m20261030_000001_create_role_identity_relation;
 pub mod m20261030_000002_add_role_identity_affection;
+pub mod m20261114_000001_merge_player_identity_into_role;

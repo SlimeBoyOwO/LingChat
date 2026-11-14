@@ -4,9 +4,7 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{
-    line, line_perception, memory_bank, running_script, save, save_identity,
-};
+use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
 
 pub struct SaveRepo;
 
@@ -121,6 +119,23 @@ impl SaveRepo {
         Ok(())
     }
 
+    pub async fn update_save_player_role(
+        db: &DatabaseConnection,
+        save_id: i32,
+        role_id: Option<i32>,
+    ) -> Result<()> {
+        let model = save::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .context("Save not found")?;
+        let mut active: save::ActiveModel = model.into();
+        active.player_role_id = Set(role_id);
+        active.update_date = Set(Utc::now().naive_utc());
+        active.update(db).await.map_err(|e| anyhow!("{e}"))?;
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub async fn update_save_last_message(
         db: &DatabaseConnection,
@@ -178,12 +193,6 @@ impl SaveRepo {
         // Delete all lines for this save
         line::Entity::delete_many()
             .filter(line::Column::SaveId.eq(save_id))
-            .exec(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))?;
-
-        save_identity::Entity::delete_many()
-            .filter(save_identity::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
@@ -269,7 +278,6 @@ impl SaveRepo {
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
-                        identity_id: db_line.identity_id,
                     },
                     perceived_role_ids: perceived,
                 })
@@ -339,7 +347,6 @@ impl SaveRepo {
                         active.audio_file = Set(input_line.base.audio_file.clone());
                         active.thinking = Set(input_line.base.thinking.clone());
                         active.display_name = Set(input_line.base.display_name.clone());
-                        active.identity_id = Set(input_line.base.identity_id.clone());
                         active.tool_call = Set(input_line.base.tool_call.clone());
                         active.round_id = Set(input_line.base.round_id.clone());
                     }
@@ -487,7 +494,6 @@ impl SaveRepo {
                     attribute: Set(input_line.base.attribute.0.clone()),
                     sender_role_id: Set(input_line.base.sender_role_id),
                     display_name: Set(input_line.base.display_name.clone()),
-                    identity_id: Set(input_line.base.identity_id.clone()),
                     original_emotion: Set(input_line.base.original_emotion.clone()),
                     predicted_emotion: Set(input_line.base.predicted_emotion.clone()),
                     tts_content: Set(input_line.base.tts_content.clone()),
@@ -699,56 +705,27 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn upsert_save_identity(
+    pub async fn get_save_player_role(
         db: &DatabaseConnection,
         save_id: i32,
-        identity_id: &str,
-    ) -> Result<()> {
-        let now = Utc::now().naive_utc().to_string();
-
-        if let Some(existing) = save_identity::Entity::find_by_id(save_id)
+    ) -> Result<Option<i32>> {
+        Ok(save::Entity::find_by_id(save_id)
             .one(db)
             .await
             .map_err(|e| anyhow!("{e}"))?
-        {
-            let mut active: save_identity::ActiveModel = existing.into();
-            active.identity_id = Set(identity_id.to_string());
-            active.updated_at = Set(now);
-            active.update(db).await.map_err(|e| anyhow!("{e}"))?;
-        } else {
-            let active = save_identity::ActiveModel {
-                save_id: Set(save_id),
-                identity_id: Set(identity_id.to_string()),
-                created_at: Set(now.clone()),
-                updated_at: Set(now),
-            };
-            active.insert(db).await.map_err(|e| anyhow!("{e}"))?;
-        }
-
-        Ok(())
+            .and_then(|m| m.player_role_id))
     }
 
-    pub async fn get_save_identity(
+    pub async fn find_saves_using_player_role(
         db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<Option<String>> {
-        Ok(save_identity::Entity::find_by_id(save_id)
-            .one(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
-            .map(|m| m.identity_id))
-    }
-
-    pub async fn find_saves_using_identity(
-        db: &DatabaseConnection,
-        identity_id: &str,
+        role_id: i32,
     ) -> Result<Vec<i32>> {
-        save_identity::Entity::find()
-            .filter(save_identity::Column::IdentityId.eq(identity_id))
+        save::Entity::find()
+            .filter(save::Column::PlayerRoleId.eq(role_id))
             .all(db)
             .await
             .map_err(|e| anyhow!("{e}"))
-            .map(|rows| rows.into_iter().map(|r| r.save_id).collect())
+            .map(|rows| rows.into_iter().map(|r| r.id).collect())
     }
 
     pub async fn clear_running_script(db: &DatabaseConnection, save_id: i32) -> Result<()> {

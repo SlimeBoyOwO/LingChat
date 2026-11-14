@@ -260,9 +260,9 @@ impl Tool for UpdateAffection {
         };
 
         // 持久化到本存档的全局变量 JSON（跟随存档保存）。这是好感度唯一的落盘点。
-        let identity_id = gs.player.identity_id.clone();
+        let player_role_id = gs.player.player_role_id;
         gs.set_variable(
-            affection::var_key_for(role_id, identity_id.as_deref()),
+            affection::var_key_for(role_id, player_role_id),
             affection::state_to_value(&AffectionState {
                 total: values.average(),
                 vector: values,

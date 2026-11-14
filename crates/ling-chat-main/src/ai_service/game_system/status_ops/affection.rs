@@ -1,11 +1,9 @@
-//! 好感度的状态操作：按（角色 × 身份）读、写、播种。
+//! 好感度的状态操作：按（角色 × 玩家角色）读、写、播种。
 //!
 //! 好感度有两种存法：旧档共享的 `aff.{role_id}`，和新版的
-//! `aff.{role_id}.{identity_id}`。读的时候按「身份专属 → 旧档共享」回退（见
-//! [`affection::resolve_var`]），写的时候只写身份专属那一档——同一个角色在不同
-//! 身份下各记一份，旧档不被改写。
-//!
-//! [`affection::resolve_var`]: crate::ai_service::affection::resolve_var
+//! `aff.{role_id}.{player_role_id}`。读的时候按「专属 → 旧档共享」回退（见
+//! [`affection::resolve_var`]），写的时候只写专属那一档——同一个角色在不同
+//! 玩家身份下各记一份，旧档不被改写。
 
 use std::collections::HashMap;
 
@@ -16,27 +14,26 @@ use crate::ai_service::affection;
 use crate::ai_service::game_system::game_status::GameStatus;
 
 impl GameStatus {
-    /// 按当前身份把全局变量里的好感度覆盖到内存中的角色状态。
-    pub fn overlay_affections_for_identity(&mut self, identity_id: Option<&str>) {
+    /// 按当前玩家角色把全局变量里的好感度覆盖到内存中的角色状态。
+    pub fn overlay_affections_for_player(&mut self, player_role_id: Option<i32>) {
         self.role_manager
-            .overlay_affections_from_vars(&self.global_variables, identity_id);
+            .overlay_affections_from_vars(&self.global_variables, player_role_id);
     }
 
-    /// 按（角色 × 身份）播种初始好感：该身份已有专属值、或旧档共享默认值存在时不覆盖。
-    /// 播种成功且非默认值时，补写一条「感情档位」旁白——好感度不做逐轮注入，缺这条
-    /// 旁白时角色要等第一次评估才知道自己的感情，设定完的初始值就不会体现在第一轮。
-    pub async fn seed_identity_affection(
+    /// 按（角色 × 玩家角色）播种初始好感：已有专属值、或旧档共享默认值存在时不覆盖。
+    /// 播种成功且非默认值时，补写一条「感情档位」旁白。
+    pub async fn seed_player_affection(
         &mut self,
         db: &DatabaseConnection,
         role_id: i32,
-        identity_id: Option<&str>,
+        player_role_id: Option<i32>,
     ) -> Result<()> {
         let (init, role_name) = {
             let Some(role) = self.role_manager.get_loaded(role_id) else {
                 return Ok(());
             };
-            let identity_override = identity_id
-                .and_then(|id| self.role_manager.identity_affection_of_role(role_id, id));
+            let identity_override = player_role_id
+                .and_then(|id| self.role_manager.relation_affection_of_role(role_id, id));
             (
                 affection::effective_initial_affection(&role.settings, identity_override),
                 role.display_name
@@ -47,18 +44,18 @@ impl GameStatus {
         let Some(init) = init else {
             return Ok(());
         };
-        let key = affection::var_key_for(role_id, identity_id);
+        let key = affection::var_key_for(role_id, player_role_id);
         if self.global_variables.contains_key(&key) {
             return Ok(());
         }
-        if identity_id.is_some()
+        if player_role_id.is_some()
             && self
                 .global_variables
                 .contains_key(&affection::var_key(role_id))
         {
             return Ok(());
         }
-        self.set_identity_affection_initial(role_id, identity_id, init);
+        self.set_player_affection_initial(role_id, player_role_id, init);
         if init != 0 {
             self.add_affection_state_narration(db, &role_name, init)
                 .await?;
@@ -68,11 +65,11 @@ impl GameStatus {
 
     /// 改初始好感度后同步当前存档：写值、补一条感情档位旁白、落一次快照，
     /// 返回需要广播给前端的变更载荷。
-    pub async fn sync_identity_affection_initial(
+    pub async fn sync_player_affection_initial(
         &mut self,
         db: &DatabaseConnection,
         role_id: i32,
-        identity_id: Option<&str>,
+        player_role_id: Option<i32>,
         value: i32,
     ) -> affection::AffectionChangedPayload {
         let role_name = self.role_manager.get_loaded(role_id).map(|role| {
@@ -80,7 +77,7 @@ impl GameStatus {
                 .clone()
                 .unwrap_or_else(|| role.settings.ai_name.clone())
         });
-        self.set_identity_affection_initial(role_id, identity_id, value);
+        self.set_player_affection_initial(role_id, player_role_id, value);
 
         let vector = affection::uniform_vector(value);
         let payload = affection::AffectionChangedPayload {
@@ -124,18 +121,18 @@ impl GameStatus {
         payload
     }
 
-    /// 直接把初始好感写成该身份专属那一档，并覆盖到内存。
-    pub fn set_identity_affection_initial(
+    /// 直接把初始好感写成该玩家角色专属那一档，并覆盖到内存。
+    pub fn set_player_affection_initial(
         &mut self,
         role_id: i32,
-        identity_id: Option<&str>,
+        player_role_id: Option<i32>,
         init: i32,
     ) {
         let vector = affection::uniform_vector(init);
         self.set_variable(
-            affection::var_key_for(role_id, identity_id),
+            affection::var_key_for(role_id, player_role_id),
             affection::state_to_value(&affection::state_from_vector(vector)),
         );
-        self.overlay_affections_for_identity(identity_id);
+        self.overlay_affections_for_player(player_role_id);
     }
 }

@@ -84,7 +84,7 @@
         <div v-else class="flex flex-col gap-3">
           <div
             v-for="item in pagedIdentities"
-            :key="item.id"
+            :key="item.role_id"
             class="flex items-center gap-4 rounded-2xl border border-white/20 bg-white/10 p-4 backdrop-blur-xl transition-all duration-300 hover:-translate-y-0.5 hover:border-white/40 hover:shadow-2xl hover:shadow-indigo-500/20"
           >
             <div
@@ -129,7 +129,7 @@
               </button>
               <button
                 class="rounded-full border border-indigo-500 bg-indigo-600/80 px-4 py-1.5 text-xs font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all hover:bg-indigo-500"
-                @click="openIdentityEditor(item.id)"
+                @click="openIdentityEditor(item.role_id)"
               >
                 {{ $t("settings.identity.edit") }}
               </button>
@@ -241,7 +241,7 @@
     />
     <PlayerIdentityModal
       :visible="identityEditorVisible"
-      :identity-id="identityEditingId"
+      :identity-role-id="identityEditingRoleId"
       :targets="relationTargets"
       @close="identityEditorVisible = false"
       @saved="onIdentitySaved"
@@ -329,8 +329,7 @@ import {
   listPlayerIdentities,
   setCurrentPlayerIdentity,
   startNewGameWithIdentity,
-  aiKey,
-  meKey,
+  roleKey,
   type PlayerIdentitySummary,
 } from "../../../api/services/player-identity";
 import { applyWebInitData } from "../../../stores/modules/game/actions";
@@ -505,21 +504,23 @@ const handleSettingsSaved = () => {
 const identities = ref<PlayerIdentitySummary[]>([]);
 const identityLoading = ref(false);
 const identityEditorVisible = ref(false);
-const identityEditingId = ref<string | null>(null);
+const identityEditingRoleId = ref<number | null>(null);
 
-/** 关系目标：全部角色（不只当前分页）+ 我的身份（我侧） */
+/** 关系目标：全部角色（不只当前分页）+ 我的身份；值统一为目标角色 id */
 const relationTargets = computed<RelationTargetOption[]>(() => [
   ...allCharacters.value
     .filter((c) => !!c.resourceFolder)
     .map((c) => ({
-      value: aiKey(c.resourceFolder as string),
+      value: roleKey(c.id),
       label: c.name,
       group: t("settings.identity.targetAi"),
+      kind: "ai" as const,
     })),
   ...identities.value.map((i) => ({
-    value: meKey(i.id),
+    value: roleKey(i.role_id),
     label: i.name,
     group: t("settings.identity.targetMe"),
+    kind: "player" as const,
   })),
 ]);
 
@@ -555,16 +556,16 @@ const loadIdentities = async (): Promise<void> => {
   }
 };
 
-const openIdentityEditor = (id: string | null) => {
-  identityEditingId.value = id;
+const openIdentityEditor = (roleId: number | null) => {
+  identityEditingRoleId.value = roleId;
   identityEditorVisible.value = true;
 };
 
-const onIdentitySaved = async (id?: string) => {
+const onIdentitySaved = async (roleId?: number) => {
   identityEditorVisible.value = false;
   await loadIdentities();
   // 新建的身份可能落在后面的分页，直接翻到它所在的页
-  const index = id ? identities.value.findIndex((item) => item.id === id) : -1;
+  const index = roleId ? identities.value.findIndex((item) => item.role_id === roleId) : -1;
   if (index >= 0) changeIdentityPage(Math.floor(index / IDENTITY_PAGE_SIZE) + 1);
 };
 
@@ -591,7 +592,7 @@ const startNewGame = async (item: PlayerIdentitySummary) => {
   );
   if (!confirmed) return;
   try {
-    const gameInfo = await startNewGameWithIdentity(item.id);
+    const gameInfo = await startNewGameWithIdentity(item.role_id);
     await finishIdentityChange(
       gameInfo,
       t("settings.identity.newGameDoneTitle"),
@@ -628,7 +629,7 @@ const confirmSwitchIdentity = async (withDesc: boolean) => {
   transitionBusy.value = true;
   try {
     const gameInfo = await setCurrentPlayerIdentity(
-      item.id,
+      item.role_id,
       withDesc ? transitionExit.value : "",
       withDesc ? transitionEnter.value : "",
     );
@@ -663,7 +664,7 @@ watch(
 
 // 换角色会按角色卡自动切换当前身份，列表的「当前使用」标记要跟着刷新
 watch(
-  () => gameStore.playerIdentityId,
+  () => gameStore.playerRoleId,
   () => void loadIdentities(),
 );
 
@@ -715,12 +716,12 @@ watch(
       tryScrollGuide();
     } else {
       await loadIdentities();
-      const identityId =
-        gameStore.playerIdentityId ??
-        identities.value.find((item) => item.is_current)?.id ??
-        identities.value[0]?.id ??
+      const identityRoleId =
+        gameStore.playerRoleId ??
+        identities.value.find((item) => item.is_current)?.role_id ??
+        identities.value[0]?.role_id ??
         null;
-      openIdentityEditor(identityId);
+      openIdentityEditor(identityRoleId);
       pendingGuideAnchor.value = "relation-block-identity";
       await nextTick();
       tryScrollGuide();

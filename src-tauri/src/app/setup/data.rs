@@ -20,6 +20,14 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
 
     let db = db::init_db(&data_dir).await?;
 
+    // 玩家 User 哨兵必须先存在：玩家角色清理会把台词改回 sender_role_id=0。
+    RoleRepo::ensure_user_role(&db).await?;
+
+    // 身份卡投影成玩家角色；LAN 导入前完成，供远端存档的角色 id 映射使用。
+    ling_chat_main::db::role_sync::sync_player_roles(&db, &data_dir)
+        .await
+        .map_err(|e| anyhow::anyhow!("玩家角色同步失败: {e}"))?;
+
     // 导入 LAN 同步暂存的数据库记录（表结构就绪后才执行）
     let db_imported = ling_chat_main::lan_sync::db_sync::apply_staged_db_records(&db, &data_dir)
         .await
@@ -31,13 +39,10 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
     ling_chat_main::db::role_sync::sync_roles_from_folder(&db, &data_dir).await?;
     ling_chat_main::api::character::editor::cleanup_stale_editor_data(&db).await;
 
-    // 身份卡同步进 player_identity 索引表（文件是真源，本表只做索引）。
-    ling_chat_main::db::role_sync::sync_player_identities(&db, &data_dir)
+    // 身份卡里的初始认知只导入一次，此后数据库是唯一真源。
+    ling_chat_main::db::role_sync::import_player_identity_relations(&db, &data_dir)
         .await
-        .map_err(|e| anyhow::anyhow!("身份索引同步失败: {e}"))?;
-
-    // 确保玩家 User 角色存在（id=0，用于 line.sender_role_id 的 FK 约束）
-    RoleRepo::ensure_user_role(&db).await?;
+        .map_err(|e| anyhow::anyhow!("身份关系导入失败: {e}"))?;
 
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(app.handle());

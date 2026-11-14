@@ -56,7 +56,6 @@ export interface GameLineInit {
 
 /** 「我的身份」精简信息（对应后端 `PlayerIdentityInit`），与角色卡的称呼字段分开 */
 export interface PlayerIdentityInit {
-  id: string | null;
   name: string;
   subtitle: string;
   prompt: string;
@@ -85,8 +84,8 @@ export interface WebInitData {
   last_bgm_mode?: string | null;
   /** 上次会话环境音轨道（JSON 字符串） */
   last_ambient_tracks?: string | null;
-  /** 当前「我的身份」id（null/undefined = 未选择，使用合成默认身份） */
-  player_identity_id?: string | null;
+  /** 当前「我的身份」对应的玩家角色 id（null = 未选择，使用合成默认身份） */
+  player_role_id?: number | null;
   player_identity?: PlayerIdentityInit;
   /** 本局绑定的存档 id（null = 还没开存档） */
   active_save_id?: number | null;

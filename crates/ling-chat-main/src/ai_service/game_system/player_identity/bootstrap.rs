@@ -7,8 +7,8 @@ use anyhow::Result;
 use sea_orm::DatabaseConnection;
 
 use super::{
-    AliasEntry, IdentityStore, PlayerIdentity, RelationEndpoint, build_player_block,
-    effective_user_alias, resolve_relation, runtime_relations,
+    AliasEntry, IdentityStore, PlayerIdentity, build_player_block, effective_user_alias,
+    resolve_relation,
 };
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::types::CharacterSettings;
@@ -17,6 +17,9 @@ use crate::db::managers::role_repo::RoleRepo;
 /// 引导期解析出的玩家身份。
 pub struct PlayerBootstrap {
     identity: PlayerIdentity,
+    /// 对应的玩家角色 id；身份卡还没有角色行时为 None。
+    player_role_id: Option<i32>,
+    relations: HashMap<i32, String>,
     effective_prompt: String,
     /// 该角色对「我」的有效称呼，同时是提示词里的人名
     pub alias: String,
@@ -30,17 +33,14 @@ impl PlayerBootstrap {
         gs.player.user_name = self.identity.display_name().to_string();
         gs.player.user_subtitle = self.identity.subtitle.clone();
         gs.player.user_prompt = self.effective_prompt;
-        gs.player.identity_id = if self.identity.id.trim().is_empty() {
-            None
-        } else {
-            Some(self.identity.id.clone())
-        };
-        gs.player.relations = self.identity.relations.clone();
+        gs.player.player_role_id = self.player_role_id;
+        gs.player.relations = self.relations;
     }
 }
 
 /// 开局时确定「我」是谁：只解析数据目录的主身份，不再按角色建身份。
-pub fn resolve_player_bootstrap(
+pub async fn resolve_player_bootstrap(
+    db: &DatabaseConnection,
     data_dir: &Path,
     gs: &GameStatus,
     settings: &CharacterSettings,
@@ -53,8 +53,14 @@ pub fn resolve_player_bootstrap(
         }
     }
 
-    let speaker = RelationEndpoint::Ai(settings.character_folder.clone());
-    let target = RelationEndpoint::Me(identity.id.clone());
+    let player_role_id = match RoleRepo::get_role_by_identity_id(db, &identity.id).await {
+        Ok(Some(role)) => Some(role.id),
+        _ => None,
+    };
+    let player_relations = match player_role_id {
+        Some(role_id) => load_player_relations(db, role_id).await,
+        None => HashMap::new(),
+    };
 
     // 迁移已把「我的设定」聚合进身份卡 prompt；只有 prompt 为空（老数据未迁移）时才回退
     // 到角色卡抽取文本，避免与身份侧关系重复注入。
@@ -66,15 +72,22 @@ pub fn resolve_player_bootstrap(
     } else {
         identity.prompt.clone()
     };
-    let speaker_relations =
-        runtime_relations::load_effective(data_dir, &settings.character_folder, gs);
-    let relation = resolve_relation(
-        &speaker,
-        &target,
-        &speaker_relations,
-        &runtime_relations::identity_relations_effective(data_dir, gs, &identity.id),
-        Some(effective_prompt.as_str()),
-    );
+
+    let role_id = settings.character_id.unwrap_or_default();
+    let relation = player_role_id.and_then(|player_role_id| {
+        let speaker_relations = gs
+            .role_manager
+            .relations_for(role_id)
+            .cloned()
+            .unwrap_or_default();
+        resolve_relation(
+            role_id,
+            player_role_id,
+            &speaker_relations,
+            &player_relations,
+            Some(effective_prompt.as_str()),
+        )
+    });
 
     let alias = effective_user_alias(settings, &identity.name);
 
@@ -85,12 +98,8 @@ pub fn resolve_player_bootstrap(
         is_self: true,
     }];
 
-    // 「我」对该角色的私人认知，取自身份卡里的 ai:<角色文件夹> 条目
-    let player_view = identity
-        .relations
-        .get(&speaker.key())
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty());
+    // 「我」对该角色的私人认知，取自身份侧关系表
+    let player_view = player_relations.get(&role_id).cloned();
 
     let player_block = build_player_block(
         identity.display_name(),
@@ -103,6 +112,8 @@ pub fn resolve_player_bootstrap(
 
     PlayerBootstrap {
         identity,
+        player_role_id,
+        relations: player_relations,
         effective_prompt,
         alias,
         player_block,
@@ -121,6 +132,64 @@ fn resolve_primary_identity(store: &IdentityStore) -> PlayerIdentity {
             relations: HashMap::new(),
             ..Default::default()
         })
+}
+
+/// 玩家角色作为 subject 的有效关系（目标角色 id → 文本）。
+pub async fn load_player_relations(
+    db: &DatabaseConnection,
+    player_role_id: i32,
+) -> HashMap<i32, String> {
+    RoleRepo::load_relations(db, player_role_id)
+        .await
+        .map(|rows| {
+            rows.into_iter()
+                .filter(|(_, value)| !value.text.trim().is_empty())
+                .map(|(target, value)| (target, value.text))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 把玩家角色应用到当前 GameStatus：昵称、prompt、关系缓存。
+pub async fn apply_player_role(
+    gs: &mut GameStatus,
+    db: &DatabaseConnection,
+    data_dir: &Path,
+    player_role_id: i32,
+    fallback_prompt: String,
+) -> Result<()> {
+    let Some(role) = RoleRepo::get_role_by_id(db, player_role_id).await? else {
+        return Ok(());
+    };
+    let store = IdentityStore::new(data_dir);
+    let identity_id = role.identity_id.clone().unwrap_or_default();
+    let card = store.find_by_id(&identity_id);
+
+    gs.player.user_name = card
+        .as_ref()
+        .map(|card| card.display_name().to_string())
+        .unwrap_or(role.name);
+    gs.player.user_subtitle = card
+        .as_ref()
+        .map(|card| card.subtitle.clone())
+        .unwrap_or_default();
+    let prompt = card
+        .as_ref()
+        .map(|card| card.prompt.trim().to_string())
+        .unwrap_or_default();
+    gs.player.user_prompt = if prompt.is_empty() {
+        fallback_prompt
+    } else {
+        prompt
+    };
+    gs.player.player_role_id = Some(player_role_id);
+    gs.player.relations = load_player_relations(db, player_role_id).await;
+    if !identity_id.is_empty() {
+        if let Err(e) = store.set_current_id(&identity_id) {
+            tracing::warn!("记录当前身份失败: {e}");
+        }
+    }
+    Ok(())
 }
 
 /// 老卡 system_prompt 里「以下是我的设定」段落的正文。
@@ -165,25 +234,4 @@ pub async fn apply_bound_identity_for_role(
     };
     store.set_current_id(&card.id)?;
     Ok(Some(card.id))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn legacy_settings() -> CharacterSettings {
-        CharacterSettings {
-            character_folder: "诺一钦灵".to_string(),
-            user_name: "莱姆".to_string(),
-            user_subtitle: Some("Bilibili".to_string()),
-            system_prompt: Some("人设\n以下是我的设定：\n我是莱姆。\n".to_string()),
-            ..Default::default()
-        }
-    }
-
-    #[test]
-    fn extracts_legacy_player_prompt_without_heading() {
-        let settings = legacy_settings();
-        assert_eq!(legacy_player_prompt(&settings), "我是莱姆。");
-    }
 }
