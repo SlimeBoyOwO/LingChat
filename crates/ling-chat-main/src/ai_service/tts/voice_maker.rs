@@ -1,9 +1,4 @@
-//! 角色级 `VoiceMaker`
-//!
-//! 职责：
-//! - 根据 `VoiceModel` 配置检测每种 TTS 的可用性
-//! - 基于当前 `tts_type` 初始化对应 adapter
-//! - `generate_voice_files(segments)`：并发为每段生成音频到磁盘
+//! 角色级 `VoiceMaker`：选择并初始化 TTS 适配器，按段并发生成语音文件。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -22,6 +17,7 @@ use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, SherpaTuning};
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
@@ -42,6 +38,7 @@ pub struct TtsAvailability {
     pub fish_s2: bool,
     pub sbv2_local: bool,
     pub cosyvoice: bool,
+    pub sherpa: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -51,12 +48,12 @@ pub struct VoiceMaker {
     lang: String,
     /// 中文方言（仅 cosyvoice + lang=zh 时生效；空 = 普通话）
     voice_dialect: Option<String>,
+    character_path: Option<PathBuf>,
     temp_dir: PathBuf,
     audio_format: String,
     availability: TtsAvailability,
     tts_config: TtsConfig,
-    /// Local TTS 共享运行时（进程内引擎 + 路径 + 全局开关）。由
-    /// `build_voice_maker` 注入一次，`sbv2_local` 适配器惰性引导时使用。
+    /// 本地 TTS 共享运行时；由 `build_voice_maker` 注入。
     local_runtime: Option<LocalTtsRuntime>,
     local_cloud_fallback: Option<LocalCloudFallback>,
 }
@@ -84,6 +81,18 @@ impl LocalCloudFallback {
 
 fn non_empty(s: &Option<String>) -> bool {
     s.as_ref().map(|v| !v.trim().is_empty()).unwrap_or(false)
+}
+
+/// 解析资源路径：绝对路径直接使用；相对路径则以角色目录为基解析。
+fn resolve_character_rel_path(character_path: &Option<PathBuf>, path: &str) -> PathBuf {
+    let p = Path::new(path);
+    if p.is_absolute() {
+        return p.to_path_buf();
+    }
+    match character_path {
+        Some(base) => base.join(path),
+        None => p.to_path_buf(),
+    }
 }
 
 fn gsv_prompt_language(prompt_text: &str) -> &'static str {
@@ -163,6 +172,7 @@ impl VoiceMaker {
             tts_type: String::new(),
             lang: "ja".into(),
             voice_dialect: None,
+            character_path: None,
             temp_dir,
             audio_format,
             availability: TtsAvailability::default(),
@@ -172,8 +182,7 @@ impl VoiceMaker {
         }
     }
 
-    /// 注入本地 TTS 共享运行时。由 `build_voice_maker` 在角色注册时调用，
-    /// `sbv2_local` 适配器惰性引导及云端 fallback 判断都依赖它。
+    /// 注入本地 TTS 共享运行时。
     pub fn set_local_runtime(&mut self, local_runtime: Option<LocalTtsRuntime>) {
         self.local_runtime = local_runtime;
     }
@@ -193,6 +202,12 @@ impl VoiceMaker {
 
     pub fn availability(&self) -> TtsAvailability {
         self.availability
+    }
+
+    /// 该 TTS 是否按整句合成（情绪标签切成几段也会拼回一段）。
+    /// 目前只有 sherpa-onnx：情绪不换音色，拆段只会亏整句语气。
+    pub fn uses_whole_sentence_input(&self) -> bool {
+        matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
     }
 
     pub fn is_enabled(&self) -> bool {
@@ -220,10 +235,7 @@ impl VoiceMaker {
         // 旧参考配置：单一参考语音/文本，或仅指定了模型权重
         let gsv_legacy = (non_empty(&cfg.gsv_voice_filename) && non_empty(&cfg.gsv_voice_text))
             || (non_empty(&cfg.gsv_gpt_model_name) && non_empty(&cfg.gsv_sovits_model_name));
-        // 六情绪开关开启后，至少一个分类的参考文本与音频路径都非空才额外算可用，
-        // 判定条件与合成时构建 emo_prompts 的一致，避免出现“判定可用但合成报错”。
-        // 未填全的分类在合成时回退 gsv_legacy，所以开关不能取消旧配置的可用性，
-        // 否则开关一开而分类还没填全，原本能出声的角色会连适配器都建不出来。
+        // 六情绪开关：至少一个分类配置完整才额外算可用；未填全的分类合成时回退旧配置。
         let gsv = gsv_legacy
             || (cfg.gsv_emo_enabled.unwrap_or(false)
                 && GSV_EMO_CATEGORIES
@@ -240,6 +252,8 @@ impl VoiceMaker {
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
         // CosyVoice 云端音色：角色选了 voice_id 即可用（Key 缺失在初始化时禁用）
         let cosyvoice = non_empty(&cfg.cosyvoice_voice_id);
+        // Sherpa-ONNX 本地模型：选了模型名即可用（模型目录缺失/无效在初始化时报错）
+        let sherpa = non_empty(&cfg.sherpa_onnx_model_name);
 
         self.availability = TtsAvailability {
             sva,
@@ -252,6 +266,7 @@ impl VoiceMaker {
             fish_s2,
             sbv2_local,
             cosyvoice,
+            sherpa,
         };
     }
 
@@ -381,9 +396,7 @@ impl VoiceMaker {
                     },
                 }
                 .to_string();
-                // 六情绪参考语音：开启后按分类构造 (音频路径, 文本, 文本语言) 表，
-                // 合成时由 adapter 按当前片段情绪分类实时选择；缺省分类回退默认配置。
-                // 音频路径原样透传，由 GSV 服务端按其自身文件系统解析。
+                // 六情绪参考语音：合成时按片段情绪选择，缺省回退默认配置；路径原样透传。
                 let mut emo_prompts = HashMap::new();
                 if cfg.gsv_emo_enabled.unwrap_or(false) {
                     for cat in GSV_EMO_CATEGORIES {
@@ -498,8 +511,7 @@ impl VoiceMaker {
                     self.provider.disable();
                 } else {
                     let voice_id = cfg.cosyvoice_voice_id.clone().unwrap_or_default();
-                    // 合成模型必须与注册音色时的模型一致：优先从音色记录解析，
-                    // 找不到（音色记录被清）回退全局默认模型
+                    // 合成模型需与注册音色时一致；找不到音色记录则回退全局默认。
                     let model = self
                         .tts_config
                         .cosyvoice_voices
@@ -509,9 +521,7 @@ impl VoiceMaker {
                         .or_else(|| self.tts_config.cosyvoice_models.first().cloned())
                         .unwrap_or_else(|| "cosyvoice-v3.5-flash".to_string());
                     let mut adapter = CosyvoiceAdapter::new(api_key, model, voice_id);
-                    // 方言：仅中文生效，通过 instruction 指令触发（复刻音色需指令才输出方言）；
-                    // 其余语言：仅官方支持的语言才用 language_hints 指定合成目标语言
-                    // （es/ar 等不支持的值会触发云端报错，跳过即可）
+                    // 方言仅中文、经 instruction 触发；其余只用官方支持的语言提示。
                     if self.lang == "zh" {
                         if let Some(dialect) =
                             self.voice_dialect.clone().filter(|d| !d.trim().is_empty())
@@ -523,6 +533,96 @@ impl VoiceMaker {
                         adapter = adapter.with_language_hints(&self.lang);
                     }
                     self.provider.cosyvoice = Some(Arc::new(adapter));
+                }
+            },
+            "sherpa" | "sherpa-onnx" if self.availability.sherpa => {
+                // 模型目录位于 sherpa_onnx_models_root()/<name>/。
+                let model_name = cfg.sherpa_onnx_model_name.clone().unwrap_or_default();
+                let models_root =
+                    crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+                        .join(&model_name);
+                let model_type = cfg
+                    .sherpa_onnx_model_type
+                    .clone()
+                    .unwrap_or_else(|| "vits".to_string());
+                let language = cfg
+                    .sherpa_onnx_language
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| self.lang.clone());
+                let voice = cfg
+                    .sherpa_onnx_voice
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "female".to_string());
+                let use_gpu = cfg.sherpa_onnx_use_gpu.unwrap_or(false);
+
+                // 推理步数 / 引导强度由两个滑动条控制；越界值由 SherpaTuning::from_options 收敛。
+                let tuning = SherpaTuning::from_options(
+                    cfg.sherpa_onnx_num_steps,
+                    cfg.sherpa_onnx_guidance_scale,
+                );
+                match SherpaOnnxAdapter::new(
+                    self.tts_config.clone(),
+                    models_root.to_string_lossy().into_owned(),
+                    model_type,
+                    language,
+                    voice,
+                    use_gpu,
+                    tuning,
+                ) {
+                    Ok(mut adapter) => {
+                        if let Some(speed) = cfg.sherpa_onnx_speed {
+                            adapter.set_speed(speed.clamp(0.5, 2.0));
+                        }
+                        // 零样本参考音频（如配置了模型支持 + 参考路径/文本）
+                        let ref_audio = cfg
+                            .sherpa_onnx_ref_audio_path
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        let ref_text = cfg
+                            .sherpa_onnx_ref_text
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        match (ref_audio, ref_text) {
+                            (Some(ref_path), Some(ref_text)) => {
+                                let resolved =
+                                    resolve_character_rel_path(&self.character_path, &ref_path);
+                                match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
+                                    &resolved,
+                                ) {
+                                    Ok((samples, sr)) => {
+                                        adapter.set_reference_audio(samples, sr, ref_text);
+                                        tracing::info!(
+                                            "Sherpa-ONNX 已加载参考音频: {}",
+                                            resolved.display()
+                                        );
+                                    },
+                                    Err(e) => {
+                                        // Android 旧配置可能存着 content:// URI；这里没有 AppHandle，
+                                        // 用不了 SAF 桥，只能提示重新导入。
+                                        let hint = if ref_path.starts_with("content://") {
+                                            "（该路径是 Android 的 content:// URI，请在角色设置的语音页重新导入参考音频）"
+                                        } else {
+                                            ""
+                                        };
+                                        tracing::warn!(
+                                            "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}{hint}"
+                                        );
+                                    },
+                                }
+                            },
+                            (Some(_), None) | (None, Some(_)) => tracing::warn!(
+                                "Sherpa-ONNX 参考音频与参考文本需同时提供，当前只有一个，已忽略零样本克隆"
+                            ),
+                            (None, None) => {},
+                        }
+                        self.provider.sherpa = Some(Arc::new(adapter));
+                    },
+                    Err(e) => {
+                        tracing::warn!("Sherpa-ONNX 初始化失败: {e}");
+                        self.provider.disable();
+                    },
                 }
             },
             "indextts2" => {
@@ -558,8 +658,7 @@ impl VoiceMaker {
         }
     }
 
-    /// 编辑器使用独立 VoiceMaker 直接返回音频，不生成聊天文件或修改聊天失败计数。
-    /// 本地 TTS 的全局开关与云端回退规则与对话一致，文本按所选语言原样合成。
+    /// 编辑器试听：直接返回音频，不生成聊天文件；本地开关与云端回退规则同对话。
     pub async fn synthesize_preview(&self, text: &str, emotion: &str) -> Result<Vec<u8>> {
         if self.tts_type == "localsbv2api"
             && self
@@ -626,8 +725,7 @@ impl VoiceMaker {
             let Some(text) = segment_text_for_lang(&self.lang, seg).map(str::to_owned) else {
                 continue;
             };
-            // 将情绪分类器的预测标签传给 TTS 适配器（IndexTTS2 与 Fish S2
-            // 会消费 emo，其余适配器忽略该参数）。
+            // 情绪标签传给适配器：IndexTTS2/Fish S2 用它换参考音频，sherpa 落成语速与停顿。
             let emo = seg.predicted.clone();
 
             let file_name = if seg.voice_file.is_empty() {

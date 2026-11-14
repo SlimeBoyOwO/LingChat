@@ -16,6 +16,14 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// 获取已缓存的 data 目录；没初始化时返回 `None`。
+///
+/// 给「直接构造服务、不走 App 启动流程」的调用方用（单测、集成测试、外部工具）——
+/// 它们拿不到 AppHandle，调用 [`get_data_dir`] 会直接 panic。
+pub fn try_get_data_dir() -> Option<&'static PathBuf> {
+    DATA_DIR.get()
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：
@@ -45,7 +53,7 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         // 本 crate 位于 <repo>/crates/ling-chat-main，故需上跳两级回仓库根。
@@ -56,12 +64,80 @@ fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
             .unwrap()
             .join("data")
     } else {
-        // 桌面端便携发布：data 目录放在 exe 旁边
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+        #[cfg(target_os = "linux")]
+        {
+            // Linux 系统安装（deb/rpm/AppImage）：exe 在 /usr/bin 或只读挂载点，
+            // 不能把 data/ 放在 exe 旁边 —— 普通用户没有写权限，启动时创建
+            // models/ 等目录会直接以 os error 13 失败。改用用户数据目录，
+            // 并从安装包资源目录播种。
+            use tauri::Manager;
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("failed to resolve app_data_dir")
+                .join("data");
+            prepare_linux_data_dir(app, &data_dir);
+            data_dir
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            // 桌面端便携发布：data 目录放在 exe 旁边
+            std::env::current_exe()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join("data")
+        }
+    }
+}
+
+/// Linux 发布版：把安装包里的只读资源播种到可写的用户数据目录。
+///
+/// 安装包资源位于 `resource_dir()/data/`（deb/rpm 为 `/usr/lib/LingChat/data`，
+/// AppImage 为 AppDir 内同一路径），包含 `.official/` 与 `third_party/`。
+#[cfg(target_os = "linux")]
+fn prepare_linux_data_dir(app: &tauri::AppHandle, data_dir: &std::path::Path) {
+    use tauri::Manager;
+
+    let Ok(resource_dir) = app.path().resource_dir() else {
+        return;
+    };
+    let resource_data = resource_dir.join("data");
+    if !resource_data.exists() {
+        return;
+    }
+
+    // 首次启动（尚未写入 .seeded）：整体复制 .official/ 与 third_party/。
+    if !data_dir.join(".seeded").exists() {
+        if let Err(e) = crate::resource_sync::sync::copy_dir_recursive(&resource_data, data_dir) {
+            tracing::error!("播种用户数据目录失败: {e}");
+        }
+        return;
+    }
+
+    // 后续启动：安装包升级后，把新版本 .official/ 放进数据目录，交给前端增量同步。
+    let resource_official = resource_data.join(".official");
+    if !resource_official.exists() {
+        return;
+    }
+    let resource_manifest = resource_official.join("data_manifest.json");
+    let local_manifest = data_dir.join("data_manifest.json");
+    let newer = match (
+        crate::manifest::DataManifest::load(&resource_manifest),
+        crate::manifest::DataManifest::load(&local_manifest),
+    ) {
+        (Ok(resource), Ok(local)) => resource.data_version > local.data_version,
+        (Ok(_), Err(_)) => true,
+        _ => false,
+    };
+    if newer {
+        if let Err(e) = crate::resource_sync::sync::copy_dir_recursive(
+            &resource_official,
+            &data_dir.join(".official"),
+        ) {
+            tracing::error!("更新 .official 失败: {e}");
+        }
     }
 }
 
@@ -75,12 +151,32 @@ pub fn seed_data_dir(app: &tauri::AppHandle) -> anyhow::Result<()> {
 
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let manifest = data_dir.join("data_manifest.json");
-        if seeded.exists() && manifest.exists() {
+        let local_manifest_path = data_dir.join("data_manifest.json");
+        let was_seeded = seeded.exists();
+        let needs_full = !was_seeded;
+        // 比较打包清单与本地清单。若 .seeded 已存在但打包内容有新增，
+        // 仅增量补齐缺失文件，不覆盖本地已有/已改动数据。
+        let packaged_manifest = read_packaged_manifest(app)?;
+        let local_manifest = local_manifest_path
+            .exists()
+            .then(|| crate::manifest::DataManifest::load(&local_manifest_path).ok())
+            .flatten();
+        let needs_refresh = needs_full
+            || match (&packaged_manifest, &local_manifest) {
+                (Some(p), Some(l)) => l.diff(p).files_to_add.iter().any(|_| true),
+                (Some(_), None) => true,
+                _ => false,
+            };
+
+        if !needs_refresh {
             return Ok(());
         }
-        let _ = std::fs::remove_file(&seeded);
-        seed_via_fs_plugin(app, &data_dir)?;
+
+        let skip_existing = was_seeded && needs_refresh && !needs_full;
+        seed_via_fs_plugin(app, &data_dir, skip_existing)?;
+        if let Some(p) = packaged_manifest {
+            p.save(&local_manifest_path)?;
+        }
         std::fs::write(&seeded, b"")
             .map_err(|e| anyhow::anyhow!("failed to write .seeded marker: {}", e))?;
         tracing::info!("Data directory seeding complete (mobile)");
@@ -126,7 +222,11 @@ fn seed_desktop(
 
 /// 通过 tauri-plugin-fs 读取打包的 data.7z 并解压到 data_dir。
 #[cfg(any(target_os = "android", target_os = "ios"))]
-fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
+fn seed_via_fs_plugin(
+    app: &tauri::AppHandle,
+    data_dir: &std::path::Path,
+    skip_existing: bool,
+) -> anyhow::Result<()> {
     use anyhow::Context;
     use tauri::Manager;
     use tauri_plugin_fs::FsExt;
@@ -146,11 +246,52 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
         .read(std::path::Path::new(&archive_asset))
         .with_context(|| format!("failed to read data.7z from {}", archive_asset))?;
 
-    let cursor = std::io::Cursor::new(archive_bytes);
-    tracing::info!("Extracting data.7z ({} bytes)", cursor.get_ref().len());
+    tracing::info!("Extracting data.7z ({} bytes, skip_existing={})", archive_bytes.len(), skip_existing);
 
-    sevenz_rust2::decompress(cursor, data_dir).context("failed to extract data.7z")?;
+    // 归档在内存中，extract_sevenz 需要文件路径，先落盘到临时文件再解压。
+    let tmp_archive = data_dir.join(".data_seed_tmp.7z");
+    std::fs::write(&tmp_archive, &archive_bytes)
+        .context("failed to stage data.7z to temp file")?;
+
+    let result = crate::utils::archive::extract_sevenz(
+        &tmp_archive,
+        data_dir,
+        skip_existing,
+        &tokio_util::sync::CancellationToken::new(),
+        &|_| {},
+    );
+    let _ = std::fs::remove_file(&tmp_archive);
+    result.context("failed to extract data.7z")?;
 
     tracing::info!("Data extraction from data.7z complete");
     Ok(())
+}
+
+/// 读取打包在资源目录（data.7z 之外）的 `data/data_manifest.json`。
+///
+/// 构建脚本 `prepare-bundled-resources.mjs` 会把清单额外复制一份放到
+/// `data/data_manifest.json`，供这里快速读取，无需全量解压 data.7z 即可
+/// 得知默认资源文件集合，从而判断是否要增量补齐缺失文件。
+#[cfg(any(target_os = "android", target_os = "ios"))]
+fn read_packaged_manifest(
+    app: &tauri::AppHandle,
+) -> anyhow::Result<Option<crate::manifest::DataManifest>> {
+    use anyhow::Context;
+    use tauri::Manager;
+    use tauri_plugin_fs::FsExt;
+
+    let base = app
+        .path()
+        .resource_dir()
+        .context("failed to resolve resource_dir on mobile")?;
+    let base = base.to_string_lossy();
+    let base = base.trim_end_matches('/');
+    let asset = format!("{}/data/data_manifest.json", base);
+
+    match app.fs().read(std::path::Path::new(&asset)) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(Some)
+            .map_err(|e| anyhow::anyhow!("failed to parse packaged manifest: {e}")),
+        Err(_) => Ok(None),
+    }
 }

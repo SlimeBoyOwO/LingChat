@@ -110,6 +110,9 @@ if (existsSync(androidAssetsDir)) {
 }
 mkdirSync(androidAssetsDir, { recursive: true });
 copyFileSync(archivePath, join(androidAssetsDir, "data.7z"));
+// 额外把 data_manifest.json 放一份在 7z 外面，供移动端启动时快速比对
+// （无需全量解压 data.7z 即可知道默认资源是否有新增，进而决定是否增量补齐）。
+copyFileSync(join(buildDir, "data_manifest.json"), join(androidAssetsDir, "data_manifest.json"));
 console.log(`Copied data.7z to ${androidAssetsDir}`);
 
 // --- iOS：部署 data.7z 到 Xcode 工程资源目录 ---
@@ -128,6 +131,7 @@ if (existsSync(iosGenApple)) {
   }
   mkdirSync(iosDataDir, { recursive: true });
   copyFileSync(archivePath, join(iosDataDir, "data.7z"));
+  copyFileSync(join(buildDir, "data_manifest.json"), join(iosDataDir, "data_manifest.json"));
   console.log(`Copied data.7z to ${iosDataDir}`);
 } else {
   console.log(

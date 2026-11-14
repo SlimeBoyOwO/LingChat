@@ -19,7 +19,13 @@ use tokio::sync::{Mutex, mpsc, oneshot};
 
 use crate::ai_service::llm::LlmChunk;
 use crate::ai_service::message_system::events;
-use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generated_text};
+use crate::ai_service::message_system::processor::{
+    ends_with_sentence_end, find_turn_end, fix_ai_generated_text,
+};
+
+/// `join_sentences` 时最多扣住多少字：模型一直不给句末标点时不能无限等下去，
+/// 超过就按现状投递（宁可句子被切开，也不能压着不发）。
+const MAX_HELD_CHARS: usize = 60;
 
 /// 呈现层流协议：provider chunk 原样透传，另加一个由工具闭环插入的"执行前栅栏"。
 ///
@@ -67,6 +73,9 @@ pub struct StreamProducer {
     thinking_buf: Arc<Mutex<String>>,
     /// 工具闭环执行过工具后，暂存最后一条有效句子，直到能确定真正的收尾句。
     tool_calls_seen: Arc<AtomicBool>,
+    /// TTS 按整句合成（sherpa-onnx 不看情绪）时置 true：把"还没收句"的片段先扣住，
+    /// 等下一段送到时拼回一句再投递，免得同一句话被两次推理、语调和停顿各自重置。
+    join_sentences: bool,
 }
 
 impl StreamProducer {
@@ -76,6 +85,7 @@ impl StreamProducer {
         app: AppHandle,
         thinking_buf: Arc<Mutex<String>>,
         tool_calls_seen: Arc<AtomicBool>,
+        join_sentences: bool,
     ) -> Self {
         Self {
             llm_stream,
@@ -83,6 +93,7 @@ impl StreamProducer {
             app: Some(app),
             thinking_buf,
             tool_calls_seen,
+            join_sentences,
         }
     }
 
@@ -100,6 +111,9 @@ impl StreamProducer {
         // 工具闭环开始后保留最后一条有效句子，流结束时再决定它是否为最终句。
         // 普通聊天没有工具调用，仍按原路径立即投递，不增加流式显示延迟。
         let mut pending_sentence: Option<String> = None;
+        // `join_sentences` 时扣住的"还没收句"的片段：等下一段送到拼回一句再投递。
+        // 它没有占用句子序号，所以必须在栅栏与流结束时补投，否则文本会丢。
+        let mut held_fragment: Option<String> = None;
         // 本轮是否已发出收尾句。工具闭环下"工具后无新正文"会让这条保持 false，
         // 调用方据此补一次收尾（否则前端永远停在等待态）。
         let mut sent_final = false;
@@ -169,7 +183,9 @@ impl StreamProducer {
                             &mut round_indices,
                             &mut seen_sentences,
                             &mut pending_sentence,
+                            &mut held_fragment,
                             &self.tool_calls_seen,
+                            self.join_sentences,
                         )
                         .await?;
                     }
@@ -222,7 +238,12 @@ impl StreamProducer {
                         .await?;
                     }
 
-                    let preamble = std::mem::take(&mut buffer);
+                    let mut preamble = std::mem::take(&mut buffer);
+                    // 扣住的"还没收句"的片段排在缓冲内容之前，一起作为前导台词发出，
+                    // 否则它既不占序号又留在手里，最后会凭空消失。
+                    if let Some(held) = held_fragment.take() {
+                        preamble = format!("{held}{preamble}");
+                    }
                     let preamble = fix_ai_generated_text(&preamble);
                     // `is_duplicate` 会顺带把文本记入 `seen_sentences`：工具后模型若原样
                     // 复读这段前导，EOF 收尾时才认得出它是重复（否则会多显示一条）。
@@ -257,8 +278,11 @@ impl StreamProducer {
             print!("{}", realtime_buffer);
         }
 
-        // 最后一个句子
-        let final_content_raw = buffer;
+        // 最后一个句子（被扣住的片段排在缓冲内容之前，拼成同一句）
+        let mut final_content_raw = buffer;
+        if let Some(held) = held_fragment.take() {
+            final_content_raw = format!("{held}{final_content_raw}");
+        }
         if !final_content_raw.is_empty() {
             let final_content = fix_ai_generated_text(&final_content_raw);
             accumulated = fix_ai_generated_text(&accumulated);
@@ -336,6 +360,7 @@ impl StreamProducer {
         })
     }
 
+    #[allow(clippy::too_many_arguments)]
     async fn dispatch_sentence(
         tx: &mpsc::Sender<SentenceItem>,
         sentence: &mut String,
@@ -343,9 +368,25 @@ impl StreamProducer {
         round_indices: &mut Vec<usize>,
         seen: &mut std::collections::HashSet<String>,
         pending: &mut Option<String>,
+        held: &mut Option<String>,
         tool_calls_seen: &AtomicBool,
+        join_sentences: bool,
     ) -> Result<()> {
-        let s = std::mem::take(sentence);
+        let mut s = std::mem::take(sentence);
+
+        // 上一段没说完时先并进来：`【开心】哇，真的吗` + `【兴奋】那我们走！` 本来是一句。
+        if let Some(previous) = held.take() {
+            let mut joined = previous;
+            joined.push_str(&s);
+            s = joined;
+        }
+
+        // 还没收到句末标点、也没长到必须投递：先扣住等下一段，别让 TTS 分两次读。
+        if join_sentences && s.chars().count() < MAX_HELD_CHARS && !ends_with_sentence_end(&s) {
+            *held = Some(s);
+            return Ok(());
+        }
+
         // 复读去重：与本轮已接收句子逐字重复（忽略空白差异）时丢弃。
         // 丢弃时不消耗索引，保证 publisher 收到的索引仍然连续。
         if Self::is_duplicate(seen, &s) {
@@ -398,5 +439,103 @@ impl StreamProducer {
             return false;
         }
         !seen.insert(normalized)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `dispatch_sentence` 的一组可变状态，省得每个用例都摊开写。
+    struct Dispatcher {
+        tx: mpsc::Sender<SentenceItem>,
+        rx: mpsc::Receiver<SentenceItem>,
+        index: usize,
+        round: Vec<usize>,
+        seen: std::collections::HashSet<String>,
+        pending: Option<String>,
+        held: Option<String>,
+        tool_calls_seen: AtomicBool,
+    }
+
+    impl Dispatcher {
+        fn new() -> Self {
+            let (tx, rx) = mpsc::channel(8);
+            Self {
+                tx,
+                rx,
+                index: 0,
+                round: Vec::new(),
+                seen: std::collections::HashSet::new(),
+                pending: None,
+                held: None,
+                tool_calls_seen: AtomicBool::new(false),
+            }
+        }
+
+        async fn dispatch(&mut self, sentence: &str, join: bool) {
+            let mut sentence = sentence.to_string();
+            StreamProducer::dispatch_sentence(
+                &self.tx,
+                &mut sentence,
+                &mut self.index,
+                &mut self.round,
+                &mut self.seen,
+                &mut self.pending,
+                &mut self.held,
+                &self.tool_calls_seen,
+                join,
+            )
+            .await
+            .expect("投递失败");
+        }
+
+        /// 取出一条已投递的回复（没有则 None）。
+        fn take(&mut self) -> Option<(String, usize, bool)> {
+            match self.rx.try_recv() {
+                Ok(SentenceItem::Reply(text, index, is_final)) => Some((text, index, is_final)),
+                Ok(SentenceItem::BeforeTools { .. }) => panic!("不应收到栅栏"),
+                Err(_) => None,
+            }
+        }
+    }
+
+    /// 开启合句时：没收到句末标点的片段先扣住，等下一段拼回一句再投递；关掉时逐个投递。
+    #[tokio::test]
+    async fn holds_unfinished_sentences_when_joining() {
+        let mut d = Dispatcher::new();
+
+        d.dispatch("【开心】哇，真的吗", true).await;
+        assert!(d.take().is_none(), "没收句的片段应被扣住");
+        assert_eq!(d.held.as_deref(), Some("【开心】哇，真的吗"));
+        assert_eq!(d.index, 0, "扣住不占用句子序号");
+
+        d.dispatch("【兴奋】那我们赶紧出发吧！", true).await;
+        let (text, idx, is_final) = d.take().expect("拼回的整句应被投递");
+        assert_eq!(text, "【开心】哇，真的吗【兴奋】那我们赶紧出发吧！");
+        assert_eq!(idx, 0);
+        assert!(!is_final);
+        assert!(d.held.is_none());
+
+        // 已经收句的片段直接投递。
+        d.dispatch("【平静】就这样吧。", true).await;
+        assert_eq!(d.take().unwrap().0, "【平静】就这样吧。");
+        assert!(d.held.is_none());
+
+        // 云端 TTS（不做合句）行为不变：片段照样逐个投递。
+        d.dispatch("【开心】哇，真的吗", false).await;
+        assert_eq!(d.take().unwrap().0, "【开心】哇，真的吗");
+        assert!(d.held.is_none());
+    }
+
+    /// 模型一直不给句末标点时不能无限扣着不发。
+    #[tokio::test]
+    async fn flushes_held_fragment_when_too_long() {
+        let mut d = Dispatcher::new();
+
+        let long = format!("【平静】{}", "嗯".repeat(MAX_HELD_CHARS));
+        d.dispatch(&long, true).await;
+        assert_eq!(d.take().expect("超长必须直接投递").0, long);
+        assert!(d.held.is_none());
     }
 }

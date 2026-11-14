@@ -74,6 +74,9 @@ pub async fn preview_character_voice(
     if emotion.chars().count() > 32 {
         return Err("情绪名称过长".into());
     }
+    // 试听文本里出现假名/谚文就按对应语言合成：试一句日文不必先去改语言设置。
+    let mut settings = settings;
+    crate::ai_service::tts::text_language::apply_to_settings(&mut settings, text);
     let _permit = PREVIEW_GATE
         .try_acquire()
         .map_err(|_| "已有语音试听正在合成，请稍后重试")?;

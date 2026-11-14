@@ -126,6 +126,23 @@
                     :placeholder="field.placeholder"
                     class="glass-input"
                   />
+                  <!-- 滑动条：推理步数 / 引导强度这类范围有限的数值。
+                       设置里还没存过值时显示 defaultValue（后端默认值），而非贴在 min 上。 -->
+                  <div v-else-if="field.type === 'range'" class="flex items-center gap-3">
+                    <input
+                      :id="field.key"
+                      type="range"
+                      :min="field.min ?? 0"
+                      :max="field.max ?? 100"
+                      :step="field.step ?? 1"
+                      :value="fieldValue(field) ?? field.defaultValue ?? field.min ?? 0"
+                      class="accent-brand h-1.5 flex-1 cursor-pointer"
+                      @input="onRangeInput(field, $event)"
+                    />
+                    <span class="w-10 shrink-0 text-right text-sm text-white/80 tabular-nums">
+                      {{ formatRangeValue(field) }}
+                    </span>
+                  </div>
                   <DialogueExamplesEditor
                     v-else-if="field.type === 'examples'"
                     v-model="fieldModel(field).value"
@@ -144,6 +161,7 @@
                     :id="field.key"
                     v-model="fieldModel(field).value"
                     class="glass-input"
+                    @change="onSelectChange(field, $event)"
                   >
                     <option
                       v-for="opt in resolveFieldOptions(field)"
@@ -155,12 +173,17 @@
                     </option>
                   </select>
                   <!-- 开关：轨道是第二个 label，滑块用 peer-checked 联动 -->
-                  <div v-else-if="field.type === 'switch'" class="relative flex w-fit items-center">
+                  <div
+                    v-else-if="field.type === 'switch'"
+                    class="relative flex w-fit items-center"
+                    :class="field.disabled ? 'cursor-not-allowed opacity-40' : ''"
+                  >
                     <input
                       :id="field.key"
                       v-model="fieldModel(field).value"
                       type="checkbox"
                       class="peer sr-only"
+                      :disabled="field.disabled"
                     />
                     <label
                       :for="field.key"
@@ -170,6 +193,71 @@
                       class="pointer-events-none absolute top-0.5 left-0.5 h-4 w-4 rounded-full bg-white transition-transform peer-checked:translate-x-4"
                     ></div>
                   </div>
+                  <!-- 参考音频：导入到应用数据目录（Android content:// 经 SAF 落盘）。 -->
+                  <div
+                    v-else-if="field.type === 'audio'"
+                    class="flex items-center gap-3 rounded-xl border border-white/10 bg-black/20 px-3.5 py-2.5"
+                  >
+                    <Icon icon="mic" :size="16" class="shrink-0 text-white/40" />
+                    <span
+                      class="min-w-0 flex-1 truncate text-sm"
+                      :class="fieldValue(field) ? 'text-white' : 'text-white/40'"
+                      :title="String(fieldValue(field) || '')"
+                    >
+                      {{
+                        fieldValue(field)
+                          ? refAudioName(fieldValue(field))
+                          : t("settings.sherpa.refNone")
+                      }}
+                    </span>
+                    <button
+                      type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-3 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
+                      :disabled="audioImportingKey === field.key"
+                      @click="importRefAudio(field)"
+                    >
+                      {{
+                        audioImportingKey === field.key
+                          ? t("settings.sherpa.refImporting")
+                          : fieldValue(field)
+                            ? t("settings.sherpa.refChange")
+                            : t("settings.sherpa.refPick")
+                      }}
+                    </button>
+                    <button
+                      v-if="fieldValue(field)"
+                      type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/80 transition-colors hover:bg-white/10"
+                      @click="toggleRefAudioPlayback(field)"
+                    >
+                      {{
+                        audioPlayingKey === field.key
+                          ? t("settings.sherpa.refStop")
+                          : t("settings.sherpa.refListen")
+                      }}
+                    </button>
+                    <button
+                      v-if="fieldValue(field)"
+                      type="button"
+                      class="shrink-0 rounded-lg border border-white/10 px-2.5 py-1.5 text-xs text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+                      @click="clearRefAudio(field)"
+                    >
+                      {{ t("settings.sherpa.refClear") }}
+                    </button>
+                  </div>
+                  <button
+                    v-if="fieldValue(field)"
+                    type="button"
+                    class="self-start text-[12px] text-[#8ea2ff] transition-colors hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+                    :disabled="audioTranscribingKey === field.key"
+                    @click="transcribeRefAudio(field)"
+                  >
+                    {{
+                      audioTranscribingKey === field.key
+                        ? t("settings.sherpa.refTranscribing")
+                        : t("settings.sherpa.refTranscribe")
+                    }}
+                  </button>
                   <p v-if="field.hint" class="text-[12px] leading-relaxed text-white/40">
                     {{ field.hint }}
                   </p>
@@ -475,7 +563,13 @@ import { listPlayerIdentities, type PlayerIdentitySummary } from "@/api/services
 import { confirmSaveEffect } from "../../../composables/usePreSaveConfirm";
 import { resolveLive2dVariant } from "@/types/live2d";
 import { characterEditorKey } from "@/composables/useCharacterEditor";
+import * as TtsLocal from "@/api/services/tts/tts-local";
 import { convertFileSrc } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
+import { audioDialogFilters } from "@/utils/dialogFilters";
+import { isAndroid, isIOS, isMacOS, isWindows } from "@/utils/platform";
+import { decodePathFileName } from "@/utils/path";
+import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { Icon } from "../../base";
 import ExpandableInput from "../../ui/ExpandableInput.vue";
 import HotwordSettings from "../character/HotwordSettings.vue";
@@ -540,6 +634,14 @@ const draftClothes = ref<Array<{ title: string; avatar: string }>>([]);
 const clothesLoading = ref(false);
 let clothesSequence = 0;
 let loadSequence = 0;
+/** 正在导入参考音频的字段 key（同一时刻只会有一个导入在进行）。 */
+const audioImportingKey = ref<string | null>(null);
+/** 正在识别参考音频文本的字段 key。 */
+const audioTranscribingKey = ref<string | null>(null);
+/** 只接受最后一次识别结果，避免切换音频后旧结果覆盖新文本。 */
+let refTranscribeSequence = 0;
+/** 正在试听参考音频的字段 key（同一时刻只会有一个在播放）。 */
+const audioPlayingKey = ref<string | null>(null);
 provide(characterEditorKey, { editId, busy: resourceBusy, revision: resourceRevision });
 const hasChanges = computed(
   () =>
@@ -595,12 +697,13 @@ async function discardDraft() {
     editRoleId.value = undefined;
   }
 }
-// 语音相关状态与操作收敛在 composable 里，这里只做接线
 const {
   installedVoices,
   cloudVoices,
+  installedSherpaModels,
   refreshLocalVoices,
   refreshCloudVoices,
+  refreshSherpaModels,
   ensureVoiceModels,
   migrateLegacyVoiceModelFields,
   GSV_EMO_CATEGORIES,
@@ -699,11 +802,84 @@ const resolveFieldOptions = (field: FieldSchema) => {
   return options.filter((option) => !option.visibleIf || option.visibleIf(localSettings.value));
 };
 
+// 下拉项变更后的副作用钩子（v-model 已先写入值，这里只做联动）。
+const onSelectChange = (field: FieldSchema, event: Event) => {
+  const value = (event.target as HTMLSelectElement).value;
+  field.onChange?.(value, localSettings.value);
+};
+
 // 主对话/桌宠形象共用的选项；按 docs/i18n.md 只翻译标签、不翻译取值
 const avatarModeOptions = computed<FieldOption[]>(() => [
   { label: t("settings.characterInfo.avatarModeOptions.live2d"), value: "live2d" },
   { label: t("settings.characterInfo.avatarModeOptions.image"), value: "image" },
 ]);
+
+/** 模型自带音色（读 ONNX metadata，不加载模型）；多文件模型失败时退回语义档。 */
+const sherpaSpeakers = ref<TtsLocal.SherpaSpeakersInfo | null>(null);
+let sherpaSpeakersRequest = 0;
+
+async function loadSherpaSpeakers(modelId: unknown) {
+  const id = String(modelId ?? "").trim();
+  const request = ++sherpaSpeakersRequest;
+  if (!id) {
+    sherpaSpeakers.value = null;
+    return;
+  }
+  // 旧模型的 sid 列表不再有效，先清空。
+  sherpaSpeakers.value = null;
+  try {
+    const info = await TtsLocal.listSherpaSpeakers(id);
+    if (request === sherpaSpeakersRequest) sherpaSpeakers.value = info;
+  } catch (error) {
+    console.warn("[SettingsCharacterInfo] 读取模型音色失败:", error);
+    if (request === sherpaSpeakersRequest) sherpaSpeakers.value = null;
+  }
+}
+
+/** 当前角色选中的 Sherpa 模型目录名（字段可能存在 voice_models 或顶层）。 */
+function currentSherpaModelId(): string {
+  const voiceModels = localSettings.value?.voice_models;
+  const nested =
+    voiceModels && typeof voiceModels === "object" ? voiceModels.sherpa_onnx_model_name : undefined;
+  return String(nested ?? localSettings.value?.sherpa_onnx_model_name ?? "").trim();
+}
+
+// 模型名变化时刷新音色列表。
+watch(
+  () => currentSherpaModelId(),
+  (id) => void loadSherpaSpeakers(id),
+  { immediate: true },
+);
+
+// Sherpa 音色：四个语义档 + 模型自带 sid；把当前值并入选项，避免下拉框空白和丢值。
+const sherpaVoiceOptions = computed<FieldOption[]>(() => {
+  const current = String(ensureVoiceModels().sherpa_onnx_voice ?? "").trim();
+  const options: FieldOption[] = [
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesFemale"), value: "female" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesMale"), value: "male" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesChild"), value: "child" },
+    { label: t("settings.characterInfo.fields.sherpaOnnxVoicesElderly"), value: "elderly" },
+  ];
+  for (const speaker of sherpaSpeakers.value?.speakers ?? []) {
+    options.push({
+      label: speaker.name ? `${speaker.sid} · ${speaker.name}` : String(speaker.sid),
+      value: String(speaker.sid),
+    });
+  }
+  if (current && !options.some((option) => option.value === current)) {
+    options.unshift({ label: current, value: current });
+  }
+  return options;
+});
+
+// Linux 桌面无 GPU 后端；Windows 需 DirectML 构建，详见 docs/inference-devices.md §9。
+const gpuUnsupported = computed(() => !isAndroid() && !isIOS() && !isMacOS() && !isWindows());
+const gpuSwitchHint = computed(() => {
+  if (gpuUnsupported.value) return t("settings.sherpa.useGpuLinuxHint");
+  if (isWindows()) return t("settings.sherpa.useGpuWindowsHint");
+  if (isAndroid()) return t("settings.sherpa.useGpuAndroidHint");
+  return "";
+});
 
 const schemas = computed(() =>
   buildSchemas({
@@ -711,6 +887,11 @@ const schemas = computed(() =>
     avatarModeOptions: avatarModeOptions.value,
     cloudVoices: cloudVoices.value,
     installedVoices: installedVoices.value,
+    installedSherpaModels: installedSherpaModels.value,
+    applySherpaModelDefaults,
+    sherpaVoiceOptions: sherpaVoiceOptions.value,
+    gpuUnsupported: gpuUnsupported.value,
+    gpuSwitchHint: gpuSwitchHint.value,
   }),
 );
 
@@ -723,7 +904,37 @@ const currentTabFields = computed(() => {
   return fields.filter((field) => !field.visibleIf || field.visibleIf(localSettings.value));
 });
 
-// GSV 六情绪参考语音：自定义 UI，只写草稿，由底部保存统一提交
+// 选中模型后同步其类型/语言/音色；类型必须与模型一致。
+const applySherpaModelDefaults = (modelId: string) => {
+  const model = installedSherpaModels.value.find((m) => m.id === modelId);
+  if (!model) return;
+  const voiceModels = ensureVoiceModels();
+  if (model.model_type) voiceModels.sherpa_onnx_model_type = model.model_type;
+  if (model.language) voiceModels.sherpa_onnx_lang = model.language;
+  if (model.voice) voiceModels.sherpa_onnx_voice = model.voice;
+};
+
+/** 迁移历史 content:// 参考音频为应用数据目录的本地 WAV，写回 voice_models；迁移后需保存生效。 */
+const migrateLegacyRefAudioPath = async () => {
+  const roleId = editRoleId.value;
+  const voiceModels = ensureVoiceModels();
+  const currentRefAudio = () =>
+    String(
+      localSettings.value.sherpa_onnx_ref_audio_path ??
+        voiceModels.sherpa_onnx_ref_audio_path ??
+        "",
+    ).trim();
+  const legacy = currentRefAudio();
+  if (!legacy.startsWith("content://")) return;
+  const imported = await TtsLocal.migrateSherpaRefAudio(legacy);
+  if (!imported) return;
+  // 异步期间可能切换角色或改值，只在仍是原值时写回。
+  if (editRoleId.value !== roleId) return;
+  if (currentRefAudio() !== legacy) return;
+  voiceModels.sherpa_onnx_ref_audio_path = imported.path;
+};
+
+// --- GSV 六情绪参考语音（自定义 UI；只写草稿，由底部保存统一提交） ---
 
 const fieldModel = (field: FieldSchema) => {
   return computed({
@@ -745,7 +956,11 @@ const fieldModel = (field: FieldSchema) => {
     set: (val: any) => {
       const isBlank = val === "" || val === null || val === undefined || Number.isNaN(Number(val));
       const coerced =
-        field.type === "number" ? (field.nullable && isBlank ? undefined : Number(val)) : val;
+        field.type === "number" || field.type === "range"
+          ? field.nullable && isBlank
+            ? undefined
+            : Number(val)
+          : val;
       let target: any;
       if (field.parent) {
         if (
@@ -764,6 +979,145 @@ const fieldModel = (field: FieldSchema) => {
     },
   });
 };
+
+/** 读取字段当前值；模板里要多次读同一个字段时，避免重复 new computed。 */
+const fieldValue = (field: FieldSchema): any => fieldModel(field).value;
+
+/** 滑块右侧的数值：没存过时显示 defaultValue，小数位跟随 step（4 / 1.0）。 */
+const formatRangeValue = (field: FieldSchema): string => {
+  const raw = fieldValue(field) ?? field.defaultValue ?? field.min ?? 0;
+  const decimals = String(field.step ?? "1").includes(".") ? 1 : 0;
+  return Number(raw).toFixed(decimals);
+};
+
+/** range 输入框给的是字符串，必须显式转数字，否则会被存成 "4"。 */
+const onRangeInput = (field: FieldSchema, event: Event): void => {
+  const value = Number((event.target as HTMLInputElement).value);
+  if (!Number.isFinite(value)) return;
+  fieldModel(field).value = value;
+};
+
+// 兼容历史路径：content:// 末段是 percent-encoded id，需解码取文件名。
+const refAudioName = (value: unknown): string => decodePathFileName(String(value ?? ""));
+
+/** 导入参考音频：字段存后端复制到应用数据目录并转成 PCM WAV 的本地路径，而非原始路径。 */
+async function importRefAudio(field: FieldSchema): Promise<void> {
+  try {
+    const selected = await open({ multiple: false, filters: audioDialogFilters() });
+    if (typeof selected !== "string") return;
+    audioImportingKey.value = field.key;
+    const imported = await TtsLocal.importSherpaRefAudio(selected);
+    stopRefAudioPlayback();
+    fieldModel(field).value = imported.path;
+    // 换音频后旧文本不再对应，先清空再自动识别。
+    setRefText("");
+    uiStore.showSuccess({
+      title: t("settings.sherpa.refLoaded"),
+      message: imported.file_name,
+    });
+    void transcribeRefAudio(field);
+  } catch (error: any) {
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
+    console.error("[SettingsCharacterInfo] 导入参考音频失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_AUDIO_UNSUPPORTED: t("settings.sherpa.refImportUnsupported"),
+      SHERPA_REF_AUDIO_OPUS: t("settings.sherpa.refImportOpus"),
+      SHERPA_REF_AUDIO_TOO_LONG: t("settings.sherpa.refImportTooLong"),
+    };
+    uiStore.showError({
+      title: t("settings.sherpa.refImportFailed"),
+      message: codeMessages[rawMessage] ?? rawMessage,
+    });
+  } finally {
+    audioImportingKey.value = null;
+  }
+}
+
+/** 参考文本统一写在 voice_models，自动识别与手动输入共用同一字段。 */
+function setRefText(text: string): void {
+  ensureVoiceModels().sherpa_onnx_ref_text = text;
+}
+
+function getRefText(): string {
+  return String(ensureVoiceModels().sherpa_onnx_ref_text ?? "");
+}
+
+/** 用本地 SenseVoice 识别参考音频并填入参考文本；手动编辑过的文本不会被覆盖。 */
+async function transcribeRefAudio(field: FieldSchema): Promise<void> {
+  const path = String(fieldValue(field) ?? "").trim();
+  if (!path) return;
+
+  const sequence = ++refTranscribeSequence;
+  const roleId = editRoleId.value;
+  const before = getRefText();
+  audioTranscribingKey.value = field.key;
+  try {
+    const text = await TtsLocal.transcribeSherpaRefAudio(path);
+    if (sequence !== refTranscribeSequence) return;
+    if (editRoleId.value !== roleId) return;
+    if (String(fieldValue(field) ?? "").trim() !== path) return;
+    if (getRefText() !== before) return;
+    setRefText(text);
+  } catch (error: any) {
+    if (sequence !== refTranscribeSequence) return;
+    if (editRoleId.value !== roleId) return;
+    const rawMessage = typeof error === "string" ? error : error?.message || String(error);
+    console.error("[SettingsCharacterInfo] 识别参考文本失败:", error);
+    const codeMessages: Record<string, string> = {
+      SHERPA_REF_ASR_NO_MODEL: t("settings.sherpa.refTranscribeNoModel"),
+      SHERPA_REF_ASR_EMPTY: t("settings.sherpa.refTranscribeEmpty"),
+    };
+    uiStore.showError({
+      title: t("settings.sherpa.refTranscribeFailed"),
+      message: codeMessages[rawMessage] ?? rawMessage,
+    });
+  } finally {
+    if (sequence === refTranscribeSequence) audioTranscribingKey.value = null;
+  }
+}
+
+/** 清除参考音频时同步清掉旧文本，避免保存成不匹配的组合。 */
+function clearRefAudio(field: FieldSchema): void {
+  refTranscribeSequence++;
+  audioTranscribingKey.value = null;
+  stopRefAudioPlayback();
+  fieldModel(field).value = "";
+  setRefText("");
+}
+
+/** 停止参考音频试听。 */
+function stopRefAudioPlayback(): void {
+  stopCurrentAudio();
+  audioPlayingKey.value = null;
+}
+
+/** 试听已导入的参考音频（导入时已转为 WAV）。 */
+async function toggleRefAudioPlayback(field: FieldSchema): Promise<void> {
+  const path = String(fieldValue(field) ?? "").trim();
+  if (!path) return;
+  if (audioPlayingKey.value === field.key) {
+    stopRefAudioPlayback();
+    return;
+  }
+  stopRefAudioPlayback();
+  try {
+    const audio = await playLocalAudio(path);
+    audioPlayingKey.value = field.key;
+    const done = () => {
+      if (audioPlayingKey.value === field.key) audioPlayingKey.value = null;
+    };
+    // 用 addEventListener 而不是覆盖 onended：playLocalAudio 自己也挂了 onended。
+    audio.addEventListener("ended", done);
+    audio.addEventListener("error", done);
+  } catch (error: any) {
+    audioPlayingKey.value = null;
+    console.error("[SettingsCharacterInfo] 试听参考音频失败:", error);
+    uiStore.showError({
+      title: t("settings.sherpa.refPlayFailed"),
+      message: typeof error === "string" ? error : error?.message || String(error),
+    });
+  }
+}
 
 const clothesList = computed({
   get: () => {
@@ -847,6 +1201,7 @@ watch(
       resourceRevision.value = 0;
       localSettings.value = JSON.parse(JSON.stringify(draft.settings));
       migrateLegacyVoiceModelFields();
+      void migrateLegacyRefAudioPath();
       if (!localSettings.value.voice_lang) {
         localSettings.value.voice_lang = "ja";
       }
@@ -885,6 +1240,10 @@ watch(
       // 本地 TTS 音色:仅 localsbv2api 需要
       if (ttsType === "localsbv2api") {
         void refreshLocalVoices();
+      }
+      // Sherpa-ONNX 本地模型下拉:仅 sherpa-onnx 需要
+      if (ttsType === "sherpa-onnx") {
+        void refreshSherpaModels();
       }
       // 云端音色:cosyvoice 下拉随时需要（与 tts_type 无关）
       void refreshCloudVoices();
@@ -1060,6 +1419,7 @@ async function onTouchRegionsApply(value: Record<string, unknown>) {
 onUnmounted(() => {
   ++loadSequence;
   loaded.value = false;
+  stopRefAudioPlayback();
   void discardDraft().catch(console.error);
 });
 </script>
