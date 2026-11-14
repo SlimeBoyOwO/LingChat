@@ -1,0 +1,525 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="4000" height="2960" viewBox="0 0 4000 2960">
+<title>LingChat 数据库 ER 图</title>
+<rect width="100%" height="100%" fill="#ffffff"/>
+<rect width="4000" height="2960" fill="#ffffff"/>
+<text x="60" y="62" font-size="28" fill="#0f172a" text-anchor="start" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">LingChat 数据库 ER 图 · Chen 表示法</text>
+<text x="60" y="92" font-size="13" fill="#475569" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">概念模型：矩形=实体，菱形=联系（标注物理表名），椭圆=属性，下划线=主键；虚线框为跨分区的实体引用</text>
+<rect x="60" y="120" width="2440" height="1560" rx="14" fill="#fbfdff" stroke="#e2e8f0"/>
+<text x="82" y="154" font-size="18" fill="#0f172a" text-anchor="start" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">核心对话</text>
+<text x="82" y="176" font-size="11.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色、存档、台词与剧本运行态</text>
+<rect x="2540" y="120" width="1400" height="1560" rx="14" fill="#fbfdff" stroke="#e2e8f0"/>
+<text x="2562" y="154" font-size="18" fill="#0f172a" text-anchor="start" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">玩家身份与认知</text>
+<text x="2562" y="176" font-size="11.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">身份卡（文件）投影为 role（role_type = player）；认知统一存 role_relation</text>
+<rect x="60" y="1720" width="1500" height="1180" rx="14" fill="#fbfdff" stroke="#e2e8f0"/>
+<text x="82" y="1754" font-size="18" fill="#0f172a" text-anchor="start" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">ASR 热词</text>
+<text x="82" y="1776" font-size="11.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色级 / 全局 / 词库三套热词</text>
+<rect x="1600" y="1720" width="1500" height="1180" rx="14" fill="#fbfdff" stroke="#e2e8f0"/>
+<text x="1622" y="1754" font-size="18" fill="#0f172a" text-anchor="start" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">AI 助手</text>
+<text x="1622" y="1776" font-size="11.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">剧本编辑器的助手会话</text>
+<path d="M 700 450 L 527 296" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 527 296" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 523 340" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 523 340" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 507 384" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 507 384" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 527 428" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 527 428" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 526.2 472" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 526.2 472" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 507 516" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 507 516" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 519.8 560" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 519.8 560" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 450 L 475 604" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 450 L 475 604" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1186.8 377" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1186.8 377" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1290.8 377" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1290.8 377" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1394.8 377" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1394.8 377" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1506 377" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1506 377" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1137.2 327" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1137.2 327" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1274.8000000000002 327" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1274.8000000000002 327" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1425.2 327" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1425.2 327" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1559.6000000000001 327" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1559.6000000000001 327" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 450 L 1350 277" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 450 L 1350 277" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873 792" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873 792" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873 836" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873 836" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 896.2 880" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 896.2 880" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 899.4 924" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 899.4 924" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 880.2 968" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 880.2 968" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 889.8 1012" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 889.8 1012" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 877 1056" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 877 1056" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873 1100" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873 1100" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873.8 1144" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873.8 1144" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 889.8 1188" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 889.8 1188" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 883.4 1232" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 883.4 1232" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873 1276" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873 1276" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873.8 1320" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873.8 1320" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 873 1364" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 873 1364" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 700 1100 L 889.8 1408" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 700 1100 L 889.8 1408" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2081.8 340" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2081.8 340" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2095.4 384" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2095.4 384" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2095.4 428" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2095.4 428" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2101.8 472" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2101.8 472" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2098.6000000000004 516" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2098.6000000000004 516" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 450 L 2081.8 560" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 450 L 2081.8 560" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 950 L 1523 884" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 950 L 1523 884" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 950 L 1523 928" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 950 L 1523 928" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 950 L 1523 972" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 950 L 1523 972" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1350 950 L 1523 1016" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1350 950 L 1523 1016" stroke="#2563eb" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 950 L 2083.2 862" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 950 L 2083.2 862" stroke="#475569" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 950 L 2106.4 906" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 950 L 2106.4 906" stroke="#475569" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 950 L 2106.4 950" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 950 L 2106.4 950" stroke="#475569" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 950 L 2090.4 994" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 950 L 2090.4 994" stroke="#475569" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1900 950 L 2093.6 1038" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 1900 950 L 2093.6 1038" stroke="#475569" stroke-width="1.3" opacity="0.85"/>
+<path d="M 1025 450 L 700 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1025 450 L 700 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1025 450 L 1350 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1025 450 L 1350 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1350 700 L 1350 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1350 700 L 1350 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1350 700 L 1350 950" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1350 700 L 1350 950" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1025 700 L 700 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1025 700 L 700 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1025 700 L 1350 950" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1025 700 L 1350 950" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1625 450 L 1350 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1625 450 L 1350 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 1625 450 L 1900 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 1625 450 L 1900 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 700 775 L 700 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 700 775 L 700 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 700 775 L 700 1100" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 700 775 L 700 1100" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 420 840 L 700 450" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 420 840 L 700 450" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 420 840 L 700 1100" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 420 840 L 700 1100" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 480 1220 L 605 1132" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 480 1220 L 605 1132" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 480 1220 L 700 1133" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 480 1220 L 700 1133" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 3370 620 L 2970 420" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 3370 620 L 2970 420" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 3370 620 L 2970 820" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 3370 620 L 2970 820" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 3440 1180 L 2970 810" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 3440 1180 L 2970 810" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 3440 1180 L 2970 832" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 3440 1180 L 2970 832" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 3440 1180 L 3305.6 1243" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 3440 1180 L 3305.6 1243" stroke="#334155" stroke-width="1.3" opacity="0.85"/>
+<path d="M 3440 1180 L 3436 1243" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 3440 1180 L 3436 1243" stroke="#334155" stroke-width="1.3" opacity="0.85"/>
+<path d="M 3440 1180 L 3570.4 1243" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 3440 1180 L 3570.4 1243" stroke="#334155" stroke-width="1.3" opacity="0.85"/>
+<path d="M 440 1950 L 256.8 1928" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 440 1950 L 256.8 1928" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 440 1950 L 256.8 1972" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 440 1950 L 256.8 1972" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 1950 L 1119.5 1884" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 1950 L 1119.5 1884" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 1950 L 1126.7 1928" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 1950 L 1126.7 1928" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 1950 L 1119.5 1972" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 1950 L 1119.5 1972" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 1950 L 1119.5 2016" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 1950 L 1119.5 2016" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 2340 L 1113 2274" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 2340 L 1113 2274" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 2340 L 1113 2318" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 2340 L 1113 2318" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 2340 L 1113 2362" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 2340 L 1113 2362" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 940 2340 L 1113 2406" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 940 2340 L 1113 2406" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 440 2660 L 615.8 2616" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 440 2660 L 615.8 2616" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 440 2660 L 615.8 2660" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 440 2660 L 615.8 2660" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 440 2660 L 615.8 2704" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 440 2660 L 615.8 2704" stroke="#b45309" stroke-width="1.3" opacity="0.85"/>
+<path d="M 690 1950 L 440 1950" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 690 1950 L 440 1950" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 690 1950 L 940 1950" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 690 1950 L 940 1950" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 690 2340 L 440 2340" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 690 2340 L 440 2340" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 690 2340 L 940 2340" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 690 2340 L 940 2340" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 2020 2020 L 1807.2 1932" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2020 2020 L 1807.2 1932" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2020 2020 L 1807.2 1976" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2020 2020 L 1807.2 1976" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2020 2020 L 1803.2 2020" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2020 2020 L 1803.2 2020" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2020 2020 L 1803.2 2064" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2020 2020 L 1803.2 2064" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2020 2020 L 1803.2 2108" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2020 2020 L 1803.2 2108" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2764.2999999999997 1800" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2764.2999999999997 1800" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2784.2999999999997 1844" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2784.2999999999997 1844" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2764.2999999999997 1888" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2764.2999999999997 1888" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2764.2999999999997 1932" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2764.2999999999997 1932" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2765.1 1976" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2765.1 1976" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2777.8999999999996 2020" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2777.8999999999996 2020" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2790.7 2064" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2790.7 2064" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2777.8999999999996 2108" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2777.8999999999996 2108" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2768.2999999999997 2152" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2768.2999999999997 2152" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2774.7 2196" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2774.7 2196" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2570 2020 L 2768.2999999999997 2240" stroke="#ffffff" stroke-width="5.3"/>
+<path d="M 2570 2020 L 2768.2999999999997 2240" stroke="#7c3aed" stroke-width="1.3" opacity="0.85"/>
+<path d="M 2295 2020 L 2020 2020" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 2295 2020 L 2020 2020" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<path d="M 2295 2020 L 2570 2020" stroke="#ffffff" stroke-width="5.7"/>
+<path d="M 2295 2020 L 2570 2020" stroke="#334155" stroke-width="1.7" opacity="0.85"/>
+<rect x="605" y="417" width="190" height="66" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="700" y="446" font-size="15" fill="#2563eb" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role</text>
+<text x="700" y="466" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色</text>
+<rect x="1255" y="417" width="190" height="66" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="1350" y="446" font-size="15" fill="#2563eb" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save</text>
+<text x="1350" y="466" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">存档</text>
+<rect x="605" y="1067" width="190" height="66" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="700" y="1096" font-size="15" fill="#2563eb" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">line</text>
+<text x="700" y="1116" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">台词</text>
+<rect x="1796.2" y="417" width="207.60000000000002" height="66" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="1900" y="446" font-size="15" fill="#2563eb" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">running_script</text>
+<text x="1900" y="466" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">剧本运行态</text>
+<rect x="1255" y="917" width="190" height="66" rx="7" fill="#eff6ff" stroke="#2563eb" stroke-width="1.8"/>
+<text x="1350" y="946" font-size="15" fill="#2563eb" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">memory_bank</text>
+<text x="1350" y="966" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">持久记忆</text>
+<rect x="1794.8" y="917" width="210.4" height="66" rx="7" fill="#f8fafc" stroke="#475569" stroke-width="1.8"/>
+<text x="1900" y="946" font-size="15" fill="#475569" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">adventure_unlock</text>
+<text x="1900" y="966" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">冒险解锁</text>
+<polygon points="1025,419 1101.1,450 1025,481 948.9,450" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="1025" y="449" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">主角</text>
+<text x="1025" y="465" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save.main_role_id</text>
+<polygon points="1350,669 1432.7,700 1350,731 1267.3,700" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="1350" y="699" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">存档记忆</text>
+<text x="1350" y="715" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">memory_bank.save_id</text>
+<polygon points="1025,669 1107.7,700 1025,731 942.3,700" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="1025" y="699" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色记忆</text>
+<text x="1025" y="715" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">memory_bank.role_id</text>
+<polygon points="1625,419 1717.6,450 1625,481 1532.4,450" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="1625" y="449" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">运行</text>
+<text x="1625" y="465" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">running_script.save_id</text>
+<polygon points="700,744 782.7,775 700,806 617.3,775" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="700" y="774" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">发送</text>
+<text x="700" y="790" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">line.sender_role_id</text>
+<polygon points="420,809 496.1,840 420,871 343.9,840" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="420" y="839" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">感知</text>
+<text x="420" y="855" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">表 line_perception</text>
+<text x="502.1" y="807" font-size="9.5" fill="#b45309" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">M:N</text>
+<polygon points="480,1189 562.7,1220 480,1251 397.3,1220" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="480" y="1219" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">父级</text>
+<text x="480" y="1235" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">line.parent_line_id</text>
+<ellipse cx="527" cy="296" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="527" y="300" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="499.72" y1="303" x2="554.28" y2="303" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="523" cy="340" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="523" y="344" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">script_key</text>
+<ellipse cx="507" cy="384" rx="64" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="507" y="388" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">script_role_key</text>
+<ellipse cx="527" cy="428" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="527" y="432" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">name</text>
+<ellipse cx="526.2" cy="472" rx="44.8" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="526.2" y="476" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role_type</text>
+<ellipse cx="507" cy="516" rx="64" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="507" y="520" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">resource_folder</text>
+<ellipse cx="519.8" cy="560" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="519.8" y="564" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">identity_id</text>
+<circle cx="475.59999999999997" cy="549" r="2.4" fill="#f59e0b"/>
+<ellipse cx="475" cy="604" rx="96" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="475" y="608" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">identity_relations_seeded</text>
+<circle cx="386" cy="593" r="2.4" fill="#f59e0b"/>
+<ellipse cx="1186.8" cy="377" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1186.8" y="381" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="1159.52" y1="384" x2="1214.08" y2="384" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="1290.8" cy="377" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1290.8" y="381" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">title</text>
+<ellipse cx="1394.8" cy="377" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1394.8" y="381" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">status</text>
+<ellipse cx="1506" cy="377" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1506" y="381" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">create_date</text>
+<ellipse cx="1137.2" cy="327" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1137.2" y="331" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">update_date</text>
+<ellipse cx="1274.8000000000002" cy="327" rx="70.4" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1274.8000000000002" y="331" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">running_script_id</text>
+<ellipse cx="1425.2" cy="327" rx="64" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1425.2" y="331" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">last_message_id</text>
+<ellipse cx="1559.6000000000001" cy="327" rx="54.400000000000006" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1559.6000000000001" y="331" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">main_role_id</text>
+<ellipse cx="1350" cy="277" rx="60.800000000000004" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1350" y="281" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">player_role_id</text>
+<circle cx="1296.2" cy="266" r="2.4" fill="#f59e0b"/>
+<ellipse cx="873" cy="792" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873" y="796" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="845.72" y1="799" x2="900.28" y2="799" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="873" cy="836" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873" y="840" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">content</text>
+<ellipse cx="896.2" cy="880" rx="67.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="896.2" y="884" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">original_emotion</text>
+<ellipse cx="899.4" cy="924" rx="70.4" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="899.4" y="928" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">predicted_emotion</text>
+<ellipse cx="880.2" cy="968" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="880.2" y="972" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">tts_content</text>
+<ellipse cx="889.8" cy="1012" rx="60.800000000000004" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="889.8" y="1016" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">action_content</text>
+<ellipse cx="877" cy="1056" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="877" y="1060" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">audio_file</text>
+<ellipse cx="873" cy="1100" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873" y="1104" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">thinking</text>
+<circle cx="836" cy="1089" r="2.4" fill="#f59e0b"/>
+<ellipse cx="873.8" cy="1144" rx="44.8" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873.8" y="1148" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">attribute</text>
+<ellipse cx="889.8" cy="1188" rx="60.800000000000004" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="889.8" y="1192" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">sender_role_id</text>
+<ellipse cx="883.4" cy="1232" rx="54.400000000000006" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="883.4" y="1236" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">display_name</text>
+<ellipse cx="873" cy="1276" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873" y="1280" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save_id</text>
+<ellipse cx="873.8" cy="1320" rx="44.8" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873.8" y="1324" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">tool_call</text>
+<circle cx="836" cy="1309" r="2.4" fill="#f59e0b"/>
+<ellipse cx="873" cy="1364" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="873" y="1368" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">round_id</text>
+<circle cx="836" cy="1353" r="2.4" fill="#f59e0b"/>
+<ellipse cx="889.8" cy="1408" rx="60.800000000000004" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="889.8" y="1412" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">parent_line_id</text>
+<ellipse cx="2081.8" cy="340" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2081.8" y="344" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="2054.52" y1="347" x2="2109.0800000000004" y2="347" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="2095.4" cy="384" rx="57.6" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2095.4" y="388" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">script_folder</text>
+<ellipse cx="2095.4" cy="428" rx="57.6" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2095.4" y="432" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">variable_info</text>
+<ellipse cx="2101.8" cy="472" rx="64" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2101.8" y="476" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">current_chapter</text>
+<ellipse cx="2098.6000000000004" cy="516" rx="60.800000000000004" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2098.6000000000004" y="520" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">event_sequence</text>
+<ellipse cx="2081.8" cy="560" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2081.8" y="564" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save_id</text>
+<ellipse cx="1523" cy="884" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1523" y="888" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="1495.72" y1="891" x2="1550.28" y2="891" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="1523" cy="928" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1523" y="932" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">info</text>
+<ellipse cx="1523" cy="972" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1523" y="976" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save_id</text>
+<ellipse cx="1523" cy="1016" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1523" y="1020" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role_id</text>
+<ellipse cx="2083.2" cy="862" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2083.2" y="866" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="2055.9199999999996" y1="869" x2="2110.48" y2="869" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="2106.4" cy="906" rx="67.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2106.4" y="910" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">adventure_folder</text>
+<ellipse cx="2106.4" cy="950" rx="67.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2106.4" y="954" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">character_folder</text>
+<ellipse cx="2090.4" cy="994" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2090.4" y="998" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">unlocked_at</text>
+<ellipse cx="2093.6" cy="1038" rx="54.400000000000006" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2093.6" y="1042" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">completed_at</text>
+<rect x="2885" y="392" width="170" height="56" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="2970" y="418" font-size="13" fill="#475569" text-anchor="middle" font-weight="600" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save</text>
+<text x="2970" y="436" font-size="10" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">存档（见核心图）</text>
+<rect x="2885" y="792" width="170" height="56" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="2970" y="818" font-size="13" fill="#475569" text-anchor="middle" font-weight="600" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role</text>
+<text x="2970" y="836" font-size="10" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色（见核心图）</text>
+<polygon points="3370,589 3452.7,620 3370,651 3287.3,620" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="3370" y="619" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">玩家主角</text>
+<text x="3370" y="635" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">save.player_role_id</text>
+<polygon points="3440,1149 3509.5,1180 3440,1211 3370.5,1180" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="3440" y="1179" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">认知</text>
+<text x="3440" y="1195" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">表 role_relation</text>
+<text x="3515.5" y="1147" font-size="9.5" fill="#b45309" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">M:N</text>
+<ellipse cx="3305.6" cy="1243" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="3305.6" y="1247" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">text</text>
+<ellipse cx="3436" cy="1243" rx="70.4" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="3436" y="1247" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">initial_affection</text>
+<ellipse cx="3570.4" cy="1243" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="3570.4" y="1247" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">updated_at</text>
+<text x="2562" y="1656" font-size="10.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">身份卡文件仍是 prompt / 头像真源；relations.yml 已废弃，认知只存 role_relation</text>
+<rect x="334.8" y="1917" width="210.4" height="66" rx="7" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+<text x="440" y="1946" font-size="15" fill="#b45309" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">hotword_category</text>
+<text x="440" y="1966" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">词库分类</text>
+<rect x="838.5" y="1917" width="203" height="66" rx="7" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+<text x="940" y="1946" font-size="15" fill="#b45309" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">library_hotword</text>
+<text x="940" y="1966" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">词库热词</text>
+<rect x="845" y="2307" width="190" height="66" rx="7" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+<text x="940" y="2336" font-size="15" fill="#b45309" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role_hotword</text>
+<text x="940" y="2356" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色热词</text>
+<rect x="342.2" y="2627" width="195.60000000000002" height="66" rx="7" fill="#fffbeb" stroke="#b45309" stroke-width="1.8"/>
+<text x="440" y="2656" font-size="15" fill="#b45309" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">global_hotword</text>
+<text x="440" y="2676" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">全局热词</text>
+<rect x="355" y="2312" width="170" height="56" rx="6" fill="#ffffff" stroke="#94a3b8" stroke-width="1.4" stroke-dasharray="6 4"/>
+<text x="440" y="2338" font-size="13" fill="#475569" text-anchor="middle" font-weight="600" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role</text>
+<text x="440" y="2356" font-size="10" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">角色（见核心图）</text>
+<polygon points="690,1919 799.1,1950 690,1981 580.9,1950" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="690" y="1949" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">归类</text>
+<text x="690" y="1965" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">library_hotword.category_id</text>
+<polygon points="690,2309 776,2340 690,2371 604,2340" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="690" y="2339" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">拥有</text>
+<text x="690" y="2355" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role_hotword.role_id</text>
+<ellipse cx="256.8" cy="1928" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="256.8" y="1932" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="229.52" y1="1935" x2="284.08000000000004" y2="1935" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="256.8" cy="1972" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="256.8" y="1976" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">name</text>
+<ellipse cx="1119.5" cy="1884" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1119.5" y="1888" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="1092.22" y1="1891" x2="1146.78" y2="1891" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="1126.7" cy="1928" rx="51.2" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1126.7" y="1932" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">category_id</text>
+<ellipse cx="1119.5" cy="1972" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1119.5" y="1976" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">text</text>
+<ellipse cx="1119.5" cy="2016" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1119.5" y="2020" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">weight</text>
+<ellipse cx="1113" cy="2274" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1113" y="2278" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="1085.72" y1="2281" x2="1140.28" y2="2281" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="1113" cy="2318" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1113" y="2322" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role_id</text>
+<ellipse cx="1113" cy="2362" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1113" y="2366" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">text</text>
+<ellipse cx="1113" cy="2406" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1113" y="2410" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">weight</text>
+<ellipse cx="615.8" cy="2616" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="615.8" y="2620" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="588.52" y1="2623" x2="643.0799999999999" y2="2623" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="615.8" cy="2660" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="615.8" y="2664" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">text</text>
+<ellipse cx="615.8" cy="2704" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="615.8" y="2708" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">weight</text>
+<text x="82" y="2876" font-size="10.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">global_hotword 无归属对象，独立生效；role_hotword / library_hotword 的 role_id、category_id 均为应用层引用</text>
+<rect x="1885.2" y="1987" width="269.6" height="66" rx="7" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="2020" y="2016" font-size="15" fill="#7c3aed" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">skill_agent_conversation</text>
+<text x="2020" y="2036" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">助手会话</text>
+<rect x="2453.7" y="1987" width="232.6" height="66" rx="7" fill="#f5f3ff" stroke="#7c3aed" stroke-width="1.8"/>
+<text x="2570" y="2016" font-size="15" fill="#7c3aed" text-anchor="middle" font-weight="700" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">skill_agent_message</text>
+<text x="2570" y="2036" font-size="11.5" fill="#475569" text-anchor="middle" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">助手消息</text>
+<polygon points="2295,1989 2430.5,2020 2295,2051 2159.5,2020" fill="#ffffff" stroke="#334155" stroke-width="1.6"/>
+<text x="2295" y="2019" font-size="14" fill="#1e293b" text-anchor="middle" font-weight="600" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">会话</text>
+<text x="2295" y="2035" font-size="8.6" fill="#94a3b8" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">skill_agent_message.conversation_id</text>
+<ellipse cx="1807.2" cy="1932" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1807.2" y="1936" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="1779.92" y1="1939" x2="1834.48" y2="1939" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="1807.2" cy="1976" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1807.2" y="1980" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">title</text>
+<ellipse cx="1803.2" cy="2020" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1803.2" y="2024" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">script_key</text>
+<ellipse cx="1803.2" cy="2064" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1803.2" y="2068" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">created_at</text>
+<ellipse cx="1803.2" cy="2108" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="1803.2" y="2112" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">updated_at</text>
+<ellipse cx="2764.2999999999997" cy="1800" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2764.2999999999997" y="1804" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">id</text>
+<line x1="2737.0199999999995" y1="1807" x2="2791.58" y2="1807" stroke="#0f172a" stroke-width="1"/>
+<ellipse cx="2784.2999999999997" cy="1844" rx="64" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2784.2999999999997" y="1848" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">conversation_id</text>
+<ellipse cx="2764.2999999999997" cy="1888" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2764.2999999999997" y="1892" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">role</text>
+<ellipse cx="2764.2999999999997" cy="1932" rx="44" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2764.2999999999997" y="1936" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">content</text>
+<ellipse cx="2765.1" cy="1976" rx="44.8" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2765.1" y="1980" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">reasoning</text>
+<circle cx="2727.2999999999997" cy="1965" r="2.4" fill="#f59e0b"/>
+<ellipse cx="2777.8999999999996" cy="2020" rx="57.6" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2777.8999999999996" y="2024" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">prompt_tokens</text>
+<circle cx="2727.2999999999997" cy="2009" r="2.4" fill="#f59e0b"/>
+<ellipse cx="2790.7" cy="2064" rx="70.4" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2790.7" y="2068" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">completion_tokens</text>
+<circle cx="2727.2999999999997" cy="2053" r="2.4" fill="#f59e0b"/>
+<ellipse cx="2777.8999999999996" cy="2108" rx="57.6" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2777.8999999999996" y="2112" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">cached_tokens</text>
+<circle cx="2727.2999999999997" cy="2097" r="2.4" fill="#f59e0b"/>
+<ellipse cx="2768.2999999999997" cy="2152" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2768.2999999999997" y="2156" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">tool_calls</text>
+<ellipse cx="2774.7" cy="2196" rx="54.400000000000006" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2774.7" y="2200" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">tool_call_id</text>
+<ellipse cx="2768.2999999999997" cy="2240" rx="48" ry="17" fill="#ffffff" stroke="#94a3b8" stroke-width="1.1"/>
+<text x="2768.2999999999997" y="2244" font-size="11" fill="#0f172a" text-anchor="middle" font-weight="400" font-family="'Cascadia Mono', 'JetBrains Mono', Consolas, 'Courier New', monospace" opacity="1">created_at</text>
+<text x="846.25" y="443" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="1203.75" y="443" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="1350" y="555.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="1350" y="830.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="846.25" y="555.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="1203.75" y="830.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="1473.75" y="443" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="1776.25" y="443" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="700" y="589.25" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="700" y="946.75" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="574" y="618.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">M</text>
+<text x="574" y="976" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="548.75" y="1164.6" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="601" y="1165.15" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="3150" y="503" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="3150" y="723" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="3181.5" y="969.5" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">M</text>
+<text x="3181.5" y="981.6" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="561.2" y="1943" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="822.5" y="1943" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="552.5" y="2333" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="827.5" y="2333" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<text x="2170.8" y="2013" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">1</text>
+<text x="2437.7" y="2013" font-size="11" fill="#1d4ed8" text-anchor="middle" font-weight="700" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1" stroke="#ffffff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">N</text>
+<rect x="3180" y="6" width="760" height="104" rx="10" fill="#f8fafc" stroke="#e2e8f0"/>
+<rect x="3200" y="18" width="34" height="20" rx="3" fill="#eff6ff" stroke="#2563eb"/>
+<text x="3250" y="33" font-size="10.5" fill="#334155" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">实体（表）</text>
+<polygon points="3217,41 3236,52 3217,63 3198,52" fill="#fff" stroke="#334155"/>
+<text x="3250" y="57" font-size="10.5" fill="#334155" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">联系（菱形内为物理表名）</text>
+<ellipse cx="3217" cy="76" rx="20" ry="11" fill="#fff" stroke="#94a3b8"/>
+<text x="3250" y="81" font-size="10.5" fill="#334155" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">属性（下划线为主键）</text>
+<rect x="3200" y="90" width="34" height="20" rx="3" fill="#fff" stroke="#94a3b8" stroke-dasharray="5 3"/>
+<text x="3250" y="105" font-size="10.5" fill="#334155" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">跨分区引用的实体</text>
+<text x="60" y="2934" font-size="10.5" fill="#94a3b8" text-anchor="start" font-weight="400" font-family="'Microsoft YaHei', 'PingFang SC', 'Noto Sans CJK SC', 'Segoe UI', sans-serif" opacity="1">生成：docs/database/gen-er.mjs · Chen 图按功能分区，完整字段与约束见 er-crowfoot.svg</text>
+</svg>
