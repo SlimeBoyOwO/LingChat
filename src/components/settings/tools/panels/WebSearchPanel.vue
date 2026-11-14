@@ -8,6 +8,7 @@
 
     <ToolField :label="$t('ui.toolCalls.provider')" class="mt-2">
       <ToolSelect v-model="settings.web_search.provider">
+        <option value="keenable">{{ $t("ui.toolCalls.providerKeenable") }}</option>
         <option value="kimi">Kimi /search</option>
         <option value="bocha">BoCha 博查</option>
         <option value="deepseek">{{ $t("ui.toolCalls.providerDeepSeek") }}</option>
@@ -31,6 +32,9 @@
         :placeholder="apiKeyPlaceholder"
       />
     </ToolField>
+    <p v-if="settings.web_search.provider === 'keenable'" class="mt-2 px-1 text-sm text-gray-300">
+      {{ $t("ui.toolCalls.keenableHint") }}
+    </p>
     <p v-if="settings.web_search.provider === 'kimi'" class="mt-2 px-1 text-sm text-gray-300">
       {{ $t("ui.toolCalls.kimiHint") }}
     </p>
@@ -114,14 +118,15 @@ const apiKeyPlaceholder = computed(() => {
   const provider = settings.value.web_search.provider;
   if (provider === "deepseek") return t("ui.toolCalls.dsApiKeyPlaceholder");
   if (provider === "kimi") return t("ui.toolCalls.kimiApiKeyPlaceholder");
+  if (provider === "keenable") return t("ui.toolCalls.keenableApiKeyPlaceholder");
   return t("ui.toolCalls.apiKeyPlaceholder");
 });
 
-// DeepSeek 使用官方搜索端点，base_url 对它是无效字段，切过去就清掉。
+// DeepSeek / Keenable 使用官方搜索端点，base_url 对它们是无效字段，切过去就清掉。
 watch(
   () => settings.value.web_search.provider,
   (provider) => {
-    if (provider === "deepseek") settings.value.web_search.base_url = "";
+    if (provider === "deepseek" || provider === "keenable") settings.value.web_search.base_url = "";
   },
 );
 

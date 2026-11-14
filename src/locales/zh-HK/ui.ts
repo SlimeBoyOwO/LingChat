@@ -261,6 +261,7 @@ export default {
     provider: "搜尋供應商",
     providerCustom: "自訂端點",
     providerCodex: "OpenAI Codex（訂閱免 Key）",
+    providerKeenable: "Keenable（免 Key 搜尋）",
     codexHint: "用「大模型管理」已登入嘅 Codex 訂閱憑證上網搜尋，唔使填 API Key",
     kimiHint:
       "API Key 可以留空：目前對話模型係官方 Kimi Code 時會安全重用佢嘅憑證；其他情況請另外填寫",
@@ -269,7 +270,9 @@ export default {
     apiKeyPlaceholder: "填入自訂端點 API Key",
     kimiApiKeyPlaceholder: "可以留空重用目前 Kimi Code 憑證",
     dsApiKeyPlaceholder: "填入 DeepSeek API Key",
+    keenableApiKeyPlaceholder: "可選，留空行免費公共端點",
     dsHint: "透過 DeepSeek /v1/tools/search 端點聯網搜尋；需要單獨填寫 DeepSeek API Key",
+    keenableHint: "唔使 API Key，行免費公共端點；可以揀填 API Key 提升搜尋額度",
     baseUrl: "搜尋服務地址",
     proxyEnable: "透過代理存取搜尋服務（如 v2rayN）",
     maxResults: "返回結果條數",

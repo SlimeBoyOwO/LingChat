@@ -190,6 +190,7 @@ pub struct WebSearchSettings {
     /// "deepseek"（DeepSeek 网页搜索 https://api.deepseek.com/v1/tools/search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
     /// "codex"（ChatGPT Codex alpha/search，复用 Codex OAuth，无需 API Key）
+    /// "keenable"（Keenable 联网搜索；API Key 为空时走免费公共端点）
     /// "custom"（用户配置的 Kimi /search 兼容端点）
     pub provider: String,
     /// API Key（Bearer 认证）。
@@ -211,7 +212,7 @@ impl Default for WebSearchSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            provider: "kimi".to_string(),
+            provider: "keenable".to_string(),
             api_key: String::new(),
             base_url: "https://api.kimi.com/coding/v1/search".to_string(),
             proxy_enabled: false,
@@ -228,6 +229,7 @@ impl WebSearchSettings {
         self.enabled
             && (self.provider.eq_ignore_ascii_case("codex")
                 || self.provider.eq_ignore_ascii_case("kimi")
+                || self.provider.eq_ignore_ascii_case("keenable")
                 || !self.api_key.trim().is_empty())
     }
 }

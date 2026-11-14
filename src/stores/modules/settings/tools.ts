@@ -20,7 +20,7 @@ const DEFAULT_MEDIA_PROMPT =
 const DEFAULT_SETTINGS: ToolSettings = {
   web_search: {
     enabled: false,
-    provider: "kimi",
+    provider: "keenable",
     api_key: "",
     base_url: "",
     proxy_enabled: false,
@@ -284,6 +284,10 @@ export const useToolSettingsStore = defineStore("toolSettings", {
       const snapshot = clone(this.settings);
       if (snapshot.web_search.provider === "deepseek") {
         // DeepSeek 搜索走官方端点，残留的自定义地址会把请求打到错误地址。
+        snapshot.web_search.base_url = "";
+      }
+      if (snapshot.web_search.provider === "keenable") {
+        // Keenable 固定走官方端点，与 DeepSeek 同理清掉自定义地址。
         snapshot.web_search.base_url = "";
       }
       pendingSaves += 1;

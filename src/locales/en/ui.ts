@@ -280,6 +280,7 @@ export default {
     provider: "Search Provider",
     providerCustom: "Custom Endpoint",
     providerCodex: "OpenAI Codex (subscription, no key)",
+    providerKeenable: "Keenable (no key needed)",
     codexHint:
       "Searches with the Codex subscription you signed into in LLM Providers — no API Key needed",
     kimiHint:
@@ -290,8 +291,11 @@ export default {
     apiKeyPlaceholder: "Enter the custom endpoint API Key",
     kimiApiKeyPlaceholder: "Optional when reusing the active Kimi Code credential",
     dsApiKeyPlaceholder: "Enter your DeepSeek API Key",
+    keenableApiKeyPlaceholder: "Optional; leave blank to use the free public endpoint",
     dsHint:
       "Searches via DeepSeek's /v1/tools/search endpoint. Requires a separate DeepSeek API key.",
+    keenableHint:
+      "No API Key required — uses the free public endpoint. Optionally add a key for higher quota.",
     baseUrl: "Search Service URL",
     proxyEnable: "Access the search service via proxy (e.g. v2rayN)",
     maxResults: "Max Results",

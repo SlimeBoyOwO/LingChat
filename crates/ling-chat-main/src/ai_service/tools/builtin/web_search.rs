@@ -140,7 +140,10 @@ impl WebSearchTool {
             }
             effective.api_key = chat.api_key;
         }
-        if effective.api_key.trim().is_empty() && effective.provider != "codex" {
+        if effective.api_key.trim().is_empty()
+            && effective.provider != "codex"
+            && effective.provider != "keenable"
+        {
             return Err(ToolError::Execution(
                 "网页搜索未配置 API Key，请用户在「高级设置 → 工具配置」填写".into(),
             ));
@@ -222,6 +225,7 @@ impl WebSearchTool {
             "bocha" => self.execute_bocha_search(query, cfg).await,
             "deepseek" => self.execute_deepseek_search(query, cfg).await,
             "tavily" => self.execute_tavily_search(query, cfg).await,
+            "keenable" => self.execute_keenable_search(query, cfg).await,
             "codex" => self.execute_codex_search(context, query, cfg).await,
             "kimi" | "custom" => self.execute_kimi_endpoint(query, cfg).await,
             provider => Err(ToolError::Execution(format!(
@@ -404,6 +408,81 @@ impl WebSearchTool {
                     "title": get("title"),
                     "url": get("url"),
                     "snippet": get("content"),
+                })
+            })
+            .collect();
+
+        let text = Self::format_results(
+            query,
+            &results,
+            cfg.max_results.max(1),
+            cfg.hide_search_results,
+        );
+        Ok(serde_json::json!({
+            "ok": true,
+            "query": query,
+            "result_count": results.len().min(cfg.max_results.max(1)),
+            "text": text,
+        }))
+    }
+
+    /// 独立端点模式 · Keenable（https://api.keenable.ai/v1/search）。
+    ///
+    /// 无需 API Key：未配置时走免费公共端点 `/v1/search/public`；配置后改走
+    /// 带 Key 的端点 `/v1/search`，凭据放在 `X-API-Key` 请求头（不是 Bearer）。
+    async fn execute_keenable_search(
+        &self,
+        query: &str,
+        cfg: &WebSearchSettings,
+    ) -> Result<ToolResult, ToolError> {
+        const PUBLIC_SEARCH_URL: &str = "https://api.keenable.ai/v1/search/public";
+        const KEYED_SEARCH_URL: &str = "https://api.keenable.ai/v1/search";
+
+        let client = Self::build_client(cfg)?;
+        let key = cfg.api_key.trim();
+        let url = if key.is_empty() {
+            PUBLIC_SEARCH_URL
+        } else {
+            KEYED_SEARCH_URL
+        };
+        let mut request = client.post(url).header("X-Keenable-Title", "LingChat");
+        if !key.is_empty() {
+            request = request.header("X-API-Key", key);
+        }
+        let response = request
+            .json(&serde_json::json!({
+                "query": query,
+                "max_results": cfg.max_results.max(1),
+            }))
+            .send()
+            .await
+            .map_err(classify_request_error)?;
+
+        let status = response.status();
+        if !status.is_success() {
+            return Err(ToolError::Execution(
+                http_error_message(status, response).await,
+            ));
+        }
+
+        let payload: Value = response
+            .json()
+            .await
+            .map_err(|e| ToolError::Execution(format!("搜索结果解析失败: {e}")))?;
+        let rows = payload
+            .get("results")
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default();
+        // 统一成 format_results 认识的字段：description 是面向阅读的摘要，优先于 snippet
+        let results: Vec<Value> = rows
+            .iter()
+            .map(|item| {
+                let get = |key: &str| item.get(key).and_then(Value::as_str).unwrap_or("");
+                serde_json::json!({
+                    "title": get("title"),
+                    "url": get("url"),
+                    "snippet": if get("description").is_empty() { get("snippet") } else { get("description") },
                 })
             })
             .collect();

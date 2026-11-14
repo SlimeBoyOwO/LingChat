@@ -278,6 +278,7 @@ export default {
     provider: "検索プロバイダー",
     providerCustom: "カスタム端点",
     providerCodex: "OpenAI Codex（サブスク・キー不要）",
+    providerKeenable: "Keenable（キー不要）",
     codexHint:
       "「LLM プロバイダ」でログイン済みの Codex サブスクリプションで検索します。API Key の入力は不要です",
     kimiHint:
@@ -288,8 +289,11 @@ export default {
     apiKeyPlaceholder: "カスタム端点の API Key を入力",
     kimiApiKeyPlaceholder: "現在の Kimi Code 認証情報を再利用する場合は空欄にできます",
     dsApiKeyPlaceholder: "DeepSeek API Key を入力",
+    keenableApiKeyPlaceholder: "任意。空欄で無料パブリックエンドポイントを利用",
     dsHint:
       "DeepSeek の /v1/tools/search エンドポイントで検索します。別途 DeepSeek API Key が必要です",
+    keenableHint:
+      "API Key 不要で無料パブリックエンドポイントを利用。任意で Key を設定すると高めの枠に",
     baseUrl: "検索サービス URL",
     proxyEnable: "プロキシ経由で検索サービスにアクセス（v2rayN など）",
     maxResults: "検索結果の件数",
