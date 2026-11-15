@@ -51,11 +51,7 @@ interface TriggerRecord {
   seq: number;
 }
 
-/**
- * 桌宠动画控制台：收拢所有触发器的状态机，按优先级决定头像框此刻该做什么。
- *
- * 只做决策，不碰 DOM；播放细节全部交给目标层。
- */
+// 桌宠动画控制台：收拢所有触发器的状态机，按优先级决定头像框此刻该做什么。
 export function createPetAnimationController(
   options: { gate?: PetAnimationGate } = {},
 ): PetAnimationController {

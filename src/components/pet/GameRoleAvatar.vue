@@ -34,16 +34,7 @@
       ></div>
 
       <!-- 5. 核心头像框 -->
-      <!--
-        data-tauri-drag-region="false" 是刻意的：Tauri 注入的 drag.js 对「裸属性」要求
-        事件目标就是标注元素本身（el === composedPath[0]），而下面的头像图片容器铺满整个框，
-        事件目标永远是子元素，官方路径其实从未触发过；"false" 让 drag.js 显式跳过，避免它与
-        下面的 startWindowDrag 形成双路径。
 
-        这块不再挂 -webkit-app-region: drag。Windows 上它会把头像变成系统拖拽区，
-        鼠标按下由窗口管理器接管，webview 拿不到 pointerdown/mousedown，按下反馈要等到
-        松手才随整串事件一起送达。拖拽统一走下面的 startWindowDrag（与 macOS 同一条路径）。
-      -->
       <div
         class="avatar-breath-frame relative z-10 flex h-full w-full items-center justify-center overflow-hidden transition-colors duration-300"
         :class="

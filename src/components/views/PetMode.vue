@@ -83,25 +83,15 @@ const uiStore = useUIStore();
 const showChatInput = ref(false);
 const { isDragging } = useFileDrop();
 
-/**
- * 「当前这句吐完了没有」——不镜像气泡窗的打字机状态，而是本地相减得出。
- *
- * 打字机在气泡窗，跨窗口读一个会变的布尔量只能靠变化边沿，丢一次就永久失联。
- * 改成气泡窗上报「第 N 句已完整显示」：未上报的当前句即视为还在打字。
- */
+// 改成气泡窗上报「第 N 句已完整显示」：未上报的当前句即视为还在打字。
 const currentLineId = ref(nextLineId());
 const drainedLineId = ref(currentLineId.value);
-// 只有台词真的在上屏时才可能「在打字」：进入桌宠时沿用的旧台词不会再走气泡窗渲染，
 // 不加这层判断会一直锁在 typing 状态，果冻永远不触发。
 const lineTyping = computed(
   () => gameStore.currentStatus === "responding" && drainedLineId.value !== currentLineId.value,
 );
 
-/**
- * 待机：没有正在生成的内容，也没有排队等播的台词。
- * 最后一句停在屏幕上等关闭算待机——这正是进入桌宠后看到的静置状态。
- * 队列状态不是响应式的，必须在调用当刻取快照，不能包成 computed。
- */
+// 待机：没有正在生成的内容，也没有排队等播的台词。
 const isIdle = () => {
   if (gameStore.currentStatus === "thinking") return false;
   if (lineTyping.value) return false;
@@ -554,12 +544,7 @@ const {
   mergeEnabled: false,
 });
 
-/**
- * 气泡窗回报「第 N 句已完整显示」。
- *
- * 只认当前这句的号，过期或超前的回报一律丢弃；同一句重复回报（重新显示、清屏补发）
- * 不再重排延迟，否则延时会被无限续期。
- */
+// 气泡窗回报「第 N 句已完整显示」。
 const onLineDrained = (drainedId: number) => {
   if (!Number.isFinite(drainedId) || drainedId !== currentLineId.value) return;
   if (drainedLineId.value === drainedId) return;

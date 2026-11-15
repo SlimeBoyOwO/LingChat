@@ -1,10 +1,7 @@
 import type { Ref } from "vue";
 import { PET_ANIMATION_TEMPLATES, type PetAnimationId } from "./templates";
 
-/**
- * 头像框动画目标：唯一知道 DOM 分层与 WAAPI 细节的一层。
- * 只负责把模板播出来，不判断何时播、也不读业务状态。
- */
+// 头像框动画目标
 export interface PetAvatarTarget {
   /** 播一次，不保留末帧 */
   play(id: PetAnimationId): void;
