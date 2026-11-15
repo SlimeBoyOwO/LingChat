@@ -35,6 +35,8 @@ impl MigratorTrait for Migrator {
             Box::new(m20261115_000001_agent_conversation_director::Migration),
             // 热词三表合一（#951）：作用域改由 hotword.kind 区分。
             Box::new(m20261116_000001_create_hotword::Migration),
+            // 存档级手动笔记（同档内角色共享）。必须追加在末尾，保持时间戳单调递增。
+            Box::new(m20261116_000001_create_save_note::Migration),
         ]
     }
 }
@@ -57,3 +59,4 @@ pub mod m20261114_000001_merge_player_identity_into_role;
 pub mod m20261115_000001_agent_conversation_director;
 pub mod m20261115_000001_index_line_save_id;
 pub mod m20261116_000001_create_hotword;
+pub mod m20261116_000001_create_save_note;

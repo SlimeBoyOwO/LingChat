@@ -5,12 +5,14 @@ use crate::AppState;
 use crate::ai_service::game_system::auto_save;
 use crate::ai_service::game_system::game_status::GameStatusSnapshot;
 use crate::ai_service::game_system::player_identity::IdentityStore;
+use crate::ai_service::tools::builtin::memory::save_note_owner;
 use crate::api::game::WebInitData;
 use crate::api::game::build_web_init_data;
 use crate::config::AppConfig;
 use crate::db::managers::role_repo::RoleRepo;
 use crate::db::managers::save_repo::SaveRepo;
 use crate::utils::prompt::PromptOptions;
+use ling_chat_notes::retrieval::NotesVectorIndex;
 
 // ========== 响应类型 ==========
 
@@ -244,6 +246,10 @@ pub async fn create_save(
 
     {
         let mut gs = service.game_status.lock().await;
+        // 存档是快照：先按当前会话同步笔记，再切换归属
+        if let Err(e) = gs.rebind_save_notes(db, save_id).await {
+            tracing::warn!("存档笔记同步失败: {e}");
+        }
         gs.active_save_id = Some(save_id);
         SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
@@ -535,6 +541,10 @@ pub async fn update_save(
 
     {
         let mut gs = service.game_status.lock().await;
+        // 存档是快照：先按当前会话同步笔记，再切换归属
+        if let Err(e) = gs.rebind_save_notes(db, save_id).await {
+            tracing::warn!("存档笔记同步失败: {e}");
+        }
         gs.active_save_id = Some(save_id);
         SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
@@ -630,9 +640,19 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         return Err(format!("存档 {} 不存在", save_id));
     }
 
-    // 4. 若当前活跃存档是被删除的，清除标记
-    if service.game_status.lock().await.active_save_id == Some(save_id) {
-        service.game_status.lock().await.active_save_id = None;
+    // 4. 若当前活跃存档是被删除的，清除标记与内存副本
+    {
+        let mut gs = service.game_status.lock().await;
+        if gs.active_save_id == Some(save_id) {
+            gs.active_save_id = None;
+            gs.save_notes.clear();
+        }
+    }
+
+    // 5. 清理该档的笔记向量索引（best effort；索引可重建）
+    let save_index = NotesVectorIndex::for_save_notes(super::data_dir());
+    if let Err(e) = save_index.purge(&save_note_owner(save_id)) {
+        tracing::warn!("清理存档笔记索引失败: {e}");
     }
 
     Ok(())

@@ -16,7 +16,7 @@ use tracing::{info, warn};
 use crate::db::entities::hotword::{self, KIND_GLOBAL, KIND_LIBRARY, KIND_ROLE, normalize_weight};
 use crate::db::entities::{
     adventure_unlock, agent_conversation, agent_message, hotword_category, line, line_perception,
-    memory_bank, role, running_script, save,
+    memory_bank, role, running_script, save, save_note,
 };
 use crate::db::managers::hotword_repo::{MAX_CATEGORIES, MAX_CATEGORY_NAME_CHARS};
 
@@ -193,6 +193,7 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         export_table::<hotword_category::Entity, hotword_category::Model>(&db, "hotword_category")
             .await?;
     let saves = export_table::<save::Entity, save::Model>(&db, "save").await?;
+    let save_notes = export_table::<save_note::Entity, save_note::Model>(&db, "save_note").await?;
     let running_scripts =
         export_table::<running_script::Entity, running_script::Model>(&db, "running_script")
             .await?;
@@ -210,6 +211,7 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         + hotwords.len()
         + hotword_categories.len()
         + saves.len()
+        + save_notes.len()
         + running_scripts.len()
         + adventure_unlocks.len()
         + lines.len()
@@ -223,6 +225,7 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
         hotwords: Some(hotwords),
         hotword_categories: Some(hotword_categories),
         saves,
+        save_notes: Some(save_notes),
         running_scripts,
         adventure_unlocks,
         lines,
@@ -439,6 +442,13 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     }
 
     // ─── DELETE 全部行（子表 → 父表顺序） ────────────────
+    // 存档笔记单独处理：旧版 payload 不带该字段时必须跳过清空，避免抹掉本机笔记。
+    if records.save_notes.is_some() {
+        let count = delete_all(&txn, "save_note").await?;
+        if count > 0 {
+            info!("已清除 save_note: {} 行", count);
+        }
+    }
     for table in DELETE_ORDER {
         let count = if table == "role" {
             txn.execute(Statement::from_string(
@@ -490,6 +500,9 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     )
     .await?;
     import_rows!(&txn, &saves, save, imported);
+    if let Some(save_notes) = records.save_notes.as_deref() {
+        import_rows!(&txn, save_notes, save_note, imported);
+    }
     import_rows!(&txn, &records.running_scripts, running_script, imported);
     import_rows!(&txn, &records.adventure_unlocks, adventure_unlock, imported);
     import_rows!(&txn, &lines, line, imported);

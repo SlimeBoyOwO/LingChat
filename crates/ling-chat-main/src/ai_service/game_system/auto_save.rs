@@ -244,6 +244,10 @@ impl AutoSaveManager {
         // 4c. Set active save
         {
             let mut gs = service.game_status.lock().await;
+            // 存档是快照：先按当前会话同步笔记，再切换归属
+            if let Err(e) = gs.rebind_save_notes(&self.db, save_id).await {
+                tracing::warn!("[AutoSave] 存档笔记同步失败: {e}");
+            }
             gs.active_save_id = Some(save_id);
             // 回填行 id：让后续锚点按 id 命中（重建人设行后仍能安全落档）。
             SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);

@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{
     agent_conversation, agent_message, line, line_perception, memory_bank, running_script, save,
+    save_note,
 };
 
 pub struct SaveRepo;
@@ -198,6 +199,13 @@ impl SaveRepo {
         // Delete all lines for this save
         line::Entity::delete_many()
             .filter(line::Column::SaveId.eq(save_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
+        // 存档级笔记随档删除
+        save_note::Entity::delete_many()
+            .filter(save_note::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
