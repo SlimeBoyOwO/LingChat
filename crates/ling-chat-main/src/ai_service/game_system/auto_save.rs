@@ -214,16 +214,19 @@ impl AutoSaveManager {
 
         // 4a. Sync lines (smart diff)。自动存档位只跟踪当前这一局，允许在无共同锚点
         //     （切过角色、开过新档）时整体接管重建，而不是永久拒绝写入。
-        if let Err(e) = SaveRepo::sync_lines(&self.db, save_id, &lines, true).await {
-            let _ = self.app.emit(
-                "save:auto-save-failed",
-                AutoSaveFailedPayload {
-                    message: e.to_string(),
-                    timestamp: Local::now().format("%H:%M:%S").to_string(),
-                },
-            );
-            return Err(format!("同步台词失败: {}", e));
-        }
+        let synced_ids = match SaveRepo::sync_lines(&self.db, save_id, &lines, true).await {
+            Ok(ids) => ids,
+            Err(e) => {
+                let _ = self.app.emit(
+                    "save:auto-save-failed",
+                    AutoSaveFailedPayload {
+                        message: e.to_string(),
+                        timestamp: Local::now().format("%H:%M:%S").to_string(),
+                    },
+                );
+                return Err(format!("同步台词失败: {}", e));
+            },
+        };
 
         // 4b. 台词落库成功后再刷新档位元数据，与内容同进同退；
         //     写的是绑定档时保持用户自己的标题与主角（与快速存档一致）。
@@ -243,9 +246,7 @@ impl AutoSaveManager {
             let mut gs = service.game_status.lock().await;
             gs.active_save_id = Some(save_id);
             // 回填行 id：让后续锚点按 id 命中（重建人设行后仍能安全落档）。
-            if let Err(e) = SaveRepo::bind_line_ids(&self.db, save_id, &mut gs.line_list).await {
-                tracing::warn!("[AutoSave] 回填台词行 id 失败: {e}");
-            }
+            SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
         }
 
         // 记录本局使用的玩家角色，否则读自动存档会沿用全局当前身份。

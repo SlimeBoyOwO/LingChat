@@ -219,11 +219,13 @@ pub async fn create_save(
     }
 
     // 2. 同步台词
-    if !lines.is_empty() {
+    let synced_ids = if lines.is_empty() {
+        Vec::new()
+    } else {
         SaveRepo::sync_lines(db, save_id, &lines, false)
             .await
-            .map_err(|e| format!("同步台词失败: {}", e))?;
-    }
+            .map_err(|e| format!("同步台词失败: {}", e))?
+    };
 
     // 3. 设置主角
     if let Some(main_id) = service.game_status.lock().await.main_role_id {
@@ -243,9 +245,7 @@ pub async fn create_save(
     {
         let mut gs = service.game_status.lock().await;
         gs.active_save_id = Some(save_id);
-        if let Err(e) = SaveRepo::bind_line_ids(db, save_id, &mut gs.line_list).await {
-            tracing::warn!("回填台词行 id 失败: {e}");
-        }
+        SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
 
     // 6. 持久化 MemoryBank
@@ -529,16 +529,14 @@ pub async fn update_save(
     let lines = service.game_status.lock().await.line_list.clone();
 
     // 2. 同步台词（智能 diff）
-    SaveRepo::sync_lines(db, save_id, &lines, false)
+    let synced_ids = SaveRepo::sync_lines(db, save_id, &lines, false)
         .await
         .map_err(|e| format!("同步台词失败: {}", e))?;
 
     {
         let mut gs = service.game_status.lock().await;
         gs.active_save_id = Some(save_id);
-        if let Err(e) = SaveRepo::bind_line_ids(db, save_id, &mut gs.line_list).await {
-            tracing::warn!("回填台词行 id 失败: {e}");
-        }
+        SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
 
     // 4. 更新 GameStatus 快照

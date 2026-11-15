@@ -315,12 +315,15 @@ impl SaveRepo {
     /// 自动存档传 true——它的档位只跟踪"当前这一局"，被别的会话（切角色、开新档）
     /// 占住时必须整体重建，否则会永久拒绝写入、自动存档彻底停摆；手动存档/语音
     /// 回填等路径传 false，继续由安全网拦截，避免误删另一段对话的历史。
+    ///
+    /// 返回与 `input_lines` 等长、按位置对齐的数据库行号，调用方可直接回填内存台词表，
+    /// 不必再查一次库。
     pub async fn sync_lines(
         db: &DatabaseConnection,
         save_id: i32,
         input_lines: &[GameLine],
         allow_rebuild: bool,
-    ) -> Result<()> {
+    ) -> Result<Vec<i32>> {
         let db_lines = Self::get_line_list(db, save_id).await?;
 
         // Walk both lists to find divergence point
@@ -334,22 +337,7 @@ impl SaveRepo {
             // Try ID match first
             if let Some(input_id) = input_line.base.id {
                 if input_id == db_line.id {
-                    // Same ID — update if any persisted field changed
-                    if !same_line_fields(db_line, input_line) {
-                        let mut active: line::ActiveModel = db_line.clone().into();
-                        active.content = Set(input_line.base.content.clone());
-                        active.attribute = Set(input_line.base.attribute.0.clone());
-                        active.sender_role_id = Set(input_line.base.sender_role_id);
-                        active.original_emotion = Set(input_line.base.original_emotion.clone());
-                        active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
-                        active.tts_content = Set(input_line.base.tts_content.clone());
-                        active.action_content = Set(input_line.base.action_content.clone());
-                        active.audio_file = Set(input_line.base.audio_file.clone());
-                        active.thinking = Set(input_line.base.thinking.clone());
-                        active.display_name = Set(input_line.base.display_name.clone());
-                        active.tool_call = Set(input_line.base.tool_call.clone());
-                        active.round_id = Set(input_line.base.round_id.clone());
-                    }
+                    // 同一行：字段是否要改写由后面的更新阶段判定，这里只负责推进锚点。
                     continue;
                 }
             }
@@ -400,11 +388,12 @@ impl SaveRepo {
                 .map_err(|e| anyhow!("{e}"))?;
         }
 
-        let matched_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
+        // 与输入行按位置对齐的最终行号：分歧点之前沿用库里已有的行，之后是新插入的行。
+        let mut synced_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
         let mut existing_perceptions: HashMap<i32, Vec<i32>> = HashMap::new();
-        if !matched_ids.is_empty() {
+        if !synced_ids.is_empty() {
             let rows = line_perception::Entity::find()
-                .filter(line_perception::Column::LineId.is_in(matched_ids))
+                .filter(line_perception::Column::LineId.is_in(synced_ids.clone()))
                 .all(&txn)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
@@ -519,6 +508,7 @@ impl SaveRepo {
                     perception.insert(&txn).await.map_err(|e| anyhow!("{e}"))?;
                 }
 
+                synced_ids.push(new_id);
                 parent_id = Some(new_id);
             }
         }
@@ -542,7 +532,7 @@ impl SaveRepo {
 
         txn.commit().await.map_err(|e| anyhow!("{e}"))?;
 
-        Ok(())
+        Ok(synced_ids)
     }
 
     /// 输入台词表能否安全写入该存档：存档为空，或首行与输入首行匹配（与 sync_lines 的锚点规则一致）。
@@ -565,22 +555,12 @@ impl SaveRepo {
         Ok(same_line_fields(db_line, input_line))
     }
 
-    /// 内存行拿到 id 后，后续锚点按 id 命中——人设行重建改动了首行内容也不会再触发"首行分歧"。
-    pub async fn bind_line_ids(
-        db: &DatabaseConnection,
-        save_id: i32,
-        lines: &mut [GameLine],
-    ) -> Result<()> {
-        let db_lines = Self::get_line_list(db, save_id).await?;
-        for (i, db_line) in db_lines.iter().enumerate() {
-            if i >= lines.len() {
-                break;
-            }
-            if lines[i].base.id.is_none() {
-                lines[i].base.id = Some(db_line.id);
-            }
+    /// 把 sync_lines 返回的行号回填到内存台词表，省掉一次按存档重读全部台词。
+    /// 这些行号是库里的权威值：弱匹配命中的内存行原本带着对不上的 id，这里一并纠正。
+    pub fn bind_line_ids(lines: &mut [GameLine], synced_ids: &[i32]) {
+        for (line, &id) in lines.iter_mut().zip(synced_ids) {
+            line.base.id = Some(id);
         }
-        Ok(())
     }
 }
 
