@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tokio::sync::{Mutex, RwLock};
+use tokio::sync::Mutex;
 
 use crate::ai_service::asr::provider::{AsrOptions, AsrProvider};
 use crate::ai_service::asr::providers::sherpa::SherpaAsrProvider;
@@ -14,7 +14,7 @@ use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_
 use crate::ai_service::tts::adapters::sherpa_onnx::{
     SherpaOnnxAdapter, SherpaSpeaker, SherpaTuning,
 };
-use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxManager, SherpaOnnxModelInfo};
+use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxModelInfo, scan_models};
 use crate::ai_service::tts::provider::TtsAdapter;
 
 /// 前端模型记录。
@@ -31,41 +31,15 @@ pub struct SherpaModelRecord {
     pub path: String,
 }
 
-/// Sherpa 模型管理器句柄（供命令使用）。
+/// Sherpa 模型命令的共享状态：只保留正在下载的模型 ID。
 #[derive(Default)]
 pub struct SherpaModelsState {
-    pub manager: Arc<RwLock<Option<Arc<SherpaOnnxManager>>>>,
     pub downloading: Arc<Mutex<std::collections::HashSet<String>>>,
 }
 
-/// 在 setup 中把 Sherpa 模型管理器挂到全局。
+/// 在 setup 中初始化 Sherpa 模型命令状态。
 pub fn init() -> SherpaModelsState {
-    let manager = Arc::new(SherpaOnnxManager::new(
-        crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root(),
-    ));
-    SherpaModelsState {
-        manager: Arc::new(RwLock::new(Some(manager))),
-        downloading: Arc::new(Mutex::new(Default::default())),
-    }
-}
-
-/// 获取当前管理器（懒解析数据目录，若尚未初始化则就地创建）。
-async fn get_manager(
-    state: &State<'_, SherpaModelsState>,
-) -> Result<Arc<SherpaOnnxManager>, String> {
-    let mut guard = state.manager.write().await;
-    if guard.is_none() {
-        let mgr = Arc::new(SherpaOnnxManager::new(
-            crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root(),
-        ));
-        mgr.initialize()
-            .await
-            .map_err(|e| format!("Sherpa 模型管理器初始化失败: {e}"))?;
-        *guard = Some(mgr.clone());
-        Ok(mgr)
-    } else {
-        Ok(guard.as_ref().unwrap().clone())
-    }
+    SherpaModelsState::default()
 }
 
 fn record_from(info: &SherpaOnnxModelInfo) -> SherpaModelRecord {
@@ -94,14 +68,11 @@ fn record_from(info: &SherpaOnnxModelInfo) -> SherpaModelRecord {
 
 /// 列出 Sherpa 模型（内置清单 + 已安装状态）。
 #[tauri::command]
-pub async fn sherpa_list_models(
-    state: State<'_, SherpaModelsState>,
-) -> Result<Vec<SherpaModelRecord>, String> {
-    let mgr = get_manager(&state).await?;
-    mgr.initialize()
+pub async fn sherpa_list_models() -> Result<Vec<SherpaModelRecord>, String> {
+    let root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
+    let models = scan_models(&root)
         .await
         .map_err(|e| format!("扫描模型失败: {e}"))?;
-    let models = mgr.get_models().await;
     let mut installed: std::collections::HashMap<String, SherpaModelRecord> = models
         .iter()
         .map(record_from)
@@ -180,11 +151,7 @@ pub async fn sherpa_list_speakers(model_name: String) -> Result<SherpaSpeakersIn
 
 /// 删除一个已安装的 Sherpa 模型（删除整个模型目录）。
 #[tauri::command]
-pub async fn sherpa_delete_model(
-    state: State<'_, SherpaModelsState>,
-    model_id: String,
-) -> Result<(), String> {
-    let mgr = get_manager(&state).await?;
+pub async fn sherpa_delete_model(model_id: String) -> Result<(), String> {
     // model_id 只允许是模型目录下的单个普通目录名：拒绝路径分隔符与 `.`/`..`，
     // 防止把删除操作引导到模型目录之外（路径穿越）。
     if model_id.is_empty()
@@ -195,14 +162,14 @@ pub async fn sherpa_delete_model(
     {
         return Err(format!("非法模型 ID: {model_id}"));
     }
-    let dir = mgr.model_dir().join(&model_id);
+    let dir = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+        .join(&model_id);
     if !dir.exists() {
         return Err(format!("Sherpa 模型不存在: {model_id}"));
     }
     tokio::fs::remove_dir_all(&dir)
         .await
         .map_err(|e| format!("删除模型 {model_id} 失败: {e}"))?;
-    let _ = mgr.initialize().await;
     Ok(())
 }
 
@@ -509,7 +476,7 @@ pub async fn sherpa_download_model(
         in_flight.insert(model_id.clone());
     }
 
-    let result = run_download(&app, &state, entry).await;
+    let result = run_download(&app, entry).await;
     {
         let mut in_flight = state.downloading.lock().await;
         in_flight.remove(&model_id);
@@ -525,14 +492,9 @@ async fn repo_dir_total_bytes(entry: &SherpaCatalogEntry) -> u64 {
     }
 }
 
-async fn run_download(
-    app: &AppHandle,
-    state: &State<'_, SherpaModelsState>,
-    entry: &'static SherpaCatalogEntry,
-) -> Result<(), String> {
+async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Result<(), String> {
     let dir = entry.dir;
-    let mgr = get_manager(state).await?;
-    let model_root = mgr.model_dir();
+    let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
     let target_dir = model_root.join(dir);
     let _ = tokio::fs::create_dir_all(&target_dir).await;
 
@@ -650,7 +612,6 @@ async fn run_download(
         let _ = tokio::fs::remove_dir_all(&target_dir).await;
         return Err(e);
     }
-    let _ = mgr.initialize().await;
     Ok(())
 }
 
@@ -710,12 +671,7 @@ pub async fn test_sherpa_onnx_voice(
         non_empty(settings.sherpa_onnx_voice.clone()).unwrap_or_else(|| "female".to_string());
     let use_gpu = settings.sherpa_onnx_use_gpu.unwrap_or(false);
 
-    let tts_config = crate::config::app_config::AppConfig::load(&app)
-        .unwrap_or_default()
-        .tts;
-
     let mut adapter = SherpaOnnxAdapter::new(
-        tts_config,
         model_root.to_string_lossy().to_string(),
         model_type,
         language,
@@ -925,38 +881,4 @@ pub async fn open_sherpa_onnx_model_manager(app: tauri::AppHandle) -> Result<(),
     // Android 无对应系统入口（`open_folder` 直接返回 Ok）。
     let _ = app;
     crate::utils::system::open_folder(&dir.to_string_lossy())
-}
-
-/// Sherpa 模型目录的存储访问状态（移动端权限 + 模型根目录路径）。
-#[derive(Debug, Serialize)]
-pub struct SherpaStorageStatus {
-    /// 是否已获得外部存储读写权限（桌面端恒为 `true`）。
-    pub granted: bool,
-    /// 模型根目录（模型文件夹 `<name>/` 直接位于该目录下）。
-    pub model_root: String,
-}
-
-fn sherpa_storage_status() -> SherpaStorageStatus {
-    SherpaStorageStatus {
-        granted: true,
-        model_root: crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
-            .to_string_lossy()
-            .into_owned(),
-    }
-}
-
-/// 模型目录位于应用数据目录，无需存储权限，恒返回已授权。
-#[tauri::command]
-pub async fn check_sherpa_storage_permission(
-    _app: tauri::AppHandle,
-) -> Result<SherpaStorageStatus, String> {
-    Ok(sherpa_storage_status())
-}
-
-/// 恒视为已授权；保留此命令仅为前端兼容。
-#[tauri::command]
-pub async fn request_sherpa_storage_permission(
-    _app: tauri::AppHandle,
-) -> Result<SherpaStorageStatus, String> {
-    Ok(sherpa_storage_status())
 }

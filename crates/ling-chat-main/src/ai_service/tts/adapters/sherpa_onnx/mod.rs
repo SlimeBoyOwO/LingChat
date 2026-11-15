@@ -12,7 +12,6 @@ use serde_json::{Value as JsonValue, json};
 use sherpa_onnx::GenerationConfig;
 
 use crate::ai_service::tts::provider::TtsAdapter;
-use crate::config::tts::TtsConfig;
 
 mod audio;
 mod engine;
@@ -143,7 +142,6 @@ pub struct SherpaOnnxAdapter {
 
 impl SherpaOnnxAdapter {
     pub fn new(
-        _config: TtsConfig,
         model_path: String,
         model_type: String,
         language: String,
@@ -547,7 +545,6 @@ mod tests {
         );
 
         let adapter = SherpaOnnxAdapter::new(
-            TtsConfig::default(),
             model_dir,
             "zipvoice".to_string(),
             "zh".to_string(),
@@ -586,7 +583,6 @@ mod tests {
         );
 
         let first = SherpaOnnxAdapter::new(
-            TtsConfig::default(),
             model_dir.clone(),
             "matcha".to_string(),
             "zh".to_string(),
@@ -598,7 +594,6 @@ mod tests {
 
         // 非 ZipVoice 模型不读取 tuning，语言/音色也不参与引擎构造；这些都应命中同一缓存。
         let second = SherpaOnnxAdapter::new(
-            TtsConfig::default(),
             model_dir,
             "matcha".to_string(),
             "zh".to_string(),
@@ -640,7 +635,6 @@ mod tests {
 
         for use_gpu in [false, true] {
             let adapter = SherpaOnnxAdapter::new(
-                TtsConfig::default(),
                 model_dir.clone(),
                 "matcha".to_string(),
                 "zh".to_string(),

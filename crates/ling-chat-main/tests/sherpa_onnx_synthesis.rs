@@ -45,7 +45,6 @@ use ling_chat_main::ai_service::tts::adapters::sherpa_onnx::{
     SherpaOnnxAdapter, SherpaTuning, load_reference_audio,
 };
 use ling_chat_main::ai_service::tts::provider::TtsAdapter;
-use ling_chat_main::config::tts::TtsConfig;
 
 /// 短测试句（12 字）。
 const SHORT_TEXT: &str = "你好，这是一段测试语音。";
@@ -136,7 +135,6 @@ async fn synthesis_is_audible_and_scales_with_text_length() {
     );
 
     let mut adapter = SherpaOnnxAdapter::new(
-        TtsConfig::default(),
         model_dir.clone(),
         model_type.clone(),
         language.clone(),
@@ -312,7 +310,6 @@ async fn synth_env_text() {
     let voice = std::env::var("SHERPA_VOICE").unwrap_or_default();
 
     let mut adapter = SherpaOnnxAdapter::new(
-        TtsConfig::default(),
         model_dir.clone(),
         model_type.clone(),
         lang.clone(),

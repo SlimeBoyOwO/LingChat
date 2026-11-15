@@ -618,7 +618,6 @@ impl VoiceMaker {
                     cfg.sherpa_onnx_guidance_scale,
                 );
                 match SherpaOnnxAdapter::new(
-                    self.tts_config.clone(),
                     models_root.to_string_lossy().into_owned(),
                     model_type,
                     language,

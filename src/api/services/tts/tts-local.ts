@@ -304,22 +304,3 @@ export async function migrateSherpaRefAudio(path: string): Promise<SherpaRefAudi
     return null;
   }
 }
-
-// 模型目录固定为 data/sherpa_onnx_models（应用数据目录，无需外部存储权限）。
-
-export interface SherpaStorageStatus {
-  /** 模型目录恒可访问（应用数据目录）。 */
-  granted: boolean;
-  /** 模型根目录。 */
-  model_root: string;
-}
-
-/** 查询模型目录状态。 */
-export function checkSherpaStoragePermission(): Promise<SherpaStorageStatus> {
-  return invoke<SherpaStorageStatus>("check_sherpa_storage_permission");
-}
-
-/** 兼容保留：恒返回已授权。 */
-export function requestSherpaStoragePermission(): Promise<SherpaStorageStatus> {
-  return invoke<SherpaStorageStatus>("request_sherpa_storage_permission");
-}
