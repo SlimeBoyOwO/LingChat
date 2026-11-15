@@ -50,4 +50,48 @@ export default {
       "Toggle the affection system? When disabled, affection evaluation stops and the affection panel is hidden immediately.",
     affectionToggleFailed: "Failed to toggle the affection system, please try again later",
   },
+  search: {
+    placeholder:
+      "Search settings, sub-options, or config keys (e.g. TTS, WEATHER_CITY, CosyVoice, hotkey…)",
+    clear: "Clear search",
+    resultCount: "{count} matching settings",
+    resultCountCapped: "Showing top {shown} of {total} results",
+    loadingDynamic: "Indexing all advanced config keys…",
+    emptyTitle: "No matching settings found",
+    emptyHint:
+      "Try another keyword, module name, or raw key (e.g. weather, timeout, voice, hotword, cast)",
+    shortcutHint: "Ctrl+K Focus · ↑↓ Select · Enter Jump · Esc Clear",
+    jumpLabel: "Open",
+    restartTag: "Restart required",
+    sections: {
+      menu: "Main Menu",
+      llm: "LLM Providers",
+      tts: "TTS Settings",
+      asr: "Speech Recognition",
+      tools: "Tool Settings",
+      cast: "Screen Cast",
+      memory: "Memory Debug",
+      other: "Other Advanced",
+    },
+    descs: {
+      menuLanguage: "Switch the UI display language; applies immediately and auto-saves",
+      menuAffection: "Master switch for the affection system; applies immediately on save",
+      menuGuide: "View the built-in TTS setup guide and tutorial",
+      llmList: "Inspect, add, edit, delete, and test configured LLM endpoints",
+      llmAdd: "Create a new OpenAI-compatible, LM Studio, or Codex provider",
+      llmRoleChat: "Choose the primary model used for main conversations",
+      llmRoleTranslate: "Choose the model used for bilingual dialogue translation",
+      llmRoleGod: "Choose the lightweight decision model for background checks & tool picking",
+      llmRoleVision:
+        "Choose the multimodal model for screen perception and image/video understanding",
+      ttsSwitch: "Enable or disable the offline local TTS engine",
+      ttsInstalled: "Manage installed local character voice models",
+      toolsWebSearch:
+        "Configure Keenable / Kimi / BoCha / DeepSeek / Tavily / Codex and proxy settings",
+      textAutoAdvance: "Adjust the pause interval when auto-advance dialogue is enabled",
+      textTtsCache: "Check and clean orphaned local TTS audio cache files",
+      charList: "Switch characters, edit character configs, or create a new character",
+      achievement: "View unlocked and locked achievements",
+    },
+  },
 };

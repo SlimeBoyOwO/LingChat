@@ -1,7 +1,7 @@
 <template>
   <div>
     <p class="mb-4 px-1 text-sm text-gray-300">{{ $t("ui.toolCalls.accessModeHint") }}</p>
-    <div class="grid gap-3">
+    <div data-setting-anchor="tools-general-access-mode" class="grid gap-3 rounded-xl">
       <button
         v-for="mode in accessModes"
         :key="mode"
@@ -60,6 +60,7 @@
     </div>
 
     <ToolSettingsCard
+      data-setting-anchor="tools-general-max-rounds"
       class="mt-3"
       :title="$t('ui.toolCalls.maxToolRoundsTitle')"
       :description="$t('ui.toolCalls.maxToolRoundsHint')"
@@ -94,6 +95,7 @@
     </ToolSettingsCard>
 
     <ToolSettingsCard
+      data-setting-anchor="tools-general-rag"
       class="mt-3"
       :title="$t('ui.toolCalls.toolRagTitle')"
       :description="$t('ui.toolCalls.toolRagHint')"
@@ -141,6 +143,7 @@
     </ToolSettingsCard>
 
     <ToolSettingsCard
+      data-setting-anchor="tools-general-recommend"
       class="mt-3"
       :title="$t('ui.toolCalls.toolRecommendTitle')"
       :description="$t('ui.toolCalls.toolRecommendHint')"
@@ -174,6 +177,7 @@
     </div>
     <div
       v-if="settings.access_mode === 'full_access' && windows"
+      data-setting-anchor="tools-general-admin"
       class="mt-3 rounded-xl border border-white/15 bg-black/20 px-4 py-3"
     >
       <div class="flex items-center gap-2 font-semibold text-white">
@@ -215,6 +219,7 @@
     </div>
 
     <ToolSettingsCard
+      data-setting-anchor="tools-reset-all"
       class="mt-6"
       tone="warning"
       :title="$t('ui.toolCalls.resetAll')"

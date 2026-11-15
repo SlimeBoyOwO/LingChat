@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem :title="$t('settings.plugins.title')">
+    <MenuItem data-setting-anchor="plugins-top" :title="$t('settings.plugins.title')">
       <template #header>
         <Icon icon="package" :size="20" />
       </template>
@@ -169,6 +169,17 @@ import {
   type PluginInfo,
   type WsState,
 } from "@/api/services/plugins";
+import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "plugins",
+  async (jump) => {
+    await focusSettingAnchor(jump.anchor || "plugins-top", {
+      crossTab: jump.crossTab,
+      fallbackAnchor: jump.fallbackAnchor || "plugins-top",
+    });
+  },
+);
 
 const plugins = ref<PluginInfo[]>([]);
 const error = ref("");

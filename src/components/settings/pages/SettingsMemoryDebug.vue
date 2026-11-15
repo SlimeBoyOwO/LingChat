@@ -37,7 +37,10 @@
     <!-- 右栏：详情 -->
     <section class="min-h-0 flex-1 overflow-y-auto p-4">
       <!-- 工具条 -->
-      <div class="mb-4 flex flex-wrap items-center gap-3">
+      <div
+        data-setting-anchor="memory-overview"
+        class="mb-4 flex flex-wrap items-center gap-3 rounded-lg"
+      >
         <h3 class="text-brand text-base font-bold">
           {{ snapshot?.displayName || $t("settings.memoryDebug.title") }}
         </h3>
@@ -71,7 +74,10 @@
       <!-- 守卫直接判 runtime（而非 snapshot）：模板里 v-else 无法为 computed 收窄类型 -->
       <template v-else-if="runtime">
         <!-- 压缩状态 -->
-        <div class="mb-4 rounded-xl border border-white/10 bg-black/15 p-4">
+        <div
+          data-setting-anchor="memory-compaction"
+          class="mb-4 rounded-xl border border-white/10 bg-black/15 p-4"
+        >
           <h4 class="mb-1 text-sm font-semibold text-white">
             {{ $t("settings.memoryDebug.triggerTitle") }}
           </h4>
@@ -121,7 +127,10 @@
         </div>
 
         <!-- ① 存储真源 -->
-        <div class="mb-3 rounded-xl border border-white/10 bg-black/15 p-4">
+        <div
+          data-setting-anchor="memory-store"
+          class="mb-3 rounded-xl border border-white/10 bg-black/15 p-4"
+        >
           <button
             class="flex w-full cursor-pointer items-center justify-between text-left"
             @click="showStore = !showStore"
@@ -179,7 +188,10 @@
         </div>
 
         <!-- ② 注入视图 -->
-        <div class="mb-3 rounded-xl border border-white/10 bg-black/15 p-4">
+        <div
+          data-setting-anchor="memory-injected"
+          class="mb-3 rounded-xl border border-white/10 bg-black/15 p-4"
+        >
           <button
             class="flex w-full cursor-pointer items-center justify-between text-left"
             @click="showInjected = !showInjected"
@@ -222,7 +234,10 @@
         </div>
 
         <!-- ③ 真实上下文 -->
-        <div class="rounded-xl border border-white/10 bg-black/15 p-4">
+        <div
+          data-setting-anchor="memory-context"
+          class="rounded-xl border border-white/10 bg-black/15 p-4"
+        >
           <button
             class="flex w-full cursor-pointer items-center justify-between text-left"
             @click="showContext = !showContext"
@@ -283,6 +298,10 @@ import { computed, onActivated, onMounted, ref, watch } from "vue";
 import { Button } from "../../base";
 import { ChevronDown, RefreshCw } from "@lucide/vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  focusSettingAnchor,
+  useSettingsJumpConsumer,
+} from "@/components/settings/search/jumpHighlight";
 import { i18n } from "@/locales";
 import {
   getMemoryDebugOverview,
@@ -305,6 +324,21 @@ const error = ref("");
 const showStore = ref(true);
 const showInjected = ref(false);
 const showContext = ref(false);
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "memory",
+  async (jump) => {
+    if (jump.anchor === "memory-store") showStore.value = true;
+    if (jump.anchor === "memory-injected") showInjected.value = true;
+    if (jump.anchor === "memory-context") showContext.value = true;
+    if (jump.anchor) {
+      await focusSettingAnchor(jump.anchor, {
+        crossTab: jump.crossTab,
+        fallbackAnchor: jump.fallbackAnchor || "memory-overview",
+      });
+    }
+  },
+);
 
 const roles = computed<MemoryDebugRole[]>(() => overview.value?.roles ?? []);
 const runtime = computed<MemorySystemSnapshot | null>(() => snapshot.value?.runtime ?? null);

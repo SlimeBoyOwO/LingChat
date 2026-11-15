@@ -85,7 +85,7 @@
       </div>
 
       <!-- ====== 主菜单 ====== -->
-      <div v-if="advanceTab === 'menu'" class="min-h-0 flex-1 overflow-y-auto">
+      <div v-if="advanceTab === 'menu'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
         <SettingsAdvanceMenu @navigate="advanceTab = $event" />
       </div>
 
