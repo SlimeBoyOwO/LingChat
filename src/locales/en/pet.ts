@@ -39,6 +39,9 @@ export default {
     live2dFpsUnlimited: "Unlimited",
     live2dFpsCustom: "Custom",
     live2dFpsReset: "Reset to Default FPS",
+    clickJellyTitle: "Jelly Effect on Live2D",
+    clickJellyDesc:
+      "Applies to Live2D models only. When off, idle clicks keep only the model's own touch motions; static portraits are unaffected.",
   },
   history: {
     title: "Chat History",

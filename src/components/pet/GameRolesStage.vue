@@ -95,32 +95,35 @@
         </button>
       </div>
 
-      <!-- Live2D 角色渲染（上游合并） -->
-      <!-- 无框模式下不再给 host div 加 rounded-full，模型因此不再被裁成圆 -->
-      <Live2DStage
-        v-if="petLive2d"
-        class="z-11"
-        :class="{ 'rounded-full': !petFrameless }"
-        :roles="singleRole ? [singleRole] : []"
-        mode="pet"
-        :active-speaker-id="gameStore.currentInteractRoleId"
-        :audio-element="mainAudio"
-        :voice-data-url="voiceDataUrl"
-        :max-fps="live2dFps"
-        @active-change="setLive2dActiveRoles"
-        @failed-change="setLive2dFailedRoles"
-        @model-missing="onModelMissing"
-      />
+      <!-- 动画目标层：Live2D 与立绘共用一层变换，不碰情绪动画与立绘自身的 transform -->
+      <div ref="animLayerRef" class="pet-anim-layer absolute inset-0">
+        <!-- Live2D 角色渲染（上游合并） -->
+        <!-- 无框模式下不再给 host div 加 rounded-full，模型因此不再被裁成圆 -->
+        <Live2DStage
+          v-if="petLive2d"
+          class="z-11"
+          :class="{ 'rounded-full': !petFrameless }"
+          :roles="singleRole ? [singleRole] : []"
+          mode="pet"
+          :active-speaker-id="gameStore.currentInteractRoleId"
+          :audio-element="mainAudio"
+          :voice-data-url="voiceDataUrl"
+          :max-fps="live2dFps"
+          @active-change="setLive2dActiveRoles"
+          @failed-change="setLive2dFailedRoles"
+          @model-missing="onModelMissing"
+        />
 
-      <!-- 角色头像 -->
-      <RoleAvatar
-        v-if="singleRole"
-        :key="singleRole.roleId"
-        :role="singleRole"
-        :live2d-active="petLive2d && live2dActiveRoleIds.has(singleRole.roleId)"
-        :live2d-failed="petLive2d && live2dFailedRoleIds.has(singleRole.roleId)"
-        @avatar-click="emit('avatar-click')"
-      />
+        <!-- 角色头像 -->
+        <RoleAvatar
+          v-if="singleRole"
+          :key="singleRole.roleId"
+          :role="singleRole"
+          :live2d-active="petLive2d && live2dActiveRoleIds.has(singleRole.roleId)"
+          :live2d-failed="petLive2d && live2dFailedRoleIds.has(singleRole.roleId)"
+          @avatar-click="emit('avatar-click')"
+        />
+      </div>
     </div>
 
     <audio ref="mainAudio" @ended="onAudioEnded" @error="onAudioEnded"></audio>
@@ -128,7 +131,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from "vue";
+import { ref, computed, watch, onMounted, onUnmounted, inject } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
 import { useGameStore } from "@/stores/modules/game";
@@ -143,6 +146,8 @@ import { isAndroid } from "@/utils/platform";
 import RoleAvatar from "./GameRoleAvatar.vue";
 import PetSpectrumRing from "./PetSpectrumRing.vue";
 import Live2DStage from "../game/live2d/Live2DStage.vue";
+import { PET_ANIMATION_KEY } from "./animation/controller";
+import { createPetAvatarTarget } from "./animation/avatarTarget";
 import { Play, Pause, Settings, LogOut, Camera, Mic, MicOff } from "@lucide/vue";
 
 const { t } = useI18n();
@@ -197,6 +202,23 @@ const petLive2d = computed(() => !!singleRole.value && prefersLive2d(singleRole.
 // 无框桌宠（角色设定 → 桌宠）：只影响绘图，不影响加载哪些模型，
 // 所以并进 Live2DStage 的 class 即可，无需像 petLive2d 那样喂 v-if / active 状态。
 const petFrameless = computed(() => singleRole.value?.petFrameless === true);
+
+// --- 动画目标 ---
+// 舞台只负责把这块注册成目标；何时播什么由触发层决定。
+// 层本身不受 v-if 影响，换角色或切换 Live2D 都不会让目标失效。
+const animLayerRef = ref<HTMLElement | null>(null);
+
+// 模型真正在渲染时才算 Live2D 模式；加载中或已回退静态立绘时照常播放
+const live2dRendering = computed(() => {
+  const role = singleRole.value;
+  return !!role && petLive2d.value && live2dActiveRoleIds.value.has(role.roleId);
+});
+
+const petAnimation = inject(PET_ANIMATION_KEY, null);
+const avatarTarget = createPetAvatarTarget(animLayerRef, () => live2dRendering.value);
+
+onMounted(() => petAnimation?.attachTarget(avatarTarget));
+onUnmounted(() => petAnimation?.detachTarget(avatarTarget));
 
 const frameSize = computed(() => {
   const scale = settingsStore.pet?.scale || 1;
@@ -302,6 +324,11 @@ const handleExitPetMode = () => emit("exit-pet-mode");
 </script>
 
 <style scoped>
+/* 以底边为原点：缩放时上沿不跑出窗口 */
+.pet-anim-layer {
+  transform-origin: 50% 100%;
+}
+
 .animate-pet-scale {
   animation: pet-scale-in 0.4s ease-out;
 }

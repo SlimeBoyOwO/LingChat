@@ -9,6 +9,7 @@
         ref="avatarContainer"
         class="flex shrink-0 items-center justify-center bg-transparent"
         :style="{ width: 'var(--avatar-size)', height: 'var(--avatar-size)' }"
+        @pointerdown="handleAvatarPress"
       >
         <GameRolesStage
           @avatar-click="handleAvatarClick"
@@ -32,7 +33,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, provide, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
 import { invoke } from "@tauri-apps/api/core";
@@ -48,6 +49,8 @@ import { useDialogAdvance } from "@/composables/chat/useDialogAdvance";
 import ChatInput from "../pet/ChatInput.vue";
 import DragArea from "../pet/DragArea.vue";
 import GameRolesStage from "../pet/GameRolesStage.vue";
+import { PET_ANIMATION_KEY, createPetAnimationController } from "../pet/animation/controller";
+import { eventQueue } from "@/core/events/event-queue";
 import { useFileDrop } from "../pet/useFileDrop";
 import {
   AVATAR_BAND_BASE,
@@ -80,19 +83,74 @@ const uiStore = useUIStore();
 const showChatInput = ref(false);
 const { isDragging } = useFileDrop();
 
-/**
- * 「当前这句吐完了没有」——不镜像气泡窗的打字机状态，而是本地相减得出。
- *
- * 打字机在气泡窗，跨窗口读一个会变的布尔量只能靠变化边沿，丢一次就永久失联。
- * 改成气泡窗上报「第 N 句已完整显示」：未上报的当前句即视为还在打字。
- */
+// 改成气泡窗上报「第 N 句已完整显示」：未上报的当前句即视为还在打字。
 const currentLineId = ref(nextLineId());
 const drainedLineId = ref(currentLineId.value);
-const lineTyping = computed(() => drainedLineId.value !== currentLineId.value);
+// 不加这层判断会一直锁在 typing 状态，果冻永远不触发。
+const lineTyping = computed(
+  () => gameStore.currentStatus === "responding" && drainedLineId.value !== currentLineId.value,
+);
+
+// 待机：没有正在生成的内容，也没有排队等播的台词。
+const isIdle = () => {
+  if (gameStore.currentStatus === "thinking") return false;
+  if (lineTyping.value) return false;
+  return eventQueue.getState().queueLength === 0;
+};
 
 const avatarContainer = ref<HTMLElement | null>(null);
 const chatContainer = ref<HTMLElement | null>(null);
 const ChatInputRef = ref<InstanceType<typeof ChatInput> | null>(null);
+
+// --- 动画管线 ---
+// 页面负责组装：创建控制台并提供给舞台注册动画目标，再把各触发器的状态机接到控制台。
+const petAnimation = createPetAnimationController({
+  // Live2D 模型自带触摸动作：果冻类动画在开关关闭时直接不参与仲裁
+  gate: (template, target) =>
+    !(
+      template.tag === "jelly" &&
+      target.isModelRendering() &&
+      settingsStore.pet.live2dClickJelly === false
+    ),
+});
+provide(PET_ANIMATION_KEY, petAnimation);
+
+// 按压触发器：按下进入 down，松手回到 up；松手时播一次回弹
+type PressState = "up" | "down";
+const pressTrigger = petAnimation.registerTrigger<PressState>({
+  id: "pointer-press",
+  priority: 100,
+  initial: "up",
+  states: {
+    down: { animation: "press", mode: "hold" },
+    up: { animation: "release", mode: "oneshot" },
+  },
+});
+
+// 拖拽走原生窗口拖曳，webview 收不到 pointerup，用「窗口停止移动」兜底松手
+let releaseTimer: number | undefined;
+
+const handleAvatarPress = (event: PointerEvent) => {
+  if (event.button !== 0) return;
+  // 头像区域内还有设置/截图等按钮，按它们不该让角色变小
+  if ((event.target as HTMLElement | null)?.closest("button")) return;
+  if (!isIdle()) return;
+  pressTrigger.setState("down");
+};
+
+const releasePress = () => {
+  if (releaseTimer !== undefined) {
+    window.clearTimeout(releaseTimer);
+    releaseTimer = undefined;
+  }
+  pressTrigger.setState("up");
+};
+
+const handleWindowMoved = () => {
+  if (pressTrigger.state !== "down") return;
+  if (releaseTimer !== undefined) window.clearTimeout(releaseTimer);
+  releaseTimer = window.setTimeout(releasePress, 200);
+};
 
 const scale = computed(() => settingsStore.pet?.scale || 1);
 const px = (base: number) => `${Math.round(base * scale.value)}px`;
@@ -111,8 +169,11 @@ const PET_BUBBLE_SIDE_EVENT = "pet-bubble-side-changed";
 
 const appWindow = getCurrentWindow();
 
-/** 上一次镜像出去的台词，用于判断「这是新的一句」——见 emitMirror 里的发号 */
-let lastMirroredLine = "";
+/**
+ * 上一次镜像出去的台词，用于判断「这是新的一句」——见 emitMirror 里的发号。
+ * 初值取当前台词：进入桌宠时沿用的上一句已经播完，不该被当成新的一句重新打字。
+ */
+let lastMirroredLine = uiStore.showCharacterLine;
 
 const emitMirror = () => {
   const line = uiStore.showCharacterLine;
@@ -375,6 +436,10 @@ onMounted(async () => {
       const next = Number(event.payload?.volume);
       if (!Number.isNaN(next)) settingsStore.updateAudio({ characterVolume: next });
     }),
+    await appWindow.listen<{ enabled: boolean }>("pet-jelly-changed", (event) => {
+      settingsStore.setPetLive2dClickJelly(!!event.payload?.enabled);
+      petAnimation.refresh();
+    }),
     await appWindow.listen<{ effect: string }>("background-effect-changed", (event) => {
       if (event.payload?.effect) uiStore.setBackgroundEffect(event.payload.effect);
     }),
@@ -405,7 +470,12 @@ onMounted(async () => {
     await appWindow.listen<LineDrainedPayload>(PET_LINE_DRAINED, (event) => {
       onLineDrained(Number(event.payload?.lineId));
     }),
+    // 原生拖曳期间 webview 收不到 pointerup，用窗口停止移动来判定松手
+    await appWindow.onMoved(handleWindowMoved),
   );
+
+  window.addEventListener("pointerup", releasePress);
+  window.addEventListener("mouseup", releasePress);
 
   await applyWindowLayout();
 
@@ -419,9 +489,13 @@ onMounted(async () => {
 onUnmounted(() => {
   document.body.style.backgroundColor = "";
   document.documentElement.style.backgroundColor = "";
+  window.removeEventListener("pointerup", releasePress);
+  window.removeEventListener("mouseup", releasePress);
   unlisteners.forEach((unlisten) => unlisten());
   if (hitTestInterval !== undefined) window.clearInterval(hitTestInterval);
   if (placementTimer !== undefined) window.clearTimeout(placementTimer);
+  if (releaseTimer !== undefined) window.clearTimeout(releaseTimer);
+  petAnimation.dispose();
 });
 
 watch(scale, () => {
@@ -470,12 +544,7 @@ const {
   mergeEnabled: false,
 });
 
-/**
- * 气泡窗回报「第 N 句已完整显示」。
- *
- * 只认当前这句的号，过期或超前的回报一律丢弃；同一句重复回报（重新显示、清屏补发）
- * 不再重排延迟，否则延时会被无限续期。
- */
+// 气泡窗回报「第 N 句已完整显示」。
 const onLineDrained = (drainedId: number) => {
   if (!Number.isFinite(drainedId) || drainedId !== currentLineId.value) return;
   if (drainedLineId.value === drainedId) return;
@@ -484,7 +553,8 @@ const onLineDrained = (drainedId: number) => {
   scheduleAdvance();
 };
 
-// 先取消待调度，再走共用状态机（打字中先补全文字、不推进）
+// 先取消待调度，再走共用状态机（打字中先补全文字、不推进）；
+// 待机的按压反馈由 pointerdown/pointerup 承担，这里只负责推进
 const handleAvatarClick = () => {
   manualTriggerContinue();
   continueDialog(true);
