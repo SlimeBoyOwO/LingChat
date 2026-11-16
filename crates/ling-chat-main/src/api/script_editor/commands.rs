@@ -421,6 +421,17 @@ fn chapter_summaries(script_dir: &Path) -> Vec<ChapterSummary> {
         .collect()
 }
 
+/// 把同步磁盘 IO 甩到阻塞线程池，避免卡 UI / 事件循环线程。
+async fn run_blocking_io<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("后台 IO 任务失败: {e}"))?
+}
+
 // ============================================================
 // 命令：读
 // ============================================================
@@ -434,36 +445,49 @@ pub fn editor_get_schema() -> ScriptSchema {
 #[tauri::command]
 pub async fn editor_list_scripts(app: AppHandle) -> Result<Vec<ScriptPackage>, String> {
     let loaded = loaded_script_names(&app).await;
-    let mut out = Vec::new();
-    for key in paths::enumerate_script_keys() {
-        match read_package(&key, &loaded) {
-            Ok(p) => out.push(p),
-            Err(e) => tracing::warn!("[ScriptEditor] 跳过无效剧本 {}: {}", key, e),
+    run_blocking_io(move || {
+        let mut out = Vec::new();
+        for key in paths::enumerate_script_keys() {
+            match read_package(&key, &loaded) {
+                Ok(p) => out.push(p),
+                Err(e) => tracing::warn!("[ScriptEditor] 跳过无效剧本 {key}: {e}"),
+            }
         }
-    }
-    Ok(out)
+        Ok(out)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn editor_read_script(app: AppHandle, key: String) -> Result<ScriptDetail, String> {
     let loaded = loaded_script_names(&app).await;
-    let dir = paths::resolve_script_dir(&key)?;
-    Ok(ScriptDetail {
-        package: read_package(&key, &loaded)?,
-        story_config: yaml_file::read_story_config(&dir)?,
-        chapters: chapter_summaries(&dir),
-        assets: read_asset_index(&dir),
-        characters: read_characters(&dir),
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        Ok(ScriptDetail {
+            package: read_package(&key, &loaded)?,
+            story_config: yaml_file::read_story_config(&dir)?,
+            chapters: chapter_summaries(&dir),
+            assets: read_asset_index(&dir),
+            characters: read_characters(&dir),
+        })
     })
+    .await
 }
 
 #[tauri::command]
-pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterContent, String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
+pub async fn editor_read_chapter(
+    key: String,
+    chapter_id: String,
+) -> Result<ChapterContent, String> {
+    run_blocking_io(move || read_chapter(&key, &chapter_id)).await
+}
+
+fn read_chapter(key: &str, chapter_id: &str) -> Result<ChapterContent, String> {
+    let dir = paths::resolve_script_dir(key)?;
+    let file = paths::resolve_chapter_file(&dir, chapter_id, true)?;
     let doc = ChapterDoc::from_json(yaml_file::read_yaml_as_json(&file)?)?;
     Ok(ChapterContent {
-        id: chapter_id,
+        id: chapter_id.to_string(),
         name: doc.name,
         events: doc.events,
         extra: doc.extra,
@@ -471,8 +495,12 @@ pub fn editor_read_chapter(key: String, chapter_id: String) -> Result<ChapterCon
 }
 
 #[tauri::command]
-pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
-    let dir = paths::resolve_script_dir(&key)?;
+pub async fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
+    run_blocking_io(move || validate_script(&key)).await
+}
+
+fn validate_script(key: &str) -> Result<ValidationReport, String> {
+    let dir = paths::resolve_script_dir(key)?;
 
     // 收集其他剧本的 script_name 用于查重（同名剧本都收进来，重名时一次列全）
     let mut names: HashMap<String, Vec<String>> = HashMap::new();
@@ -492,7 +520,7 @@ pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
     Ok(validate::validate(
         crate::data_dir::get_data_dir(),
         &dir,
-        &key,
+        key,
         &names,
     ))
 }
@@ -502,7 +530,11 @@ pub fn editor_validate_script(key: String) -> Result<ValidationReport, String> {
 // ============================================================
 
 #[tauri::command]
-pub fn editor_write_chapter(req: WriteChapterRequest) -> Result<(), String> {
+pub async fn editor_write_chapter(req: WriteChapterRequest) -> Result<(), String> {
+    run_blocking_io(move || write_chapter(req)).await
+}
+
+fn write_chapter(req: WriteChapterRequest) -> Result<(), String> {
     let dir = paths::resolve_script_dir(&req.key)?;
     let file = paths::resolve_chapter_file(&dir, &req.chapter_id, true)?;
     let doc = ChapterDoc {
@@ -514,27 +546,34 @@ pub fn editor_write_chapter(req: WriteChapterRequest) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub fn editor_write_story_config(key: String, config: JsonValue) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    yaml_file::write_story_config(&dir, &config)
+pub async fn editor_write_story_config(key: String, config: JsonValue) -> Result<(), String> {
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        yaml_file::write_story_config(&dir, &config)
+    })
+    .await
 }
 
 #[tauri::command]
-pub fn editor_create_chapter(
+pub async fn editor_create_chapter(
     key: String,
     chapter_id: String,
     name: String,
 ) -> Result<ChapterContent, String> {
-    let dir = paths::resolve_script_dir(&key)?;
+    run_blocking_io(move || create_chapter(&key, &chapter_id, &name)).await
+}
+
+fn create_chapter(key: &str, chapter_id: &str, name: &str) -> Result<ChapterContent, String> {
+    let dir = paths::resolve_script_dir(key)?;
 
     // 逐段过 sanitize，子目录也要挡住非法字符
     for seg in chapter_id.split('/') {
         paths::sanitize_folder_name(seg)?;
     }
 
-    let file = paths::resolve_chapter_file(&dir, &chapter_id, false)?;
+    let file = paths::resolve_chapter_file(&dir, chapter_id, false)?;
     if file.exists() {
-        return Err(format!("章节已存在: '{}'", chapter_id));
+        return Err(format!("章节已存在: '{chapter_id}'"));
     }
     yaml_file::ensure_parent_dir(&file)?;
 
@@ -556,7 +595,7 @@ pub fn editor_create_chapter(
     yaml_file::write_json_as_yaml(&file, &doc.to_json())?;
 
     Ok(ChapterContent {
-        id: chapter_id,
+        id: chapter_id.to_string(),
         name: doc.name,
         events: doc.events,
         extra: doc.extra,
@@ -564,12 +603,14 @@ pub fn editor_create_chapter(
 }
 
 #[tauri::command]
-pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
-
-    std::fs::remove_file(&file).map_err(|e| format!("删除章节失败: {}", e))?;
-    Ok(())
+pub async fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), String> {
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        let file = paths::resolve_chapter_file(&dir, &chapter_id, true)?;
+        std::fs::remove_file(&file).map_err(|e| format!("删除章节失败: {e}"))?;
+        Ok(())
+    })
+    .await
 }
 
 /// 删除剧本内一个角色（整个 `characters/<folder>/` 目录）。
@@ -577,16 +618,18 @@ pub fn editor_delete_chapter(key: String, chapter_id: String) -> Result<(), Stri
 /// 删除后校验器会把它当成不存在，被引用的角色会变成一条 `character.unknown` 诊断，
 /// 提示作者剧本里还有地方在引用它。
 #[tauri::command]
-pub fn editor_delete_character(key: String, folder: String) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let safe = paths::sanitize_folder_name(&folder)?;
-    let target = dir.join("characters").join(&safe);
-    if !target.exists() {
-        return Err(format!("角色目录不存在: characters/{}", safe));
-    }
-
-    std::fs::remove_dir_all(&target).map_err(|e| format!("删除角色失败: {}", e))?;
-    Ok(())
+pub async fn editor_delete_character(key: String, folder: String) -> Result<(), String> {
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        let safe = paths::sanitize_folder_name(&folder)?;
+        let target = dir.join("characters").join(&safe);
+        if !target.exists() {
+            return Err(format!("角色目录不存在: characters/{safe}"));
+        }
+        std::fs::remove_dir_all(&target).map_err(|e| format!("删除角色失败: {e}"))?;
+        Ok(())
+    })
+    .await
 }
 
 // 这里原本有一个 editor_rename_chapter（改章节**文件名**）。已删除，理由：
@@ -605,14 +648,20 @@ pub async fn editor_create_script(
     app: AppHandle,
     req: CreateScriptRequest,
 ) -> Result<ScriptPackage, String> {
+    let key = run_blocking_io(move || create_script_on_disk(req)).await?;
+    let loaded = loaded_script_names(&app).await;
+    run_blocking_io(move || read_package(&key, &loaded)).await
+}
+
+fn create_script_on_disk(req: CreateScriptRequest) -> Result<String, String> {
     let folder = paths::sanitize_folder_name(&req.folder_name)?;
 
     let key = if req.is_adventure {
         let bound = paths::sanitize_folder_name(&req.bound_character_folder)
-            .map_err(|e| format!("绑定角色目录名无效: {}", e))?;
-        format!("character/{}/{}", bound, folder)
+            .map_err(|e| format!("绑定角色目录名无效: {e}"))?;
+        format!("character/{bound}/{folder}")
     } else {
-        format!("standalone/{}", folder)
+        format!("standalone/{folder}")
     };
 
     // folder_key 在羁绊冒险体系里是全局主键，重名会互相覆盖
@@ -621,10 +670,7 @@ pub async fn editor_create_script(
         .iter()
         .any(|k| k.rsplit('/').next() == Some(folder.as_str()))
     {
-        return Err(format!(
-            "已存在同名剧本目录「{}」，剧本名不能重名哦",
-            folder
-        ));
+        return Err(format!("已存在同名剧本目录「{folder}」，剧本名不能重名哦"));
     }
 
     let script_name = if req.script_name.trim().is_empty() {
@@ -637,7 +683,7 @@ pub async fn editor_create_script(
         let raw = req.intro_chapter.trim();
         let v = if raw.is_empty() { "main" } else { raw };
         for seg in v.split('/') {
-            paths::sanitize_folder_name(seg).map_err(|e| format!("开场章节名无效: {}", e))?;
+            paths::sanitize_folder_name(seg).map_err(|e| format!("开场章节名无效: {e}"))?;
         }
         v.to_string()
     };
@@ -659,7 +705,7 @@ pub async fn editor_create_script(
         for seg in sub.split('/') {
             p.push(seg);
         }
-        std::fs::create_dir_all(&p).map_err(|e| format!("创建目录 {:?} 失败: {}", p, e))?;
+        std::fs::create_dir_all(&p).map_err(|e| format!("创建目录 {p:?} 失败: {e}"))?;
     }
 
     // story_config.yaml
@@ -704,17 +750,17 @@ pub async fn editor_create_script(
         extra: Map::new(),
     };
     yaml_file::write_json_as_yaml(&intro_file, &first.to_json())?;
-
-    let loaded = loaded_script_names(&app).await;
-    read_package(&key, &loaded)
+    Ok(key)
 }
 
 #[tauri::command]
-pub fn editor_delete_script(key: String) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-
-    std::fs::remove_dir_all(&dir).map_err(|e| format!("删除剧本失败: {}", e))?;
-    Ok(())
+pub async fn editor_delete_script(key: String) -> Result<(), String> {
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("删除剧本失败: {e}"))?;
+        Ok(())
+    })
+    .await
 }
 
 /// 素材落点。
@@ -765,7 +811,11 @@ fn allowed_extensions(kind: &str) -> &'static [&'static str] {
 
 /// 列出全局素材（`game_data/backgrounds` / `musics` / `ambients`）。
 #[tauri::command]
-pub fn editor_list_global_assets() -> Result<AssetIndex, String> {
+pub async fn editor_list_global_assets() -> Result<AssetIndex, String> {
+    run_blocking_io(list_global_assets).await
+}
+
+fn list_global_assets() -> Result<AssetIndex, String> {
     let one = |kind: &str| -> Vec<String> {
         // 全局没有音效目录：跳过，不读音乐目录
         if kind == "sound" {
@@ -833,9 +883,16 @@ pub struct AssetFileIndex {
 /// 那两个喂的是属性面板的下拉框，只需要名字；素材页要显示缩略图、放音频、
 /// 报体积，就得有绝对路径。一次调用把五类全给出来，免得每个文件一次 IPC。
 #[tauri::command]
-pub fn editor_list_asset_files(key: String, scope: AssetScope) -> Result<AssetFileIndex, String> {
+pub async fn editor_list_asset_files(
+    key: String,
+    scope: AssetScope,
+) -> Result<AssetFileIndex, String> {
+    run_blocking_io(move || list_asset_files(&key, scope)).await
+}
+
+fn list_asset_files(key: &str, scope: AssetScope) -> Result<AssetFileIndex, String> {
     let script_dir = match scope {
-        AssetScope::Script => Some(paths::resolve_script_dir(&key)?),
+        AssetScope::Script => Some(paths::resolve_script_dir(key)?),
         AssetScope::Global => None,
     };
 
@@ -900,31 +957,32 @@ pub fn editor_list_asset_files(key: String, scope: AssetScope) -> Result<AssetFi
 ///
 /// 删掉之后剧本里的引用会变成校验器的一条 `asset.missing` 诊断。
 #[tauri::command]
-pub fn editor_delete_asset(
+pub async fn editor_delete_asset(
     key: String,
     kind: String,
     scope: AssetScope,
     name: String,
 ) -> Result<(), String> {
-    let name = paths::sanitize_file_name(&name)?;
-
-    let files = editor_list_asset_files(key, scope)?;
-    let list = match kind.as_str() {
-        "background" => files.background,
-        "music" => files.music,
-        "sound" => files.sound,
-        "ambient" => files.ambient,
-        "pic" => files.pic,
-        other => return Err(format!("未知的素材类别: {}", other)),
-    };
-    let target = list
-        .into_iter()
-        .find(|f| f.name == name)
-        .ok_or_else(|| format!("找不到素材「{}」", name))?;
-    let path = PathBuf::from(&target.path);
-
-    std::fs::remove_file(&path).map_err(|e| format!("删除素材失败: {}", e))?;
-    Ok(())
+    run_blocking_io(move || {
+        let name = paths::sanitize_file_name(&name)?;
+        let files = list_asset_files(&key, scope)?;
+        let list = match kind.as_str() {
+            "background" => files.background,
+            "music" => files.music,
+            "sound" => files.sound,
+            "ambient" => files.ambient,
+            "pic" => files.pic,
+            other => return Err(format!("未知的素材类别: {other}")),
+        };
+        let target = list
+            .into_iter()
+            .find(|f| f.name == name)
+            .ok_or_else(|| format!("找不到素材「{name}」"))?;
+        let path = PathBuf::from(&target.path);
+        std::fs::remove_file(&path).map_err(|e| format!("删除素材失败: {e}"))?;
+        Ok(())
+    })
+    .await
 }
 
 /// 导入素材。
@@ -937,15 +995,24 @@ pub fn editor_delete_asset(
 ///
 /// `scope` 决定落点，见 [`AssetScope`]。
 #[tauri::command]
-pub fn editor_upload_asset(
+pub async fn editor_upload_asset(
     key: String,
     kind: String,
     scope: AssetScope,
     src_path: String,
 ) -> Result<String, String> {
-    let src = Path::new(&src_path);
+    run_blocking_io(move || upload_asset(&key, &kind, scope, &src_path)).await
+}
+
+fn upload_asset(
+    key: &str,
+    kind: &str,
+    scope: AssetScope,
+    src_path: &str,
+) -> Result<String, String> {
+    let src = Path::new(src_path);
     if !src.is_file() {
-        return Err(format!("源文件不存在: {}", src_path));
+        return Err(format!("源文件不存在: {src_path}"));
     }
 
     // 只取文件名，杜绝用源路径拼出目标路径
@@ -959,28 +1026,26 @@ pub fn editor_upload_asset(
         .extension()
         .map(|e| e.to_string_lossy().to_lowercase())
         .unwrap_or_default();
-    let allowed = allowed_extensions(&kind);
+    let allowed = allowed_extensions(kind);
     if !allowed.contains(&ext.as_str()) {
         return Err(format!(
-            "不支持的文件类型 .{}；{} 支持: {}",
-            ext,
-            kind,
+            "不支持的文件类型 .{ext}；{kind} 支持: {}",
             allowed.join(" / ")
         ));
     }
 
-    let (subdir, global_dir) = asset_dirs(&kind)?;
+    let (subdir, global_dir) = asset_dirs(kind)?;
     let target_dir = match scope {
-        AssetScope::Script => paths::resolve_script_dir(&key)?.join("Assets").join(subdir),
+        AssetScope::Script => paths::resolve_script_dir(key)?.join("Assets").join(subdir),
         AssetScope::Global => global_dir,
     };
 
-    std::fs::create_dir_all(&target_dir).map_err(|e| format!("无法创建素材目录: {}", e))?;
+    std::fs::create_dir_all(&target_dir).map_err(|e| format!("无法创建素材目录: {e}"))?;
     let target = target_dir.join(&name);
     if target.exists() {
-        return Err(format!("同名素材「{}」已存在", name));
+        return Err(format!("同名素材「{name}」已存在"));
     }
-    std::fs::copy(src, &target).map_err(|e| format!("复制素材失败: {}", e))?;
+    std::fs::copy(src, &target).map_err(|e| format!("复制素材失败: {e}"))?;
     Ok(name)
 }
 
@@ -992,10 +1057,14 @@ pub fn editor_upload_asset(
 /// 落盘为 `<data_dir>/editor/<清洗后的原文件名>`，保留用户原名便于识别；复制前
 /// 清空整个 `editor/` 目录（该目录专属于编辑器背景），磁盘上始终只有当前一张。
 #[tauri::command]
-pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
-    let src = Path::new(&src_path);
+pub async fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
+    run_blocking_io(move || upload_editor_bg(&src_path)).await
+}
+
+fn upload_editor_bg(src_path: &str) -> Result<String, String> {
+    let src = Path::new(src_path);
     if !src.is_file() {
-        return Err(format!("源文件不存在: {}", src_path));
+        return Err(format!("源文件不存在: {src_path}"));
     }
 
     let ext = src
@@ -1005,8 +1074,7 @@ pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
     let allowed = ["png", "jpg", "jpeg", "webp", "bmp", "gif"];
     if !allowed.contains(&ext.as_str()) {
         return Err(format!(
-            "不支持的文件类型 .{}；背景图支持: {}",
-            ext,
+            "不支持的文件类型 .{ext}；背景图支持: {}",
             allowed.join(" / ")
         ));
     }
@@ -1019,10 +1087,10 @@ pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
     let name = paths::sanitize_file_name(&raw_name)?;
 
     let dir = crate::data_dir::get_data_dir().join("editor");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {e}"))?;
     clear_editor_bg_dir(&dir)?;
     let target = dir.join(&name);
-    std::fs::copy(src, &target).map_err(|e| format!("复制背景图失败: {}", e))?;
+    std::fs::copy(src, &target).map_err(|e| format!("复制背景图失败: {e}"))?;
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -1031,22 +1099,26 @@ pub fn editor_upload_editor_bg(src_path: String) -> Result<String, String> {
 /// 裁剪在浏览器端完成（cropperjs → canvas → webp），这里只负责解码落盘；
 /// `name` 为前端生成的输出文件名（原名去扩展名 + `_crop.webp`），同样做清洗。
 #[tauri::command]
-pub fn editor_upload_editor_bg_data(data: String, name: String) -> Result<String, String> {
+pub async fn editor_upload_editor_bg_data(data: String, name: String) -> Result<String, String> {
+    run_blocking_io(move || upload_editor_bg_data(&data, &name)).await
+}
+
+fn upload_editor_bg_data(data: &str, name: &str) -> Result<String, String> {
     // 兼容 data:image/webp;base64, 前缀与纯 base64 两种输入
-    let b64 = data.split(',').next_back().unwrap_or(&data).trim();
+    let b64 = data.split(',').next_back().unwrap_or(data).trim();
     let bytes = base64::engine::general_purpose::STANDARD
         .decode(b64)
-        .map_err(|e| format!("背景图数据解码失败: {}", e))?;
+        .map_err(|e| format!("背景图数据解码失败: {e}"))?;
     if bytes.len() < 4 {
         return Err("背景图数据无效".to_string());
     }
 
-    let name = paths::sanitize_file_name(&name)?;
+    let name = paths::sanitize_file_name(name)?;
     let dir = crate::data_dir::get_data_dir().join("editor");
-    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {}", e))?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("无法创建背景目录: {e}"))?;
     clear_editor_bg_dir(&dir)?;
     let target = dir.join(&name);
-    std::fs::write(&target, &bytes).map_err(|e| format!("写入背景图失败: {}", e))?;
+    std::fs::write(&target, &bytes).map_err(|e| format!("写入背景图失败: {e}"))?;
     Ok(target.to_string_lossy().to_string())
 }
 
@@ -1081,21 +1153,30 @@ fn copy_dir_recursive(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 #[tauri::command]
-pub fn editor_create_character(
+pub async fn editor_create_character(
     key: String,
     folder: String,
     ai_name: String,
     system_prompt: String,
 ) -> Result<ScriptCharacter, String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let folder = paths::sanitize_folder_name(&folder)?;
+    run_blocking_io(move || create_character(&key, &folder, &ai_name, &system_prompt)).await
+}
+
+fn create_character(
+    key: &str,
+    folder: &str,
+    ai_name: &str,
+    system_prompt: &str,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(key)?;
+    let folder = paths::sanitize_folder_name(folder)?;
 
     let char_dir = dir.join("characters").join(&folder);
     if char_dir.exists() {
-        return Err(format!("角色「{}」已存在", folder));
+        return Err(format!("角色「{folder}」已存在"));
     }
     std::fs::create_dir_all(char_dir.join("avatar"))
-        .map_err(|e| format!("创建角色目录失败: {}", e))?;
+        .map_err(|e| format!("创建角色目录失败: {e}"))?;
 
     let name = if ai_name.trim().is_empty() {
         folder.clone()
@@ -1138,17 +1219,26 @@ pub fn editor_create_character(
 /// 改一个剧本内角色：只动显示名与人设，立绘、情绪、服装、`script_role_key` 等其余键原样保留。
 /// 目录名不给改：改目录要连带改 `script_role_key` 与所有章节里的引用，那是"换个角色"，得走删+建。
 #[tauri::command]
-pub fn editor_update_character(
+pub async fn editor_update_character(
     key: String,
     folder: String,
     ai_name: String,
     system_prompt: String,
 ) -> Result<ScriptCharacter, String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let safe = paths::sanitize_folder_name(&folder)?;
+    run_blocking_io(move || update_character(&key, &folder, &ai_name, &system_prompt)).await
+}
+
+fn update_character(
+    key: &str,
+    folder: &str,
+    ai_name: &str,
+    system_prompt: &str,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(key)?;
+    let safe = paths::sanitize_folder_name(folder)?;
     let char_dir = dir.join("characters").join(&safe);
     if !char_dir.is_dir() {
-        return Err(format!("角色目录不存在: characters/{}", safe));
+        return Err(format!("角色目录不存在: characters/{safe}"));
     }
 
     let settings_path = char_dir.join("settings.yml");
@@ -1233,8 +1323,12 @@ pub struct GlobalCharacter {
 
 /// 列出全局角色库，并标出哪些已经导入到当前剧本。
 #[tauri::command]
-pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>, String> {
-    let existing: HashSet<String> = paths::resolve_script_dir(&key)
+pub async fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>, String> {
+    run_blocking_io(move || list_global_characters(&key)).await
+}
+
+fn list_global_characters(key: &str) -> Result<Vec<GlobalCharacter>, String> {
+    let existing: HashSet<String> = paths::resolve_script_dir(key)
         .map(|d| {
             read_characters(&d)
                 .into_iter()
@@ -1312,34 +1406,42 @@ pub fn editor_list_global_characters(key: String) -> Result<Vec<GlobalCharacter>
 /// 同名目录的立绘会自动落到全局那份上，白复制一遍只是让剧本目录凭空变大。
 /// 只有作者打算把剧本单独分发给没有这个角色的人时，才需要 `with_avatar`。
 #[tauri::command]
-pub fn editor_import_global_character(
+pub async fn editor_import_global_character(
     key: String,
     folder: String,
     with_avatar: bool,
 ) -> Result<ScriptCharacter, String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    let folder = paths::sanitize_folder_name(&folder)?;
+    run_blocking_io(move || import_global_character(&key, &folder, with_avatar)).await
+}
+
+fn import_global_character(
+    key: &str,
+    folder: &str,
+    with_avatar: bool,
+) -> Result<ScriptCharacter, String> {
+    let dir = paths::resolve_script_dir(key)?;
+    let folder = paths::sanitize_folder_name(folder)?;
 
     let src = crate::api::characters_dir().join(&folder);
     if !src.is_dir() {
-        return Err(format!("全局角色库里没有「{}」", folder));
+        return Err(format!("全局角色库里没有「{folder}」"));
     }
     let src_settings = yaml_file::resolve_settings_file(&src);
     if !src_settings.is_file() {
-        return Err(format!("角色「{}」缺少设定文件，无法导入", folder));
+        return Err(format!("角色「{folder}」缺少设定文件，无法导入"));
     }
 
     let dest = dir.join("characters").join(&folder);
     if dest.exists() {
-        return Err(format!("本剧本里已经有角色「{}」了", folder));
+        return Err(format!("本剧本里已经有角色「{folder}」了"));
     }
-    std::fs::create_dir_all(&dest).map_err(|e| format!("创建角色目录失败: {}", e))?;
+    std::fs::create_dir_all(&dest).map_err(|e| format!("创建角色目录失败: {e}"))?;
 
     // 不直接 copy 文件：要补写 script_role_key，并摘掉只对全局角色有意义的字段
     let raw =
-        std::fs::read_to_string(&src_settings).map_err(|e| format!("读取角色设定失败: {}", e))?;
+        std::fs::read_to_string(&src_settings).map_err(|e| format!("读取角色设定失败: {e}"))?;
     let mut settings: JsonValue =
-        serde_yaml::from_str(&raw).map_err(|e| format!("角色设定不是合法 YAML: {}", e))?;
+        serde_yaml::from_str(&raw).map_err(|e| format!("角色设定不是合法 YAML: {e}"))?;
     strip_transient_fields(&mut settings);
     let obj = settings
         .as_object_mut()
@@ -1352,7 +1454,7 @@ pub fn editor_import_global_character(
         let avatar = src.join("avatar");
         if avatar.is_dir() {
             copy_dir_recursive(&avatar, &dest.join("avatar"))
-                .map_err(|e| format!("复制立绘失败: {}", e))?;
+                .map_err(|e| format!("复制立绘失败: {e}"))?;
         }
     } else {
         // 建空目录，作者想单独放几张覆盖用的立绘时有地方放
@@ -2040,8 +2142,11 @@ pub async fn editor_stop_preview(app: AppHandle) -> Result<(), String> {
 
 /// 在系统文件管理器里打开剧本目录。
 #[tauri::command]
-pub fn editor_open_script_folder(key: String) -> Result<(), String> {
-    let dir = paths::resolve_script_dir(&key)?;
-    // open_folder 收的是 &str，不是 &Path
-    crate::utils::system::open_folder(&dir.to_string_lossy())
+pub async fn editor_open_script_folder(key: String) -> Result<(), String> {
+    run_blocking_io(move || {
+        let dir = paths::resolve_script_dir(&key)?;
+        // open_folder 收的是 &str，不是 &Path
+        crate::utils::system::open_folder(&dir.to_string_lossy())
+    })
+    .await
 }
