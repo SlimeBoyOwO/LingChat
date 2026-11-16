@@ -1480,8 +1480,28 @@ fn import_global_character(
 #[tauri::command]
 pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     let state = app.state::<AppState>();
-    let mut service = state.ai_service.lock().await;
 
+    // 先短持锁取 data_dir 并确认未在跑；扫盘本身不做在锁内，避免卡死其它依赖 ai_service 的路径
+    let data = {
+        let service = state.ai_service.lock().await;
+        if service
+            .script_manager
+            .is_running
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err("有剧本正在运行，请先结束再重新扫描".to_string());
+        }
+        service.data_dir.clone()
+    };
+
+    let fresh = tokio::task::spawn_blocking(move || {
+        crate::ai_service::game_system::script_engine::ScriptManager::new(&data)
+    })
+    .await
+    .map_err(|e| format!("重新扫描任务失败: {e}"))?;
+
+    let mut service = state.ai_service.lock().await;
+    // 扫盘期间可能有人开跑了：再确认一次
     if service
         .script_manager
         .is_running
@@ -1489,9 +1509,6 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     {
         return Err("有剧本正在运行，请先结束再重新扫描".to_string());
     }
-
-    let data = service.data_dir.clone();
-    let fresh = crate::ai_service::game_system::script_engine::ScriptManager::new(&data);
 
     // 记下当前插件来源的剧本，供重扫后重新套用（插件剧本不在游戏扫描范围内）
     let plugin_scripts: Vec<(String, std::path::PathBuf)> = service
@@ -1530,7 +1547,7 @@ pub async fn editor_rescan_scripts(app: AppHandle) -> Result<usize, String> {
     service.script_manager.apply_plugin_scripts(&plugin_scripts);
 
     let count = service.script_manager.all_scripts.len();
-    tracing::info!("[ScriptEditor] 重新扫描完成，共 {} 个剧本", count);
+    tracing::info!("[ScriptEditor] 重新扫描完成，共 {count} 个剧本");
     Ok(count)
 }
 
