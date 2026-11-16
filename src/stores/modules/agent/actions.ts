@@ -30,6 +30,13 @@ let channel: Channel<SkillAgentEvent> | null = null;
  * 是为了让迟到的 done/error 也走守卫而不是报未处理回调。
  */
 let finished = false;
+/**
+ * 流式 delta 合并：把同一帧内到达的多个 message_delta / reasoning 合成一次写库，
+ * 避免每个 token 都 version++ 触发整表重绘把主线程打满。
+ */
+let deltaFlushScheduled = false;
+let pendingContentDelta = "";
+let pendingReasoningDelta = "";
 
 const safeParse = (s: string): Record<string, unknown> => {
   try {
@@ -186,6 +193,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.status.value = "思考中…";
     state.version.value++;
     finished = false;
+    pendingContentDelta = "";
+    pendingReasoningDelta = "";
+    deltaFlushScheduled = false;
 
     // 记下本轮所属会话
     const ownerId = state.currentId.value;
@@ -201,6 +211,43 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     } catch (err) {
       finishWithError(String(err));
     }
+  }
+
+  /** 把攒下的 delta 一次性写进当前 assistant 气泡。 */
+  function flushPendingDeltas() {
+    deltaFlushScheduled = false;
+    const content = pendingContentDelta;
+    const reasoning = pendingReasoningDelta;
+    pendingContentDelta = "";
+    pendingReasoningDelta = "";
+    if (!content && !reasoning) return;
+
+    const msg = currentAssistant();
+    if (!msg) return;
+
+    if (content) {
+      const last = msg.rounds[msg.rounds.length - 1];
+      if (last && last.toolRuns.length === 0) {
+        last.content += content;
+      } else {
+        msg.rounds.push({ content, toolRuns: [] });
+      }
+    }
+    if (reasoning) {
+      const last = msg.rounds[msg.rounds.length - 1];
+      if (last && last.toolRuns.length === 0) {
+        last.reasoning = (last.reasoning ?? "") + reasoning;
+      } else {
+        msg.rounds.push({ content: "", reasoning, toolRuns: [] });
+      }
+    }
+    state.version.value++;
+  }
+
+  function scheduleDeltaFlush() {
+    if (deltaFlushScheduled) return;
+    deltaFlushScheduled = true;
+    requestAnimationFrame(flushPendingDeltas);
   }
 
   function handleEvent(event: SkillAgentEvent, ownerId: number | null) {
@@ -233,6 +280,21 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
       return;
     }
 
+    // delta 先入缓冲：边界事件到来前先冲掉，保证工具/收尾看到完整正文
+    if (event.type === "message_delta") {
+      pendingContentDelta += event.content;
+      scheduleDeltaFlush();
+      return;
+    }
+    if (event.type === "reasoning") {
+      pendingReasoningDelta += event.content;
+      scheduleDeltaFlush();
+      return;
+    }
+    if (pendingContentDelta || pendingReasoningDelta || deltaFlushScheduled) {
+      flushPendingDeltas();
+    }
+
     const msg = currentAssistant();
     switch (event.type) {
       case "status":
@@ -247,28 +309,6 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
         const prev = msg.rounds[msg.rounds.length - 1];
         if (prev) prev.sealed = true;
         msg.rounds.push({ content: event.title, toolRuns: [], sealed: true });
-        break;
-      }
-      case "message_delta": {
-        if (!msg) break;
-        const last = msg.rounds[msg.rounds.length - 1];
-        if (last && last.toolRuns.length === 0) {
-          last.content += event.content;
-        } else {
-          // 上一段以工具调用结尾 → 新开一段
-          msg.rounds.push({ content: event.content, toolRuns: [] });
-        }
-        break;
-      }
-      case "reasoning": {
-        // 思考链：累积到当前轮；若上一轮以工具调用结尾则新开一轮承载思考。
-        if (!msg) break;
-        const last = msg.rounds[msg.rounds.length - 1];
-        if (last && last.toolRuns.length === 0) {
-          last.reasoning = (last.reasoning ?? "") + event.content;
-        } else {
-          msg.rounds.push({ content: "", reasoning: event.content, toolRuns: [] });
-        }
         break;
       }
       case "tool_call": {
@@ -384,6 +424,10 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   function finish(assistantId: string | null, finalText?: string, usage?: TokenUsage | null) {
     finished = true;
+    // 收尾前冲掉未刷的 delta，避免最后几个 token 丢在缓冲里
+    if (pendingContentDelta || pendingReasoningDelta || deltaFlushScheduled) {
+      flushPendingDeltas();
+    }
     const msg = state.items.value.find((m) => m.id === assistantId);
     if (msg) {
       msg.streaming = false;
@@ -412,6 +456,9 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   function finishWithError(message: string) {
     finished = true;
+    if (pendingContentDelta || pendingReasoningDelta || deltaFlushScheduled) {
+      flushPendingDeltas();
+    }
     const msg = currentAssistant();
     if (msg) {
       msg.streaming = false;
@@ -430,6 +477,10 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     if (!state.streaming.value) return;
     // 先置结束标志再请求停止：abort 前通道里已积压的迟到事件直接被守卫丢弃
     finished = true;
+    // 已到达但还没刷到气泡的 token 先写进去，停止后不丢内容
+    if (pendingContentDelta || pendingReasoningDelta || deltaFlushScheduled) {
+      flushPendingDeltas();
+    }
     try {
       await api.stopAgentChat();
     } catch (err) {

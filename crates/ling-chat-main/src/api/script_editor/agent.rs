@@ -284,10 +284,14 @@ pub struct AgentArtifact {
 const ARTIFACT_MAX_BYTES: u64 = 64 * 1024;
 
 /// 列出剧本包里的流程产物：直接读目录而不是列固定清单，加新产物不用改这里。
+///
+/// 必须是 async：同步 `#[tauri::command]` 跑在 UI 主线程，读盘会把整窗卡死。
 #[tauri::command]
-pub fn editor_agent_list_artifacts(script_key: String) -> Result<Vec<AgentArtifact>, String> {
+pub async fn editor_agent_list_artifacts(script_key: String) -> Result<Vec<AgentArtifact>, String> {
     let dir = crate::utils::script_paths::resolve_script_dir(&script_key)?;
-    Ok(read_artifacts(&dir))
+    tokio::task::spawn_blocking(move || read_artifacts(&dir))
+        .await
+        .map_err(|e| format!("读取流程产物任务失败: {e}"))
 }
 
 fn read_artifacts(script_dir: &Path) -> Vec<AgentArtifact> {
