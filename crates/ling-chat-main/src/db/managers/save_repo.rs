@@ -4,7 +4,9 @@ use sea_orm::*;
 use std::collections::HashMap;
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
-use crate::db::entities::{line, line_perception, memory_bank, running_script, save};
+use crate::db::entities::{
+    agent_conversation, agent_message, line, line_perception, memory_bank, running_script, save,
+};
 
 pub struct SaveRepo;
 
@@ -172,6 +174,9 @@ impl SaveRepo {
     }
 
     pub async fn delete_save(db: &DatabaseConnection, save_id: i32) -> Result<bool> {
+        // 导演会话不属于台词树，先按存档清掉
+        Self::delete_agent_conversations_by_save(db, save_id).await?;
+
         // Delete all line_perception rows for this save's lines
         let line_ids: Vec<i32> = line::Entity::find()
             .select_only()
@@ -613,6 +618,40 @@ impl SaveRepo {
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    /// 删除该存档绑定的导演会话及其消息。
+    pub async fn delete_agent_conversations_by_save(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<()> {
+        let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
+
+        let conversation_ids: Vec<i32> = agent_conversation::Entity::find()
+            .select_only()
+            .column(agent_conversation::Column::Id)
+            .filter(agent_conversation::Column::SaveId.eq(save_id))
+            .filter(agent_conversation::Column::Kind.eq(agent_conversation::KIND_DIRECTOR))
+            .into_tuple()
+            .all(&txn)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
+        if !conversation_ids.is_empty() {
+            agent_message::Entity::delete_many()
+                .filter(agent_message::Column::ConversationId.is_in(conversation_ids.clone()))
+                .exec(&txn)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+            agent_conversation::Entity::delete_many()
+                .filter(agent_conversation::Column::Id.is_in(conversation_ids))
+                .exec(&txn)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+        }
+
+        txn.commit().await.map_err(|e| anyhow!("{e}"))?;
         Ok(())
     }
 }

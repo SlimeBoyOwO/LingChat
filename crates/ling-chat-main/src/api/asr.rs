@@ -23,7 +23,7 @@ use crate::ai_service::asr::provider::{
 };
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
-use crate::db::entities::hotword_weight;
+use crate::db::entities::hotword::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP, normalize_weight};
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_code(s).ok_or_else(|| format!("invalid source: {s}"))
@@ -53,7 +53,7 @@ impl HotwordInput {
             Self::Text(text) => (text, Hotword::DEFAULT_WEIGHT),
             Self::Weighted { text, weight } => (text, weight.unwrap_or(Hotword::DEFAULT_WEIGHT)),
         };
-        let normalized = hotword_weight::normalize_weight(i32::from(raw.1)) as u8;
+        let normalized = normalize_weight(i32::from(raw.1)) as u8;
         (raw.0, normalized)
     }
 }
@@ -93,8 +93,6 @@ fn build_options(hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
 ///
 /// 这是发送层的兜底，不是保存校验：各作用域各自合规也可能并集超限。
 fn demote_excess_super(hotwords: Vec<Hotword>) -> Vec<Hotword> {
-    use hotword_weight::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP};
-
     let total = hotwords
         .iter()
         .filter(|h| i32::from(h.weight) == SUPER_WEIGHT)

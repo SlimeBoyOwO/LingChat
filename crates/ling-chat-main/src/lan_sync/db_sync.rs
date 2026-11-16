@@ -8,15 +8,15 @@ use std::path::Path;
 
 use sea_orm::{
     ColumnTrait, ConnectionTrait, Database, DatabaseBackend, DatabaseConnection, EntityTrait,
-    QueryFilter, SqlErr, Statement, TransactionTrait,
+    QueryFilter, QuerySelect, SqlErr, Statement, TransactionTrait,
 };
 use serde_json::Value;
 use tracing::{info, warn};
 
-use crate::db::entities::hotword_weight::normalize_weight;
+use crate::db::entities::hotword::{self, KIND_GLOBAL, KIND_LIBRARY, KIND_ROLE, normalize_weight};
 use crate::db::entities::{
-    adventure_unlock, global_hotword, hotword_category, library_hotword, line, line_perception,
-    memory_bank, role, role_hotword, running_script, save,
+    adventure_unlock, agent_conversation, agent_message, hotword_category, line, line_perception,
+    memory_bank, role, running_script, save,
 };
 use crate::db::managers::hotword_repo::{MAX_CATEGORIES, MAX_CATEGORY_NAME_CHARS};
 
@@ -29,7 +29,8 @@ const DB_RECORDS_FILE: &str = "db_records.json";
 // ─── 表操作顺序（按外键依赖） ─────────────────────────────────
 
 /// DELETE 顺序：先删子表再删父表，避免 FK 约束冲突。
-/// 热词表单独列出：旧版 payload 不带热词字段时必须整组跳过，不能当空表清空。
+/// 热词与词库分类单独一组：旧版 payload 不带热词字段时必须整组跳过，不能当空表清空。
+/// 顺序先词条后分类（应用层关系，无外键）。
 const DELETE_ORDER: [&str; 7] = [
     "line_perception",
     "memory_bank",
@@ -40,14 +41,7 @@ const DELETE_ORDER: [&str; 7] = [
     "role",
 ];
 
-const HOTWORD_DELETE_ORDER: [&str; 4] = [
-    "role_hotword",
-    "global_hotword",
-    "library_hotword", // 先词条后分类（应用层关系）
-    "hotword_category",
-];
-
-// INSERT 顺序为父表 → 子表；三张热词表走 import_rows_normalized 归一，分类走 import_categories。
+// INSERT 顺序为父表 → 子表；热词走 import_rows_normalized 归一，分类走 import_categories。
 
 /// 导入宏：将 JSON 数组反序列化为 Entity Model，转为 ActiveModel 逐行 INSERT。
 ///
@@ -69,11 +63,26 @@ macro_rules! import_rows {
     }};
 }
 
-/// 热词行归一：`weight` 归一到 `[1, 5] ∪ {50}`，`text` 按本地保存的判据 trim。
-/// 不合格时返回原因，调用方丢弃该行。
-fn normalize_hotword_row(text: &mut String, weight: &mut i32) -> Result<(), String> {
-    *weight = normalize_weight(*weight);
-    crate::db::managers::hotword_repo::validate_and_trim(text).map_err(|e| e.to_string())
+/// 热词行归一：`weight` 归一到 `[1, 5] ∪ {50}`，`text` 按本地保存的判据 trim，
+/// 归属列与 `kind` 不一致的行整行丢弃（宁可少一条，也不让脏行挂到别的角色或词库上）。
+fn normalize_hotword_row(row: &mut hotword::Model) -> Result<(), String> {
+    row.weight = normalize_weight(row.weight);
+    crate::db::managers::hotword_repo::validate_and_trim(&mut row.text)
+        .map_err(|e| e.to_string())?;
+    let shape_ok = match row.kind.as_str() {
+        KIND_ROLE => row.role_id.is_some() && row.category_id.is_none(),
+        KIND_GLOBAL => row.role_id.is_none() && row.category_id.is_none(),
+        KIND_LIBRARY => row.role_id.is_none(),
+        _ => return Err(format!("未知的热词作用域: {}", row.kind)),
+    };
+    if shape_ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "热词归属列与作用域不符: kind={} role_id={:?} category_id={:?}",
+            row.kind, row.role_id, row.category_id
+        ))
+    }
 }
 
 /// 与 `import_rows!` 同形，但每行先过 `normalize` 再 INSERT；闭包返回 `Err` 表示丢弃该行。
@@ -179,16 +188,9 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
     info!("开始导出数据库记录...");
 
     let roles = export_table::<role::Entity, role::Model>(&db, "role").await?;
-    let role_hotwords =
-        export_table::<role_hotword::Entity, role_hotword::Model>(&db, "role_hotword").await?;
-    let global_hotwords =
-        export_table::<global_hotword::Entity, global_hotword::Model>(&db, "global_hotword")
-            .await?;
+    let hotwords = export_table::<hotword::Entity, hotword::Model>(&db, "hotword").await?;
     let hotword_categories =
         export_table::<hotword_category::Entity, hotword_category::Model>(&db, "hotword_category")
-            .await?;
-    let library_hotwords =
-        export_table::<library_hotword::Entity, library_hotword::Model>(&db, "library_hotword")
             .await?;
     let saves = export_table::<save::Entity, save::Model>(&db, "save").await?;
     let running_scripts =
@@ -205,10 +207,8 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
             .await?;
 
     let total: usize = roles.len()
-        + role_hotwords.len()
-        + global_hotwords.len()
+        + hotwords.len()
         + hotword_categories.len()
-        + library_hotwords.len()
         + saves.len()
         + running_scripts.len()
         + adventure_unlocks.len()
@@ -220,10 +220,8 @@ pub async fn export_all_records(data_dir: &Path) -> Result<DbRecords, String> {
     Ok(DbRecords {
         device_id,
         roles,
-        role_hotwords: Some(role_hotwords),
-        global_hotwords: Some(global_hotwords),
+        hotwords: Some(hotwords),
         hotword_categories: Some(hotword_categories),
-        library_hotwords: Some(library_hotwords),
         saves,
         running_scripts,
         adventure_unlocks,
@@ -358,10 +356,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     let mut imported: u64 = 0;
 
     // 旧版 payload 不带热词字段：整组跳过，否则会把本机热词当空表清掉
-    let hotwords_included = records.role_hotwords.is_some()
-        || records.global_hotwords.is_some()
-        || records.hotword_categories.is_some()
-        || records.library_hotwords.is_some();
+    let hotwords_included = records.hotwords.is_some() || records.hotword_categories.is_some();
 
     // 玩家角色是本地身份卡的投影，不参与整表镜像；先建立远端 id → 本地 id 映射，
     // 供存档与台词里的玩家角色引用翻译。
@@ -419,6 +414,30 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         .cloned()
         .collect();
 
+    // 导演会话不参与同步：存档集将被整体替换，先清掉与存档绑定的会话，
+    // 否则本机会话会变成孤儿，或远端复用同一 save id 时错绑到别的对话。
+    // 剧本编辑器的助手会话（save_id 为空）不受影响。
+    let director_ids: Vec<i32> = agent_conversation::Entity::find()
+        .select_only()
+        .column(agent_conversation::Column::Id)
+        .filter(agent_conversation::Column::SaveId.is_not_null())
+        .into_tuple()
+        .all(&txn)
+        .await
+        .map_err(|e| format!("查询导演会话失败: {e}"))?;
+    if !director_ids.is_empty() {
+        agent_message::Entity::delete_many()
+            .filter(agent_message::Column::ConversationId.is_in(director_ids))
+            .exec(&txn)
+            .await
+            .map_err(|e| format!("清除导演会话消息失败: {e}"))?;
+        agent_conversation::Entity::delete_many()
+            .filter(agent_conversation::Column::SaveId.is_not_null())
+            .exec(&txn)
+            .await
+            .map_err(|e| format!("清除导演会话失败: {e}"))?;
+    }
+
     // ─── DELETE 全部行（子表 → 父表顺序） ────────────────
     for table in DELETE_ORDER {
         let count = if table == "role" {
@@ -437,43 +456,36 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
         }
     }
     if hotwords_included {
-        for table in HOTWORD_DELETE_ORDER {
-            let count = delete_all(&txn, table).await?;
-            if count > 0 {
-                info!("已清除 {}: {} 行", table, count);
-            }
+        // 先词条后分类（应用层关系，无外键）
+        let words = hotword::Entity::delete_many()
+            .exec(&txn)
+            .await
+            .map_err(|e| format!("清除 hotword 失败: {e}"))?;
+        let categories = hotword_category::Entity::delete_many()
+            .exec(&txn)
+            .await
+            .map_err(|e| format!("清除 hotword_category 失败: {e}"))?;
+        if words.rows_affected > 0 || categories.rows_affected > 0 {
+            info!(
+                "已清除热词: {} 词条 / {} 分类",
+                words.rows_affected, categories.rows_affected
+            );
         }
     }
 
     // ─── INSERT 全部行（父表 → 子表顺序） ────────────────
     import_rows!(&txn, &remote_roles, role, imported);
-    import_rows_normalized::<role_hotword::Entity, _, _>(
-        &txn,
-        records.role_hotwords.as_deref().unwrap_or(&[]),
-        "role_hotword",
-        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
-        &mut imported,
-    )
-    .await?;
-    import_rows_normalized::<global_hotword::Entity, _, _>(
-        &txn,
-        records.global_hotwords.as_deref().unwrap_or(&[]),
-        "global_hotword",
-        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
-        &mut imported,
-    )
-    .await?;
     import_categories(
         &txn,
         records.hotword_categories.as_deref().unwrap_or(&[]),
         &mut imported,
     )
     .await?;
-    import_rows_normalized::<library_hotword::Entity, _, _>(
+    import_rows_normalized::<hotword::Entity, _, _>(
         &txn,
-        records.library_hotwords.as_deref().unwrap_or(&[]),
-        "library_hotword",
-        |m| normalize_hotword_row(&mut m.text, &mut m.weight),
+        records.hotwords.as_deref().unwrap_or(&[]),
+        "hotword",
+        normalize_hotword_row,
         &mut imported,
     )
     .await?;

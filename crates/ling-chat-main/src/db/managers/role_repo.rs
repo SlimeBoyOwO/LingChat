@@ -16,10 +16,10 @@ use crate::db::entities::line_perception;
 use crate::db::entities::role::{
     self, ActiveModel as RoleActiveModel, Model as RoleModel, RoleType,
 };
-use crate::db::entities::role_hotword;
 use crate::db::entities::role_relation;
 use crate::db::entities::running_script;
 use crate::db::entities::save;
+use crate::db::managers::hotword_repo::HotwordRepo;
 use crate::db::managers::memory_repo::MemoryRepo;
 use crate::db::managers::save_repo::SaveRepo;
 
@@ -215,11 +215,8 @@ impl RoleRepo {
         // 5. 清该角色全部 memory_bank
         MemoryRepo::delete_all_memories_by_role_id(db, role_id).await?;
 
-        // 6. 清该角色的热词（表无外键；此处 FK 已关闭，用裸 DELETE）
-        role_hotword::Entity::delete_many()
-            .filter(role_hotword::Column::RoleId.eq(role_id))
-            .exec(db)
-            .await?;
+        // 6. 清该角色的热词（表无外键，级联在应用层）
+        HotwordRepo::delete_by_role(db, role_id).await?;
 
         // 7. 防御性清 line_perception（NOT NULL FK，必须删）
         line_perception::Entity::delete_many()

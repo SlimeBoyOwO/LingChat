@@ -1,10 +1,10 @@
-//! Skill Agent 消息表：OpenAI 格式消息，按会话隔离。
+//! Agent 消息表：OpenAI 格式消息，按会话隔离。
 
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "skill_agent_message")]
+#[sea_orm(table_name = "agent_message")]
 pub struct Model {
     #[sea_orm(primary_key)]
     pub id: i32,
@@ -35,14 +35,14 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::skill_agent_conversation::Entity",
+        belongs_to = "super::agent_conversation::Entity",
         from = "Column::ConversationId",
-        to = "super::skill_agent_conversation::Column::Id"
+        to = "super::agent_conversation::Column::Id"
     )]
     Conversation,
 }
 
-impl Related<super::skill_agent_conversation::Entity> for Entity {
+impl Related<super::agent_conversation::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::Conversation.def()
     }

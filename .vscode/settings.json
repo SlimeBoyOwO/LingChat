@@ -90,5 +90,6 @@
   "java.autobuild.enabled": false,
   "java.configuration.updateBuildConfiguration": "disabled",
   "python.analysis.diagnosticMode": "openFilesOnly",
-  "python.analysis.indexing": false
+  "python.analysis.indexing": false,
+  "java.compile.nullAnalysis.mode": "disabled"
 }

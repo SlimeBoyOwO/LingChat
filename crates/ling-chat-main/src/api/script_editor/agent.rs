@@ -17,7 +17,7 @@ use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use crate::ai_service::skill_agent::{db, skills, stage};
 use crate::ai_service::types::LlmMessage;
 use crate::config::keys;
-use crate::db::entities::skill_agent_conversation;
+use crate::db::entities::agent_conversation;
 
 /// Agent 设置（前端可读写；沙箱目录为空表示默认 `data/`）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +82,7 @@ pub struct AgentDefaultDirs {
     pub sandbox_dir: String,
 }
 
-fn conv_to_info(c: &skill_agent_conversation::Model) -> ConversationInfo {
+fn conv_to_info(c: &agent_conversation::Model) -> ConversationInfo {
     ConversationInfo {
         id: c.id,
         title: c.title.clone(),
@@ -220,7 +220,7 @@ pub async fn editor_agent_delete_conversation(
     state: State<'_, AppState>,
     conversation_id: i32,
 ) -> Result<(), String> {
-    db::delete_conversation(&state.db, conversation_id).await
+    db::delete_skill_conversation(&state.db, conversation_id).await
 }
 
 #[tauri::command]

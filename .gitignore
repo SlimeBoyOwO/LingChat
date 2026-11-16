@@ -30,7 +30,7 @@ keystore.properties
 .vscode/*.private.*
 .vscode/settings.local.json
 .vs/
-
+.archify/
 
 
 
