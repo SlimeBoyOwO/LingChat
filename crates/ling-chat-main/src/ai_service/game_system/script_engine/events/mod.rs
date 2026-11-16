@@ -158,6 +158,14 @@ pub fn parse_duration(data: &Value) -> Option<f64> {
     data.get("duration").and_then(|v| v.as_f64())
 }
 
+/// 旁白 / 对白文本按行切分，跳过空行与纯空白行。
+pub fn split_script_text_lines(text: &str) -> Vec<&str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect()
+}
+
 // ============================================================
 // 共享辅助函数
 // ============================================================
