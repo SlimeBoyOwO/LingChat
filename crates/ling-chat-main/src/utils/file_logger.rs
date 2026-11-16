@@ -90,12 +90,12 @@ pub fn cleanup_old_logs(retention_days: u32) {
             if path.extension().and_then(|e| e.to_str()) != Some("log") {
                 continue;
             }
-            if let Ok(metadata) = path.metadata() {
-                if let Ok(modified) = metadata.modified() {
-                    let modified: chrono::DateTime<Local> = modified.into();
-                    if modified < cutoff && fs::remove_file(&path).is_ok() {
-                        deleted += 1;
-                    }
+            if let Ok(metadata) = path.metadata()
+                && let Ok(modified) = metadata.modified()
+            {
+                let modified: chrono::DateTime<Local> = modified.into();
+                if modified < cutoff && fs::remove_file(&path).is_ok() {
+                    deleted += 1;
                 }
             }
         }

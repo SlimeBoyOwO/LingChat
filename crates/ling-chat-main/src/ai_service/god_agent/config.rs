@@ -128,11 +128,11 @@ pub fn resolve_god_agent_provider(app: &AppHandle) -> Option<LlmClient> {
 
     // 3. Fallback：聊天主 LLM
     let providers = load_providers(app);
-    if let Some(ref id) = assignment.chat_provider_id {
-        if let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable()) {
-            tracing::info!("上帝Agent fallback 到聊天 LLM: {} ({})", p.label, p.id);
-            return build_llm_client_from_provider(app, p);
-        }
+    if let Some(ref id) = assignment.chat_provider_id
+        && let Some(p) = providers.iter().find(|p| &p.id == id && p.is_usable())
+    {
+        tracing::info!("上帝Agent fallback 到聊天 LLM: {} ({})", p.label, p.id);
+        return build_llm_client_from_provider(app, p);
     }
 
     // 4. 任何可用的 provider

@@ -176,17 +176,17 @@ impl AsrProvider for LlamaAsrProvider {
         on_partial: Option<Arc<dyn for<'a> Fn(&'a str) + Send + Sync + 'static>>,
     ) -> Result<AsrResult, AsrError> {
         let prompt = llama_prompt_from_hotwords(&opts.hotwords);
-        if let Some(p) = &prompt {
-            if p.dropped > 0 {
-                debug!(
-                    "[ASR] llama-asr 流式 prompt 偏置 {}/{} 字符（保留 {}/{} 条热词，{} 条超预算未发送）",
-                    p.text.chars().count(),
-                    LLAMA_PROMPT_MAX_CHARS,
-                    p.used,
-                    p.used + p.dropped,
-                    p.dropped
-                );
-            }
+        if let Some(p) = &prompt
+            && p.dropped > 0
+        {
+            debug!(
+                "[ASR] llama-asr 流式 prompt 偏置 {}/{} 字符（保留 {}/{} 条热词，{} 条超预算未发送）",
+                p.text.chars().count(),
+                LLAMA_PROMPT_MAX_CHARS,
+                p.used,
+                p.used + p.dropped,
+                p.dropped
+            );
         }
         crate::ai_service::asr::provider_stream_llama::recognize_stream(
             &self.http,
@@ -298,12 +298,12 @@ pub(crate) fn parse_llama_models(body: &str) -> Vec<String> {
             }
         }
     }
-    if names.is_empty() {
-        if let Some(models) = value.get("models").and_then(|v| v.as_array()) {
-            for item in models {
-                if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
-                    names.push(name.to_string());
-                }
+    if names.is_empty()
+        && let Some(models) = value.get("models").and_then(|v| v.as_array())
+    {
+        for item in models {
+            if let Some(name) = item.get("name").and_then(|v| v.as_str()) {
+                names.push(name.to_string());
             }
         }
     }

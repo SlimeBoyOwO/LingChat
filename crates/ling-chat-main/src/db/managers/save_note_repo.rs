@@ -39,11 +39,7 @@ impl SaveNoteRepo {
     }
 
     /// 事务内批量写入；暂存笔记首次落档走这里，失败时调用方保留暂存待重试。
-    pub async fn insert_many(
-        db: &DatabaseConnection,
-        save_id: i32,
-        notes: &[Note],
-    ) -> Result<()> {
+    pub async fn insert_many(db: &DatabaseConnection, save_id: i32, notes: &[Note]) -> Result<()> {
         if notes.is_empty() {
             return Ok(());
         }
@@ -98,11 +94,7 @@ impl SaveNoteRepo {
     }
 
     /// 用给定笔记整体替换某存档的笔记（新建/覆盖存档时保持「存档=快照」）。
-    pub async fn replace_all(
-        db: &DatabaseConnection,
-        save_id: i32,
-        notes: &[Note],
-    ) -> Result<()> {
+    pub async fn replace_all(db: &DatabaseConnection, save_id: i32, notes: &[Note]) -> Result<()> {
         let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
         save_note::Entity::delete_many()
             .filter(save_note::Column::SaveId.eq(save_id))
@@ -113,11 +105,7 @@ impl SaveNoteRepo {
         txn.commit().await.map_err(|e| anyhow!("{e}"))
     }
 
-    async fn insert_all(
-        txn: &DatabaseTransaction,
-        save_id: i32,
-        notes: &[Note],
-    ) -> Result<()> {
+    async fn insert_all(txn: &DatabaseTransaction, save_id: i32, notes: &[Note]) -> Result<()> {
         for note in notes {
             save_note::ActiveModel {
                 id: Set(note.id.clone()),

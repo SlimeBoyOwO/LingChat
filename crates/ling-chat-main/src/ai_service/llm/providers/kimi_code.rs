@@ -613,17 +613,15 @@ impl KimiCodeProvider {
                         match parsed.type_.as_str() {
                             "content_block_delta" => {
                                 if let Some(delta) = parsed.delta {
-                                    if let Some(t) = delta.text {
-                                        if !t.is_empty() {
+                                    if let Some(t) = delta.text
+                                        && !t.is_empty() {
                                             text_buffer.push_str(&t);
                                             yield LlmChunk::Content(t);
                                         }
-                                    }
-                                    if let Some(thinking) = delta.thinking {
-                                        if !thinking.is_empty() {
+                                    if let Some(thinking) = delta.thinking
+                                        && !thinking.is_empty() {
                                             thinking_buffer.push_str(&thinking);
                                         }
-                                    }
                                     if let Some(partial) = delta.partial_json {
                                         let idx = parsed.index.unwrap_or(0);
                                         if let Some(block) = tool_blocks.get_mut(&idx) {
@@ -638,8 +636,8 @@ impl KimiCodeProvider {
                                 }
                             }
                             "content_block_start" => {
-                                if let Some(block) = parsed.content_block {
-                                    if block.type_ == "tool_use" {
+                                if let Some(block) = parsed.content_block
+                                    && block.type_ == "tool_use" {
                                         let idx = parsed.index.unwrap_or(0);
                                         let name = block.name.unwrap_or_default();
                                         tool_blocks.insert(
@@ -653,7 +651,6 @@ impl KimiCodeProvider {
                                         // 工具块一开始就让前端亮出「正在生成」状态
                                         yield LlmChunk::ToolCallProgress { name, chars: 0 };
                                     }
-                                }
                             }
                             "message_start" => {
                                 // input_tokens 在 message_start 一次性给出（含缓存统计）
@@ -668,11 +665,10 @@ impl KimiCodeProvider {
                             }
                             "message_delta" => {
                                 // output_tokens 是每个 delta 的增量，需累加
-                                if let Some(u) = parsed.usage {
-                                    if let Some(o) = u.output_tokens {
+                                if let Some(u) = parsed.usage
+                                    && let Some(o) = u.output_tokens {
                                         output_tokens += o;
                                     }
-                                }
                             }
                             "content_block_stop" | "message_stop" => {
                                 tracing::debug!("[Kimi-Code SSE] type={}, delta={:?}", parsed.type_, parsed.delta);

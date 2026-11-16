@@ -15,11 +15,7 @@ impl MigrationTrait for Migration {
                     .table(SaveNote::Table)
                     .if_not_exists()
                     .col(ColumnDef::new(SaveNote::SaveId).integer().not_null())
-                    .col(
-                        ColumnDef::new(SaveNote::Id)
-                            .string()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(SaveNote::Id).string().not_null())
                     .col(ColumnDef::new(SaveNote::Content).text().not_null())
                     .col(
                         ColumnDef::new(SaveNote::Tags)
@@ -28,11 +24,7 @@ impl MigrationTrait for Migration {
                             .default("[]"),
                     )
                     .col(ColumnDef::new(SaveNote::CreatedAt).string().not_null())
-                    .primary_key(
-                        Index::create()
-                            .col(SaveNote::SaveId)
-                            .col(SaveNote::Id),
-                    )
+                    .primary_key(Index::create().col(SaveNote::SaveId).col(SaveNote::Id))
                     .to_owned(),
             )
             .await

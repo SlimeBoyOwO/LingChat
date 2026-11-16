@@ -619,10 +619,10 @@ pub fn correction_texts(
     let shapes = &round.shapes;
 
     // 条数为 0 的轮次是「模型没产出任何台词」的兜底路径，不参与数量判据
-    if round.landed_lines > 0 {
-        if let Some(text) = mode.correction_text(round.landed_lines) {
-            texts.push(text);
-        }
+    if round.landed_lines > 0
+        && let Some(text) = mode.correction_text(round.landed_lines)
+    {
+        texts.push(text);
     }
 
     if let Some(text) = format_error_text(shapes, expect_translation) {

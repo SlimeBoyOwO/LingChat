@@ -38,17 +38,17 @@ pub fn get_locale_messages(locale: String, seed_content: String) -> Result<Strin
     // 修复旧播种词条覆盖新词条的问题；版本一致则保留文件（含用户编辑）
     let seed_version = locale_version_of(&seed_content);
     let existing_version = locale_version_of(&existing);
-    if let Some(seed_version) = seed_version {
-        if existing_version.as_deref() != Some(seed_version.as_str()) {
-            std::fs::write(&path, &seed_content).map_err(|e| format!("更新语言文件失败: {e}"))?;
-            tracing::info!(
-                "内置词条版本变化（{} → {}），已重新播种 {}",
-                existing_version.as_deref().unwrap_or("无版本标记"),
-                seed_version,
-                path.display()
-            );
-            return Ok(seed_content);
-        }
+    if let Some(seed_version) = seed_version
+        && existing_version.as_deref() != Some(seed_version.as_str())
+    {
+        std::fs::write(&path, &seed_content).map_err(|e| format!("更新语言文件失败: {e}"))?;
+        tracing::info!(
+            "内置词条版本变化（{} → {}），已重新播种 {}",
+            existing_version.as_deref().unwrap_or("无版本标记"),
+            seed_version,
+            path.display()
+        );
+        return Ok(seed_content);
     }
 
     Ok(existing)

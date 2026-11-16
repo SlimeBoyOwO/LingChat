@@ -98,17 +98,17 @@ fn scan_dir(
 
             let size = path.metadata().map(|m| m.len()).unwrap_or(0);
 
-            if let Some(mf) = manifest_files {
-                if let Some(entry) = mf.get(&rel) {
-                    // 在清单中 → 放入 files，复用已知哈希
-                    let mut fe = entry.clone();
-                    // 如果清单中没有 modified_at，补充文件系统时间戳
-                    if fe.modified_at == 0 {
-                        fe.modified_at = modified_at;
-                    }
-                    files.insert(rel, fe);
-                    continue;
+            if let Some(mf) = manifest_files
+                && let Some(entry) = mf.get(&rel)
+            {
+                // 在清单中 → 放入 files，复用已知哈希
+                let mut fe = entry.clone();
+                // 如果清单中没有 modified_at，补充文件系统时间戳
+                if fe.modified_at == 0 {
+                    fe.modified_at = modified_at;
                 }
+                files.insert(rel, fe);
+                continue;
             }
 
             // 不在清单中 → 运行时文件，实时计算 SHA-256

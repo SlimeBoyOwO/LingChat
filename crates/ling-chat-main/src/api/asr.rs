@@ -533,11 +533,11 @@ pub async fn asr_test_provider(
             // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
             // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
             // 恰好证明 API 可达 + key 有效 → 视为连接成功。
-            if let AsrError::ProviderApiError { message, .. } = &e {
-                if message.contains("NO_WORDS") || message.contains("no_words") {
-                    tracing::info!("[ASR] 测试连接 {provider_id} 成功（静音无词，服务正常）");
-                    return Ok(());
-                }
+            if let AsrError::ProviderApiError { message, .. } = &e
+                && (message.contains("NO_WORDS") || message.contains("no_words"))
+            {
+                tracing::info!("[ASR] 测试连接 {provider_id} 成功（静音无词，服务正常）");
+                return Ok(());
             }
             tracing::warn!("[ASR] 测试连接 {provider_id} 失败: {e}");
             Err(err_to_user(&e))

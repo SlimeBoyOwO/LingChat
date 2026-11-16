@@ -136,10 +136,10 @@ pub fn parse_value(s: &str) -> Result<Value> {
     }
 
     // float
-    if let Ok(n) = s.parse::<f64>() {
-        if let Some(num) = serde_json::Number::from_f64(n) {
-            return Ok(Value::Number(num));
-        }
+    if let Ok(n) = s.parse::<f64>()
+        && let Some(num) = serde_json::Number::from_f64(n)
+    {
+        return Ok(Value::Number(num));
     }
 
     // string: strip surrounding quotes
@@ -182,15 +182,15 @@ fn arithmetic(
     float_op: fn(f64, f64) -> f64,
 ) -> Value {
     if let (Some(Value::Number(cur)), Value::Number(val)) = (current, &value) {
-        if let (Some(a), Some(b)) = (cur.as_i64(), val.as_i64()) {
-            if let Some(result) = int_op(a, b) {
-                return Value::Number(result.into());
-            }
+        if let (Some(a), Some(b)) = (cur.as_i64(), val.as_i64())
+            && let Some(result) = int_op(a, b)
+        {
+            return Value::Number(result.into());
         }
-        if let (Some(a), Some(b)) = (cur.as_f64(), val.as_f64()) {
-            if let Some(result) = serde_json::Number::from_f64(float_op(a, b)) {
-                return Value::Number(result);
-            }
+        if let (Some(a), Some(b)) = (cur.as_f64(), val.as_f64())
+            && let Some(result) = serde_json::Number::from_f64(float_op(a, b))
+        {
+            return Value::Number(result);
         }
     }
     value

@@ -221,27 +221,25 @@ pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> 
     let providers = load_providers(app);
 
     // 1. Explicit translate provider
-    if let Some(ref id) = assignment.translate_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.translate_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
+        return Some(p.clone());
     }
 
     // 2. Fallback to chat provider
-    if let Some(ref id) = assignment.chat_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!(
-                    "Translate provider not set, falling back to chat provider: {} ({})",
-                    p.label,
-                    p.id
-                );
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.chat_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!(
+            "Translate provider not set, falling back to chat provider: {} ({})",
+            p.label,
+            p.id
+        );
+        return Some(p.clone());
     }
 
     tracing::warn!("No usable LLM provider for translation");
@@ -255,27 +253,25 @@ pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
     let providers = load_providers(app);
 
     // 1. Explicit vision provider
-    if let Some(ref id) = assignment.vision_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.vision_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
+        return Some(p.clone());
     }
 
     // 2. Fallback to chat provider
-    if let Some(ref id) = assignment.chat_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!(
-                    "Vision provider not set, falling back to chat provider: {} ({})",
-                    p.label,
-                    p.id
-                );
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.chat_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!(
+            "Vision provider not set, falling back to chat provider: {} ({})",
+            p.label,
+            p.id
+        );
+        return Some(p.clone());
     }
 
     tracing::warn!("No usable LLM provider for vision analysis");
@@ -423,10 +419,13 @@ pub fn migrate_if_needed(app: &AppHandle) {
         json_string_opt(translate_id.as_deref()),
     );
 
-    if let Err(e) = store.save() {
-        tracing::error!("Migration save failed: {e}");
-    } else {
-        tracing::info!("Migration complete: {} provider(s)", providers.len());
+    match store.save() {
+        Err(e) => {
+            tracing::error!("Migration save failed: {e}");
+        },
+        _ => {
+            tracing::info!("Migration complete: {} provider(s)", providers.len());
+        },
     }
 }
 

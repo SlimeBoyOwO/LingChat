@@ -69,14 +69,14 @@ fn remap_settings(
     old: &str,
     new: Option<&str>,
 ) -> Result<(), String> {
-    if let Some(new) = new {
-        if settings.clothes.as_ref().is_some_and(|items| {
+    if let Some(new) = new
+        && settings.clothes.as_ref().is_some_and(|items| {
             items
                 .iter()
                 .any(|i| i.get("name").is_some_and(|n| n == new))
-        }) {
-            return Err("目标服装名已存在".into());
-        }
+        })
+    {
+        return Err("目标服装名已存在".into());
     }
     if let Some(items) = &mut settings.clothes {
         if let Some(new) = new {
@@ -112,20 +112,20 @@ fn remap_settings(
         if new.is_some_and(|n| live2d.clothes_variants.contains_key(n)) {
             return Err("目标服装已有 Live2D 映射".into());
         }
-        if let Some(value) = live2d.clothes_variants.remove(old) {
-            if let Some(new) = new {
-                live2d.clothes_variants.insert(new.into(), value);
-            }
+        if let Some(value) = live2d.clothes_variants.remove(old)
+            && let Some(new) = new
+        {
+            live2d.clothes_variants.insert(new.into(), value);
         }
     }
     if let Some(parts) = &mut settings.body_part {
         if new.is_some_and(|n| parts.contains_key(n)) {
             return Err("目标服装已有触摸区域".into());
         }
-        if let Some(value) = parts.remove(old) {
-            if let Some(new) = new {
-                parts.insert(new.into(), value);
-            }
+        if let Some(value) = parts.remove(old)
+            && let Some(new) = new
+        {
+            parts.insert(new.into(), value);
         }
         // 旧触摸配置在每个部位内部记录 clothesName，不改变其多边形坐标。
         let mut remove = Vec::new();

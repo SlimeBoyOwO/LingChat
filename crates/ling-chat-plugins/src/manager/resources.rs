@@ -127,12 +127,12 @@ impl PluginManager {
                 // 与游戏同名 → 游戏优先（无论隐藏与否都标冲突，与启用插件行为一致）
                 e.conflict = game_keys.contains(&e.key);
                 // 插件间同名冲突：仅对「非隐藏非游戏冲突」的条目判谁赢
-                if !e.conflict && !e.hidden {
-                    if let Some(w) = winner.get(&e.key) {
-                        if w != id {
-                            e.conflict = true;
-                        }
-                    }
+                if !e.conflict
+                    && !e.hidden
+                    && let Some(w) = winner.get(&e.key)
+                    && w != id
+                {
+                    e.conflict = true;
                 }
                 out.push(e);
             }

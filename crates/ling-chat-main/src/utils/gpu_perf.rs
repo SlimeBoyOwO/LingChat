@@ -374,19 +374,19 @@ fn grade(vendor_id: u32, device_id: u32, name: &str) -> PerfTier {
             }
             if n.contains("r9") || n.contains("r7") {
                 let token = if n.contains("r9") { "r9" } else { "r7" };
-                if let Some(num) = model_number(&n, token) {
-                    if num >= 260 {
-                        return PerfTier::High;
-                    }
+                if let Some(num) = model_number(&n, token)
+                    && num >= 260
+                {
+                    return PerfTier::High;
                 }
                 return PerfTier::Low;
             }
             if n.contains("hd") {
                 // HD 7800/7900 独显还算能打，其余（含 HD 8xxxD 老 APU）LOW
-                if let Some(num) = model_number(&n, "hd") {
-                    if (7800..8000).contains(&num) {
-                        return PerfTier::High;
-                    }
+                if let Some(num) = model_number(&n, "hd")
+                    && (7800..8000).contains(&num)
+                {
+                    return PerfTier::High;
                 }
                 return PerfTier::Low;
             }

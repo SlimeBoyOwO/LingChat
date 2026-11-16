@@ -729,10 +729,9 @@ fn is_official_kimi_code_base_url(base_url: &str) -> bool {
 fn codex_search_model(chat_provider: Option<&LlmProviderConfig>) -> String {
     if let Some(chat) =
         chat_provider.filter(|provider| provider.provider.eq_ignore_ascii_case("codex"))
+        && !chat.model.trim().is_empty()
     {
-        if !chat.model.trim().is_empty() {
-            return chat.model.trim().to_string();
-        }
+        return chat.model.trim().to_string();
     }
     "gpt-5.6-sol".to_string()
 }

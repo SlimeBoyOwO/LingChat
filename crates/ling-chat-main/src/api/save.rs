@@ -480,12 +480,10 @@ pub async fn load_save(app: AppHandle, save_id: i32) -> Result<WebInitData, Stri
         &mut snapshot.global_variables,
         &identity_to_role,
         &folder_to_role,
-    ) {
-        if let Ok(snapshot_json) = serde_json::to_string(&snapshot) {
-            if let Err(e) = SaveRepo::update_save_status(db, save_id, &snapshot_json).await {
-                tracing::warn!("回写旧档身份键失败: {e}");
-            }
-        }
+    ) && let Ok(snapshot_json) = serde_json::to_string(&snapshot)
+        && let Err(e) = SaveRepo::update_save_status(db, save_id, &snapshot_json).await
+    {
+        tracing::warn!("回写旧档身份键失败: {e}");
     }
     service.game_status.lock().await.apply_snapshot(&snapshot);
 
@@ -617,10 +615,10 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         .map_err(|e| format!("删除记忆库失败: {}", e))?;
 
     // 2. 删除 running_script 关联（若有）
-    if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await {
-        if let Some(rs_id) = save_model.running_script_id {
-            let _ = SaveRepo::delete_running_script(db, rs_id).await;
-        }
+    if let Ok(Some(save_model)) = SaveRepo::get_save_by_id(db, save_id).await
+        && let Some(rs_id) = save_model.running_script_id
+    {
+        let _ = SaveRepo::delete_running_script(db, rs_id).await;
     }
 
     // 删除关联的截图文件

@@ -317,10 +317,10 @@ pub(super) fn parse_plan(markdown: &str) -> Vec<String> {
     let lines: Vec<&str> = markdown.lines().collect();
     let mut plan: Vec<String> = Vec::new();
     for (start, end) in block_ranges(&lines) {
-        if let Some(id) = block_id(&lines[start + 1..end]) {
-            if !plan.iter().any(|p| p == id) {
-                plan.push(id.to_string());
-            }
+        if let Some(id) = block_id(&lines[start + 1..end])
+            && !plan.iter().any(|p| p == id)
+        {
+            plan.push(id.to_string());
         }
     }
     plan
@@ -522,10 +522,10 @@ fn check_chapter(dir: &Path, id: &str, data_dir: &Path) -> Option<ChapterCheck> 
 
     let findings = validate::check_chapter_assets(data_dir, dir, id, &value);
     for d in findings {
-        if let Some(name) = validate::missing_asset_name(&d) {
-            if !check.missing_assets.iter().any(|m| m == name) {
-                check.missing_assets.push(name.to_string());
-            }
+        if let Some(name) = validate::missing_asset_name(&d)
+            && !check.missing_assets.iter().any(|m| m == name)
+        {
+            check.missing_assets.push(name.to_string());
         }
         let at = d.event_index.map(|i| i + 1).unwrap_or_default();
         let line = format!("第 {} 个事件 · {}", at, d.message);

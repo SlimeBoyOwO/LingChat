@@ -79,20 +79,18 @@ pub struct FunctionSchema {
 pub(crate) fn parse_tool_args(raw: &str) -> Value {
     let mut args: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
 
-    if let Some(s) = args.as_str() {
-        if let Ok(parsed) = serde_json::from_str::<Value>(s) {
-            args = parsed;
-        }
+    if let Some(s) = args.as_str()
+        && let Ok(parsed) = serde_json::from_str::<Value>(s)
+    {
+        args = parsed;
     }
 
-    if let Value::Object(map) = &args {
-        if map.len() == 1 {
-            if let Some(inner) = map.get("arguments").or_else(|| map.get("params")) {
-                if inner.is_object() {
-                    args = inner.clone();
-                }
-            }
-        }
+    if let Value::Object(map) = &args
+        && map.len() == 1
+        && let Some(inner) = map.get("arguments").or_else(|| map.get("params"))
+        && inner.is_object()
+    {
+        args = inner.clone();
     }
 
     if !args.is_object() {
@@ -415,16 +413,15 @@ where
     D: serde::Deserializer<'de>,
 {
     let anchor = Option::<Live2dFocusAnchor>::deserialize(deserializer)?;
-    if let Some(anchor) = &anchor {
-        if !anchor.x.is_finite()
+    if let Some(anchor) = &anchor
+        && (!anchor.x.is_finite()
             || !anchor.y.is_finite()
             || !(0.0..=1.0).contains(&anchor.x)
-            || !(0.0..=1.0).contains(&anchor.y)
-        {
-            return Err(serde::de::Error::custom(
-                "focus_anchor x/y must be finite values between 0 and 1",
-            ));
-        }
+            || !(0.0..=1.0).contains(&anchor.y))
+    {
+        return Err(serde::de::Error::custom(
+            "focus_anchor x/y must be finite values between 0 and 1",
+        ));
     }
     Ok(anchor)
 }

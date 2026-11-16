@@ -36,7 +36,8 @@ const ADD_NOTE_PROMPT: &str = "添加一条手动记忆笔记。默认写入当�
 
 const UPDATE_NOTE_PROMPT: &str = "按 ID 更新笔记内容或标签，至少提供一项。默认先找当前存档，找不到再找当前角色的全局笔记；也可用 scope 指定";
 
-const DELETE_NOTE_PROMPT: &str = "按 ID 删除笔记。默认先找当前存档，找不到再找当前角色的全局笔记；也可用 scope 指定";
+const DELETE_NOTE_PROMPT: &str =
+    "按 ID 删除笔记。默认先找当前存档，找不到再找当前角色的全局笔记；也可用 scope 指定";
 
 // ─── 来源与检索范围 ───
 
@@ -242,10 +243,7 @@ fn score_in_memory(
             scored.push((note.id.clone(), score));
         }
     }
-    scored.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    scored.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
     Ok(scored)
 }
 
@@ -369,8 +367,8 @@ impl GetNotes {
 
         let index = self.index.clone();
         let save_index = self.save_index.clone();
-        let search = tokio::task::spawn_blocking(
-            move || -> anyhow::Result<Vec<(SourcedNote, f32)>> {
+        let search =
+            tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<(SourcedNote, f32)>> {
                 let mut candidates = Vec::new();
                 for source in sources {
                     let scored = match source.owner {
@@ -408,9 +406,8 @@ impl GetNotes {
                     }
                 }
                 Ok(candidates)
-            },
-        )
-        .await;
+            })
+            .await;
 
         let candidates = match search {
             Ok(Ok(candidates)) => candidates,

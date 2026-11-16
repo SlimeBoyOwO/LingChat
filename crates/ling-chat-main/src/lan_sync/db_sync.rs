@@ -47,7 +47,7 @@ const DELETE_ORDER: [&str; 7] = [
 ///
 /// 保留原始主键 ID，实现源端数据镜像。
 macro_rules! import_rows {
-    ($db:expr, $rows:expr, $entity:ident, $count:expr) => {{
+    ($db:expr_2021, $rows:expr_2021, $entity:ident, $count:expr_2021) => {{
         if !$rows.is_empty() {
             let models: Vec<$entity::Model> = serde_json::from_value(Value::Array($rows.to_vec()))
                 .map_err(|e| format!("反序列化 {} 失败: {e}", stringify!($entity)))?;

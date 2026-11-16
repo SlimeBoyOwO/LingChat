@@ -90,16 +90,19 @@ impl GameStatus {
             reason: "初始好感度已同步到当前存档".to_string(),
         };
 
-        if value != 0 {
-            if let Some(role_name) = role_name.filter(|name| !name.is_empty()) {
-                if let Err(e) = self
-                    .add_affection_state_narration(db, &role_name, value)
-                    .await
-                {
+        if value != 0
+            && let Some(role_name) = role_name.filter(|name| !name.is_empty())
+        {
+            match self
+                .add_affection_state_narration(db, &role_name, value)
+                .await
+            {
+                Err(e) => {
                     tracing::warn!("写入感情档位旁白失败: {e}");
-                } else {
+                },
+                _ => {
                     self.persist_lines_if_bound(db).await;
-                }
+                },
             }
         }
         if let Some(save_id) = self.active_save_id {

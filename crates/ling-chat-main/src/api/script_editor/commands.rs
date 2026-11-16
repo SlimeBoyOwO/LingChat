@@ -505,14 +505,13 @@ fn validate_script(key: &str) -> Result<ValidationReport, String> {
     // 收集其他剧本的 script_name 用于查重（同名剧本都收进来，重名时一次列全）
     let mut names: HashMap<String, Vec<String>> = HashMap::new();
     for other in paths::enumerate_script_keys() {
-        if let Ok(d) = paths::resolve_script_dir(&other) {
-            if let Ok(cfg) = yaml_file::read_story_config(&d) {
-                if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
-                    let n = n.trim();
-                    if !n.is_empty() {
-                        names.entry(n.to_string()).or_default().push(other.clone());
-                    }
-                }
+        if let Ok(d) = paths::resolve_script_dir(&other)
+            && let Ok(cfg) = yaml_file::read_story_config(&d)
+            && let Some(n) = cfg.get("script_name").and_then(|v| v.as_str())
+        {
+            let n = n.trim();
+            if !n.is_empty() {
+                names.entry(n.to_string()).or_default().push(other.clone());
             }
         }
     }
@@ -1990,24 +1989,24 @@ async fn role_name_of(db: &DatabaseConnection, id: i32) -> Option<String> {
         .ok()
         .map(|dir| yaml_file::resolve_settings_file(&dir));
 
-    if let Some(path) = settings_path {
-        if let Ok(content) = std::fs::read_to_string(path) {
-            let settings: JsonValue = serde_yaml::from_str(&content).unwrap_or(JsonValue::Null);
-            let from_yaml = settings
-                .get("name")
-                .and_then(|v| v.as_str())
-                .map(|s| s.trim().to_string())
-                .filter(|s| !s.is_empty())
-                .or_else(|| {
-                    settings
-                        .get("ai_name")
-                        .and_then(|v| v.as_str())
-                        .map(|s| s.trim().to_string())
-                        .filter(|s| !s.is_empty())
-                });
-            if from_yaml.is_some() {
-                return from_yaml;
-            }
+    if let Some(path) = settings_path
+        && let Ok(content) = std::fs::read_to_string(path)
+    {
+        let settings: JsonValue = serde_yaml::from_str(&content).unwrap_or(JsonValue::Null);
+        let from_yaml = settings
+            .get("name")
+            .and_then(|v| v.as_str())
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .or_else(|| {
+                settings
+                    .get("ai_name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.trim().to_string())
+                    .filter(|s| !s.is_empty())
+            });
+        if from_yaml.is_some() {
+            return from_yaml;
         }
     }
 

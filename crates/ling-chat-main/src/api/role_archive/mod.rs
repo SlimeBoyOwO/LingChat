@@ -221,10 +221,10 @@ pub async fn import_role_from_path(
     let src = prepare_import_source(&app, &path).await?;
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
-    if src.cleanup_after_import {
-        if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
-            *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
-        }
+    if src.cleanup_after_import
+        && let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id)
+    {
+        *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
     }
 
     // 文件名兜底：前端传来的 `file_name` 可能是 URI 末段未经 decode 的
@@ -266,14 +266,14 @@ pub async fn import_role_from_path(
     }
     .await;
 
-    if src.cleanup_after_import {
-        if let Err(error) = tokio::fs::remove_file(&src.path).await {
-            tracing::warn!(
-                "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
-                src.path.display(),
-                error
-            );
-        }
+    if src.cleanup_after_import
+        && let Err(error) = tokio::fs::remove_file(&src.path).await
+    {
+        tracing::warn!(
+            "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
+            src.path.display(),
+            error
+        );
     }
     match &result {
         Ok(r) => tracing::info!(

@@ -177,7 +177,11 @@ impl GameStatus {
         content: Option<String>,
         tags: Option<Vec<String>>,
     ) -> Result<()> {
-        let Some(note) = self.pending_save_notes.iter_mut().find(|note| note.id == id) else {
+        let Some(note) = self
+            .pending_save_notes
+            .iter_mut()
+            .find(|note| note.id == id)
+        else {
             return Err(anyhow::anyhow!("笔记 {id} 不存在"));
         };
         if let Some(content) = content {
@@ -262,10 +266,9 @@ impl GameStatus {
         if matches!(line.attribute.inner(), LineAttribute::User)
             && matches!(line.sender_role_id, None | Some(0))
             && !matches!(line.display_name.as_deref(), Some("旁白") | Some("系统"))
+            && let Some(player_role_id) = self.player.player_role_id
         {
-            if let Some(player_role_id) = self.player.player_role_id {
-                line.sender_role_id = Some(player_role_id);
-            }
+            line.sender_role_id = Some(player_role_id);
         }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         self.add_line_perceived(db, line, perceived).await

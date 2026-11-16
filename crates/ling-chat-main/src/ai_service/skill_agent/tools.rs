@@ -289,14 +289,13 @@ async fn tool_validate_script(
 
         let mut names: HashMap<String, Vec<String>> = HashMap::new();
         for other in crate::utils::script_paths::enumerate_script_keys() {
-            if let Ok(d) = crate::utils::script_paths::resolve_script_dir(&other) {
-                if let Ok(cfg) = crate::utils::yaml_file::read_story_config(&d) {
-                    if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
-                        let n = n.trim();
-                        if !n.is_empty() {
-                            names.entry(n.to_string()).or_default().push(other.clone());
-                        }
-                    }
+            if let Ok(d) = crate::utils::script_paths::resolve_script_dir(&other)
+                && let Ok(cfg) = crate::utils::yaml_file::read_story_config(&d)
+                && let Some(n) = cfg.get("script_name").and_then(|v| v.as_str())
+            {
+                let n = n.trim();
+                if !n.is_empty() {
+                    names.entry(n.to_string()).or_default().push(other.clone());
                 }
             }
         }
@@ -624,14 +623,12 @@ async fn with_chapter_check(
     let check_result = run_blocking(move || {
         let check = stage::evidence::check_written_chapter(&snapshot, &path_owned, &data_dir)?;
         let chapter = stage::evidence::chapter_id_of_path(&path_owned).unwrap_or_default();
-        if !check.missing_assets.is_empty() {
-            if let Some(dir) = snapshot.script_dir.as_deref() {
-                if let Err(e) =
-                    stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
-                {
-                    tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
-                }
-            }
+        if !check.missing_assets.is_empty()
+            && let Some(dir) = snapshot.script_dir.as_deref()
+            && let Err(e) =
+                stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
+        {
+            tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
         }
         Some((chapter, check))
     })
@@ -789,10 +786,10 @@ fn chapter_referrers(dir: &Path, id: &str) -> Vec<String> {
         }
     }
 
-    if let Ok(config) = crate::utils::yaml_file::read_yaml_as_json(&dir.join("story_config.yaml")) {
-        if points_at(config.get("intro_chapter"), id) {
-            refs.push("`story_config.yaml` 的 `intro_chapter`".into());
-        }
+    if let Ok(config) = crate::utils::yaml_file::read_yaml_as_json(&dir.join("story_config.yaml"))
+        && points_at(config.get("intro_chapter"), id)
+    {
+        refs.push("`story_config.yaml` 的 `intro_chapter`".into());
     }
 
     refs

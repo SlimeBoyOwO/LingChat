@@ -105,12 +105,10 @@ pub async fn run_chat(
     if let (Some(key), Some(dir)) = (
         ctx.stage_snapshot.script_key.clone(),
         ctx.stage_snapshot.script_dir.clone(),
-    ) {
-        if let Ok(Err(e)) =
-            tokio::task::spawn_blocking(move || stage::ensure_package_skeleton(&dir, &key)).await
-        {
-            tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
-        }
+    ) && let Ok(Err(e)) =
+        tokio::task::spawn_blocking(move || stage::ensure_package_skeleton(&dir, &key)).await
+    {
+        tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
     }
 
     let user_msg = history
@@ -307,39 +305,39 @@ pub async fn run_chat(
         reply.push_str(&text);
         save_queue(&ctx, &plan.items, turn_start).await;
 
-        if !matches!(handoff, role::Handoff::Explain(_)) {
-            if let Some(dir) = queue_dir(&ctx).await {
-                let target_owned = target.to_string();
-                let owed = tokio::task::spawn_blocking(move || {
-                    stage::queue::still_owed(&dir, task, &target_owned)
-                })
-                .await
-                .unwrap_or(false);
-                if owed {
-                    messages.push(LlmMessage::user(format!(
+        if !matches!(handoff, role::Handoff::Explain(_))
+            && let Some(dir) = queue_dir(&ctx).await
+        {
+            let target_owned = target.to_string();
+            let owed = tokio::task::spawn_blocking(move || {
+                stage::queue::still_owed(&dir, task, &target_owned)
+            })
+            .await
+            .unwrap_or(false);
+            if owed {
+                messages.push(LlmMessage::user(format!(
                         "【代码核对】这一项在盘上还没有看到产物（{}）。**增 / 改类**要看到文件在、或被改过；\
                          **删除类**要看到它真的不见了。没落地就不算做完 —— 要么现在就真的做（该调的工具要调，\
                          比如删除要 `delete_file` 返回成功），要么在回执里说清为什么做不到；**不要写「已做完」**。",
                         stage::prompt::render_text_of(task, target)
                     )));
-                    let second = run_item_tools(
-                        &ctx,
-                        llm,
-                        &mut messages,
-                        allowed,
-                        &cancelled,
-                        max_rounds,
-                        &mut usage,
-                        false,
-                        tools::ItemScope {
-                            allow_runnable: task.produces_runnable_chapters(),
-                            kind: task,
-                        },
-                    )
-                    .await?;
-                    reply.push_str(&second);
-                    save_queue(&ctx, &plan.items, turn_start).await;
-                }
+                let second = run_item_tools(
+                    &ctx,
+                    llm,
+                    &mut messages,
+                    allowed,
+                    &cancelled,
+                    max_rounds,
+                    &mut usage,
+                    false,
+                    tools::ItemScope {
+                        allow_runnable: task.produces_runnable_chapters(),
+                        kind: task,
+                    },
+                )
+                .await?;
+                reply.push_str(&second);
+                save_queue(&ctx, &plan.items, turn_start).await;
             }
         }
 
@@ -890,13 +888,13 @@ async fn stream_completion(
             total_tokens: u.total_tokens,
             cached_tokens: u.cached_tokens,
         });
-        if let Some(c) = resp.content {
-            if !c.is_empty() {
-                text_out.push_str(&c);
-                let _ = ctx
-                    .channel
-                    .send(SkillAgentEvent::MessageDelta { content: c });
-            }
+        if let Some(c) = resp.content
+            && !c.is_empty()
+        {
+            text_out.push_str(&c);
+            let _ = ctx
+                .channel
+                .send(SkillAgentEvent::MessageDelta { content: c });
         }
         if let Some(calls) = resp.tool_calls {
             for tc in calls {

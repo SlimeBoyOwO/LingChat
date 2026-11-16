@@ -191,27 +191,27 @@ impl CodexProvider {
         if let Some(temperature) = self.temperature {
             body["temperature"] = json!(temperature);
         }
-        if let Some(definitions) = tools {
-            if !definitions.is_empty() {
-                let converted: Vec<Value> = definitions
-                    .iter()
-                    .map(|d| {
-                        json!({
-                            "type": "function",
-                            "name": d.function.name,
-                            "description": d.function.description,
-                            "parameters": d.function.parameters,
-                        })
+        if let Some(definitions) = tools
+            && !definitions.is_empty()
+        {
+            let converted: Vec<Value> = definitions
+                .iter()
+                .map(|d| {
+                    json!({
+                        "type": "function",
+                        "name": d.function.name,
+                        "description": d.function.description,
+                        "parameters": d.function.parameters,
                     })
-                    .collect();
-                body["tools"] = json!(converted);
-                body["parallel_tool_calls"] = json!(true);
-                body["tool_choice"] = match tool_choice {
-                    Some("none") => json!("none"),
-                    Some("any") | Some("required") => json!("required"),
-                    _ => json!("auto"),
-                };
-            }
+                })
+                .collect();
+            body["tools"] = json!(converted);
+            body["parallel_tool_calls"] = json!(true);
+            body["tool_choice"] = match tool_choice {
+                Some("none") => json!("none"),
+                Some("any") | Some("required") => json!("required"),
+                _ => json!("auto"),
+            };
         }
         body
     }
@@ -336,40 +336,37 @@ impl CodexProvider {
                             }
                         }
                         "response.output_item.added" => {
-                            if let Some(item) = event.get("item") {
-                                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            if let Some(item) = event.get("item")
+                                && item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                     let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     pending_calls.insert(item_id, (call_id, name, String::new()));
                                 }
-                            }
                         }
                         "response.function_call_arguments.delta" => {
                             let item_id = event.get("item_id").and_then(|v| v.as_str()).unwrap_or("");
-                            if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
-                                if let Some((_, name, args)) = pending_calls.get_mut(item_id) {
+                            if let Some(delta) = event.get("delta").and_then(|d| d.as_str())
+                                && let Some((_, name, args)) = pending_calls.get_mut(item_id) {
                                     args.push_str(delta);
                                     yield LlmChunk::ToolCallProgress {
                                         name: name.clone(),
                                         chars: args.len(),
                                     };
                                 }
-                            }
                         }
                         "response.output_item.done" => {
-                            if let Some(item) = event.get("item") {
-                                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            if let Some(item) = event.get("item")
+                                && item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                     let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
                                     let (call_id, name, mut args) = pending_calls
                                         .remove(item_id)
                                         .unwrap_or_default();
                                     // done 事件里通常带完整 arguments，以它为准
-                                    if let Some(full) = item.get("arguments").and_then(|v| v.as_str()) {
-                                        if !full.is_empty() {
+                                    if let Some(full) = item.get("arguments").and_then(|v| v.as_str())
+                                        && !full.is_empty() {
                                             args = full.to_string();
                                         }
-                                    }
                                     let final_call_id = item
                                         .get("call_id")
                                         .and_then(|v| v.as_str())
@@ -385,7 +382,6 @@ impl CodexProvider {
                                         },
                                     });
                                 }
-                            }
                         }
                         "response.completed" | "response.incomplete" => {
                             if let Some(u) = event.pointer("/response/usage") {

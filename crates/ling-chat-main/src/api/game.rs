@@ -312,25 +312,25 @@ pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, Str
     let mut orphan_size: u64 = 0;
     let mut orphan_files: usize = 0;
 
-    if voice_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&voice_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                let size = if let Ok(metadata) = std::fs::metadata(&path) {
-                    metadata.len()
-                } else {
-                    0
-                };
-                file_count += 1;
-                total_size += size;
-                if !referenced.contains(&name) {
-                    orphan_files += 1;
-                    orphan_size += size;
-                }
+    if voice_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&voice_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let size = if let Ok(metadata) = std::fs::metadata(&path) {
+                metadata.len()
+            } else {
+                0
+            };
+            file_count += 1;
+            total_size += size;
+            if !referenced.contains(&name) {
+                orphan_files += 1;
+                orphan_size += size;
             }
         }
     }
@@ -515,24 +515,22 @@ pub(crate) async fn build_web_init_data(
         let mut sid = gs.current_scene_id.clone();
 
         // 若无当前场景，尝试从 store 恢复上次选择的场景
-        if sid.is_none() {
-            if let Ok(store) = app.store(config::STORE_FILE) {
-                if let Some(v) = store.get(config::session::LAST_SCENE_ID) {
-                    if let Some(id) = v.as_str() {
-                        sid = Some(id.to_string());
-                    }
-                }
-            }
+        if sid.is_none()
+            && let Ok(store) = app.store(config::STORE_FILE)
+            && let Some(v) = store.get(config::session::LAST_SCENE_ID)
+            && let Some(id) = v.as_str()
+        {
+            sid = Some(id.to_string());
         }
 
         // 若仍无场景，随机选一个
         if sid.is_none() {
             let store = SceneStore::new(&service.data_dir);
-            if let Ok(scenes) = store.load_all() {
-                if !scenes.is_empty() {
-                    let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
-                    sid = Some(scenes[idx].id.clone());
-                }
+            if let Ok(scenes) = store.load_all()
+                && !scenes.is_empty()
+            {
+                let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
+                sid = Some(scenes[idx].id.clone());
             }
         }
 
@@ -557,10 +555,10 @@ pub(crate) async fn build_web_init_data(
         );
 
         // 从 store 恢复场景感知开关
-        if let Ok(store) = app.store(config::STORE_FILE) {
-            if let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED) {
-                gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
-            }
+        if let Ok(store) = app.store(config::STORE_FILE)
+            && let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED)
+        {
+            gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
         }
         let scene_awareness = gs.scene_awareness_enabled;
 

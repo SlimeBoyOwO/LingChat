@@ -111,10 +111,10 @@ impl GameRoleManager {
         {
             self.clothes_overrides.insert(role_id, new.into());
         }
-        if let Some(role) = self.loaded_roles.get_mut(&role_id) {
-            if role.current_clothes == old {
-                role.current_clothes = new.into();
-            }
+        if let Some(role) = self.loaded_roles.get_mut(&role_id)
+            && role.current_clothes == old
+        {
+            role.current_clothes = new.into();
         }
     }
 
@@ -435,10 +435,10 @@ impl GameRoleManager {
         // 收集涉及到的角色 ID；玩家角色（含历史 0 哨兵）不参与记忆同步。
         let mut involved_ids: HashSet<i32> = HashSet::new();
         for line in source_lines {
-            if let Some(sid) = line.sender_role_id() {
-                if !self.is_player_sender(Some(sid)) {
-                    involved_ids.insert(sid);
-                }
+            if let Some(sid) = line.sender_role_id()
+                && !self.is_player_sender(Some(sid))
+            {
+                involved_ids.insert(sid);
             }
             for rid in &line.perceived_role_ids {
                 if !self.is_player_role(*rid) {
@@ -618,12 +618,11 @@ impl GameRoleManager {
             let _ = self.get_role(db, rid).await?;
 
             // 更新 role.memory_bank（DB → 内存）
-            if let Some((_, info)) = best.get(&rid) {
-                if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
-                    if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                        role.memory_bank = mb.clone();
-                    }
-                }
+            if let Some((_, info)) = best.get(&rid)
+                && let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone())
+                && let Some(role) = self.loaded_roles.get_mut(&rid)
+            {
+                role.memory_bank = mb.clone();
             }
 
             // 提取数据（释放借用后传递给 ensure）
@@ -648,12 +647,11 @@ impl GameRoleManager {
             );
 
             // 若已有压缩系统且 DB 有数据，同步重置
-            if let Some((_, info)) = best.get(&rid) {
-                if let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone()) {
-                    if let Some(sys) = self.memory_bank_systems.get(&rid) {
-                        sys.reset_from(&mb).await;
-                    }
-                }
+            if let Some((_, info)) = best.get(&rid)
+                && let Ok(mb) = serde_json::from_value::<GameMemoryBank>(info.clone())
+                && let Some(sys) = self.memory_bank_systems.get(&rid)
+            {
+                sys.reset_from(&mb).await;
             }
         }
         Ok(())
@@ -809,10 +807,10 @@ impl GameRoleManager {
     ) -> Result<()> {
         // 先同步所有压缩系统的最新状态
         for rid in self.loaded_roles.keys().copied().collect::<Vec<_>>() {
-            if let Some(sys) = self.memory_bank_systems.get(&rid) {
-                if let Some(role) = self.loaded_roles.get_mut(&rid) {
-                    sys.sync_to_role(role);
-                }
+            if let Some(sys) = self.memory_bank_systems.get(&rid)
+                && let Some(role) = self.loaded_roles.get_mut(&rid)
+            {
+                sys.sync_to_role(role);
             }
         }
 
@@ -907,10 +905,10 @@ impl GameRoleManager {
         let role_ids: Vec<i32> = self.memory_bank_systems.keys().copied().collect();
         let mut triggered = 0usize;
         for role_id in role_ids {
-            if let Some(system) = self.memory_bank_systems.get(&role_id) {
-                if system.compress_if_needed(lines).await {
-                    triggered += 1;
-                }
+            if let Some(system) = self.memory_bank_systems.get(&role_id)
+                && system.compress_if_needed(lines).await
+            {
+                triggered += 1;
             }
         }
         triggered

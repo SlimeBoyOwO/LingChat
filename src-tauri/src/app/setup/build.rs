@@ -109,14 +109,14 @@ pub(super) fn build_service_graph(
     // 从 session store 读取各角色的上次服装，注入 GameRoleManager
     {
         let mut overrides = HashMap::new();
-        if let Ok(store) = app.store(config::STORE_FILE) {
-            if let Some(cid) = character_id {
-                let key = config::session::last_clothes_key(cid);
-                if let Some(clothes) = store.get(&key).and_then(|v| v.as_str().map(String::from)) {
-                    if !clothes.is_empty() {
-                        overrides.insert(cid, clothes);
-                    }
-                }
+        if let Ok(store) = app.store(config::STORE_FILE)
+            && let Some(cid) = character_id
+        {
+            let key = config::session::last_clothes_key(cid);
+            if let Some(clothes) = store.get(&key).and_then(|v| v.as_str().map(String::from))
+                && !clothes.is_empty()
+            {
+                overrides.insert(cid, clothes);
             }
         }
         rt.block_on(ai_service.set_clothes_overrides(overrides));
@@ -130,15 +130,14 @@ pub(super) fn build_service_graph(
     }
 
     // 冷启动恢复上次角色时，同样启用该角色卡绑定的专属身份（迁移会把 current 重置为主身份）。
-    if let Some(cid) = character_id {
-        if let Err(e) = rt.block_on(
+    if let Some(cid) = character_id
+        && let Err(e) = rt.block_on(
             ling_chat_main::ai_service::game_system::player_identity::bootstrap::apply_bound_identity_for_role(
                 &db, &data_dir, cid,
             ),
         ) {
             tracing::warn!("冷启动应用绑定身份失败: {e}");
         }
-    }
 
     rt.block_on(ai_service.init_game_status(character_id, prompt_options))?;
     // 冷启动直接恢复上次角色，不经过 select_character，这里补播种初始好感度（与切角色同构）。
@@ -394,25 +393,21 @@ async fn load_default_character(
     if let Some(last_id) = store
         .get(config::session::LAST_CHARACTER_ID)
         .and_then(|v| v.as_i64())
-    {
-        if let Ok(Some(settings)) =
+        && let Ok(Some(settings)) =
             RoleRepo::get_role_settings_by_id(db, data_dir, last_id as i32).await
-        {
-            tracing::info!("加载上次游玩的角色: id={}", last_id);
-            return Ok(settings);
-        }
+    {
+        tracing::info!("加载上次游玩的角色: id={}", last_id);
+        return Ok(settings);
     }
 
     // 2. 回退：取第一个主角色
-    if let Ok(main_roles) = RoleRepo::get_all_main_roles(db).await {
-        if let Some(role) = main_roles.first() {
-            let folder = role.resource_folder.clone().unwrap_or_default();
-            if let Ok(Some(settings)) =
-                RoleRepo::get_role_settings_by_id(db, data_dir, role.id).await
-            {
-                tracing::info!("加载默认主角色: id={}, folder={}", role.id, folder);
-                return Ok(settings);
-            }
+    if let Ok(main_roles) = RoleRepo::get_all_main_roles(db).await
+        && let Some(role) = main_roles.first()
+    {
+        let folder = role.resource_folder.clone().unwrap_or_default();
+        if let Ok(Some(settings)) = RoleRepo::get_role_settings_by_id(db, data_dir, role.id).await {
+            tracing::info!("加载默认主角色: id={}, folder={}", role.id, folder);
+            return Ok(settings);
         }
     }
 

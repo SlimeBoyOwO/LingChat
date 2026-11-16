@@ -177,10 +177,10 @@ impl AutoSaveManager {
         }
 
         // 0b. 冷却期：刚进入一局，先别动上一局的自动存档
-        if let Some(until) = self.grace_until {
-            if Instant::now() < until {
-                return Ok(());
-            }
+        if let Some(until) = self.grace_until
+            && Instant::now() < until
+        {
+            return Ok(());
         }
 
         // 1. Compute current hash (returns None if there is no real dialogue)
@@ -256,12 +256,11 @@ impl AutoSaveManager {
         // 记录本局使用的玩家角色，否则读自动存档会沿用全局当前身份。
         {
             let player_role_id = service.game_status.lock().await.player.player_role_id;
-            if player_role_id.is_some() {
-                if let Err(e) =
+            if player_role_id.is_some()
+                && let Err(e) =
                     SaveRepo::update_save_player_role(&self.db, save_id, player_role_id).await
-                {
-                    tracing::warn!("[AutoSave] 记录本局玩家角色失败: {e}");
-                }
+            {
+                tracing::warn!("[AutoSave] 记录本局玩家角色失败: {e}");
             }
         }
 

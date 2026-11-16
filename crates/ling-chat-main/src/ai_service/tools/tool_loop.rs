@@ -58,12 +58,12 @@ fn attach_tool_note(messages: &mut [LlmMessage], key: &str, note: serde_json::Va
     else {
         return;
     };
-    if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&last.content) {
-        if let Some(object) = value.as_object_mut() {
-            object.insert(key.to_string(), note);
-            last.content = value.to_string();
-            return;
-        }
+    if let Ok(mut value) = serde_json::from_str::<serde_json::Value>(&last.content)
+        && let Some(object) = value.as_object_mut()
+    {
+        object.insert(key.to_string(), note);
+        last.content = value.to_string();
+        return;
     }
     let text = note
         .as_str()

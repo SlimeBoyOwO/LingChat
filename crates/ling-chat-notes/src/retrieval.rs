@@ -132,7 +132,9 @@ impl NotesVectorIndex {
                 continue;
             }
             let path = dir.join(&file);
-            if path.exists() && let Err(e) = std::fs::remove_file(&path) {
+            if path.exists()
+                && let Err(e) = std::fs::remove_file(&path)
+            {
                 tracing::warn!("清理笔记索引失败 {}: {e}", path.display());
             }
         }

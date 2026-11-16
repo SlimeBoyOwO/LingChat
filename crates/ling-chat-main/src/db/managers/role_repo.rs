@@ -129,10 +129,10 @@ impl RoleRepo {
         resource_folder: Option<&str>,
     ) -> Result<i32> {
         // Try to find existing
-        if let (Some(sk), Some(srk)) = (script_key, script_role_key) {
-            if let Some(existing) = Self::get_role_by_script_keys(db, sk, srk).await? {
-                return Ok(existing.id);
-            }
+        if let (Some(sk), Some(srk)) = (script_key, script_role_key)
+            && let Some(existing) = Self::get_role_by_script_keys(db, sk, srk).await?
+        {
+            return Ok(existing.id);
         }
 
         // Create new

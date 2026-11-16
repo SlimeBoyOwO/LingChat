@@ -59,23 +59,26 @@ impl ScriptEvent for SetVariableEvent {
                     let action_type = action.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     if action_type == "set_var" {
                         let content = action.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                        if let Ok((op, var_name, value)) = parse_variable_action(content) {
-                            let current = script_status.get_variable(&var_name).cloned();
-                            let result = apply_variable_action(op, current.as_ref(), value);
-                            script_status.set_variable(var_name, result);
-                            tracing::info!(
-                                "[SetVariableEvent] {} = {:?}",
-                                content,
-                                script_status.get_variable(
-                                    content
-                                        .split(&['=', '+', '-'][..])
-                                        .next()
-                                        .unwrap_or("")
-                                        .trim()
-                                )
-                            );
-                        } else {
-                            tracing::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
+                        match parse_variable_action(content) {
+                            Ok((op, var_name, value)) => {
+                                let current = script_status.get_variable(&var_name).cloned();
+                                let result = apply_variable_action(op, current.as_ref(), value);
+                                script_status.set_variable(var_name, result);
+                                tracing::info!(
+                                    "[SetVariableEvent] {} = {:?}",
+                                    content,
+                                    script_status.get_variable(
+                                        content
+                                            .split(&['=', '+', '-'][..])
+                                            .next()
+                                            .unwrap_or("")
+                                            .trim()
+                                    )
+                                );
+                            },
+                            _ => {
+                                tracing::warn!("[SetVariableEvent] 无法解析操作: '{}'", content);
+                            },
                         }
                     } else {
                         // 这里只实现 set_var。`choices` 的 handle_actions 还支持

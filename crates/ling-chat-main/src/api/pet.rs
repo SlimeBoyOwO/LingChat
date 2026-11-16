@@ -166,10 +166,9 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
         loop {
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
-            let enabled = if let Ok(locked) = enabled_arc.lock() {
-                *locked
-            } else {
-                false
+            let enabled = match enabled_arc.lock() {
+                Ok(locked) => *locked,
+                _ => false,
             };
 
             if !enabled {
@@ -191,75 +190,73 @@ pub fn spawn_hit_test_poll(window: tauri::WebviewWindow) {
                 continue;
             };
 
-            if let Ok(window_pos) = window.outer_position() {
-                if let Ok(scale_factor) = window.scale_factor() {
-                    let mouse_x = cursor.x - f64::from(window_pos.x);
-                    let mouse_y = cursor.y - f64::from(window_pos.y);
+            if let Ok(window_pos) = window.outer_position()
+                && let Ok(scale_factor) = window.scale_factor()
+            {
+                let mouse_x = cursor.x - f64::from(window_pos.x);
+                let mouse_y = cursor.y - f64::from(window_pos.y);
 
-                    let logical_x = mouse_x / scale_factor;
-                    let logical_y = mouse_y / scale_factor;
+                let logical_x = mouse_x / scale_factor;
+                let logical_y = mouse_y / scale_factor;
 
-                    // 当前显示器工作区，换算方式与鼠标位置逐字一致，
-                    // 保证两者是同一帧的原子快照。
-                    let screen = window.current_monitor().ok().flatten().map(|monitor| {
-                        let area = monitor.work_area();
-                        ScreenBox {
-                            left: (f64::from(area.position.x) - f64::from(window_pos.x))
-                                / scale_factor,
-                            top: (f64::from(area.position.y) - f64::from(window_pos.y))
-                                / scale_factor,
-                            width: f64::from(area.size.width) / scale_factor,
-                            height: f64::from(area.size.height) / scale_factor,
-                        }
-                    });
+                // 当前显示器工作区，换算方式与鼠标位置逐字一致，
+                // 保证两者是同一帧的原子快照。
+                let screen = window.current_monitor().ok().flatten().map(|monitor| {
+                    let area = monitor.work_area();
+                    ScreenBox {
+                        left: (f64::from(area.position.x) - f64::from(window_pos.x)) / scale_factor,
+                        top: (f64::from(area.position.y) - f64::from(window_pos.y)) / scale_factor,
+                        width: f64::from(area.size.width) / scale_factor,
+                        height: f64::from(area.size.height) / scale_factor,
+                    }
+                });
 
-                    // 向桌宠前端广播全局鼠标位置
-                    let moved = match last_emitted {
-                        Some((lx, ly)) => {
-                            (logical_x - lx).abs() >= 1.0 || (logical_y - ly).abs() >= 1.0
+                // 向桌宠前端广播全局鼠标位置
+                let moved = match last_emitted {
+                    Some((lx, ly)) => {
+                        (logical_x - lx).abs() >= 1.0 || (logical_y - ly).abs() >= 1.0
+                    },
+                    None => true,
+                };
+                let screen_key = screen
+                    .as_ref()
+                    .map(|area| (area.left, area.top, area.width, area.height));
+                if moved || screen_key != last_screen {
+                    let _ = window.emit(
+                        "pet:cursor",
+                        CursorPosition {
+                            x: logical_x,
+                            y: logical_y,
+                            screen,
                         },
-                        None => true,
-                    };
-                    let screen_key = screen
-                        .as_ref()
-                        .map(|area| (area.left, area.top, area.width, area.height));
-                    if moved || screen_key != last_screen {
-                        let _ = window.emit(
-                            "pet:cursor",
-                            CursorPosition {
-                                x: logical_x,
-                                y: logical_y,
-                                screen,
-                            },
-                        );
-                        last_emitted = Some((logical_x, logical_y));
-                        last_screen = screen_key;
-                    }
+                    );
+                    last_emitted = Some((logical_x, logical_y));
+                    last_screen = screen_key;
+                }
 
-                    let mut is_over_solid = false;
-                    if let Ok(rects) = rects_arc.lock() {
-                        for r in rects.iter() {
-                            if logical_x >= r.x
-                                && logical_y >= r.y
-                                && logical_x <= (r.x + r.width)
-                                && logical_y <= (r.y + r.height)
-                            {
-                                is_over_solid = true;
-                                break;
-                            }
+                let mut is_over_solid = false;
+                if let Ok(rects) = rects_arc.lock() {
+                    for r in rects.iter() {
+                        if logical_x >= r.x
+                            && logical_y >= r.y
+                            && logical_x <= (r.x + r.width)
+                            && logical_y <= (r.y + r.height)
+                        {
+                            is_over_solid = true;
+                            break;
                         }
                     }
+                }
 
-                    if is_over_solid {
-                        if was_ignored {
-                            let _ = window.set_ignore_cursor_events(false);
-                            was_ignored = false;
-                        }
-                    } else {
-                        if !was_ignored {
-                            let _ = window.set_ignore_cursor_events(true);
-                            was_ignored = true;
-                        }
+                if is_over_solid {
+                    if was_ignored {
+                        let _ = window.set_ignore_cursor_events(false);
+                        was_ignored = false;
+                    }
+                } else {
+                    if !was_ignored {
+                        let _ = window.set_ignore_cursor_events(true);
+                        was_ignored = true;
                     }
                 }
             }
@@ -450,10 +447,10 @@ fn watch_pet_window(app: &AppHandle) {
             if let tauri::WindowEvent::Focused(true) = event {
                 raise_bubble(&handle);
             }
-            if let tauri::WindowEvent::Moved(_) = event {
-                if let Some(pet) = handle.get_webview_window("main") {
-                    place_bubble(&handle, &pet);
-                }
+            if let tauri::WindowEvent::Moved(_) = event
+                && let Some(pet) = handle.get_webview_window("main")
+            {
+                place_bubble(&handle, &pet);
             }
         });
     });
