@@ -348,6 +348,10 @@ export default {
       title: "创意工坊",
       enter: "进入创意工坊",
     },
+    shortcuts: {
+      title: "快捷方式",
+      import: "导入角色",
+    },
   },
   log: {
     title: "日志",

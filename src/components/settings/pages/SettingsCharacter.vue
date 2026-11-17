@@ -1,5 +1,11 @@
 <template>
-  <MenuPage>
+  <MenuPage
+    style="
+      padding-left: max(0.75rem, var(--safe-area-inset-left));
+      padding-right: max(0.75rem, var(--safe-area-inset-right));
+      padding-bottom: max(1.5rem, var(--safe-area-inset-bottom));
+    "
+  >
     <MenuItem :title="$t('settings.character.list.title')">
       <template #header>
         <Rabbit :size="20" />
@@ -256,73 +262,36 @@
       @saved="handleSettingsSaved"
     />
 
-    <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用，整卡隐藏 -->
-    <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
-      <template #header>
-        <FolderOpen :size="20" />
-      </template>
-      <div class="space-y-2">
-        <Button type="big" @click="openCharacterFolder">{{
-          $t("settings.character.openFolder.button")
-        }}</Button>
-      </div>
-    </MenuItem>
-
-    <MenuItem :title="$t('settings.character.import.title')" size="small">
-      <template #header>
-        <PackageOpen :size="20" />
-      </template>
-      <div class="space-y-2">
-        <div class="flex flex-col gap-1.5">
-          <label class="text-xs font-medium text-white/60">{{
-            $t("settings.character.import.conflictPolicy")
-          }}</label>
-          <select
-            v-model="conflictPolicy"
-            class="select-dark rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-sm text-white transition-all duration-200 outline-none"
-          >
-            <option value="rename">{{ $t("settings.character.import.policyRename") }}</option>
-            <option value="skip">{{ $t("settings.character.import.policySkip") }}</option>
-            <option value="overwrite">{{ $t("settings.character.import.policyOverwrite") }}</option>
-          </select>
-        </div>
-        <Button type="big" @click="handleImport">{{
-          $t("settings.character.import.button")
-        }}</Button>
-      </div>
-    </MenuItem>
-
-    <MenuItem :title="$t('settings.character.refresh.title')" size="small">
-      <template #header>
-        <RefreshCcw :size="20" />
-      </template>
-      <Button type="big" @click="refreshCharacters">{{
-        $t("settings.character.refresh.button")
-      }}</Button>
-    </MenuItem>
-
-    <MenuItem :title="$t('settings.character.workshop.title')" size="small">
-      <template #header>
-        <Birdhouse :size="20" />
-      </template>
-      <Button type="big" @click="openCreativeWeb">{{
-        $t("settings.character.workshop.enter")
-      }}</Button>
-    </MenuItem>
+    <!-- 快捷操作栏：底部四个常用入口，数量变化时自动换行、末行均分 -->
+    <QuickActionBar
+      :title="$t('settings.character.shortcuts.title')"
+      :icon="Zap"
+      :items="shortcutItems"
+      @action="onShortcutAction"
+      @menu-action="onShortcutMenuAction"
+    />
   </MenuPage>
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from "vue";
+import { computed, markRaw, nextTick, onMounted, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { useRouter } from "vue-router";
-import { Birdhouse, FolderOpen, PackageOpen, Plus, Rabbit, RefreshCcw, User } from "@lucide/vue";
+import {
+  Birdhouse,
+  FolderOpen,
+  PackageOpen,
+  Plus,
+  Rabbit,
+  RefreshCcw,
+  User,
+  Zap,
+} from "@lucide/vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import { invoke } from "@tauri-apps/api/core";
 
 import CharacterCard from "../../ui/Menu/CharacterCard.vue";
-import { Button } from "../../base";
-import { MenuItem, MenuPage } from "../../ui";
+import { MenuItem, MenuPage, QuickActionBar, type QuickActionItem } from "../../ui";
 import { characterGetAll, type CreatedCharacter } from "../../../api/services/character";
 import type { RelationTargetOption } from "../../../composables/useRelationEditor";
 import {
@@ -345,6 +314,7 @@ import type { ConflictPolicy } from "../../../api/services/role-archive";
 import { useGameStore } from "../../../stores/modules/game";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useDialogStore } from "../../../stores/modules/ui/dialog";
+import { useRoleArchiveStore } from "../../../stores/modules/ui/role-archive";
 import type { Character as ApiCharacter, Clothes } from "../../../types";
 import { isAndroid } from "@/utils/platform";
 import RoleArchiveProgress from "@/components/ui/RoleArchiveProgress.vue";
@@ -500,6 +470,89 @@ const openCharacterFolder = async () => {
 const handleSettingsSaved = () => {
   refreshCharacters();
 };
+
+/** 导入进行中（后端解压），禁用刷新与再次导入 */
+const roleArchiveStore = useRoleArchiveStore();
+const importing = computed(() => roleArchiveStore.import.phase === "running");
+
+/** 快捷操作栏数据：底部四个常用入口，数量与顺序变化时布局自动适配 */
+const shortcutItems = computed<QuickActionItem[]>(() => {
+  const list: QuickActionItem[] = [];
+
+  // 打开文件夹依赖桌面端文件管理器，移动端不提供
+  if (!isAndroid()) {
+    list.push({
+      key: "openFolder",
+      label: t("settings.character.openFolder.button"),
+      icon: markRaw(FolderOpen),
+      variant: "primary",
+    });
+  }
+
+  list.push(
+    {
+      key: "refresh",
+      label: t("settings.character.refresh.title"),
+      icon: markRaw(RefreshCcw),
+      disabled: importing.value,
+    },
+    {
+      key: "workshop",
+      label: t("settings.character.workshop.enter"),
+      icon: markRaw(Birdhouse),
+    },
+    {
+      key: "import",
+      label: t("settings.character.shortcuts.import"),
+      icon: markRaw(PackageOpen),
+      disabled: importing.value,
+      loading: importing.value,
+      menu: [
+        {
+          key: "rename",
+          label: t("settings.character.import.policyRename"),
+          active: conflictPolicy.value === "rename",
+        },
+        {
+          key: "skip",
+          label: t("settings.character.import.policySkip"),
+          active: conflictPolicy.value === "skip",
+        },
+        {
+          key: "overwrite",
+          label: t("settings.character.import.policyOverwrite"),
+          active: conflictPolicy.value === "overwrite",
+        },
+      ],
+    },
+  );
+
+  return list;
+});
+
+async function onShortcutAction(key: string): Promise<void> {
+  switch (key) {
+    case "openFolder":
+      await openCharacterFolder();
+      break;
+    case "refresh":
+      await refreshCharacters();
+      break;
+    case "workshop":
+      await openCreativeWeb();
+      break;
+    case "import":
+      await handleImport();
+      break;
+  }
+}
+
+/** 下拉菜单选中即按该策略导入，并把选择记为下次默认 */
+async function onShortcutMenuAction(key: string, menuKey: string): Promise<void> {
+  if (key !== "import") return;
+  conflictPolicy.value = menuKey as ConflictPolicy;
+  await handleImport();
+}
 
 const identities = ref<PlayerIdentitySummary[]>([]);
 const identityLoading = ref(false);

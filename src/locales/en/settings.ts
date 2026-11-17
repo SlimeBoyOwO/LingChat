@@ -163,6 +163,10 @@ export default {
       title: "Workshop",
       enter: "Enter Workshop",
     },
+    shortcuts: {
+      title: "Shortcuts",
+      import: "Import character",
+    },
   },
   log: {
     title: "Logs",
