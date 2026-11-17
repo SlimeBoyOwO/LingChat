@@ -153,10 +153,14 @@ impl CodexProvider {
                     }));
                 },
                 _ => {
+                    let mut content = vec![json!({"type": "input_text", "text": m.content})];
+                    if let Some(image) = m.image_data_url.as_deref().filter(|url| !url.is_empty()) {
+                        content.push(json!({"type": "input_image", "image_url": image}));
+                    }
                     input.push(json!({
                         "type": "message",
                         "role": "user",
-                        "content": [{ "type": "input_text", "text": m.content }],
+                        "content": content,
                     }));
                 },
             }
@@ -274,9 +278,13 @@ impl CodexProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        max_output_tokens: Option<u32>,
     ) -> Result<ChunkStream> {
         let (http, cred) = self.client_and_token().await?;
-        let body = self.build_body(messages, tools, tool_choice);
+        let mut body = self.build_body(messages, tools, tool_choice);
+        if let Some(limit) = max_output_tokens {
+            body["max_output_tokens"] = json!(limit.max(1));
+        }
         crate::utils::llm_request_logger::log_request_body("codex", &body);
         let resp = self.send_with_retry(&http, &cred, &body).await?;
 
@@ -443,8 +451,11 @@ impl CodexProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        max_output_tokens: Option<u32>,
     ) -> Result<(String, Vec<ToolCall>, Option<LlmUsage>)> {
-        let mut stream = self.open_stream(messages, tools, tool_choice).await?;
+        let mut stream = self
+            .open_stream(messages, tools, tool_choice, max_output_tokens)
+            .await?;
         let mut content = String::new();
         let mut calls: Vec<ToolCall> = Vec::new();
         let mut usage = None;
@@ -457,6 +468,19 @@ impl CodexProvider {
             }
         }
         Ok((content, calls, usage))
+    }
+
+    pub async fn complete_vision(
+        &self,
+        prompt: &str,
+        image_data_url: String,
+        max_output_tokens: u32,
+    ) -> Result<(String, Option<LlmUsage>)> {
+        let messages = [LlmMessage::user_with_image(prompt, image_data_url)];
+        let (text, _, usage) = self
+            .collect(&messages, None, None, Some(max_output_tokens))
+            .await?;
+        Ok((text, usage))
     }
 }
 
@@ -503,7 +527,7 @@ impl LlmProvider for CodexProvider {
     }
 
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let (content, _, _) = self.collect(messages, None, None).await?;
+        let (content, _, _) = self.collect(messages, None, None, None).await?;
         Ok(content)
     }
 
@@ -512,7 +536,7 @@ impl LlmProvider for CodexProvider {
         _http: &Client,
         messages: &[LlmMessage],
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, None, None).await
+        self.open_stream(messages, None, None, None).await
     }
 
     fn supports_streaming_tools(&self) -> bool {
@@ -526,7 +550,8 @@ impl LlmProvider for CodexProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, Some(tools), tool_choice).await
+        self.open_stream(messages, Some(tools), tool_choice, None)
+            .await
     }
 
     async fn complete_with_tools(
@@ -536,7 +561,9 @@ impl LlmProvider for CodexProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let (content, calls, usage) = self.collect(messages, Some(tools), tool_choice).await?;
+        let (content, calls, usage) = self
+            .collect(messages, Some(tools), tool_choice, None)
+            .await?;
         Ok(LlmResponseWithTools {
             content: if content.is_empty() {
                 None
