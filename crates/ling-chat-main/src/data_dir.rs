@@ -4,36 +4,39 @@ use std::sync::OnceLock;
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
 static EXEC_DIR: OnceLock<PathBuf> = OnceLock::new();
 
-/// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
-pub fn init_data_dir(app: &tauri::AppHandle) {
-    // 便携版判断依赖执行目录，须先初始化
+/// 初始化执行文件目录缓存（必须在 App 启动时调用一次）。
+pub fn init_exec_dir() {
     EXEC_DIR
         .set(resolve_exec_dir())
-        .expect("exec_dir already initialized");
+        .expect("执行文件目录已初始化 — 请勿重复调用 init_exec_dir");
+}
+
+/// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
+pub fn init_data_dir(app: &tauri::AppHandle) {
     DATA_DIR
         .set(resolve_data_dir(app))
-        .expect("data_dir already initialized");
+        .expect("数据目录已初始化 — 请勿重复调用 init_data_dir");
 }
 
 /// 获取已缓存的 data 目录（必须先调用 `init_data_dir`）。
 pub fn get_data_dir() -> &'static PathBuf {
     DATA_DIR
         .get()
-        .expect("data_dir not initialized — call init_data_dir first")
+        .expect("数据目录未初始化 — 请先调用函数 init_data_dir")
 }
 
-/// 获取执行文件所在目录（必须先调用 `init_data_dir`）。
+/// 获取执行文件所在目录（必须先调用 `init_exec_dir`）。
 pub fn get_exec_dir() -> &'static Path {
     EXEC_DIR
         .get()
-        .expect("exec_dir not initialized — call init_data_dir first")
+        .expect("执行文件目录未初始化 — 请先调用函数 init_exec_dir")
 }
 
 fn resolve_exec_dir() -> PathBuf {
     std::env::current_exe()
-        .expect("failed to resolve current_exe")
+        .expect("无法解析获取执行文件路径")
         .parent()
-        .expect("current_exe has no parent")
+        .expect("执行文件路径不包含父目录")
         .to_path_buf()
 }
 
@@ -55,16 +58,14 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     app.android_fs()
         .app_storage()
         .resolve_path(None, AppDir::Data)
-        .expect("failed to resolve Android external files dir")
+        .expect("无法解析 Android 外部文件目录")
 }
 
 #[cfg(target_os = "ios")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
     // 不要改回 app_data_dir()，那部分对「文件」App 不可见
-    app.path()
-        .document_dir()
-        .expect("failed to resolve document_dir on iOS")
+    app.path().document_dir().expect("无法解析 iOS 文档目录")
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
@@ -81,17 +82,15 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     }
 
     // 便携版：exe 旁有 data/ 时直接使用。AppImage 挂载点为只读，排除。
-    let is_appimage = std::env::var_os("APPIMAGE").is_some();
+    let appimage = std::env::var_os("APPIMAGE");
     let portable = resolve_exec_dir().join("data");
-    if !is_appimage && portable.is_dir() {
+    if appimage.is_none() && portable.is_dir() {
         return portable;
     }
 
     // 安装版：Windows %APPDATA%、macOS Application Support、Linux 遵循 XDG
     use tauri::Manager;
-    app.path()
-        .app_data_dir()
-        .expect("failed to resolve app_data_dir")
+    app.path().app_data_dir().expect("无法解析应用数据目录")
 }
 
 /// 首次启动时将内嵌资源播种到 data 目录。

@@ -54,6 +54,8 @@ pub fn setup(
 
     // 提前初始化数据目录缓存，以便在数据层引导之前
     // 将其传递给独立的本地 TTS crate。
+    // 便携版判断依赖执行文件目录，须先初始化。
+    data_dir::init_exec_dir();
     data_dir::init_data_dir(app.handle());
 
     // ONNX Runtime：定位 onnxruntime.dll 并显式加载
