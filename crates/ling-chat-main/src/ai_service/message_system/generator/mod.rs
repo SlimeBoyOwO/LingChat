@@ -72,13 +72,12 @@ pub struct GeneratorDeps {
     pub suppress_thinking: bool,
     /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
     /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
-    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
     pub generation: u64,
     /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
     /// 前端据此丢弃中止后迟到的流式回复。
     pub is_preview: bool,
     /// 当轮附带的多模态图片（`data:image/...;base64,...` data URL）。
-    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
+    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进当轮 LLM 上下文，
     /// 不写入角色记忆，从源头控制上下文/缓存占用。
     pub transient_image: Option<String>,
     /// 本轮 user 行的下标。提示行在 `process_message` 之前写好的路径由调用方传入，
@@ -568,11 +567,6 @@ impl PublishItem {
 }
 
 /// 按索引顺序提交并发布；栅栏在其索引被推进到时回传此前是否提交并发布过回复。
-///
-/// 返回是否成功提交并发出过收尾句。提交闭包返回 false（会话已切换）或出错时立即
-/// 返回，pending 里尚未回传的 ack 随之丢弃，工具侧因此 fail-closed。
-///
-/// 生产与顺序契约测试共用本函数（ordering_tests）。
 pub(super) async fn publish_ordered<F, Fut>(
     mut rx: mpsc::Receiver<PublishItem>,
     mut commit_and_emit: F,
@@ -637,9 +631,6 @@ pub struct SentenceDeps {
     pub generation: u64,
     pub is_preview: bool,
     /// 「这一句正文落成了台词表第几行」的台账（句子序号 → 行下标）。
-    ///
-    /// 由提交阶段写入。工具闭环下前导台词只做呈现，回填时据它定位每轮前导行并
-    /// 打上轮次标识。非生成路径（剧本固定台词）传 `None`：那边没有句子序号。
     pub sentence_lines: Option<SentenceLineLedger>,
 }
 
@@ -667,9 +658,6 @@ pub struct ReplyOverrides {
 }
 
 /// 剧本固定台词的完整入口：准备一条台词，随后按给定顺序写入台词表。
-///
-/// 生成路径不走这里，那条路径由 publisher 在提交阶段统一写入。
-/// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn consume_sentence(
     deps: &SentenceDeps,
@@ -761,16 +749,10 @@ fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
         ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
-        // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
-        // voice_lang 为非中文目标语言时先翻译成对应语言再合成
-        // （日语台词主模型已自带 japanese_text，无需在此强制重译）
         ("indextts2", "en") => Some("en"),
         ("indextts2", "es") => Some("es"),
         ("indextts2", "ar") => Some("ar"),
         ("gsv" | "opentts", "ko") => Some("ko"),
-        // CosyVoice 多语言自动检测：voice_lang 为 en/ko/de/fr/ru/pt 时先翻译成目标语言
-        // 再合成，否则会朗读主模型默认附带的日文译文（japanese_text）；
-        // ja 例外——主模型已自带日文译文，无需重译
         ("cosyvoice", "en") => Some("en"),
         ("cosyvoice", "ko") => Some("ko"),
         ("cosyvoice", "de") => Some("de"),
