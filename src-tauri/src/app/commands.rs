@@ -212,6 +212,13 @@ pub fn register(builder: tauri::Builder<tauri::Wry>) -> tauri::Builder<tauri::Wr
         api::script_editor::agent::editor_agent_stop_chat,
         api::script_editor::agent::editor_agent_rewind,
         api::script_editor::agent::editor_agent_resolve_approval,
+        // ── 导演 Agent（上帝 Agent 的交互会话分支）──
+        api::director::director_get_state,
+        api::director::director_start_chat,
+        api::director::director_stop_chat,
+        api::director::director_clear,
+        api::director::director_get_context,
+        api::director::director_get_tool_history,
         api::pet::update_solid_regions,
         api::pet::set_pet_mode,
         api::pet::set_bubble_side,

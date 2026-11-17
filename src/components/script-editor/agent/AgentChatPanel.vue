@@ -341,13 +341,12 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Icon } from "@/components/base";
+import { Icon, MarkdownText } from "@/components/base";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useAgentStore } from "@/stores/modules/agent";
 import AgentThinkingBlock from "./AgentThinkingBlock.vue";
 import AgentToolCard from "./AgentToolCard.vue";
 import AgentChapterPreview from "./AgentChapterPreview.vue";
-import MarkdownText from "./MarkdownText.vue";
 import type { ConversationInfo } from "@/api/services/agent";
 import type { ChatItem, ChatRound, ToolRun } from "@/stores/modules/agent/state";
 
