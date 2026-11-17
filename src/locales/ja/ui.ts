@@ -344,6 +344,9 @@ export default {
       "ここの画像/動画スイッチは認識できる種類だけを制御します。ReadMediaFile をあの子に提供するかどうかは上のツールのチェックで決まります。",
     saveFailedTitle: "ツール設定の保存に失敗しました",
     nav: {
+      image_generation: "@:imageGeneration.toolName",
+      web_search: "@:ui.toolCalls.webSearchTitle",
+      plugin: "@:ui.toolCalls.pluginPackageTitle",
       schedule: "スケジュール",
       memory: "メモと記憶",
       character: "キャラ切替",
@@ -395,6 +398,7 @@ export default {
       "⚠ このコマンドは管理者（UAC）権限も要求しています。許可後に Windows の UAC 確認が出ます",
     approvalDefaultCwd: "（デフォルトのサンドボックス）",
     groups: {
+      image_generation: "@:imageGeneration.toolHelp",
       web_search: "ウェブ検索（ネットで調べてウェブページを読む）",
       schedule: "スケジュールと ToDo（確認・追加・更新・削除）",
       memory: "メモと記憶（あの子のひみつノート）",
@@ -409,6 +413,7 @@ export default {
       plugin: "プラグインツール（有効なプラグインが提供）",
     },
     tools: {
+      generate_image: "@:imageGeneration.toolName",
       web_search: "ウェブ検索",
       tool_search: "ツール検索",
       get_current_time: "現在時刻",
@@ -446,6 +451,7 @@ export default {
       execute_command: "コマンド実行",
     },
     toolDescriptions: {
+      generate_image: "@:imageGeneration.toolHelp",
       web_search: "ネットで検索し、ウェブページの内容を読む",
       tool_search: "必要に応じてこの端末の利用可能なツールを検索する",
       get_current_time: "デバイスのローカル時刻を読む",

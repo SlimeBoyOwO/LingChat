@@ -203,15 +203,11 @@ const activeTitle = computed(() => {
 });
 
 function groupTitle(group: string) {
-  if (group === "image_generation") return t("imageGeneration.toolName");
-  if (group === "web_search") return t("ui.toolCalls.webSearchTitle");
-  if (group === "plugin") return t("ui.toolCalls.pluginPackageTitle");
   const key = `ui.toolCalls.nav.${group}`;
   return te(key) ? t(key) : t(`ui.toolCalls.groups.${group}`);
 }
 
 function groupHelp(group: string) {
-  if (group === "image_generation") return t("imageGeneration.toolHelp");
   const key = `ui.toolCalls.groups.${group}`;
   return te(key) ? t(key) : "";
 }

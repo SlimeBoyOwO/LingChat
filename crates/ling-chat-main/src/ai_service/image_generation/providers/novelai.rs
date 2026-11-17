@@ -1,21 +1,22 @@
 //! NovelAI 图片协议与官方前端模型发现；不维护模型编号列表。
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::io::{Cursor, Read};
-use std::sync::LazyLock;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context, Result, ensure};
+use async_trait::async_trait;
 use base64::Engine;
 use futures_util::{StreamExt, stream};
 use regex::Regex;
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use sha2::{Digest, Sha256};
-use tokio::sync::Mutex;
 
-use super::providers::{ImageModelCatalog, MAX_RESPONSE_BYTES, limited_body, validate_url};
-use crate::utils::proxy::build_proxied_client;
+use super::super::catalog::{cache_key, cached_catalog};
+use super::super::http::{MAX_RESPONSE_BYTES, limited_body, validate_base_url, validate_url};
+use super::super::provider::{ImageModelCatalog, ImagePromptHints, ImageProvider};
+use super::super::{GenerateImageRequest, ImageGenerationSettings};
 
 const API_BASE: &str = "https://image.novelai.net";
 const FRONTEND: &str = "https://novelai.net/image";
@@ -126,10 +127,59 @@ pub struct NovelAiMetadata {
     pub streaming_models: Vec<String>,
 }
 
-static CATALOGS: LazyLock<Mutex<HashMap<String, (Instant, ImageModelCatalog)>>> =
-    LazyLock::new(|| Mutex::new(HashMap::new()));
+pub struct NovelAiProvider {
+    settings: NovelAiSettings,
+}
 
-pub async fn list_models(settings: &NovelAiSettings, refresh: bool) -> Result<ImageModelCatalog> {
+impl NovelAiProvider {
+    pub fn new(settings: &ImageGenerationSettings) -> Self {
+        Self {
+            settings: settings.novelai.clone(),
+        }
+    }
+}
+
+#[async_trait]
+impl ImageProvider for NovelAiProvider {
+    fn validate(&self) -> Result<()> {
+        self.settings.validate()
+    }
+
+    fn prompt_hints(&self) -> ImagePromptHints {
+        ImagePromptHints {
+            description: "使用当前 NovelAI 生图模型生成图片并加入背景/场景库。prompt 主要使用英文逗号分隔的正向 tags，按主体、外观、衣着、构图、背景和风格描述，重要内容靠前；可用 negative_prompt 提供不希望出现的负向 tags（Undesired Content）。保留用户给出的 tags 与权重语法。不要把说明性长文直接当作 tags。不能在参数中改写凭据、端点或模型。仅当用户要求切换背景时设置 apply_background。",
+            prompt: "英文逗号分隔的正向 tags；主体和重要特征靠前，可保留权重语法",
+            negative_prompt: Some(
+                "英文逗号分隔的负向 tags（Undesired Content）；仅覆盖本次调用。省略则使用配置中的负向 tags，空字符串表示本次清空。",
+            ),
+        }
+    }
+
+    async fn list_models(&self, http: &Client, refresh: bool) -> Result<ImageModelCatalog> {
+        list_models(http, &self.settings, refresh).await
+    }
+
+    async fn generate(
+        &self,
+        http: &Client,
+        model: &str,
+        request: &GenerateImageRequest,
+        reference: Option<&[u8]>,
+    ) -> Result<String> {
+        let mut settings = self.settings.clone();
+        // 单次覆盖只作用于适配器的配置副本。
+        if let Some(negative) = request.negative_prompt.as_deref() {
+            settings.negative_prompt = negative.trim().into();
+        }
+        generate(http, &settings, model, request.prompt.trim(), reference).await
+    }
+}
+
+async fn list_models(
+    http: &Client,
+    settings: &NovelAiSettings,
+    refresh: bool,
+) -> Result<ImageModelCatalog> {
     let page = if settings.frontend_url.is_empty() {
         FRONTEND
     } else {
@@ -141,95 +191,83 @@ pub async fn list_models(settings: &NovelAiSettings, refresh: bool) -> Result<Im
         &settings.models_url
     };
     validate_url(source)?;
-    let key = format!(
-        "{source}:{}:{:x}",
-        settings.base(),
-        Sha256::digest(settings.api_key.as_bytes())
+    let key = cache_key(
+        &format!("novelai:{}", settings.base()),
+        source,
+        &settings.api_key,
     );
-    let mut cache = CATALOGS.lock().await;
-    if !refresh {
-        if let Some((time, catalog)) = cache.get(&key) {
-            if time.elapsed() < Duration::from_secs(6 * 60 * 60) {
-                return Ok(catalog.clone());
-            }
-        }
-    }
-    let fetched = tokio::time::timeout(Duration::from_secs(45), async {
-        let http = build_proxied_client(15).await?;
-        if settings.models_url.is_empty() {
-            discover_frontend(&http, page).await
-        } else {
-            let mut request = http.get(source);
-            if validate_url(source)?.origin() == validate_url(settings.base())?.origin()
-                && !settings.api_key.is_empty()
-            {
-                request = request.bearer_auth(&settings.api_key);
-            }
-            let response = request.send().await?.error_for_status()?;
-            let payload: Value =
-                serde_json::from_slice(&limited_body(response, 4 * 1024 * 1024).await?)?;
-            let entries = payload
-                .get("data")
-                .or_else(|| payload.get("models"))
-                .and_then(Value::as_array)
-                .context("自定义 NovelAI 模型目录缺少 data/models 数组")?;
-            let mut models = Vec::new();
-            for entry in entries {
-                if let Some(id) = entry
-                    .as_str()
-                    .or_else(|| entry.get("id").and_then(Value::as_str))
+    cached_catalog(key, refresh, || async {
+        tokio::time::timeout(Duration::from_secs(45), async {
+            if settings.models_url.is_empty() {
+                discover_frontend(http, page).await
+            } else {
+                let mut request = http.get(source);
+                if validate_url(source)?.origin() == validate_url(settings.base())?.origin()
+                    && !settings.api_key.is_empty()
                 {
-                    if !id.trim().is_empty() && !models.iter().any(|s| s == id) {
-                        models.push(id.to_string());
+                    request = request.bearer_auth(&settings.api_key);
+                }
+                let response = request
+                    .timeout(Duration::from_secs(15))
+                    .send()
+                    .await?
+                    .error_for_status()?;
+                let payload: Value =
+                    serde_json::from_slice(&limited_body(response, 4 * 1024 * 1024).await?)?;
+                let entries = payload
+                    .get("data")
+                    .or_else(|| payload.get("models"))
+                    .and_then(Value::as_array)
+                    .context("自定义 NovelAI 模型目录缺少 data/models 数组")?;
+                let mut models = Vec::new();
+                for entry in entries {
+                    if let Some(id) = entry
+                        .as_str()
+                        .or_else(|| entry.get("id").and_then(Value::as_str))
+                    {
+                        if !id.trim().is_empty() && !models.iter().any(|s| s == id) {
+                            models.push(id.to_string());
+                        }
                     }
                 }
+                ensure!(!models.is_empty(), "自定义 NovelAI 目录没有返回模型");
+                Ok(ImageModelCatalog {
+                    models,
+                    source: source.into(),
+                    warning: String::new(),
+                    allow_automatic: true,
+                    novelai_metadata: Some(NovelAiMetadata {
+                        parameters_version: payload
+                            .get("parameters_version")
+                            .and_then(Value::as_u64)
+                            .and_then(|v| v.try_into().ok()),
+                        streaming_models: payload
+                            .get("streaming_models")
+                            .and_then(Value::as_array)
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_owned)
+                                    .collect()
+                            })
+                            .unwrap_or_default(),
+                    }),
+                })
             }
-            ensure!(!models.is_empty(), "自定义 NovelAI 目录没有返回模型");
-            Ok(ImageModelCatalog {
-                models,
-                source: source.into(),
-                warning: String::new(),
-                allow_automatic: true,
-                novelai_metadata: Some(NovelAiMetadata {
-                    parameters_version: payload
-                        .get("parameters_version")
-                        .and_then(Value::as_u64)
-                        .and_then(|v| v.try_into().ok()),
-                    streaming_models: payload
-                        .get("streaming_models")
-                        .and_then(Value::as_array)
-                        .map(|a| {
-                            a.iter()
-                                .filter_map(Value::as_str)
-                                .map(str::to_owned)
-                                .collect()
-                        })
-                        .unwrap_or_default(),
-                }),
-            })
-        }
+        })
+        .await
+        .context("NovelAI 模型发现超时，可手动填写模型编号")?
     })
     .await
-    .context("NovelAI 模型发现超时，可手动填写模型编号")?;
-    match fetched {
-        Ok(catalog) => {
-            cache.insert(key, (Instant::now(), catalog.clone()));
-            Ok(catalog)
-        },
-        Err(error) => {
-            if let Some((_, old)) = cache.get(&key) {
-                let mut stale = old.clone();
-                stale.warning = format!("在线刷新失败，显示上次真实获取的目录：{error}");
-                Ok(stale)
-            } else {
-                Err(error)
-            }
-        },
-    }
 }
 
 async fn discover_frontend(http: &reqwest::Client, page: &str) -> Result<ImageModelCatalog> {
-    let response = http.get(page).send().await?.error_for_status()?;
+    let response = http
+        .get(page)
+        .timeout(Duration::from_secs(15))
+        .send()
+        .await?
+        .error_for_status()?;
     let html = String::from_utf8(limited_body(response, 4 * 1024 * 1024).await?)?;
     let base = validate_url(page)?;
     let script_pattern = Regex::new(r#"<script\b[^>]*\bsrc=["']([^"']+)["']"#)?;
@@ -253,7 +291,12 @@ async fn discover_frontend(http: &reqwest::Client, page: &str) -> Result<ImageMo
         .map(|url| {
             let http = http.clone();
             async move {
-                let response = http.get(url).send().await?.error_for_status()?;
+                let response = http
+                    .get(url)
+                    .timeout(Duration::from_secs(15))
+                    .send()
+                    .await?
+                    .error_for_status()?;
                 let bytes = limited_body(response, 4 * 1024 * 1024).await?;
                 Ok::<_, anyhow::Error>(String::from_utf8(bytes)?)
             }
@@ -405,19 +448,19 @@ fn payload(
     ))
 }
 
-pub async fn generate(
+async fn generate(
+    http: &Client,
     settings: &NovelAiSettings,
     model: &str,
     prompt: &str,
     reference: Option<&[u8]>,
-    timeout: u64,
 ) -> Result<String> {
     ensure!(
         !settings.api_key.is_empty(),
         "请填写 NovelAI Persistent API Token"
     );
-    validate_url(settings.base())?;
-    let catalog = list_models(settings, false).await.ok();
+    validate_base_url(settings.base())?;
+    let catalog = list_models(http, settings, false).await.ok();
     let metadata = catalog.as_ref().and_then(|c| c.novelai_metadata.as_ref());
     let (mut body, streaming) = payload(settings, model, prompt, reference, metadata)?;
     if let Some(reference) = reference {
@@ -452,7 +495,6 @@ pub async fn generate(
     } else {
         "ai/generate-image"
     };
-    let http = build_proxied_client(timeout).await?;
     let response = http
         .post(format!("{}/{route}", settings.base().trim_end_matches('/')))
         .bearer_auth(&settings.api_key)

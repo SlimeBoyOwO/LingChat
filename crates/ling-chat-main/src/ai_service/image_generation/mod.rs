@@ -1,6 +1,9 @@
 //! 背景页面与聊天工具共用的图片生成服务。
 
-mod novelai;
+mod catalog;
+mod factory;
+mod http;
+mod provider;
 mod providers;
 
 use std::io::Cursor;
@@ -17,9 +20,11 @@ use crate::AppState;
 use crate::ai_service::game_system::world_actions;
 use crate::ai_service::tools::atomic_replace;
 use crate::api::scene::{CreateSceneRequest, SceneInfo, create_scene};
+use crate::utils::proxy::build_proxied_client;
 
-pub use novelai::NovelAiSettings;
-pub use providers::{ImageModelCatalog, ImageProviderInfo, list_models, list_providers};
+pub use factory::list_providers;
+pub use provider::{ImageModelCatalog, ImagePromptHints, ImageProviderInfo};
+pub use providers::NovelAiSettings;
 
 static GENERATION: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
 
@@ -40,7 +45,7 @@ pub struct ImageGenerationSettings {
 impl Default for ImageGenerationSettings {
     fn default() -> Self {
         Self {
-            provider: providers::DEFAULT_PROVIDER.into(),
+            provider: factory::DEFAULT_PROVIDER.into(),
             model: String::new(),
             base_url: String::new(),
             api_key: String::new(),
@@ -57,7 +62,7 @@ impl ImageGenerationSettings {
     pub fn normalize(&mut self) {
         self.provider = self.provider.trim().to_string();
         if self.provider.is_empty() {
-            self.provider = providers::DEFAULT_PROVIDER.into();
+            self.provider = factory::DEFAULT_PROVIDER.into();
         }
         self.model = self.model.trim().to_string();
         self.base_url = self.base_url.trim().trim_end_matches('/').to_string();
@@ -69,18 +74,24 @@ impl ImageGenerationSettings {
     }
 
     pub fn validate(&self) -> Result<()> {
-        ensure!(
-            matches!(
-                self.provider.as_str(),
-                "codex" | "openai-compatible" | "novelai"
-            ),
-            "请重新选择图片生成供应商"
-        );
-        if self.provider == "novelai" {
-            self.novelai.validate()?;
-        }
-        Ok(())
+        factory::create_image_provider(self)?.validate()
     }
+}
+
+pub fn prompt_hints(settings: &ImageGenerationSettings) -> ImagePromptHints {
+    factory::create_image_provider(settings)
+        .map(|provider| provider.prompt_hints())
+        .unwrap_or_default()
+}
+
+pub async fn list_models(
+    _app: &AppHandle,
+    settings: &ImageGenerationSettings,
+    refresh: bool,
+) -> Result<ImageModelCatalog> {
+    let provider = factory::create_image_provider(settings)?;
+    let http = build_proxied_client(30).await?;
+    provider.list_models(&http, refresh).await
 }
 
 #[derive(Clone, Deserialize)]
@@ -113,15 +124,14 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
         .map_err(|_| anyhow::anyhow!("已有图片正在生成，请稍后重试"))?;
     let mut settings = app.state::<AppState>().tool_settings.get().image_generation;
     settings.normalize();
-    settings.validate()?;
+    let provider = factory::create_image_provider(&settings)?;
+    provider.validate()?;
     if let Some(negative) = request.negative_prompt.as_deref() {
         ensure!(
-            settings.provider == "novelai",
+            provider.prompt_hints().negative_prompt.is_some(),
             "当前图片供应商不支持独立负向 tags"
         );
         ensure!(negative.chars().count() <= 32_000, "负向 tags 过长");
-        // 本次调用的覆盖值不写回共享配置。
-        settings.novelai.negative_prompt = negative.trim().into();
     }
     let reference = if let Some(encoded) = request.reference_image.as_deref() {
         let bytes = decode_image(encoded)?;
@@ -133,8 +143,10 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
     } else {
         None
     };
+    let http = build_proxied_client(settings.timeout_secs).await?;
     let model = if settings.model.is_empty() {
-        let catalog = list_models(app, &settings, false)
+        let catalog = provider
+            .list_models(&http, false)
             .await
             .context("无法获取图片模型目录，请手动填写模型编号")?;
         ensure!(
@@ -151,13 +163,7 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
     };
     let payload = tokio::time::timeout(
         std::time::Duration::from_secs(settings.timeout_secs),
-        providers::generate(
-            app,
-            &settings,
-            &model,
-            request.prompt.trim(),
-            reference.as_deref(),
-        ),
+        provider.generate(&http, &model, &request, reference.as_deref()),
     )
     .await
     .context("图片生成超时，请稍后检查供应商状态")??;
@@ -205,7 +211,7 @@ pub async fn generate(app: &AppHandle, request: GenerateImageRequest) -> Result<
 
 fn decode_image(encoded: &str) -> Result<Vec<u8>> {
     ensure!(
-        encoded.len() <= providers::MAX_RESPONSE_BYTES,
+        encoded.len() <= http::MAX_RESPONSE_BYTES,
         "图片数据超过大小限制"
     );
     let encoded = encoded.trim();
@@ -239,7 +245,7 @@ fn validate_image(bytes: &[u8]) -> Result<Vec<u8>> {
     let mut output = Cursor::new(Vec::new());
     decoded.write_to(&mut output, image::ImageFormat::Png)?;
     ensure!(
-        output.get_ref().len() <= providers::MAX_RESPONSE_BYTES,
+        output.get_ref().len() <= http::MAX_RESPONSE_BYTES,
         "图片数据超过大小限制"
     );
     Ok(output.into_inner())

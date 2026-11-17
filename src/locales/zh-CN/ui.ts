@@ -330,6 +330,9 @@ export default {
       "这里的图片/视频开关只控制识别类型；是否向 ta 提供 ReadMediaFile 由上方工具勾选决定。",
     saveFailedTitle: "工具设置保存失败",
     nav: {
+      image_generation: "@:imageGeneration.toolName",
+      web_search: "@:ui.toolCalls.webSearchTitle",
+      plugin: "@:ui.toolCalls.pluginPackageTitle",
       schedule: "日程与待办",
       memory: "笔记与记忆",
       character: "角色切换",
@@ -377,6 +380,7 @@ export default {
     approvalUac: "⚠ 此命令还请求了管理员（UAC）权限，允许后系统会再弹 UAC 确认框",
     approvalDefaultCwd: "（默认沙箱目录）",
     groups: {
+      image_generation: "@:imageGeneration.toolHelp",
       web_search: "网页搜索（联网查资料并读取网页内容）",
       schedule: "日程与待办（查日程、加/改/删待办）",
       memory: "笔记与记忆（ta 自己的小本本）",
@@ -391,6 +395,7 @@ export default {
       plugin: "插件工具（由已启用的插件提供）",
     },
     tools: {
+      generate_image: "@:imageGeneration.toolName",
       web_search: "网页搜索",
       tool_search: "检索工具",
       get_current_time: "当前时间",
@@ -428,6 +433,7 @@ export default {
       execute_command: "执行命令",
     },
     toolDescriptions: {
+      generate_image: "@:imageGeneration.toolHelp",
       web_search: "联网搜索并读取网页内容",
       tool_search: "按需检索本机可用工具",
       get_current_time: "读取设备本地时间",

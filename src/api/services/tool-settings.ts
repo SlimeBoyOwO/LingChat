@@ -130,14 +130,12 @@ export interface ToolCatalog {
 
 /** 工具的界面友好名（通知与调用记录用），查不到翻译时回退原始名。 */
 export function toolDisplayName(tool: string): string {
-  if (tool === "generate_image") return i18n.global.t("imageGeneration.toolName");
   const key = `ui.toolCalls.tools.${tool}`;
   return i18n.global.te(key) ? i18n.global.t(key) : tool;
 }
 
 /** 工具的一行介绍；缺失翻译时返回空串，界面只显示名称。 */
 export function toolDescription(tool: string): string {
-  if (tool === "generate_image") return i18n.global.t("imageGeneration.toolHelp");
   const key = `ui.toolCalls.toolDescriptions.${tool}`;
   return i18n.global.te(key) ? i18n.global.t(key) : "";
 }

@@ -321,6 +321,9 @@ export default {
       "呢度嘅圖片/影片開關只控制識別類型；要唔要向 ta 提供 ReadMediaFile 由上面嘅工具勾選決定。",
     saveFailedTitle: "工具設定儲存失敗",
     nav: {
+      image_generation: "@:imageGeneration.toolName",
+      web_search: "@:ui.toolCalls.webSearchTitle",
+      plugin: "@:ui.toolCalls.pluginPackageTitle",
       schedule: "日程同待辦",
       memory: "筆記同記憶",
       character: "角色切換",
@@ -368,6 +371,7 @@ export default {
     approvalUac: "⚠ 呢條命令仲要求咗管理員（UAC）權限，允許後系統會再彈 UAC 確認框",
     approvalDefaultCwd: "（預設沙箱目錄）",
     groups: {
+      image_generation: "@:imageGeneration.toolHelp",
       web_search: "網頁搜尋（聯網查資料並讀取網頁內容）",
       schedule: "日程同待辦（查日程、加/改/刪待辦）",
       memory: "筆記同記憶（ta 自己嘅小本本）",
@@ -382,6 +386,7 @@ export default {
       plugin: "插件工具（由已啟用嘅插件提供）",
     },
     tools: {
+      generate_image: "@:imageGeneration.toolName",
       web_search: "網頁搜尋",
       tool_search: "檢索工具",
       get_current_time: "目前時間",
@@ -419,6 +424,7 @@ export default {
       execute_command: "執行命令",
     },
     toolDescriptions: {
+      generate_image: "@:imageGeneration.toolHelp",
       web_search: "聯網搜尋並讀取網頁內容",
       tool_search: "按需檢索本機可用工具",
       get_current_time: "讀取裝置本地時間",

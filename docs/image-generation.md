@@ -2,7 +2,18 @@
 
 背景设置里的“AI 生成背景”和工具配置里的“生成图片”共用同一份配置，保存在运行数据目录的 tool_settings.toml 中。手动生图不要求开启聊天工具；只有勾选对应工具权限后，聊天模型才能调用 generate_image。
 
-生图窗口沿用角色设置的左右布局。左侧选择供应商，右侧配置模型、生成参数及图片描述；角色编辑器与生图设置共用弹窗布局和侧栏组件。工具配置沿用网页搜索的单列表单，通过下拉框选择供应商。
+生图窗口沿用角色设置的左右布局，使用独立的弹窗和侧栏组件。左侧选择供应商，右侧配置模型、生成参数及图片描述；角色设置页保持原有实现。工具配置沿用网页搜索的单列表单，通过下拉框选择供应商。
+
+## 代码结构
+
+图片生成沿用 LLM 模块的供应商接口和工厂结构：
+
+- `provider.rs` 定义 `ImageProvider`，统一模型发现、配置校验、提示词能力与生成接口。
+- `factory.rs` 根据配置创建供应商；`providers/codex.rs`、`providers/openai.rs`、`providers/novelai.rs` 分别处理认证和协议。
+- `catalog.rs` 管理目录缓存，网络请求不持有缓存锁；`http.rs` 负责地址校验、响应大小限制和兼容图片响应读取。
+- `mod.rs` 编排生成、图片校验、保存与场景注册。界面和聊天工具均调用这条流程；负向提示词参数由适配器声明，单次覆盖只修改适配器的配置副本。
+
+工具名称、说明和分组标题注册到各语言的 `ui.toolCalls` 词条，使用既有的统一查找逻辑。
 
 ## 供应商与模型
 
@@ -36,5 +47,27 @@ generate_image 的工具定义会随当前供应商更新：NovelAI 使用 tags 
 背景窗口还支持上传参考图片。OpenAI 兼容接口使用标准 images/edits multipart 请求；Codex 使用订阅图片编辑协议；NovelAI 使用 img2img，并将参考图适配到请求画布尺寸。参考图不写入配置，聊天工具不能通过参数读取任意本地文件。
 
 生成接口不自动重试，避免不确定的网络错误导致重复扣费；同一时刻仅允许一个生成请求。图片生成完成后广播 image-generation:completed，背景页面据此更新列表。
+
+## 场景切换的工具检索
+
+场景切换补充“帮我切换背景”“切换到已有场景”“切换到夜晚”“把背景换成游乐园”四条示例问句，覆盖用户对已有背景的常见表达。
+
+检索继续由现有 Tool RAG 计算问句相似度、排序并更新角色的激活缓存，权限和分数阈值沿用原流程。英文工具名与中文示例问句可能语义不接近，`tool_search` 的现有说明要求使用自然语言描述任务；本功能通过补充示例问句改善召回，不添加按名称提前返回或独立索引。`tool_rag.rs` 在本 PR 中没有改动。
+
+## 界面截图
+
+以下截图由实际 Vue 组件的浏览器预览生成，使用本地示例配置，不包含账号凭据。
+
+背景生图保留供应商侧栏：
+
+![背景生图供应商侧栏](images/image-generation/background-codex.png)
+
+NovelAI 的正向和负向 tags：
+
+![NovelAI tags](images/image-generation/background-novelai.png)
+
+聊天工具设置使用供应商下拉框：
+
+![生图工具设置](images/image-generation/tool-image-generation.png)
 
 协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、[NovelAI Image API](https://image.novelai.net/docs/index.html)、[NovelAI 模型说明](https://docs.novelai.net/en/image/models/)、[Tagging](https://docs.novelai.net/en/image/tags/)、[Undesired Content](https://docs.novelai.net/en/image/undesiredcontent/)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。
