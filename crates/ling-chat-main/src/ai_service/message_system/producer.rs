@@ -25,7 +25,7 @@ use crate::ai_service::message_system::processor::{find_turn_end, fix_ai_generat
 ///
 /// 栅栏不改变任何 provider 语义，只为"前导台词必须先于工具事件呈现"提供一个
 /// 可等待的同步点——工具事件是裸 `app.emit`，而 `ai:reply` 要经过 consumer 的
-/// 翻译/TTS、再由 publisher 落库并发出，两者原本没有任何顺序关系。
+/// 翻译/TTS 才由 publisher 发出，两者原本没有任何顺序关系。
 pub enum PresentationChunk {
     Chunk(LlmChunk),
     /// 工具即将执行：携带一个 ack，publisher 按序处理完更早的项后回传
