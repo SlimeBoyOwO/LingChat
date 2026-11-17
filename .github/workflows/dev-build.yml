@@ -44,7 +44,8 @@ jobs:
           cache: true
 
       - name: 安装 rust
-        uses: dtolnay/rust-toolchain@stable
+        # ort-sys rc.13 复制动态库仍依赖 Cargo 1.100 之前的目录布局。
+        uses: dtolnay/rust-toolchain@1.99.0
 
       - name: 设置 rust 缓存
         uses: swatinem/rust-cache@v2
