@@ -73,13 +73,11 @@ impl LlmProviderConfig {
         !self.model.is_empty()
     }
 
-    /// 判断该 provider 是否走 genai 的 OpenAI 兼容 / Gemini 多模态路径，从而
-    /// 能原生承载图片内容。kimi_code / codex 有独立 provider 实现，暂不支持
-    /// 在对话消息里直接注入图片，仍需走旁白转述。
-    pub fn is_genai_multimodal_capable(&self) -> bool {
+    /// 判断对话协议能否直接承载图片，包括 Codex 的 Responses 输入。
+    pub fn is_native_multimodal_capable(&self) -> bool {
         matches!(
             self.provider.to_lowercase().as_str(),
-            "openai" | "deepseek" | "lmstudio" | "gemini"
+            "openai" | "deepseek" | "lmstudio" | "gemini" | "codex"
         )
     }
 
@@ -223,27 +221,25 @@ pub fn resolve_translate_provider(app: &AppHandle) -> Option<LlmProviderConfig> 
     let providers = load_providers(app);
 
     // 1. Explicit translate provider
-    if let Some(ref id) = assignment.translate_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.translate_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!("Using explicit translate provider: {} ({})", p.label, p.id);
+        return Some(p.clone());
     }
 
     // 2. Fallback to chat provider
-    if let Some(ref id) = assignment.chat_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!(
-                    "Translate provider not set, falling back to chat provider: {} ({})",
-                    p.label,
-                    p.id
-                );
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.chat_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!(
+            "Translate provider not set, falling back to chat provider: {} ({})",
+            p.label,
+            p.id
+        );
+        return Some(p.clone());
     }
 
     tracing::warn!("No usable LLM provider for translation");
@@ -257,27 +253,25 @@ pub fn resolve_vision_provider(app: &AppHandle) -> Option<LlmProviderConfig> {
     let providers = load_providers(app);
 
     // 1. Explicit vision provider
-    if let Some(ref id) = assignment.vision_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.vision_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!("Using explicit vision provider: {} ({})", p.label, p.id);
+        return Some(p.clone());
     }
 
     // 2. Fallback to chat provider
-    if let Some(ref id) = assignment.chat_provider_id {
-        if let Some(p) = providers.iter().find(|p| p.id == *id) {
-            if p.is_usable() {
-                tracing::info!(
-                    "Vision provider not set, falling back to chat provider: {} ({})",
-                    p.label,
-                    p.id
-                );
-                return Some(p.clone());
-            }
-        }
+    if let Some(ref id) = assignment.chat_provider_id
+        && let Some(p) = providers.iter().find(|p| p.id == *id)
+        && p.is_usable()
+    {
+        tracing::info!(
+            "Vision provider not set, falling back to chat provider: {} ({})",
+            p.label,
+            p.id
+        );
+        return Some(p.clone());
     }
 
     tracing::warn!("No usable LLM provider for vision analysis");
@@ -289,8 +283,7 @@ pub fn native_vision_enabled(app: &AppHandle) -> bool {
     let Some(chat) = resolve_chat_provider(app) else {
         return false;
     };
-    // 对话请求本身要能承载图片内容（kimi_code / codex 是独立协议，暂不支持）
-    if !chat.is_genai_multimodal_capable() {
+    if !chat.is_native_multimodal_capable() {
         return false;
     }
     chat.support_vision || resolve_vision_provider(app).is_some_and(|v| v.id == chat.id)
@@ -426,10 +419,13 @@ pub fn migrate_if_needed(app: &AppHandle) {
         json_string_opt(translate_id.as_deref()),
     );
 
-    if let Err(e) = store.save() {
-        tracing::error!("Migration save failed: {e}");
-    } else {
-        tracing::info!("Migration complete: {} provider(s)", providers.len());
+    match store.save() {
+        Err(e) => {
+            tracing::error!("Migration save failed: {e}");
+        },
+        _ => {
+            tracing::info!("Migration complete: {} provider(s)", providers.len());
+        },
     }
 }
 

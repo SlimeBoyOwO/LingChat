@@ -72,10 +72,10 @@ fn parse_models(payload: &Value) -> Result<Vec<LlmModelInfo>> {
             .and_then(Value::as_array)
         {
             for level in levels {
-                if let Some(effort) = nonempty(level.get("effort")) {
-                    if !efforts.iter().any(|existing| existing == effort) {
-                        efforts.push(effort.to_owned());
-                    }
+                if let Some(effort) = nonempty(level.get("effort"))
+                    && !efforts.iter().any(|existing| existing == effort)
+                {
+                    efforts.push(effort.to_owned());
                 }
             }
         }

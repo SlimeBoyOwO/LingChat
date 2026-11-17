@@ -567,13 +567,13 @@ pub fn get_avatar_file(
         }
 
         // 如果情绪是"平静"没找到，回退到"正常"
-        if emotion == "平静" {
-            if let Some(found) = find_emotion_file(&search_dir, "正常", &allowed_extensions) {
-                let canon = found
-                    .canonicalize()
-                    .map_err(|e| format!("路径解析失败: {}", e))?;
-                return Ok(canon.to_string_lossy().into_owned());
-            }
+        if emotion == "平静"
+            && let Some(found) = find_emotion_file(&search_dir, "正常", &allowed_extensions)
+        {
+            let canon = found
+                .canonicalize()
+                .map_err(|e| format!("路径解析失败: {}", e))?;
+            return Ok(canon.to_string_lossy().into_owned());
         }
     }
 
@@ -831,10 +831,10 @@ pub async fn delete_character(
     }
 
     // ---- 3.5 插件角色不可直接删除（软删除由插件管理页 hide 流程处理） ----
-    if let Some(folder) = role.resource_folder.as_deref() {
-        if decode_plugin_folder(folder).is_some() {
-            return Err("该角色来自插件，请在「设置 · 插件」的资源区隐藏它".to_string());
-        }
+    if let Some(folder) = role.resource_folder.as_deref()
+        && decode_plugin_folder(folder).is_some()
+    {
+        return Err("该角色来自插件，请在「设置 · 插件」的资源区隐藏它".to_string());
     }
 
     // ---- 4. 在场校验（后端权威） ----
@@ -852,17 +852,15 @@ pub async fn delete_character(
 
     // ---- 5. 先删物理资源（可选）----
     // 插件角色已在 3.5 提前拦截，走到这里的都是游戏自有角色，可安全删目录。
-    if delete_resource_folder {
-        if let Some(folder) = &role.resource_folder {
-            let base = characters_dir();
-            let target = base.join(folder);
-            // 路径穿越防护
-            crate::utils::path::validate_path_in_base(&target, &base)?;
-            if target.exists() {
-                if let Err(e) = fs::remove_dir_all(&target) {
-                    return Err(format!("删除资源目录失败: {}", e));
-                }
-            }
+    if delete_resource_folder && let Some(folder) = &role.resource_folder {
+        let base = characters_dir();
+        let target = base.join(folder);
+        // 路径穿越防护
+        crate::utils::path::validate_path_in_base(&target, &base)?;
+        if target.exists()
+            && let Err(e) = fs::remove_dir_all(&target)
+        {
+            return Err(format!("删除资源目录失败: {}", e));
         }
     }
 

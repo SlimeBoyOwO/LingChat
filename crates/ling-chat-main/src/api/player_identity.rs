@@ -127,10 +127,10 @@ pub async fn get_current_player_identity(app: AppHandle) -> Result<PlayerIdentit
         let gs = service.game_status.lock().await;
         gs.player.player_role_id
     };
-    if let Some(role_id) = role_id {
-        if let Some(input) = get_player_identity(app.clone(), role_id).await? {
-            return Ok(input);
-        }
+    if let Some(role_id) = role_id
+        && let Some(input) = get_player_identity(app.clone(), role_id).await?
+    {
+        return Ok(input);
     }
     if let Some(primary) = store().primary_identity() {
         if let Ok(Some(role)) = RoleRepo::get_role_by_identity_id(&state.db, &primary.id).await {
@@ -357,13 +357,13 @@ pub async fn set_current_player_identity(
 
             let fallback_prompt = {
                 let mut extracted = String::new();
-                if let Some(main_id) = gs.main_role_id {
-                    if let Some(role) = gs.role_manager.get_loaded(main_id) {
-                        let (_, body) = crate::utils::prompt::extract_player_setting(
-                            role.settings.system_prompt.as_deref().unwrap_or_default(),
-                        );
-                        extracted = body.unwrap_or_default();
-                    }
+                if let Some(main_id) = gs.main_role_id
+                    && let Some(role) = gs.role_manager.get_loaded(main_id)
+                {
+                    let (_, body) = crate::utils::prompt::extract_player_setting(
+                        role.settings.system_prompt.as_deref().unwrap_or_default(),
+                    );
+                    extracted = body.unwrap_or_default();
                 }
                 extracted
             };
@@ -384,12 +384,10 @@ pub async fn set_current_player_identity(
             let has_old = !old_name.trim().is_empty();
             let has_new = !new_name.trim().is_empty();
 
-            if has_old {
-                if let Some(desc) = exit_desc.as_deref() {
-                    gs.add_line(&state.db, narrator_line(format!("{old_name}{desc}")))
-                        .await
-                        .map_err(|e| format!("添加退场描述旁白失败: {e}"))?;
-                }
+            if has_old && let Some(desc) = exit_desc.as_deref() {
+                gs.add_line(&state.db, narrator_line(format!("{old_name}{desc}")))
+                    .await
+                    .map_err(|e| format!("添加退场描述旁白失败: {e}"))?;
             }
             if has_old && has_new {
                 gs.add_line(&state.db, narrator_line(format!("{}离开了对话", old_name)))
@@ -462,12 +460,10 @@ pub async fn set_current_player_identity(
                     .await
                     .map_err(|e| format!("添加换身份旁白失败: {e}"))?;
             }
-            if has_new {
-                if let Some(desc) = enter_desc.as_deref() {
-                    gs.add_line(&state.db, narrator_line(format!("{new_name}{desc}")))
-                        .await
-                        .map_err(|e| format!("添加出场描述旁白失败: {e}"))?;
-                }
+            if has_new && let Some(desc) = enter_desc.as_deref() {
+                gs.add_line(&state.db, narrator_line(format!("{new_name}{desc}")))
+                    .await
+                    .map_err(|e| format!("添加出场描述旁白失败: {e}"))?;
             }
             gs.persist_lines_if_bound(&state.db).await;
         }
@@ -645,18 +641,18 @@ pub async fn save_role_relations(
         let new_initial = next
             .get(&player_role_id)
             .and_then(|row| row.initial_affection);
-        if old_initial != new_initial {
-            if let Some(init) = gs.role_manager.get_loaded(role_id).and_then(|role| {
+        if old_initial != new_initial
+            && let Some(init) = gs.role_manager.get_loaded(role_id).and_then(|role| {
                 crate::ai_service::affection::effective_initial_affection(
                     &role.settings,
                     new_initial,
                 )
-            }) {
-                let payload = gs
-                    .sync_player_affection_initial(&state.db, role_id, Some(player_role_id), init)
-                    .await;
-                let _ = app.emit("affection:changed", payload);
-            }
+            })
+        {
+            let payload = gs
+                .sync_player_affection_initial(&state.db, role_id, Some(player_role_id), init)
+                .await;
+            let _ = app.emit("affection:changed", payload);
         }
     }
 

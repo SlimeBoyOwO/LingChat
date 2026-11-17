@@ -151,6 +151,10 @@ export default {
       title: "創意工坊",
       enter: "入去創意工坊",
     },
+    shortcuts: {
+      title: "捷徑",
+      import: "匯入角色",
+    },
   },
   log: {
     title: "日誌",

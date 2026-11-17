@@ -277,10 +277,10 @@ impl HotwordRepo {
         }
 
         for (index, _, _) in words.iter() {
-            if let Some(index) = index {
-                if *index >= names.len() {
-                    return Err(anyhow!("词条的分类下标越界：{index} >= {}", names.len()));
-                }
+            if let Some(index) = index
+                && *index >= names.len()
+            {
+                return Err(anyhow!("词条的分类下标越界：{index} >= {}", names.len()));
             }
         }
 

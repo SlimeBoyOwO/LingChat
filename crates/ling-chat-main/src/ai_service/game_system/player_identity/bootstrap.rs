@@ -47,10 +47,10 @@ pub async fn resolve_player_bootstrap(
 ) -> PlayerBootstrap {
     let store = IdentityStore::new(data_dir);
     let identity = resolve_primary_identity(&store);
-    if !identity.id.trim().is_empty() {
-        if let Err(e) = store.set_current_id(&identity.id) {
-            tracing::warn!("记录当前身份失败: {e}");
-        }
+    if !identity.id.trim().is_empty()
+        && let Err(e) = store.set_current_id(&identity.id)
+    {
+        tracing::warn!("记录当前身份失败: {e}");
     }
 
     let player_role_id = match RoleRepo::get_role_by_identity_id(db, &identity.id).await {
@@ -184,10 +184,10 @@ pub async fn apply_player_role(
     };
     gs.player.player_role_id = Some(player_role_id);
     gs.player.relations = load_player_relations(db, player_role_id).await;
-    if !identity_id.is_empty() {
-        if let Err(e) = store.set_current_id(&identity_id) {
-            tracing::warn!("记录当前身份失败: {e}");
-        }
+    if !identity_id.is_empty()
+        && let Err(e) = store.set_current_id(&identity_id)
+    {
+        tracing::warn!("记录当前身份失败: {e}");
     }
     Ok(())
 }

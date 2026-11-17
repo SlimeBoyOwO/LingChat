@@ -6,6 +6,7 @@ use std::collections::HashMap;
 use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{
     agent_conversation, agent_message, line, line_perception, memory_bank, running_script, save,
+    save_note,
 };
 
 pub struct SaveRepo;
@@ -202,6 +203,13 @@ impl SaveRepo {
             .await
             .map_err(|e| anyhow!("{e}"))?;
 
+        // 存档级笔记随档删除
+        save_note::Entity::delete_many()
+            .filter(save_note::Column::SaveId.eq(save_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
         let result = save::Entity::delete_by_id(save_id)
             .exec(db)
             .await
@@ -340,11 +348,11 @@ impl SaveRepo {
             let input_line = &input_lines[i];
 
             // Try ID match first
-            if let Some(input_id) = input_line.base.id {
-                if input_id == db_line.id {
-                    // 同一行：字段是否要改写由后面的更新阶段判定，这里只负责推进锚点。
-                    continue;
-                }
+            if let Some(input_id) = input_line.base.id
+                && input_id == db_line.id
+            {
+                // 同一行：字段是否要改写由后面的更新阶段判定，这里只负责推进锚点。
+                continue;
             }
 
             // Try weak match using every persisted field except generated IDs.
@@ -552,10 +560,10 @@ impl SaveRepo {
         }
         let db_line = &db_lines[0];
         let input_line = &input_lines[0];
-        if let Some(input_id) = input_line.base.id {
-            if input_id == db_line.id {
-                return Ok(true);
-            }
+        if let Some(input_id) = input_line.base.id
+            && input_id == db_line.id
+        {
+            return Ok(true);
         }
         Ok(same_line_fields(db_line, input_line))
     }

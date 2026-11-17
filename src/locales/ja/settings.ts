@@ -152,6 +152,10 @@ export default {
       title: "ワークショップ",
       enter: "ワークショップへ",
     },
+    shortcuts: {
+      title: "ショートカット",
+      import: "キャラクターをインポート",
+    },
   },
   log: {
     title: "ログ",

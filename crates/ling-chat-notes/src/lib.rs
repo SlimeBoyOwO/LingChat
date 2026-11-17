@@ -29,6 +29,18 @@ pub struct Note {
     pub created_at: String,
 }
 
+impl Note {
+    /// 生成一条新笔记：uuid 主键 + UTC 时间戳。
+    pub fn new(content: String, tags: Vec<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content,
+            tags,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
+}
+
 /// 笔记库读写失败。
 #[derive(Debug, Error)]
 pub enum NoteError {
@@ -110,12 +122,7 @@ impl NotesStore {
         tags: Vec<String>,
     ) -> Result<String, NoteError> {
         let mut notes = self.load(role_name)?;
-        let note = Note {
-            id: uuid::Uuid::new_v4().to_string(),
-            content,
-            tags,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
+        let note = Note::new(content, tags);
         let id = note.id.clone();
         notes.push(note);
         self.save(role_name, &notes)?;

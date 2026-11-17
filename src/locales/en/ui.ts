@@ -350,6 +350,9 @@ export default {
       "The image/video switches here only control which types can be recognized; whether ReadMediaFile is offered to them is decided by the tool checkbox above.",
     saveFailedTitle: "Failed to save tool settings",
     nav: {
+      image_generation: "@:imageGeneration.toolName",
+      web_search: "@:ui.toolCalls.webSearchTitle",
+      plugin: "@:ui.toolCalls.pluginPackageTitle",
       schedule: "Schedule",
       memory: "Notes & Memory",
       character: "Characters",
@@ -401,6 +404,7 @@ export default {
       "⚠ This command also requests administrator (UAC) rights; Windows will show a UAC prompt after approval",
     approvalDefaultCwd: "(default sandbox)",
     groups: {
+      image_generation: "@:imageGeneration.toolHelp",
       web_search: "Web Search (look things up online and read web pages)",
       schedule: "Schedule & To-dos (view, add, update, delete)",
       memory: "Notes & Memory (their own little notebook)",
@@ -415,6 +419,7 @@ export default {
       plugin: "Plugin Tools (provided by enabled plugins)",
     },
     tools: {
+      generate_image: "@:imageGeneration.toolName",
       web_search: "Web Search",
       tool_search: "Search Tools",
       get_current_time: "Current Time",
@@ -452,6 +457,7 @@ export default {
       execute_command: "Run Command",
     },
     toolDescriptions: {
+      generate_image: "@:imageGeneration.toolHelp",
       web_search: "Search the web and read page contents",
       tool_search: "Find available local tools on demand",
       get_current_time: "Read the device's local time",

@@ -3,7 +3,7 @@ name = "ling-chat-main"
 version.workspace = true
 description = "LingChat 业务主 crate：api / ai_service / db / config / utils 等"
 authors = ["LingChat Team"]
-edition = "2021"
+edition = "2024"
 
 # lib 名带连字符转下划线，避免与外壳 bin 名冲突（同 Windows 上的历史处理）。
 [lib]

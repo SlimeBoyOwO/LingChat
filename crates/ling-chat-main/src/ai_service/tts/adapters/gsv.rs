@@ -168,6 +168,7 @@ const WAV_EDGE_FADE_MS: f32 = 5.0;
 /// 1) 裁掉首尾静音再补固定留白——不同参考音频的拖尾长短不一，直接播会让句子节奏忽快忽慢；
 /// 2) 按 RMS 对齐响度并限制峰值——情绪切换时不会忽大忽小，也不削波；
 /// 3) 首尾 5 ms 淡入淡出——裁掉静音后直接起振会有咔哒声。
+///
 /// 只处理单声道 16-bit PCM，其他格式原样返回。
 fn smooth_wav(bytes: &[u8]) -> Vec<u8> {
     let Some(wav) = parse_wav_16bit(bytes) else {

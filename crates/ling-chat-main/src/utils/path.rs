@@ -122,16 +122,16 @@ pub fn move_directory_files_to(source_dir: &Path, target_dir: &Path) -> Result<u
 
 /// 将角色资源路径解析为绝对路径。
 pub fn resolve_character_path(data_dir: &Path, resource_path: &str) -> PathBuf {
-    if let Some(rest) = resource_path.strip_prefix("plugin:") {
-        if let Some((plugin_id, folder)) = rest.split_once('/') {
-            if !plugin_id.is_empty() && !folder.is_empty() {
-                return data_dir
-                    .join("plugins")
-                    .join(plugin_id)
-                    .join("characters")
-                    .join(folder);
-            }
-        }
+    if let Some(rest) = resource_path.strip_prefix("plugin:")
+        && let Some((plugin_id, folder)) = rest.split_once('/')
+        && !plugin_id.is_empty()
+        && !folder.is_empty()
+    {
+        return data_dir
+            .join("plugins")
+            .join(plugin_id)
+            .join("characters")
+            .join(folder);
     }
     let path = PathBuf::from(resource_path);
     if path.is_absolute() {

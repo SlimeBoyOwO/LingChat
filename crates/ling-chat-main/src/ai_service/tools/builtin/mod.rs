@@ -8,6 +8,7 @@ pub mod background_effect;
 pub mod character;
 pub mod clock;
 pub mod god_agent;
+pub mod image_generation;
 pub mod memory;
 pub mod read_media_file;
 pub mod scene;
@@ -51,6 +52,9 @@ pub fn built_in_registry(
 ) -> Result<ToolRegistry> {
     let data_dir = crate::api::data_dir();
     let registry = ToolRegistry::new();
+    registry.register(Arc::new(image_generation::GenerateImage(
+        tool_settings.clone(),
+    )))?;
     registry.register(Arc::new(CurrentTimeTool))?;
     registry.register(Arc::new(WebSearchTool::new(tool_settings.clone())))?;
     // Tool RAG 的检索入口：常驻下发（且不归任何设置分组，语义就是「总是可用」），

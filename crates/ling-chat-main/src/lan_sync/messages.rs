@@ -140,6 +140,9 @@ pub struct DbRecords {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub hotword_categories: Option<Vec<serde_json::Value>>,
     pub saves: Vec<serde_json::Value>,
+    /// 存档级笔记。旧版 payload 不带该字段时跳过清空，避免旧客户端镜像抹掉本机笔记。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub save_notes: Option<Vec<serde_json::Value>>,
     pub running_scripts: Vec<serde_json::Value>,
     pub adventure_unlocks: Vec<serde_json::Value>,
     pub lines: Vec<serde_json::Value>,
@@ -154,6 +157,7 @@ impl DbRecords {
             + self.hotwords.as_ref().map_or(0, Vec::len)
             + self.hotword_categories.as_ref().map_or(0, Vec::len)
             + self.saves.len()
+            + self.save_notes.as_ref().map_or(0, Vec::len)
             + self.running_scripts.len()
             + self.adventure_unlocks.len()
             + self.lines.len()
@@ -198,4 +202,49 @@ pub struct SyncResult {
     pub files_staged: u64,
     pub bytes_transferred: u64,
     pub message: String,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// 旧设备的数据包没有 saveNotes 字段，必须解析为 None 而不是空数组，
+    /// 否则导入侧会把本机存档笔记当空表清空。
+    #[test]
+    fn legacy_payload_without_save_notes_parses_as_none() {
+        let json = r#"{
+            "deviceId": "old",
+            "roles": [],
+            "saves": [],
+            "runningScripts": [],
+            "adventureUnlocks": [],
+            "lines": [],
+            "memoryBanks": [],
+            "linePerceptions": []
+        }"#;
+        let records: DbRecords = serde_json::from_str(json).unwrap();
+        assert!(records.save_notes.is_none());
+    }
+
+    /// 新设备即使没有存档笔记也会显式带 Some([])，用于镜像清空。
+    #[test]
+    fn new_payload_carries_explicit_empty_save_notes() {
+        let records = DbRecords {
+            device_id: "new".into(),
+            roles: Vec::new(),
+            hotwords: None,
+            hotword_categories: None,
+            saves: Vec::new(),
+            save_notes: Some(Vec::new()),
+            running_scripts: Vec::new(),
+            adventure_unlocks: Vec::new(),
+            lines: Vec::new(),
+            memory_banks: Vec::new(),
+            line_perceptions: Vec::new(),
+        };
+        let json = serde_json::to_string(&records).unwrap();
+        let parsed: DbRecords = serde_json::from_str(&json).unwrap();
+        assert!(parsed.save_notes.is_some());
+        assert!(parsed.save_notes.unwrap().is_empty());
+    }
 }

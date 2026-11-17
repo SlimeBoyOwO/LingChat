@@ -391,21 +391,20 @@ async fn send_udp_broadcast(my_instance_id: &str) -> Result<Vec<PeerInfo>, Strin
     loop {
         match tokio::time::timeout_at(deadline, socket.recv_from(&mut buf)).await {
             Ok(Ok((len, src))) => {
-                if let Ok(msg) = serde_json::from_slice::<DiscoveryMessage>(&buf[..len]) {
-                    if msg.msg_type == "lingchat-response"
-                        && msg.instance_id != my_instance_id
-                        && !msg.host.is_empty()
-                    {
-                        peers.push(PeerInfo {
-                            device_id: msg.device_id,
-                            instance_id: msg.instance_id,
-                            device_name: msg.device_name,
-                            host: src.ip().to_string(),
-                            port: msg.port,
-                            data_version: msg.data_version,
-                            file_count: msg.file_count,
-                        });
-                    }
+                if let Ok(msg) = serde_json::from_slice::<DiscoveryMessage>(&buf[..len])
+                    && msg.msg_type == "lingchat-response"
+                    && msg.instance_id != my_instance_id
+                    && !msg.host.is_empty()
+                {
+                    peers.push(PeerInfo {
+                        device_id: msg.device_id,
+                        instance_id: msg.instance_id,
+                        device_name: msg.device_name,
+                        host: src.ip().to_string(),
+                        port: msg.port,
+                        data_version: msg.data_version,
+                        file_count: msg.file_count,
+                    });
                 }
             },
             Ok(Err(e)) => {

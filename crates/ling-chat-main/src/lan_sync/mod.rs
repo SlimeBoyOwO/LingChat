@@ -166,10 +166,10 @@ fn get_hostname() -> String {
     }
     #[cfg(not(target_os = "windows"))]
     {
-        if let Ok(name) = std::env::var("HOSTNAME") {
-            if !name.is_empty() {
-                return name;
-            }
+        if let Ok(name) = std::env::var("HOSTNAME")
+            && !name.is_empty()
+        {
+            return name;
         }
     }
     // 回退

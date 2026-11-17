@@ -186,12 +186,12 @@ pub(super) async fn do_import(
         None
     };
 
-    if let Some(parent) = resolution.target.parent() {
-        if let Err(e) = tokio::fs::create_dir_all(parent).await {
-            cleanup_err(&staging_root_for_cleanup);
-            restore_backup(&resolution.target, backup_dir.as_deref()).await;
-            return Err(format!("创建目标父目录: {e}"));
-        }
+    if let Some(parent) = resolution.target.parent()
+        && let Err(e) = tokio::fs::create_dir_all(parent).await
+    {
+        cleanup_err(&staging_root_for_cleanup);
+        restore_backup(&resolution.target, backup_dir.as_deref()).await;
+        return Err(format!("创建目标父目录: {e}"));
     }
 
     // 移动目录前再次检查取消状态；目标已确定，但尚未写入最终位置。
@@ -247,15 +247,15 @@ pub(super) async fn do_import(
     }
 
     // 10. 全部成功，删除旧目录备份。
-    if let Some(backup) = &backup_dir {
-        if let Err(e) = tokio::fs::remove_dir_all(backup).await {
-            // 备份残留不影响功能（隐藏目录不会被注册为角色），只记录日志。
-            tracing::warn!(
-                "[RoleArchive] 删除旧目录备份失败: backup={}, err={}",
-                backup.display(),
-                e
-            );
-        }
+    if let Some(backup) = &backup_dir
+        && let Err(e) = tokio::fs::remove_dir_all(backup).await
+    {
+        // 备份残留不影响功能（隐藏目录不会被注册为角色），只记录日志。
+        tracing::warn!(
+            "[RoleArchive] 删除旧目录备份失败: backup={}, err={}",
+            backup.display(),
+            e
+        );
     }
 
     // 11. 查询新角色 ID。

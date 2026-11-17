@@ -159,6 +159,7 @@ import WebSearchPanel from "@/components/settings/tools/panels/WebSearchPanel.vu
 import MemoryPanel from "@/components/settings/tools/panels/MemoryPanel.vue";
 import MediaPanel from "@/components/settings/tools/panels/MediaPanel.vue";
 import GeneralPanel from "@/components/settings/tools/panels/GeneralPanel.vue";
+import ImageGenerationPanel from "@/components/settings/tools/panels/ImageGenerationPanel.vue";
 
 const { t, te } = useI18n();
 const store = useToolSettingsStore();
@@ -167,8 +168,9 @@ const android = isAndroid();
 const runtimeInfo = computed(() => store.runtimeInfo);
 
 const DANGEROUS_GROUPS = new Set(["file_ops", "command"]);
-const PACKS_WITH_SETTINGS = new Set(["web_search", "memory", "media"]);
+const PACKS_WITH_SETTINGS = new Set(["web_search", "memory", "media", "image_generation"]);
 const PANELS: Record<string, Component> = {
+  image_generation: ImageGenerationPanel,
   web_search: WebSearchPanel,
   memory: MemoryPanel,
   media: MediaPanel,
@@ -201,8 +203,6 @@ const activeTitle = computed(() => {
 });
 
 function groupTitle(group: string) {
-  if (group === "web_search") return t("ui.toolCalls.webSearchTitle");
-  if (group === "plugin") return t("ui.toolCalls.pluginPackageTitle");
   const key = `ui.toolCalls.nav.${group}`;
   return te(key) ? t(key) : t(`ui.toolCalls.groups.${group}`);
 }

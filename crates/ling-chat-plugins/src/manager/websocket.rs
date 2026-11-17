@@ -37,10 +37,10 @@ impl WsHub {
                 }
             },
             Some(cid) => {
-                if let Some(conns) = table.get_mut(id) {
-                    if let Some(handle) = conns.remove(cid) {
-                        let _ = handle.tx.send(WsCommand::Close);
-                    }
+                if let Some(conns) = table.get_mut(id)
+                    && let Some(handle) = conns.remove(cid)
+                {
+                    let _ = handle.tx.send(WsCommand::Close);
                 }
             },
         }
@@ -149,10 +149,10 @@ impl WsHub {
                 state,
             });
         }
-        if let Some(cid) = conn_id {
-            if out.is_empty() {
-                return Err(format!("插件 '{plugin_id}' 未声明连接 '{cid}'"));
-            }
+        if let Some(cid) = conn_id
+            && out.is_empty()
+        {
+            return Err(format!("插件 '{plugin_id}' 未声明连接 '{cid}'"));
         }
         Ok(out)
     }
@@ -239,10 +239,10 @@ impl WsHub {
                 },
             }
         }
-        if let Some(only) = only {
-            if !matched {
-                return Err(format!("插件 '{id}' 未声明连接 '{only}'"));
-            }
+        if let Some(only) = only
+            && !matched
+        {
+            return Err(format!("插件 '{id}' 未声明连接 '{only}'"));
         }
         Ok(())
     }

@@ -3,7 +3,7 @@ name = "ling-chat-plugins"
 version.workspace = true
 description = "LingChat 插件系统 crate：PluginManager + RustPython 脚本后端"
 authors = ["LingChat Team"]
-edition = "2021"
+edition = "2024"
 
 [lib]
 name = "ling_chat_plugins"

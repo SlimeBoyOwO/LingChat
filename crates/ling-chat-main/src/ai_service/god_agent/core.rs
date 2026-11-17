@@ -14,6 +14,7 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::player_identity::resolve::RelationSource;
 use crate::ai_service::game_system::player_identity::resolve_relation;
 use crate::ai_service::god_agent::config::GodAgentConfig;
+use crate::ai_service::god_agent::director::DirectorAgent;
 use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
 use crate::ai_service::tools::builtin::god_agent::god_agent_registry;
@@ -29,11 +30,14 @@ pub struct GodAgentCore {
     pub config: std::sync::RwLock<GodAgentConfig>,
     /// 决策工具的专用注册表，与聊天注册表隔离（不进工具权限页）。
     registry: Arc<ToolRegistry>,
+    /// 交互会话分支：导演。会话状态封在分支内部，中枢只存这一个字段。
+    pub director: DirectorAgent,
 }
 
 impl GodAgentCore {
     pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
         Self {
+            director: DirectorAgent::new(llm.clone()),
             llm,
             config: std::sync::RwLock::new(config),
             registry: Arc::new(god_agent_registry()),

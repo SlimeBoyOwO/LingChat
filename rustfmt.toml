@@ -2,7 +2,7 @@
 # 参考：https://rust-lang.github.io/rustfmt/
 
 # --- 基础配置 ---
-edition = "2021"
+edition = "2024"
 style_edition = "2024"
 
 # --- 格式化风格 ---

@@ -102,20 +102,20 @@ pub fn build_task_block(input: &TaskBlockInput<'_>) -> String {
             }
         ));
     }
-    if let crate::ai_service::skill_agent::role::Handoff::Prerequisite { why, .. } = handoff {
-        if let Some(original) = plan.items.get(item_index) {
-            let target = original.target.trim();
-            let original_desc = if target.is_empty() {
-                original.kind.label().to_string()
-            } else {
-                format!("{}：{}", original.kind.label(), target)
-            };
-            out.push_str(&format!(
-                "\n【这一项为什么换了名字】原定这一项是「{original_desc}」；{why} —— \
+    if let crate::ai_service::skill_agent::role::Handoff::Prerequisite { why, .. } = handoff
+        && let Some(original) = plan.items.get(item_index)
+    {
+        let target = original.target.trim();
+        let original_desc = if target.is_empty() {
+            original.kind.label().to_string()
+        } else {
+            format!("{}：{}", original.kind.label(), target)
+        };
+        out.push_str(&format!(
+            "\n【这一项为什么换了名字】原定这一项是「{original_desc}」；{why} —— \
                  所以本轮先做前置的「{}」。同轮会接着做回原任务（见【承接说明】）。",
-                task.label()
-            ));
-        }
+            task.label()
+        ));
     }
     if !skipped.is_empty() {
         out.push_str(&format!(
@@ -301,10 +301,10 @@ pub fn build_run_materials(snap: &StageSnapshot, data_dir: &Path) -> String {
         },
         Stage::Forge => {
             let mut forge = String::new();
-            if let Some(id) = snap.next_chapter() {
-                if let Some(block) = extract_chapter_block(design, id) {
-                    forge.push_str(&format!("\n\n【待写章节 · {}】\n{}", id, block));
-                }
+            if let Some(id) = snap.next_chapter()
+                && let Some(block) = extract_chapter_block(design, id)
+            {
+                forge.push_str(&format!("\n\n【待写章节 · {}】\n{}", id, block));
             }
             if let Some(prev) = snap.last_written() {
                 let tail = tail_state(&read_chapter(dir, prev));

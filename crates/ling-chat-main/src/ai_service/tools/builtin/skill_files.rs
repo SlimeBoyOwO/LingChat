@@ -244,7 +244,7 @@ impl Tool for ReadSkill {
 
 /// 文件类工具共用：持有工具配置句柄（沙箱外开关热更新）。
 macro_rules! file_tool {
-    ($name:ident, $tool_name:literal, $desc:literal, $examples:expr, $schema:expr, $body:expr) => {
+    ($name:ident, $tool_name:literal, $desc:literal, $examples:expr_2021, $schema:expr_2021, $body:expr_2021) => {
         pub struct $name {
             settings: SharedToolSettings,
         }
@@ -281,7 +281,7 @@ macro_rules! file_tool {
 
 /// 带副作用的文件工具：逐次确认模式下先展示规范化目标路径，再执行修改。
 macro_rules! mutating_file_tool {
-    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $examples:expr, $schema:expr, $body:expr) => {
+    ($name:ident, $tool_name:literal, $desc:literal, $operation:literal, $examples:expr_2021, $schema:expr_2021, $body:expr_2021) => {
         pub struct $name {
             settings: SharedToolSettings,
         }

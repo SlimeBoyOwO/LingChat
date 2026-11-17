@@ -17,6 +17,7 @@ use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_note_repo::SaveNoteRepo;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_with_player};
 
 /// AI 服务：承载 `GameStatus` 与会话级配置。
@@ -206,6 +207,9 @@ impl AIService {
         gs.entry_greeting_done = false;
         gs.player = Default::default();
         gs.active_save_id = None;
+        // 会话边界：上一段未存档会话的暂存笔记不跨档带入
+        gs.pending_save_notes.clear();
+        gs.save_notes.clear();
         // 好感度会话边界：存档全局变量里的 `affection.{role_id}` 是「上一个会话/存档」
         gs.global_variables.clear();
         gs.affection_eval_cursor = 0;
@@ -214,10 +218,6 @@ impl AIService {
         gs.clear_pending_tool_hint();
         // 会话边界代号：切换角色 / 读档 / 清空对话都会清空 GameStatus 并重建，
         gs.preview_generation = gs.preview_generation.wrapping_add(1);
-    }
-
-    pub async fn set_active_save_id(&mut self, save_id: Option<i32>) {
-        self.game_status.lock().await.active_save_id = save_id;
     }
 
     /// 载入存档台词并恢复 MemoryBank。
@@ -236,6 +236,13 @@ impl AIService {
             gs.line_list = lines;
             if let Some(sid) = save_id {
                 gs.active_save_id = Some(sid);
+                // 读档即预加载笔记，后续检索直接读内存
+                gs.save_notes = SaveNoteRepo::list(&self.db, sid).await.unwrap_or_else(|e| {
+                    tracing::warn!("预加载存档笔记失败: {e}");
+                    Vec::new()
+                });
+            } else {
+                gs.save_notes.clear();
             }
             gs.refresh_memories(&self.db).await?;
             let _ = gs.get_role(&self.db, main_role_id).await?;

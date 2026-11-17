@@ -196,10 +196,10 @@ fn validate_value(path: &str, schema: &Value, value: &Value) -> Result<(), Strin
                     }
                 }
             }
-            if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false) {
-                if let Some(key) = object.keys().find(|key| !properties.contains_key(*key)) {
-                    return Err(format!("{path} 包含未知字段 {key}"));
-                }
+            if schema.get("additionalProperties").and_then(Value::as_bool) == Some(false)
+                && let Some(key) = object.keys().find(|key| !properties.contains_key(*key))
+            {
+                return Err(format!("{path} 包含未知字段 {key}"));
             }
             for (key, child) in object {
                 if let Some(child_schema) = properties.get(key) {

@@ -47,11 +47,11 @@ pub fn var_key_for(role_id: i32, player_role_id: Option<i32>) -> String {
 
 /// 按（角色 × 玩家角色）解析存档里的好感度值：优先专属键，其次旧档共享键
 /// （旧键是「全身份共享默认」，某身份写过专属值后各走各的）。
-pub fn resolve_var<'a>(
-    vars: &'a HashMap<String, serde_json::Value>,
+pub fn resolve_var(
+    vars: &HashMap<String, serde_json::Value>,
     role_id: i32,
     player_role_id: Option<i32>,
-) -> Option<&'a serde_json::Value> {
+) -> Option<&serde_json::Value> {
     let key = var_key_for(role_id, player_role_id);
     if let Some(v) = vars.get(&key) {
         return Some(v);

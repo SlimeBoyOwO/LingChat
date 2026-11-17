@@ -216,12 +216,20 @@
                 <!-- 普通回复气泡：独立判断，与思考块并存显示。
                      开启思考模式时最终答复轮同时携带 reasoning + content，
                      若用 v-else-if 会吞掉正文；工具轮（含叙述）也在此排除，
-                     其正文已并入上方思考块。 -->
+                     其正文已并入上方思考块。
+                     流式中只用纯文本：每个 delta 都跑 marked.parse 会打满主线程，
+                     整窗（含编辑器）表现为卡死；落盘后再渲染 Markdown。 -->
                 <div
                   v-if="round.content && round.toolRuns.length === 0"
                   class="max-w-[92%] rounded-2xl rounded-tl-sm border border-white/10 bg-white/8 px-3.5 py-2.5"
                 >
-                  <MarkdownText :content="round.content" />
+                  <div
+                    v-if="item.streaming"
+                    class="text-[0.86rem] leading-relaxed break-words whitespace-pre-wrap text-white/90"
+                  >
+                    {{ round.content }}
+                  </div>
+                  <MarkdownText v-else :content="round.content" />
                 </div>
                 <!-- 工具调用折叠组：一轮的多次调用合并为一个容器，默认收起防刷屏；
                      有等待审批（pending）时自动展开，保证允许/拒绝按钮可见 -->
@@ -333,13 +341,12 @@
 <script setup lang="ts">
 import { nextTick, onMounted, ref, useTemplateRef, watch } from "vue";
 import { useI18n } from "vue-i18n";
-import { Icon } from "@/components/base";
+import { Icon, MarkdownText } from "@/components/base";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useAgentStore } from "@/stores/modules/agent";
 import AgentThinkingBlock from "./AgentThinkingBlock.vue";
 import AgentToolCard from "./AgentToolCard.vue";
 import AgentChapterPreview from "./AgentChapterPreview.vue";
-import MarkdownText from "./MarkdownText.vue";
 import type { ConversationInfo } from "@/api/services/agent";
 import type { ChatItem, ChatRound, ToolRun } from "@/stores/modules/agent/state";
 

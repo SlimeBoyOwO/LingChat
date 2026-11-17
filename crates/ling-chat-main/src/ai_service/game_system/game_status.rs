@@ -11,7 +11,9 @@ use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::status_ops::{Pending, PromptLine, RequestScoped};
 use crate::ai_service::types::{GameLine, GameRole, LineBase, Player, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_note_repo::SaveNoteRepo;
 use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
+use ling_chat_notes::Note;
 
 /// 全局变量键：剧本临时背景（值 = 解析后的背景图绝对路径）。
 const BACKGROUND_OVERRIDE_VAR_KEY: &str = "background.override";
@@ -57,6 +59,14 @@ pub struct GameStatus {
     /// 当前激活的存档 ID（用于 MemoryBank 持久化/载入/自动压缩）
     pub active_save_id: Option<i32>,
 
+    /// 尚未产生存档时的笔记暂存：首次绑档时一次性写入该存档。
+    /// 不进入 `save.status` 快照，读档/新游戏等会话边界直接丢弃。
+    pub pending_save_notes: Vec<Note>,
+
+    /// 当前存档笔记的内存副本：读档时预加载，之后由笔记工具与绑档流程维护，
+    /// 检索直接读这里，避免每次查库。
+    pub save_notes: Vec<Note>,
+
     /// 试玩会话代号。
     pub preview_generation: u64,
 
@@ -101,6 +111,8 @@ impl GameStatus {
             last_dialog_time: None,
             script_status: None,
             active_save_id: None,
+            pending_save_notes: Vec::new(),
+            save_notes: Vec::new(),
             preview_generation: 0,
             entry_greeting_done: false,
             affection_eval_cursor: 0,
@@ -149,16 +161,114 @@ impl GameStatus {
         }
     }
 
+    // ============ 存档级笔记暂存 ============
+
+    /// 记一条暂存笔记（尚无存档时），返回笔记 id。
+    pub fn add_pending_note(&mut self, content: String, tags: Vec<String>) -> String {
+        let note = Note::new(content, tags);
+        let id = note.id.clone();
+        self.pending_save_notes.push(note);
+        id
+    }
+
+    pub fn update_pending_note(
+        &mut self,
+        id: &str,
+        content: Option<String>,
+        tags: Option<Vec<String>>,
+    ) -> Result<()> {
+        let Some(note) = self
+            .pending_save_notes
+            .iter_mut()
+            .find(|note| note.id == id)
+        else {
+            return Err(anyhow::anyhow!("笔记 {id} 不存在"));
+        };
+        if let Some(content) = content {
+            note.content = content;
+        }
+        if let Some(tags) = tags {
+            note.tags = tags;
+        }
+        Ok(())
+    }
+
+    pub fn delete_pending_note(&mut self, id: &str) -> Result<()> {
+        let before = self.pending_save_notes.len();
+        self.pending_save_notes.retain(|note| note.id != id);
+        if self.pending_save_notes.len() == before {
+            return Err(anyhow::anyhow!("笔记 {id} 不存在"));
+        }
+        Ok(())
+    }
+
+    /// 把暂存笔记写进存档；成功后才清空，失败保留以便下次重试。
+    pub async fn flush_pending_save_notes(
+        &mut self,
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<()> {
+        if self.pending_save_notes.is_empty() {
+            return Ok(());
+        }
+        SaveNoteRepo::insert_many(db, save_id, &self.pending_save_notes).await?;
+        self.save_notes.append(&mut self.pending_save_notes);
+        Ok(())
+    }
+
+    /// 把当前会话的笔记同步到目标存档（新建/覆盖存档时、切换归属之前调用）。
+    ///
+    /// 存档是快照：目标档不是当前档时，用当前档（或无档暂存）的笔记整体替换目标档，
+    /// 避免覆盖别的档后残留上一段剧情的笔记。
+    pub async fn rebind_save_notes(
+        &mut self,
+        db: &DatabaseConnection,
+        target_save_id: i32,
+    ) -> Result<()> {
+        let outcome = match self.active_save_id {
+            Some(current) if current == target_save_id => {
+                self.flush_pending_save_notes(db, target_save_id).await
+            },
+            Some(current) => match SaveNoteRepo::list(db, current).await {
+                Ok(notes) => match SaveNoteRepo::replace_all(db, target_save_id, &notes).await {
+                    Ok(()) => {
+                        self.save_notes = notes;
+                        Ok(())
+                    },
+                    Err(e) => Err(e),
+                },
+                Err(e) => Err(e),
+            },
+            None => {
+                let notes = self.pending_save_notes.clone();
+                match SaveNoteRepo::replace_all(db, target_save_id, &notes).await {
+                    Ok(()) => {
+                        self.pending_save_notes.clear();
+                        self.save_notes = notes;
+                        Ok(())
+                    },
+                    Err(e) => Err(e),
+                }
+            },
+        };
+        if outcome.is_err() {
+            // 同步失败时以目标档库内状态为准，避免内存残留旧档笔记；暂存保留待下次重试
+            self.save_notes = SaveNoteRepo::list(db, target_save_id)
+                .await
+                .unwrap_or_default();
+        }
+        outcome
+    }
+
     /// 追加台词，记录当前在场者为感知列表，并刷新相关角色的记忆。
     pub async fn add_line(&mut self, db: &DatabaseConnection, mut line: LineBase) -> Result<()> {
         // 玩家台词行直接指向当前玩家角色；旁白/系统行保持 0 哨兵。
         if matches!(line.attribute.inner(), LineAttribute::User)
             && matches!(line.sender_role_id, None | Some(0))
             && !matches!(line.display_name.as_deref(), Some("旁白") | Some("系统"))
+            && let Some(player_role_id) = self.player.player_role_id
         {
-            if let Some(player_role_id) = self.player.player_role_id {
-                line.sender_role_id = Some(player_role_id);
-            }
+            line.sender_role_id = Some(player_role_id);
         }
         let perceived: Vec<i32> = self.present_role_ids.iter().copied().collect();
         self.add_line_perceived(db, line, perceived).await

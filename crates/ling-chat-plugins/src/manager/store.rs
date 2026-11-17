@@ -115,10 +115,10 @@ impl PluginStore {
     pub(super) fn save_states(&self, states: &HashMap<String, PluginState>) {
         let path = self.root.join(STATE_FILE_NAME);
         let tmp = path.with_extension("tmp");
-        if let Ok(text) = serde_json::to_string_pretty(states) {
-            if std::fs::write(&tmp, text).is_ok() {
-                let _ = std::fs::rename(&tmp, path);
-            }
+        if let Ok(text) = serde_json::to_string_pretty(states)
+            && std::fs::write(&tmp, text).is_ok()
+        {
+            let _ = std::fs::rename(&tmp, path);
         }
     }
 

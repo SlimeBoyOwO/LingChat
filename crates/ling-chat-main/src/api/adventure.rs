@@ -93,16 +93,15 @@ fn build_adventure_infos(
 /// 无解锁条件的羁绊默认开放，列表拉取时顺手补上解锁记录
 async fn auto_unlock_plain(db: &DatabaseConnection, adventures: &[&ScriptStatus]) {
     for adv in adventures {
-        if adv.adventure.unlock_conditions.is_empty() {
-            if let Err(e) = AdventureManager::unlock_adventure(
+        if adv.adventure.unlock_conditions.is_empty()
+            && let Err(e) = AdventureManager::unlock_adventure(
                 db,
                 &adv.folder_key,
                 &adv.adventure.bound_character_folder,
             )
             .await
-            {
-                tracing::warn!("[AdventureAPI] 自动解锁「{}」失败: {}", adv.folder_key, e);
-            }
+        {
+            tracing::warn!("[AdventureAPI] 自动解锁「{}」失败: {}", adv.folder_key, e);
         }
     }
 }
@@ -249,9 +248,8 @@ pub async fn check_adventure_unlocks(app: AppHandle) -> Result<Vec<UnlockedAdven
             }
         }
 
-        let result = trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
-            .map_err(|e| format!("检测冒险解锁失败: {}", e))?;
-        result
+        trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
+            .map_err(|e| format!("检测冒险解锁失败: {}", e))?
     };
 
     // Emit events for newly unlocked adventures

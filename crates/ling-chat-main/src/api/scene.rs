@@ -147,10 +147,8 @@ impl BackgroundIndex {
 
         let normalized = relative_key(raw);
         let has_relative_parent = raw.contains('/') || raw.contains('\\');
-        if has_relative_parent {
-            if let Some(path) = self.by_relative.get(&normalized) {
-                return Ok(Some(path.clone()));
-            }
+        if has_relative_parent && let Some(path) = self.by_relative.get(&normalized) {
+            return Ok(Some(path.clone()));
         }
 
         let file_name = to_background_filename(raw);
@@ -507,11 +505,11 @@ fn store_annotation(app: &AppHandle, scene_id: &str, location: LocationType, sce
         },
     };
     let mut updated = false;
-    if let Some(record) = scenes.iter_mut().find(|s| s.id == scene_id) {
-        if record.location_type.is_none() {
-            record.location_type = Some(location);
-            updated = true;
-        }
+    if let Some(record) = scenes.iter_mut().find(|s| s.id == scene_id)
+        && record.location_type.is_none()
+    {
+        record.location_type = Some(location);
+        updated = true;
     }
     if updated {
         if let Err(e) = SceneStore::new(&data_dir()).save_all(&scenes) {
@@ -703,10 +701,9 @@ pub async fn delete_scene(app: AppHandle, id: String) -> Result<(), String> {
         let file_path = base.join(&deleted_bg);
         if crate::utils::path::validate_path_in_base(&file_path, &base).is_ok()
             && file_path.exists()
+            && let Err(e) = std::fs::remove_file(&file_path)
         {
-            if let Err(e) = std::fs::remove_file(&file_path) {
-                tracing::warn!("删除场景背景图失败 {deleted_bg}: {e}");
-            }
+            tracing::warn!("删除场景背景图失败 {deleted_bg}: {e}");
         }
     }
 

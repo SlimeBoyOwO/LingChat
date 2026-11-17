@@ -326,10 +326,10 @@ pub fn load(app: &AppHandle) -> Result<AsrSettings, AsrError> {
             Err(e) => tracing::warn!("[ASR] ASR_PROVIDERS malformed: {e}"),
         }
     }
-    if let Some(v) = store.get(STORE_KEY_ACTIVE) {
-        if let Some(id) = v.as_str() {
-            s.active_provider = id.to_string();
-        }
+    if let Some(v) = store.get(STORE_KEY_ACTIVE)
+        && let Some(id) = v.as_str()
+    {
+        s.active_provider = id.to_string();
     }
     // 兼容：active_provider 指向已删除的 provider（旧版本数据）→ 回退默认
     if !super::provider::list_provider_info()

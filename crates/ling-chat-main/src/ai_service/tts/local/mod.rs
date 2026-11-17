@@ -183,10 +183,11 @@ pub async fn tts_local_set_enabled(
 
     // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
     if enabled {
-        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
-            if let Err(e) = local_state.engine.init(&local_state.paths).await {
-                tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
-            }
+        if !local_state.engine.is_ready().await
+            && local_state.paths.asset_present("deberta")
+            && let Err(e) = local_state.engine.init(&local_state.paths).await
+        {
+            tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
         }
     } else {
         local_state.engine.unload_all().await;
@@ -250,10 +251,11 @@ pub async fn tts_local_set_device(
 
     // 引擎已启用时重新初始化（用新设备）
     let enabled = load_configured_enabled(&app);
-    if enabled && local_state.paths.asset_present("deberta") {
-        if let Err(e) = local_state.engine.init(&local_state.paths).await {
-            tracing::error!("切换推理设备后重新初始化引擎失败: {e}");
-        }
+    if enabled
+        && local_state.paths.asset_present("deberta")
+        && let Err(e) = local_state.engine.init(&local_state.paths).await
+    {
+        tracing::error!("切换推理设备后重新初始化引擎失败: {e}");
     }
 
     tracing::info!("本地 TTS 推理设备已切换: {device_str}");

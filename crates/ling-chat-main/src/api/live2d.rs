@@ -244,10 +244,10 @@ fn resolve_assets(
         for item in items {
             if let Some(file) = item.get("File") {
                 referenced_path(model_dir, resource_root, file, "Expression")?;
-                if let Some(file) = file.as_str() {
-                    if let Some(name) = item.get("Name").and_then(JsonValue::as_str) {
-                        expression_files.insert(name.to_string(), file.to_string());
-                    }
+                if let Some(file) = file.as_str()
+                    && let Some(name) = item.get("Name").and_then(JsonValue::as_str)
+                {
+                    expression_files.insert(name.to_string(), file.to_string());
                 }
             }
             if let Some(name) = item.get("Name").and_then(JsonValue::as_str) {
@@ -270,10 +270,10 @@ fn resolve_assets(
                         files.push(file.to_string());
                     }
                 }
-                if let Some(sound) = item.get("Sound") {
-                    if sound.as_str() != Some("") {
-                        referenced_path(model_dir, resource_root, sound, "Motion sound")?;
-                    }
+                if let Some(sound) = item.get("Sound")
+                    && sound.as_str() != Some("")
+                {
+                    referenced_path(model_dir, resource_root, sound, "Motion sound")?;
                 }
             }
             motions.insert(group.clone(), files);
@@ -568,23 +568,22 @@ fn validate_variant_bindings(
     variant: &Live2dVariant,
     info: &Live2dModelInfo,
 ) -> Result<(), String> {
-    if let Some(anchor) = &variant.focus_anchor {
-        if !anchor.x.is_finite()
+    if let Some(anchor) = &variant.focus_anchor
+        && (!anchor.x.is_finite()
             || !anchor.y.is_finite()
             || !(0.0..=1.0).contains(&anchor.x)
-            || !(0.0..=1.0).contains(&anchor.y)
-        {
-            return Err(format!(
-                "variant {variant_name} 的 focus_anchor x/y 必须是 0 到 1 之间的有限数值"
-            ));
-        }
+            || !(0.0..=1.0).contains(&anchor.y))
+    {
+        return Err(format!(
+            "variant {variant_name} 的 focus_anchor x/y 必须是 0 到 1 之间的有限数值"
+        ));
     }
-    if let Some(expression) = &variant.default_expression {
-        if !info.expressions.contains(expression) {
-            return Err(format!(
-                "variant {variant_name} 的默认表情不存在: {expression}"
-            ));
-        }
+    if let Some(expression) = &variant.default_expression
+        && !info.expressions.contains(expression)
+    {
+        return Err(format!(
+            "variant {variant_name} 的默认表情不存在: {expression}"
+        ));
     }
     for (emotion, expression) in &variant.expressions {
         if !info.expressions.contains(expression) {
@@ -606,12 +605,12 @@ fn validate_variant_bindings(
         )?;
     }
     for (part, binding) in &variant.touch_motions {
-        if let Some(expression) = &binding.expression {
-            if !info.expressions.contains(expression) {
-                return Err(format!(
-                    "variant {variant_name} 的抚摸 {part} 引用了不存在的表情: {expression}"
-                ));
-            }
+        if let Some(expression) = &binding.expression
+            && !info.expressions.contains(expression)
+        {
+            return Err(format!(
+                "variant {variant_name} 的抚摸 {part} 引用了不存在的表情: {expression}"
+            ));
         }
         match (&binding.group, binding.index) {
             (Some(group), Some(index)) => {

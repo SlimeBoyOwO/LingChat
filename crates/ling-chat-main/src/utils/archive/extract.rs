@@ -225,10 +225,10 @@ pub fn extract_sevenz(
         processed += 1;
         Ok(true)
     });
-    if let Err(ref _e) = result {
-        if cancel_token.is_cancelled() {
-            return Err(ArchiveError::Cancelled);
-        }
+    if let Err(ref _e) = result
+        && cancel_token.is_cancelled()
+    {
+        return Err(ArchiveError::Cancelled);
     }
     result.map_err(map_sevenz_err)?;
 
