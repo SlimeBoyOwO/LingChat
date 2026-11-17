@@ -1,7 +1,7 @@
 <template>
   <div class="settings-text-container">
     <MenuPage>
-      <MenuItem :title="$t('settings.text.font.title')">
+      <MenuItem data-setting-anchor="text-font" :title="$t('settings.text.font.title')">
         <template #header>
           <Type :size="20" />
         </template>
@@ -39,7 +39,7 @@
         </div>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.speed.title')">
+      <MenuItem data-setting-anchor="text-speed" :title="$t('settings.text.speed.title')">
         <template #header>
           <Zap :size="20" />
         </template>
@@ -48,7 +48,10 @@
         }}</Slider>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.autoAdvance.title')">
+      <MenuItem
+        data-setting-anchor="text-auto-advance"
+        :title="$t('settings.text.autoAdvance.title')"
+      >
         <template #header>
           <Timer :size="20" />
         </template>
@@ -58,7 +61,7 @@
         </Slider>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.sample.title')">
+      <MenuItem data-setting-anchor="text-sample" :title="$t('settings.text.sample.title')">
         <template #header>
           <ClipboardList :size="20" />
         </template>
@@ -66,7 +69,11 @@
       </MenuItem>
 
       <!-- 台词合并阈值：同角色连续短句自动合并续打；0=关闭 -->
-      <MenuItem :title="$t('settings.text.mergeLine.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-merge-line"
+        :title="$t('settings.text.mergeLine.title')"
+        size="small"
+      >
         <template #header>
           <AlignJustify :size="20" />
         </template>
@@ -77,7 +84,11 @@
       </MenuItem>
 
       <!-- 台词合并续打延迟：上一句展示完成到接续打下一句之间的停顿 -->
-      <MenuItem :title="$t('settings.text.mergeDelay.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-merge-delay"
+        :title="$t('settings.text.mergeDelay.title')"
+        size="small"
+      >
         <template #header>
           <Timer :size="20" />
         </template>
@@ -88,7 +99,11 @@
       </MenuItem>
 
       <!-- 动作文本合并方式：append=接在后面显示（| 分隔）/ replace=清空旧动作，独立显示本次动作 -->
-      <MenuItem :title="$t('settings.text.mergeMotion.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-merge-motion"
+        :title="$t('settings.text.mergeMotion.title')"
+        size="small"
+      >
         <template #header>
           <Combine :size="20" />
         </template>
@@ -111,7 +126,11 @@
       </MenuItem>
 
       <!-- 回复台词数量档位：运行时状态（随存档保存），需要进入对话后才能调整 -->
-      <MenuItem :title="$t('settings.text.replyLength.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-reply-length"
+        :title="$t('settings.text.replyLength.title')"
+        size="small"
+      >
         <template #header>
           <MessageSquareText :size="20" />
         </template>
@@ -136,7 +155,11 @@
         </p>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.sedentary.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-sedentary"
+        :title="$t('settings.text.sedentary.title')"
+        size="small"
+      >
         <template #header>
           <GlassWater :size="20" />
         </template>
@@ -147,7 +170,12 @@
 
       <!-- Vue DevTools 显示开关：仅开发模式（vite-plugin-vue-devtools 只在 serve 注入），
            全局所有窗口（主窗 / 投屏 / 日志 / 桌宠）都生效 -->
-      <MenuItem v-if="isDevMode" :title="$t('settings.text.vueDevTools.title')" size="small">
+      <MenuItem
+        v-if="isDevMode"
+        data-setting-anchor="text-devtools"
+        :title="$t('settings.text.vueDevTools.title')"
+        size="small"
+      >
         <template #header>
           <Bug :size="20" />
         </template>
@@ -167,7 +195,11 @@
         </div>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.memory.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-memory"
+        :title="$t('settings.text.memory.title')"
+        size="small"
+      >
         <div v-for="setting in envSettings" :key="setting.key" class="">
           <!-- 使用 SettingItem 组件渲染不同类型的输入控件 -->
           <Toggle
@@ -182,7 +214,11 @@
         </template>
       </MenuItem>
 
-      <MenuItem :title="$t('settings.text.back.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-back"
+        :title="$t('settings.text.back.title')"
+        size="small"
+      >
         <template #header>
           <ArrowBigLeft :size="20" />
         </template>
@@ -196,7 +232,11 @@
       </MenuItem>
 
       <!-- ─── 语音缓存 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.ttsCache.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-tts-cache"
+        :title="$t('settings.text.ttsCache.title')"
+        size="small"
+      >
         <template #header>
           <HardDrive :size="20" />
         </template>
@@ -233,7 +273,12 @@
       </MenuItem>
 
       <!-- ─── Codex 额度（仅对话模型选择 Codex 提供商时显示） ──────────────── -->
-      <MenuItem v-if="showCodexQuota" :title="$t('settings.text.codexQuota.title')" size="small">
+      <MenuItem
+        v-if="showCodexQuota"
+        data-setting-anchor="text-codex-quota"
+        :title="$t('settings.text.codexQuota.title')"
+        size="small"
+      >
         <template #header>
           <Gauge :size="20" />
         </template>
@@ -286,7 +331,11 @@
       </MenuItem>
 
       <!-- ─── 版本更新 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.update.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-update"
+        :title="$t('settings.text.update.title')"
+        size="small"
+      >
         <template #header>
           <RefreshCw :size="20" :class="{ 'animate-spin': updateChecking }" />
         </template>
@@ -361,7 +410,11 @@
       </MenuItem>
 
       <!-- ─── 局域网同步 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.lanSync.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-lan-sync"
+        :title="$t('settings.text.lanSync.title')"
+        size="small"
+      >
         <template #header>
           <Wifi :size="20" />
         </template>
@@ -406,7 +459,11 @@
         </div>
       </MenuItem>
       <!-- ─── 相关文档 ──────────────────────────────── -->
-      <MenuItem :title="$t('settings.text.docs.title')" size="small">
+      <MenuItem
+        data-setting-anchor="text-docs"
+        :title="$t('settings.text.docs.title')"
+        size="small"
+      >
         <template #header>
           <BookOpen :size="20" />
         </template>
@@ -494,6 +551,7 @@ import { useRoleArchiveStore } from "../../../stores/modules/ui/role-archive";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { Button, Slider, Text, Toggle } from "../../base";
 import { MenuItem, MenuPage } from "../../ui";
+import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 const router = useRouter();
 const { t } = useI18n();
@@ -501,6 +559,16 @@ const { t } = useI18n();
 const isDevMode = import.meta.env.DEV;
 const isMobileDevice = isMobile();
 const uiStore = useUIStore();
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "text",
+  async (jump) => {
+    await focusSettingAnchor(jump.anchor || "text-font", {
+      crossTab: jump.crossTab,
+      fallbackAnchor: jump.fallbackAnchor || "text-font",
+    });
+  },
+);
 const roleStore = useRoleArchiveStore();
 const settingsStore = useSettingsStore();
 const gameStore = useGameStore();

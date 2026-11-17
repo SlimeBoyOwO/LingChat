@@ -326,3 +326,37 @@ textarea {
   max-width: 100%;
   border-radius: 8px;
 }
+
+/* 设置搜索跳转高亮脉冲（各设置页共用，2.2s 后自动移除类） */
+@keyframes settings-jump-pulse {
+  0% {
+    box-shadow:
+      0 0 0 2px var(--accent-color, #79d9ff),
+      0 0 28px rgba(121, 217, 255, 0.55);
+  }
+  65% {
+    box-shadow:
+      0 0 0 2px var(--accent-color, #79d9ff),
+      0 0 18px rgba(121, 217, 255, 0.3);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 transparent,
+      0 0 0 transparent;
+  }
+}
+
+.settings-jump-highlight {
+  position: relative;
+  border-radius: 0.75rem;
+  outline: 2px solid color-mix(in srgb, var(--accent-color, #79d9ff) 85%, transparent);
+  outline-offset: 2px;
+  animation: settings-jump-pulse 2.2s ease-out forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .settings-jump-highlight {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--accent-color, #79d9ff);
+  }
+}

@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem :title="$t('settings.history.title')">
+    <MenuItem data-setting-anchor="history-top" :title="$t('settings.history.title')">
       <template #header>
         <History :size="20" />
       </template>
@@ -143,6 +143,17 @@ import { getVoiceAudio } from "@/api/services/game-info";
 import { invoke } from "@tauri-apps/api/core";
 import { hkify } from "@/locales";
 import type { GameLineInit } from "@/api/services/game-info";
+import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "history",
+  async (jump) => {
+    await focusSettingAnchor(jump.anchor || "history-top", {
+      crossTab: jump.crossTab,
+      fallbackAnchor: jump.fallbackAnchor || "history-top",
+    });
+  },
+);
 
 interface Segment {
   type: "dialogue" | "action";

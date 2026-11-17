@@ -84,7 +84,12 @@
           </header>
 
           <form @submit.prevent="saveSettings">
-            <div v-for="setting in selectedSubcategory.settings" :key="setting.key" class="mb-6">
+            <div
+              v-for="setting in selectedSubcategory.settings"
+              :key="setting.key"
+              :data-setting-key="setting.key"
+              class="mb-6 rounded-xl transition-shadow"
+            >
               <SettingItem
                 :setting="localizedSetting(setting)"
                 @update:value="(value) => (setting.value = value)"
@@ -94,6 +99,7 @@
 
           <section
             v-if="activeSelection.category === 'TTS 配置'"
+            data-setting-anchor="tts-control"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
           >
             <h3 class="mb-1 text-base font-semibold text-white">
@@ -122,6 +128,7 @@
           <!-- 好感度动画开关：前端即时生效，不走后端配置树 -->
           <section
             v-if="activeSelection.category === '好感度' && activeSelection.subcategory === '通用'"
+            data-setting-anchor="affection-anim"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
           >
             <h3 class="mb-1 text-base font-semibold text-white">
@@ -187,6 +194,12 @@ import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/conf
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
 import { RefreshCw } from "@lucide/vue";
+import {
+  escapeAttrValue,
+  focusElementBySelector,
+  focusSettingAnchor,
+} from "@/components/settings/search/jumpHighlight";
+import type { SettingsJumpTarget } from "@/stores/modules/ui/ui";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
@@ -264,6 +277,11 @@ const selectSubcategory = (category: string, subcategory: string) => {
   if (uiStore.isNarrowScreen) {
     narrowViewLevel.value = "content";
   }
+  void nextTick(() => {
+    navContainerRef.value
+      ?.querySelector<HTMLElement>(".adv-nav-link.active")
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  });
 };
 
 const saveSettings = async () => {
@@ -397,12 +415,66 @@ watch(
   { deep: true },
 );
 
+const applyOtherJump = async (jump: SettingsJumpTarget) => {
+  if (Object.keys(configData.value).length === 0) return;
+
+  const targetCat = jump.category;
+  let targetSub = jump.subcategory;
+
+  if (targetCat && (!targetSub || !configData.value[targetCat]?.subcategories?.[targetSub])) {
+    const subs = Object.keys(configData.value[targetCat]?.subcategories ?? {});
+    targetSub = subs[0];
+  }
+
+  if (targetCat && targetSub && configData.value[targetCat]?.subcategories?.[targetSub]) {
+    selectSubcategory(targetCat, targetSub);
+  }
+
+  await nextTick();
+  updateIndicatorPosition();
+
+  const delayMs = jump.crossTab ? 340 : 40;
+  if (jump.settingKey) {
+    await focusElementBySelector(`[data-setting-key="${escapeAttrValue(jump.settingKey)}"]`, {
+      delayMs,
+    });
+  } else if (jump.anchor) {
+    await focusSettingAnchor(jump.anchor, {
+      crossTab: jump.crossTab,
+      fallbackAnchor: jump.fallbackAnchor,
+    });
+  }
+};
+
+const consumePendingOtherJump = async () => {
+  const jump = uiStore.pendingSettingsJump;
+  if (!jump || jump.settingsTab !== "advance" || jump.advanceTab !== "other") return;
+  if (Object.keys(configData.value).length === 0) return;
+  const snapshot: SettingsJumpTarget = { ...jump };
+  uiStore.clearPendingSettingsJump();
+  await applyOtherJump(snapshot);
+};
+
+watch(
+  () => uiStore.pendingSettingsJump?.nonce,
+  () => {
+    void consumePendingOtherJump();
+  },
+  { flush: "post" },
+);
+
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  await loadConfig();
+  const hasJump =
+    uiStore.pendingSettingsJump?.settingsTab === "advance" &&
+    uiStore.pendingSettingsJump?.advanceTab === "other";
+  await loadConfig(!hasJump);
   await nextTick();
   updateIndicatorPosition();
   setupNavResizeObserver();
+  if (hasJump) {
+    await consumePendingOtherJump();
+  }
 });
 
 onUnmounted(() => {

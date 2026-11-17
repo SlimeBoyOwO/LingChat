@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem :title="$t('settings.achievement.title')">
+    <MenuItem data-setting-anchor="achievement-top" :title="$t('settings.achievement.title')">
       <template #header>
         <Award :size="20" />
       </template>
@@ -100,8 +100,19 @@ import { useAchievementStore } from "@/stores/modules/ui/achievement";
 import { achievementTitle, achievementDescription } from "@/utils/achievement-i18n";
 import Icon from "@/components/base/widget/Icon.vue";
 import { Award } from "@lucide/vue";
+import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 const achievementStore = useAchievementStore();
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "achievement",
+  async (jump) => {
+    await focusSettingAnchor(jump.anchor || "achievement-top", {
+      crossTab: jump.crossTab,
+      fallbackAnchor: jump.fallbackAnchor || "achievement-top",
+    });
+  },
+);
 
 const achievementsList = computed(() => {
   return Object.values(achievementStore.allAchievements || {}).sort((a, b) => {

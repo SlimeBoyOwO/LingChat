@@ -7,7 +7,11 @@
 
     <div class="mx-auto" :class="[columnClass, isMobileView ? 'space-y-3.5' : 'space-y-5']">
       <!-- 语音输入 -->
-      <AsrSectionCard :title="t('settings.asr.voiceInput')" :icon="Mic">
+      <AsrSectionCard
+        data-setting-anchor="asr-voice-input"
+        :title="t('settings.asr.voiceInput')"
+        :icon="Mic"
+      >
         <template #actions>
           <span
             v-if="!isMobileView && saveState !== 'idle'"
@@ -69,38 +73,47 @@
       </AsrSectionCard>
 
       <!-- 输入方式 -->
-      <AsrSectionCard :title="t('settings.asr.sections.inputMethod')" :icon="Keyboard">
+      <AsrSectionCard
+        data-setting-anchor="asr-input-method"
+        :title="t('settings.asr.sections.inputMethod')"
+        :icon="Keyboard"
+      >
         <div class="space-y-4">
           <!-- 语音快捷键；移动端无全局快捷键，前端 keydown 也易被蓝牙键盘误触，整块隐藏 -->
           <div v-if="!isMobileView">
-            <div class="mb-1.5 flex items-center justify-between">
-              <label class="text-sm font-medium">{{ t("settings.asr.pttKey") }}</label>
+            <div data-setting-anchor="asr-ptt-key" class="rounded-lg">
+              <div class="mb-1.5 flex items-center justify-between">
+                <label class="text-sm font-medium">{{ t("settings.asr.pttKey") }}</label>
+                <button
+                  type="button"
+                  class="hover:text-brand text-xs text-gray-300 transition-colors"
+                  @click="resetPttKey"
+                >
+                  {{ t("settings.asr.pttKeyReset") }}
+                </button>
+              </div>
               <button
                 type="button"
-                class="hover:text-brand text-xs text-gray-300 transition-colors"
-                @click="resetPttKey"
+                :class="[
+                  'w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200',
+                  capturingPtt
+                    ? 'border-brand/60 text-brand bg-brand/10'
+                    : 'hover:border-brand/40 border-white/10 bg-white/10 text-white',
+                ]"
+                @click="startPttCapture"
               >
-                {{ t("settings.asr.pttKeyReset") }}
+                {{ capturingPtt ? t("settings.asr.pttKeyCapture") : formatBinding(pttBinding) }}
               </button>
+              <p class="mt-1.5 block text-sm text-gray-300">{{ t("settings.asr.pttKeyHint") }}</p>
+              <p v-if="pttCaptureInvalid" class="mt-1 block text-sm text-red-400">
+                {{ t("settings.asr.pttKeyInvalid") }}
+              </p>
             </div>
-            <button
-              type="button"
-              :class="[
-                'w-full rounded-lg border px-3 py-2.5 text-left text-sm transition-all duration-200',
-                capturingPtt
-                  ? 'border-brand/60 text-brand bg-brand/10'
-                  : 'hover:border-brand/40 border-white/10 bg-white/10 text-white',
-              ]"
-              @click="startPttCapture"
-            >
-              {{ capturingPtt ? t("settings.asr.pttKeyCapture") : formatBinding(pttBinding) }}
-            </button>
-            <p class="mt-1.5 block text-sm text-gray-300">{{ t("settings.asr.pttKeyHint") }}</p>
-            <p v-if="pttCaptureInvalid" class="mt-1 block text-sm text-red-400">
-              {{ t("settings.asr.pttKeyInvalid") }}
-            </p>
             <!-- 失去焦点快捷键可用（全局注册）：任意应用前台按快捷键均可触发语音输入 -->
-            <div class="mt-4 border-t border-white/10 pt-4">
+            <div
+              data-setting-anchor="asr-ptt-global"
+              class="mt-4 rounded-lg border-t border-white/10 pt-4"
+            >
               <Toggle
                 :checked="localSettings.ptt_global"
                 @change="(v: boolean) => (localSettings.ptt_global = v)"
@@ -120,20 +133,22 @@
           <div v-if="!isMobileView" class="border-t border-white/10"></div>
 
           <!-- 自动语音识别开关 -->
-          <Toggle
-            :checked="localSettings.auto_listen"
-            @change="(v: boolean) => (localSettings.auto_listen = v)"
-          >
-            <span class="font-medium">{{ t("settings.asr.autoListen") }}</span>
-            <span class="mt-0.5 block text-sm text-gray-300">{{
-              t("settings.asr.autoListenHint")
-            }}</span>
-          </Toggle>
+          <div data-setting-anchor="asr-auto-listen" class="rounded-lg">
+            <Toggle
+              :checked="localSettings.auto_listen"
+              @change="(v: boolean) => (localSettings.auto_listen = v)"
+            >
+              <span class="font-medium">{{ t("settings.asr.autoListen") }}</span>
+              <span class="mt-0.5 block text-sm text-gray-300">{{
+                t("settings.asr.autoListenHint")
+              }}</span>
+            </Toggle>
+          </div>
 
           <div class="border-t border-white/10"></div>
 
           <!-- 识别完成后处理方式：整卡可点，原生 radio 隐藏 -->
-          <div>
+          <div data-setting-anchor="asr-send-mode" class="rounded-lg">
             <div class="mb-2 text-sm font-medium text-white">
               {{ t("settings.asr.sendMode.title") }}
             </div>
@@ -176,7 +191,11 @@
       </AsrSectionCard>
 
       <!-- 识别服务 -->
-      <AsrSectionCard :title="t('settings.asr.provider.title')" :icon="Server">
+      <AsrSectionCard
+        data-setting-anchor="asr-provider"
+        :title="t('settings.asr.provider.title')"
+        :icon="Server"
+      >
         <div>
           <!-- 两级选择：先选服务，再在表单里选该服务的模型。
             本地 llama.cpp 的模型清单要从服务端 /v1/models 拉，服务没起就拉不到，
@@ -357,7 +376,11 @@
       </AsrSectionCard>
 
       <!-- 热词 -->
-      <AsrSectionCard :title="t('settings.asr.hotwords.sectionTitle')" :icon="Tags">
+      <AsrSectionCard
+        data-setting-anchor="asr-hotwords"
+        :title="t('settings.asr.hotwords.sectionTitle')"
+        :icon="Tags"
+      >
         <p class="text-sm text-gray-300">{{ t("settings.asr.hotwords.description") }}</p>
 
         <!-- 两行同构的内嵌卡片：图标 + 标题说明 + 右侧「管理」 -->
@@ -413,7 +436,11 @@
       </AsrSectionCard>
 
       <!-- 高级与诊断 -->
-      <AsrSectionCard :title="t('settings.asr.advanced.title')" :icon="SlidersHorizontal">
+      <AsrSectionCard
+        data-setting-anchor="asr-advanced"
+        :title="t('settings.asr.advanced.title')"
+        :icon="SlidersHorizontal"
+      >
         <p class="text-sm text-gray-300">{{ t("settings.asr.advanced.description") }}</p>
 
         <!-- 两个数字输入：桌面两列，移动端单列整行 -->
@@ -505,6 +532,10 @@ import GlobalHotwordDialog from "@/components/settings/asr/GlobalHotwordDialog.v
 import HotwordLibraryDialog from "@/components/settings/asr/HotwordLibraryDialog.vue";
 import { useAsrStore } from "@/stores/modules/settings/asr";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  focusSettingAnchor,
+  useSettingsJumpConsumer,
+} from "@/components/settings/search/jumpHighlight";
 import { asrRecognizeWav, asrGetStatus } from "@/api/services/asr";
 import { pcmToWavPcm16, trimSilencePcm } from "@/utils/asrAudio";
 import { parseAsrError } from "@/utils/asrError";
@@ -522,6 +553,18 @@ import type {
 const { t, te } = useI18n();
 const asrStore = useAsrStore();
 const uiStore = useUIStore();
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "asr",
+  async (jump) => {
+    if (jump.anchor) {
+      await focusSettingAnchor(jump.anchor, {
+        crossTab: jump.crossTab,
+        fallbackAnchor: jump.fallbackAnchor || "asr-voice-input",
+      });
+    }
+  },
+);
 
 // 深拷贝表单副本（不能用 structuredClone —— Pinia reactive Proxy 会抛
 // DataCloneError，导致 setup 崩溃整页空白；JSON 序列化无此问题）

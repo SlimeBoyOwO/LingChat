@@ -9,7 +9,7 @@
 
       <div class="flex min-h-0 flex-col gap-6">
         <div class="flex flex-wrap items-center gap-x-6 gap-y-3 border-b border-white/10 pb-5">
-          <label class="flex items-center gap-3">
+          <label data-setting-anchor="tts-switch" class="flex items-center gap-3 rounded-lg">
             <input
               v-model="localTtsEnabled"
               type="checkbox"
@@ -63,7 +63,7 @@
             </div>
           </div>
           <div class="h-8 w-px bg-white/10"></div>
-          <div class="flex items-center gap-2">
+          <div data-setting-anchor="tts-deberta" class="flex items-center gap-2 rounded-lg">
             <div>
               <p class="text-xs text-white/45">{{ t("settings.tts.deberta.label") }}</p>
               <p
@@ -88,7 +88,11 @@
           </div>
           <div class="h-8 w-px bg-white/10"></div>
           <!-- 推理设备选择：DirectML（Windows）/ WebGPU（Linux）支持 GPU；Android/macOS 只有 CPU，隐藏 -->
-          <div v-if="isWindows || isLinux" class="flex items-center gap-2">
+          <div
+            v-if="isWindows || isLinux"
+            data-setting-anchor="tts-device"
+            class="flex items-center gap-2 rounded-lg"
+          >
             <label class="flex flex-col">
               <span class="text-xs text-white/45">{{ t("settings.tts.device.label") }}</span>
               <select
@@ -155,7 +159,7 @@
           {{ notice.text }}
         </p>
 
-        <section>
+        <section data-setting-anchor="tts-download" class="rounded-lg">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">
@@ -210,7 +214,7 @@
           </ul>
         </section>
 
-        <section>
+        <section data-setting-anchor="tts-import" class="rounded-lg">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">{{ t("settings.tts.import.title") }}</h3>
@@ -238,7 +242,11 @@
           </div>
         </section>
 
-        <section v-if="voicesMissingStyleVectors.length > 0">
+        <section
+          v-if="voicesMissingStyleVectors.length > 0"
+          data-setting-anchor="tts-style-vectors"
+          class="rounded-lg"
+        >
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">
@@ -277,7 +285,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-setting-anchor="tts-installed" class="rounded-lg">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">
@@ -343,7 +351,7 @@
           </div>
         </section>
 
-        <section>
+        <section data-setting-anchor="tts-preview" class="rounded-lg">
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">
@@ -429,7 +437,10 @@
         </section>
 
         <!-- 云端语音克隆 TTS（CosyVoice） -->
-        <section class="border-t border-white/10 pt-6">
+        <section
+          data-setting-anchor="tts-cosyvoice"
+          class="rounded-lg border-t border-white/10 pt-6"
+        >
           <div class="mb-3 flex items-center justify-between gap-3">
             <div>
               <h3 class="text-sm font-semibold text-white">
@@ -702,6 +713,10 @@ import {
 import { MenuItem } from "@/components/ui";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import {
+  focusSettingAnchor,
+  useSettingsJumpConsumer,
+} from "@/components/settings/search/jumpHighlight";
 import * as TtsLocal from "@/api/services/tts/tts-local";
 import * as TtsCosyvoice from "@/api/services/tts/tts-cosyvoice";
 import { speedToLengthScale } from "@/utils/tts/tts-speed";
@@ -716,6 +731,18 @@ import type {
 const dialogStore = useDialogStore();
 const uiStore = useUIStore();
 const { t } = useI18n();
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "tts",
+  async (jump) => {
+    if (jump.anchor) {
+      await focusSettingAnchor(jump.anchor, {
+        crossTab: jump.crossTab,
+        fallbackAnchor: jump.fallbackAnchor || "tts-switch",
+      });
+    }
+  },
+);
 const catalog = ref<readonly CatalogAsset[]>([]);
 const status = ref<TtsLocalStatus | null>(null);
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] });

@@ -76,6 +76,7 @@
           <ToolPackCard
             v-for="pack in filteredPackages"
             :key="pack.group"
+            :data-tool-group="pack.group"
             :group="pack.group"
             :title="groupTitle(pack.group)"
             :help="groupHelp(pack.group)"
@@ -134,7 +135,12 @@
             @save="saveActive"
             @reset="resetActive"
           >
-            <component :is="activePanel" v-if="activePanel" v-model="activeDraft" />
+            <component
+              :is="activePanel"
+              v-if="activePanel"
+              v-model="activeDraft"
+              data-setting-anchor="tools-subpage-panel"
+            />
           </ToolPackSubpage>
         </div>
       </Transition>
@@ -153,6 +159,12 @@ import {
 import { useToolSettingsStore } from "@/stores/modules/settings/tools";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { isAndroid } from "@/utils/platform";
+import {
+  escapeAttrValue,
+  focusElementBySelector,
+  focusSettingAnchor,
+  useSettingsJumpConsumer,
+} from "@/components/settings/search/jumpHighlight";
 import ToolPackCard from "@/components/settings/tools/ToolPackCard.vue";
 import ToolPackSubpage from "@/components/settings/tools/ToolPackSubpage.vue";
 import WebSearchPanel from "@/components/settings/tools/panels/WebSearchPanel.vue";
@@ -307,6 +319,52 @@ async function resetActive() {
 onMounted(() => {
   void store.load();
 });
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "tools",
+  async (jump) => {
+    if (store.orderedPackages.length === 0) {
+      await store.load();
+    }
+
+    searchQuery.value = "";
+
+    if (jump.openToolSubpage && jump.toolGroup) {
+      openSubpage(jump.toolGroup);
+      const anchor = jump.anchor || "tools-subpage-panel";
+      await focusSettingAnchor(anchor, {
+        crossTab: jump.crossTab,
+        fallbackAnchor: jump.fallbackAnchor || "tools-subpage-panel",
+      });
+      return;
+    }
+
+    if (activeSubpage.value) {
+      closeSubpage();
+    }
+
+    if (jump.toolGroup && !expandedGroups.value.includes(jump.toolGroup)) {
+      expandedGroups.value.push(jump.toolGroup);
+    }
+
+    if (jump.anchor) {
+      const delayMs = jump.crossTab ? 360 : 230;
+      await focusElementBySelector(`[data-setting-anchor="${escapeAttrValue(jump.anchor)}"]`, {
+        delayMs,
+        fallbackSelector: jump.toolGroup
+          ? `[data-tool-group="${escapeAttrValue(jump.toolGroup)}"]`
+          : undefined,
+      });
+      return;
+    }
+
+    if (jump.toolGroup) {
+      await focusElementBySelector(`[data-tool-group="${escapeAttrValue(jump.toolGroup)}"]`, {
+        delayMs: jump.crossTab ? 360 : 120,
+      });
+    }
+  },
+);
 </script>
 
 <style scoped>

@@ -3,7 +3,7 @@
     class="flex h-full min-h-0 w-full flex-wrap items-start gap-5 overflow-y-auto px-3 py-6 text-white text-shadow-2xs"
   >
     <!-- 总开关（决定应用启动时是否自动开启投屏） -->
-    <MenuItem :title="$t('settings.cast.enable')" size="small">
+    <MenuItem data-setting-anchor="cast-enable" :title="$t('settings.cast.enable')" size="small">
       <template #header>
         <Cast :size="20" class="text-cyan-400" />
       </template>
@@ -13,7 +13,7 @@
     </MenuItem>
 
     <!-- 串流端口 -->
-    <MenuItem :title="$t('settings.cast.port')" size="small">
+    <MenuItem data-setting-anchor="cast-port" :title="$t('settings.cast.port')" size="small">
       <template #header>
         <PlugZap :size="20" class="text-orange-400" />
       </template>
@@ -34,7 +34,11 @@
     </MenuItem>
 
     <!-- 性能参数：帧率 + 画质 -->
-    <MenuItem :title="$t('settings.cast.performance')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-performance"
+      :title="$t('settings.cast.performance')"
+      size="small"
+    >
       <template #header>
         <Gauge :size="20" class="text-pink-400" />
       </template>
@@ -56,7 +60,11 @@
     </MenuItem>
 
     <!-- 输出分辨率（0 = 跟随投屏窗口当前尺寸） -->
-    <MenuItem :title="$t('settings.cast.resolution')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-resolution"
+      :title="$t('settings.cast.resolution')"
+      size="small"
+    >
       <template #header>
         <PictureInPicture2 :size="20" class="text-purple-400" />
       </template>
@@ -89,7 +97,7 @@
     </MenuItem>
 
     <!-- vivid 色彩增强：串流时饱和度/对比度预设（复刻 cast_sender.py 的 --vivid） -->
-    <MenuItem :title="$t('settings.cast.vivid')" size="small">
+    <MenuItem data-setting-anchor="cast-vivid" :title="$t('settings.cast.vivid')" size="small">
       <template #header>
         <Palette :size="20" class="text-amber-400" />
       </template>
@@ -99,7 +107,11 @@
     </MenuItem>
 
     <!-- 隐藏对话框：投屏只展示背景 + 角色舞台 -->
-    <MenuItem :title="$t('settings.cast.dialogHide.title')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-dialog-hide"
+      :title="$t('settings.cast.dialogHide.title')"
+      size="small"
+    >
       <template #header>
         <MessageSquareOff :size="20" class="text-rose-400" />
       </template>
@@ -109,7 +121,11 @@
     </MenuItem>
 
     <!-- 角色调整：缩放 + 水平/垂直偏移（作用于投屏窗口角色舞台层） -->
-    <MenuItem :title="$t('settings.cast.characterAdjust')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-character-adjust"
+      :title="$t('settings.cast.characterAdjust')"
+      size="small"
+    >
       <template #header>
         <Scan :size="20" class="text-orange-400" />
       </template>
@@ -143,7 +159,11 @@
     </MenuItem>
 
     <!-- 对话框调整：左右的留白（宽度） + 整体元素高度 -->
-    <MenuItem :title="$t('settings.cast.dialogAdjust')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-dialog-adjust"
+      :title="$t('settings.cast.dialogAdjust')"
+      size="small"
+    >
       <template #header>
         <AlignLeft :size="20" class="text-sky-400" />
       </template>
@@ -195,7 +215,7 @@
     </MenuItem>
 
     <!-- 控制：开关窗口 / 启停串流 -->
-    <MenuItem :title="$t('settings.cast.control')" size="small">
+    <MenuItem data-setting-anchor="cast-control" :title="$t('settings.cast.control')" size="small">
       <template #header>
         <MonitorPlay :size="20" class="text-green-400" />
       </template>
@@ -218,7 +238,11 @@
     </MenuItem>
 
     <!-- 连接信息卡 -->
-    <MenuItem :title="$t('settings.cast.connection')" size="small">
+    <MenuItem
+      data-setting-anchor="cast-connection"
+      :title="$t('settings.cast.connection')"
+      size="small"
+    >
       <template #header>
         <Wifi :size="20" class="text-blue-400" />
       </template>
@@ -260,6 +284,10 @@ import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button, Slider, Toggle } from "../../base";
 import { MenuItem } from "../../ui";
+import {
+  focusSettingAnchor,
+  useSettingsJumpConsumer,
+} from "@/components/settings/search/jumpHighlight";
 
 interface CastStatus {
   enabled: boolean;
@@ -285,6 +313,18 @@ interface CastStatus {
 }
 
 const { t } = useI18n();
+
+useSettingsJumpConsumer(
+  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "cast",
+  async (jump) => {
+    if (jump.anchor) {
+      await focusSettingAnchor(jump.anchor, {
+        crossTab: jump.crossTab,
+        fallbackAnchor: jump.fallbackAnchor || "cast-enable",
+      });
+    }
+  },
+);
 
 const status = ref<CastStatus | null>(null);
 const enabled = computed(() => status.value?.enabled ?? false);
