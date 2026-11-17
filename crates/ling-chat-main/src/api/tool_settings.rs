@@ -178,6 +178,10 @@ pub async fn save_tool_settings(
     let data_dir = super::data_dir();
     let previous_identity = state.tool_settings.get().embedding.vector_identity();
     settings.normalize();
+    settings
+        .image_generation
+        .validate()
+        .map_err(|e| e.to_string())?;
     settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
