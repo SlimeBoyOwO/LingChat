@@ -1,12 +1,18 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static EXEC_DIR: OnceLock<PathBuf> = OnceLock::new();
 
 /// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
 pub fn init_data_dir(app: &tauri::AppHandle) {
-    let dir = resolve_data_dir(app);
-    DATA_DIR.set(dir).expect("data_dir already initialized");
+    // 便携版判断依赖执行目录，须先初始化
+    EXEC_DIR
+        .set(resolve_exec_dir())
+        .expect("exec_dir already initialized");
+    DATA_DIR
+        .set(resolve_data_dir(app))
+        .expect("data_dir already initialized");
 }
 
 /// 获取已缓存的 data 目录（必须先调用 `init_data_dir`）。
@@ -16,13 +22,29 @@ pub fn get_data_dir() -> &'static PathBuf {
         .expect("data_dir not initialized — call init_data_dir first")
 }
 
+/// 获取执行文件所在目录（必须先调用 `init_data_dir`）。
+pub fn get_exec_dir() -> &'static Path {
+    EXEC_DIR
+        .get()
+        .expect("exec_dir not initialized — call init_data_dir first")
+}
+
+fn resolve_exec_dir() -> PathBuf {
+    std::env::current_exe()
+        .expect("failed to resolve current_exe")
+        .parent()
+        .expect("current_exe has no parent")
+        .to_path_buf()
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：
 /// 1. Android：应用专属外部存储 (/storage/emulated/0/Android/data/<package>/files)
 /// 2. iOS：沙盒 Documents 目录（配合 Info.ios.plist 的文件共享键，「文件」App 可见）
 /// 3. 桌面端开发模式（debug）：项目根目录下的 `data/`
-/// 4. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
+/// 4. 桌面端便携发布：exe 所在目录下的 `data/`（存在时）
+/// 5. 桌面端安装发布：各平台应用数据目录
 fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     resolve_data_dir_impl(app)
 }
@@ -39,30 +61,37 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 #[cfg(target_os = "ios")]
 fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
+    // 不要改回 app_data_dir()，那部分对「文件」App 不可见
     app.path()
         .document_dir()
         .expect("failed to resolve document_dir on iOS")
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         // 本 crate 位于 <repo>/crates/ling-chat-main，故需上跳两级回仓库根。
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .parent()
             .unwrap()
-            .join("data")
-    } else {
-        // 桌面端便携发布：data 目录放在 exe 旁边
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+            .join("data");
     }
+
+    // 便携版：exe 旁有 data/ 时直接使用。AppImage 挂载点为只读，排除。
+    let is_appimage = std::env::var_os("APPIMAGE").is_some();
+    let portable = resolve_exec_dir().join("data");
+    if !is_appimage && portable.is_dir() {
+        return portable;
+    }
+
+    // 安装版：Windows %APPDATA%、macOS Application Support、Linux 遵循 XDG
+    use tauri::Manager;
+    app.path()
+        .app_data_dir()
+        .expect("failed to resolve app_data_dir")
 }
 
 /// 首次启动时将内嵌资源播种到 data 目录。
