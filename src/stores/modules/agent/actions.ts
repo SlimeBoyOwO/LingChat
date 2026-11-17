@@ -35,8 +35,19 @@ let finished = false;
  * 避免每个 token 都 version++ 触发整表重绘把主线程打满。
  */
 let deltaFlushScheduled = false;
+let deltaRafId: number | null = null;
 let pendingContentDelta = "";
 let pendingReasoningDelta = "";
+
+function resetPendingDeltas() {
+  if (deltaRafId !== null) {
+    cancelAnimationFrame(deltaRafId);
+    deltaRafId = null;
+  }
+  deltaFlushScheduled = false;
+  pendingContentDelta = "";
+  pendingReasoningDelta = "";
+}
 
 const safeParse = (s: string): Record<string, unknown> => {
   try {
@@ -89,6 +100,8 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   }
 
   async function switchConversation(id: number) {
+    // 切会话先清掉挂起的帧合批回调，避免上一会话的残留 delta 撞到新列表或滞留标志位。
+    resetPendingDeltas();
     // 切会话不打断正在跑的任务：事件按所属会话路由（见 handleEvent）。
     state.currentId.value = id;
     const msgs = await api.getAgentMessages(id);
@@ -193,9 +206,7 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
     state.status.value = "思考中…";
     state.version.value++;
     finished = false;
-    pendingContentDelta = "";
-    pendingReasoningDelta = "";
-    deltaFlushScheduled = false;
+    resetPendingDeltas();
 
     // 记下本轮所属会话
     const ownerId = state.currentId.value;
@@ -215,6 +226,10 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
 
   /** 把攒下的 delta 一次性写进当前 assistant 气泡。 */
   function flushPendingDeltas() {
+    if (deltaRafId !== null) {
+      cancelAnimationFrame(deltaRafId);
+      deltaRafId = null;
+    }
     deltaFlushScheduled = false;
     const content = pendingContentDelta;
     const reasoning = pendingReasoningDelta;
@@ -247,7 +262,10 @@ export function useAgentActions(state: ReturnType<typeof useAgentState>) {
   function scheduleDeltaFlush() {
     if (deltaFlushScheduled) return;
     deltaFlushScheduled = true;
-    requestAnimationFrame(flushPendingDeltas);
+    deltaRafId = requestAnimationFrame(() => {
+      deltaRafId = null;
+      flushPendingDeltas();
+    });
   }
 
   function handleEvent(event: SkillAgentEvent, ownerId: number | null) {
