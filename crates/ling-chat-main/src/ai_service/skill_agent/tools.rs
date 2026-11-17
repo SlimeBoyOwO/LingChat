@@ -180,22 +180,37 @@ pub async fn execute_tool(
     };
 
     match name {
-        "list_skills" => tool_list_skills(ctx),
-        "read_skill" => tool_read_skill(ctx, args),
-        "validate_script" => tool_validate_script(ctx, args),
-        "list_files" => tool_list_files(&ft, args),
-        "read_file" => tool_read_file(&ft, args),
+        "list_skills" => tool_list_skills(ctx).await,
+        "read_skill" => tool_read_skill(ctx, args).await,
+        "validate_script" => tool_validate_script(ctx, args).await,
+        "list_files" => tool_list_files(&ft, args).await,
+        "read_file" => tool_read_file(&ft, args).await,
         "write_file" => tool_write_file(ctx, item, &ft, args).await,
         "edit_file" => tool_edit_file(ctx, item, &ft, args).await,
-        "delete_file" => tool_delete_file(ctx, item, &ft, args),
+        "delete_file" => tool_delete_file(ctx, item, &ft, args).await,
         #[cfg(desktop)]
         "execute_command" => tool_execute_command(ctx, args).await,
         other => (false, format!("未知工具: {}", other)),
     }
 }
 
-fn tool_list_skills(ctx: &SkillAgentRunContext) -> (bool, String) {
-    let skills = skills::find_all_skills(&ctx.skills_dir);
+/// 将同步磁盘/目录扫描类工具放到阻塞线程池执行，避免卡住 Tokio 异步工作线程。
+async fn run_blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> T + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("后台任务执行失败: {e}"))
+}
+
+async fn tool_list_skills(ctx: &SkillAgentRunContext) -> (bool, String) {
+    let skills_dir = ctx.skills_dir.clone();
+    let skills = match run_blocking(move || skills::find_all_skills(&skills_dir)).await {
+        Ok(skills) => skills,
+        Err(e) => return (false, e),
+    };
     if skills.is_empty() {
         (true, "没有已安装的技能。".into())
     } else {
@@ -208,13 +223,18 @@ fn tool_list_skills(ctx: &SkillAgentRunContext) -> (bool, String) {
     }
 }
 
-fn tool_read_skill(ctx: &SkillAgentRunContext, args: &serde_json::Value) -> (bool, String) {
-    let name_arg = args.get("name").and_then(|v| v.as_str()).unwrap_or("");
+async fn tool_read_skill(ctx: &SkillAgentRunContext, args: &serde_json::Value) -> (bool, String) {
+    let name_arg = args
+        .get("name")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if name_arg.is_empty() {
         return (false, "缺少 name 参数".into());
     }
-    match skills::find_skill(&ctx.skills_dir, name_arg) {
-        Some(res) => {
+    let skills_dir = ctx.skills_dir.clone();
+    match run_blocking(move || skills::find_skill(&skills_dir, &name_arg)).await {
+        Ok(Some(res)) => {
             let msg = format!(
                 "Reading: {}\nBase directory: {}\n\n{}\n\nSkill loaded: {}",
                 res.name,
@@ -224,11 +244,21 @@ fn tool_read_skill(ctx: &SkillAgentRunContext, args: &serde_json::Value) -> (boo
             );
             (true, msg)
         },
-        None => (false, format!("未找到技能: {}", name_arg)),
+        Ok(None) => (
+            false,
+            format!(
+                "未找到技能: {}",
+                args.get("name").and_then(|v| v.as_str()).unwrap_or("")
+            ),
+        ),
+        Err(e) => (false, e),
     }
 }
 
-fn tool_validate_script(ctx: &SkillAgentRunContext, args: &serde_json::Value) -> (bool, String) {
+async fn tool_validate_script(
+    ctx: &SkillAgentRunContext,
+    args: &serde_json::Value,
+) -> (bool, String) {
     let arg_key = args // 确定剧本 key：显式参数优先，否则回落会话绑定的剧本。
         .get("script_key")
         .and_then(|v| v.as_str())
@@ -250,48 +280,68 @@ fn tool_validate_script(ctx: &SkillAgentRunContext, args: &serde_json::Value) ->
         arg_key
     };
 
-    let dir = match crate::utils::script_paths::resolve_script_dir(&key) {
-        Ok(d) => d,
-        Err(e) => return (false, format!("无法定位剧本「{}」：{}", key, e)),
-    };
+    let data_dir = ctx.data_dir.clone();
+    match run_blocking(move || {
+        let dir = match crate::utils::script_paths::resolve_script_dir(&key) {
+            Ok(d) => d,
+            Err(e) => return (false, format!("无法定位剧本「{}」：{}", key, e)),
+        };
 
-    let mut names: HashMap<String, Vec<String>> = HashMap::new();
-    for other in crate::utils::script_paths::enumerate_script_keys() {
-        if let Ok(d) = crate::utils::script_paths::resolve_script_dir(&other) {
-            if let Ok(cfg) = crate::utils::yaml_file::read_story_config(&d) {
-                if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
-                    let n = n.trim();
-                    if !n.is_empty() {
-                        names.entry(n.to_string()).or_default().push(other.clone());
+        let mut names: HashMap<String, Vec<String>> = HashMap::new();
+        for other in crate::utils::script_paths::enumerate_script_keys() {
+            if let Ok(d) = crate::utils::script_paths::resolve_script_dir(&other) {
+                if let Ok(cfg) = crate::utils::yaml_file::read_story_config(&d) {
+                    if let Some(n) = cfg.get("script_name").and_then(|v| v.as_str()) {
+                        let n = n.trim();
+                        if !n.is_empty() {
+                            names.entry(n.to_string()).or_default().push(other.clone());
+                        }
                     }
                 }
             }
         }
-    }
 
-    let report = validate::validate(crate::data_dir::get_data_dir(), &dir, &key, &names);
-    (true, format_validation_report(&key, &report))
-}
-
-fn tool_list_files(ft: &FileTools, args: &serde_json::Value) -> (bool, String) {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-    if path.trim().is_empty() {
-        return (false, "缺少 path 参数".into());
-    }
-    match ft.list_files(path) {
-        Ok(out) => (true, out),
-        Err(e) => (false, e.to_string()),
+        let report = validate::validate(&data_dir, &dir, &key, &names);
+        (true, format_validation_report(&key, &report))
+    })
+    .await
+    {
+        Ok(res) => res,
+        Err(e) => (false, e),
     }
 }
 
-fn tool_read_file(ft: &FileTools, args: &serde_json::Value) -> (bool, String) {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+async fn tool_list_files(ft: &FileTools, args: &serde_json::Value) -> (bool, String) {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if path.trim().is_empty() {
         return (false, "缺少 path 参数".into());
     }
-    match ft.read_file(path) {
-        Ok(out) => (true, out),
-        Err(e) => (false, e.to_string()),
+    let ft = ft.clone();
+    match run_blocking(move || ft.list_files(&path)).await {
+        Ok(Ok(out)) => (true, out),
+        Ok(Err(e)) => (false, e.to_string()),
+        Err(e) => (false, e),
+    }
+}
+
+async fn tool_read_file(ft: &FileTools, args: &serde_json::Value) -> (bool, String) {
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    if path.trim().is_empty() {
+        return (false, "缺少 path 参数".into());
+    }
+    let ft = ft.clone();
+    match run_blocking(move || ft.read_file(&path)).await {
+        Ok(Ok(out)) => (true, out),
+        Ok(Err(e)) => (false, e.to_string()),
+        Err(e) => (false, e),
     }
 }
 
@@ -301,8 +351,16 @@ async fn tool_write_file(
     ft: &FileTools,
     args: &serde_json::Value,
 ) -> (bool, String) {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
-    let content = args.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let content = args
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let append = args
         .get("append")
         .and_then(|v| v.as_bool())
@@ -310,24 +368,27 @@ async fn tool_write_file(
     if path.trim().is_empty() {
         return (false, "缺少 path 参数".into());
     }
-    if let Some(refusal) = unbound_foreign_package(ctx, path) {
+    if let Some(refusal) = unbound_foreign_package(ctx, &path) {
         return (false, refusal);
     }
-    if !item.allow_runnable && is_runnable_script_path(path) {
+    if !item.allow_runnable && is_runnable_script_path(&path) {
         return (
             false,
             format!(include_str!("prompts/tools_execute_tool.md"), path = path),
         );
     }
-    if let Some(refusal) = draft_scope_refusal(item.kind, "write_file", path, false) {
+    if let Some(refusal) = draft_scope_refusal(item.kind, "write_file", &path, false) {
         return (false, refusal);
     }
-    match ft.write_file(path, content, append) {
-        Ok(out) => {
-            bind_script_key_if_new(ctx, path).await;
-            (true, with_chapter_check(ctx, path, out, append).await)
+    let ft = ft.clone();
+    let write_path = path.clone();
+    match run_blocking(move || ft.write_file(&write_path, &content, append)).await {
+        Ok(Ok(out)) => {
+            bind_script_key_if_new(ctx, &path).await;
+            (true, with_chapter_check(ctx, &path, out, append).await)
         },
-        Err(e) => (false, e.to_string()),
+        Ok(Err(e)) => (false, e.to_string()),
+        Err(e) => (false, e),
     }
 }
 
@@ -337,15 +398,21 @@ async fn tool_edit_file(
     ft: &FileTools,
     args: &serde_json::Value,
 ) -> (bool, String) {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let old = args
         .get("old_string")
         .and_then(|v| v.as_str())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
     let new = args
         .get("new_string")
         .and_then(|v| v.as_str())
-        .unwrap_or("");
+        .unwrap_or("")
+        .to_string();
     let replace_all = args
         .get("replace_all")
         .and_then(|v| v.as_bool())
@@ -362,10 +429,10 @@ async fn tool_edit_file(
                 .into(),
         );
     }
-    if let Some(refusal) = unbound_foreign_package(ctx, path) {
+    if let Some(refusal) = unbound_foreign_package(ctx, &path) {
         return (false, refusal);
     }
-    if !item.allow_runnable && is_runnable_script_path(path) {
+    if !item.allow_runnable && is_runnable_script_path(&path) {
         return (
             false,
             format!(
@@ -375,38 +442,45 @@ async fn tool_edit_file(
             ),
         );
     }
-    if let Some(refusal) = draft_scope_refusal(item.kind, "edit_file", path, new.trim().is_empty())
+    if let Some(refusal) = draft_scope_refusal(item.kind, "edit_file", &path, new.trim().is_empty())
     {
         return (false, refusal);
     }
-    match ft.edit_text(path, old, new, replace_all) {
-        Ok(result) => {
+    let ft = ft.clone();
+    let edit_path = path.clone();
+    match run_blocking(move || ft.edit_text(&edit_path, &old, &new, replace_all)).await {
+        Ok(Ok(result)) => {
             bind_script_key_if_new(ctx, &result.path.to_string_lossy()).await;
             let out = format!(
                 "已改 `{}`（替换 {} 处，未动其余内容）",
                 result.path.display(),
                 result.replacements
             );
-            (true, with_chapter_check(ctx, path, out, false).await)
+            (true, with_chapter_check(ctx, &path, out, false).await)
         },
-        Err(e) => (false, e.to_string()),
+        Ok(Err(e)) => (false, e.to_string()),
+        Err(e) => (false, e),
     }
 }
 
-fn tool_delete_file(
+async fn tool_delete_file(
     ctx: &SkillAgentRunContext,
     item: ItemScope,
     ft: &FileTools,
     args: &serde_json::Value,
 ) -> (bool, String) {
-    let path = args.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let path = args
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     if path.trim().is_empty() {
         return (false, "缺少 path 参数".into());
     }
-    if let Some(refusal) = unbound_foreign_package(ctx, path) {
+    if let Some(refusal) = unbound_foreign_package(ctx, &path) {
         return (false, refusal);
     }
-    if !item.allow_runnable && is_runnable_script_path(path) {
+    if !item.allow_runnable && is_runnable_script_path(&path) {
         return (
             false,
             format!(
@@ -415,12 +489,14 @@ fn tool_delete_file(
             ),
         );
     }
-    if let Some(conflict) = chapter_delete_conflict(ctx, path) {
+    if let Some(conflict) = chapter_delete_conflict(ctx, &path).await {
         return (false, conflict);
     }
-    match ft.delete_file(path) {
-        Ok(out) => (true, out),
-        Err(e) => (false, e.to_string()),
+    let ft = ft.clone();
+    match run_blocking(move || ft.delete_file(&path)).await {
+        Ok(Ok(out)) => (true, out),
+        Ok(Err(e)) => (false, e.to_string()),
+        Err(e) => (false, e),
     }
 }
 
@@ -542,21 +618,27 @@ async fn with_chapter_check(
     if append {
         return out;
     }
-    let Some(check) =
-        stage::evidence::check_written_chapter(&ctx.stage_snapshot, path, &ctx.data_dir)
-    else {
-        return out;
-    };
-    let chapter = stage::evidence::chapter_id_of_path(path).unwrap_or_default();
-
-    if !check.missing_assets.is_empty() {
-        if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
-            if let Err(e) = stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
-            {
-                tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
+    let snapshot = ctx.stage_snapshot.clone();
+    let path_owned = path.to_string();
+    let data_dir = ctx.data_dir.clone();
+    let check_result = run_blocking(move || {
+        let check = stage::evidence::check_written_chapter(&snapshot, &path_owned, &data_dir)?;
+        let chapter = stage::evidence::chapter_id_of_path(&path_owned).unwrap_or_default();
+        if !check.missing_assets.is_empty() {
+            if let Some(dir) = snapshot.script_dir.as_deref() {
+                if let Err(e) =
+                    stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
+                {
+                    tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
+                }
             }
         }
-    }
+        Some((chapter, check))
+    })
+    .await;
+    let Ok(Some((chapter, check))) = check_result else {
+        return out;
+    };
 
     tracing::info!(
         // 这一章的结局只进日志（原先那条事件流水已删）：改完才算落盘，记下当场有没有必须修的
@@ -602,11 +684,17 @@ async fn bind_script_key_if_new(ctx: &SkillAgentRunContext, path: &str) {
     let Some(key) = stage::evidence::script_key_of(path, &[]) else {
         return;
     };
-    let Ok(dir) = crate::utils::script_paths::resolve_script_dir(&key) else {
+    let key_for_fs = key.clone();
+    let skeleton_res = run_blocking(move || {
+        let dir = crate::utils::script_paths::resolve_script_dir(&key_for_fs).ok()?;
+        Some(stage::ensure_package_skeleton(&dir, &key_for_fs))
+    })
+    .await;
+    let Ok(Some(skeleton_status)) = skeleton_res else {
         return;
     };
     ctx.remember_bound_key(&key);
-    match stage::ensure_package_skeleton(&dir, &key) {
+    match skeleton_status {
         Ok(true) => tracing::info!("[skill_agent] 已为新剧本包补最小骨架: {}", key),
         Ok(false) => {},
         Err(e) => tracing::warn!("[skill_agent] 补剧本骨架失败: {e}"),
@@ -650,10 +738,13 @@ fn draft_scope_refusal(kind: TaskKind, tool: &str, path: &str, blank_new: bool) 
 }
 
 /// 删一份章节文件之前先看有没有别处指着它：删了链子就断，玩家走到那里会卡住，而且只有跑起来才发现。
-fn chapter_delete_conflict(ctx: &SkillAgentRunContext, path: &str) -> Option<String> {
-    let dir = ctx.stage_snapshot.script_dir.as_deref()?;
+async fn chapter_delete_conflict(ctx: &SkillAgentRunContext, path: &str) -> Option<String> {
+    let dir = ctx.stage_snapshot.script_dir.clone()?;
     let id = stage::evidence::chapter_id_of_path(path)?;
-    let refs = chapter_referrers(dir, &id);
+    let id_for_fs = id.clone();
+    let refs = run_blocking(move || chapter_referrers(&dir, &id_for_fs))
+        .await
+        .ok()?;
     if refs.is_empty() {
         return None;
     }
