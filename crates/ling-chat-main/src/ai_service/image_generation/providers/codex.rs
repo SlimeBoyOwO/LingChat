@@ -1,3 +1,5 @@
+//! Codex 订阅的图片适配器，复用现有登录凭据并读取公开模型目录。
+
 use std::collections::HashSet;
 use std::time::Duration;
 

@@ -1,3 +1,6 @@
+//! 图片接口共用的地址校验、限量读取与 OpenAI 格式响应解析。
+//! 生成请求的授权头不传递给后续的图片下载请求。
+
 use anyhow::{Context, Result, ensure};
 use base64::Engine;
 use futures_util::StreamExt;

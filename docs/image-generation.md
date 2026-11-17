@@ -54,20 +54,4 @@ generate_image 的工具定义会随当前供应商更新：NovelAI 使用 tags 
 
 检索继续由现有 Tool RAG 计算问句相似度、排序并更新角色的激活缓存，权限和分数阈值沿用原流程。英文工具名与中文示例问句可能语义不接近，`tool_search` 的现有说明要求使用自然语言描述任务；本功能通过补充示例问句改善召回，不添加按名称提前返回或独立索引。`tool_rag.rs` 在本 PR 中没有改动。
 
-## 界面截图
-
-以下截图由实际 Vue 组件的浏览器预览生成，使用本地示例配置，不包含账号凭据。
-
-背景生图保留供应商侧栏：
-
-![背景生图供应商侧栏](images/image-generation/background-codex.png)
-
-NovelAI 的正向和负向 tags：
-
-![NovelAI tags](images/image-generation/background-novelai.png)
-
-聊天工具设置使用供应商下拉框：
-
-![生图工具设置](images/image-generation/tool-image-generation.png)
-
 协议参考：[OpenAI Image generation](https://developers.openai.com/api/docs/guides/image-generation)、[NovelAI Image API](https://image.novelai.net/docs/index.html)、[NovelAI 模型说明](https://docs.novelai.net/en/image/models/)、[Tagging](https://docs.novelai.net/en/image/tags/)、[Undesired Content](https://docs.novelai.net/en/image/undesiredcontent/)；Codex 订阅独立图片接口参考现有 astrbot_plugin_codex_provider 的实现。

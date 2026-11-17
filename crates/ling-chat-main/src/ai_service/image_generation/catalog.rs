@@ -1,3 +1,6 @@
+//! 图片模型目录的能力筛选与进程内缓存。
+//! 按供应商、目录地址和凭据指纹隔离缓存，刷新失败时保留上次成功的目录并提示原因。
+
 use std::collections::HashMap;
 use std::future::Future;
 use std::sync::LazyLock;

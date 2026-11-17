@@ -1,3 +1,6 @@
+//! 图片供应商工厂与界面目录，集中创建对应协议的适配器。
+//! 认证、模型发现和生成请求由各供应商实现，公共服务只依赖统一接口。
+
 use anyhow::{Result, bail};
 
 use super::ImageGenerationSettings;

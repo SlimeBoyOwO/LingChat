@@ -1,3 +1,5 @@
+//! OpenAI 兼容图片适配器，支持目录查询、JSON 生成和 multipart 参考图编辑。
+
 use anyhow::{Context, Result};
 use async_trait::async_trait;
 use reqwest::Client;

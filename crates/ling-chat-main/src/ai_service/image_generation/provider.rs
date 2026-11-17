@@ -1,3 +1,5 @@
+//! 图片供应商统一协议，以及模型目录、界面信息和提示词能力的共享类型。
+
 use anyhow::Result;
 use async_trait::async_trait;
 use reqwest::Client;
