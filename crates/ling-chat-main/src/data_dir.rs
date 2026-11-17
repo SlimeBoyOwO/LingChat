@@ -48,12 +48,8 @@ fn resolve_exec_dir() -> PathBuf {
 /// 3. 桌面端开发模式（debug）：项目根目录下的 `data/`
 /// 4. 桌面端便携发布：exe 所在目录下的 `data/`（存在时）
 /// 5. 桌面端安装发布：各平台应用数据目录
-fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
-    resolve_data_dir_impl(app)
-}
-
 #[cfg(target_os = "android")]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri_plugin_android_fs::{AndroidFsExt, AppDir};
     app.android_fs()
         .app_storage()
@@ -62,14 +58,14 @@ fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
 }
 
 #[cfg(target_os = "ios")]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
     // 不要改回 app_data_dir()，那部分对「文件」App 不可见
     app.path().document_dir().expect("无法解析 iOS 文档目录")
 }
 
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         // 本 crate 位于 <repo>/crates/ling-chat-main，故需上跳两级回仓库根。
