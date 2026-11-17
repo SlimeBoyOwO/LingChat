@@ -102,8 +102,9 @@ fn attach_line_budget(messages: &mut [LlmMessage], mode: ReplyLengthMode, spoken
 
 /// 工具执行前等待"前导台词已经 emit"的上限。
 ///
-/// 这段等待包含 consumer 侧的一次翻译 LLM 往返与 TTS 合成，因此宁宽勿窄；
-/// 超时后**放行工具**（fail-open）——顺序不完美也好过让工具链路被富化卡死。
+/// 这段等待包含 consumer 侧的一次翻译 LLM 往返与 TTS 合成，以及 publisher 的
+/// 落库与记忆刷新，因此宁宽勿窄；超时后放行工具（fail-open），顺序不完美
+/// 也好过让工具链路被富化卡死。
 const FENCE_ACK_TIMEOUT: Duration = Duration::from_secs(30);
 
 /// 工具消息收集槽：流消费过程中由闭环填充，按「一轮工具调用」分组。

@@ -97,16 +97,16 @@ preview_task:            Mutex<Option<JoinHandle<()>>>    // 试玩任务句柄
 
 - `GameStatus.preview_generation: u64` —— 每次试玩「进来备份 / 走时还原」都会递增；自由对话本身不递增，恒等比对，行为不受影响。
 - 生成管线（`GeneratorDeps`）在**每次生成前**捕获当前代号：`generation: gs.preview_generation`，并带上 `is_preview: bool`（来自 `ScriptContext`）。
-- `add_assistant_line()`（把 assistant 台词写入 `GameStatus` 的入口）先做比对：
+- `add_assistant_line()`（把 assistant 台词写入 `GameStatus` 的入口）在与写入同一把锁内比对：
 
 ```rust
 if gs.preview_generation != deps.generation {
     // 本轮生成已过期（试玩被中止后游离任务仍在写），丢弃整条，含记忆同步
-    return Ok(());
+    return Ok(false);
 }
 ```
 
-典型场景：试玩任务被 `abort()` 后，其内部仍在排空的游离 consumer 任务会带着旧代号继续生成句子。此时 `GameStatus` 可能已还原回自由对话 —— 没有守卫的话，这些试玩台词就会漏进自由对话的上下文与历史。守卫让它们**写不进去**。
+典型场景：试玩任务被 `abort()` 后，其内部仍在排空的游离 consumer / publisher 任务会带着旧代号继续生成句子。此时 `GameStatus` 可能已还原回自由对话 —— 没有守卫的话，这些试玩台词就会漏进自由对话的上下文与历史。守卫让它们**写不进去**。
 
 ## 5. 事件标记：`preview_gen`
 

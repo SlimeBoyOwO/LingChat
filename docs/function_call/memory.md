@@ -154,7 +154,7 @@ if matches!(line.attribute(), LineAttribute::Tool) {
      → 再请求一轮 → LLM 据此组织回复正文
 ④ tool_messages 写回 line 表（assistant 带 tool_call + tool 行）
    → refresh_memories → MemoryBuilder 重建角色.memory（含工具行）
-⑤ 最终流 → producer/consumer → add_assistant_line（最终回复行也入表）
+⑤ 最终流 → producer/consumer → publisher 按句序提交（最终回复行由 add_assistant_line 入表）
 ⑥ 下次玩家问任何事，role.memory 里已经有：
      assistant(tool_calls=get_current_time) / tool(结果) / assistant(正文)
    —— 模型「记得自己查过时间」，甚至能自然接「我刚才看过了，现在是……」
