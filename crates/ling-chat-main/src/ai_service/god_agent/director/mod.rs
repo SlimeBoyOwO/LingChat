@@ -5,6 +5,7 @@
 //! 本期不接剧本事件工具，但工具调用的事件与消息字段先保留，步骤二直接补运行回路。
 
 pub mod core;
+pub mod tools;
 
 use serde::Serialize;
 
