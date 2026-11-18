@@ -70,6 +70,7 @@
               >
                 <MarkdownText :content="m.content" />
               </div>
+              <DirectorToolSummary v-if="m.toolCalls?.length" :message="m" />
             </div>
           </template>
 
@@ -98,6 +99,11 @@
             <p v-else-if="!store.streaming.reasoning" class="text-[0.74rem] text-white/35">
               {{ store.status || $t("game.director.thinking") }}
             </p>
+            <!-- 本轮工具调用：一行摘要，展开看结果 -->
+            <DirectorToolSummary
+              v-if="Object.keys(store.activeTools).length > 0"
+              :calls="activeCallList"
+            />
           </div>
 
           <p
@@ -164,6 +170,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { Bot, CircleExclamationPoint, Send } from "@lucide/vue";
 import { MarkdownText } from "@/components/base";
+import DirectorToolSummary from "@/components/director/DirectorToolSummary.vue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useDirectorStore } from "@/stores/modules/director";
 import { i18n } from "@/locales";
@@ -177,6 +184,11 @@ const composing = ref(false);
 /** 服务就绪且空闲才能输入 / 清空 */
 const canInteract = computed(() => store.ready && store.available);
 const isEmpty = computed(() => store.messages.length === 0 && !store.streaming);
+
+/** 本轮进行中的调用（流式气泡下方摘要用，保持事件顺序） */
+const activeCallList = computed(() =>
+  Object.entries(store.activeTools).map(([id, entry]) => ({ id, ...entry })),
+);
 
 // ==================== 滚动策略 ====================
 
@@ -202,7 +214,11 @@ function scrollToBottom(force = false) {
 
 // 新消息或流式增量：贴底时跟随，用户上翻阅读时不打扰
 watch(
-  () => [store.messages.length, store.streaming?.content.length ?? 0],
+  () => [
+    store.messages.length,
+    store.streaming?.content.length ?? 0,
+    Object.keys(store.activeTools).length,
+  ],
   () => scrollToBottom(),
 );
 

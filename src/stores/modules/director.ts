@@ -22,6 +22,16 @@ export interface DirectorStreaming {
   reasoning: string;
 }
 
+/** 本轮一次工具调用的实时状态（收尾后归档进消息并清空，不持久化）。 */
+export interface DirectorActiveTool {
+  tool: string;
+  args: Record<string, unknown>;
+  /** pending 为预留：事件驱动下 tool_call 一到就是 running */
+  status: "pending" | "running" | "ok" | "error";
+  output: string | null;
+  error: string | null;
+}
+
 export interface DirectorStoreState {
   /** 界面偏好 */
   open: boolean;
@@ -38,6 +48,8 @@ export interface DirectorStoreState {
   running: boolean;
   messages: DirectorMessage[];
   streaming: DirectorStreaming | null;
+  /** 本轮进行中的工具调用（call_id → 实时状态；done/error 后归档进消息并清空） */
+  activeTools: Record<string, DirectorActiveTool>;
   status: string;
   error: string;
   context: DirectorContext | null;
@@ -64,6 +76,32 @@ const emptyMessage = (
   ...extra,
 });
 
+/** 工具结果由 ToolExecutor 统一编码成 {"ok":false,...}；非 JSON 文本视为成功 */
+export function isDirectorToolResultOk(content: string): boolean {
+  try {
+    const parsed = JSON.parse(content) as { ok?: boolean };
+    return parsed.ok !== false;
+  } catch {
+    return true;
+  }
+}
+
+/** 工具参数的单行摘要：截断到 limit 字符，完整内容由调用方放 title */
+export function summarizeDirectorArgs(args: string | Record<string, unknown>, limit = 60): string {
+  let text: string;
+  if (typeof args === "string") {
+    text = args;
+  } else {
+    try {
+      text = JSON.stringify(args);
+    } catch {
+      text = String(args);
+    }
+  }
+  if (!text || text === "{}") return "";
+  return text.length > limit ? text.slice(0, limit) + "…" : text;
+}
+
 export const useDirectorStore = defineStore("director", {
   state: (): DirectorStoreState => ({
     open: false,
@@ -78,6 +116,7 @@ export const useDirectorStore = defineStore("director", {
     running: false,
     messages: [],
     streaming: null,
+    activeTools: {},
     status: "",
     error: "",
     context: null,
@@ -97,6 +136,7 @@ export const useDirectorStore = defineStore("director", {
       "running",
       "messages",
       "streaming",
+      "activeTools",
       "status",
       "error",
       "context",
@@ -168,6 +208,7 @@ export const useDirectorStore = defineStore("director", {
       this.error = "";
       this.status = "";
       this.running = true;
+      this.activeTools = {};
       this.messages.push(emptyMessage("user", content));
       this.streaming = { content: "", reasoning: "" };
 
@@ -201,11 +242,24 @@ export const useDirectorStore = defineStore("director", {
         case "reasoning":
           if (s) s.reasoning += event.content;
           break;
-        // 工具事件本期只保留在事件协议里，由「工具调用」tab 从后端历史读取；
-        // 步骤二接入工具后在此追加轮内展示
         case "tool_call":
-        case "tool_result":
+          this.activeTools[event.call_id] = {
+            tool: event.tool,
+            args: event.args,
+            status: "running",
+            output: null,
+            error: null,
+          };
           break;
+        case "tool_result": {
+          // 结果按 call_id 回填；迟到的孤儿结果直接忽略
+          const entry = this.activeTools[event.call_id];
+          if (!entry) break;
+          entry.status = event.ok ? "ok" : "error";
+          entry.output = event.output;
+          entry.error = event.error;
+          break;
+        }
         case "done":
           this.finish(event.final_text, event.message_id);
           break;
@@ -215,23 +269,26 @@ export const useDirectorStore = defineStore("director", {
       }
     },
 
-    /** 正常收尾：把流式产出转成一条 assistant 消息。 */
+    /** 正常收尾：把流式产出转成一条 assistant 消息，并归档本轮工具调用。 */
     finish(finalText: string, messageId: number) {
       const s = this.streaming;
       this.streaming = null;
       this.running = false;
       this.status = "";
       runSeq++;
-      if (!s) return;
-      const content = s.content || finalText;
-      const reasoning = s.reasoning || null;
-      if (!content && !reasoning) return;
-      this.messages.push(
-        emptyMessage("assistant", content, {
-          id: messageId > 0 ? messageId : 0,
-          reasoning,
-        }),
-      );
+      let pushed: DirectorMessage | null = null;
+      if (s) {
+        const content = s.content || finalText;
+        const reasoning = s.reasoning || null;
+        if (content || reasoning) {
+          pushed = emptyMessage("assistant", content, {
+            id: messageId > 0 ? messageId : 0,
+            reasoning,
+          });
+          this.messages.push(pushed);
+        }
+      }
+      this.archiveActiveTools(pushed);
     },
 
     /** 出错收尾：保留已经流给玩家看的内容，错误行显示在消息列表末尾。 */
@@ -242,10 +299,37 @@ export const useDirectorStore = defineStore("director", {
       this.running = false;
       this.status = "";
       runSeq++;
+      let pushed: DirectorMessage | null = null;
       if (s && (s.content || s.reasoning)) {
-        this.messages.push(
-          emptyMessage("assistant", s.content, { reasoning: s.reasoning || null }),
-        );
+        pushed = emptyMessage("assistant", s.content, { reasoning: s.reasoning || null });
+        this.messages.push(pushed);
+      }
+      this.archiveActiveTools(pushed);
+    },
+
+    /**
+     * 收尾归档：清空 activeTools，本轮调用挂到本轮 assistant 消息（pushed）
+     * 的 toolCalls 上；本轮没产出正文时补一条空正文载体，避免误挂上一轮。
+     * 有结果的再补 role=tool 消息，结构与后端落库一致。
+     */
+    archiveActiveTools(pushed: DirectorMessage | null) {
+      const archived = Object.entries(this.activeTools);
+      this.activeTools = {};
+      if (archived.length === 0) return;
+      const last = pushed ?? emptyMessage("assistant", "");
+      if (!pushed) this.messages.push(last);
+      const calls = archived.map(([id, entry]) => ({
+        id,
+        type: "function",
+        function: { name: entry.tool, arguments: JSON.stringify(entry.args ?? {}) },
+      }));
+      last.toolCalls = [...(last.toolCalls ?? []), ...calls];
+      for (const [id, entry] of archived) {
+        // 中断等场景会留下 running 条目：不落结果消息，展示为「无结果」
+        if (entry.status !== "ok" && entry.status !== "error") continue;
+        const content =
+          entry.status === "error" ? entry.error || entry.output || "" : entry.output || "";
+        this.messages.push(emptyMessage("tool", content, { toolCallId: id }));
       }
     },
 
@@ -270,6 +354,7 @@ export const useDirectorStore = defineStore("director", {
         return;
       }
       this.messages = [];
+      this.activeTools = {};
       this.context = null;
       this.toolHistory = [];
       this.error = "";

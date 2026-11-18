@@ -14,17 +14,55 @@
       </button>
     </div>
 
-    <div class="min-h-0 flex-1 overflow-y-auto px-3 py-1">
+    <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-1">
+      <!-- 本轮调用：来自 store 的实时状态，收尾归档后随消息进入下方历史 -->
+      <section v-if="activeEntries.length > 0">
+        <p class="mb-1.5 text-[0.66rem] font-medium text-white/40">
+          {{ $t("game.director.tools.currentRound") }}
+        </p>
+        <ul class="space-y-1.5">
+          <li
+            v-for="entry in activeEntries"
+            :key="entry.id"
+            class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-1.5"
+          >
+            <div class="flex items-center gap-1.5 text-[0.68rem]">
+              <span
+                class="shrink-0 rounded-full border px-1.5 py-px text-[0.6rem]"
+                :class="statusClass(entry.status)"
+              >
+                {{ statusText(entry.status) }}
+              </span>
+              <span class="truncate text-sky-300/85">{{ entry.tool }}</span>
+              <span
+                v-if="argsSummary(entry)"
+                class="truncate font-mono text-[0.6rem] text-white/30"
+                :title="argsFull(entry)"
+              >
+                {{ argsSummary(entry) }}
+              </span>
+            </div>
+            <pre
+              v-if="entry.output || entry.error"
+              class="mt-1 max-h-24 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
+              >{{ entry.error || entry.output }}</pre>
+          </li>
+        </ul>
+      </section>
+
       <p v-if="!store.available" class="px-2 py-8 text-center text-[0.78rem] text-white/35">
         {{ $t("game.director.unavailable.title") }}
       </p>
       <p
-        v-else-if="store.loadingTools && pairs.length === 0"
+        v-else-if="store.loadingTools && pairs.length === 0 && activeEntries.length === 0"
         class="px-2 py-8 text-center text-[0.78rem] text-white/35"
       >
         {{ $t("game.director.context.loading") }}
       </p>
-      <div v-else-if="pairs.length === 0" class="px-4 py-10 text-center">
+      <div
+        v-else-if="pairs.length === 0 && activeEntries.length === 0"
+        class="px-4 py-10 text-center"
+      >
         <Wrench :size="24" class="mx-auto mb-2 text-white/20" />
         <p class="text-[0.78rem] text-white/45">{{ $t("game.director.empty.tools") }}</p>
         <p class="mt-1 text-[0.68rem] leading-relaxed text-white/30">
@@ -32,48 +70,57 @@
         </p>
       </div>
 
-      <ul v-else class="space-y-2">
-        <li
-          v-for="(pair, index) in pairs"
-          :key="`${pair.call.id}-${index}`"
-          class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-2"
+      <!-- 历史调用：后端落库的 assistant.tool_calls + tool 结果 -->
+      <section v-if="pairs.length > 0">
+        <p
+          v-if="activeEntries.length > 0"
+          class="mb-1.5 text-[0.66rem] font-medium text-white/40"
         >
-          <div class="flex items-center gap-1.5 text-[0.68rem]">
-            <span class="text-sky-300/85">{{ pair.call.function.name }}</span>
-            <span class="truncate font-mono text-[0.62rem] text-white/30">{{ pair.call.id }}</span>
-            <span
-              v-if="pair.result"
-              class="ml-auto shrink-0 rounded-full border px-1.5 py-px text-[0.6rem]"
-              :class="
-                okOf(pair.result) ? 'border-brand/40 text-brand' : 'border-red-400/40 text-red-300'
-              "
-            >
-              {{
-                okOf(pair.result) ? $t("game.director.tools.ok") : $t("game.director.tools.failed")
-              }}
-            </span>
-            <span v-else class="ml-auto shrink-0 text-[0.6rem] text-white/30">
-              {{ $t("game.director.tools.noResult") }}
-            </span>
-          </div>
+          {{ $t("game.director.tools.history") }}
+        </p>
+        <ul class="space-y-2">
+          <li
+            v-for="(pair, index) in pairs"
+            :key="`${pair.call.id}-${index}`"
+            class="rounded-xl border border-white/10 bg-black/20 px-2.5 py-2"
+          >
+            <div class="flex items-center gap-1.5 text-[0.68rem]">
+              <span class="text-sky-300/85">{{ pair.call.function.name }}</span>
+              <span class="truncate font-mono text-[0.62rem] text-white/30">{{ pair.call.id }}</span>
+              <span
+                v-if="pair.result"
+                class="ml-auto shrink-0 rounded-full border px-1.5 py-px text-[0.6rem]"
+                :class="
+                  okOf(pair.result) ? 'border-brand/40 text-brand' : 'border-red-400/40 text-red-300'
+                "
+              >
+                {{
+                  okOf(pair.result) ? $t("game.director.tools.ok") : $t("game.director.tools.failed")
+                }}
+              </span>
+              <span v-else class="ml-auto shrink-0 text-[0.6rem] text-white/30">
+                {{ $t("game.director.tools.noResult") }}
+              </span>
+            </div>
 
-          <p class="mt-1.5 mb-0.5 text-[0.62rem] text-white/30">
-            {{ $t("game.director.tools.args") }}
-          </p>
-          <pre
-            class="max-h-40 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
-            >{{ prettyJson(pair.call.function.arguments) }}</pre>
-
-          <template v-if="pair.result">
             <p class="mt-1.5 mb-0.5 text-[0.62rem] text-white/30">
-              {{ $t("game.director.tools.result") }}
+              {{ $t("game.director.tools.args") }}
             </p>
             <pre
-              class="max-h-48 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
-              >{{ pair.result.content }}</pre>
-          </template>
-        </li>
-      </ul>
+              class="max-h-40 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
+              >{{ prettyJson(pair.call.function.arguments) }}</pre>
+
+            <template v-if="pair.result">
+              <p class="mt-1.5 mb-0.5 text-[0.62rem] text-white/30">
+                {{ $t("game.director.tools.result") }}
+              </p>
+              <pre
+                class="max-h-48 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
+                >{{ pair.result.content }}</pre>
+            </template>
+          </li>
+        </ul>
+      </section>
     </div>
   </div>
 </template>
@@ -81,10 +128,18 @@
 <script setup lang="ts">
 import { computed, onMounted, watch } from "vue";
 import { RefreshCw, Wrench } from "@lucide/vue";
-import { useDirectorStore } from "@/stores/modules/director";
+import { useDirectorStore, summarizeDirectorArgs } from "@/stores/modules/director";
+import type { DirectorActiveTool } from "@/stores/modules/director";
 import type { DirectorMessage, DirectorToolCall } from "@/api/services/director";
+import { i18n } from "@/locales";
 
 const store = useDirectorStore();
+const t = i18n.global.t;
+
+/** 本轮进行中的调用（保持事件到达顺序） */
+const activeEntries = computed(() =>
+  Object.entries(store.activeTools).map(([id, entry]) => ({ id, ...entry })),
+);
 
 /** 工具调用与结果的配对：assistant.tool_calls + 紧随其后的 role=tool 消息 */
 const pairs = computed(() => {
@@ -99,6 +154,24 @@ const pairs = computed(() => {
   }
   return out;
 });
+
+const statusClass = (status: DirectorActiveTool["status"]) =>
+  status === "running"
+    ? "border-amber-400/40 text-amber-300"
+    : status === "ok"
+      ? "border-brand/40 text-brand"
+      : "border-red-400/40 text-red-300";
+
+const statusText = (status: DirectorActiveTool["status"]) =>
+  status === "running"
+    ? t("game.director.tools.running")
+    : status === "ok"
+      ? t("game.director.tools.ok")
+      : t("game.director.tools.failed");
+
+const argsSummary = (entry: DirectorActiveTool) => summarizeDirectorArgs(entry.args);
+const argsFull = (entry: DirectorActiveTool) =>
+  summarizeDirectorArgs(entry.args, Number.MAX_SAFE_INTEGER) || "—";
 
 /** 工具结果由 ToolExecutor 统一编码成 {"ok":false,...}，不抛异常 */
 function okOf(result: DirectorMessage): boolean {

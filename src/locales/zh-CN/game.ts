@@ -147,11 +147,17 @@ export default {
     },
     tools: {
       count: "共 {n} 次调用",
+      currentRound: "本轮调用",
+      history: "历史调用",
+      running: "运行中",
       ok: "成功",
       failed: "失败",
       noResult: "无结果",
       args: "调用参数",
       result: "返回结果",
+      called: "已调用 {tool}",
+      more: "等 {n} 个",
+      expand: "展开",
     },
   },
   freeDialogue: {
