@@ -28,7 +28,10 @@
 ### D3 首期注册确定性事件子集
 
 - 结论：注册 narration、player、dialogue、background、background_effect、
-  present_pic、music、sound、ambient、set_variable 共 10 类。
+  present_pic、music、sound、ambient 共 9 类实际执行；set_variable 保留在
+  事件清单里但首期执行层明确拒绝——它依赖 ScriptStatus.vars 容器，而 D1
+  限定自由对话（script_status 为 None），硬造容器会污染闸门判定与存档恢复点。
+  待 S3 的导演片段拥有独立变量空间后再放开。
 - 排除（后续批次）：choices、input、free_dialogue（挂起等待玩家）、
   ai_dialogue（嵌套模型调用）、modify_character（持久副作用）、
   unlock_achievement（不可回滚）、chapter_end（依赖剧本运行器章节状态）。
