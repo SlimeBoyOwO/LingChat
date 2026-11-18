@@ -3,15 +3,17 @@
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri::State;
 use tauri::ipc::Channel;
 
 use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::director::{
-    DirectorAgent, DirectorAgentEvent, DirectorContext, DirectorState,
+    DirectorAgent, DirectorAgentEvent, DirectorConfirmResult, DirectorContext, DirectorDraftView,
+    DirectorModeView, DirectorState,
 };
+use crate::ai_service::god_agent::director::draft::default_mode_view;
 use crate::ai_service::llm::slot_snapshot;
 
 /// 当前存档 ID。先锁 AI 服务取句柄，再短锁 GameStatus，两把锁都不跨 await 持有。
@@ -29,7 +31,7 @@ async fn game_status_handle(state: &AppState) -> Arc<tokio::sync::Mutex<GameStat
 /// D1 闸门：只有自由对话才开放导演工具。
 /// 固定剧本模式（含编辑器试玩）下，导演插入事件会与事件下标、章节状态竞争，
 /// 玩家存档恢复点会被污染；此时不下发工具定义，执行层另保留拒绝路径。
-async fn director_tools_enabled(state: &AppState) -> bool {
+pub(crate) async fn director_tools_enabled(state: &AppState) -> bool {
     // 先短锁 ai_service 取出句柄与运行标记，释放后再锁 game_status，避免跨 await 持锁。
     let (script_running, game_status) = {
         let service = state.ai_service.lock().await;
@@ -211,4 +213,77 @@ pub async fn director_get_tool_history(
     let save_id = current_save_id(&state).await;
     core.director.sync_save(&state.db, save_id).await?;
     Ok(core.director.tool_history().await)
+}
+
+// ============================================================
+// 周期小剧本（D4）：模式开关与草案预览确认
+// ============================================================
+
+/// 读取模式开关、间隔、上次生成序号与是否有待确认草案。
+#[tauri::command]
+pub async fn director_get_mode(state: State<'_, AppState>) -> Result<DirectorModeView, String> {
+    let Some(core) = state.god_agent.clone() else {
+        return Ok(default_mode_view());
+    };
+    Ok(core.director.mode_view().await)
+}
+
+/// 设置模式开关与间隔轮数；interval 省略时保留原值，关闭时作废当前草案。
+#[tauri::command]
+pub async fn director_set_mode(
+    state: State<'_, AppState>,
+    enabled: bool,
+    interval_rounds: Option<usize>,
+) -> Result<DirectorModeView, String> {
+    let core = state
+        .god_agent
+        .clone()
+        .ok_or_else(|| "导演服务不可用：未配置可用的对话模型".to_string())?;
+    Ok(core.director.set_mode(enabled, interval_rounds).await)
+}
+
+/// 拉取当前草案：状态、事件列表、错误与触发序号。
+#[tauri::command]
+pub async fn director_get_draft(
+    state: State<'_, AppState>,
+) -> Result<Option<DirectorDraftView>, String> {
+    let Some(core) = state.god_agent.clone() else {
+        return Ok(None);
+    };
+    let view = core.director.draft_view().await;
+    // idle 且没有事件时视为「没有草案」，与前端 DirectorDraft|null 约定一致。
+    Ok((view.status != "idle" || !view.events.is_empty()).then_some(view))
+}
+
+/// 玩家确认：按顺序把草案事件 emit 到前端播放队列（复用 S2 执行路径）。
+/// 全部成功才推进轮次进度；部分失败返回错误，草案落 failed 供前端提示。
+#[tauri::command]
+pub async fn director_confirm_draft(app: AppHandle) -> Result<DirectorConfirmResult, String> {
+    let state = app.state::<AppState>();
+    let core = state
+        .god_agent
+        .clone()
+        .ok_or_else(|| "导演服务不可用：未配置可用的对话模型".to_string())?;
+    // D1 闸门：固定剧本运行期间不允许确认入队，返回失败结果而非 Err。
+    if !director_tools_enabled(&state).await {
+        return Ok(DirectorConfirmResult {
+            ok: false,
+            applied: 0,
+            error: Some("当前正在运行固定剧本，导演草案不可用；请结束剧本后再确认".to_string()),
+        });
+    }
+    core.director.confirm_draft(app.clone()).await
+}
+
+/// 丢弃草案回到 idle，不推进轮次进度，也不播放任何事件。
+#[tauri::command]
+pub async fn director_discard_draft(
+    state: State<'_, AppState>,
+) -> Result<Option<DirectorDraftView>, String> {
+    let Some(core) = state.god_agent.clone() else {
+        return Ok(None);
+    };
+    let view = core.director.discard_draft().await;
+    // discard 后必为 idle 空草案，按约定返回 null。
+    Ok((view.status != "idle" || !view.events.is_empty()).then_some(view))
 }

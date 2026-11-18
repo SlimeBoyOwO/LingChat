@@ -62,7 +62,8 @@
       <div class="min-h-0 flex-1">
         <DirectorChatTab v-if="store.activeTab === 'chat'" />
         <DirectorContextTab v-else-if="store.activeTab === 'context'" />
-        <DirectorToolHistoryTab v-else />
+        <DirectorToolHistoryTab v-else-if="store.activeTab === 'tools'" />
+        <DirectorDraftTab v-else />
       </div>
     </aside>
   </Transition>
@@ -71,7 +72,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
-import { Brain, MessageSquare, PawPrint, Wrench, X } from "@lucide/vue";
+import { Brain, Clapperboard, MessageSquare, PawPrint, Wrench, X } from "@lucide/vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import {
   DIRECTOR_MAX_WIDTH,
@@ -82,6 +83,7 @@ import {
 import DirectorChatTab from "./DirectorChatTab.vue";
 import DirectorContextTab from "./DirectorContextTab.vue";
 import DirectorToolHistoryTab from "./DirectorToolHistoryTab.vue";
+import DirectorDraftTab from "./DirectorDraftTab.vue";
 
 const { t } = useI18n();
 const store = useDirectorStore();
@@ -91,6 +93,7 @@ const TABS: { key: DirectorTab; label: string; icon: Component }[] = [
   { key: "chat", label: "game.director.tabs.chat", icon: MessageSquare },
   { key: "context", label: "game.director.tabs.context", icon: Brain },
   { key: "tools", label: "game.director.tabs.tools", icon: Wrench },
+  { key: "draft", label: "game.director.tabs.draft", icon: Clapperboard },
 ];
 
 // ==================== 窄屏 ====================

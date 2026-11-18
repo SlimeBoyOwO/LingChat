@@ -7,9 +7,15 @@
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { defineStore } from "pinia";
 import * as api from "@/api/services/director";
-import type { DirectorAgentEvent, DirectorContext, DirectorMessage } from "@/api/services/director";
+import type {
+  DirectorAgentEvent,
+  DirectorConfirmResult,
+  DirectorContext,
+  DirectorDraft,
+  DirectorMessage,
+} from "@/api/services/director";
 
-export type DirectorTab = "chat" | "context" | "tools";
+export type DirectorTab = "chat" | "context" | "tools" | "draft";
 
 /** 面板宽度限制：默认 420，最小 320，最大取 min(720, 55vw) 由视图侧钳制。 */
 export const DIRECTOR_DEFAULT_WIDTH = 420;
@@ -30,6 +36,13 @@ export interface DirectorActiveTool {
   status: "pending" | "running" | "ok" | "error";
   output: string | null;
   error: string | null;
+}
+
+/** 周期小剧本的导演模式（只留界面要用的三个字段，pendingDraft 单独放 draft）。 */
+export interface DirectorModeState {
+  enabled: boolean;
+  interval: number;
+  lastGeneratedSeq: number | null;
 }
 
 export interface DirectorStoreState {
@@ -56,6 +69,13 @@ export interface DirectorStoreState {
   loadingContext: boolean;
   toolHistory: DirectorMessage[];
   loadingTools: boolean;
+
+  /** 周期小剧本运行态（不持久化） */
+  directorMode: DirectorModeState;
+  draft: DirectorDraft | null;
+  loadingMode: boolean;
+  confirming: boolean;
+  applyResult: DirectorConfirmResult | null;
 }
 
 /** 本轮序号：停止 / 完成 / 出错后自增，迟到的流式事件按序号丢弃。 */
@@ -123,6 +143,12 @@ export const useDirectorStore = defineStore("director", {
     loadingContext: false,
     toolHistory: [],
     loadingTools: false,
+
+    directorMode: { enabled: false, interval: 5, lastGeneratedSeq: null },
+    draft: null,
+    loadingMode: false,
+    confirming: false,
+    applyResult: null,
   }),
 
   persist: {
@@ -143,6 +169,11 @@ export const useDirectorStore = defineStore("director", {
       "loadingContext",
       "toolHistory",
       "loadingTools",
+      "directorMode",
+      "draft",
+      "loadingMode",
+      "confirming",
+      "applyResult",
     ],
   },
 
@@ -384,6 +415,71 @@ export const useDirectorStore = defineStore("director", {
       } finally {
         this.loadingTools = false;
       }
+    },
+
+    /** 拉取导演模式；pendingDraft 顺带作为草案初值，避免再多一次往返。 */
+    async loadMode() {
+      this.loadingMode = true;
+      try {
+        const mode = await api.getDirectorMode();
+        this.directorMode = {
+          enabled: mode.enabled,
+          interval: mode.interval,
+          lastGeneratedSeq: mode.lastGeneratedSeq,
+        };
+        // pendingDraft 是草案对象或 null；只接对象/空值，避免异常值污染运行态
+        const pending = mode.pendingDraft;
+        if (pending === null || typeof pending === "object") this.draft = pending;
+      } catch {
+        // 后端未接入时命令不存在，保持默认空态，不弹错
+      } finally {
+        this.loadingMode = false;
+      }
+    },
+
+    async setMode(enabled: boolean, intervalRounds?: number) {
+      try {
+        await api.setDirectorMode(enabled, intervalRounds);
+      } catch {
+        // 吞掉错误，随后用 loadMode 回读真实状态
+      }
+      await this.loadMode();
+    },
+
+    async loadDraft() {
+      try {
+        this.draft = await api.getDirectorDraft();
+      } catch {
+        // 保留现有草案，避免轮询时闪烁；后端未就绪时本就是空态
+      }
+    },
+
+    async confirmDraft() {
+      if (this.confirming) return;
+      this.confirming = true;
+      this.applyResult = null;
+      try {
+        const res = await api.confirmDirectorDraft();
+        this.applyResult = res;
+        if (res.ok) {
+          this.draft = null;
+          await this.loadMode();
+        }
+      } catch (err) {
+        this.applyResult = { ok: false, applied: 0, error: String(err) };
+      } finally {
+        this.confirming = false;
+      }
+    },
+
+    async discardDraft() {
+      try {
+        await api.discardDirectorDraft();
+      } catch {
+        // 吞掉错误，本地照常清掉草案
+      }
+      this.draft = null;
+      this.applyResult = null;
     },
   },
 });

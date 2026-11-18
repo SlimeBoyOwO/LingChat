@@ -6,13 +6,13 @@ use chrono::Local;
 use futures_util::StreamExt;
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::core::tail_lines;
-use crate::ai_service::llm::{LlmChunk, LlmSlot, LlmUsage, slot_snapshot};
+use crate::ai_service::llm::{LlmChunk, LlmClient, LlmSlot, LlmUsage, slot_snapshot};
 use crate::ai_service::skill_agent::db;
 use crate::ai_service::skill_agent::events::Usage as AgentUsage;
 use crate::ai_service::tools::executor::{ToolContext, ToolExecutor};
@@ -20,6 +20,10 @@ use crate::ai_service::types::{GameLine, LlmMessage, ToolCall, ToolDefinition};
 use crate::db::entities::agent_message;
 use crate::db::entities::line::LineAttribute;
 
+use super::draft::{
+    DRAFT_INSTRUCTION, DRAFT_MAX_ATTEMPTS, DRAFT_USER_PROMPT, DirectorConfirmResult,
+    DirectorDraftView, DirectorModeState, DirectorModeView, draft_event_catalog, parse_draft,
+};
 use super::tools::{
     LoopStep, MAX_TOOL_CALLS_PER_ROUND, director_registry, plan_next_step,
 };
@@ -77,19 +81,22 @@ pub struct DirectorSession {
     pub cancel: Option<CancellationToken>,
     /// 当前运行的任务句柄（善后用，不靠 abort 停）。
     pub task: Option<tauri::async_runtime::JoinHandle<()>>,
+    /// 周期小剧本模式：开关、轮次进度与待确认草案（只在内存，随切档重置）。
+    pub mode: DirectorModeState,
 }
 
 pub struct DirectorAgent {
     /// 与上帝 Agent 共用同一槽位，热切换 LLM 自动生效。
     pub llm: LlmSlot,
-    pub session: tokio::sync::Mutex<DirectorSession>,
+    /// 会话状态用 Arc 包一层，周期草案后台任务能安全持有并写回。
+    pub session: std::sync::Arc<tokio::sync::Mutex<DirectorSession>>,
 }
 
 impl DirectorAgent {
     pub fn new(llm: LlmSlot) -> Self {
         Self {
             llm,
-            session: tokio::sync::Mutex::new(DirectorSession::default()),
+            session: std::sync::Arc::new(tokio::sync::Mutex::new(DirectorSession::default())),
         }
     }
 
@@ -120,6 +127,8 @@ impl DirectorAgent {
         }
         // 现场可能整体换过，旧快照不再代表下一次请求
         session.last_context = None;
+        // 轮次进度属于旧存档，草案也不该跨档带过去（开关与间隔是用户偏好，保留）
+        session.mode.reset_progress();
 
         match save_id {
             None => {
@@ -202,6 +211,126 @@ impl DirectorAgent {
     ) {
         let mut session = self.session.lock().await;
         (session.cancel.take(), session.task.take())
+    }
+
+    // ============================================================
+    // 周期小剧本模式（D4）
+    // ============================================================
+
+    /// 主聊天一轮回复落库后的轻量触发检查。
+    ///
+    /// 达到间隔时原子占住生成位并起后台任务，不阻塞主回复；
+    /// 剧本运行 / 编辑器试玩期间不生成（D1 闸门由调用方判定）。
+    /// god_agent 不可用时占住生成位的草案直接落 failed，给出明确错误。
+    pub async fn maybe_generate_draft(&self, app: AppHandle, tools_enabled: bool) {
+        if !tools_enabled {
+            return;
+        }
+        let token = {
+            let mut session = self.session.lock().await;
+            if !session.mode.enabled {
+                return;
+            }
+            // 台词表折算出的当前最大用户消息序号
+            let current_seq = {
+                let service = app.state::<crate::AppState>().ai_service.lock().await;
+                let gs = service.game_status.lock().await;
+                crate::api::game::compute_user_message_seqs(&gs.line_list)
+                    .iter()
+                    .filter_map(|seq| *seq)
+                    .max()
+                    .unwrap_or(0)
+            };
+            session.mode.begin_generation(current_seq)
+        };
+        let Some(token) = token else { return };
+
+        let state = app.state::<crate::AppState>();
+        let Some(core) = state.god_agent.clone() else {
+            self.finish_draft(token, Err("导演服务不可用：未配置可用的对话模型".to_string()))
+                .await;
+            return;
+        };
+        let llm = match slot_snapshot(&core.llm).await {
+            Some(llm) => llm,
+            None => {
+                self.finish_draft(token, Err("导演没有可用的对话模型".to_string()))
+                    .await;
+                return;
+            },
+        };
+        let window = core.config_snapshot().recent_window;
+        let assembled = {
+            let service = state.ai_service.lock().await;
+            let gs = service.game_status.lock().await;
+            Self::assemble(&gs, window)
+        };
+        let session = self.session.clone();
+        tauri::async_runtime::spawn(async move {
+            let result = generate_draft(llm.as_ref(), assembled).await;
+            let mut session = session.lock().await;
+            session.mode.finish_generation(token, result);
+        });
+    }
+
+    /// 模式视图，供 director_get_mode / director_set_mode 返回。
+    pub async fn mode_view(&self) -> DirectorModeView {
+        self.session.lock().await.mode.mode_view()
+    }
+
+    pub async fn draft_view(&self) -> DirectorDraftView {
+        self.session.lock().await.mode.draft_view()
+    }
+
+    pub async fn set_mode(&self, enabled: bool, interval: Option<usize>) -> DirectorModeView {
+        let mut session = self.session.lock().await;
+        session.mode.set_mode(enabled, interval);
+        session.mode.mode_view()
+    }
+
+    pub async fn discard_draft(&self) -> DirectorDraftView {
+        let mut session = self.session.lock().await;
+        session.mode.discard();
+        session.mode.draft_view()
+    }
+
+    /// 确认草案：pending 态取走事件，逐个走 S2 同一执行路径；
+    /// 全部成功才推进 last_generated_seq（期间 applying 态天然防重）。
+    pub async fn confirm_draft(&self, app: AppHandle) -> Result<DirectorConfirmResult, String> {
+        let events = {
+            let mut session = self.session.lock().await;
+            session
+                .mode
+                .begin_confirm()
+                .ok_or_else(|| "当前没有待确认的草案".to_string())?
+        };
+        let mut applied = 0usize;
+        let mut failure: Option<String> = None;
+        for (index, item) in events.iter().enumerate() {
+            let type_key = item["event"].as_str().unwrap_or_default().to_string();
+            let params = item.get("params").cloned().unwrap_or_else(|| json!({}));
+            if let Err(error) =
+                super::event_tools::execute_director_event(&app, &type_key, params).await
+            {
+                failure = Some(format!("第 {} 个事件 {type_key}：{error}", index + 1));
+                break;
+            }
+            applied += 1;
+        }
+        let mut session = self.session.lock().await;
+        session.mode.finish_confirm(applied, failure.clone());
+        drop(session);
+        // 命令层统一用 Ok(结果) 把成败交给前端结果条，失败不再走 Err 丢掉已投递数。
+        Ok(DirectorConfirmResult {
+            ok: failure.is_none(),
+            applied,
+            error: failure,
+        })
+    }
+
+    async fn finish_draft(&self, token: u64, result: Result<Vec<Value>, String>) {
+        let mut session = self.session.lock().await;
+        session.mode.finish_generation(token, result);
     }
 
     // ============================================================
@@ -765,6 +894,42 @@ fn model_to_message(m: &agent_message::Model) -> DirectorMessage {
         tool_call_id: m.tool_call_id.clone(),
         created_at: m.created_at.to_string(),
     }
+}
+
+/// 用导演 LLM 槽位生成草案：system 复用 DirectorAgent::assemble 的现场上下文，
+/// 追加严格 JSON 指令与 8 类事件的参数目录。解析 / 校验失败重试，仍失败返回明确错误。
+async fn generate_draft(llm: &LlmClient, assembled: AssembledSystem) -> Result<Vec<Value>, String> {
+    let system = format!(
+        "{}\n\n{}\n\n{}",
+        assembled.prompt,
+        DRAFT_INSTRUCTION,
+        draft_event_catalog()
+    );
+    let messages = vec![
+        LlmMessage::system(system),
+        LlmMessage::user(DRAFT_USER_PROMPT),
+    ];
+    let mut last_error = String::new();
+    for attempt in 1..=DRAFT_MAX_ATTEMPTS {
+        let raw = match llm.complete(&messages).await {
+            Ok(raw) => raw,
+            Err(error) => {
+                last_error = format!("导演模型请求失败：{error}");
+                tracing::warn!(attempt, "{last_error}");
+                continue;
+            },
+        };
+        match parse_draft(&raw) {
+            Ok(events) => return Ok(events),
+            Err(error) => {
+                last_error = error;
+                tracing::warn!(attempt, "草案解析或校验失败：{last_error}");
+            },
+        }
+    }
+    Err(format!(
+        "草案生成失败（已重试 {DRAFT_MAX_ATTEMPTS} 次）：{last_error}"
+    ))
 }
 
 fn compose_request(

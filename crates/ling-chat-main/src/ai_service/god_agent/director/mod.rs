@@ -5,6 +5,7 @@
 //! 步骤二起接入确定性剧本事件工具（见 event_tools），自由对话下由运行层闸门放行。
 
 pub mod core;
+pub mod draft;
 pub mod event_tools;
 pub mod tools;
 
@@ -13,6 +14,7 @@ use serde::Serialize;
 use crate::ai_service::types::ToolCall;
 
 pub use core::{AssembledSystem, DirectorAgent, DirectorSession, TurnContext};
+pub use draft::{DirectorConfirmResult, DirectorDraftView, DirectorModeView};
 
 /// 一次导演对话请求的事件流，经 `tauri::ipc::Channel` 推送前端。
 #[derive(Debug, Clone, Serialize)]

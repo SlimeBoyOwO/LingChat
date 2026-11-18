@@ -79,6 +79,35 @@ export interface DirectorContext {
   stats: DirectorContextStats;
 }
 
+/** 周期小剧本的运行模式。 */
+export interface DirectorMode {
+  enabled: boolean;
+  interval: number;
+  /** 上次触发生成时的对话序号；null 表示尚未生成过。 */
+  lastGeneratedSeq: number | null;
+  pendingDraft: DirectorDraft | null;
+}
+
+/** 待确认的小剧本草案：一条条剧本事件，确认后按序应用。 */
+export interface DirectorDraftEvent {
+  event: string;
+  params: Record<string, unknown>;
+}
+
+export interface DirectorDraft {
+  status: "idle" | "generating" | "pending" | "applying" | "failed";
+  events: DirectorDraftEvent[];
+  error: string | null;
+  createdSeq: number | null;
+}
+
+/** 确认应用草案的结果。 */
+export interface DirectorConfirmResult {
+  ok: boolean;
+  applied: number;
+  error: string | null;
+}
+
 /** 后端流式事件（serde tag="type"，snake_case）。 */
 export type DirectorAgentEvent =
   | { type: "status"; content: string }
@@ -123,3 +152,23 @@ export const getDirectorContext = (rebuild = false) =>
 
 /** 工具调用历史（筛 assistant.tool_calls 与 tool 结果消息）。 */
 export const getDirectorToolHistory = () => invoke<DirectorMessage[]>("director_get_tool_history");
+
+// ============================================================
+// 周期小剧本（导演模式）
+// ============================================================
+
+export const getDirectorMode = () => invoke<DirectorMode>("director_get_mode");
+
+/** enabled 必传；intervalRounds 省略时后端沿用当前值。 */
+export const setDirectorMode = (enabled: boolean, intervalRounds?: number) =>
+  invoke<void>("director_set_mode", {
+    enabled,
+    ...(intervalRounds !== undefined ? { intervalRounds } : {}),
+  });
+
+export const getDirectorDraft = () => invoke<DirectorDraft | null>("director_get_draft");
+
+export const confirmDirectorDraft = () =>
+  invoke<DirectorConfirmResult>("director_confirm_draft");
+
+export const discardDirectorDraft = () => invoke<void>("director_discard_draft");

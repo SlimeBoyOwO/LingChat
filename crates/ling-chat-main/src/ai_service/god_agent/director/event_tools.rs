@@ -9,7 +9,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use serde_json::{Value, json};
-use tauri::Manager;
+use tauri::{AppHandle, Manager};
 
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{ScriptContext, create_event};
@@ -256,45 +256,11 @@ impl Tool for DirectorEventTool {
     ) -> Result<ToolResult, ToolError> {
         // 先在工具内校验，缺少宿主环境时也能明确报参数错误而不是 panic
         validate_event_arguments(&self.spec, &arguments).map_err(ToolError::InvalidArguments)?;
-
         let app = context.require_app()?;
-        let state = app.state::<AppState>();
-        // 锁内只取快照，事件执行期间不持有 ai_service 的锁
-        let (db, data_dir, config, game_status, channels) = {
-            let service = state.ai_service.lock().await;
-            (
-                service.db.clone(),
-                service.data_dir.clone(),
-                service.config.clone(),
-                service.game_status.clone(),
-                state.script_channels.clone(),
-            )
-        };
-        let llm = slot_snapshot(&state.chat.llm).await;
-
-        // 补上事件 YAML 里的 type 字段，其余参数原样交给处理器
-        let mut event_data = arguments;
-        if let Some(object) = event_data.as_object_mut() {
-            object.insert("type".to_string(), json!(self.type_key));
-        }
-        let mut event = create_event(self.type_key, event_data).ok_or_else(|| {
-            ToolError::Execution(format!("事件 {} 没有注册处理器", self.type_key))
-        })?;
-
-        let mut ctx = ScriptContext {
-            db: &db,
-            data_dir: &data_dir,
-            app: &app,
-            game_status,
-            config: &config,
-            llm: llm.as_ref(),
-            channels,
-            is_preview: false,
-        };
-        event.execute(&mut ctx).await.map_err(|error| {
-            let type_key = self.type_key;
-            ToolError::Execution(format!("事件 {type_key} 执行失败: {error}"))
-        })?;
+        // 与周期草案确认共用同一条执行路径（内部含参数校验与 emit）
+        execute_director_event(&app, self.type_key, arguments)
+            .await
+            .map_err(ToolError::Execution)?;
 
         Ok(json!({
             "ok": true,
@@ -302,6 +268,61 @@ impl Tool for DirectorEventTool {
             "event": self.type_key,
         }))
     }
+}
+
+/// 校验并执行一个确定性事件：白名单 + 参数校验 + create_event + ScriptContext。
+///
+/// 导演工具（S2）与周期草案确认（S3/D2）共用同一条执行路径，避免复制粘贴
+/// 依赖组装与 emit 逻辑。参数即事件的 YAML 字段（不含 type），函数内补齐。
+pub async fn execute_director_event(
+    app: &AppHandle,
+    type_key: &str,
+    arguments: Value,
+) -> Result<(), String> {
+    if !EXECUTABLE_EVENT_TYPES.contains(&type_key) {
+        return Err(format!("事件 {type_key} 不在可执行白名单内"));
+    }
+    let spec = executable_event_spec(type_key)
+        .ok_or_else(|| format!("事件 {type_key} 在 schema 里没有可执行定义"))?;
+    validate_event_arguments(&spec, &arguments)?;
+
+    let state = app.state::<AppState>();
+    // 锁内只取快照，事件执行期间不持有 ai_service 的锁
+    let (db, data_dir, config, game_status, channels) = {
+        let service = state.ai_service.lock().await;
+        (
+            service.db.clone(),
+            service.data_dir.clone(),
+            service.config.clone(),
+            service.game_status.clone(),
+            state.script_channels.clone(),
+        )
+    };
+    let llm = slot_snapshot(&state.chat.llm).await;
+
+    // 补上事件 YAML 里的 type 字段，其余参数原样交给处理器
+    let mut event_data = arguments;
+    if let Some(object) = event_data.as_object_mut() {
+        object.insert("type".to_string(), json!(type_key));
+    }
+    let mut event = create_event(type_key, event_data)
+        .ok_or_else(|| format!("事件 {type_key} 没有注册处理器"))?;
+
+    let mut ctx = ScriptContext {
+        db: &db,
+        data_dir: &data_dir,
+        app,
+        game_status,
+        config: &config,
+        llm: llm.as_ref(),
+        channels,
+        is_preview: false,
+    };
+    event
+        .execute(&mut ctx)
+        .await
+        .map_err(|error| format!("事件 {type_key} 执行失败: {error}"))?;
+    Ok(())
 }
 
 /// 事件清单里保留、但首期不可执行的占位工具：调用时返回明确拒绝文案。
