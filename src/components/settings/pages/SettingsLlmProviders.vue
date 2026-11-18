@@ -436,6 +436,35 @@
               </div>
             </div>
 
+            <div v-if="editing.provider === 'codex'" class="flex flex-col gap-1">
+              <label for="codex-client-version" class="text-xs font-medium text-white/60">{{
+                $t("settings.llmProviders.codex.clientVersion")
+              }}</label>
+              <input
+                id="codex-client-version"
+                v-model.trim="editing.codex_client_version"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                :placeholder="$t('settings.llmProviders.codex.clientVersionAuto')"
+                :aria-invalid="invalidCodexVersion"
+                aria-describedby="codex-client-version-hint"
+                class="focus:border-brand rounded-lg border border-white/20 bg-white/10 px-3 py-2 text-sm text-white transition-colors outline-none placeholder:text-white/40"
+                @input="resetModelList"
+              />
+              <p
+                id="codex-client-version-hint"
+                class="text-xs"
+                :class="invalidCodexVersion ? 'text-red-400' : 'text-white/50'"
+              >
+                {{
+                  invalidCodexVersion
+                    ? $t("settings.llmProviders.codex.clientVersionInvalid")
+                    : $t("settings.llmProviders.codex.clientVersionHint")
+                }}
+              </p>
+            </div>
+
             <!-- Model -->
             <div v-if="!isOAuthProvider" class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">{{
@@ -453,7 +482,7 @@
               />
             </div>
 
-            <!-- Kimi Code model discovery -->
+            <!-- OAuth model discovery -->
             <div v-else class="flex flex-col gap-1">
               <label class="text-xs font-medium text-white/60">{{
                 $t("settings.llmProviders.form.modelName")
@@ -501,7 +530,7 @@
                 <button
                   type="button"
                   class="bg-brand/80 hover:bg-brand shrink-0 rounded-lg px-3 py-2 text-sm text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
-                  :disabled="loadingModels"
+                  :disabled="loadingModels || invalidCodexVersion"
                   @click="fetchProviderModels"
                 >
                   {{
@@ -878,7 +907,8 @@
             <div class="flex gap-3 pt-2">
               <button
                 type="submit"
-                class="bg-brand hover:bg-brand/80 rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors"
+                class="bg-brand hover:bg-brand/80 rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+                :disabled="invalidCodexVersion"
               >
                 {{ $t("settings.llmProviders.form.save") }}
               </button>
@@ -1039,6 +1069,7 @@ function emptyProvider(): LlmProviderConfig {
     enable_thinking: false,
     reasoning_effort: null,
     fast_mode: false,
+    codex_client_version: "",
     support_vision: false,
     vision_compress: false,
     vision_max_edge: 2048,
@@ -1056,6 +1087,11 @@ function closePanel() {
 const isOAuthProvider = computed(
   () => editing.provider === "kimicode" || editing.provider === "codex",
 );
+const invalidCodexVersion = computed(() => {
+  if (editing.provider !== "codex") return false;
+  const version = editing.codex_client_version?.trim() ?? "";
+  return version !== "" && version.toLowerCase() !== "auto" && !/^\d+\.\d+\.\d+$/.test(version);
+});
 
 // 推理深度档位完全由模型声明的 think_efforts.valid_efforts 驱动（与 kimi-code 官方一致）：
 // 列表非空 → 显示选择器并按其渲染档位；为空（如 K2.7 思考常开、不可调档）→ 不显示。
@@ -1157,7 +1193,7 @@ function startAdd() {
 }
 
 function startEdit(p: LlmProviderConfig) {
-  Object.assign(editing, { ...p });
+  Object.assign(editing, { ...p, codex_client_version: p.codex_client_version ?? "" });
   resetModelList();
   sidePanel.value = "edit";
   saveMessage.value = "";
@@ -1192,6 +1228,7 @@ async function deleteProvider(id: string) {
 }
 
 async function saveCurrent() {
+  if (invalidCodexVersion.value) return;
   saveMessage.value = "";
   saveError.value = false;
   try {
@@ -1210,7 +1247,7 @@ async function saveCurrent() {
 }
 
 async function fetchProviderModels() {
-  if (loadingModels.value) return;
+  if (loadingModels.value || invalidCodexVersion.value) return;
 
   const requestId = ++modelRequestId;
   loadingModels.value = true;

@@ -39,6 +39,9 @@ pub struct LlmProviderConfig {
     /// Codex Fast Mode（1.5× 速度，额度消耗更快）；仅 provider = codex 时有意义。
     #[serde(default)]
     pub fast_mode: bool,
+    /// Codex 模型目录使用的客户端版本。未配置时跟随官方稳定版。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub codex_client_version: Option<String>,
     /// 是否支持原生多模态识图（支持把图片直接发给该模型而不用旁白转述）。
     /// 需要该 provider 的协议能承载图片内容（OpenAI 兼容 image_url / Gemini 多模态）。
     #[serde(default)]
@@ -112,6 +115,7 @@ impl LlmProviderConfig {
             enable_thinking: self.enable_thinking,
             reasoning_effort: self.reasoning_effort.clone(),
             fast_mode: self.fast_mode,
+            codex_client_version: self.codex_client_version.clone(),
             support_vision: self.support_vision,
         }
     }
@@ -355,6 +359,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
             enable_thinking: old_thinking,
             reasoning_effort: None,
             fast_mode: false,
+            codex_client_version: None,
             support_vision: false,
             vision_compress: false,
             vision_max_edge: 2048,
@@ -394,6 +399,7 @@ pub fn migrate_if_needed(app: &AppHandle) {
                 enable_thinking: false,
                 reasoning_effort: None,
                 fast_mode: false,
+                codex_client_version: None,
                 support_vision: false,
                 vision_compress: false,
                 vision_max_edge: 2048,
@@ -471,6 +477,7 @@ pub fn migrate_legacy_vision_keys(app: &AppHandle) {
         enable_thinking: false,
         reasoning_effort: None,
         fast_mode: false,
+        codex_client_version: None,
         support_vision: false,
         vision_compress: false,
         vision_max_edge: 2048,

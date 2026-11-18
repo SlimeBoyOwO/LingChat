@@ -38,6 +38,7 @@ pub struct CodexProvider {
     model: String,
     reasoning_effort: Option<String>,
     fast_mode: bool,
+    client_version: Option<String>,
     temperature: Option<f64>,
     timeout_secs: u64,
 }
@@ -59,6 +60,7 @@ impl CodexProvider {
             model,
             reasoning_effort: cfg.reasoning_effort.clone(),
             fast_mode: cfg.fast_mode,
+            client_version: cfg.codex_client_version.clone(),
             temperature: cfg.temperature,
             timeout_secs: cfg.timeout_secs.max(15),
         })
@@ -519,7 +521,8 @@ fn rand_f64() -> f64 {
 impl LlmProvider for CodexProvider {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
         let (http, cred) = self.client_and_token().await?;
-        super::models::fetch_models(&http, self.headers(&cred)?).await
+        super::models::fetch_models(&http, self.headers(&cred)?, self.client_version.as_deref())
+            .await
     }
 
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {

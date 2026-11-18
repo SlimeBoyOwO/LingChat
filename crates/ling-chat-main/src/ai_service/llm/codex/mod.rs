@@ -9,3 +9,5 @@ pub mod auth;
 mod models;
 pub mod provider;
 mod reasoning;
+
+pub(crate) use models::normalize_client_version;

@@ -12,6 +12,7 @@ export interface LlmProviderConfig {
   enable_thinking: boolean;
   reasoning_effort: string | null;
   fast_mode: boolean;
+  codex_client_version?: string | null;
   /** 该模型是否支持原生多模态识图（勾选后用户发图直接走对话模型，不再旁白转述）。 */
   support_vision: boolean;
   /** 原生识图时是否压缩图片（默认 false：原图直发）。 */

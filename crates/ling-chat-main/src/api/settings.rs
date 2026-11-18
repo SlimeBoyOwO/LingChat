@@ -13,6 +13,7 @@ use tauri_plugin_dialog::DialogExt;
 use crate::AppState;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::LlmModelInfo;
+use crate::ai_service::llm::codex::normalize_client_version;
 use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
     LlmProviderConfig, LlmProvidersResponse, build_llm_client_from_provider, load_providers,
@@ -229,6 +230,13 @@ pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<
 
     let mut updated = provider;
     updated.id = id.clone();
+    updated.codex_client_version = if updated.provider.eq_ignore_ascii_case("codex") {
+        normalize_client_version(updated.codex_client_version.as_deref())
+            .map_err(|error| error.to_string())?
+            .map(str::to_owned)
+    } else {
+        None
+    };
 
     if let Some(pos) = providers.iter().position(|p| p.id == id) {
         providers[pos] = updated;
