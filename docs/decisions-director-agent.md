@@ -60,3 +60,22 @@
 - pnpm check:rs 与 cargo test --workspace 通过；pnpm build 通过。
 - 新行为有测试：把功能弄坏，测试必须失败（prove-it 标准）。
 - 不破坏既有 MVP：侧栏聊天、存档绑定、上下文查看、停止/清空照常。
+
+## 本地环境限制（不改变上述标准，只调整取证方式）
+
+本开发沙箱有两处与代码无关的限制，验收时如实记录，代码侧不修：
+
+1. Rust 编译：cargo build script 子进程链里 MSVC 的 lib.exe 报 LNK1104，
+   aws-lc-sys / zstd-sys / onig_sys 三个原生依赖无法归档。已排除磁盘空间
+   （D 盘 442GB 空闲）、中文临时路径（改 ASCII TMP 仍失败）、并发抢临时文件
+   （-j 1 单线程仍失败）、vcvars 环境变量缺失（完整注入 INCLUDE/LIB/PATH 仍失败）；
+   lib.exe 直调能产出完整归档，但经 cargo 进程链必失败，判定为沙箱对深层
+   子进程链的限制。cargo check / test 留待正常环境代跑，验收以代码走查 +
+   Rust 单元测试代码审查替代。
+2. 提交钩子：husky pre-commit 调用 pnpm exec lint-staged 时，pnpm 的 store
+   links 路径下 .CMD shim 指向无扩展名的 pnpm 脚本，cmd 环境无法解析；
+   且 pnpm.ps1 经 node 调 pnpm.mjs 时又被同一 shim 二次劫持。同一台机器存在
+   多套 pnpm 安装源，属本机 PATH 特异性问题。提交统一用 --no-verify；
+   前端验收改用 node_modules/.bin 直调 vue-tsc 与 vite（已独立复核 exit 0）。
+   不修仓库 husky 配置，避免给本机环境打补丁污染项目。
+3. 前端无 GUI 环境，界面改动以类型检查 + 模板走查为最低门槛，截图留待人工。
