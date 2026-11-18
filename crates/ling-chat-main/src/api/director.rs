@@ -1,7 +1,9 @@
 //! 导演 Agent 的 Tauri 命令层（`director_*`）。
 
 use std::sync::Arc;
+use std::sync::atomic::Ordering;
 
+use tauri::AppHandle;
 use tauri::State;
 use tauri::ipc::Channel;
 
@@ -22,6 +24,22 @@ async fn current_save_id(state: &AppState) -> Option<i32> {
 async fn game_status_handle(state: &AppState) -> Arc<tokio::sync::Mutex<GameStatus>> {
     let service = state.ai_service.lock().await;
     service.game_status.clone()
+}
+
+/// D1 闸门：只有自由对话才开放导演工具。
+/// 固定剧本模式（含编辑器试玩）下，导演插入事件会与事件下标、章节状态竞争，
+/// 玩家存档恢复点会被污染；此时不下发工具定义，执行层另保留拒绝路径。
+async fn director_tools_enabled(state: &AppState) -> bool {
+    // 先短锁 ai_service 取出句柄与运行标记，释放后再锁 game_status，避免跨 await 持锁。
+    let (script_running, game_status) = {
+        let service = state.ai_service.lock().await;
+        (
+            service.script_manager.is_running.load(Ordering::SeqCst),
+            service.game_status.clone(),
+        )
+    };
+    let in_script_mode = game_status.lock().await.script_status.is_some();
+    !script_running && !in_script_mode
 }
 
 #[tauri::command]
@@ -53,6 +71,7 @@ pub async fn director_get_state(state: State<'_, AppState>) -> Result<DirectorSt
 /// 开始一轮对话。返回本次用户消息的 DB id（0 = 自由对话未落库）。
 #[tauri::command]
 pub async fn director_start_chat(
+    app: AppHandle,
     state: State<'_, AppState>,
     message: String,
     channel: Channel<DirectorAgentEvent>,
@@ -72,6 +91,7 @@ pub async fn director_start_chat(
     let model = Some(llm.config().model.clone());
 
     let save_id = current_save_id(&state).await;
+    let tools_enabled = director_tools_enabled(&state).await;
     let turn = core
         .director
         .begin_turn(&state.db, save_id, message)
@@ -94,7 +114,7 @@ pub async fn director_start_chat(
     let handle = tauri::async_runtime::spawn(async move {
         core_for_task
             .director
-            .run_chat(db, channel, request, turn)
+            .run_chat(db, channel, request, turn, app, tools_enabled)
             .await;
     });
     core.director.set_task(handle).await;

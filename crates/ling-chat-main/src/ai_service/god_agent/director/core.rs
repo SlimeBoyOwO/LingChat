@@ -1,8 +1,12 @@
 //! 导演 Agent 运行层：存档懒同步、现场装配、流式对话。
 
+use std::collections::HashSet;
+
 use chrono::Local;
 use futures_util::StreamExt;
 use sea_orm::DatabaseConnection;
+use serde_json::{Value, json};
+use tauri::AppHandle;
 use tauri::ipc::Channel;
 use tokio_util::sync::CancellationToken;
 
@@ -11,10 +15,14 @@ use crate::ai_service::god_agent::core::tail_lines;
 use crate::ai_service::llm::{LlmChunk, LlmSlot, LlmUsage, slot_snapshot};
 use crate::ai_service::skill_agent::db;
 use crate::ai_service::skill_agent::events::Usage as AgentUsage;
-use crate::ai_service::types::{GameLine, LlmMessage};
+use crate::ai_service::tools::executor::{ToolContext, ToolExecutor};
+use crate::ai_service::types::{GameLine, LlmMessage, ToolCall, ToolDefinition};
 use crate::db::entities::agent_message;
 use crate::db::entities::line::LineAttribute;
 
+use super::tools::{
+    LoopStep, MAX_TOOL_CALLS_PER_ROUND, director_registry, plan_next_step,
+};
 use super::{
     ContextMessage, ContextSection, ContextStats, DirectorAgentEvent, DirectorContext,
     DirectorMessage,
@@ -297,13 +305,19 @@ impl DirectorAgent {
     // 流式运行
     // ============================================================
 
-    /// 跑一轮对话。正文边流边推，结束、停止、出错都把已产出的内容落库。
+    /// 跑一轮对话。自由对话时带导演工具定义跑多轮闭环，正文边流边推；
+    /// 结束、停止、出错都把已产出的内容与工具消息落库。
+    ///
+    /// `tools_enabled` 为 D1 闸门结果：剧本运行期间为 false，不下发工具定义，
+    /// 模型照历史硬调时执行层仍返回明确拒绝文案。
     pub async fn run_chat(
         &self,
         db: DatabaseConnection,
         channel: Channel<DirectorAgentEvent>,
         request: Vec<LlmMessage>,
         turn: TurnContext,
+        app: AppHandle,
+        tools_enabled: bool,
     ) {
         let Some(llm) = slot_snapshot(&self.llm).await else {
             let _ = channel.send(DirectorAgentEvent::Error {
@@ -314,48 +328,217 @@ impl DirectorAgent {
             return;
         };
 
-        let mut content = String::new();
-        let mut reasoning = String::new();
+        // 注册表与聊天工具权限体系完全隔离，这里现建现用。
+        let registry = director_registry();
+        let streaming_tools = tools_enabled && llm.supports_streaming_tools();
+        let definitions: Vec<ToolDefinition> = if streaming_tools {
+            registry.definitions()
+        } else {
+            Vec::new()
+        };
+        let allowed: HashSet<String> = definitions
+            .iter()
+            .map(|definition| definition.function.name.clone())
+            .collect();
+        let context = ToolContext::new(allowed).with_app(app);
+        let executor = ToolExecutor::new(&registry);
+
+        let mut messages = request;
+        let cancel = turn.cancel.clone();
         let mut usage: Option<LlmUsage> = None;
         let mut error: Option<String> = None;
-        let cancel = turn.cancel.clone();
+        let mut content = String::new();
+        let mut reasoning = String::new();
+        let mut round = 0usize;
+        let mut final_synthesis = false;
+        let mut stopped = false;
 
-        match llm.complete_stream(&request).await {
-            Err(e) => error = Some(format!("导演请求失败：{e}")),
-            Ok(mut stream) => {
-                loop {
-                    tokio::select! {
-                        _ = cancel.cancelled() => {
-                            let _ = channel.send(DirectorAgentEvent::Status {
-                                content: "已停止生成".to_string(),
-                            });
-                            break;
-                        }
-                        chunk = stream.next() => {
-                            match chunk {
-                                None => break,
-                                Some(Err(e)) => {
-                                    error = Some(e.to_string());
-                                    break;
-                                }
-                                Some(Ok(chunk)) => match chunk {
-                                    LlmChunk::Content(c) => {
-                                        content.push_str(&c);
-                                        let _ = channel.send(DirectorAgentEvent::MessageDelta { content: c });
-                                    }
-                                    LlmChunk::Reasoning(r) => {
-                                        reasoning.push_str(&r);
-                                        let _ = channel.send(DirectorAgentEvent::Reasoning { content: r });
-                                    }
-                                    LlmChunk::StreamEnd { usage: end, .. } => usage = end,
-                                    // 本期工具集为空，模型不会返回工具调用；协议先留着
-                                    LlmChunk::ToolCalls(_) | LlmChunk::ToolCallProgress { .. } => {}
-                                },
+        loop {
+            // 收尾轮与闸门关闭时都不下发工具定义，避免模型继续调工具。
+            let response = if !final_synthesis && !definitions.is_empty() {
+                llm.complete_stream_with_tools(&messages, &definitions, Some("auto"))
+                    .await
+            } else {
+                llm.complete_stream(&messages).await
+            };
+            let mut stream = match response {
+                Err(e) => {
+                    error = Some(format!("导演请求失败：{e}"));
+                    break;
+                },
+                Ok(stream) => stream,
+            };
+
+            let mut round_content = String::new();
+            let mut round_reasoning = String::new();
+            let mut round_calls: Vec<ToolCall> = Vec::new();
+            loop {
+                tokio::select! {
+                    _ = cancel.cancelled() => {
+                        let _ = channel.send(DirectorAgentEvent::Status {
+                            content: "已停止生成".to_string(),
+                        });
+                        stopped = true;
+                        break;
+                    }
+                    chunk = stream.next() => {
+                        match chunk {
+                            None => break,
+                            Some(Err(e)) => {
+                                error = Some(e.to_string());
+                                break;
                             }
+                            Some(Ok(chunk)) => match chunk {
+                                LlmChunk::Content(c) => {
+                                    round_content.push_str(&c);
+                                    let _ = channel.send(DirectorAgentEvent::MessageDelta { content: c });
+                                }
+                                LlmChunk::Reasoning(r) => {
+                                    round_reasoning.push_str(&r);
+                                    let _ = channel.send(DirectorAgentEvent::Reasoning { content: r });
+                                }
+                                LlmChunk::ToolCalls(calls) => round_calls.extend(calls),
+                                LlmChunk::StreamEnd { usage: end, .. } => {
+                                    if end.is_some() {
+                                        usage = end;
+                                    }
+                                }
+                                LlmChunk::ToolCallProgress { .. } => {}
+                            },
                         }
                     }
                 }
-            },
+            }
+
+            // 各轮正文都实时推给前端，最终答复也按同样顺序累加，
+            // 保证落库内容、Done.final_text 与前端流式累积三者一致。
+            content.push_str(&round_content);
+            reasoning.push_str(&round_reasoning);
+            if error.is_some() || stopped {
+                break;
+            }
+
+            // 收尾轮只取正文：模型残留的工具调用一律忽略，不再进闭环。
+            if final_synthesis {
+                if !round_calls.is_empty() {
+                    let count = round_calls.len();
+                    tracing::warn!(count, "导演收尾轮仍返回工具调用，已忽略");
+                }
+                break;
+            }
+            if round_calls.is_empty() {
+                break;
+            }
+
+            // 工具执行前先把带 tool_calls 的 assistant 消息按序落库。
+            let mut assistant_msg = LlmMessage::tool(round_calls.clone());
+            assistant_msg.content = round_content.clone();
+            self.append_loop_message(
+                &db,
+                &turn,
+                &assistant_msg,
+                nonempty(&round_reasoning),
+            )
+            .await;
+            messages.push(assistant_msg);
+
+            if !streaming_tools {
+                // 没下发工具定义却仍收到工具调用：逐个回明确文案，再给一次
+                // 不带工具定义的收尾，让导演用一句话解释现状。
+                let reason = if tools_enabled {
+                    "当前对话模型不支持原生工具调用，本次调用未执行。"
+                } else {
+                    "当前正在运行固定剧本，导演工具已关闭；请结束剧本后再安排剧情。"
+                };
+                for call in &round_calls {
+                    let _ = channel.send(DirectorAgentEvent::ToolCall {
+                        call_id: call.id.clone(),
+                        tool: call.function.name.clone(),
+                        args: parse_tool_args(&call.function.arguments),
+                    });
+                    let output = json!({
+                        "ok": false,
+                        "error": {
+                            "code": "tools_disabled",
+                            "message": reason
+                        }
+                    })
+                    .to_string();
+                    let _ = channel.send(DirectorAgentEvent::ToolResult {
+                        call_id: call.id.clone(),
+                        tool: call.function.name.clone(),
+                        ok: false,
+                        output: output.clone(),
+                        error: Some(reason.to_string()),
+                    });
+                    let tool_msg = LlmMessage::tool_result(call.id.clone(), output);
+                    self.append_loop_message(&db, &turn, &tool_msg, None).await;
+                    messages.push(tool_msg);
+                }
+                final_synthesis = true;
+                round += 1;
+                continue;
+            }
+
+            // 逐个执行工具；取消后剩余调用补「已取消」结果，避免留下孤立的 tool_calls。
+            for (index, call) in round_calls.iter().enumerate() {
+                let _ = channel.send(DirectorAgentEvent::ToolCall {
+                    call_id: call.id.clone(),
+                    tool: call.function.name.clone(),
+                    args: parse_tool_args(&call.function.arguments),
+                });
+                let output = if cancel.is_cancelled() {
+                    stopped = true;
+                    json!({
+                        "ok": false,
+                        "error": {
+                            "code": "cancelled",
+                            "message": "生成已停止，该工具调用未执行。"
+                        }
+                    })
+                    .to_string()
+                } else if index >= MAX_TOOL_CALLS_PER_ROUND {
+                    json!({
+                        "ok": false,
+                        "error": {
+                            "code": "call_limit",
+                            "message": "本轮工具调用数超过上限，该调用未执行，请下一轮再试。"
+                        }
+                    })
+                    .to_string()
+                } else {
+                    executor
+                        .execute(&call.function.name, &call.function.arguments, &context)
+                        .await
+                };
+                let (ok, tool_error) = parse_tool_outcome(&output);
+                let _ = channel.send(DirectorAgentEvent::ToolResult {
+                    call_id: call.id.clone(),
+                    tool: call.function.name.clone(),
+                    ok,
+                    output: output.clone(),
+                    error: tool_error,
+                });
+                let tool_msg = LlmMessage::tool_result(call.id.clone(), output);
+                self.append_loop_message(&db, &turn, &tool_msg, None).await;
+                messages.push(tool_msg);
+            }
+            if stopped {
+                let _ = channel.send(DirectorAgentEvent::Status {
+                    content: "已停止生成".to_string(),
+                });
+                break;
+            }
+
+            match plan_next_step(round, true) {
+                LoopStep::Finish => break,
+                LoopStep::ContinueWithTools => round += 1,
+                LoopStep::FinalSynthesis => {
+                    // 用满工具轮数：下一轮不带工具定义做一次收尾生成。
+                    final_synthesis = true;
+                    round += 1;
+                },
+            }
         }
 
         let message_id = self
@@ -371,6 +554,38 @@ impl DirectorAgent {
                     message_id,
                 });
             },
+        }
+    }
+
+    /// 工具循环中间消息：assistant(tool_calls) 与 tool 结果按序写进当前会话。
+    /// 自由对话未落库时只进内存 session.messages，与 finish_turn 一致。
+    async fn append_loop_message(
+        &self,
+        db: &DatabaseConnection,
+        turn: &TurnContext,
+        message: &LlmMessage,
+        reasoning: Option<&str>,
+    ) {
+        let mut id = 0;
+        if let Some(conversation_id) = turn.conversation_id {
+            match db::append_director_message(db, conversation_id, message, reasoning, None).await {
+                Ok(new_id) => id = new_id,
+                Err(e) => tracing::warn!("导演工具消息落库失败: {e}"),
+            }
+        }
+
+        let mut session = self.session.lock().await;
+        // 生成期间切了存档：消息已写进旧存档的会话，内存里只保留新档的线。
+        if session.conversation_id == turn.conversation_id {
+            session.messages.push(DirectorMessage {
+                id,
+                role: message.role.clone(),
+                content: message.content.clone(),
+                reasoning: reasoning.map(str::to_string),
+                tool_calls: message.tool_calls.clone(),
+                tool_call_id: message.tool_call_id.clone(),
+                created_at: Local::now().naive_local().to_string(),
+            });
         }
     }
 
@@ -481,6 +696,39 @@ impl DirectorAgent {
             truncated,
         }
     }
+}
+
+/// 空 reasoning 不写进 DB（与 finish_turn 一致）。
+fn nonempty(text: &str) -> Option<&str> {
+    (!text.is_empty()).then_some(text)
+}
+
+/// 工具事件的参数摘要：非法或双编码 JSON 退化成空对象，保证前端字段始终是对象。
+fn parse_tool_args(raw: &str) -> Value {
+    serde_json::from_str::<Value>(raw)
+        .ok()
+        .filter(Value::is_object)
+        .unwrap_or_else(|| json!({}))
+}
+
+/// 从执行器返回串判断成败，并抽出错误文案供前端 ToolResult 展示。
+fn parse_tool_outcome(output: &str) -> (bool, Option<String>) {
+    let value = serde_json::from_str::<Value>(output).ok();
+    let ok = value
+        .as_ref()
+        .and_then(|v| v.get("ok"))
+        .and_then(Value::as_bool)
+        .unwrap_or(true);
+    let error = if ok {
+        None
+    } else {
+        value
+            .as_ref()
+            .and_then(|v| v.pointer("/error/message"))
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    (ok, error)
 }
 
 fn to_agent_usage(usage: LlmUsage) -> AgentUsage {
