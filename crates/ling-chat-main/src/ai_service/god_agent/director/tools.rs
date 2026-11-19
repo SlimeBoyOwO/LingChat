@@ -273,16 +273,22 @@ mod tests {
                 .iter()
                 .any(|d| d.function.name == DIRECTOR_SET_VARIABLE)
         );
+        // dialogue 与 set_variable 一样只以拒绝占位出现：名字在注册表里，但不在可执行白名单内
         assert!(
-            definitions
-                .iter()
-                .any(|d| d.function.name == DIRECTOR_DIALOGUE)
+            !EXECUTABLE_EVENT_TYPES.contains(&"dialogue"),
+            "dialogue 不应出现在可执行事件白名单里"
         );
+        let dialogue_definition = definitions
+            .iter()
+            .find(|d| d.function.name == DIRECTOR_DIALOGUE)
+            .expect("dialogue 应有拒绝占位工具");
         assert!(
-            !definitions
-                .iter()
-                .any(|d| d.function.name == event_tool_name("dialogue")),
-            "dialogue 不应注册为可执行事件工具"
+            dialogue_definition.function.description.contains("占位")
+                || dialogue_definition
+                    .function
+                    .description
+                    .contains("暂不可用"),
+            "dialogue 占位工具的描述应说明不可用"
         );
         for &type_key in EXECUTABLE_EVENT_TYPES {
             assert!(
@@ -302,12 +308,14 @@ mod tests {
             "未知工具名不应在注册表中"
         );
 
-        // 执行器同样拒绝未知工具，返回稳定的错误编码而非 panic
-        let allowed: HashSet<String> = registry
+        // 执行器同样拒绝未知工具，返回稳定的错误编码而非 panic。
+        // 执行器先查权限再查存在性，所以这里要把名字放进 allowed 才能测到 unknown_tool 分支。
+        let mut allowed: HashSet<String> = registry
             .definitions()
             .into_iter()
             .map(|d| d.function.name)
             .collect();
+        allowed.insert("director_no_such_tool".to_string());
         let executor = ToolExecutor::new(&registry);
         let context = ToolContext::new(allowed);
         let result = executor
