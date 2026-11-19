@@ -6,8 +6,8 @@ use chrono::Local;
 use futures_util::StreamExt;
 use sea_orm::DatabaseConnection;
 use serde_json::{Value, json};
-use tauri::{AppHandle, Manager};
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Manager};
 use tokio_util::sync::CancellationToken;
 
 use crate::ai_service::game_system::game_status::GameStatus;
@@ -24,9 +24,7 @@ use super::draft::{
     DRAFT_INSTRUCTION, DRAFT_MAX_ATTEMPTS, DRAFT_USER_PROMPT, DirectorConfirmResult,
     DirectorDraftView, DirectorModeState, DirectorModeView, draft_event_catalog, parse_draft,
 };
-use super::tools::{
-    LoopStep, MAX_TOOL_CALLS_PER_ROUND, director_registry, plan_next_step,
-};
+use super::tools::{LoopStep, MAX_TOOL_CALLS_PER_ROUND, director_registry, plan_next_step};
 use super::{
     ContextMessage, ContextSection, ContextStats, DirectorAgentEvent, DirectorContext,
     DirectorMessage,
@@ -233,7 +231,9 @@ impl DirectorAgent {
             }
             // 台词表折算出的当前最大用户消息序号
             let current_seq = {
-                let service = app.state::<crate::AppState>().ai_service.lock().await;
+                // state() 返回临时值，先绑定再借用，否则 gs 会借用已释放的临时值
+                let state = app.state::<crate::AppState>();
+                let service = state.ai_service.lock().await;
                 let gs = service.game_status.lock().await;
                 crate::api::game::compute_user_message_seqs(&gs.line_list)
                     .iter()
@@ -247,8 +247,11 @@ impl DirectorAgent {
 
         let state = app.state::<crate::AppState>();
         let Some(core) = state.god_agent.clone() else {
-            self.finish_draft(token, Err("导演服务不可用：未配置可用的对话模型".to_string()))
-                .await;
+            self.finish_draft(
+                token,
+                Err("导演服务不可用：未配置可用的对话模型".to_string()),
+            )
+            .await;
             return;
         };
         let llm = match slot_snapshot(&core.llm).await {
@@ -562,13 +565,8 @@ impl DirectorAgent {
             // 工具执行前先把带 tool_calls 的 assistant 消息按序落库。
             let mut assistant_msg = LlmMessage::tool(round_calls.clone());
             assistant_msg.content = round_content.clone();
-            self.append_loop_message(
-                &db,
-                &turn,
-                &assistant_msg,
-                nonempty(&round_reasoning),
-            )
-            .await;
+            self.append_loop_message(&db, &turn, &assistant_msg, nonempty(&round_reasoning))
+                .await;
             messages.push(assistant_msg);
 
             if !streaming_tools {
