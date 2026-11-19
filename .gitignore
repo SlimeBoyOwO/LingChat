@@ -78,7 +78,7 @@ ling_chat/static/frontend/
 # src-tauri/gen/schemas/ 为 JSON schema 自动生成文件，可追踪
 src-tauri/bundled_resources/
 src-tauri/.bundled_resources/
-# 外部二进制：onnxruntime.dll / DirectML.dll 由 scripts/ensure-onnxruntime.mjs 下载
+# 外部二进制：onnxruntime.dll / DirectML.dll 由 ort 的 copy-dylibs 放置，build.rs 复制到此供打包
 src-tauri/binaries/
 # Linux 运行期动态库：由 scripts/prepare-linux-libs.mjs 从 target/ 收集
 src-tauri/linux-libs/

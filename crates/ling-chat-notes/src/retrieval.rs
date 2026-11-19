@@ -520,18 +520,6 @@ mod tests {
     #[test]
     #[ignore = "需要已下载的嵌入模型"]
     fn retrieval_hits_semantic_notes() {
-        #[cfg(target_os = "windows")]
-        {
-            let dll = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("..")
-                .join("src-tauri/binaries/onnxruntime.dll");
-            assert!(dll.exists(), "onnxruntime.dll 不存在: {}", dll.display());
-            if let Err(e) = ort::init_from(&dll) {
-                eprintln!("ort::init_from 跳过（可能已初始化）: {e}");
-            }
-        }
-
         let model_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")

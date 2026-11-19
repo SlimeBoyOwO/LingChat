@@ -429,7 +429,7 @@ impl EmbeddingEngine {
 }
 
 fn build_session(onnx_path: &Path) -> Result<Session> {
-    Session::builder()
+    Session::builder(crate::ort_env::environment()?)
         .map_err(|e| anyhow!("创建 SessionBuilder 失败: {e}"))?
         .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
         .map_err(|e| anyhow!("设置优化级别失败: {e}"))?
@@ -490,26 +490,12 @@ mod tests {
 
     /// 端到端冒烟：真加载模型并验证句向量的维度、归一化与语义区分度。
     ///
-    /// 需先跑 `node scripts/download_embedding_model.mjs` 与
-    /// `node scripts/ensure-onnxruntime.mjs`。**单独运行**（同一进程里
-    /// `ort::init_from` 只应初始化一次）：
+    /// 需先跑 `node scripts/download_embedding_model.mjs`。**单独运行**（同一进程只有一个
+    /// ONNX Runtime 环境，重复初始化会失败）：
     /// `cargo test -p ling-chat-notes --lib --ignored embedding_smoke -- --exact --nocapture`
     #[test]
-    #[ignore = "需要已下载的嵌入模型与 onnxruntime.dll"]
+    #[ignore = "需要已下载的嵌入模型与 onnxruntime"]
     fn embedding_smoke_returns_normalized_semantic_vectors() {
-        // 只有 Windows 的 load-dynamic 模式暴露 ort::init_from；其余平台静态链接，
-        // 无需也不能手动初始化。
-        #[cfg(target_os = "windows")]
-        {
-            let dll = repo_path("src-tauri/binaries/onnxruntime.dll");
-            assert!(dll.exists(), "onnxruntime.dll 不存在: {}", dll.display());
-            // 已初始化过会返回 Err（ort 内部库句柄已被消费），此时运行时其实已就绪，
-            // 继续走即可，不要重复初始化。
-            if let Err(e) = ort::init_from(&dll) {
-                eprintln!("ort::init_from 跳过（可能已初始化）: {e}");
-            }
-        }
-
         let model_dir = repo_path("data/third_party/embedding_model_bge_small_zh");
         let engine = EmbeddingEngine::load(&model_dir, true);
         assert!(

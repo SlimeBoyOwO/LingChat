@@ -80,7 +80,9 @@ impl AsrVad {
         }
         let model_path = resolve_vad_model_path(app)?;
         tracing::info!("[ASR/VAD] loading model from {}", model_path.display());
-        let session = Session::builder()
+        let environment = ling_chat_notes::ort_env::environment()
+            .map_err(|e| AsrError::EngineLoadFailed(format!("ONNX environment: {e}")))?;
+        let session = Session::builder(environment)
             .map_err(|e| AsrError::EngineLoadFailed(format!("SessionBuilder: {e}")))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
             .map_err(|e| AsrError::EngineLoadFailed(format!("optimization level: {e}")))?

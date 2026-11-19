@@ -7,8 +7,10 @@
 //! [`embedding`] 提供 ONNX 句向量引擎，供笔记 / 记忆检索与 Tool RAG 复用。
 //! [`retrieval`] 维护按角色隔离的笔记向量索引并提供 Top-K 检索。
 //! [`vector`] 基于 sqlite-vec 提供本地向量存储，检索能力由调用方按需组合。
+//! [`ort_env`] 持有进程唯一的 ONNX Runtime 环境，所有会话构建都从这里取用。
 
 pub mod embedding;
+pub mod ort_env;
 pub mod retrieval;
 pub mod vector;
 

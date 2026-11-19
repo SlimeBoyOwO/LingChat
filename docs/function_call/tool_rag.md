@@ -127,7 +127,7 @@ node scripts/download_embedding_model.mjs
 cargo test -p ling-chat-main --lib
 
 # 真实模型下的嵌入冒烟：维度、归一化与语义区分度。
-# 需先拉模型；单独运行（同一进程里 ort::init_from 只应初始化一次）
+# 需先拉模型；单独运行（同一进程里 ONNX Runtime 环境只应初始化一次）
 cargo test -p ling-chat-main --lib embedding_smoke -- --ignored --nocapture
 
 # 静默推荐的阈值校准：打印每句样例的 top-3 分数并断言阈值切得开。

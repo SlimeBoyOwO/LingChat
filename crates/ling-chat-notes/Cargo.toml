@@ -25,35 +25,43 @@ sqlite-vec = "0.1.9"
 
 # 文本嵌入分词与推理（Tool RAG / 笔记检索共用）。
 tokenizers = "0.22"
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "std",
     "ndarray",
+    "api-31",
 ] }
 
-# ort 的推理后端配置与主 crate 保持一致，否则两个 crate 各自启用不同 EP，
-# Windows 上还可能因缺少 load-dynamic 而链接到不可用的静态运行时。
+# ort 的推理后端配置与主 crate 保持一致，否则两个 crate 各自启用不同 EP。
+# Windows 走 pyke 预编译包（download-binaries，内置 DirectML），不再用 WinML NuGet
+# 抽取的 onnxruntime.dll；copy-dylibs 把 pyke 包里的 dll 摆到 target 供运行加载。
 [target.'cfg(target_os = "windows")'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "directml",
-    "load-dynamic",
+    "download-binaries",
+    "tls-native",
+    "copy-dylibs",
+    "api-31",
 ] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "x86_64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "webgpu",
     "download-binaries",
     "tls-native",
+    "api-31",
 ] }
 
 [target.'cfg(all(target_os = "linux", target_arch = "aarch64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "download-binaries",
     "tls-native",
+    "api-31",
 ] }
 
 [target.'cfg(all(target_os = "macos", target_arch = "aarch64"))'.dependencies]
-ort = { version = "=2.0.0-rc.13", default-features = false, features = [
+ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "coreml",
     "download-binaries",
     "tls-native",
+    "api-31",
 ] }
