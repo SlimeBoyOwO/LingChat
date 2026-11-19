@@ -11,17 +11,31 @@ pub(super) const TRAIL_SILENCE_KEEP: f32 = 0.15;
 /// 拼接处淡入淡出多久（秒）。20ms 足够把波形接缝压回静音，又短到听不出音量变化。
 const JOINT_FADE: f32 = 0.02;
 
-/// 静音判定阈值，与 sherpa 的 `ScaleSilence` 一致（0.01，约 -40 dBFS）。
-const SILENCE_AMP: f32 = 0.01;
+/// 静音阈值下限/上限，约 -56 / -40 dBFS。
+///
+/// 固定 0.01 只适合满幅模型：零样本克隆或音量偏小的音色峰值可能只有 0.02~0.05，
+/// 语音本身就在阈值附近，词腹的弱音会被当成静音剪掉，听感就是「个别字被吃掉、
+/// 语速突然变快」。这里按本段峰值自适应，既不会误伤弱音，也不会把底噪留下。
+const SILENCE_FLOOR: f32 = 0.0015;
+const SILENCE_CEIL: f32 = 0.01;
+/// 阈值取峰值的 -34 dB 左右（0.02 倍）。
+const SILENCE_PEAK_RATIO: f32 = 0.02;
+
+/// 按本段峰值自适应静音阈值，并夹在 [`SILENCE_FLOOR`]..=[`SILENCE_CEIL`]。
+fn silence_threshold(samples: &[f32]) -> f32 {
+    let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+    (peak * SILENCE_PEAK_RATIO).clamp(SILENCE_FLOOR, SILENCE_CEIL)
+}
 
 /// 首尾静音的边界 `[start, end)`（整段都静音时 `start >= end`）。
 fn silence_bounds(samples: &[f32]) -> (usize, usize) {
+    let threshold = silence_threshold(samples);
     let mut start = 0;
-    while start < samples.len() && samples[start].abs() <= SILENCE_AMP {
+    while start < samples.len() && samples[start].abs() <= threshold {
         start += 1;
     }
     let mut end = samples.len();
-    while end > start && samples[end - 1].abs() <= SILENCE_AMP {
+    while end > start && samples[end - 1].abs() <= threshold {
         end -= 1;
     }
     (start, end)
@@ -39,25 +53,30 @@ pub(super) fn cap_inner_silence(samples: &mut Vec<f32>, sample_rate: i32, max_ga
         return;
     }
     let max_len = (sample_rate as f32 * max_gap) as usize;
+    let threshold = silence_threshold(samples);
     let mut out = Vec::with_capacity(samples.len());
     let mut i = 0;
     while i < samples.len() {
-        if samples[i].abs() > SILENCE_AMP {
+        if samples[i].abs() > threshold {
             out.push(samples[i]);
             i += 1;
             continue;
         }
         let start = i;
-        while i < samples.len() && samples[i].abs() <= SILENCE_AMP {
+        while i < samples.len() && samples[i].abs() <= threshold {
             i += 1;
         }
-        // 长静音只留末尾 max_len 个样本（波形在静音里恒为 0，删哪一段都一样）。
-        let keep_from = if i - start > max_len {
-            i - max_len
+        // 长静音只留首尾各一半，中间删掉。两侧都停在近零样本上，
+        // 拼接点不会从语音直接跳到静音，听感更平顺。
+        let run = i - start;
+        if run > max_len {
+            let head = max_len / 2;
+            let tail = max_len - head;
+            out.extend_from_slice(&samples[start..start + head]);
+            out.extend_from_slice(&samples[i - tail..i]);
         } else {
-            start
-        };
-        out.extend_from_slice(&samples[keep_from..i]);
+            out.extend_from_slice(&samples[start..i]);
+        }
     }
     *samples = out;
 }
@@ -73,6 +92,59 @@ pub(super) fn apply_edge_fades(samples: &mut [f32], sample_rate: i32) {
         samples[i] *= gain;
         let last = samples.len() - 1 - i;
         samples[last] *= gain;
+    }
+}
+
+/// 目标 RMS 约 -18 dBFS，与 GSV 的 `smooth_wav` 对齐；峰值上限约 -1 dBFS。
+const LOUDNESS_TARGET_RMS: f32 = 0.125;
+const LOUDNESS_PEAK_CEILING: f32 = 0.891;
+/// 低于该 RMS 视为静音，不放大底噪。
+const LOUDNESS_SILENCE_RMS: f32 = 0.004;
+/// 放大上限 +24 dB：足够救回偏小的零样本克隆，又不至于把底噪推满。
+const LOUDNESS_MAX_GAIN: f32 = 16.0;
+
+/// 按 RMS 对齐响度，同时用峰值上限挡住削波。
+///
+/// 不同模型/参考音频的输出电平差很多；不归一化时小音量模型听起来「几乎没声」。
+/// RMS 只统计语音段（高于自适应静音阈值的样本），避免把句间停顿算进去拉低响度。
+pub(super) fn normalize_loudness(samples: &mut [f32]) {
+    if samples.is_empty() {
+        return;
+    }
+
+    let threshold = silence_threshold(samples);
+    let mut sum_sq = 0.0f64;
+    let mut speech = 0usize;
+    let mut peak = 0.0f32;
+    for s in samples.iter().copied() {
+        let amp = s.abs();
+        peak = peak.max(amp);
+        if amp > threshold {
+            sum_sq += (s as f64) * (s as f64);
+            speech += 1;
+        }
+    }
+    if speech == 0 || peak <= 0.0 {
+        return;
+    }
+
+    let rms = (sum_sq / speech as f64).sqrt() as f32;
+    if rms < LOUDNESS_SILENCE_RMS {
+        return;
+    }
+
+    let mut gain = (LOUDNESS_TARGET_RMS / rms).min(LOUDNESS_MAX_GAIN);
+    // 峰值不得越过上限，否则会在解码/播放时削波失真。
+    if peak * gain > LOUDNESS_PEAK_CEILING {
+        gain = LOUDNESS_PEAK_CEILING / peak;
+    }
+    // 已经接近目标时不做无意义的微调。
+    if (gain - 1.0).abs() < 0.01 {
+        return;
+    }
+
+    for s in &mut *samples {
+        *s = (*s * gain).clamp(-1.0, 1.0);
     }
 }
 
@@ -324,6 +396,64 @@ mod tests {
         // `strip_edge_silence` 会把首尾清掉），500ms → 200ms。
         assert_eq!(samples.len(), 200 + 100 + 200 + 100 + 200);
         assert_eq!(samples.iter().filter(|s| s.abs() > 0.1).count(), 200);
+    }
+
+    /// 低电平克隆的弱音不能被固定阈值当成静音剪掉（否则就是「吃字、语速变快」）。
+    #[test]
+    fn keeps_quiet_speech_above_adaptive_threshold() {
+        // 峰值 0.004：旧固定阈值 0.01 会把整段判成静音、裁成空。
+        let quiet = vec![0.004f32; 200];
+        assert_eq!(strip_edge_silence(&quiet).len(), 200);
+
+        // 句内长静音收口时，弱音同样要保留。
+        let mut samples = vec![0.0; 300];
+        samples.extend(std::iter::repeat_n(0.004, 100));
+        samples.extend(std::iter::repeat_n(0.0, 300));
+        samples.extend(std::iter::repeat_n(0.004, 100));
+        samples.extend(std::iter::repeat_n(0.0, 300));
+        cap_inner_silence(&mut samples, 1000, 0.2);
+        assert_eq!(samples.len(), 200 + 100 + 200 + 100 + 200);
+        assert_eq!(samples.iter().filter(|s| s.abs() > 0.001).count(), 200);
+    }
+
+    /// 低电平音频按 RMS 抬到目标响度，且不越过峰值上限。
+    #[test]
+    fn normalizes_quiet_audio_without_clipping() {
+        let mut samples = vec![0.01f32; 1000];
+        normalize_loudness(&mut samples);
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        let rms = sample_rms(&samples);
+        assert!(rms > 0.1, "低电平应被抬高，rms={rms}");
+        assert!(
+            peak <= LOUDNESS_PEAK_CEILING + 1e-6,
+            "不得削波，peak={peak}"
+        );
+    }
+
+    /// RMS 想抬得更多时，峰值上限优先。
+    #[test]
+    fn loudness_gain_respects_peak_ceiling() {
+        let mut samples = vec![0.02f32; 1000];
+        samples[500] = 0.2;
+        normalize_loudness(&mut samples);
+        let peak = samples.iter().fold(0.0f32, |m, s| m.max(s.abs()));
+        assert!(
+            (peak - LOUDNESS_PEAK_CEILING).abs() < 1e-3,
+            "峰值应被压在上限，peak={peak}"
+        );
+    }
+
+    /// 近乎全静音时不放大底噪。
+    #[test]
+    fn normalizes_skips_near_silence() {
+        let mut samples = vec![0.001f32; 100];
+        normalize_loudness(&mut samples);
+        assert!(samples.iter().all(|s| (*s - 0.001).abs() < 1e-6));
+    }
+
+    fn sample_rms(samples: &[f32]) -> f32 {
+        let sum: f64 = samples.iter().map(|s| (*s as f64) * (*s as f64)).sum();
+        (sum / samples.len() as f64).sqrt() as f32
     }
 
     /// 淡入淡出：首尾归零、中间不动。

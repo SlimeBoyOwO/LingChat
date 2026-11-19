@@ -22,7 +22,7 @@ mod text;
 pub use audio::load_reference_audio;
 use audio::{
     LEAD_SILENCE_KEEP, TRAIL_SILENCE_KEEP, apply_edge_fades, cap_inner_silence, f32_to_wav,
-    strip_edge_silence,
+    normalize_loudness, strip_edge_silence,
 };
 use engine::{model_reads_latin, needs_digit_normalization, pick_sid};
 use shared::{SharedSherpaEngine, inference_gate};
@@ -367,6 +367,9 @@ impl TtsAdapter for SherpaOnnxAdapter {
         samples.extend_from_slice(&lead);
         samples.extend_from_slice(&assembled);
         samples.extend_from_slice(&trail);
+
+        // 不同模型/参考音频的输出电平差很多，统一按 RMS 对齐，避免听感上的「声音很小」。
+        normalize_loudness(&mut samples);
 
         Ok(f32_to_wav(&samples, sample_rate))
     }
