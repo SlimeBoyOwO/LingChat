@@ -1283,6 +1283,11 @@ export default {
       switchFailed: "Switch failed: {error}",
     },
     codex: {
+      clientVersion: "Codex client version",
+      clientVersionAuto: "Auto (latest stable)",
+      clientVersionHint:
+        "Leave blank or enter auto to follow releases. Enter a three-part version to pin it.",
+      clientVersionInvalid: "Enter a three-part version (x.y.z) or auto.",
       account: "ChatGPT subscription account",
       loggedIn: "Signed in",
       notLoggedIn: "Not signed in",

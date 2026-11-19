@@ -15,6 +15,7 @@ export const useLlmProvidersStore = defineStore("llm-providers", {
     translateProviderId: null as string | null,
     godAgentProviderId: null as string | null,
     visionProviderId: null as string | null,
+    codexClientVersions: {} as Record<string, string>,
     loaded: false,
   }),
   getters: {
@@ -63,13 +64,14 @@ export const useLlmProvidersStore = defineStore("llm-providers", {
         this.translateProviderId = data.translate_provider_id;
         this.godAgentProviderId = data.god_agent_provider_id;
         this.visionProviderId = data.vision_provider_id;
+        this.codexClientVersions = data.codex_client_versions;
         this.loaded = true;
       } catch (e) {
         console.error("Failed to load LLM providers:", e);
       }
     },
-    async saveProvider(provider: LlmProviderConfig) {
-      await saveLlmProvider(provider);
+    async saveProvider(provider: LlmProviderConfig, codexClientVersion?: string) {
+      await saveLlmProvider(provider, codexClientVersion);
       await this.load();
       // 任何变更（首次添加、修改 url/key/model）都触发热切换
       await switchLlm();

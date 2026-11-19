@@ -1240,6 +1240,10 @@ export default {
       switchFailed: "切換失敗: {error}",
     },
     codex: {
+      clientVersion: "Codex 客戶端版本",
+      clientVersionAuto: "自動跟隨官方穩定版",
+      clientVersionHint: "留空或填 auto 會自動跟隨。填寫三段版本號可以固定版本。",
+      clientVersionInvalid: "請輸入三段版本號（x.y.z）或 auto。",
       account: "ChatGPT 訂閱帳號",
       loggedIn: "已登入",
       notLoggedIn: "未登入",
