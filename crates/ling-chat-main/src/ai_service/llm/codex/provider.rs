@@ -60,10 +60,18 @@ impl CodexProvider {
             model,
             reasoning_effort: cfg.reasoning_effort.clone(),
             fast_mode: cfg.fast_mode,
-            client_version: cfg.codex_client_version.clone(),
+            client_version: None,
             temperature: cfg.temperature,
             timeout_secs: cfg.timeout_secs.max(15),
         })
+    }
+
+    pub(in crate::ai_service::llm) fn with_catalog_version(
+        mut self,
+        client_version: Option<String>,
+    ) -> Self {
+        self.client_version = client_version;
+        self
     }
 
     /// 构建带代理的 client 并取有效凭据（自动刷新）。

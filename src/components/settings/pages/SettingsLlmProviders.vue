@@ -442,7 +442,7 @@
               }}</label>
               <input
                 id="codex-client-version"
-                v-model.trim="editing.codex_client_version"
+                v-model.trim="codexClientVersion"
                 type="text"
                 autocomplete="off"
                 spellcheck="false"
@@ -1030,6 +1030,7 @@ function applyPreset(preset: LlmPreset) {
 
 const sidePanel = ref<"edit" | "test" | null>(null);
 const editing = reactive<LlmProviderConfig>(emptyProvider());
+const codexClientVersion = ref("");
 const saveMessage = ref("");
 const saveError = ref(false);
 const lmstudioAutoFilled = ref(false);
@@ -1069,7 +1070,6 @@ function emptyProvider(): LlmProviderConfig {
     enable_thinking: false,
     reasoning_effort: null,
     fast_mode: false,
-    codex_client_version: "",
     support_vision: false,
     vision_compress: false,
     vision_max_edge: 2048,
@@ -1089,7 +1089,7 @@ const isOAuthProvider = computed(
 );
 const invalidCodexVersion = computed(() => {
   if (editing.provider !== "codex") return false;
-  const version = editing.codex_client_version?.trim() ?? "";
+  const version = codexClientVersion.value.trim();
   return version !== "" && version.toLowerCase() !== "auto" && !/^\d+\.\d+\.\d+$/.test(version);
 });
 
@@ -1187,13 +1187,15 @@ function onProviderChange() {
 
 function startAdd() {
   Object.assign(editing, emptyProvider());
+  codexClientVersion.value = "";
   resetModelList();
   sidePanel.value = "edit";
   saveMessage.value = "";
 }
 
 function startEdit(p: LlmProviderConfig) {
-  Object.assign(editing, { ...p, codex_client_version: p.codex_client_version ?? "" });
+  Object.assign(editing, p);
+  codexClientVersion.value = store.codexClientVersions[p.id] ?? "";
   resetModelList();
   sidePanel.value = "edit";
   saveMessage.value = "";
@@ -1232,7 +1234,8 @@ async function saveCurrent() {
   saveMessage.value = "";
   saveError.value = false;
   try {
-    await store.saveProvider({ ...editing });
+    const version = editing.provider === "codex" ? codexClientVersion.value : undefined;
+    await store.saveProvider({ ...editing }, version);
     saveMessage.value = t("settings.llmProviders.msg.saveSuccess");
     const saved = store.providers.find(
       (p) => p.label === editing.label && p.model === editing.model,
@@ -1254,7 +1257,8 @@ async function fetchProviderModels() {
   modelsMessage.value = "";
   modelsError.value = false;
   try {
-    const models = await listLlmModels({ ...editing });
+    const version = editing.provider === "codex" ? codexClientVersion.value : undefined;
+    const models = await listLlmModels({ ...editing }, version);
     if (requestId !== modelRequestId) return;
     availableModels.value = models;
     if (!models.some((model) => model.id === editing.model)) {

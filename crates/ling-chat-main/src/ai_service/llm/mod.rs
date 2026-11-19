@@ -68,8 +68,6 @@ pub struct LlmConfig {
     pub reasoning_effort: Option<String>,
     /// Codex Fast Mode（1.5× 速度，额度消耗更快）= Responses API 的 `service_tier: "priority"`。
     pub fast_mode: bool,
-    /// Codex 模型目录使用的客户端版本。
-    pub codex_client_version: Option<String>,
     /// 该模型是否支持原生多模态识图。为 true 时，用户发图可直接携带图片走对话
     /// 模型完成识图，而无需先用旁白模型转述。默认 false。
     pub support_vision: bool,

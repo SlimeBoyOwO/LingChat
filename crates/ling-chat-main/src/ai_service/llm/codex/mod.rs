@@ -6,6 +6,7 @@
 //! - `models`：登录账号的在线模型目录
 
 pub mod auth;
+pub(crate) mod model_config;
 mod models;
 pub mod provider;
 mod reasoning;

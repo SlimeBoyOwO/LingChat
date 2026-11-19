@@ -13,12 +13,13 @@ use tauri_plugin_dialog::DialogExt;
 use crate::AppState;
 use crate::ai_service::god_agent::config::resolve_god_agent_provider;
 use crate::ai_service::llm::LlmModelInfo;
+use crate::ai_service::llm::codex::model_config::{load_client_versions, set_client_version};
 use crate::ai_service::llm::codex::normalize_client_version;
 use crate::ai_service::llm::error::LlmErrorPayload;
 use crate::ai_service::llm::provider_config::{
-    LlmProviderConfig, LlmProvidersResponse, build_llm_client_from_provider, load_providers,
-    load_role_assignment, resolve_chat_provider, resolve_translate_provider, save_providers,
-    save_role_assignment,
+    LlmProviderConfig, build_llm_client_from_provider, build_llm_client_with_catalog_version,
+    load_providers, load_role_assignment, resolve_chat_provider, resolve_translate_provider,
+    save_providers, save_role_assignment,
 };
 use crate::config::app_config::{
     MAX_AUTO_SAVE_INTERVAL_SECS, MAX_LLM_TIMEOUT_SECS, MAX_MEMORY_RECENT_WINDOW,
@@ -205,21 +206,40 @@ pub fn select_file(app: AppHandle) -> Result<Option<String>, String> {
 
 // ========== LLM Multi-Provider Management ==========
 
+#[derive(serde::Serialize)]
+pub struct LlmProvidersResponse {
+    pub providers: Vec<LlmProviderConfig>,
+    pub chat_provider_id: Option<String>,
+    pub translate_provider_id: Option<String>,
+    pub god_agent_provider_id: Option<String>,
+    pub vision_provider_id: Option<String>,
+    pub codex_client_versions: BTreeMap<String, String>,
+}
+
 #[tauri::command]
 pub fn list_llm_providers(app: AppHandle) -> LlmProvidersResponse {
     let providers = load_providers(&app);
     let assignment = load_role_assignment(&app);
+    let codex_client_versions = config::settings_store(&app)
+        .map(|store| load_client_versions(&store))
+        .unwrap_or_default();
     LlmProvidersResponse {
         providers,
         chat_provider_id: assignment.chat_provider_id,
         translate_provider_id: assignment.translate_provider_id,
         god_agent_provider_id: assignment.god_agent_provider_id,
         vision_provider_id: assignment.vision_provider_id,
+        codex_client_versions,
     }
 }
 
 #[tauri::command]
-pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<(), String> {
+pub fn save_llm_provider(
+    app: AppHandle,
+    provider: LlmProviderConfig,
+    codex_client_version: Option<String>,
+) -> Result<(), String> {
+    let store = config::settings_store(&app).map_err(|e| e.to_string())?;
     let mut providers = load_providers(&app);
 
     let id = if provider.id.is_empty() {
@@ -230,13 +250,15 @@ pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<
 
     let mut updated = provider;
     updated.id = id.clone();
-    updated.codex_client_version = if updated.provider.eq_ignore_ascii_case("codex") {
-        normalize_client_version(updated.codex_client_version.as_deref())
-            .map_err(|error| error.to_string())?
-            .map(str::to_owned)
+    if updated.provider.eq_ignore_ascii_case("codex") {
+        if let Some(version) = codex_client_version.as_deref() {
+            let version =
+                normalize_client_version(Some(version)).map_err(|error| error.to_string())?;
+            set_client_version(&store, &id, version);
+        }
     } else {
-        None
-    };
+        set_client_version(&store, &id, None);
+    }
 
     if let Some(pos) = providers.iter().position(|p| p.id == id) {
         providers[pos] = updated;
@@ -244,15 +266,16 @@ pub fn save_llm_provider(app: AppHandle, provider: LlmProviderConfig) -> Result<
         providers.push(updated);
     }
 
-    save_providers(&app, &providers).map_err(|e| e.to_string())?;
-    Ok(())
+    save_providers(&store, &providers).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub fn delete_llm_provider(app: AppHandle, id: String) -> Result<(), String> {
+    let store = config::settings_store(&app).map_err(|e| e.to_string())?;
     let mut providers = load_providers(&app);
     providers.retain(|p| p.id != id);
-    save_providers(&app, &providers).map_err(|e| e.to_string())?;
+    set_client_version(&store, &id, None);
+    save_providers(&store, &providers).map_err(|e| e.to_string())?;
 
     let mut assignment = load_role_assignment(&app);
     let mut changed = false;
@@ -378,8 +401,10 @@ pub async fn test_llm_provider(
 pub async fn list_llm_models(
     app: AppHandle,
     provider: LlmProviderConfig,
+    codex_client_version: Option<String>,
 ) -> Result<Vec<LlmModelInfo>, LlmErrorPayload> {
-    let Some(client) = build_llm_client_from_provider(&app, &provider) else {
+    let Some(client) = build_llm_client_with_catalog_version(&app, &provider, codex_client_version)
+    else {
         return Err(LlmErrorPayload::new(
             "invalid_config",
             "无法创建 LLM 客户端，请检查模型名称（API Key 可为空）",

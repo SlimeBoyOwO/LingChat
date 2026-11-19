@@ -12,7 +12,6 @@ export interface LlmProviderConfig {
   enable_thinking: boolean;
   reasoning_effort: string | null;
   fast_mode: boolean;
-  codex_client_version?: string | null;
   /** 该模型是否支持原生多模态识图（勾选后用户发图直接走对话模型，不再旁白转述）。 */
   support_vision: boolean;
   /** 原生识图时是否压缩图片（默认 false：原图直发）。 */
@@ -29,6 +28,7 @@ export interface LlmProvidersResponse {
   translate_provider_id: string | null;
   god_agent_provider_id: string | null;
   vision_provider_id: string | null;
+  codex_client_versions: Record<string, string>;
 }
 
 export interface LlmModelInfo {
@@ -47,8 +47,11 @@ export async function listLlmProviders(): Promise<LlmProvidersResponse> {
   return invoke("list_llm_providers");
 }
 
-export async function saveLlmProvider(provider: LlmProviderConfig): Promise<void> {
-  return invoke("save_llm_provider", { provider });
+export async function saveLlmProvider(
+  provider: LlmProviderConfig,
+  codexClientVersion?: string,
+): Promise<void> {
+  return invoke("save_llm_provider", { provider, codexClientVersion });
 }
 
 export async function deleteLlmProvider(id: string): Promise<void> {
@@ -62,8 +65,11 @@ export async function setLlmRole(
   return invoke("set_llm_role", { role, providerId });
 }
 
-export async function listLlmModels(provider: LlmProviderConfig): Promise<LlmModelInfo[]> {
-  return invoke("list_llm_models", { provider });
+export async function listLlmModels(
+  provider: LlmProviderConfig,
+  codexClientVersion?: string,
+): Promise<LlmModelInfo[]> {
+  return invoke("list_llm_models", { provider, codexClientVersion });
 }
 
 /** 热切换 LLM —— 重建所有角色的 LLM 客户端，无需重启应用。 */
