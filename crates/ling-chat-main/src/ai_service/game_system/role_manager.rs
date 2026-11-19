@@ -213,6 +213,14 @@ impl GameRoleManager {
         tracing::info!("所有角色 TTS 已重新启用");
     }
 
+    /// 更新 Sherpa-ONNX 推理线程数（0 = 自动）。
+    ///
+    /// 线程数在引擎创建时固定；调用方随后应重建 VoiceMaker（或等待下次加载角色），
+    /// 让新引擎按该值创建。只改运行中的角色配置，不写磁盘。
+    pub fn update_sherpa_num_threads(&mut self, threads: u32) {
+        self.tts_config.sherpa_num_threads = threads;
+    }
+
     /// 按 DB/settings.yml 的最新 TTS 配置重建**所有已加载角色**的 VoiceMaker。
     ///
     /// 历史页「生成语音」前的预热：保证配好 TTS 后第一次点击就能成功，覆盖三种
@@ -281,6 +289,9 @@ impl GameRoleManager {
             &self.tts_config,
             self.local_tts.as_ref(),
         );
+        if let Some(maker) = &voice_maker {
+            maker.spawn_warmup(&format!("角色 {role_id} 加载"));
+        }
 
         tracing::info!(
             "角色的服装各个优先级的设置如下：{}, {}, {}",
@@ -686,6 +697,10 @@ impl GameRoleManager {
         role.settings.voice_lang = settings.voice_lang.clone();
         role.settings.voice_models = settings.voice_models.clone();
         role.voice_maker = voice_maker;
+
+        if let Some(maker) = role.voice_maker.as_ref() {
+            maker.spawn_warmup(&format!("角色 {role_id} 语音设置保存"));
+        }
 
         tracing::info!(
             "角色 {} TTS 已实时刷新: type={}, lang={}, ready={}",

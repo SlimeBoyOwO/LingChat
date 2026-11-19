@@ -12,7 +12,7 @@ use crate::ai_service::asr::provider::{AsrOptions, AsrProvider};
 use crate::ai_service::asr::providers::sherpa::SherpaAsrProvider;
 use crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio as load_ref_audio;
 use crate::ai_service::tts::adapters::sherpa_onnx::{
-    SherpaOnnxAdapter, SherpaSpeaker, SherpaTuning,
+    NUM_THREADS_MAX, SherpaOnnxAdapter, SherpaSpeaker, SherpaTuning,
 };
 use crate::ai_service::tts::local::sherpa_onnx_manager::{SherpaOnnxModelInfo, scan_models};
 use crate::ai_service::tts::provider::TtsAdapter;
@@ -629,6 +629,8 @@ pub struct SherpaPreviewSettings {
     pub sherpa_onnx_speed: Option<f32>,
     pub sherpa_onnx_num_steps: Option<i32>,
     pub sherpa_onnx_guidance_scale: Option<f32>,
+    /// 推理线程数；0 / 缺省 = 自动。
+    pub sherpa_onnx_num_threads: Option<u32>,
     pub sherpa_onnx_ref_audio_path: Option<String>,
     pub sherpa_onnx_ref_text: Option<String>,
 }
@@ -677,7 +679,8 @@ pub async fn test_sherpa_onnx_voice(
         SherpaTuning::from_options(
             settings.sherpa_onnx_num_steps,
             settings.sherpa_onnx_guidance_scale,
-        ),
+        )
+        .with_num_threads(settings.sherpa_onnx_num_threads.unwrap_or(0)),
     )
     .map_err(|e| e.to_string())?;
 
@@ -731,6 +734,54 @@ pub async fn test_sherpa_onnx_voice(
         success: true,
         audio_path: out_path.to_string_lossy().to_string(),
     }))
+}
+
+/// 用户可选线程数上限，与 `SherpaTuning::with_num_threads` 的收敛范围一致。
+const MAX_SHERPA_THREADS: u32 = NUM_THREADS_MAX;
+
+/// 读取 Sherpa-ONNX 推理线程数（0 = 自动）。
+#[tauri::command]
+pub async fn get_sherpa_num_threads(app: AppHandle) -> Result<u32, String> {
+    Ok(crate::config::tts::TtsConfig::load(&app).sherpa_num_threads)
+}
+
+/// 保存 Sherpa-ONNX 推理线程数（0 = 自动）。
+///
+/// 线程数在引擎创建时固定，保存后重建已加载角色的 VoiceMaker：
+/// 旧引擎随适配器释放，下一次合成会按新线程数重新加载。
+#[tauri::command]
+pub async fn set_sherpa_num_threads(app: AppHandle, threads: u32) -> Result<(), String> {
+    if threads > MAX_SHERPA_THREADS {
+        return Err(format!("推理线程数不能超过 {MAX_SHERPA_THREADS}"));
+    }
+    let previous = crate::config::tts::TtsConfig::load(&app).sherpa_num_threads;
+    if previous == threads {
+        return Ok(());
+    }
+
+    let store = crate::config::settings_store(&app).map_err(|e| e.to_string())?;
+    store.set(
+        crate::config::keys::SHERPA_NUM_THREADS.to_string(),
+        serde_json::json!(threads),
+    );
+    store.save().map_err(|e| e.to_string())?;
+
+    // 重建可能触发模型加载，放到后台，别挡住设置页交互。
+    tauri::async_runtime::spawn(async move {
+        let state = app.state::<crate::AppState>();
+        let db = state.db.clone();
+        // 连续拖动会排队多个任务，以落盘值为准，避免旧任务把新值覆盖回去。
+        let threads = crate::config::tts::TtsConfig::load(&app).sherpa_num_threads;
+        let svc = state.ai_service.lock().await;
+        let mut gs = svc.game_status.lock().await;
+        gs.role_manager.update_sherpa_num_threads(threads);
+        let rebuilt = gs.role_manager.rebuild_voice_makers_from_db(&db).await;
+        tracing::info!(
+            "Sherpa-ONNX 推理线程数更新为 {threads}（0=自动），重建 {rebuilt} 个角色的 VoiceMaker"
+        );
+    });
+
+    Ok(())
 }
 
 /// 参考音频导入结果（零样本声音克隆用）。

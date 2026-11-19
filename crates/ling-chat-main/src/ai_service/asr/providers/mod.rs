@@ -4,6 +4,8 @@
 
 pub mod llama;
 pub mod qwen;
+pub mod sherpa;
 
 pub use llama::LlamaAsrProvider;
 pub use qwen::QwenAsrProvider;
+pub use sherpa::SherpaAsrProvider;

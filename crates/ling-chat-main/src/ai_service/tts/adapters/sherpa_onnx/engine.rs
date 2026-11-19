@@ -19,30 +19,53 @@ pub(super) fn create_engine(
     model_dir: &Path,
     tuning: SherpaTuning,
 ) -> Result<OfflineTts> {
+    let num_threads = tuning.num_threads;
     match model_type {
-        "vits" | "fastspeech2" => create_vits_tts(model_dir),
-        "matcha" => create_matcha_tts(model_dir),
-        "kokoro" => create_kokoro_tts(model_dir),
-        "kitten" => create_kitten_tts(model_dir),
-        "zipvoice" => create_zipvoice_tts(model_dir, tuning.guidance_scale),
-        "pocket" => create_pocket_tts(model_dir),
-        "supertonic" => create_supertonic_tts(model_dir),
+        "vits" | "fastspeech2" => create_vits_tts(model_dir, num_threads),
+        "matcha" => create_matcha_tts(model_dir, num_threads),
+        "kokoro" => create_kokoro_tts(model_dir, num_threads),
+        "kitten" => create_kitten_tts(model_dir, num_threads),
+        "zipvoice" => create_zipvoice_tts(model_dir, tuning.guidance_scale, num_threads),
+        "pocket" => create_pocket_tts(model_dir, num_threads),
+        "supertonic" => create_supertonic_tts(model_dir, num_threads),
         other => Err(anyhow!("Sherpa-ONNX 不支持的模型类型: {other}")),
     }
 }
 
-/// TTS 推理线程数上限。
+/// TTS 推理线程数上限（桌面端 4；移动端 2）。
 ///
 /// 短句合成里固定调度开销占比更高，线程开到 4 个以上收益不再增加，反而可能因
-/// 过度订阅变慢；同时留出核心给音频播放、UI 和其它推理任务，避免移动端发热和卡顿。
+/// 过度订阅变慢。移动端再收一档：低端机只有 4 个小核，推理占满会把音频解码/
+/// 播放线程挤出时间片，听感就是字内掉帧、爆音（电音）。
+#[cfg(any(target_os = "android", target_os = "ios"))]
+const MAX_TTS_THREADS: usize = 2;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAX_TTS_THREADS: usize = 4;
+
+/// 按 CPU 核数给推理分配线程：始终留一个核给音频播放/UI/系统，
+/// 再套上平台上限（移动端 2、桌面端 4）。
+fn thread_budget(cores: usize) -> usize {
+    cores.saturating_sub(1).clamp(1, MAX_TTS_THREADS)
+}
+
+/// 解析最终线程数：用户指定值优先（按实际核数收敛），否则走自动预算。
+fn resolve_num_threads(requested: i32, cores: usize) -> usize {
+    if requested > 0 {
+        (requested as usize).clamp(1, cores.max(1))
+    } else {
+        thread_budget(cores)
+    }
+}
 
 /// 本次进程可用的 TTS 推理线程数。
 ///
+/// `requested > 0` 是用户在设置页明确选择的线程数（按 CPU 核数收敛）；
+/// 0 表示自动：按 CPU 核数预留一核，再套平台上限。
+///
 /// sherpa 的 Rust 绑定 `Default` 会把 `num_threads` 留成 0，C API 再回退成 1；
-/// 这里显式填成按 CPU 核数限制后的值，让 ORT 的 intra/inter-op 线程池真正并行。
-fn tts_num_threads() -> i32 {
-    // 调试用覆盖，方便对比 1/2/4/8 线程的耗时；正式配置仍走自动值。
+/// 这里显式填成非零值，让 ORT 的 intra/inter-op 线程池真正并行。
+fn tts_num_threads(requested: i32) -> i32 {
+    // 调试用覆盖，方便对比 1/2/4/8 线程的耗时；正式配置仍走设置页/自动值。
     if let Ok(raw) = std::env::var("LINGCHAT_TTS_THREADS") {
         if let Ok(n) = raw.trim().parse::<usize>() {
             let n = n.clamp(1, 32) as i32;
@@ -51,18 +74,28 @@ fn tts_num_threads() -> i32 {
         }
     }
 
-    let n = std::thread::available_parallelism()
-        .map(|n| n.get().min(MAX_TTS_THREADS))
-        .unwrap_or(1) as i32;
-    tracing::debug!("Sherpa-ONNX TTS 推理线程数: {n}（CPU 核数上限 {MAX_TTS_THREADS}）");
+    let cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(1);
+
+    let n = resolve_num_threads(requested, cores) as i32;
+    if requested > 0 {
+        tracing::debug!(
+            "Sherpa-ONNX TTS 推理线程数: {n}（用户设置 {requested}，CPU 核数 {cores}）"
+        );
+    } else {
+        tracing::debug!(
+            "Sherpa-ONNX TTS 推理线程数: {n}（CPU 核数 {cores}，平台上限 {MAX_TTS_THREADS}，预留 1 核给播放）"
+        );
+    }
     n
 }
 
 /// 各模型共用的线程设置（只用 CPU，provider 留空）。
-fn base_model_config() -> OfflineTtsModelConfig {
+fn base_model_config(num_threads: i32) -> OfflineTtsModelConfig {
     OfflineTtsModelConfig {
         provider: None,
-        num_threads: tts_num_threads(),
+        num_threads: tts_num_threads(num_threads),
         ..Default::default()
     }
 }
@@ -81,7 +114,7 @@ fn build_engine(model: OfflineTtsModelConfig, model_dir: &Path, label: &str) -> 
 }
 
 /// VITS / Fastspeech2：`model.onnx` + `tokens.txt`，可选 `lexicon.txt` 与 dict。
-fn create_vits_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_vits_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let model_file = find_file(
         model_dir,
         &["model.onnx", "tts-model.onnx", "sherpa-onnx-tts.onnx"],
@@ -103,7 +136,7 @@ fn create_vits_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             vits: vits_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "VITS",
@@ -111,7 +144,7 @@ fn create_vits_tts(model_dir: &Path) -> Result<OfflineTts> {
 }
 
 /// Matcha：声学模型 + vocoder（22k/16k 的 vocos 或 hifigan）。
-fn create_matcha_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_matcha_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let acoustic_model = find_file(
         model_dir,
         &["model.onnx", "model-steps-3.onnx", "model-steps-6.onnx"],
@@ -143,7 +176,7 @@ fn create_matcha_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             matcha: matcha_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "Matcha",
@@ -152,7 +185,7 @@ fn create_matcha_tts(model_dir: &Path) -> Result<OfflineTts> {
 
 /// Kokoro 多语言：`voices.bin` 选音色，`lexicon*.txt` 决定可读文字。
 /// sherpa-onnx 2.0 起 `data_dir` / `lang` 被忽略，这里传入所有能找到的词表。
-fn create_kokoro_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_kokoro_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
     let voices = find_file(model_dir, &["voices.bin"])?;
     // Android/arm64 上 kokoro 的 int8 量化会输出静音/垃圾样本（上游 sherpa-onnx#3754，
@@ -182,7 +215,7 @@ fn create_kokoro_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             kokoro: kokoro_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "Kokoro",
@@ -190,7 +223,11 @@ fn create_kokoro_tts(model_dir: &Path) -> Result<OfflineTts> {
 }
 
 /// ZipVoice 零样本克隆：encoder/decoder/vocoder + 音素表。
-fn create_zipvoice_tts(model_dir: &Path, guidance_scale: f32) -> Result<OfflineTts> {
+fn create_zipvoice_tts(
+    model_dir: &Path,
+    guidance_scale: f32,
+    num_threads: i32,
+) -> Result<OfflineTts> {
     let encoder = find_file(model_dir, &["text_encoder.onnx"])?;
     let decoder = find_file(model_dir, &["fm_decoder.onnx"])?;
     let vocoder = find_file(model_dir, &["vocos_24khz.onnx", "vocoder.onnx"])?;
@@ -219,7 +256,7 @@ fn create_zipvoice_tts(model_dir: &Path, guidance_scale: f32) -> Result<OfflineT
     build_engine(
         OfflineTtsModelConfig {
             zipvoice: zipvoice_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "ZipVoice",
@@ -227,7 +264,7 @@ fn create_zipvoice_tts(model_dir: &Path, guidance_scale: f32) -> Result<OfflineT
 }
 
 /// Kitten：`model.onnx` + `voices.bin`。
-fn create_kitten_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_kitten_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let model = find_file(model_dir, &["model.onnx", "model.int8.onnx"])?;
     let voices = find_file(model_dir, &["voices.bin"])?;
 
@@ -241,7 +278,7 @@ fn create_kitten_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             kitten: kitten_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "Kitten",
@@ -249,7 +286,7 @@ fn create_kitten_tts(model_dir: &Path) -> Result<OfflineTts> {
 }
 
 /// Pocket：一组 onnx + `vocab.json` / `token_scores.json`。
-fn create_pocket_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_pocket_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let pocket_config = OfflineTtsPocketModelConfig {
         lm_flow: Some(file_string(
             model_dir,
@@ -273,7 +310,7 @@ fn create_pocket_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             pocket: pocket_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "Pocket TTS",
@@ -281,7 +318,7 @@ fn create_pocket_tts(model_dir: &Path) -> Result<OfflineTts> {
 }
 
 /// Supertonic：duration_predictor / text_encoder / vector_estimator / vocoder。
-fn create_supertonic_tts(model_dir: &Path) -> Result<OfflineTts> {
+fn create_supertonic_tts(model_dir: &Path, num_threads: i32) -> Result<OfflineTts> {
     let supertonic_config = OfflineTtsSupertonicModelConfig {
         duration_predictor: Some(file_string(model_dir, &["duration_predictor.onnx"])?),
         text_encoder: Some(file_string(model_dir, &["text_encoder.onnx"])?),
@@ -298,7 +335,7 @@ fn create_supertonic_tts(model_dir: &Path) -> Result<OfflineTts> {
     build_engine(
         OfflineTtsModelConfig {
             supertonic: supertonic_config,
-            ..base_model_config()
+            ..base_model_config(num_threads)
         },
         model_dir,
         "Supertonic",
@@ -615,6 +652,27 @@ pub(super) fn pick_sid(model_type: &str, language: &str, voice: &str, num_speake
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 推理线程预算：永远留一个核，且不超过平台上限。
+    #[test]
+    fn keeps_one_core_for_playback() {
+        // 单核设备只能 1 线程；双核也只给 1，播放/UI 才有时间片。
+        assert_eq!(thread_budget(1), 1);
+        assert_eq!(thread_budget(2), 1);
+        // 高核设备封顶，低端 4 核机器最多用 3（移动端 2）。
+        assert_eq!(thread_budget(64), MAX_TTS_THREADS);
+        assert_eq!(thread_budget(4), 3.min(MAX_TTS_THREADS));
+    }
+
+    /// 用户指定线程数优先，但不能超过实际核数；0 仍走自动预算。
+    #[test]
+    fn user_thread_choice_is_clamped_to_cores() {
+        assert_eq!(resolve_num_threads(2, 8), 2);
+        assert_eq!(resolve_num_threads(99, 4), 4);
+        assert_eq!(resolve_num_threads(0, 4), thread_budget(4));
+        // 核数未知/异常时至少给 1 个，不能返回 0。
+        assert_eq!(resolve_num_threads(4, 0), 1);
+    }
 
     /// 规则 FST 的收集顺序与有无判断。
     #[test]

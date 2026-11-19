@@ -9,7 +9,7 @@ use anyhow::{Result, anyhow};
 use async_trait::async_trait;
 use serde::Serialize;
 use serde_json::{Value as JsonValue, json};
-use sherpa_onnx::GenerationConfig;
+use sherpa_onnx::{GeneratedAudio, GenerationConfig, OfflineTts};
 
 use crate::ai_service::tts::provider::TtsAdapter;
 
@@ -25,15 +25,43 @@ use audio::{
     strip_edge_silence,
 };
 use engine::{model_reads_latin, needs_digit_normalization, pick_sid};
-use shared::SharedSherpaEngine;
+use shared::{SharedSherpaEngine, inference_gate};
 use text::{
     CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
     readable_scripts, reads_han_as_chinese, resolve_emotion, split_clauses, strip_unreadable,
 };
 
-/// 静音缩放系数。sherpa 按此缩放超过 0.2 秒的静音；默认 0.2 会把句号/逗号停顿
-/// 压得几乎一样，取 0.6 保留停顿的长短层次。
-const SILENCE_SCALE: f32 = 0.6;
+/// 静音缩放系数。sherpa 按此缩放模型内部超过 `min_silence_duration` 的静音。
+///
+/// 标点停顿已经由 [`split_clauses`] 在句间精确插入，这里再放大内部静音只会让
+/// 同一个句子里的换气/分词停顿变成几百毫秒的空洞（实测 0.6 会把 140ms 拉到
+/// 400ms+，听感就是「断断续续」），所以保持 sherpa 默认的 0.2。
+const SILENCE_SCALE: f32 = 0.2;
+
+/// 同步跑一次原生推理。
+///
+/// `generate_with_config` 是阻塞调用，直接在 async 里执行会一直占着 Tokio worker；
+/// 低端机上 IPC、事件分发和文件读取都会跟着排队，听感上就是播放期间整个应用发卡。
+/// 多线程 runtime 下用 `block_in_place` 把该 worker 让给其它任务；current_thread
+/// runtime（单测）无法这样做，退回直接调用。
+fn run_tts_generate(
+    tts: &OfflineTts,
+    text: &str,
+    config: &GenerationConfig,
+) -> Option<GeneratedAudio> {
+    let run = || tts.generate_with_config(text, config, None::<fn(&[f32], f32) -> bool>);
+    match tokio::runtime::Handle::try_current() {
+        Ok(handle)
+            if matches!(
+                handle.runtime_flavor(),
+                tokio::runtime::RuntimeFlavor::MultiThread
+            ) =>
+        {
+            tokio::task::block_in_place(run)
+        },
+        _ => run(),
+    }
+}
 
 /// 单次推理最多句数（sherpa 的 `max_num_sentences`），0 表示不限。
 ///
@@ -53,6 +81,8 @@ const NUM_STEPS_MIN: i32 = 1;
 const NUM_STEPS_MAX: i32 = 10;
 const GUIDANCE_SCALE_MIN: f32 = 1.0;
 const GUIDANCE_SCALE_MAX: f32 = 10.0;
+/// 用户可选线程数上限；实际还会按 CPU 核数收敛。
+pub const NUM_THREADS_MAX: u32 = 16;
 
 /// 用户可调的采样参数；各模型只读取自己支持的部分。
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,6 +91,8 @@ pub struct SherpaTuning {
     pub num_steps: i32,
     /// 引导强度（1.0–10.0）。
     pub guidance_scale: f32,
+    /// 推理线程数；0 = 自动（按 CPU 核数预留一核）。
+    pub num_threads: i32,
 }
 
 impl Default for SherpaTuning {
@@ -68,6 +100,7 @@ impl Default for SherpaTuning {
         Self {
             num_steps: ZIPVOICE_NUM_STEPS,
             guidance_scale: ZIPVOICE_GUIDANCE_SCALE,
+            num_threads: 0,
         }
     }
 }
@@ -85,7 +118,14 @@ impl SherpaTuning {
                 Some(v) if v.is_finite() => v.clamp(GUIDANCE_SCALE_MIN, GUIDANCE_SCALE_MAX),
                 _ => default.guidance_scale,
             },
+            num_threads: 0,
         }
+    }
+
+    /// 指定推理线程数；0 表示自动（按 CPU 核数预留一核）。
+    pub fn with_num_threads(mut self, threads: u32) -> Self {
+        self.num_threads = threads.min(NUM_THREADS_MAX) as i32;
+        self
     }
 }
 
@@ -264,8 +304,14 @@ impl TtsAdapter for SherpaOnnxAdapter {
         // 统一按标点切句、逐句推理再拼回；英文缩写另有保护（见 [`split_clauses`]）。
         let clauses = split_clauses(text);
 
+        // 低端机全局只允许一份推理占用 CPU，先把 CPU 让给正在播放的音频。
+        let _slot = inference_gate()
+            .acquire()
+            .await
+            .expect("Sherpa-ONNX 推理闸门不会关闭");
+
         // 同一模型可能被多个角色共享；串行化原生合成，避免并发进入同一个
-        // `OfflineTts` 实例。不同模型仍有各自的锁，可以并行。
+        // `OfflineTts` 实例（全局闸门之上再做一层，保证引擎本身不被重入）。
         let _guard = self.engine.generate_lock.lock().await;
         let tts = &self.engine.tts;
 
@@ -280,8 +326,7 @@ impl TtsAdapter for SherpaOnnxAdapter {
                 continue;
             }
 
-            let audio = tts
-                .generate_with_config(&piece_text, &gen_config, None::<fn(&[f32], f32) -> bool>)
+            let audio = run_tts_generate(tts, &piece_text, &gen_config)
                 .ok_or_else(|| anyhow!("Sherpa-ONNX 生成失败（小句「{piece_text}」）"))?;
             if audio.samples().is_empty() {
                 return Err(anyhow!(
@@ -445,6 +490,15 @@ mod tests {
             SherpaTuning::from_options(None, Some(3.5)).guidance_scale,
             3.5
         );
+
+        // 线程数：0 = 自动；超出上限按 16 收敛。
+        assert_eq!(SherpaTuning::default().num_threads, 0);
+        assert_eq!(SherpaTuning::default().with_num_threads(3).num_threads, 3);
+        assert_eq!(SherpaTuning::default().with_num_threads(0).num_threads, 0);
+        assert_eq!(
+            SherpaTuning::default().with_num_threads(99).num_threads,
+            NUM_THREADS_MAX as i32
+        );
     }
 
     /// ZipVoice 零样本克隆；依赖真实模型，默认忽略（`SHERPA_TEST_MODEL_DIR`）。
@@ -529,6 +583,7 @@ mod tests {
             SherpaTuning {
                 num_steps: 9,
                 guidance_scale: 4.0,
+                ..Default::default()
             },
         )
         .expect("初始化第二个适配器失败");

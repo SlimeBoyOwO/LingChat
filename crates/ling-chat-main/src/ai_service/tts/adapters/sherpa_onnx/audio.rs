@@ -33,7 +33,7 @@ pub(super) fn strip_edge_silence(samples: &[f32]) -> &[f32] {
     &samples[start..end]
 }
 
-/// 把一段音频内部超过 `max_gap` 秒的静音压到 `max_gap`（只用于合并短句的那一片）。
+/// 把一段音频内部超过 `max_gap` 秒的静音压到 `max_gap`（句内逗号停顿过长时收口）。
 pub(super) fn cap_inner_silence(samples: &mut Vec<f32>, sample_rate: i32, max_gap: f32) {
     if sample_rate <= 0 || max_gap <= 0.0 {
         return;

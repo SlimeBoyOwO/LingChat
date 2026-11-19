@@ -10,6 +10,7 @@
 //! - [`fish_s2`] — Fish Audio S2 / s2.cpp (`/generate`)
 //! - [`opentts`] — OpenAI TTS API (`/v1/audio/speech`)
 //! - [`indextts`] — IndexTTS2 presets (`/voice/indextts/presets`)
+//! - [`sherpa_onnx`] — Sherpa-ONNX 本地离线 TTS
 
 pub mod aivis;
 pub mod bv2;
@@ -20,6 +21,7 @@ pub mod indextts;
 pub mod opentts;
 pub mod sbv2;
 pub mod sbv2api;
+pub mod sherpa_onnx;
 pub mod vits;
 
 use once_cell::sync::Lazy;

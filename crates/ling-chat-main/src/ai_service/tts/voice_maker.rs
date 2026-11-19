@@ -7,7 +7,9 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, OnceLock};
+use std::time::Instant;
 
 use anyhow::Result;
 use futures_util::future::join_all;
@@ -22,6 +24,7 @@ use crate::ai_service::tts::adapters::indextts::IndexTtsAdapter;
 use crate::ai_service::tts::adapters::opentts::OpenTtsAdapter;
 use crate::ai_service::tts::adapters::sbv2::Sbv2Adapter;
 use crate::ai_service::tts::adapters::sbv2api::Sbv2ApiAdapter;
+use crate::ai_service::tts::adapters::sherpa_onnx::{SherpaOnnxAdapter, SherpaTuning};
 use crate::ai_service::tts::adapters::vits::VitsAdapter;
 use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::tts::local::adapter::LocalTtsAdapter;
@@ -42,6 +45,7 @@ pub struct TtsAvailability {
     pub fish_s2: bool,
     pub sbv2_local: bool,
     pub cosyvoice: bool,
+    pub sherpa: bool,
 }
 
 #[derive(Clone, Debug)]
@@ -59,6 +63,8 @@ pub struct VoiceMaker {
     /// `build_voice_maker` 注入一次，`sbv2_local` 适配器惰性引导时使用。
     local_runtime: Option<LocalTtsRuntime>,
     local_cloud_fallback: Option<LocalCloudFallback>,
+    /// 后台预热是否已启动；失败时复位，允许下次加载/保存设置时重试。
+    warmup_started: Arc<AtomicBool>,
 }
 
 #[derive(Clone, Debug)]
@@ -169,6 +175,7 @@ impl VoiceMaker {
             tts_config,
             local_runtime: None,
             local_cloud_fallback: None,
+            warmup_started: Arc::new(AtomicBool::new(false)),
         }
     }
 
@@ -197,6 +204,56 @@ impl VoiceMaker {
 
     pub fn is_enabled(&self) -> bool {
         self.provider.is_enabled() && !self.tts_type.is_empty()
+    }
+
+    /// 仅 Sherpa-ONNX 需要预热；其它后端保持按需初始化。
+    fn can_warmup(&self) -> bool {
+        self.is_enabled() && matches!(self.tts_type.as_str(), "sherpa" | "sherpa-onnx")
+    }
+
+    /// 预热当前适配器。失败只返回错误，不影响 TTS 的启用状态。
+    pub async fn warmup(&self) -> Result<()> {
+        if !self.can_warmup() {
+            return Ok(());
+        }
+        self.provider.warmup(&self.tts_type).await
+    }
+
+    /// 在后台预热，供角色加载、语音设置保存后调用。
+    ///
+    /// 同一份 `VoiceMaker` 只预热一次；失败时复位标记，后续保存设置仍可重试。
+    pub fn spawn_warmup(&self, reason: &str) {
+        if !self.can_warmup() || self.warmup_started.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        self.spawn_warmup_task(reason);
+    }
+
+    fn spawn_warmup_task(&self, reason: &str) {
+        let Ok(handle) = tokio::runtime::Handle::try_current() else {
+            self.warmup_started.store(false, Ordering::Release);
+            return;
+        };
+
+        let maker = self.clone();
+        let reason = reason.to_string();
+        handle.spawn(async move {
+            let started = Instant::now();
+            match maker.warmup().await {
+                Ok(()) => tracing::info!(
+                    "TTS 预热完成: type={}, reason={reason}, 用时={:?}",
+                    maker.tts_type,
+                    started.elapsed()
+                ),
+                Err(error) => {
+                    maker.warmup_started.store(false, Ordering::Release);
+                    tracing::warn!(
+                        "TTS 预热失败（不影响后续合成）: type={}, reason={reason}, {error}",
+                        maker.tts_type
+                    );
+                },
+            }
+        });
     }
 
     pub fn temp_dir(&self) -> &Path {
@@ -240,6 +297,8 @@ impl VoiceMaker {
         let sbv2_local = non_empty(&cfg.sbv2_local_voice_id);
         // CosyVoice 云端音色：角色选了 voice_id 即可用（Key 缺失在初始化时禁用）
         let cosyvoice = non_empty(&cfg.cosyvoice_voice_id);
+        // Sherpa-ONNX 本地模型：选了模型名即可用（目录缺失/无效在初始化时报错）。
+        let sherpa = non_empty(&cfg.sherpa_onnx_model_name);
 
         self.availability = TtsAvailability {
             sva,
@@ -252,6 +311,7 @@ impl VoiceMaker {
             fish_s2,
             sbv2_local,
             cosyvoice,
+            sherpa,
         };
     }
 
@@ -525,6 +585,89 @@ impl VoiceMaker {
                     self.provider.cosyvoice = Some(Arc::new(adapter));
                 }
             },
+            "sherpa" | "sherpa-onnx" if self.availability.sherpa => {
+                // 模型目录位于 data/sherpa_onnx_models/<name>/。
+                let model_name = cfg.sherpa_onnx_model_name.clone().unwrap_or_default();
+                let model_dir =
+                    crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root()
+                        .join(&model_name);
+                let model_type = cfg
+                    .sherpa_onnx_model_type
+                    .clone()
+                    .unwrap_or_else(|| "vits".to_string());
+                let language = cfg
+                    .sherpa_onnx_language
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| self.lang.clone());
+                let voice = cfg
+                    .sherpa_onnx_voice
+                    .clone()
+                    .filter(|s| !s.trim().is_empty())
+                    .unwrap_or_else(|| "female".to_string());
+                let tuning = SherpaTuning::from_options(
+                    cfg.sherpa_onnx_num_steps,
+                    cfg.sherpa_onnx_guidance_scale,
+                )
+                .with_num_threads(self.tts_config.sherpa_num_threads);
+                match SherpaOnnxAdapter::new(
+                    model_dir.to_string_lossy().into_owned(),
+                    model_type,
+                    language,
+                    voice,
+                    tuning,
+                ) {
+                    Ok(mut adapter) => {
+                        if let Some(speed) = cfg.sherpa_onnx_speed {
+                            adapter.set_speed(speed.clamp(0.5, 2.0));
+                        }
+                        // 零样本克隆：参考音频与文本必须成对，缺一个就走普通合成。
+                        let ref_audio = cfg
+                            .sherpa_onnx_ref_audio_path
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        let ref_text = cfg
+                            .sherpa_onnx_ref_text
+                            .clone()
+                            .filter(|s| !s.trim().is_empty());
+                        match (ref_audio, ref_text) {
+                            (Some(ref_path), Some(ref_text)) => {
+                                let resolved = PathBuf::from(&ref_path);
+                                match crate::ai_service::tts::adapters::sherpa_onnx::load_reference_audio(
+                                    &resolved,
+                                ) {
+                                    Ok((samples, sr)) => {
+                                        adapter.set_reference_audio(samples, sr, ref_text);
+                                        tracing::info!(
+                                            "Sherpa-ONNX 已加载参考音频: {}",
+                                            resolved.display()
+                                        );
+                                    },
+                                    Err(e) => {
+                                        let hint = if ref_path.starts_with("content://") {
+                                            "（Android 的 content:// URI 请在角色语音页重新导入）"
+                                        } else {
+                                            ""
+                                        };
+                                        tracing::warn!(
+                                            "Sherpa-ONNX 参考音频加载失败（忽略，走普通合成）: {e}{hint}"
+                                        );
+                                    },
+                                }
+                            },
+                            (Some(_), None) | (None, Some(_)) => tracing::warn!(
+                                "Sherpa-ONNX 参考音频与参考文本需同时提供，当前只有一个，已忽略零样本克隆"
+                            ),
+                            (None, None) => {},
+                        }
+                        self.provider.sherpa = Some(Arc::new(adapter));
+                    },
+                    Err(e) => {
+                        tracing::warn!("Sherpa-ONNX 初始化失败: {e}");
+                        self.provider.disable();
+                    },
+                }
+            },
             "indextts2" => {
                 // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语，
                 // 不再对日语等语言做中文兜底，lang 直接透传给服务端。
@@ -551,12 +694,14 @@ impl VoiceMaker {
     ) {
         self.lang = lang.into();
         self.provider = TtsProvider::new(&self.audio_format);
+        self.warmup_started.store(false, Ordering::Release);
         match self.set_tts_settings(cfg, tts_type, name) {
             Err(e) => {
                 tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
             },
             _ => {
                 tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
+                self.spawn_warmup("语音语言切换");
             },
         }
     }

@@ -4,12 +4,17 @@ use crate::ai_service::tts::adapters::gsv::{gsv_emo_category, known_emo_category
 
 /// 句末标点：在这里切句，标点本身留在小句里（模型据此收尾），后面停 [`SENTENCE_PAUSE`]。
 const SENTENCE_PUNCT: &[char] = &['。', '！', '？', '.', '!', '?', '…'];
-/// 从句标点：也切句，后面停 [`CLAUSE_PAUSE`]；数字/字母中间的标点不算断句。
+/// 从句标点：不切句，留给模型自己处理（模型的逗号停顿比外部拼接自然）；
+/// 仅当句子超过 [`MAX_CLAUSE_CHARS`] 时作为兜底切分点。数字/字母中间的标点不算断句。
 const CLAUSE_PUNCT: &[char] = &['，', '、', '；', '：', ',', ';', ':', '—'];
 
-/// 小句间静音：句号后 0.40 秒、逗号后 0.20 秒。
-const SENTENCE_PAUSE: f32 = 0.40;
+/// 小句间静音：句号后 0.30 秒、逗号后 0.20 秒。
+const SENTENCE_PAUSE: f32 = 0.30;
 pub(super) const CLAUSE_PAUSE: f32 = 0.20;
+
+/// 单次推理的最大字数。超过后在从句标点处兜底切开，避免极长句子一次生成过久；
+/// 正常对话句子远小于该值，逗号会原样交给模型。
+const MAX_CLAUSE_CHARS: usize = 80;
 
 /// 模型读得出的文字种类；三者独立，由目标语言与词表能力决定。
 #[derive(Clone, Copy, Debug, Default)]
@@ -173,8 +178,10 @@ pub(super) fn resolve_emotion(emo: &str) -> String {
 /// 标点单独保留，短句合并时要放回文本。
 type Clause = (String, f32, Option<char>);
 
-/// 按标点切小句并给出每句后的停顿（最后一句为 0）。
-/// 自己切是为了可控的停顿与接缝淡入淡出；数字/字母中间的标点不算断句，英文缩写另有保护。
+/// 按句末标点切句并给出每句后的停顿（最后一句为 0）。
+/// 句内的逗号/顿号不切，原样交给模型，避免逐词拼接把语流切碎（听起来一顿一顿）；
+/// 只有句子超过 [`MAX_CLAUSE_CHARS`] 时才在从句标点处兜底切开。
+/// 数字/字母中间的标点不算断句，英文缩写另有保护。
 pub(super) fn split_clauses(text: &str) -> Vec<Clause> {
     let chars: Vec<char> = text.chars().collect();
     let mut raw: Vec<Clause> = Vec::new();
@@ -193,11 +200,11 @@ pub(super) fn split_clauses(text: &str) -> Vec<Clause> {
             if !inside_word && !continuation {
                 raw.push((std::mem::take(&mut cur), SENTENCE_PAUSE, None));
             }
-        } else if CLAUSE_PUNCT.contains(&c) {
-            if inside_word {
-                cur.push(c);
-            } else {
+        } else if CLAUSE_PUNCT.contains(&c) && !inside_word {
+            if speakable_len(&cur) >= MAX_CLAUSE_CHARS {
                 raw.push((std::mem::take(&mut cur), CLAUSE_PAUSE, Some(c)));
+            } else {
+                cur.push(c);
             }
         } else {
             cur.push(c);
@@ -474,13 +481,16 @@ mod tests {
     /// 切句、停顿、短句合并与数字内标点保护。
     #[test]
     fn splits_clauses_with_pauses() {
+        // 只在句号/问号/感叹号处切；句内逗号原样留给模型，避免逐小句拼接把语流切碎。
         assert_eq!(
             split_clauses("他说今天很好，你好呀我的朋友。今天天气真好，我们一起出去玩吧！"),
             vec![
-                ("他说今天很好".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("你好呀我的朋友。".to_string(), SENTENCE_PAUSE, None),
-                ("今天天气真好".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("我们一起出去玩吧！".to_string(), 0.0, None),
+                (
+                    "他说今天很好，你好呀我的朋友。".to_string(),
+                    SENTENCE_PAUSE,
+                    None
+                ),
+                ("今天天气真好，我们一起出去玩吧！".to_string(), 0.0, None),
             ]
         );
         // 两字的小句没有上下文，并到下一句；合并处的标点原样放回去，停顿才不会丢。
@@ -493,20 +503,14 @@ mod tests {
             split_clauses("今天天气真不错。好吧。"),
             vec![("今天天气真不错。好吧。".to_string(), 0.0, None)]
         );
-        // 3 字以上就单独成句、保留标点停顿（阈值取 6 会把这些并成一片，标点处全没停顿）。
+        // 带逗号的整句只合成一次，逗号停顿交给模型（原来是逗号处切一刀、外部补静音）。
         assert_eq!(
             split_clauses("嗯，好的呀，那我们走吧。"),
-            vec![
-                ("嗯，好的呀".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("那我们走吧。".to_string(), 0.0, None),
-            ]
+            vec![("嗯，好的呀，那我们走吧。".to_string(), 0.0, None)]
         );
         assert_eq!(
             split_clauses("我觉得，还是算了吧。"),
-            vec![
-                ("我觉得".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("还是算了吧。".to_string(), 0.0, None),
-            ]
+            vec![("我觉得，还是算了吧。".to_string(), 0.0, None)]
         );
         // 没有标点的整句只有一片。
         assert_eq!(
@@ -523,10 +527,7 @@ mod tests {
         // （以前 `9:30` 会在冒号处切一刀，停顿插进时间中间，读成「上午九，三十开会」）。
         assert_eq!(
             split_clauses("上午 9:30 开会，别迟到了。"),
-            vec![
-                ("上午 9:30 开会".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("别迟到了。".to_string(), 0.0, None),
-            ]
+            vec![("上午 9:30 开会，别迟到了。".to_string(), 0.0, None)]
         );
         assert_eq!(
             split_clauses("圆周率是 3.14。"),
@@ -534,15 +535,7 @@ mod tests {
         );
         assert_eq!(
             split_clauses("一共 1,000 块，别忘了。"),
-            vec![
-                ("一共 1,000 块".to_string(), CLAUSE_PAUSE, Some('，')),
-                ("别忘了。".to_string(), 0.0, None),
-            ]
-        );
-        // 末尾的短句并回前一句时，那句被切掉的逗号同样要放回去。
-        assert_eq!(
-            split_clauses("一共 1,000 块，收好。"),
-            vec![("一共 1,000 块，收好。".to_string(), 0.0, None)]
+            vec![("一共 1,000 块，别忘了。".to_string(), 0.0, None)]
         );
         assert_eq!(
             split_clauses("我打开了 www.bing.com。"),
@@ -550,17 +543,36 @@ mod tests {
         );
     }
 
+    /// 超长句子才在逗号处兜底切开，避免单次推理过久；切点后的标点由合并逻辑放回。
+    #[test]
+    fn splits_overlong_sentence_at_clause_punct() {
+        let long = format!("{}，{}。", "很".repeat(MAX_CLAUSE_CHARS), "好".repeat(10));
+        let clauses = split_clauses(&long);
+        assert_eq!(clauses.len(), 2);
+        assert_eq!(clauses[0].1, CLAUSE_PAUSE);
+        assert_eq!(clauses[0].2, Some('，'));
+        assert_eq!(clauses[1].1, 0.0);
+        assert!(clauses[1].0.ends_with('。'));
+
+        // 没到阈值时不在逗号处切。
+        let short = format!(
+            "{}，{}。",
+            "很".repeat(MAX_CLAUSE_CHARS - 1),
+            "好".repeat(10)
+        );
+        assert_eq!(split_clauses(&short).len(), 1);
+    }
+
     /// 英文/日文/韩文走同一套切句；英文缩写里的点不算句末。
     #[test]
     fn splits_other_languages_by_punctuation() {
-        // 英文：句号后 0.4 秒、逗号后 0.2 秒，切出来的小句不带前导空格。
+        // 英文：只在句末切，句间停 0.3 秒；切出来的小句不带前导空格。
         assert_eq!(
             split_clauses("Hello there. How are you today? I am fine, thank you."),
             vec![
                 ("Hello there.".to_string(), SENTENCE_PAUSE, None),
                 ("How are you today?".to_string(), SENTENCE_PAUSE, None),
-                ("I am fine".to_string(), CLAUSE_PAUSE, Some(',')),
-                ("thank you.".to_string(), 0.0, None),
+                ("I am fine, thank you.".to_string(), 0.0, None),
             ]
         );
         // 缩写不切：「Mr. Smith」「Dr. Wang」「e.g.」都在一句里。
@@ -601,22 +613,28 @@ mod tests {
             vec![("No, I don't.".to_string(), 0.0, None)]
         );
 
-        // 日文：全角句号/顿号/问号，假名与汉字一样按标点切。
+        // 日文：只按句号/问号切，顿号留在句内交给模型。
         assert_eq!(
             split_clauses("こんにちは、今日はいい天気ですね。散歩でもしましょうか？"),
             vec![
-                ("こんにちは".to_string(), CLAUSE_PAUSE, Some('、')),
-                ("今日はいい天気ですね。".to_string(), SENTENCE_PAUSE, None),
+                (
+                    "こんにちは、今日はいい天気ですね。".to_string(),
+                    SENTENCE_PAUSE,
+                    None
+                ),
                 ("散歩でもしましょうか？".to_string(), 0.0, None),
             ]
         );
 
-        // 韩文：句末是 ASCII 的句号/问号，逗号后面补空格。
+        // 韩文：句末是 ASCII 的句号/问号，逗号留在句内。
         assert_eq!(
             split_clauses("안녕하세요, 오늘 날씨가 좋네요. 같이 산책할까요?"),
             vec![
-                ("안녕하세요".to_string(), CLAUSE_PAUSE, Some(',')),
-                ("오늘 날씨가 좋네요.".to_string(), SENTENCE_PAUSE, None),
+                (
+                    "안녕하세요, 오늘 날씨가 좋네요.".to_string(),
+                    SENTENCE_PAUSE,
+                    None
+                ),
                 ("같이 산책할까요?".to_string(), 0.0, None),
             ]
         );

@@ -67,6 +67,9 @@ pub struct TtsConfig {
     /// TTS 语音语言（ja / zh / auto）
     #[serde(default = "default_voice_lang")]
     pub voice_lang: String,
+    /// Sherpa-ONNX 推理线程数；0 = 自动（按 CPU 核数预留一核给播放）。
+    #[serde(default)]
+    pub sherpa_num_threads: u32,
     /// CosyVoice 云 API 密钥（空 = 未配置）
     #[serde(default)]
     pub cosyvoice_api_key: Option<String>,
@@ -160,6 +163,7 @@ impl Default for TtsConfig {
             opentts_voice: default_opentts_voice(),
             audio_format: default_audio_format(),
             voice_lang: default_voice_lang(),
+            sherpa_num_threads: 0,
             cosyvoice_api_key: None,
             cosyvoice_models: default_cosyvoice_models(),
             cosyvoice_voices: Vec::new(),
@@ -203,6 +207,16 @@ impl TtsConfig {
                 .unwrap_or(default)
         };
 
+        let get_u32 = |key: &str, default: u32| -> u32 {
+            store
+                .and_then(|s| s.get(key))
+                .and_then(|v| match v {
+                    Value::Number(n) => n.as_u64().and_then(|n| u32::try_from(n).ok()),
+                    _ => None,
+                })
+                .unwrap_or(default)
+        };
+
         Self {
             simple_vits_api_url: get_string(keys::SIMPLE_VITS_API_URL, &default_simple_vits_url()),
             bv2_api_url: get_string(keys::BV2_API_URL, &default_bv2_url()),
@@ -226,6 +240,7 @@ impl TtsConfig {
             opentts_voice: get_string(keys::OPENTTS_VOICE, &default_opentts_voice()),
             audio_format: get_string(keys::TTS_AUDIO_FORMAT, &default_audio_format()),
             voice_lang: get_string(keys::VOICE_LANG, &default_voice_lang()),
+            sherpa_num_threads: get_u32(keys::SHERPA_NUM_THREADS, 0),
             cosyvoice_api_key: {
                 let s = get_string(keys::COSYVOICE_API_KEY, "");
                 if s.is_empty() { None } else { Some(s) }

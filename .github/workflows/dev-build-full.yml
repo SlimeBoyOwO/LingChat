@@ -109,9 +109,11 @@ jobs:
 
       - name: 构建应用
         env:
+          # Windows 必须 +crt-static：sherpa-onnx 的 Windows 预编译包是 /MT 静态 CRT，
+          # Rust 默认 /MD，否则链接报 `/failifmismatch: RuntimeLibrary`。
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '-C link-arg=-fuse-ld=mold' || '' }}
-            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         run: pnpm tauri build --no-bundle
 

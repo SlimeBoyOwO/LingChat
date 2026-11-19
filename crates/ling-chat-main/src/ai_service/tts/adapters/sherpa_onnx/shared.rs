@@ -44,12 +44,15 @@ pub(super) struct EngineKey {
     /// 其它模型不读取这两个值，统一归一化以便尽可能共享。
     num_steps: i32,
     guidance_scale_bits: u32,
+    /// 推理线程数在创建引擎时固定；改线程数需要新引擎。
+    num_threads: i32,
 }
 
 impl EngineKey {
     pub(super) fn new(model_dir: &Path, model_type: &str, tuning: SherpaTuning) -> Self {
         let model_dir =
             std::fs::canonicalize(model_dir).unwrap_or_else(|_| model_dir.to_path_buf());
+        let num_threads = tuning.num_threads;
         let tuning = if model_type == "zipvoice" {
             tuning
         } else {
@@ -61,6 +64,7 @@ impl EngineKey {
             model_type: model_type.to_string(),
             num_steps: tuning.num_steps,
             guidance_scale_bits: tuning.guidance_scale.to_bits(),
+            num_threads,
         }
     }
 }
@@ -70,6 +74,17 @@ type Registry = Mutex<HashMap<EngineKey, Weak<SharedSherpaEngine>>>;
 fn registry() -> &'static Registry {
     static REGISTRY: OnceLock<Registry> = OnceLock::new();
     REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// 进程级推理闸门：同一时刻只让一份 Sherpa 合成真正跑在 CPU 上。
+///
+/// 每个引擎已经有自己的 `generate_lock`，但低端机/多角色场景下可能同时存在多个
+/// 模型（不同角色用不同模型，或试听与聊天并发）。多份推理一起抢核会把音频播放
+/// 线程挤出时间片，表现为字内卡顿、爆音。合成本身是串行消费的，全局排队不会
+/// 增加端到端延迟，却能保证播放始终有 CPU 可用。
+pub(super) fn inference_gate() -> &'static tokio::sync::Semaphore {
+    static GATE: OnceLock<tokio::sync::Semaphore> = OnceLock::new();
+    GATE.get_or_init(|| tokio::sync::Semaphore::new(1))
 }
 
 fn lock_registry() -> std::sync::MutexGuard<'static, HashMap<EngineKey, Weak<SharedSherpaEngine>>> {
@@ -122,9 +137,16 @@ mod tests {
             SherpaTuning {
                 num_steps: 9,
                 guidance_scale: 4.0,
+                ..Default::default()
             },
         );
         assert_eq!(default, other_tuning);
+
+        // 线程数在创建引擎时固定，必须参与缓存键。
+        assert_ne!(
+            default,
+            EngineKey::new(&dir, "matcha", SherpaTuning::default().with_num_threads(2))
+        );
 
         // 模型类型不同，不能共享。
         assert_ne!(
@@ -142,6 +164,7 @@ mod tests {
                 SherpaTuning {
                     num_steps: 5,
                     guidance_scale: 1.0,
+                    ..Default::default()
                 },
             )
         );
@@ -153,6 +176,7 @@ mod tests {
                 SherpaTuning {
                     num_steps: 4,
                     guidance_scale: 2.0,
+                    ..Default::default()
                 },
             )
         );
