@@ -105,6 +105,8 @@ impl EmotionClassifier {
             .map_err(|e| anyhow!("设置优化级别失败: {e}"))?
             .with_intra_threads(1)
             .map_err(|e| anyhow!("设置线程数失败: {e}"))?
+            .with_inter_threads(1)
+            .map_err(|e| anyhow!("设置 inter 线程数失败: {e}"))?
             .commit_from_file(&onnx_path)
             .map_err(|e| anyhow!("加载 ONNX 模型失败 ({}): {e}", onnx_path.display()))?;
 
