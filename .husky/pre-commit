@@ -1,1 +1,1 @@
-pnpm exec lint-staged
+"D:/oc-work/node_global/pnpm.cmd" exec lint-staged
