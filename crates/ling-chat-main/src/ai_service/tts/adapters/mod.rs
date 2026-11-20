@@ -46,10 +46,9 @@ pub(crate) fn http_client() -> &'static Client {
             }
         } else if let Ok(proxy_url) =
             std::env::var("HTTP_PROXY").or_else(|_| std::env::var("http_proxy"))
+            && let Ok(proxy) = reqwest::Proxy::all(&proxy_url)
         {
-            if let Ok(proxy) = reqwest::Proxy::all(&proxy_url) {
-                builder = builder.proxy(proxy);
-            }
+            builder = builder.proxy(proxy);
         }
 
         builder.build().expect("reqwest client 构建失败")

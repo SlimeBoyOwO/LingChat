@@ -11,7 +11,7 @@ use tauri::Manager;
 
 use crate::AppState;
 use crate::ai_service::game_system::script_engine::events::{
-    ScriptContext, ScriptEvent, parse_duration, register_event,
+    ScriptContext, ScriptEvent, parse_duration, register_event, split_script_text_lines,
 };
 use crate::ai_service::game_system::script_engine::utils::script_function;
 use crate::ai_service::message_system::events::emit;
@@ -175,7 +175,7 @@ impl ScriptEvent for DialogueEvent {
         };
 
         // 逐行复用 consume_sentence：解析 → 富化（翻译/TTS）→ 构建响应 → 写入台词
-        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+        for line in split_script_text_lines(&text) {
             match consume_sentence(
                 &sdeps,
                 line.to_string(),

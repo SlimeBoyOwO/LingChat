@@ -38,6 +38,9 @@ export default {
     live2dFpsUnlimited: "不限",
     live2dFpsCustom: "自訂",
     live2dFpsReset: "還原預設幀率",
+    clickJellyTitle: "Live2D 下啟用點擊果凍",
+    clickJellyDesc:
+      "僅作用於 Live2D 模型：關閉後待機點擊只保留模型自帶的觸摸動作，靜態立繪不受影響",
   },
   history: {
     title: "歷史對話",

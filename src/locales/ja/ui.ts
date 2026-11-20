@@ -278,6 +278,7 @@ export default {
     provider: "検索プロバイダー",
     providerCustom: "カスタム端点",
     providerCodex: "OpenAI Codex（サブスク・キー不要）",
+    providerKeenable: "Keenable（キー不要）",
     codexHint:
       "「LLM プロバイダ」でログイン済みの Codex サブスクリプションで検索します。API Key の入力は不要です",
     kimiHint:
@@ -288,8 +289,11 @@ export default {
     apiKeyPlaceholder: "カスタム端点の API Key を入力",
     kimiApiKeyPlaceholder: "現在の Kimi Code 認証情報を再利用する場合は空欄にできます",
     dsApiKeyPlaceholder: "DeepSeek API Key を入力",
+    keenableApiKeyPlaceholder: "任意。空欄で無料パブリックエンドポイントを利用",
     dsHint:
       "DeepSeek の /v1/tools/search エンドポイントで検索します。別途 DeepSeek API Key が必要です",
+    keenableHint:
+      "API Key 不要で無料パブリックエンドポイントを利用。任意で Key を設定すると高めの枠に",
     baseUrl: "検索サービス URL",
     proxyEnable: "プロキシ経由で検索サービスにアクセス（v2rayN など）",
     maxResults: "検索結果の件数",
@@ -344,6 +348,9 @@ export default {
       "ここの画像/動画スイッチは認識できる種類だけを制御します。ReadMediaFile をあの子に提供するかどうかは上のツールのチェックで決まります。",
     saveFailedTitle: "ツール設定の保存に失敗しました",
     nav: {
+      image_generation: "@:imageGeneration.toolName",
+      web_search: "@:ui.toolCalls.webSearchTitle",
+      plugin: "@:ui.toolCalls.pluginPackageTitle",
       schedule: "スケジュール",
       memory: "メモと記憶",
       character: "キャラ切替",
@@ -395,6 +402,7 @@ export default {
       "⚠ このコマンドは管理者（UAC）権限も要求しています。許可後に Windows の UAC 確認が出ます",
     approvalDefaultCwd: "（デフォルトのサンドボックス）",
     groups: {
+      image_generation: "@:imageGeneration.toolHelp",
       web_search: "ウェブ検索（ネットで調べてウェブページを読む）",
       schedule: "スケジュールと ToDo（確認・追加・更新・削除）",
       memory: "メモと記憶（あの子のひみつノート）",
@@ -409,6 +417,7 @@ export default {
       plugin: "プラグインツール（有効なプラグインが提供）",
     },
     tools: {
+      generate_image: "@:imageGeneration.toolName",
       web_search: "ウェブ検索",
       tool_search: "ツール検索",
       get_current_time: "現在時刻",
@@ -446,6 +455,7 @@ export default {
       execute_command: "コマンド実行",
     },
     toolDescriptions: {
+      generate_image: "@:imageGeneration.toolHelp",
       web_search: "ネットで検索し、ウェブページの内容を読む",
       tool_search: "必要に応じてこの端末の利用可能なツールを検索する",
       get_current_time: "デバイスのローカル時刻を読む",

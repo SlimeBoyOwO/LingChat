@@ -109,11 +109,11 @@ impl IdentityStore {
 
     /// 主身份：标记文件指向的卡优先；标记丢失时扫 `is_primary: true` 兜底。
     pub fn primary_identity(&self) -> Option<PlayerIdentity> {
-        if let Some(marker) = self.primary_marker() {
-            if let Some(mut card) = self.find_by_id(&marker.primary_identity_id) {
-                card.is_primary = true;
-                return Some(card);
-            }
+        if let Some(marker) = self.primary_marker()
+            && let Some(mut card) = self.find_by_id(&marker.primary_identity_id)
+        {
+            card.is_primary = true;
+            return Some(card);
         }
         self.flagged_primary()
     }

@@ -5,15 +5,14 @@ pub mod guard;
 pub mod migration;
 pub mod persona;
 pub mod resolve;
-pub mod role_relations;
 pub mod runtime_relations;
 pub mod store;
 
 pub use guard::{RoleRelationStatus, ensure_identity_switchable, relation_ready_all};
 pub use migration::MigrationReport;
 pub use resolve::{
-    AliasEntry, RelationEndpoint, ScenePeer, build_peers_block, build_player_block,
-    effective_user_alias, resolve_relation,
+    AliasEntry, ScenePeer, build_peers_block, build_player_block, effective_user_alias,
+    relation_key, resolve_relation,
 };
 pub use store::{IdentityStore, PrimaryIdentityMarker};
 
@@ -55,22 +54,46 @@ impl PlayerIdentity {
     }
 }
 
+/// 身份编辑器的输入/输出：id 用玩家角色 id，关系按目标角色 id。
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub struct PlayerIdentityInput {
+    /// 新建时为空；已有身份时为玩家角色 id。
+    #[serde(default)]
+    pub role_id: Option<i32>,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub subtitle: String,
+    #[serde(default)]
+    pub prompt: String,
+    #[serde(default)]
+    pub avatar: Option<String>,
+    #[serde(default)]
+    pub relations: HashMap<i32, String>,
+}
+
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct PlayerIdentitySummary {
-    pub id: String,
+    pub role_id: i32,
     pub name: String,
     pub subtitle: String,
     pub prompt: String,
     pub has_avatar: bool,
     pub relation_count: usize,
     pub is_current: bool,
+    pub is_primary: bool,
 }
 
 impl PlayerIdentitySummary {
-    pub fn from_identity(identity: &PlayerIdentity, current_id: Option<&str>) -> Self {
+    pub fn from_identity(
+        identity: &PlayerIdentity,
+        role_id: i32,
+        current_id: Option<&str>,
+    ) -> Self {
         Self {
-            id: identity.id.clone(),
+            role_id,
             name: identity.display_name().to_string(),
             subtitle: identity.subtitle.clone(),
             prompt: identity.prompt.clone(),
@@ -85,6 +108,7 @@ impl PlayerIdentitySummary {
                 .filter(|v| !v.trim().is_empty())
                 .count(),
             is_current: current_id.map(|c| c == identity.id).unwrap_or(false),
+            is_primary: identity.is_primary,
         }
     }
 }

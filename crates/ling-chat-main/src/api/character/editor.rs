@@ -41,13 +41,13 @@ fn remove_editor_directory(path: &Path, base: &Path) -> Result<(), String> {
 }
 
 fn remove_empty_parent(path: &Path) {
-    if let Err(error) = fs::remove_dir(path) {
-        if !matches!(
+    if let Err(error) = fs::remove_dir(path)
+        && !matches!(
             error.kind(),
             std::io::ErrorKind::NotFound | std::io::ErrorKind::DirectoryNotEmpty
-        ) {
-            tracing::warn!(path = %path.display(), "清理编辑器空目录失败: {error}");
-        }
+        )
+    {
+        tracing::warn!(path = %path.display(), "清理编辑器空目录失败: {error}");
     }
 }
 
@@ -132,10 +132,10 @@ pub async fn cleanup_stale_editor_data(db: &sea_orm::DatabaseConnection) {
         else {
             continue;
         };
-        if root.is_dir() {
-            if let Err(error) = cleanup_role_editor_data(&root) {
-                tracing::warn!(role_id = role.id, "清理角色编辑残留失败: {error}");
-            }
+        if root.is_dir()
+            && let Err(error) = cleanup_role_editor_data(&root)
+        {
+            tracing::warn!(role_id = role.id, "清理角色编辑残留失败: {error}");
         }
     }
 }

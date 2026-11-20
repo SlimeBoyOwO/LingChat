@@ -65,6 +65,14 @@ pub fn apply_selected_files(
         }
     };
 
+    // 写入前统一校验：只接受官方清单中的普通相对路径，非法选择直接报错并保留 .official/
+    if let Some(bad) = selected_files
+        .iter()
+        .find(|p| !official_manifest.files.contains_key(p.as_str()) || !is_plain_relative(p))
+    {
+        anyhow::bail!("非法的同步文件路径: {bad}");
+    }
+
     let mut synced = 0usize;
 
     for path in selected_files {
@@ -134,4 +142,12 @@ fn copy_dir_recursive(src: &Path, dst: &Path) -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+/// 仅由普通路径段组成（无 `..`、根目录、盘符前缀）。
+fn is_plain_relative(path: &str) -> bool {
+    !path.is_empty()
+        && Path::new(path)
+            .components()
+            .all(|c| matches!(c, std::path::Component::Normal(_)))
 }

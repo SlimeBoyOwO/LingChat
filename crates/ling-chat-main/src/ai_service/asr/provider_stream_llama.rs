@@ -171,10 +171,10 @@ pub async fn recognize_stream(
                         final_text = text;
                         // 空文本（无语音 `language None<asr_text>`）不回调——
                         // 空 partial 会清空输入框的语音追加块
-                        if !final_text.is_empty() {
-                            if let Some(cb) = &on_partial {
-                                cb(&final_text);
-                            }
+                        if !final_text.is_empty()
+                            && let Some(cb) = &on_partial
+                        {
+                            cb(&final_text);
                         }
                     }
                 },

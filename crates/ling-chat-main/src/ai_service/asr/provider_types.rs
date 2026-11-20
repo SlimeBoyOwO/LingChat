@@ -29,7 +29,7 @@ pub struct Hotword {
 impl Hotword {
     /// 默认权重。DashScope 文档推荐从 4 起测。
     pub const DEFAULT_WEIGHT: u8 = 4;
-    /// 档位口径见 `crate::db::entities::hotword_weight`。
+    /// 档位口径见 `crate::db::entities::hotword`。
     pub const WEIGHT_CAP: u8 = 5;
     pub const SUPER_WEIGHT: u8 = 50;
     pub const MIN_WEIGHT: u8 = 1;
@@ -44,7 +44,7 @@ impl Hotword {
 
     /// 指定权重构造（归一到 `[1, 5] ∪ {50}`，复用实体层 `normalize_weight`）。
     pub fn with_weight(text: impl Into<String>, weight: u8) -> Self {
-        let weight = crate::db::entities::hotword_weight::normalize_weight(i32::from(weight));
+        let weight = crate::db::entities::hotword::normalize_weight(i32::from(weight));
         Self {
             text: text.into(),
             weight: weight as u8,

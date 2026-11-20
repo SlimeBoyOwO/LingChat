@@ -119,6 +119,7 @@ impl EmbeddingSettings {
 /// 设置页按组开关，权限同步时组内工具一起放开/收回。
 /// web_search 不在此列：它有独立的 enabled + 配置就绪判断。
 pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
+    ("image_generation", &["generate_image"]),
     (
         "schedule",
         &[
@@ -190,6 +191,7 @@ pub struct WebSearchSettings {
     /// "deepseek"（DeepSeek 网页搜索 https://api.deepseek.com/v1/tools/search）
     /// "tavily"（Tavily https://api.tavily.com/search，body 为 query）
     /// "codex"（ChatGPT Codex alpha/search，复用 Codex OAuth，无需 API Key）
+    /// "keenable"（Keenable 联网搜索；API Key 为空时走免费公共端点）
     /// "custom"（用户配置的 Kimi /search 兼容端点）
     pub provider: String,
     /// API Key（Bearer 认证）。
@@ -211,7 +213,7 @@ impl Default for WebSearchSettings {
     fn default() -> Self {
         Self {
             enabled: false,
-            provider: "kimi".to_string(),
+            provider: "keenable".to_string(),
             api_key: String::new(),
             base_url: "https://api.kimi.com/coding/v1/search".to_string(),
             proxy_enabled: false,
@@ -228,6 +230,7 @@ impl WebSearchSettings {
         self.enabled
             && (self.provider.eq_ignore_ascii_case("codex")
                 || self.provider.eq_ignore_ascii_case("kimi")
+                || self.provider.eq_ignore_ascii_case("keenable")
                 || !self.api_key.trim().is_empty())
     }
 }
@@ -301,6 +304,7 @@ pub enum ToolAccessMode {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct ToolSettings {
+    pub image_generation: crate::ai_service::image_generation::ImageGenerationSettings,
     pub web_search: WebSearchSettings,
     pub media_file: MediaFileSettings,
     /// 笔记语义检索与 Tool RAG 的向量化后端。
@@ -341,6 +345,7 @@ impl Default for ToolSettings {
     fn default() -> Self {
         Self {
             web_search: WebSearchSettings::default(),
+            image_generation: Default::default(),
             media_file: MediaFileSettings::default(),
             embedding: EmbeddingSettings::default(),
             groups: HashMap::new(),
@@ -362,6 +367,7 @@ impl Default for ToolSettings {
 impl ToolSettings {
     pub fn normalize(&mut self) {
         self.media_file.normalize();
+        self.image_generation.normalize();
         self.embedding.normalize();
         self.max_tool_rounds = self
             .max_tool_rounds

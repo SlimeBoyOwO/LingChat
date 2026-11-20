@@ -223,21 +223,15 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
         return Ok(());
     }
 
-    // No `input` event pending. If a `choices` event with `allow_free: true` is
-    // waiting, the user typing into the dialogue box *is* their choice — route it
-    // to the choice channel. Previously this returned Err, the frontend only
-    // logged it, and the script blocked on `choice_tx` forever.
-    if channels.choice_allow_free {
-        if let Some(tx) = channels.choice_tx.take() {
-            channels.choice_allow_free = false;
-            let _ = tx.send(input);
-            return Ok(());
-        }
+    if channels.choice_allow_free
+        && let Some(tx) = channels.choice_tx.take()
+    {
+        channels.choice_allow_free = false;
+        let _ = tx.send(input);
+        return Ok(());
     }
 
     if channels.choice_tx.is_some() {
-        // A choice is pending but does not accept free input. Reject without
-        // consuming the sender so the option buttons stay usable.
         return Err("当前的选项不接受自由输入，请点击一个选项".to_string());
     }
 
@@ -248,11 +242,12 @@ pub async fn script_submit_input(app: AppHandle, input: String) -> Result<(), St
 pub async fn script_submit_choice(app: AppHandle, choice: String) -> Result<(), String> {
     let state = app.state::<AppState>();
     let mut channels = state.script_channels.lock().await;
-    if let Some(tx) = channels.choice_tx.take() {
-        channels.choice_allow_free = false;
-        let _ = tx.send(choice);
-        Ok(())
-    } else {
-        Err("当前没有等待选择的脚本事件".to_string())
+    match channels.choice_tx.take() {
+        Some(tx) => {
+            channels.choice_allow_free = false;
+            let _ = tx.send(choice);
+            Ok(())
+        },
+        _ => Err("当前没有等待选择的脚本事件".to_string()),
     }
 }

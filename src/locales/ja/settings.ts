@@ -152,6 +152,10 @@ export default {
       title: "ワークショップ",
       enter: "ワークショップへ",
     },
+    shortcuts: {
+      title: "ショートカット",
+      import: "キャラクターをインポート",
+    },
   },
   log: {
     title: "ログ",
@@ -1264,6 +1268,11 @@ export default {
       switchFailed: "切り替えに失敗しました: {error}",
     },
     codex: {
+      clientVersion: "Codex クライアントのバージョン",
+      clientVersionAuto: "自動（最新安定版）",
+      clientVersionHint:
+        "空欄または auto で安定版に追従します。固定するには 3 桁構成のバージョンを入力してください。",
+      clientVersionInvalid: "x.y.z 形式のバージョンまたは auto を入力してください。",
       account: "ChatGPT サブスクリプションアカウント",
       loggedIn: "ログイン済み",
       notLoggedIn: "未ログイン",

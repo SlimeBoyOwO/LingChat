@@ -46,43 +46,8 @@ pub struct ExportResult {
 
 // 热词旁挂文件
 
-/// 归档内的热词旁挂文件名，与 `settings.yml` 同级；点号开头表明不是角色内容。
-///
-/// 旁挂已停用：热词不随角色包移动，导出时仅按名排除残留在角色目录里的旧文件，
-/// 类型与读取函数保留供将来恢复。
+/// 旧版归档里的热词旁挂文件名，与 `settings.yml` 同级。
 const HOTWORD_SIDECAR_NAME: &str = ".lingchat_hotwords.json";
-
-/// 旁挂文件格式版本；未知版本跳过导入并记 warning。
-const HOTWORD_SIDECAR_VERSION: u32 = 1;
-
-/// 旁挂文件结构；导出侧不再序列化，保留反序列化供将来恢复读取。
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct HotwordSidecar {
-    version: u32,
-    /// 兼容垫片：老包可能带 `language`，读入即忽略。
-    #[serde(default, skip_serializing)]
-    #[allow(dead_code)]
-    language: String,
-    #[serde(default)]
-    hotwords: Vec<SidecarHotword>,
-}
-
-/// 旁挂文件里的单条热词；字段缺失按缺省处理，越界值由 `replace_for_role` 兜底。
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-struct SidecarHotword {
-    #[serde(default)]
-    text: String,
-    #[serde(default = "default_weight")]
-    weight: i32,
-    /// 兼容垫片：老包可能带 `lang`，读入即忽略。
-    #[serde(default, skip_serializing)]
-    #[allow(dead_code)]
-    lang: String,
-}
-
-fn default_weight() -> i32 {
-    i32::from(crate::ai_service::asr::provider::Hotword::DEFAULT_WEIGHT)
-}
 
 // ===== 导入命令 =====
 
@@ -256,10 +221,10 @@ pub async fn import_role_from_path(
     let src = prepare_import_source(&app, &path).await?;
 
     // SAF 源文件复制完成后记录缓存路径，便于取消任务时立即清理。
-    if src.cleanup_after_import {
-        if let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id) {
-            *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
-        }
+    if src.cleanup_after_import
+        && let Some(entry) = state.tasks.lock().unwrap().get_mut(&task_id)
+    {
+        *entry.saf_cache_path.lock().unwrap() = Some(src.path.clone());
     }
 
     // 文件名兜底：前端传来的 `file_name` 可能是 URI 末段未经 decode 的
@@ -301,14 +266,14 @@ pub async fn import_role_from_path(
     }
     .await;
 
-    if src.cleanup_after_import {
-        if let Err(error) = tokio::fs::remove_file(&src.path).await {
-            tracing::warn!(
-                "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
-                src.path.display(),
-                error
-            );
-        }
+    if src.cleanup_after_import
+        && let Err(error) = tokio::fs::remove_file(&src.path).await
+    {
+        tracing::warn!(
+            "[RoleArchive] import_role_from_path 清理 SAF 缓存失败: path={}, err={}",
+            src.path.display(),
+            error
+        );
     }
     match &result {
         Ok(r) => tracing::info!(

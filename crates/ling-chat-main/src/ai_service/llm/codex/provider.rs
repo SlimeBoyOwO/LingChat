@@ -38,6 +38,7 @@ pub struct CodexProvider {
     model: String,
     reasoning_effort: Option<String>,
     fast_mode: bool,
+    client_version: Option<String>,
     temperature: Option<f64>,
     timeout_secs: u64,
 }
@@ -59,9 +60,18 @@ impl CodexProvider {
             model,
             reasoning_effort: cfg.reasoning_effort.clone(),
             fast_mode: cfg.fast_mode,
+            client_version: None,
             temperature: cfg.temperature,
             timeout_secs: cfg.timeout_secs.max(15),
         })
+    }
+
+    pub(in crate::ai_service::llm) fn with_catalog_version(
+        mut self,
+        client_version: Option<String>,
+    ) -> Self {
+        self.client_version = client_version;
+        self
     }
 
     /// 构建带代理的 client 并取有效凭据（自动刷新）。
@@ -153,10 +163,14 @@ impl CodexProvider {
                     }));
                 },
                 _ => {
+                    let mut content = vec![json!({"type": "input_text", "text": m.content})];
+                    if let Some(image) = m.image_data_url.as_deref().filter(|url| !url.is_empty()) {
+                        content.push(json!({"type": "input_image", "image_url": image}));
+                    }
                     input.push(json!({
                         "type": "message",
                         "role": "user",
-                        "content": [{ "type": "input_text", "text": m.content }],
+                        "content": content,
                     }));
                 },
             }
@@ -187,27 +201,27 @@ impl CodexProvider {
         if let Some(temperature) = self.temperature {
             body["temperature"] = json!(temperature);
         }
-        if let Some(definitions) = tools {
-            if !definitions.is_empty() {
-                let converted: Vec<Value> = definitions
-                    .iter()
-                    .map(|d| {
-                        json!({
-                            "type": "function",
-                            "name": d.function.name,
-                            "description": d.function.description,
-                            "parameters": d.function.parameters,
-                        })
+        if let Some(definitions) = tools
+            && !definitions.is_empty()
+        {
+            let converted: Vec<Value> = definitions
+                .iter()
+                .map(|d| {
+                    json!({
+                        "type": "function",
+                        "name": d.function.name,
+                        "description": d.function.description,
+                        "parameters": d.function.parameters,
                     })
-                    .collect();
-                body["tools"] = json!(converted);
-                body["parallel_tool_calls"] = json!(true);
-                body["tool_choice"] = match tool_choice {
-                    Some("none") => json!("none"),
-                    Some("any") | Some("required") => json!("required"),
-                    _ => json!("auto"),
-                };
-            }
+                })
+                .collect();
+            body["tools"] = json!(converted);
+            body["parallel_tool_calls"] = json!(true);
+            body["tool_choice"] = match tool_choice {
+                Some("none") => json!("none"),
+                Some("any") | Some("required") => json!("required"),
+                _ => json!("auto"),
+            };
         }
         body
     }
@@ -274,9 +288,13 @@ impl CodexProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        max_output_tokens: Option<u32>,
     ) -> Result<ChunkStream> {
         let (http, cred) = self.client_and_token().await?;
-        let body = self.build_body(messages, tools, tool_choice);
+        let mut body = self.build_body(messages, tools, tool_choice);
+        if let Some(limit) = max_output_tokens {
+            body["max_output_tokens"] = json!(limit.max(1));
+        }
         crate::utils::llm_request_logger::log_request_body("codex", &body);
         let resp = self.send_with_retry(&http, &cred, &body).await?;
 
@@ -328,40 +346,37 @@ impl CodexProvider {
                             }
                         }
                         "response.output_item.added" => {
-                            if let Some(item) = event.get("item") {
-                                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            if let Some(item) = event.get("item")
+                                && item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                     let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     let call_id = item.get("call_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     let name = item.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
                                     pending_calls.insert(item_id, (call_id, name, String::new()));
                                 }
-                            }
                         }
                         "response.function_call_arguments.delta" => {
                             let item_id = event.get("item_id").and_then(|v| v.as_str()).unwrap_or("");
-                            if let Some(delta) = event.get("delta").and_then(|d| d.as_str()) {
-                                if let Some((_, name, args)) = pending_calls.get_mut(item_id) {
+                            if let Some(delta) = event.get("delta").and_then(|d| d.as_str())
+                                && let Some((_, name, args)) = pending_calls.get_mut(item_id) {
                                     args.push_str(delta);
                                     yield LlmChunk::ToolCallProgress {
                                         name: name.clone(),
                                         chars: args.len(),
                                     };
                                 }
-                            }
                         }
                         "response.output_item.done" => {
-                            if let Some(item) = event.get("item") {
-                                if item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
+                            if let Some(item) = event.get("item")
+                                && item.get("type").and_then(|t| t.as_str()) == Some("function_call") {
                                     let item_id = item.get("id").and_then(|v| v.as_str()).unwrap_or("");
                                     let (call_id, name, mut args) = pending_calls
                                         .remove(item_id)
                                         .unwrap_or_default();
                                     // done 事件里通常带完整 arguments，以它为准
-                                    if let Some(full) = item.get("arguments").and_then(|v| v.as_str()) {
-                                        if !full.is_empty() {
+                                    if let Some(full) = item.get("arguments").and_then(|v| v.as_str())
+                                        && !full.is_empty() {
                                             args = full.to_string();
                                         }
-                                    }
                                     let final_call_id = item
                                         .get("call_id")
                                         .and_then(|v| v.as_str())
@@ -377,7 +392,6 @@ impl CodexProvider {
                                         },
                                     });
                                 }
-                            }
                         }
                         "response.completed" | "response.incomplete" => {
                             if let Some(u) = event.pointer("/response/usage") {
@@ -443,8 +457,11 @@ impl CodexProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        max_output_tokens: Option<u32>,
     ) -> Result<(String, Vec<ToolCall>, Option<LlmUsage>)> {
-        let mut stream = self.open_stream(messages, tools, tool_choice).await?;
+        let mut stream = self
+            .open_stream(messages, tools, tool_choice, max_output_tokens)
+            .await?;
         let mut content = String::new();
         let mut calls: Vec<ToolCall> = Vec::new();
         let mut usage = None;
@@ -457,6 +474,19 @@ impl CodexProvider {
             }
         }
         Ok((content, calls, usage))
+    }
+
+    pub async fn complete_vision(
+        &self,
+        prompt: &str,
+        image_data_url: String,
+        max_output_tokens: u32,
+    ) -> Result<(String, Option<LlmUsage>)> {
+        let messages = [LlmMessage::user_with_image(prompt, image_data_url)];
+        let (text, _, usage) = self
+            .collect(&messages, None, None, Some(max_output_tokens))
+            .await?;
+        Ok((text, usage))
     }
 }
 
@@ -499,11 +529,12 @@ fn rand_f64() -> f64 {
 impl LlmProvider for CodexProvider {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
         let (http, cred) = self.client_and_token().await?;
-        super::models::fetch_models(&http, self.headers(&cred)?).await
+        super::models::fetch_models(&http, self.headers(&cred)?, self.client_version.as_deref())
+            .await
     }
 
     async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let (content, _, _) = self.collect(messages, None, None).await?;
+        let (content, _, _) = self.collect(messages, None, None, None).await?;
         Ok(content)
     }
 
@@ -512,7 +543,7 @@ impl LlmProvider for CodexProvider {
         _http: &Client,
         messages: &[LlmMessage],
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, None, None).await
+        self.open_stream(messages, None, None, None).await
     }
 
     fn supports_streaming_tools(&self) -> bool {
@@ -526,7 +557,8 @@ impl LlmProvider for CodexProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, Some(tools), tool_choice).await
+        self.open_stream(messages, Some(tools), tool_choice, None)
+            .await
     }
 
     async fn complete_with_tools(
@@ -536,7 +568,9 @@ impl LlmProvider for CodexProvider {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
-        let (content, calls, usage) = self.collect(messages, Some(tools), tool_choice).await?;
+        let (content, calls, usage) = self
+            .collect(messages, Some(tools), tool_choice, None)
+            .await?;
         Ok(LlmResponseWithTools {
             content: if content.is_empty() {
                 None

@@ -23,7 +23,7 @@ use crate::ai_service::asr::provider::{
 };
 use crate::ai_service::asr::session::{AsrSession, AsrSource};
 use crate::ai_service::asr::settings::{self, AsrSettings};
-use crate::db::entities::hotword_weight;
+use crate::db::entities::hotword::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP, normalize_weight};
 
 fn parse_source(s: &str) -> Result<AsrSource, String> {
     AsrSource::from_code(s).ok_or_else(|| format!("invalid source: {s}"))
@@ -53,7 +53,7 @@ impl HotwordInput {
             Self::Text(text) => (text, Hotword::DEFAULT_WEIGHT),
             Self::Weighted { text, weight } => (text, weight.unwrap_or(Hotword::DEFAULT_WEIGHT)),
         };
-        let normalized = hotword_weight::normalize_weight(i32::from(raw.1)) as u8;
+        let normalized = normalize_weight(i32::from(raw.1)) as u8;
         (raw.0, normalized)
     }
 }
@@ -93,8 +93,6 @@ fn build_options(hotwords: Option<Vec<HotwordInput>>) -> AsrOptions {
 ///
 /// 这是发送层的兜底，不是保存校验：各作用域各自合规也可能并集超限。
 fn demote_excess_super(hotwords: Vec<Hotword>) -> Vec<Hotword> {
-    use hotword_weight::{SUPER_COUNT_LIMIT, SUPER_WEIGHT, WEIGHT_CAP};
-
     let total = hotwords
         .iter()
         .filter(|h| i32::from(h.weight) == SUPER_WEIGHT)
@@ -535,11 +533,11 @@ pub async fn asr_test_provider(
             // 测试音频是 1 秒静音：部分 ASR（如 DashScope Fun-ASR）对静音
             // 直接返回 "ASR_RESPONSE_HAVE_NO_WORDS"。服务能响应这个错误
             // 恰好证明 API 可达 + key 有效 → 视为连接成功。
-            if let AsrError::ProviderApiError { message, .. } = &e {
-                if message.contains("NO_WORDS") || message.contains("no_words") {
-                    tracing::info!("[ASR] 测试连接 {provider_id} 成功（静音无词，服务正常）");
-                    return Ok(());
-                }
+            if let AsrError::ProviderApiError { message, .. } = &e
+                && (message.contains("NO_WORDS") || message.contains("no_words"))
+            {
+                tracing::info!("[ASR] 测试连接 {provider_id} 成功（静音无词，服务正常）");
+                return Ok(());
             }
             tracing::warn!("[ASR] 测试连接 {provider_id} 失败: {e}");
             Err(err_to_user(&e))

@@ -1,4 +1,6 @@
-//! Skill Agent 会话/消息持久化。
+//! Agent 会话/消息持久化：剧本编辑器助手与游戏内导演共用同一套表。
+//!
+//! `kind` 区分用途，其余读写按会话 id 通用；导演会话额外带 `save_id`。
 
 use chrono::Local;
 use sea_orm::{
@@ -7,20 +9,24 @@ use sea_orm::{
 
 use crate::ai_service::skill_agent::events::Usage;
 use crate::ai_service::types::{LlmMessage, ToolCall};
-use crate::db::entities::skill_agent_conversation::{self, Entity as ConvEntity};
-use crate::db::entities::skill_agent_message::{self, Entity as MsgEntity};
+use crate::db::entities::agent_conversation::{
+    self, Entity as ConvEntity, KIND_DIRECTOR, KIND_SKILL,
+};
+use crate::db::entities::agent_message::{self, Entity as MsgEntity};
 
-/// 新建会话。只记录创建时的剧本 key，不存剧本内容快照。
+/// 新建剧本编辑器助手会话。只记录创建时的剧本 key，不存剧本内容快照。
 pub async fn create_conversation(
     db: &DatabaseConnection,
     title: Option<String>,
     script_key: Option<String>,
 ) -> Result<i32, String> {
     let now = Local::now().naive_local();
-    let model = skill_agent_conversation::ActiveModel {
+    let model = agent_conversation::ActiveModel {
         id: sea_orm::NotSet,
         title: Set(title),
         script_key: Set(script_key),
+        kind: Set(KIND_SKILL.to_string()),
+        save_id: Set(None),
         created_at: Set(now),
         updated_at: Set(now),
     };
@@ -31,12 +37,61 @@ pub async fn create_conversation(
     Ok(res.id)
 }
 
-/// 全部会话，按最近更新倒序。
+/// 新建绑定到某个存档的导演会话。
+pub async fn create_director_conversation(
+    db: &DatabaseConnection,
+    save_id: i32,
+) -> Result<i32, String> {
+    let now = Local::now().naive_local();
+    let model = agent_conversation::ActiveModel {
+        id: sea_orm::NotSet,
+        title: Set(None),
+        script_key: Set(None),
+        kind: Set(KIND_DIRECTOR.to_string()),
+        save_id: Set(Some(save_id)),
+        created_at: Set(now),
+        updated_at: Set(now),
+    };
+    let res = model
+        .insert(db)
+        .await
+        .map_err(|e| format!("创建导演会话失败: {}", e))?;
+    Ok(res.id)
+}
+
+/// 该存档下最近使用的导演会话。没有则返回 None。
+pub async fn latest_director_conversation(
+    db: &DatabaseConnection,
+    save_id: i32,
+) -> Result<Option<agent_conversation::Model>, String> {
+    ConvEntity::find()
+        .filter(agent_conversation::Column::Kind.eq(KIND_DIRECTOR))
+        .filter(agent_conversation::Column::SaveId.eq(save_id))
+        .order_by_desc(agent_conversation::Column::UpdatedAt)
+        .order_by_desc(agent_conversation::Column::Id)
+        .one(db)
+        .await
+        .map_err(|e| format!("查询导演会话失败: {}", e))
+}
+
+/// 取该存档的导演会话，没有就建一个。
+pub async fn get_or_create_director_conversation(
+    db: &DatabaseConnection,
+    save_id: i32,
+) -> Result<i32, String> {
+    if let Some(conversation) = latest_director_conversation(db, save_id).await? {
+        return Ok(conversation.id);
+    }
+    create_director_conversation(db, save_id).await
+}
+
+/// 全部剧本编辑器助手会话，按最近更新倒序。导演会话不在这里出现。
 pub async fn list_conversations(
     db: &DatabaseConnection,
-) -> Result<Vec<skill_agent_conversation::Model>, String> {
+) -> Result<Vec<agent_conversation::Model>, String> {
     ConvEntity::find()
-        .order_by_desc(skill_agent_conversation::Column::UpdatedAt)
+        .filter(agent_conversation::Column::Kind.eq(KIND_SKILL))
+        .order_by_desc(agent_conversation::Column::UpdatedAt)
         .all(db)
         .await
         .map_err(|e| format!("查询会话列表失败: {}", e))
@@ -45,7 +100,7 @@ pub async fn list_conversations(
 pub async fn get_conversation(
     db: &DatabaseConnection,
     id: i32,
-) -> Result<Option<skill_agent_conversation::Model>, String> {
+) -> Result<Option<agent_conversation::Model>, String> {
     ConvEntity::find_by_id(id)
         .one(db)
         .await
@@ -57,7 +112,7 @@ pub async fn touch_conversation(db: &DatabaseConnection, id: i32) -> Result<(), 
     let Some(m) = get_conversation(db, id).await? else {
         return Ok(());
     };
-    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    let mut am: agent_conversation::ActiveModel = m.into();
     am.updated_at = Set(Local::now().naive_local());
     am.update(db)
         .await
@@ -74,7 +129,7 @@ pub async fn update_conversation_title(
     let Some(m) = get_conversation(db, id).await? else {
         return Ok(());
     };
-    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    let mut am: agent_conversation::ActiveModel = m.into();
     am.title = Set(Some(title));
     am.updated_at = Set(Local::now().naive_local());
     am.update(db)
@@ -92,7 +147,7 @@ pub async fn update_conversation_script_key(
     let Some(m) = get_conversation(db, id).await? else {
         return Ok(());
     };
-    let mut am: skill_agent_conversation::ActiveModel = m.into();
+    let mut am: agent_conversation::ActiveModel = m.into();
     am.script_key = Set(Some(script_key));
     am.updated_at = Set(Local::now().naive_local());
     am.update(db)
@@ -104,7 +159,7 @@ pub async fn update_conversation_script_key(
 /// 删除会话及其全部消息。
 pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(), String> {
     MsgEntity::delete_many()
-        .filter(skill_agent_message::Column::ConversationId.eq(id))
+        .filter(agent_message::Column::ConversationId.eq(id))
         .exec(db)
         .await
         .map_err(|e| format!("删除会话消息失败: {}", e))?;
@@ -113,6 +168,17 @@ pub async fn delete_conversation(db: &DatabaseConnection, id: i32) -> Result<(),
         .await
         .map_err(|e| format!("删除会话失败: {}", e))?;
     Ok(())
+}
+
+/// 删除剧本编辑器助手会话。导演会话不接受这条入口，避免前端传错 id 删掉导演记录。
+pub async fn delete_skill_conversation(db: &DatabaseConnection, id: i32) -> Result<(), String> {
+    let Some(conversation) = get_conversation(db, id).await? else {
+        return Ok(());
+    };
+    if conversation.kind != KIND_SKILL {
+        return Err("该会话不是剧本编辑器的助手会话".to_string());
+    }
+    delete_conversation(db, id).await
 }
 
 /// 插入一条消息（OpenAI 格式；空 content 存 NULL）。
@@ -124,7 +190,7 @@ pub async fn insert_message(
     usage: Option<&Usage>,
 ) -> Result<i32, String> {
     let now = Local::now().naive_local();
-    let model = skill_agent_message::ActiveModel {
+    let model = agent_message::ActiveModel {
         id: sea_orm::NotSet,
         conversation_id: Set(conversation_id),
         role: Set(msg.role.clone()),
@@ -151,14 +217,27 @@ pub async fn insert_message(
     Ok(res.id)
 }
 
+/// 往导演会话追加一条消息，并刷新会话的更新时间。
+pub async fn append_director_message(
+    db: &DatabaseConnection,
+    conversation_id: i32,
+    msg: &LlmMessage,
+    reasoning: Option<&str>,
+    usage: Option<&Usage>,
+) -> Result<i32, String> {
+    let id = insert_message(db, conversation_id, msg, reasoning, usage).await?;
+    touch_conversation(db, conversation_id).await?;
+    Ok(id)
+}
+
 /// 某会话的全部消息（按时间升序）。
 pub async fn list_messages(
     db: &DatabaseConnection,
     conversation_id: i32,
-) -> Result<Vec<skill_agent_message::Model>, String> {
+) -> Result<Vec<agent_message::Model>, String> {
     MsgEntity::find()
-        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
-        .order_by_asc(skill_agent_message::Column::Id)
+        .filter(agent_message::Column::ConversationId.eq(conversation_id))
+        .order_by_asc(agent_message::Column::Id)
         .all(db)
         .await
         .map_err(|e| format!("查询消息失败: {}", e))
@@ -167,7 +246,7 @@ pub async fn list_messages(
 /// 清空某会话的消息。
 pub async fn clear_messages(db: &DatabaseConnection, conversation_id: i32) -> Result<(), String> {
     MsgEntity::delete_many()
-        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
+        .filter(agent_message::Column::ConversationId.eq(conversation_id))
         .exec(db)
         .await
         .map_err(|e| format!("清空消息失败: {}", e))?;
@@ -181,8 +260,8 @@ pub async fn delete_messages_from(
     from_id: i32,
 ) -> Result<(), String> {
     MsgEntity::delete_many()
-        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
-        .filter(skill_agent_message::Column::Id.gte(from_id))
+        .filter(agent_message::Column::ConversationId.eq(conversation_id))
+        .filter(agent_message::Column::Id.gte(from_id))
         .exec(db)
         .await
         .map_err(|e| format!("回溯删除消息失败: {}", e))?;
@@ -190,7 +269,7 @@ pub async fn delete_messages_from(
 }
 
 /// DB 消息模型 → LLM 消息。
-pub fn message_to_llm(m: &skill_agent_message::Model) -> LlmMessage {
+pub fn message_to_llm(m: &agent_message::Model) -> LlmMessage {
     LlmMessage {
         role: m.role.clone(),
         content: m.content.clone().unwrap_or_default(),
@@ -206,9 +285,9 @@ pub fn message_to_llm(m: &skill_agent_message::Model) -> LlmMessage {
 /// 从会话写入过的路径反推它归属的剧本包，供 `script_key` 为空的会话（老会话，或建包早于绑定逻辑）兜底。
 pub async fn derive_script_key(db: &DatabaseConnection, conversation_id: i32) -> Option<String> {
     let rows = MsgEntity::find()
-        .filter(skill_agent_message::Column::ConversationId.eq(conversation_id))
-        .filter(skill_agent_message::Column::ToolCalls.like("%/scripts/%"))
-        .order_by_asc(skill_agent_message::Column::Id)
+        .filter(agent_message::Column::ConversationId.eq(conversation_id))
+        .filter(agent_message::Column::ToolCalls.like("%/scripts/%"))
+        .order_by_asc(agent_message::Column::Id)
         .all(db)
         .await
         .ok()?;

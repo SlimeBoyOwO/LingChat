@@ -4,7 +4,7 @@ import { ref, type Ref } from "vue";
 export interface RelationRow {
   target: string;
   text: string;
-  /** 角色对玩家身份的初始好感度（只有 `me:` 行使用；null = 跟随角色卡默认） */
+  /** 角色对玩家身份的初始好感度（只有玩家角色目标使用；null = 跟随角色卡默认） */
   affection?: number | null;
 }
 
@@ -13,6 +13,8 @@ export interface RelationTargetOption {
   value: string;
   label: string;
   group?: string;
+  /** 目标类型：玩家身份才需要初始好感度 */
+  kind?: "ai" | "player";
 }
 
 /** 下拉项；与 SelectMenu 的 options 结构对齐。 */
@@ -65,11 +67,15 @@ export function useRelationEditor(
     return map;
   };
 
-  /** 折成 {关系键: 初始好感度}；只收我的身份行，null 表示恢复角色卡默认。 */
+  /** 目标是否为玩家身份：只有这些行有初始好感度覆写。 */
+  const isAffectionTarget = (row: RelationRow) =>
+    targets.value.some((item) => item.value === row.target && item.kind === "player");
+
+  /** 折成 {关系键: 初始好感度}；只收玩家身份行，null 表示恢复角色卡默认。 */
   const foldAffections = (): Record<string, number | null> => {
     const map: Record<string, number | null> = {};
     for (const row of rows.value) {
-      if (row.target.startsWith("me:")) map[row.target] = row.affection ?? null;
+      if (isAffectionTarget(row)) map[row.target] = row.affection ?? null;
     }
     return map;
   };
@@ -102,5 +108,15 @@ export function useRelationEditor(
     return options;
   };
 
-  return { rows, syncRows, addRow, removeRow, fold, foldAffections, setAffection, optionsFor };
+  return {
+    rows,
+    syncRows,
+    addRow,
+    removeRow,
+    fold,
+    foldAffections,
+    isAffectionTarget,
+    setAffection,
+    optionsFor,
+  };
 }

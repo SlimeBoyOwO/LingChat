@@ -1048,10 +1048,11 @@ fn meaningful_section<'a>(content: &'a str, placeholder: &str) -> Option<&'a str
 fn format_archive_line(line: &GameLine, role_id: i32, ai_name: &str) -> String {
     // 先截到回合结束边界：旧存档里模型越界写下的 `user` 段与思考文本不该进摘要，
     // 否则会被压缩进长期记忆，再随记忆注入回上下文。 TODO： 这个地方我可能需要核查一下
+    // TODO 发现这里的问题了，系统提示也会被当做玩家信息，谁踏马写的屎山代码草
     let content =
         crate::ai_service::message_system::processor::truncate_at_turn_end(line.content()).trim();
     match line.attribute() {
-        LineAttribute::User if line.sender_role_id() == Some(0) => {
+        LineAttribute::User if line.sender_role_id().is_some() => {
             let player_name = line.base.display_name.as_deref().unwrap_or("玩家").trim();
             if player_name.is_empty() || player_name == "玩家" {
                 format!("玩家发言：{content}")

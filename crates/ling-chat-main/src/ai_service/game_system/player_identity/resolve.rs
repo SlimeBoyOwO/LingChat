@@ -12,19 +12,9 @@ pub fn effective_user_alias(settings: &CharacterSettings, identity_name: &str) -
     identity_name.trim().to_string()
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub enum RelationEndpoint {
-    Ai(String),
-    Me(String),
-}
-
-impl RelationEndpoint {
-    pub fn key(&self) -> String {
-        match self {
-            Self::Ai(folder) => format!("ai:{folder}"),
-            Self::Me(id) => format!("me:{id}"),
-        }
-    }
+/// 运行时关系层的键：`role:{角色 id}`。
+pub fn relation_key(role_id: i32) -> String {
+    format!("role:{role_id}")
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -40,15 +30,15 @@ pub struct RelationView {
     pub source: RelationSource,
 }
 
-/// 解析「说话者眼中的目标」：按说话者卡、对方卡、目标提示词的顺序取，取到即停；都没有返回 `None`。
+/// 解析「说话者眼中的目标」：按说话者、对方、目标提示词的顺序取，取到即停；都没有返回 `None`。
 pub fn resolve_relation(
-    speaker: &RelationEndpoint,
-    target: &RelationEndpoint,
-    speaker_relations: &HashMap<String, String>,
-    target_relations: &HashMap<String, String>,
+    speaker_role_id: i32,
+    target_role_id: i32,
+    speaker_relations: &HashMap<i32, String>,
+    target_relations: &HashMap<i32, String>,
     target_prompt: Option<&str>,
 ) -> Option<RelationView> {
-    if let Some(text) = speaker_relations.get(&target.key()) {
+    if let Some(text) = speaker_relations.get(&target_role_id) {
         let text = text.trim();
         if !text.is_empty() {
             return Some(RelationView {
@@ -58,7 +48,7 @@ pub fn resolve_relation(
         }
     }
 
-    if let Some(text) = target_relations.get(&speaker.key()) {
+    if let Some(text) = target_relations.get(&speaker_role_id) {
         let text = text.trim();
         if !text.is_empty() {
             return Some(RelationView {
@@ -184,23 +174,26 @@ pub fn build_player_block(
 
 #[derive(Clone, Debug)]
 pub struct ScenePeer {
-    pub folder: String,
+    pub role_id: i32,
     pub name: String,
-    pub relations: HashMap<String, String>,
+    pub relations: HashMap<i32, String>,
 }
 
 /// 拼「你眼里的其他角色」块；不做提示词兜底，只注入显式写过关系的对象。
 pub fn build_peers_block(
-    speaker: &RelationEndpoint,
-    speaker_relations: &HashMap<String, String>,
+    speaker_role_id: i32,
+    speaker_relations: &HashMap<i32, String>,
     peers: &[ScenePeer],
 ) -> String {
     let mut lines: Vec<String> = Vec::new();
     for peer in peers {
-        let target = RelationEndpoint::Ai(peer.folder.clone());
-        let Some(view) =
-            resolve_relation(speaker, &target, speaker_relations, &peer.relations, None)
-        else {
+        let Some(view) = resolve_relation(
+            speaker_role_id,
+            peer.role_id,
+            speaker_relations,
+            &peer.relations,
+            None,
+        ) else {
             continue;
         };
         let text = match view.source {

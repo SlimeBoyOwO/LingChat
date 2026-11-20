@@ -10,7 +10,6 @@
 *.jpeg filter=lfs diff=lfs merge=lfs -text
 *.icns filter=lfs diff=lfs merge=lfs -text
 *.ico filter=lfs diff=lfs merge=lfs -text
-
 # 各种脚本
 *.vue text eol=lf working-tree-encoding=UTF-8
 *.js text eol=lf working-tree-encoding=UTF-8
@@ -28,10 +27,8 @@
 *.md text eol=lf working-tree-encoding=UTF-8
 *.sh text eol=lf working-tree-encoding=UTF-8
 *.rs text eol=lf working-tree-encoding=UTF-8
-
 # 提示词文本：include_str! 编译期逐字节嵌入二进制，换行符必须固定 LF
 crates/ling-chat-main/src/ai_service/skill_agent/prompts/** text eol=lf
-
 # MC 桥接模组：Java/Gradle 惯例 LF；gradlew 无扩展名，不显式声明会被 autocrlf 检出成 CRLF
 extension/maid_mod/gradlew text eol=lf
 extension/maid_mod/gradle/wrapper/*.jar binary
@@ -39,9 +36,8 @@ extension/maid_mod/gradle/wrapper/*.jar binary
 *.gradle text eol=lf
 *.properties text eol=lf
 *.mcmeta text eol=lf
-
 # Windows脚本
 *.bat text eol=crlf working-tree-encoding=UTF-8
 *.cmd text eol=crlf working-tree-encoding=UTF-8
 *.ps1 text eol=crlf working-tree-encoding=UTF-8
-
+*.ogg filter=lfs diff=lfs merge=lfs -text

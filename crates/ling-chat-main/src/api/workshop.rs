@@ -254,10 +254,10 @@ async fn fetch_via_graphql(token: &str) -> Result<Vec<Discussion>, String> {
         .await
         .map_err(|e| format!("解析 GraphQL 响应失败: {}", e))?;
 
-    if let Some(errors) = gql_resp.errors {
-        if !errors.is_empty() {
-            return Err(format!("GraphQL 错误: {}", errors[0].message));
-        }
+    if let Some(errors) = gql_resp.errors
+        && !errors.is_empty()
+    {
+        return Err(format!("GraphQL 错误: {}", errors[0].message));
     }
 
     let nodes = gql_resp
@@ -387,12 +387,12 @@ pub async fn fetch_discussions(app: AppHandle) -> Result<Vec<Discussion>, String
     let has_token = token.as_ref().is_some_and(|t| !t.trim().is_empty());
 
     // 检查缓存
-    if let Ok(cache) = CACHE.lock() {
-        if let Some((ref data, ref ts, ref cached_has_token)) = *cache {
-            if ts.elapsed() < CACHE_TTL && *cached_has_token == has_token {
-                return Ok(data.clone());
-            }
-        }
+    if let Ok(cache) = CACHE.lock()
+        && let Some((ref data, ref ts, ref cached_has_token)) = *cache
+        && ts.elapsed() < CACHE_TTL
+        && *cached_has_token == has_token
+    {
+        return Ok(data.clone());
     }
 
     // 有 Token → GraphQL

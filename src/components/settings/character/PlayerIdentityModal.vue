@@ -19,7 +19,7 @@
             <div>
               <h2 class="m-0 text-xl font-bold drop-shadow-[0_2px_4px_rgba(0,0,0,0.3)]">
                 {{
-                  identityId
+                  identityRoleId
                     ? $t("settings.identity.editorTitle")
                     : $t("settings.identity.editorCreateTitle")
                 }}
@@ -108,7 +108,7 @@
           class="flex items-center justify-between gap-3 border-t border-white/10 bg-white/5 p-4"
         >
           <button
-            v-if="identityId"
+            v-if="identityRoleId"
             class="cursor-pointer rounded-[20px] border border-red-400/30 bg-red-500/15 px-4 py-2 text-sm font-medium text-red-200 transition-all duration-200 hover:bg-red-500/30 disabled:cursor-not-allowed disabled:opacity-50"
             :disabled="saving || deleting"
             @click="removeIdentity"
@@ -153,7 +153,7 @@ import {
   deletePlayerIdentity,
   emptyPlayerIdentity,
   getPlayerIdentity,
-  meKey,
+  roleKey,
   savePlayerIdentity,
   type PlayerIdentity,
 } from "../../../api/services/player-identity";
@@ -162,13 +162,13 @@ import { useDialogStore } from "../../../stores/modules/ui/dialog";
 
 const props = defineProps<{
   visible: boolean;
-  /** 要编辑的身份 id；null 表示新建 */
-  identityId: string | null;
+  /** 要编辑的身份对应的玩家角色 id；null 表示新建 */
+  identityRoleId: number | null;
   /** 关系目标（全部角色 + 其他身份），由设置页统一提供 */
   targets: RelationTargetOption[];
 }>();
 
-const emit = defineEmits<{ close: []; saved: [id?: string] }>();
+const emit = defineEmits<{ close: []; saved: [roleId?: number] }>();
 
 const { t } = useI18n();
 const uiStore = useUIStore();
@@ -181,8 +181,8 @@ const deleting = ref(false);
 
 // 不让身份把自己列为「我的身份」关系目标
 const relationTargets = computed<RelationTargetOption[]>(() =>
-  props.identityId
-    ? props.targets.filter((item) => item.value !== meKey(props.identityId as string))
+  props.identityRoleId
+    ? props.targets.filter((item) => item.value !== roleKey(props.identityRoleId as number))
     : props.targets,
 );
 
@@ -201,8 +201,8 @@ const addRelationRow = () => {
 
 let loadSeq = 0;
 watch(
-  () => [props.visible, props.identityId] as const,
-  async ([visible, identityId]) => {
+  () => [props.visible, props.identityRoleId] as const,
+  async ([visible, identityRoleId]) => {
     const seq = ++loadSeq;
     if (!visible) {
       form.value = null;
@@ -212,7 +212,9 @@ watch(
     }
     loading.value = true;
     try {
-      const identity = identityId ? await getPlayerIdentity(identityId) : emptyPlayerIdentity();
+      const identity = identityRoleId
+        ? await getPlayerIdentity(identityRoleId)
+        : emptyPlayerIdentity();
       if (seq !== loadSeq) return;
       form.value = identity ?? emptyPlayerIdentity();
       syncRows(form.value.relations);
@@ -255,7 +257,7 @@ const submit = async () => {
   saving.value = true;
   try {
     const saved = await savePlayerIdentity({ ...current, relations: fold() });
-    emit("saved", saved.id);
+    emit("saved", saved.role_id ?? undefined);
     uiStore.showSuccess({
       title: t("settings.identity.msg.savedTitle"),
       message: t("settings.identity.msg.savedMsg"),
@@ -272,14 +274,14 @@ const submit = async () => {
 
 const removeIdentity = async () => {
   const current = form.value;
-  if (!current) return;
+  if (!current || !current.role_id) return;
   const confirmed = await dialogStore.confirm(
     t("settings.identity.msg.deleteConfirm", { name: current.name }),
   );
   if (!confirmed) return;
   deleting.value = true;
   try {
-    await deletePlayerIdentity(current.id);
+    await deletePlayerIdentity(current.role_id);
     emit("saved");
   } catch (e: any) {
     uiStore.showError({

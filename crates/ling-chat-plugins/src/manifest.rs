@@ -182,13 +182,13 @@ pub fn validate(manifest: &PluginManifest) -> Result<()> {
                 playback.config
             ),
         }
-        if let Some(conn) = &playback.ws_conn {
-            if !manifest.ws.iter().any(|decl| decl.id == *conn) {
-                anyhow::bail!(
-                    "插件 '{}' 的 [voice_playback] ws_conn '{conn}' 不在 [[ws]] 声明里",
-                    manifest.id
-                );
-            }
+        if let Some(conn) = &playback.ws_conn
+            && !manifest.ws.iter().any(|decl| decl.id == *conn)
+        {
+            anyhow::bail!(
+                "插件 '{}' 的 [voice_playback] ws_conn '{conn}' 不在 [[ws]] 声明里",
+                manifest.id
+            );
         }
     }
     if let Some(startup) = &manifest.startup {

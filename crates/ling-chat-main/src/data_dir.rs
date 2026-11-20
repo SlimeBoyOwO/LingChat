@@ -1,19 +1,43 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 static DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static EXEC_DIR: OnceLock<PathBuf> = OnceLock::new();
+
+/// 初始化执行文件目录缓存（必须在 App 启动时调用一次）。
+pub fn init_exec_dir() {
+    EXEC_DIR
+        .set(resolve_exec_dir())
+        .expect("执行文件目录已初始化 — 请勿重复调用 init_exec_dir");
+}
 
 /// 初始化 data 目录缓存（必须在 App 启动时调用一次）。
 pub fn init_data_dir(app: &tauri::AppHandle) {
-    let dir = resolve_data_dir(app);
-    DATA_DIR.set(dir).expect("data_dir already initialized");
+    DATA_DIR
+        .set(resolve_data_dir(app))
+        .expect("数据目录已初始化 — 请勿重复调用 init_data_dir");
 }
 
 /// 获取已缓存的 data 目录（必须先调用 `init_data_dir`）。
 pub fn get_data_dir() -> &'static PathBuf {
     DATA_DIR
         .get()
-        .expect("data_dir not initialized — call init_data_dir first")
+        .expect("数据目录未初始化 — 请先调用函数 init_data_dir")
+}
+
+/// 获取执行文件所在目录（必须先调用 `init_exec_dir`）。
+pub fn get_exec_dir() -> &'static Path {
+    EXEC_DIR
+        .get()
+        .expect("执行文件目录未初始化 — 请先调用函数 init_exec_dir")
+}
+
+fn resolve_exec_dir() -> PathBuf {
+    std::env::current_exe()
+        .expect("无法解析获取执行文件路径")
+        .parent()
+        .expect("执行文件路径不包含父目录")
+        .to_path_buf()
 }
 
 /// 解析 data 目录路径。
@@ -22,56 +46,47 @@ pub fn get_data_dir() -> &'static PathBuf {
 /// 1. Android：应用专属外部存储 (/storage/emulated/0/Android/data/<package>/files)
 /// 2. iOS：沙盒 Documents 目录（配合 Info.ios.plist 的文件共享键，「文件」App 可见）
 /// 3. 桌面端开发模式（debug）：项目根目录下的 `data/`
-/// 4. 桌面端发布模式（release portable）：exe 所在目录下的 `data/`
-fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
-    resolve_data_dir_impl(app)
-}
-
+/// 4. 桌面端便携发布：exe 所在目录下的 `data/`（存在时）
+/// 5. 桌面端安装发布：各平台应用数据目录
 #[cfg(target_os = "android")]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri_plugin_android_fs::{AndroidFsExt, AppDir};
-    // Android: 应用专属外部存储 (AppStorage + AppDir::Data)
-    // 对应 /storage/emulated/0/Android/data/<package>/files
-    // 无需额外权限，卸载应用时自动清理
     app.android_fs()
         .app_storage()
         .resolve_path(None, AppDir::Data)
-        .expect("failed to resolve Android external files dir")
+        .expect("无法解析 Android 外部文件目录")
 }
 
 #[cfg(target_os = "ios")]
-fn resolve_data_dir_impl(app: &tauri::AppHandle) -> PathBuf {
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     use tauri::Manager;
-    // iOS：使用沙盒内的 Documents 目录（<container>/Documents）。
-    // 配合 src-tauri/Info.ios.plist 中的 UIFileSharingEnabled /
-    // LSSupportsOpeningDocumentsInPlace，用户可以在系统「文件」App 里
-    // 直接看到并访问整个 data/ 目录（游戏数据、语音、截图等）。
-    // 注意不要改回 app_data_dir()（Library/Application Support），
-    // 那部分对「文件」App 不可见。
-    app.path()
-        .document_dir()
-        .expect("failed to resolve document_dir on iOS")
+    // 不要改回 app_data_dir()，那部分对「文件」App 不可见
+    app.path().document_dir().expect("无法解析 iOS 文档目录")
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-fn resolve_data_dir_impl(_app: &tauri::AppHandle) -> PathBuf {
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+fn resolve_data_dir(app: &tauri::AppHandle) -> PathBuf {
     if cfg!(debug_assertions) {
         // 桌面端开发模式：项目根目录的 data/
         // 本 crate 位于 <repo>/crates/ling-chat-main，故需上跳两级回仓库根。
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        return PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .parent()
             .unwrap()
             .parent()
             .unwrap()
-            .join("data")
-    } else {
-        // 桌面端便携发布：data 目录放在 exe 旁边
-        std::env::current_exe()
-            .unwrap()
-            .parent()
-            .unwrap()
-            .join("data")
+            .join("data");
     }
+
+    // 便携版：exe 旁有 data/ 时直接使用。AppImage 挂载点为只读，排除。
+    let appimage = std::env::var_os("APPIMAGE");
+    let portable = resolve_exec_dir().join("data");
+    if appimage.is_none() && portable.is_dir() {
+        return portable;
+    }
+
+    // 安装版：Windows %APPDATA%、macOS Application Support、Linux 遵循 XDG
+    use tauri::Manager;
+    app.path().app_data_dir().expect("无法解析应用数据目录")
 }
 
 /// 首次启动时将内嵌资源播种到 data 目录。
@@ -134,19 +149,6 @@ fn seed_desktop(
 }
 
 /// 通过 tauri-plugin-fs 读取打包的 data.7z 并解压到 data_dir。
-///
-/// 所有游戏资源文件在构建时被打包成一个 7z（ASCII 文件名），
-/// 该 7z 由构建脚本放入移动端资源目录。
-/// 这种方式从根本上避开了 asset:// 协议处理中文路径的问题。
-///
-/// 路径差异（实测：iOS 的 resource_dir() 返回的就是 bundle 内的 assets/ 目录，
-/// 因此两端统一读 `{resource_dir}/data/data.7z`）：
-/// - Android：data.7z 在 APK 的 assets/data/data.7z，resource_dir() 即 assets 根
-///   → 读取 `{resource_dir}/data/data.7z`
-/// - iOS：data.7z 在 `gen/apple/assets/data/data.7z`，XcodeGen 的 folder reference
-///   把 `assets/` **整个目录**拷进 app bundle 后即 resource_dir()
-///   → 读取 `{resource_dir}/data/data.7z`（不要再拼一层 `assets/`，否则变成
-///   `<bundle>/assets/assets/data/data.7z` 导致播种失败）
 #[cfg(any(target_os = "android", target_os = "ios"))]
 fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> anyhow::Result<()> {
     use anyhow::Context;
@@ -161,11 +163,6 @@ fn seed_via_fs_plugin(app: &tauri::AppHandle, data_dir: &std::path::Path) -> any
     let base = resource_dir.to_string_lossy();
     let base = base.trim_end_matches('/');
 
-    // 读取 data.7z（唯一需要从 asset:// 读取的文件，纯 ASCII 路径）
-    // iOS：tauri 的 resource_dir() 返回 bundle 内的 assets/ 目录
-    //   （gen/apple/assets/ 以 folder reference 打进 bundle 后即 resource_dir），
-    //   因此 data.7z 的读取路径是 {resource_dir}/data/data.7z。
-    // Android：resource_dir() 即 APK assets 根，同样读 {resource_dir}/data/data.7z。
     let archive_asset = format!("{}/data/data.7z", base);
 
     let archive_bytes = app

@@ -78,11 +78,11 @@ impl ScriptEvent for ChapterEndEvent {
                 let mut result = "end".to_string();
                 for opt in &self.options {
                     let condition = opt.get("condition").and_then(|v| v.as_str()).unwrap_or("");
-                    if condition.is_empty() || evaluate_condition(condition, &script_status.vars) {
-                        if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
-                            result = next.to_string();
-                            break;
-                        }
+                    if (condition.is_empty() || evaluate_condition(condition, &script_status.vars))
+                        && let Some(next) = opt.get("next").and_then(|v| v.as_str())
+                    {
+                        result = next.to_string();
+                        break;
                     }
                 }
                 // 检查 default 选项
@@ -92,10 +92,9 @@ impl ScriptEvent for ChapterEndEvent {
                             .get("default")
                             .and_then(|v| v.as_bool())
                             .unwrap_or(false)
+                            && let Some(next) = opt.get("next").and_then(|v| v.as_str())
                         {
-                            if let Some(next) = opt.get("next").and_then(|v| v.as_str()) {
-                                result = next.to_string();
-                            }
+                            result = next.to_string();
                         }
                     }
                 }
@@ -153,16 +152,17 @@ impl ChapterEndEvent {
             gs.refresh_memories(ctx.db).await?;
             let rid = gs.current_role_id.or(gs.main_role_id).unwrap_or(0);
             if rid != 0 {
-                if let Ok(role) = gs.get_role(ctx.db, rid).await {
-                    let memory = role.memory.clone();
-                    memory
-                        .iter()
-                        .filter(|m| m.role != "system")
-                        .map(|m| format!("{}: {}", m.role, m.content))
-                        .collect::<Vec<_>>()
-                        .join("\n")
-                } else {
-                    String::new()
+                match gs.get_role(ctx.db, rid).await {
+                    Ok(role) => {
+                        let memory = role.memory.clone();
+                        memory
+                            .iter()
+                            .filter(|m| m.role != "system")
+                            .map(|m| format!("{}: {}", m.role, m.content))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    },
+                    _ => String::new(),
                 }
             } else {
                 String::new()
@@ -202,10 +202,10 @@ impl ChapterEndEvent {
         }
 
         // 兜底：取第一个选项的 next
-        if let Some(first) = self.options.first() {
-            if let Some(next) = first.get("next").and_then(|v| v.as_str()) {
-                return Ok(next.to_string());
-            }
+        if let Some(first) = self.options.first()
+            && let Some(next) = first.get("next").and_then(|v| v.as_str())
+        {
+            return Ok(next.to_string());
         }
 
         Ok("end".to_string())

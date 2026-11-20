@@ -16,9 +16,9 @@
       <div v-for="(row, idx) in relationRows" :key="idx" class="flex items-center gap-2">
         <SelectMenu v-model="row.target" class="w-44 shrink-0" :options="optionsFor(row)" />
         <ExpandableInput v-model="row.text" class="glass-input flex-1" />
-        <!-- 我的身份行：该角色对 ta 的初始好感度覆写，留空跟随角色卡默认 -->
+        <!-- 玩家身份行：该角色对 ta 的初始好感度覆写，留空跟随角色卡默认 -->
         <input
-          v-if="row.target.startsWith('me:')"
+          v-if="isAffectionTarget(row)"
           :value="row.affection ?? ''"
           type="number"
           min="-100"
@@ -46,10 +46,9 @@ import { useI18n } from "vue-i18n";
 import { characterGetAll } from "@/api/services/character";
 import type { Character as ApiCharacter } from "@/types";
 import {
-  aiKey,
   getRoleRelations,
   listPlayerIdentities,
-  meKey,
+  roleKey,
   saveRoleRelations,
   type PlayerIdentitySummary,
 } from "@/api/services/player-identity";
@@ -75,6 +74,7 @@ const {
   removeRow,
   fold,
   foldAffections,
+  isAffectionTarget,
   setAffection,
   optionsFor,
 } = useRelationEditor(relationTargets, (key) =>
@@ -117,14 +117,16 @@ const loadRelations = async (roleId: number) => {
       ...chars
         .filter((c) => !!c.resource_folder && c.resource_folder !== selfFolder)
         .map((c) => ({
-          value: aiKey(c.resource_folder as string),
+          value: roleKey(c.character_id),
           label: c.name,
           group: t("settings.identity.targetAi"),
+          kind: "ai" as const,
         })),
       ...identities.map((i) => ({
-        value: meKey(i.id),
+        value: roleKey(i.role_id),
         label: i.name,
         group: t("settings.identity.targetMe"),
+        kind: "player" as const,
       })),
     ];
 

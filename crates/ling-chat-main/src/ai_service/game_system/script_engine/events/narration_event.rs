@@ -1,11 +1,11 @@
-//! Narration event — displays narrator text and adds an ASSISTANT line.
+//! Narration event — displays narrator text line by line and adds one ASSISTANT line per line.
 
 use anyhow::Result;
 use async_trait::async_trait;
 use serde_json::Value;
 
 use crate::ai_service::game_system::script_engine::events::{
-    ScriptContext, ScriptEvent, parse_duration, register_event,
+    ScriptContext, ScriptEvent, parse_duration, register_event, split_script_text_lines,
 };
 use crate::ai_service::game_system::script_engine::responses::{
     NarrationPayload, event_names::SCRIPT_NARRATION,
@@ -40,32 +40,25 @@ impl NarrationEvent {
 #[async_trait]
 impl ScriptEvent for NarrationEvent {
     async fn execute(&mut self, ctx: &mut ScriptContext<'_>) -> Result<Option<String>> {
-        // Split text by newlines and emit each line separately
-        let lines: Vec<&str> = self
-            .text
-            .split('\n')
-            .filter(|line| !line.is_empty())
-            .collect();
-
-        for line in lines {
+        for line in split_script_text_lines(&self.text) {
             let payload = NarrationPayload {
                 text: line.to_string(),
                 display_name: self.display_name.clone(),
                 duration: self.duration,
             };
             let _ = emit(ctx.app, SCRIPT_NARRATION, &payload);
-        }
 
-        // Add as ASSISTANT line (keep the original text with newlines)
-        let mut line = PromptLine::new(PromptRole::Narrator, self.text.as_str()).sender(Some(0));
-        if let Some(name) = self.display_name.clone() {
-            line = line.display_name(name);
+            // 逐行写入台词表，否则历史记录与读档后整段旁白会并成一句
+            let mut prompt_line = PromptLine::new(PromptRole::Narrator, line).sender(Some(0));
+            if let Some(name) = self.display_name.clone() {
+                prompt_line = prompt_line.display_name(name);
+            }
+            ctx.game_status
+                .lock()
+                .await
+                .add_line(ctx.db, prompt_line.into_base())
+                .await?;
         }
-        ctx.game_status
-            .lock()
-            .await
-            .add_line(ctx.db, line.into_base())
-            .await?;
 
         Ok(None)
     }

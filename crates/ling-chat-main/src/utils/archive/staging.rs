@@ -39,10 +39,11 @@ pub async fn list_content_entries(dir: &Path) -> (Vec<PathBuf>, bool) {
 /// 返回该子目录；否则内容直接位于暂存目录根部，返回暂存目录本身。
 pub async fn locate_extracted_root(staging: &Path) -> PathBuf {
     let (subdirs, has_files) = list_content_entries(staging).await;
-    if subdirs.len() == 1 && !has_files {
-        if let Some(dir) = subdirs.into_iter().next() {
-            return dir;
-        }
+    if subdirs.len() == 1
+        && !has_files
+        && let Some(dir) = subdirs.into_iter().next()
+    {
+        return dir;
     }
     staging.to_path_buf()
 }
@@ -98,13 +99,13 @@ pub fn copy_dir_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
             copy_dir_recursive(&from, &to)?;
         } else if ft.is_file() {
             std::fs::copy(&from, &to)?;
-        } else if ft.is_symlink() {
-            if let Ok(meta) = std::fs::metadata(&from) {
-                if meta.is_dir() {
-                    copy_dir_recursive(&from, &to)?;
-                } else {
-                    std::fs::copy(&from, &to)?;
-                }
+        } else if ft.is_symlink()
+            && let Ok(meta) = std::fs::metadata(&from)
+        {
+            if meta.is_dir() {
+                copy_dir_recursive(&from, &to)?;
+            } else {
+                std::fs::copy(&from, &to)?;
             }
         }
     }

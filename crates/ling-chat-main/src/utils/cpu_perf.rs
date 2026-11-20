@@ -1,8 +1,4 @@
 //! CPU 性能检测模块
-//!
-//! 初次启动时检测 CPU 型号并划分性能等级。
-//! 前端负责将检测结果缓存到 localStorage，后续启动直接读取缓存，
-//! 不再重复调用后端。后端仅维持会话级内存缓存。
 
 use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
@@ -376,10 +372,10 @@ mod x86_impl {
         }
 
         if brand.contains("Core") {
-            let gen = extract_core_generation(brand);
+            let core_gen = extract_core_generation(brand);
             let low_power = is_low_power_suffix(brand);
 
-            if gen >= Some(8) {
+            if core_gen >= Some(8) {
                 return PerfTier::High;
             }
 
@@ -393,22 +389,22 @@ mod x86_impl {
                 return PerfTier::High;
             }
 
-            if let Some(gen) = gen {
-                if gen < 8 {
-                    let is_i3 = brand.contains("i3-");
+            if let Some(core_gen) = core_gen
+                && core_gen < 8
+            {
+                let is_i3 = brand.contains("i3-");
 
-                    if is_i3 && gen < 5 {
-                        return PerfTier::Low;
-                    }
-                    if low_power && gen <= 7 {
-                        return PerfTier::Low;
-                    }
-                    // 6代及以上 i7 → High
-                    if gen >= 6 && brand.contains("i7-") {
-                        return PerfTier::High;
-                    }
-                    return PerfTier::Medium;
+                if is_i3 && core_gen < 5 {
+                    return PerfTier::Low;
                 }
+                if low_power && core_gen <= 7 {
+                    return PerfTier::Low;
+                }
+                // 6代及以上 i7 → High
+                if core_gen >= 6 && brand.contains("i7-") {
+                    return PerfTier::High;
+                }
+                return PerfTier::Medium;
             }
 
             // Core 2 系列

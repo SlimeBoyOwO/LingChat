@@ -127,14 +127,7 @@ pub fn resolve_new_script_dir(key: &str) -> Result<PathBuf, String> {
         return Err(format!("剧本已存在: '{}'", key));
     }
 
-    // 只做纯路径校验，不建任何目录 —— 「解析路径」不该有副作用。
-    // 早先用 canonicalize 做前缀校验：它要求基目录已存在，而新建剧本时
-    // scripts/（乃至 game_data/）很可能还没建，打包版里 data 目录就在 exe
-    // 旁边、首次创建前根本没有 scripts/，于是 canonicalize 报 os error 3
-    // 「系统找不到指定的路径」，新建剧本永远失败。
-    // split_key 已经挡掉了 .. / 绝对路径 / 盘符 / 分隔符，拼出来的 dir 不可能
-    // 逃出 scripts_root，所以词法 starts_with 校验就足够（与 resolve_chapter_file
-    // 对不存在路径的处理一致），不再依赖任何目录必须已存在。
+    // 只做纯路径校验，不建任何目录
     let root = scripts_root();
     if !dir.starts_with(&root) {
         return Err(format!("剧本 key 逃出了 scripts/ 目录: '{}'", key));
@@ -191,9 +184,6 @@ pub fn resolve_chapter_file(
 }
 
 /// 枚举 `scripts/` 下所有剧本包的 key。
-///
-/// 只把含 `story_config.yaml` 的目录算作剧本包 —— 与 `ScriptManager` 的判定
-/// 一致，避免编辑器列出引擎看不见的目录。
 pub fn enumerate_script_keys() -> Vec<String> {
     let root = scripts_root();
     let mut keys = Vec::new();
@@ -349,11 +339,7 @@ fn check_name_chars(name: &str) -> Result<(), String> {
     Ok(())
 }
 
-/// 校验用户上传的**素材文件名**。
-///
-/// 与目录名分开，因为规则不同：长度按字符数而不是字节数算（`sanitize_folder_name`
-/// 的 64 字节上限换成中文只有 21 个字，正常的背景图文件名都过不了），
-/// 也不需要排除 `character` / `standalone` 这两个目录保留名。
+/// 校验用户上传的素材文件名。
 pub fn sanitize_file_name(raw: &str) -> Result<String, String> {
     let name = raw.trim();
     if name.is_empty() {
@@ -367,9 +353,6 @@ pub fn sanitize_file_name(raw: &str) -> Result<String, String> {
 }
 
 /// 校验用户输入的目录/文件名，返回可安全落盘的名字。
-///
-/// 拒绝路径分隔符、Windows 保留名、控制字符、以及首尾空白/点号 ——
-/// 这些在 Windows 上会创建失败或产生诡异结果。
 pub fn sanitize_folder_name(raw: &str) -> Result<String, String> {
     let name = raw.trim();
     if name.is_empty() {

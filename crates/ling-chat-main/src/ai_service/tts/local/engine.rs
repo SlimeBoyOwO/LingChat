@@ -1,6 +1,6 @@
 // In-process SBV2 engine. All synthesis happens in spawn_blocking because
-// ONNX is CPU-bound and `ort::Session` is `!Send + !Sync`; the holder is
-// taken out of the async Mutex, used on the blocking pool, then put back.
+// ONNX is CPU-bound; the holder is taken out of the async Mutex, used on the
+// blocking pool, then put back.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -94,8 +94,10 @@ impl LocalTtsEngine {
         let bert_clone = bert.clone();
         let tok_clone = tok.clone();
         let device = *self.device.lock().await;
+        let environment = ling_chat_notes::ort_env::environment()
+            .map_err(|e| format!("ONNX Runtime 环境不可用: {e}"))?;
         let holder = tokio::task::spawn_blocking(move || {
-            TTSModelHolder::new_with_device(bert_clone, tok_clone, Some(4), device)
+            TTSModelHolder::with_environment(environment, bert_clone, tok_clone, Some(4), device)
         })
         .await
         .map_err(|e| format!("join: {e}"))?

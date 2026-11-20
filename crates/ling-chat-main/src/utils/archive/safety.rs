@@ -49,22 +49,6 @@ pub fn check_entry_safety(
 // ===== 3. 路径清洗与安全拼接 =====
 
 /// 清洗条目名称并拒绝危险路径。
-///
-/// # 拒绝（返回 [`ArchiveError::InvalidName`] 或 [`ArchiveError::PathTraversal`]）
-/// - 空名
-/// - 长度 > 4 KiB
-/// - macOS metadata：`__MACOSX/`、`._*`、`.DS_Store`
-/// - 含 `..` 组件（在 `/` 或 `\` 切分后任一段为 `".."`）
-/// - Unix 绝对路径（以 `/` 开头）
-/// - Windows 盘符路径（如 `C:\` 或 `C:/`）
-/// - UNC 路径（以 `\\` 开头）
-///
-/// # 替换（保留字符）
-/// - Windows 保留字符 `\ : * ? " < > |` → `_`
-/// - 控制字符（`is_control()`） → `_`
-///
-/// # 注意
-/// 即使经过本函数清洗，仍需再经过 [`safe_join`] 进行目标根目录下的二次路径逃逸校验。
 pub fn sanitize_entry_name(raw: &str) -> Result<String, ArchiveError> {
     if raw.is_empty() {
         return Err(ArchiveError::InvalidName("空文件名".into()));

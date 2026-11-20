@@ -1,6 +1,4 @@
 //! LAN 同步专用清单工具。
-//!
-//! 扩展自 `data_update::manifest`，额外处理不在标准清单中的运行时文件。
 
 use std::collections::HashMap;
 use std::fs;
@@ -16,10 +14,6 @@ use crate::manifest::{DataManifest, FileEntry};
 use super::messages::CompleteManifest;
 
 /// 扫描整个 data/ 目录（排除 third_party/），构建 CompleteManifest。
-///
-/// - 已在 `data_manifest.json` 中的文件复用清单中的 SHA-256
-/// - 不在清单中的运行时文件实时计算 SHA-256
-/// - `modified_at` 优先取清单中的值（如果有），否则取文件系统时间戳
 pub fn build_complete_manifest(
     data_dir: &Path,
     manifest: Option<&DataManifest>,
@@ -104,17 +98,17 @@ fn scan_dir(
 
             let size = path.metadata().map(|m| m.len()).unwrap_or(0);
 
-            if let Some(mf) = manifest_files {
-                if let Some(entry) = mf.get(&rel) {
-                    // 在清单中 → 放入 files，复用已知哈希
-                    let mut fe = entry.clone();
-                    // 如果清单中没有 modified_at，补充文件系统时间戳
-                    if fe.modified_at == 0 {
-                        fe.modified_at = modified_at;
-                    }
-                    files.insert(rel, fe);
-                    continue;
+            if let Some(mf) = manifest_files
+                && let Some(entry) = mf.get(&rel)
+            {
+                // 在清单中 → 放入 files，复用已知哈希
+                let mut fe = entry.clone();
+                // 如果清单中没有 modified_at，补充文件系统时间戳
+                if fe.modified_at == 0 {
+                    fe.modified_at = modified_at;
                 }
+                files.insert(rel, fe);
+                continue;
             }
 
             // 不在清单中 → 运行时文件，实时计算 SHA-256

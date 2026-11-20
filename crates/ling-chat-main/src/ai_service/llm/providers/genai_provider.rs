@@ -57,12 +57,12 @@ pub(crate) fn normalize_base_url(raw: &str) -> String {
 /// 供 genai 的 Binary content part 使用（`is_image()` 依赖 `image/` 前缀）。
 fn infer_image_mime(data_url: &str) -> String {
     let lower = data_url.trim();
-    if let Some(rest) = lower.strip_prefix("data:") {
-        if let Some(semi) = rest.find(';') {
-            let mime = rest[..semi].to_string();
-            if !mime.is_empty() {
-                return mime;
-            }
+    if let Some(rest) = lower.strip_prefix("data:")
+        && let Some(semi) = rest.find(';')
+    {
+        let mime = rest[..semi].to_string();
+        if !mime.is_empty() {
+            return mime;
         }
     }
     // 兜底：无法解析时按通用 JPEG 处理（OpenAI 兼容端点通常忽略具体子类型）
@@ -334,10 +334,10 @@ impl GenaiProvider {
                 ContentPart::ToolResponse(resp) => {
                     out.push_str(&format!("[工具结果 call_id={}]", resp.call_id));
                     // 摘要默认不展开工具结果；台词余额是排查回复长度的关键，单独带出来
-                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&resp.content) {
-                        if let Some(budget) = value.get("line_budget") {
-                            out.push_str(&format!(" [台词余额] {budget}"));
-                        }
+                    if let Ok(value) = serde_json::from_str::<serde_json::Value>(&resp.content)
+                        && let Some(budget) = value.get("line_budget")
+                    {
+                        out.push_str(&format!(" [台词余额] {budget}"));
                     }
                 },
                 other => out.push_str(&format!("[非文本内容 {} 字节]", other.size())),
@@ -536,13 +536,11 @@ impl GenaiProvider {
                     ChatStreamEvent::Chunk(_) | ChatStreamEvent::ReasoningChunk(_) => {}
                     ChatStreamEvent::End(end) => {
                         // 只给累计值、不给分片的提供商才补发
-                        if !saw_reasoning_delta {
-                            if let Some(reasoning) = end.captured_reasoning_content.clone() {
-                                if !reasoning.is_empty() {
+                        if !saw_reasoning_delta
+                            && let Some(reasoning) = end.captured_reasoning_content.clone()
+                                && !reasoning.is_empty() {
                                     yield LlmChunk::Reasoning(reasoning);
                                 }
-                            }
-                        }
                         // 先取走用量与停止原因（captured_into_tool_calls 会移动 end）
                         let usage = end.captured_usage.as_ref().map(Self::convert_usage);
                         let reason = end

@@ -53,9 +53,7 @@ impl MessageGenerator {
         let seq = Some(
             gs.line_list
                 .iter()
-                .filter(|l| {
-                    l.base.sender_role_id == Some(0) && matches!(l.attribute(), LineAttribute::User)
-                })
+                .filter(|l| matches!(l.attribute(), LineAttribute::User))
                 .count() as u32,
         );
 
@@ -79,17 +77,17 @@ impl MessageGenerator {
 
         let scene_id = gs.current_scene_id.clone().unwrap();
         let store = SceneStore::new(&data_dir());
-        if let Ok(Some(scene)) = store.find_by_id(&scene_id) {
-            if !scene.description.trim().is_empty() {
-                let text = format!(
-                    "你们一起去了新的场景 - \"{}\"，\"{}\"",
-                    scene.name, scene.description
-                );
-                let line = PromptLine::new(PromptRole::Narrator, text)
-                    .display_name("系统")
-                    .into_base();
-                let _ = gs.add_line(&self.deps.db, line).await;
-            }
+        if let Ok(Some(scene)) = store.find_by_id(&scene_id)
+            && !scene.description.trim().is_empty()
+        {
+            let text = format!(
+                "你们一起去了新的场景 - \"{}\"，\"{}\"",
+                scene.name, scene.description
+            );
+            let line = PromptLine::new(PromptRole::Narrator, text)
+                .display_name("系统")
+                .into_base();
+            let _ = gs.add_line(&self.deps.db, line).await;
         }
         gs.last_processed_scene_id = gs.current_scene_id.clone();
         Ok(())

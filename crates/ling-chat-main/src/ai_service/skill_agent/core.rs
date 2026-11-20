@@ -103,12 +103,12 @@ pub async fn run_chat(
     );
 
     if let (Some(key), Some(dir)) = (
-        ctx.stage_snapshot.script_key.as_deref(),
-        ctx.stage_snapshot.script_dir.as_deref(),
-    ) {
-        if let Err(e) = stage::ensure_package_skeleton(dir, key) {
-            tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
-        }
+        ctx.stage_snapshot.script_key.clone(),
+        ctx.stage_snapshot.script_dir.clone(),
+    ) && let Ok(Err(e)) =
+        tokio::task::spawn_blocking(move || stage::ensure_package_skeleton(&dir, &key)).await
+    {
+        tracing::warn!("[skill_agent] 补剧本骨架失败: {e}");
     }
 
     let user_msg = history
@@ -118,12 +118,15 @@ pub async fn run_chat(
         .map(|m| m.content.clone())
         .unwrap_or_default();
     let recent = history::recent_turns(&history, 2);
-    let queue_text = ctx
-        .stage_snapshot
-        .script_dir
-        .as_deref()
-        .map(|d| std::fs::read_to_string(d.join(stage::QUEUE_REL_PATH)).unwrap_or_default())
-        .unwrap_or_default();
+    let queue_text = if let Some(dir) = ctx.stage_snapshot.script_dir.clone() {
+        tokio::task::spawn_blocking(move || {
+            std::fs::read_to_string(dir.join(stage::QUEUE_REL_PATH)).unwrap_or_default()
+        })
+        .await
+        .unwrap_or_default()
+    } else {
+        String::new()
+    };
     let plan = router::route(
         &ctx.llm,
         &router::RouteInput {
@@ -150,7 +153,7 @@ pub async fn run_chat(
         plan.items.len()
     );
 
-    save_queue(&ctx, &plan.items, turn_start);
+    save_queue(&ctx, &plan.items, turn_start).await;
 
     let is_first_turn = !history.iter().any(|m| m.role == "assistant");
     let base_history =
@@ -161,7 +164,7 @@ pub async fn run_chat(
         (ctx.config.max_tool_rounds as usize).max(1)
     };
 
-    let (mut planned, skipped) = preplan(&ctx, &plan);
+    let (mut planned, skipped) = preplan(&ctx, &plan).await;
     let mut deferred: Vec<String> = Vec::new();
 
     let mut reply = String::new();
@@ -184,7 +187,7 @@ pub async fn run_chat(
             });
             break;
         }
-        let snap = refreshed_snapshot(&ctx);
+        let snap = refreshed_snapshot(&ctx).await;
         let (task, handoff) = recheck_handoff(&plan, idx, &snap, task, handoff);
         let is_last =
             cursor == planned.len() && !matches!(handoff, role::Handoff::Prerequisite { .. });
@@ -218,9 +221,16 @@ pub async fn run_chat(
         let target = plan.items.get(idx).map(|i| i.target.as_str()).unwrap_or("");
 
         let skills_block = if allowed.contains(&"read_skill") {
-            skills_xml
-                .get_or_init(|| skills::build_skills_xml(&skills::find_all_skills(&ctx.skills_dir)))
-                .as_str()
+            if skills_xml.get().is_none() {
+                let skills_dir = ctx.skills_dir.clone();
+                let built = tokio::task::spawn_blocking(move || {
+                    skills::build_skills_xml(&skills::find_all_skills(&skills_dir))
+                })
+                .await
+                .unwrap_or_default();
+                let _ = skills_xml.set(built);
+            }
+            skills_xml.get().map(String::as_str).unwrap_or("")
         } else {
             ""
         };
@@ -246,10 +256,24 @@ pub async fn run_chat(
             &ctx.skills_dir,
         );
 
-        let run_materials = stage::prompt::build_run_materials(&snap, &ctx.data_dir);
-        let digest = queue_dir(&ctx)
-            .map(|dir| stage::prompt::handoff_digest(&dir, &plan.items, idx, &deferred))
-            .unwrap_or_default();
+        let snap_for_materials = snap.clone();
+        let data_dir_for_materials = ctx.data_dir.clone();
+        let run_materials = tokio::task::spawn_blocking(move || {
+            stage::prompt::build_run_materials(&snap_for_materials, &data_dir_for_materials)
+        })
+        .await
+        .unwrap_or_default();
+        let digest = if let Some(dir) = queue_dir(&ctx).await {
+            let items = plan.items.clone();
+            let deferred_clone = deferred.clone();
+            tokio::task::spawn_blocking(move || {
+                stage::prompt::handoff_digest(&dir, &items, idx, &deferred_clone)
+            })
+            .await
+            .unwrap_or_default()
+        } else {
+            String::new()
+        };
         let own = format!(
             // 本项任务书补在最后一条：模型最后读到的必须是"我这一项是什么"。
             include_str!("prompts/core_run_chat.md"),
@@ -284,64 +308,71 @@ pub async fn run_chat(
             deferred.push(q);
         }
         reply.push_str(&text);
-        save_queue(&ctx, &plan.items, turn_start);
+        save_queue(&ctx, &plan.items, turn_start).await;
 
-        if !matches!(handoff, role::Handoff::Explain(_)) {
-            if let Some(dir) = queue_dir(&ctx) {
-                if stage::queue::still_owed(&dir, task, target) {
-                    messages.push(LlmMessage::user(format!(
+        if !matches!(handoff, role::Handoff::Explain(_))
+            && let Some(dir) = queue_dir(&ctx).await
+        {
+            let target_owned = target.to_string();
+            let owed = tokio::task::spawn_blocking(move || {
+                stage::queue::still_owed(&dir, task, &target_owned)
+            })
+            .await
+            .unwrap_or(false);
+            if owed {
+                messages.push(LlmMessage::user(format!(
                         "【代码核对】这一项在盘上还没有看到产物（{}）。**增 / 改类**要看到文件在、或被改过；\
                          **删除类**要看到它真的不见了。没落地就不算做完 —— 要么现在就真的做（该调的工具要调，\
                          比如删除要 `delete_file` 返回成功），要么在回执里说清为什么做不到；**不要写「已做完」**。",
                         stage::prompt::render_text_of(task, target)
                     )));
-                    let second = run_item_tools(
-                        &ctx,
-                        llm,
-                        &mut messages,
-                        allowed,
-                        &cancelled,
-                        max_rounds,
-                        &mut usage,
-                        false,
-                        tools::ItemScope {
-                            allow_runnable: task.produces_runnable_chapters(),
-                            kind: task,
-                        },
-                    )
-                    .await?;
-                    reply.push_str(&second);
-                    save_queue(&ctx, &plan.items, turn_start);
-                }
+                let second = run_item_tools(
+                    &ctx,
+                    llm,
+                    &mut messages,
+                    allowed,
+                    &cancelled,
+                    max_rounds,
+                    &mut usage,
+                    false,
+                    tools::ItemScope {
+                        allow_runnable: task.produces_runnable_chapters(),
+                        kind: task,
+                    },
+                )
+                .await?;
+                reply.push_str(&second);
+                save_queue(&ctx, &plan.items, turn_start).await;
             }
         }
 
         if matches!(handoff, role::Handoff::Prerequisite { .. }) {
-            append_original_if_ready(&ctx, &plan, idx, &mut planned);
+            append_original_if_ready(&ctx, &plan, idx, &mut planned).await;
         }
     }
 
-    if let Some(dir) = queue_dir(&ctx) {
-        let owed: Vec<String> = planned
+    if let Some(dir) = queue_dir(&ctx).await {
+        let checks: Vec<(usize, role::TaskKind, String)> = planned
             .iter()
             .filter(|(_, _, handoff)| !matches!(handoff, role::Handoff::Explain(_)))
-            .filter(|(idx, task, _)| {
-                let t = plan
-                    .items
-                    .get(*idx)
-                    .map(|i| i.target.as_str())
-                    .unwrap_or("");
-                stage::queue::still_owed(&dir, *task, t)
-            })
             .map(|(idx, task, _)| {
                 let t = plan
                     .items
                     .get(*idx)
-                    .map(|i| i.target.as_str())
-                    .unwrap_or("");
-                stage::prompt::render_text_of(*task, t)
+                    .map(|i| i.target.clone())
+                    .unwrap_or_default();
+                (*idx, *task, t)
             })
             .collect();
+        let owed = tokio::task::spawn_blocking(move || {
+            checks
+                .into_iter()
+                .filter(|(_, task, t)| stage::queue::still_owed(&dir, *task, t))
+                .map(|(_, task, t)| stage::prompt::render_text_of(task, &t))
+                .collect::<Vec<String>>()
+        })
+        .await
+        .unwrap_or_default();
         if !owed.is_empty() {
             reply.push_str(&format!(
                 "\n\n---\n\n【本轮盘点（代码按盘上事实核的）】盘上没有看到这些项的产物：{}。\
@@ -360,15 +391,15 @@ pub async fn run_chat(
 }
 
 /// 开跑前的预扫：逐项用"预计产物"判一次承接，排出本轮真正要做的顺序与跳过的说明。
-fn preplan(
+async fn preplan(
     ctx: &SkillAgentRunContext,
     plan: &router::RoutePlan,
 ) -> (Vec<(usize, role::TaskKind, role::Handoff)>, Vec<String>) {
     let mut planned = Vec::new();
     let mut skipped = Vec::new();
     let mut pending = stage::evidence::Pending::default();
+    let snap = refreshed_snapshot(ctx).await;
     for (idx, item) in plan.items.iter().enumerate() {
-        let snap = refreshed_snapshot(ctx);
         let handoff = role::reconcile(
             item.kind,
             stage::evidence::facts_of(&snap, Some(item.target.as_str()), &pending),
@@ -394,7 +425,6 @@ fn preplan(
     }
     if planned.is_empty() {
         let item = &plan.items[0];
-        let snap = refreshed_snapshot(ctx);
         let handoff = role::reconcile(
             item.kind,
             stage::evidence::facts_of(
@@ -464,7 +494,7 @@ fn item_header(task: role::TaskKind, handoff: role::Handoff, idx: usize, total: 
 }
 
 /// 前置刚补完，原任务可能立刻就能做：同一轮里接着做掉（只追加一次，追加的这项不再触发本分支）。
-fn append_original_if_ready(
+async fn append_original_if_ready(
     ctx: &SkillAgentRunContext,
     plan: &router::RoutePlan,
     idx: usize,
@@ -473,7 +503,7 @@ fn append_original_if_ready(
     let Some(original) = plan.items.get(idx) else {
         return;
     };
-    let snap = refreshed_snapshot(ctx);
+    let snap = refreshed_snapshot(ctx).await;
     let again = role::reconcile(
         original.kind,
         stage::evidence::facts_of(
@@ -492,32 +522,40 @@ fn append_original_if_ready(
 }
 
 /// 每项执行前重新读盘（上一项刚落盘的章节这一项才看得见），key 现取而不是用回合起点那份快照。
-fn refreshed_snapshot(ctx: &SkillAgentRunContext) -> stage::StageSnapshot {
+async fn refreshed_snapshot(ctx: &SkillAgentRunContext) -> stage::StageSnapshot {
     match ctx.script_key.clone().or_else(|| ctx.bound_key()) {
-        Some(key) => stage::derive(Some(&key)),
+        Some(key) => tokio::task::spawn_blocking(move || stage::derive(Some(&key)))
+            .await
+            .unwrap_or_else(|_| ctx.stage_snapshot.clone()),
         None => ctx.stage_snapshot.clone(),
     }
 }
 
 /// 队列写进哪个剧本包：每次写的时候现算，不取回合开始那份快照。
-fn queue_dir(ctx: &SkillAgentRunContext) -> Option<std::path::PathBuf> {
+async fn queue_dir(ctx: &SkillAgentRunContext) -> Option<std::path::PathBuf> {
     if let Some(dir) = ctx.stage_snapshot.script_dir.as_deref() {
         return Some(dir.to_path_buf());
     }
     let key = ctx.bound_key()?;
-    stage::derive(Some(&key)).script_dir
+    tokio::task::spawn_blocking(move || stage::derive(Some(&key)).script_dir)
+        .await
+        .ok()?
 }
 
 /// 队列落盘。失败只记一行日志：账本是辅助记忆，不该把这一轮弄失败。
-fn save_queue(
+async fn save_queue(
     ctx: &SkillAgentRunContext,
     items: &[router::QueueItem],
     registered_at: std::time::SystemTime,
 ) {
-    let Some(dir) = queue_dir(ctx) else {
+    let Some(dir) = queue_dir(ctx).await else {
         return;
     };
-    if let Err(e) = stage::queue::write_queue(&dir, items, registered_at) {
+    let items = items.to_vec();
+    if let Ok(Err(e)) =
+        tokio::task::spawn_blocking(move || stage::queue::write_queue(&dir, &items, registered_at))
+            .await
+    {
         tracing::warn!("[router] 队列落盘失败: {e}");
     }
 }
@@ -859,13 +897,13 @@ async fn stream_completion(
             total_tokens: u.total_tokens,
             cached_tokens: u.cached_tokens,
         });
-        if let Some(c) = resp.content {
-            if !c.is_empty() {
-                text_out.push_str(&c);
-                let _ = ctx
-                    .channel
-                    .send(SkillAgentEvent::MessageDelta { content: c });
-            }
+        if let Some(c) = resp.content
+            && !c.is_empty()
+        {
+            text_out.push_str(&c);
+            let _ = ctx
+                .channel
+                .send(SkillAgentEvent::MessageDelta { content: c });
         }
         if let Some(calls) = resp.tool_calls {
             for tc in calls {

@@ -2,9 +2,6 @@
 //!
 //! 设计原则：每个配置项的默认值仅在 `AppConfig::default()` 中定义一次，
 //! 其他所有位置（serde、load()、build_config_tree）均引用该实现。
-//!
-//! 注意：LLM 连接参数（provider/model/api_key/base_url/temperature/top_p/enable_thinking）
-//! 和翻译参数已迁移到多供应商系统（`llm.providers`），不再作为全局配置项存在。
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};

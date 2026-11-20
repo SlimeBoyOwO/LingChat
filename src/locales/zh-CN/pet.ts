@@ -37,6 +37,9 @@ export default {
     live2dFpsUnlimited: "不限",
     live2dFpsCustom: "自定义",
     live2dFpsReset: "恢复默认帧率",
+    clickJellyTitle: "Live2D 下启用点击果冻",
+    clickJellyDesc:
+      "仅作用于 Live2D 模型：关闭后待机点击只保留模型自带的触摸动作，静态立绘不受影响",
   },
   history: {
     title: "历史对话",

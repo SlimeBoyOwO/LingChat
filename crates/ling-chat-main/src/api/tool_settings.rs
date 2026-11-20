@@ -16,6 +16,7 @@ use crate::AppState;
 use crate::ai_service::embedding_remote::{WarmingProgress, emit_warming};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::skill_agent::command_executor;
+use crate::ai_service::tools::builtin::memory::save_note_owner;
 use crate::ai_service::tools::builtin::web_search::WebSearchTool;
 use crate::ai_service::tools::executor::{Tool, ToolContext};
 use crate::ai_service::tools::permissions::CONFIG_FILE_NAME;
@@ -23,6 +24,7 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::settings::{TOOL_GROUPS, ToolSettings};
 use crate::api::character::read_character_settings;
 use crate::db::managers::role_repo::RoleRepo;
+use crate::db::managers::save_note_repo::SaveNoteRepo;
 
 /// 读取当前工具配置。
 #[tauri::command]
@@ -169,9 +171,6 @@ pub async fn get_tool_runtime_info(app: tauri::AppHandle) -> Result<ToolRuntimeI
 }
 
 /// 保存工具配置：写盘 + 热更新 + 同步权限矩阵。
-///
-/// 网页搜索启用且凭据来源可用时，自动放开 default 角色组的 `web_search`
-/// 权限；Codex 使用 OAuth，Kimi 可在执行时复用当前官方 Kimi Code 对话凭据。
 #[tauri::command]
 pub async fn save_tool_settings(
     app: tauri::AppHandle,
@@ -181,6 +180,10 @@ pub async fn save_tool_settings(
     let data_dir = super::data_dir();
     let previous_identity = state.tool_settings.get().embedding.vector_identity();
     settings.normalize();
+    settings
+        .image_generation
+        .validate()
+        .map_err(|e| e.to_string())?;
     settings.apply_platform_constraints();
     settings.save(&data_dir).map_err(|e| e.to_string())?;
     state.tool_settings.update(settings.clone());
@@ -277,9 +280,6 @@ pub async fn rebuild_embeddings(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 /// 后台预热：逐角色全量嵌入笔记，并把 Tool RAG 的示例问句预热进缓存。
-///
-/// 预热是「用额度换体验」的动作，因此只在配置确实影响向量时被触发；期间检索照常
-/// 走当前可用后端，不阻塞对话。同一时刻只允许一个任务，新的一次保存会取消上一个。
 pub(crate) fn spawn_embedding_warm(app: &tauri::AppHandle) {
     let state = app.state::<AppState>();
     if !state.embedding.is_enabled() {
@@ -300,10 +300,13 @@ pub(crate) fn spawn_embedding_warm(app: &tauri::AppHandle) {
     let task_warming = warming.clone();
     let handle = tauri::async_runtime::spawn(async move {
         let roles = collect_role_notes(&db, &data_dir).await;
+        let saves = collect_save_notes(&db).await;
         let definitions = registry.definitions();
         let total = roles.iter().map(|(_, notes)| notes.len()).sum::<usize>()
+            + saves.iter().map(|(_, notes)| notes.len()).sum::<usize>()
             + crate::ai_service::tools::tool_rag::corpus_size(&definitions);
         let index = Arc::new(NotesVectorIndex::new(&data_dir));
+        let save_index = Arc::new(NotesVectorIndex::for_save_notes(&data_dir));
         let mut done = 0usize;
         let mut failed = 0usize;
 
@@ -330,6 +333,36 @@ pub(crate) fn spawn_embedding_warm(app: &tauri::AppHandle) {
                 },
                 Err(e) => {
                     tracing::warn!("[embedding] 角色 {label} 预热任务异常: {e}");
+                    failed += count;
+                },
+            }
+            done += count;
+            emit(&app, &backend, done.min(total), total, failed, false);
+        }
+
+        for (save_id, notes) in saves {
+            if cancel.load(Ordering::Relaxed) {
+                tracing::info!("[embedding] 预热已取消（配置被新的保存覆盖）");
+                return;
+            }
+            let index = save_index.clone();
+            let embedder = embedder.clone();
+            let count = notes.len();
+            let owner = save_note_owner(save_id);
+            let label = format!("存档 {save_id}");
+            let outcome =
+                tokio::task::spawn_blocking(move || index.warm(embedder.as_ref(), &owner, &notes))
+                    .await;
+            match outcome {
+                Ok(Ok(synced)) => {
+                    tracing::debug!("[embedding] {label} 预热: 新增 {synced} 条");
+                },
+                Ok(Err(e)) => {
+                    tracing::warn!("[embedding] {label} 预热失败: {e}");
+                    failed += count;
+                },
+                Err(e) => {
+                    tracing::warn!("[embedding] {label} 预热任务异常: {e}");
                     failed += count;
                 },
             }
@@ -376,6 +409,17 @@ async fn collect_role_notes(
         }
     }
     out
+}
+
+/// 读取全部存档笔记（按 save_id 分组），供后台预热。
+async fn collect_save_notes(db: &DatabaseConnection) -> Vec<(i32, Vec<Note>)> {
+    match SaveNoteRepo::list_all_grouped(db).await {
+        Ok(grouped) => grouped.into_iter().collect(),
+        Err(e) => {
+            tracing::warn!("[embedding] 预热时查询存档笔记失败: {e}");
+            Vec::new()
+        },
+    }
 }
 
 fn emit(

@@ -133,15 +133,15 @@ pub fn chapter_id_of(raw: &str) -> &str {
 
 /// 分支边在流程图上显示的标签：条件优先，其次 AI 分支名，兜底分支写「默认」。
 fn branch_label(opt: &serde_json::Map<String, JsonValue>, index: usize) -> String {
-    if let Some(c) = opt.get("condition").and_then(|v| v.as_str()) {
-        if !c.trim().is_empty() {
-            return c.trim().to_string();
-        }
+    if let Some(c) = opt.get("condition").and_then(|v| v.as_str())
+        && !c.trim().is_empty()
+    {
+        return c.trim().to_string();
     }
-    if let Some(n) = opt.get("name").and_then(|v| v.as_str()) {
-        if !n.trim().is_empty() {
-            return n.trim().to_string();
-        }
+    if let Some(n) = opt.get("name").and_then(|v| v.as_str())
+        && !n.trim().is_empty()
+    {
+        return n.trim().to_string();
     }
     if opt
         .get("default")
@@ -380,37 +380,34 @@ pub fn validate(
             };
 
             // 成就事件的键名唯一性：内置成就与本剧本内都不能重名（重名会覆盖旧定义）
-            if ty == "unlock_achievement" {
-                if let Some(ach_id) = obj.get("achievement_id").and_then(|v| v.as_str()) {
-                    let id = ach_id.trim();
-                    if !id.is_empty() {
-                        if builtin_achievement_ids.contains(&id) {
-                            diags.push(
-                                Diagnostic::event(
-                                    Severity::Error,
-                                    "achievement.id_conflicts_builtin",
-                                    cid,
-                                    i,
-                                    format!("「{}」和内置成就重名，会覆盖它的定义，请换个键名", id),
-                                )
-                                .with_field("achievement_id"),
-                            );
-                        }
-                        if achievement_ids.insert(id.to_string(), ()).is_some() {
-                            diags.push(
-                                Diagnostic::event(
-                                    Severity::Error,
-                                    "achievement.id_duplicated",
-                                    cid,
-                                    i,
-                                    format!(
-                                        "本剧本里已有成就「{}」，成就键名不能重复，请换个键名",
-                                        id
-                                    ),
-                                )
-                                .with_field("achievement_id"),
-                            );
-                        }
+            if ty == "unlock_achievement"
+                && let Some(ach_id) = obj.get("achievement_id").and_then(|v| v.as_str())
+            {
+                let id = ach_id.trim();
+                if !id.is_empty() {
+                    if builtin_achievement_ids.contains(&id) {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "achievement.id_conflicts_builtin",
+                                cid,
+                                i,
+                                format!("「{}」和内置成就重名，会覆盖它的定义，请换个键名", id),
+                            )
+                            .with_field("achievement_id"),
+                        );
+                    }
+                    if achievement_ids.insert(id.to_string(), ()).is_some() {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Error,
+                                "achievement.id_duplicated",
+                                cid,
+                                i,
+                                format!("本剧本里已有成就「{}」，成就键名不能重复，请换个键名", id),
+                            )
+                            .with_field("achievement_id"),
+                        );
                     }
                 }
             }
@@ -488,24 +485,23 @@ pub fn validate(
                 "background" | "present_pic" | "music" | "sound" | "ambient" => {
                     check_asset(data_dir, script_dir, modes, obj, ty, cid, i, &mut diags);
                     // music 事件的播放速度：超范围会失真或被浏览器拒绝，提前告警
-                    if ty == "music" {
-                        if let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64()) {
-                            if speed <= 0.0 || speed > 4.0 {
-                                diags.push(
-                                    Diagnostic::event(
-                                        Severity::Warn,
-                                        "music.bad_speed",
-                                        cid,
-                                        i,
-                                        format!(
-                                            "播放速度 {} 超出建议范围（0–4）。≤0 无效，>2 通常会失真",
-                                            speed
-                                        ),
-                                    )
-                                    .with_field("playbackSpeed"),
-                                );
-                            }
-                        }
+                    if ty == "music"
+                        && let Some(speed) = obj.get("playbackSpeed").and_then(|v| v.as_f64())
+                        && (speed <= 0.0 || speed > 4.0)
+                    {
+                        diags.push(
+                            Diagnostic::event(
+                                Severity::Warn,
+                                "music.bad_speed",
+                                cid,
+                                i,
+                                format!(
+                                    "播放速度 {} 超出建议范围（0–4）。≤0 无效，>2 通常会失真",
+                                    speed
+                                ),
+                            )
+                            .with_field("playbackSpeed"),
+                        );
                     }
                 },
                 "background_effect" => {
@@ -603,26 +599,27 @@ pub fn validate(
             }
 
             // character 引用
-            if let Some(ch) = obj.get("character").and_then(|v| v.as_str()) {
-                if ch != "MAIN" && !known_characters.contains(ch) {
-                    // 松紧由角色卡模式决定：只有"只用已有"才算错误，"允许缺失"与"没问过"都只提醒（没问过不该拦人）。
-                    let severity = if modes.cast == Mode::OnlyExisting {
-                        Severity::Error
-                    } else {
-                        Severity::Warn
-                    };
-                    let mut message = format!(
-                        "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
-                        ch
-                    );
-                    if severity == Severity::Warn {
-                        message.push_str("（角色卡模式允许缺失：之后建好这张卡即可）");
-                    }
-                    diags.push(
-                        Diagnostic::event(severity, "character.unknown", cid, i, message)
-                            .with_field("character"),
-                    );
+            if let Some(ch) = obj.get("character").and_then(|v| v.as_str())
+                && ch != "MAIN"
+                && !known_characters.contains(ch)
+            {
+                // 松紧由角色卡模式决定：只有"只用已有"才算错误，"允许缺失"与"没问过"都只提醒（没问过不该拦人）。
+                let severity = if modes.cast == Mode::OnlyExisting {
+                    Severity::Error
+                } else {
+                    Severity::Warn
+                };
+                let mut message = format!(
+                    "角色「{}」在本剧本的 characters/ 下找不到；写 MAIN 表示当前主角",
+                    ch
+                );
+                if severity == Severity::Warn {
+                    message.push_str("（角色卡模式允许缺失：之后建好这张卡即可）");
                 }
+                diags.push(
+                    Diagnostic::event(severity, "character.unknown", cid, i, message)
+                        .with_field("character"),
+                );
             }
         }
 
@@ -837,9 +834,10 @@ fn check_modify_character_action(
     i: usize,
     diags: &mut Vec<Diagnostic>,
 ) {
-    if let Some(action) = obj.get("action").and_then(|v| v.as_str()) {
-        if !["show_character", "hide_character"].contains(&action) {
-            diags.push(
+    if let Some(action) = obj.get("action").and_then(|v| v.as_str())
+        && !["show_character", "hide_character"].contains(&action)
+    {
+        diags.push(
                 Diagnostic::event(
                     Severity::Warn,
                     "character.action_unknown",
@@ -852,7 +850,6 @@ fn check_modify_character_action(
                 )
                 .with_field("action"),
             );
-        }
     }
 }
 
@@ -921,22 +918,22 @@ fn check_asset(
         Some(found) => {
             let actual = file_name_of(&found);
             let referenced = file_name_of(path);
-            if let (Some(actual), Some(referenced)) = (actual, referenced) {
-                if !actual.eq_ignore_ascii_case(&referenced) {
-                    diags.push(
-                        Diagnostic::event(
-                            Severity::Info,
-                            "asset.extension_mismatch",
-                            cid,
-                            i,
-                            format!(
-                                "素材「{}」按同名文件加载了「{}」，建议把引用改成磁盘上的实际文件名",
-                                path, actual
-                            ),
-                        )
-                        .with_field(key),
-                    );
-                }
+            if let (Some(actual), Some(referenced)) = (actual, referenced)
+                && !actual.eq_ignore_ascii_case(&referenced)
+            {
+                diags.push(
+                    Diagnostic::event(
+                        Severity::Info,
+                        "asset.extension_mismatch",
+                        cid,
+                        i,
+                        format!(
+                            "素材「{}」按同名文件加载了「{}」，建议把引用改成磁盘上的实际文件名",
+                            path, actual
+                        ),
+                    )
+                    .with_field(key),
+                );
             }
         },
     }
@@ -1519,22 +1516,21 @@ fn check_chapter_end(
                 }
                 // ai_judged 只按 name 匹配，分支里的 condition 会被引擎忽略 —— 作者意图
                 // 会静默丢失，这里提示出来（condition 是 common field，field.unknown 查不到）。
-                if end_type == "ai_judged" {
-                    if let Some(c) = oo.get("condition").and_then(|v| v.as_str()) {
-                        if !c.trim().is_empty() {
-                            diags.push(
-                                Diagnostic::event(
-                                    Severity::Info,
-                                    "chapter_end.ai_condition_ignored",
-                                    cid,
-                                    i,
-                                    "AI 判定分支不读 condition（按 name 匹配），这个条件会被忽略"
-                                        .to_string(),
-                                )
-                                .with_field("condition"),
-                            );
-                        }
-                    }
+                if end_type == "ai_judged"
+                    && let Some(c) = oo.get("condition").and_then(|v| v.as_str())
+                    && !c.trim().is_empty()
+                {
+                    diags.push(
+                        Diagnostic::event(
+                            Severity::Info,
+                            "chapter_end.ai_condition_ignored",
+                            cid,
+                            i,
+                            "AI 判定分支不读 condition（按 name 匹配），这个条件会被忽略"
+                                .to_string(),
+                        )
+                        .with_field("condition"),
+                    );
                 }
                 if end_type == "branching" {
                     match oo.get("condition").and_then(|v| v.as_str()) {

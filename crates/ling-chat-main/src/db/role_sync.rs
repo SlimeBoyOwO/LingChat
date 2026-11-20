@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
 
@@ -5,9 +6,9 @@ use anyhow::{Context, Result};
 use sea_orm::{ActiveModelTrait, ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, Set};
 use serde::Deserialize;
 
-use crate::ai_service::game_system::player_identity::IdentityStore;
-use crate::db::entities::player_identity;
+use crate::ai_service::game_system::player_identity::{IdentityStore, PlayerIdentity};
 use crate::db::entities::role::{self, RoleType};
+use crate::db::managers::role_repo::RoleRepo;
 use crate::utils::yaml_file::resolve_settings_file;
 
 // 手动创建与目录扫描共享锁，避免扫描读到新目录后重复入库。
@@ -177,63 +178,154 @@ fn load_title(path: &Path) -> Result<Option<String>> {
     Ok(settings.title.filter(|s| !s.is_empty()))
 }
 
-/// 同步身份卡到 `player_identity` 索引表（文件是真源，本表是索引）。
-pub async fn sync_player_identities(db: &DatabaseConnection, data_dir: &Path) -> Result<usize> {
+/// 把身份卡投影成 `role_type='player'` 的角色行（文件是真源，本表是索引）。
+///
+/// 只清理玩家类型且卡片已不存在的行；AI/NPC 角色不受影响。
+pub async fn sync_player_roles(db: &DatabaseConnection, data_dir: &Path) -> Result<usize> {
     let cards = IdentityStore::new(data_dir).list();
-    let mut inserted = 0usize;
+    let mut written = 0usize;
 
     for card in &cards {
-        let existing = player_identity::Entity::find_by_id(card.id.clone())
-            .one(db)
-            .await?;
+        let existing = RoleRepo::get_role_by_identity_id(db, &card.id).await?;
+        let name = card.display_name().to_string();
         match existing {
             None => {
-                let active = player_identity::ActiveModel {
-                    identity_id: Set(card.id.clone()),
-                    name: Set(card.name.clone()),
-                    subtitle: Set(card.subtitle.clone()),
-                    updated_at: Set(now_string()),
-                };
-                active.insert(db).await?;
-                inserted += 1;
-                tracing::info!("Inserted player identity: {} ({})", card.name, card.id);
+                role::ActiveModel {
+                    name: Set(name.clone()),
+                    role_type: Set(RoleType::Player),
+                    identity_id: Set(Some(card.id.clone())),
+                    identity_relations_seeded: Set(0),
+                    ..Default::default()
+                }
+                .insert(db)
+                .await?;
+                written += 1;
+                tracing::info!("Inserted player role: {} ({})", name, card.id);
             },
             Some(model) => {
-                if model.name != card.name || model.subtitle != card.subtitle {
-                    let mut active: player_identity::ActiveModel = model.into();
-                    active.name = Set(card.name.clone());
-                    active.subtitle = Set(card.subtitle.clone());
-                    active.updated_at = Set(now_string());
+                if model.role_type != RoleType::Player
+                    || model.name != name
+                    || model.resource_folder.is_some()
+                {
+                    let id = model.id;
+                    let mut active: role::ActiveModel = model.into();
+                    active.name = Set(name.clone());
+                    active.role_type = Set(RoleType::Player);
+                    active.resource_folder = Set(None);
                     active.update(db).await?;
-                    tracing::info!("Updated player identity: {} ({})", card.name, card.id);
+                    tracing::info!("Updated player role #{}: {} ({})", id, name, card.id);
                 }
             },
         }
     }
 
-    // 全量对齐：表中存在而文件中已不存在的行删除。
-    let all = player_identity::Entity::find().all(db).await?;
+    // 全量对齐只针对玩家角色；删除前会解绑存档、改写台词、清理关系。
+    let players = role::Entity::find()
+        .filter(role::Column::RoleType.eq(RoleType::Player))
+        .all(db)
+        .await?;
     let mut removed = 0usize;
-    for model in all {
-        if !cards.iter().any(|c| c.id == model.identity_id) {
-            let active: player_identity::ActiveModel = model.into();
-            active.delete(db).await?;
+    for model in players {
+        let identity_id = model.identity_id.clone().unwrap_or_default();
+        if !cards.iter().any(|card| card.id == identity_id) {
+            RoleRepo::delete_player_role(db, model.id).await?;
             removed += 1;
         }
     }
 
     tracing::info!(
-        "Synced player identities: {} cards, {} inserted, {} removed",
+        "Synced player roles: {} cards, {} written, {} removed",
         cards.len(),
-        inserted,
+        written,
         removed
     );
-    Ok(inserted)
+    Ok(written)
 }
 
-fn now_string() -> String {
-    std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs().to_string())
-        .unwrap_or_else(|_| "0".to_string())
+/// 为单张身份卡确保玩家角色行存在，返回角色 id（运行时迁移建卡后立即用）。
+pub async fn ensure_player_role(db: &DatabaseConnection, card: &PlayerIdentity) -> Result<i32> {
+    if let Some(role) = RoleRepo::get_role_by_identity_id(db, &card.id).await? {
+        return Ok(role.id);
+    }
+    let inserted = role::ActiveModel {
+        name: Set(card.display_name().to_string()),
+        role_type: Set(RoleType::Player),
+        identity_id: Set(Some(card.id.clone())),
+        identity_relations_seeded: Set(0),
+        ..Default::default()
+    }
+    .insert(db)
+    .await?;
+    Ok(inserted.id)
+}
+
+/// 身份卡里的 relations 只导入一次（`identity_relations_seeded` 标记）：
+/// `ai:<文件夹>` / `me:<身份id>` 映射成目标角色 id，写入「玩家角色 → 目标」的认知行。
+pub async fn import_player_identity_relations(
+    db: &DatabaseConnection,
+    data_dir: &Path,
+) -> Result<usize> {
+    let cards = IdentityStore::new(data_dir).list();
+    let mut by_folder: HashMap<String, i32> = HashMap::new();
+    for model in role::Entity::find()
+        .filter(role::Column::RoleType.is_in([RoleType::Main, RoleType::Npc]))
+        .all(db)
+        .await?
+    {
+        if let Some(folder) = model.resource_folder {
+            by_folder.insert(folder, model.id);
+        }
+    }
+    let players = role::Entity::find()
+        .filter(role::Column::RoleType.eq(RoleType::Player))
+        .all(db)
+        .await?;
+    let by_identity: HashMap<String, i32> = players
+        .iter()
+        .filter_map(|model| model.identity_id.clone().map(|id| (id, model.id)))
+        .collect();
+
+    let mut imported = 0usize;
+    for player in players {
+        if player.identity_relations_seeded != 0 {
+            continue;
+        }
+        let identity_id = player.identity_id.clone().unwrap_or_default();
+        if let Some(card) = cards.iter().find(|card| card.id == identity_id) {
+            for (key, text) in &card.relations {
+                let Some(target_role_id) = resolve_relation_target(key, &by_folder, &by_identity)
+                else {
+                    continue;
+                };
+                if target_role_id == player.id {
+                    continue;
+                }
+                if RoleRepo::ensure_relation(db, player.id, target_role_id, text).await? {
+                    imported += 1;
+                }
+            }
+        }
+        let mut active: role::ActiveModel = player.into();
+        active.identity_relations_seeded = Set(1);
+        active.update(db).await?;
+    }
+
+    if imported > 0 {
+        tracing::info!("Imported {imported} identity relations into role_relation");
+    }
+    Ok(imported)
+}
+
+fn resolve_relation_target(
+    key: &str,
+    by_folder: &HashMap<String, i32>,
+    by_identity: &HashMap<String, i32>,
+) -> Option<i32> {
+    if let Some(folder) = key.strip_prefix("ai:") {
+        return by_folder.get(folder.trim()).copied();
+    }
+    if let Some(identity_id) = key.strip_prefix("me:") {
+        return by_identity.get(identity_id.trim()).copied();
+    }
+    None
 }

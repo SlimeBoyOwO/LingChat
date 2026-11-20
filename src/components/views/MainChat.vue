@@ -59,6 +59,9 @@
     </div>
     <GameExtraUI />
 
+    <!-- 导演 Agent 侧栏：右边缘把手 / 可拖拽面板，自由对话与剧本模式都可用 -->
+    <DirectorSidebar />
+
     <!-- Android 拍照 / 相册来源选择 sheet，仅 chat 路由可见 -->
     <ImageSourcePicker />
 
@@ -88,6 +91,7 @@ import { isMobile, isWindows } from "@/utils/platform";
 import { useAutoAdvance } from "@/composables/chat/useAutoAdvance";
 import { useRelationGuard } from "@/composables/chat/useRelationGuard";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
+import DirectorSidebar from "../director/DirectorSidebar.vue";
 
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
@@ -177,7 +181,7 @@ const blockedRoleList = computed(() =>
 const meName = computed(() => gameStore.userName || "我");
 
 watch(
-  [() => gameStore.mainRoleId, () => gameStore.playerIdentityId],
+  [() => gameStore.mainRoleId, () => gameStore.playerRoleId],
   ([roleId]) => void refreshRelationReady(roleId),
   { immediate: true },
 );

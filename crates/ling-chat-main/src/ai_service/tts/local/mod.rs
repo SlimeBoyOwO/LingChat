@@ -183,10 +183,11 @@ pub async fn tts_local_set_enabled(
 
     // 关闭时卸载全部模型与引擎释放内存；重新启用时若 DeBERTa 已安装则重建引擎
     if enabled {
-        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
-            if let Err(e) = local_state.engine.init(&local_state.paths).await {
-                tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
-            }
+        if !local_state.engine.is_ready().await
+            && local_state.paths.asset_present("deberta")
+            && let Err(e) = local_state.engine.init(&local_state.paths).await
+        {
+            tracing::error!("重新启用本地 TTS 时初始化引擎失败: {e}");
         }
     } else {
         local_state.engine.unload_all().await;
@@ -250,10 +251,11 @@ pub async fn tts_local_set_device(
 
     // 引擎已启用时重新初始化（用新设备）
     let enabled = load_configured_enabled(&app);
-    if enabled && local_state.paths.asset_present("deberta") {
-        if let Err(e) = local_state.engine.init(&local_state.paths).await {
-            tracing::error!("切换推理设备后重新初始化引擎失败: {e}");
-        }
+    if enabled
+        && local_state.paths.asset_present("deberta")
+        && let Err(e) = local_state.engine.init(&local_state.paths).await
+    {
+        tracing::error!("切换推理设备后重新初始化引擎失败: {e}");
     }
 
     tracing::info!("本地 TTS 推理设备已切换: {device_str}");
@@ -334,7 +336,13 @@ fn default_voice_id(_inspected: &package::InspectedPackage, src: &Path) -> Strin
             }
         })
         .collect();
-    let cleaned = cleaned.trim_matches('-').to_lowercase();
+    // 与前端 normalizeVoiceId 一致，最长 64（validate_voice_id 的上限）
+    let cleaned: String = cleaned
+        .trim_matches('-')
+        .to_lowercase()
+        .chars()
+        .take(64)
+        .collect();
     if cleaned.is_empty() {
         "voice".into()
     } else {
@@ -372,6 +380,8 @@ pub async fn tts_local_import_from_path(
             Some(v) => v,
             None => default_voice_id(&inspected, &src.path),
         };
+        // id 会直接拼进 voices 目录，与删除声音走同一套校验，防止 `../` 越界写入
+        model_manager::validate_voice_id(&voice_id)?;
         let installed = package::install_inspected(&inspected, &src.path, &state.paths, &voice_id)?;
         let bytes = std::fs::metadata(&installed).map(|m| m.len()).unwrap_or(0);
         let _ = app.emit("tts://install-complete", &voice_id);

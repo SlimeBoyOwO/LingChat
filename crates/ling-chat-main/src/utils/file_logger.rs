@@ -22,9 +22,6 @@ static LOG_FILE_PATH: OnceLock<std::path::PathBuf> = OnceLock::new();
 static LOG_DIR: OnceLock<std::path::PathBuf> = OnceLock::new();
 
 /// 初始化日志系统（在 app setup 阶段调用）
-///
-/// 创建日志目录并记录日志文件路径。`enable` 为 `false` 时仍会初始化目录结构
-/// 以便后续清理，但不会创建实际日志文件。
 pub fn init_logging(data_dir: &Path, enable: bool) {
     let log_dir = data_dir.join("log").join("app");
     let _ = fs::create_dir_all(&log_dir);
@@ -93,12 +90,12 @@ pub fn cleanup_old_logs(retention_days: u32) {
             if path.extension().and_then(|e| e.to_str()) != Some("log") {
                 continue;
             }
-            if let Ok(metadata) = path.metadata() {
-                if let Ok(modified) = metadata.modified() {
-                    let modified: chrono::DateTime<Local> = modified.into();
-                    if modified < cutoff && fs::remove_file(&path).is_ok() {
-                        deleted += 1;
-                    }
+            if let Ok(metadata) = path.metadata()
+                && let Ok(modified) = metadata.modified()
+            {
+                let modified: chrono::DateTime<Local> = modified.into();
+                if modified < cutoff && fs::remove_file(&path).is_ok() {
+                    deleted += 1;
                 }
             }
         }

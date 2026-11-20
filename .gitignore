@@ -30,7 +30,7 @@ keystore.properties
 .vscode/*.private.*
 .vscode/settings.local.json
 .vs/
-
+.archify/
 
 
 
@@ -78,7 +78,7 @@ ling_chat/static/frontend/
 # src-tauri/gen/schemas/ 为 JSON schema 自动生成文件，可追踪
 src-tauri/bundled_resources/
 src-tauri/.bundled_resources/
-# 外部二进制：onnxruntime.dll / DirectML.dll 由 scripts/ensure-onnxruntime.mjs 下载
+# 外部二进制：onnxruntime.dll / DirectML.dll 由 ort 的 copy-dylibs 放置，build.rs 复制到此供打包
 src-tauri/binaries/
 # Linux 运行期动态库：由 scripts/prepare-linux-libs.mjs 从 target/ 收集
 src-tauri/linux-libs/
@@ -200,8 +200,14 @@ data/game_data/skills/**
 !data/plugins/
 data/plugins/*
 !data/plugins/tavily/
+!data/plugins/keenable/
+!data/plugins/keenable/**
 !data/plugins/mc_maid_bridge/
 !data/plugins/mc_maid_bridge/**
+
+# QQ 桥接插件（OneBot v11）
+!data/plugins/qq_onebot/
+!data/plugins/qq_onebot/**
 # 插件目录整体取反后，上面通用的 Python 缓存规则会被盖掉，这里补回来
 data/plugins/**/__pycache__/
 data/plugins/**/*.py[cod]

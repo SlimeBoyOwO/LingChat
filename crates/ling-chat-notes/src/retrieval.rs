@@ -95,10 +95,50 @@ pub struct NotesVectorIndex {
 impl NotesVectorIndex {
     /// `data_dir` 为应用数据目录，索引落在其下的 `vector_index/notes`。
     pub fn new(data_dir: impl AsRef<Path>) -> Self {
+        Self::with_root(data_dir.as_ref().join("vector_index").join("notes"))
+    }
+
+    /// 存档笔记专用索引：与角色笔记分目录，归属键不会与角色展示名撞名。
+    pub fn for_save_notes(data_dir: impl AsRef<Path>) -> Self {
+        Self::with_root(data_dir.as_ref().join("vector_index").join("save_notes"))
+    }
+
+    fn with_root(root: PathBuf) -> Self {
         Self {
-            root: data_dir.as_ref().join("vector_index").join("notes"),
+            root,
             stores: Mutex::new(HashMap::new()),
         }
+    }
+
+    /// 删除某个归属键在所有嵌入后端下的索引文件（best effort）。
+    ///
+    /// 已打开的连接无法保证立即释放（Windows 上删不掉），失败只记日志；
+    /// 索引本身可重建，不影响正确性。
+    pub fn purge(&self, owner: &str) -> Result<()> {
+        let mut stores = self
+            .stores
+            .lock()
+            .map_err(|_| anyhow!("笔记向量库连接锁已损坏"))?;
+        stores.retain(|(_, key), _| key != owner);
+        drop(stores);
+
+        if !self.root.exists() {
+            return Ok(());
+        }
+        let file = format!("{}.db", sanitize_role_name(owner));
+        for entry in std::fs::read_dir(&self.root)? {
+            let dir = entry?.path();
+            if !dir.is_dir() {
+                continue;
+            }
+            let path = dir.join(&file);
+            if path.exists()
+                && let Err(e) = std::fs::remove_file(&path)
+            {
+                tracing::warn!("清理笔记索引失败 {}: {e}", path.display());
+            }
+        }
+        Ok(())
     }
 
     /// 取后端的分库目录名与向量维度。
@@ -239,17 +279,18 @@ impl NotesVectorIndex {
             .map(|(_, _, synced)| synced)
     }
 
-    /// 同步索引并检索，返回按相似度降序的笔记 ID。
+    /// 同步索引并检索，返回按相似度降序的（笔记 ID，余弦相似度）。
     ///
     /// 只返回当前笔记列表里仍然存在的 ID；空列表时直接返回空。
-    pub fn search(
+    /// 混合检索需要跨库合并排序，因此保留分数供调用方去重补位。
+    pub fn search_scored(
         &self,
         embedder: &dyn Embedder,
         role: &str,
         notes: &[Note],
         query: &str,
         top_k: usize,
-    ) -> Result<Vec<String>> {
+    ) -> Result<Vec<(String, f32)>> {
         let query = query.trim();
         if query.is_empty() {
             return Err(anyhow!("检索关键词为空"));
@@ -271,13 +312,31 @@ impl NotesVectorIndex {
                 continue;
             };
             if live.contains(note_id) {
-                found.push(note_id.to_string());
+                found.push((note_id.to_string(), 1.0 - hit.distance));
             }
         }
         if let Some(top) = hits.first() {
             tracing::debug!(role, top_score = 1.0 - top.distance, "笔记语义检索完成");
         }
         Ok(found)
+    }
+
+    /// 同步索引并检索，返回按相似度降序的笔记 ID。
+    ///
+    /// 只返回当前笔记列表里仍然存在的 ID；空列表时直接返回空。
+    pub fn search(
+        &self,
+        embedder: &dyn Embedder,
+        role: &str,
+        notes: &[Note],
+        query: &str,
+        top_k: usize,
+    ) -> Result<Vec<String>> {
+        Ok(self
+            .search_scored(embedder, role, notes, query, top_k)?
+            .into_iter()
+            .map(|(id, _)| id)
+            .collect())
     }
 }
 
@@ -442,6 +501,16 @@ mod tests {
         // 检索按当前后端的命名空间取库，命中顺序由该后端的向量决定。
         let hits = index.search(&local, "爱丽丝", &notes, "喜欢猫", 2).unwrap();
         assert_eq!(hits, vec!["a".to_string(), "b".to_string()]);
+
+        // 带分数的检索与只取 ID 的版本顺序一致，分数按相似度降序。
+        let scored = index
+            .search_scored(&local, "爱丽丝", &notes, "喜欢猫", 2)
+            .unwrap();
+        assert_eq!(
+            scored.iter().map(|(id, _)| id.as_str()).collect::<Vec<_>>(),
+            vec!["a", "b"]
+        );
+        assert!(scored[0].1 >= scored[1].1);
     }
 
     /// 端到端：真实模型 + sqlite-vec 持久化向量库。
@@ -451,18 +520,6 @@ mod tests {
     #[test]
     #[ignore = "需要已下载的嵌入模型"]
     fn retrieval_hits_semantic_notes() {
-        #[cfg(target_os = "windows")]
-        {
-            let dll = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-                .join("..")
-                .join("..")
-                .join("src-tauri/binaries/onnxruntime.dll");
-            assert!(dll.exists(), "onnxruntime.dll 不存在: {}", dll.display());
-            if let Err(e) = ort::init_from(&dll) {
-                eprintln!("ort::init_from 跳过（可能已初始化）: {e}");
-            }
-        }
-
         let model_dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("..")
             .join("..")

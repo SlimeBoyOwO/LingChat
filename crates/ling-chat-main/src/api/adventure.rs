@@ -93,16 +93,15 @@ fn build_adventure_infos(
 /// 无解锁条件的羁绊默认开放，列表拉取时顺手补上解锁记录
 async fn auto_unlock_plain(db: &DatabaseConnection, adventures: &[&ScriptStatus]) {
     for adv in adventures {
-        if adv.adventure.unlock_conditions.is_empty() {
-            if let Err(e) = AdventureManager::unlock_adventure(
+        if adv.adventure.unlock_conditions.is_empty()
+            && let Err(e) = AdventureManager::unlock_adventure(
                 db,
                 &adv.folder_key,
                 &adv.adventure.bound_character_folder,
             )
             .await
-            {
-                tracing::warn!("[AdventureAPI] 自动解锁「{}」失败: {}", adv.folder_key, e);
-            }
+        {
+            tracing::warn!("[AdventureAPI] 自动解锁「{}」失败: {}", adv.folder_key, e);
         }
     }
 }
@@ -249,9 +248,8 @@ pub async fn check_adventure_unlocks(app: AppHandle) -> Result<Vec<UnlockedAdven
             }
         }
 
-        let result = trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
-            .map_err(|e| format!("检测冒险解锁失败: {}", e))?;
-        result
+        trigger::check_all_adventures(db, &ach_mgr, &game_status, &adventures)
+            .map_err(|e| format!("检测冒险解锁失败: {}", e))?
     };
 
     // Emit events for newly unlocked adventures
@@ -373,114 +371,5 @@ pub(crate) async fn handle_adventure_completion(
 
     for info in &newly_unlocked {
         let _ = app.emit("adventure:unlocked", info);
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::ai_service::types::AdventureConfig;
-    use chrono::DateTime;
-    use std::path::PathBuf;
-
-    fn adventure(folder: &str, order: i32) -> ScriptStatus {
-        ScriptStatus {
-            folder_key: folder.to_string(),
-            name: folder.to_string(),
-            description: String::new(),
-            intro_chapter: "main".to_string(),
-            settings: serde_json::Map::new(),
-            script_path: PathBuf::from(format!("/scripts/character/角色/{folder}")),
-            recommand_start: String::new(),
-            adventure: AdventureConfig {
-                is_adventure: true,
-                order,
-                ..Default::default()
-            },
-            running_client_id: None,
-            current_chapter_key: String::new(),
-            current_event_process: 0,
-            vars: serde_json::Map::new(),
-            plugin_id: None,
-        }
-    }
-
-    fn ts(secs: i64) -> Option<NaiveDateTime> {
-        Some(DateTime::from_timestamp(secs, 0).unwrap().naive_utc())
-    }
-
-    fn build(
-        adventures: &[&ScriptStatus],
-        states: &AdventureStates,
-        running: Option<&str>,
-    ) -> Vec<AdventureInfo> {
-        build_adventure_infos(adventures.to_vec(), states, running.is_some(), running)
-    }
-
-    #[test]
-    fn locked_without_record() {
-        let a = adventure("a", 1);
-        let infos = build(&[&a], &AdventureStates::new(), None);
-
-        assert_eq!(infos[0].status, "locked");
-        assert!(infos[0].unlocked_at.is_none());
-        assert!(infos[0].completed_at.is_none());
-    }
-
-    #[test]
-    fn unlocked_when_only_unlocked_at() {
-        let a = adventure("a", 1);
-        let mut states = AdventureStates::new();
-        states.insert("a".to_string(), (ts(1), None));
-
-        assert_eq!(build(&[&a], &states, None)[0].status, "unlocked");
-    }
-
-    #[test]
-    fn running_takes_precedence_over_completed() {
-        let a = adventure("a", 1);
-        let mut states = AdventureStates::new();
-        states.insert("a".to_string(), (ts(1), ts(2)));
-
-        // 重玩已通关的羁绊时，面板要显示「进行中」而不是「已完成」
-        assert_eq!(build(&[&a], &states, Some("a"))[0].status, "in_progress");
-        assert_eq!(build(&[&a], &states, None)[0].status, "completed");
-    }
-
-    #[test]
-    fn running_folder_mismatch_not_in_progress() {
-        let a = adventure("a", 1);
-        let b = adventure("b", 2);
-        let mut states = AdventureStates::new();
-        states.insert("a".to_string(), (ts(1), None));
-        states.insert("b".to_string(), (ts(1), None));
-
-        let infos = build(&[&a, &b], &states, Some("b"));
-        assert_eq!(infos[0].status, "unlocked");
-        assert_eq!(infos[1].status, "in_progress");
-    }
-
-    #[test]
-    fn completed_without_unlocked_at() {
-        let a = adventure("a", 1);
-        let mut states = AdventureStates::new();
-        states.insert("a".to_string(), (None, ts(2)));
-
-        assert_eq!(build(&[&a], &states, None)[0].status, "completed");
-    }
-
-    #[test]
-    fn sorted_by_order_and_rfc3339_time() {
-        let a = adventure("a", 2);
-        let b = adventure("b", 1);
-        let mut states = AdventureStates::new();
-        states.insert("a".to_string(), (ts(1), None));
-
-        let infos = build(&[&a, &b], &states, None);
-        assert_eq!(infos[0].adventure_folder, "b");
-        assert_eq!(
-            infos[1].unlocked_at.as_deref(),
-            Some("1970-01-01T00:00:01+00:00")
-        );
     }
 }

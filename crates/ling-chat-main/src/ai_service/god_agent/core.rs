@@ -12,8 +12,9 @@ use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::player_identity::resolve::RelationSource;
-use crate::ai_service::game_system::player_identity::{RelationEndpoint, resolve_relation};
+use crate::ai_service::game_system::player_identity::resolve_relation;
 use crate::ai_service::god_agent::config::GodAgentConfig;
+use crate::ai_service::god_agent::director::DirectorAgent;
 use crate::ai_service::llm::{LlmSlot, slot_snapshot};
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask, run_tool_agent};
 use crate::ai_service::tools::builtin::god_agent::god_agent_registry;
@@ -29,11 +30,14 @@ pub struct GodAgentCore {
     pub config: std::sync::RwLock<GodAgentConfig>,
     /// 决策工具的专用注册表，与聊天注册表隔离（不进工具权限页）。
     registry: Arc<ToolRegistry>,
+    /// 交互会话分支：导演。会话状态封在分支内部，中枢只存这一个字段。
+    pub director: DirectorAgent,
 }
 
 impl GodAgentCore {
     pub fn new(llm: LlmSlot, config: GodAgentConfig) -> Self {
         Self {
+            director: DirectorAgent::new(llm.clone()),
             llm,
             config: std::sync::RwLock::new(config),
             registry: Arc::new(god_agent_registry()),
@@ -104,9 +108,9 @@ pub(super) fn tail_lines(gs: &GameStatus, window: usize) -> Vec<GameLine> {
 
 /// 一位在场成员（供上帝 Agent 解析角色之间的认知）。
 pub(super) struct PeerMember {
-    pub folder: String,
+    pub role_id: i32,
     pub name: String,
-    pub relations: HashMap<String, String>,
+    pub relations: HashMap<i32, String>,
 }
 
 /// 角色之间的一条认知：(对方展示名, 文本, 是否来自对方自述)。
@@ -123,8 +127,8 @@ pub(super) fn peer_notes(members: &[PeerMember], self_idx: usize) -> Vec<PeerNot
             continue;
         }
         if let Some(view) = resolve_relation(
-            &RelationEndpoint::Ai(me.folder.clone()),
-            &RelationEndpoint::Ai(other.folder.clone()),
+            me.role_id,
+            other.role_id,
             &me.relations,
             &other.relations,
             None,

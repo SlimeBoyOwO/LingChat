@@ -101,10 +101,10 @@ impl TtsAdapter for CosyvoiceAdapter {
         }
         let body: JsonValue = resp.json().await?;
         // finish_reason 非 stop 说明合成未完成（截断/错误）
-        if let Some(f) = body["output"]["finish_reason"].as_str() {
-            if f != "stop" {
-                return Err(anyhow!("CosyVoice 合成未完成: finish_reason={f}"));
-            }
+        if let Some(f) = body["output"]["finish_reason"].as_str()
+            && f != "stop"
+        {
+            return Err(anyhow!("CosyVoice 合成未完成: finish_reason={f}"));
         }
         let audio_url = body["output"]["audio"]["url"]
             .as_str()

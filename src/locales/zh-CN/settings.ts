@@ -348,6 +348,10 @@ export default {
       title: "创意工坊",
       enter: "进入创意工坊",
     },
+    shortcuts: {
+      title: "快捷方式",
+      import: "导入角色",
+    },
   },
   log: {
     title: "日志",
@@ -1529,6 +1533,10 @@ export default {
       switchFailed: "切换失败: {error}",
     },
     codex: {
+      clientVersion: "Codex 客户端版本",
+      clientVersionAuto: "自动跟随官方稳定版",
+      clientVersionHint: "留空或填 auto 即可自动跟随。填写三段版本号可固定版本。",
+      clientVersionInvalid: "请输入三段版本号（x.y.z）或 auto。",
       account: "ChatGPT 订阅账号",
       loggedIn: "已登录",
       notLoggedIn: "未登录",

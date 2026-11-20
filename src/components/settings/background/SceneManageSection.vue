@@ -12,6 +12,12 @@
       </div>
       <div class="ml-auto flex flex-wrap gap-2">
         <button
+          class="rounded-full border border-cyan-300/40 bg-cyan-300/15 px-4 py-1.5 text-sm font-bold text-cyan-100 hover:bg-cyan-300/25"
+          @click="showImageGeneration = true"
+        >
+          {{ t("imageGeneration.open") }}
+        </button>
+        <button
           class="bg-brand/80 border-brand hover:bg-brand rounded-full border px-5 py-1.5 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 transition-all"
           @click="openCreateScene"
         >
@@ -114,6 +120,7 @@
     @close="showSortModal = false"
     @save="handleSaveSortOrder"
   />
+  <ImageGenerationDialog v-if="showImageGeneration" @close="showImageGeneration = false" />
 
   <SceneEditModal
     :show="showSceneEdit"
@@ -127,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { listen } from "@tauri-apps/api/event";
 import { useI18n } from "vue-i18n";
 import { PictureInPicture } from "@lucide/vue";
@@ -156,6 +163,24 @@ import SceneCategoryBar from "./SceneCategoryBar.vue";
 import SceneContextMenu from "./SceneContextMenu.vue";
 import ScenePagination from "./ScenePagination.vue";
 import SceneSortModal from "./SceneSortModal.vue";
+import ImageGenerationDialog from "./ImageGenerationDialog.vue";
+
+const showImageGeneration = ref(false);
+let stopGenerationListener: (() => void) | undefined;
+let disposed = false;
+onMounted(() => {
+  void listen("image-generation:completed", async () => {
+    await refreshBackground();
+    await fetchScenes();
+  }).then((stop) => {
+    if (disposed) stop();
+    else stopGenerationListener = stop;
+  });
+});
+onUnmounted(() => {
+  disposed = true;
+  stopGenerationListener?.();
+});
 
 const { t } = useI18n();
 const gameStore = useGameStore();

@@ -8,25 +8,85 @@ use anyhow::{Context, Result, ensure};
 use reqwest::Client;
 use reqwest::header::{ACCEPT, HeaderMap, HeaderValue};
 use serde_json::Value;
+use tokio::sync::Mutex;
 
 use crate::ai_service::llm::provider::{LlmModelInfo, ThinkEffortsInfo};
 
 const MODELS_URL: &str = "https://chatgpt.com/backend-api/codex/models";
-// This endpoint gates catalogs by Codex client compatibility, not the LingChat
-// application version. Keep this at a verified Codex version: 0.153.4 silently
-// omits GPT-6.1 Sol, GPT-6 Sol and GPT-6 Luna from otherwise successful responses.
-const CATALOG_CLIENT_VERSION: &str = "0.162.0";
+const RELEASE_TAGS_URL: &str = "https://registry.npmjs.org/-/package/@openai%2fcodex/dist-tags";
+const FALLBACK_CLIENT_VERSION: &str = "0.170.0";
+static LAST_CLIENT_VERSION: Mutex<Option<String>> = Mutex::const_new(None);
 
-fn catalog_request(http: &Client, mut headers: HeaderMap) -> reqwest::RequestBuilder {
-    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
-    http.get(MODELS_URL)
-        .query(&[("client_version", CATALOG_CLIENT_VERSION)])
-        .headers(headers)
-        .timeout(Duration::from_secs(30))
+fn is_client_version(version: &str) -> bool {
+    let mut parts = version.split('.');
+    parts.clone().count() == 3
+        && parts.all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
 }
 
-pub(super) async fn fetch_models(http: &Client, headers: HeaderMap) -> Result<Vec<LlmModelInfo>> {
-    let response = catalog_request(http, headers)
+pub(crate) fn normalize_client_version(version: Option<&str>) -> Result<Option<&str>> {
+    let Some(version) = version.map(str::trim) else {
+        return Ok(None);
+    };
+    if version.is_empty() || version.eq_ignore_ascii_case("auto") {
+        return Ok(None);
+    }
+    ensure!(
+        is_client_version(version),
+        "Codex 客户端版本应为 x.y.z 或 auto"
+    );
+    Ok(Some(version))
+}
+
+async fn latest_client_version(http: &Client) -> Result<String> {
+    let tags: Value = http
+        .get(RELEASE_TAGS_URL)
+        .header(ACCEPT, "application/json")
+        .timeout(Duration::from_secs(5))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    tags.get("latest")
+        .and_then(Value::as_str)
+        .filter(|version| is_client_version(version))
+        .map(str::to_owned)
+        .context("官方 Codex CLI 发布信息缺少有效的 latest 版本")
+}
+
+pub(super) async fn fetch_models(
+    http: &Client,
+    mut headers: HeaderMap,
+    configured_version: Option<&str>,
+) -> Result<Vec<LlmModelInfo>> {
+    // The Codex backend filters its picker by the CLI compatibility version.
+    // Only the catalog request receives the signed-in account headers.
+    let version = if let Some(version) = normalize_client_version(configured_version)? {
+        version.to_owned()
+    } else {
+        match latest_client_version(http).await {
+            Ok(version) => {
+                *LAST_CLIENT_VERSION.lock().await = Some(version.clone());
+                version
+            },
+            Err(error) => {
+                let version = LAST_CLIENT_VERSION
+                    .lock()
+                    .await
+                    .clone()
+                    .unwrap_or_else(|| FALLBACK_CLIENT_VERSION.to_owned());
+                tracing::warn!("[Codex] CLI 版本查询失败，使用 {version}: {error:#}");
+                version
+            },
+        }
+    };
+    tracing::debug!("[Codex] 使用客户端版本 {version} 请求模型目录");
+    headers.insert(ACCEPT, HeaderValue::from_static("application/json"));
+    let response = http
+        .get(MODELS_URL)
+        .query(&[("client_version", version.as_str())])
+        .headers(headers)
+        .timeout(Duration::from_secs(30))
         .send()
         .await
         .context("请求 Codex 模型目录失败")?
@@ -72,10 +132,10 @@ fn parse_models(payload: &Value) -> Result<Vec<LlmModelInfo>> {
             .and_then(Value::as_array)
         {
             for level in levels {
-                if let Some(effort) = nonempty(level.get("effort")) {
-                    if !efforts.iter().any(|existing| existing == effort) {
-                        efforts.push(effort.to_owned());
-                    }
+                if let Some(effort) = nonempty(level.get("effort"))
+                    && !efforts.iter().any(|existing| existing == effort)
+                {
+                    efforts.push(effort.to_owned());
                 }
             }
         }

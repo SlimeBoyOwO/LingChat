@@ -114,10 +114,10 @@ fn parse_mode(text: &str, keys: &[&str]) -> Mode {
         let Some((key, value)) = field(line) else {
             continue;
         };
-        if key_matches(&key, keys) {
-            if let Some(mode) = value_mode(&value) {
-                found = mode;
-            }
+        if key_matches(&key, keys)
+            && let Some(mode) = value_mode(&value)
+        {
+            found = mode;
         }
     }
     found

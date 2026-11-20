@@ -18,9 +18,19 @@ const DEFAULT_MEDIA_PROMPT =
   "请详细识别并描述这个媒体文件的内容；如果其中包含文字、界面、人物、物体、动作或时间顺序，请准确说明。";
 
 const DEFAULT_SETTINGS: ToolSettings = {
+  image_generation: {
+    provider: "",
+    model: "",
+    base_url: "",
+    api_key: "",
+    models_url: "",
+    size: "",
+    quality: "",
+    timeout_secs: 300,
+  },
   web_search: {
     enabled: false,
-    provider: "kimi",
+    provider: "keenable",
     api_key: "",
     base_url: "",
     proxy_enabled: false,
@@ -68,6 +78,7 @@ function normalizeSettings(raw: ToolSettings): ToolSettings {
   const settings: ToolSettings = {
     ...clone(DEFAULT_SETTINGS),
     ...raw,
+    image_generation: { ...DEFAULT_SETTINGS.image_generation, ...(raw.image_generation ?? {}) },
     web_search: { ...DEFAULT_SETTINGS.web_search, ...(raw.web_search ?? {}) },
     media_file: { ...DEFAULT_SETTINGS.media_file, ...(raw.media_file ?? {}) },
     embedding: { ...DEFAULT_SETTINGS.embedding, ...(raw.embedding ?? {}) },
@@ -284,6 +295,10 @@ export const useToolSettingsStore = defineStore("toolSettings", {
       const snapshot = clone(this.settings);
       if (snapshot.web_search.provider === "deepseek") {
         // DeepSeek 搜索走官方端点，残留的自定义地址会把请求打到错误地址。
+        snapshot.web_search.base_url = "";
+      }
+      if (snapshot.web_search.provider === "keenable") {
+        // Keenable 固定走官方端点，与 DeepSeek 同理清掉自定义地址。
         snapshot.web_search.base_url = "";
       }
       pendingSaves += 1;

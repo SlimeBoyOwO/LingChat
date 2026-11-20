@@ -286,6 +286,51 @@
       class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
       :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
     >
+      <MousePointerClick
+        class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all duration-300 group-hover:scale-110"
+        :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
+      />
+
+      <div class="relative z-10 flex items-center justify-between gap-4">
+        <div>
+          <h3
+            class="mb-1 flex items-center gap-2 text-lg font-bold"
+            :class="isDarkMode ? 'text-slate-200' : 'text-slate-800'"
+          >
+            <MousePointerClick class="h-5 w-5 text-sky-500" />
+            {{ $t("pet.petTab.clickJellyTitle") }}
+          </h3>
+          <p class="text-xs" :class="isDarkMode ? 'text-slate-400' : 'text-slate-500'">
+            {{ $t("pet.petTab.clickJellyDesc") }}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          role="switch"
+          :aria-checked="live2dClickJelly"
+          @click="emit('updateLive2dClickJelly', !live2dClickJelly)"
+          class="relative h-6 w-11 shrink-0 rounded-full border transition-colors duration-200"
+          :class="
+            live2dClickJelly
+              ? 'border-sky-500 bg-sky-500'
+              : isDarkMode
+                ? 'border-slate-600 bg-slate-700'
+                : 'border-slate-300 bg-slate-200'
+          "
+        >
+          <span
+            class="absolute top-1 left-1 h-4 w-4 rounded-full bg-white shadow transition-transform duration-200"
+            :class="live2dClickJelly ? 'translate-x-5' : 'translate-x-0'"
+          />
+        </button>
+      </div>
+    </div>
+
+    <div
+      class="group relative mt-4 overflow-hidden rounded-xl border p-6 shadow-sm transition-colors duration-300"
+      :class="isDarkMode ? 'border-slate-700 bg-slate-800/50' : 'border-slate-200 bg-white'"
+    >
       <Sparkles
         class="absolute -right-4 -bottom-4 h-32 w-32 -rotate-12 opacity-10 transition-all duration-300 group-hover:scale-110"
         :class="isDarkMode ? 'text-slate-700' : 'text-slate-300'"
@@ -407,6 +452,7 @@ import {
   Sun,
   Volume2,
   Gauge,
+  MousePointerClick,
 } from "@lucide/vue";
 import { useUIStore } from "../../../../stores/modules/ui/ui";
 import { getCurrentWindow } from "@tauri-apps/api/window";
@@ -422,6 +468,8 @@ const props = defineProps<{
   PET_SCALE_MAX: number;
   /** Live2D 渲染帧率上限（0 = 不限制） */
   live2dFps: number;
+  /** Live2D 待机点击是否播放果冻回弹 */
+  live2dClickJelly: boolean;
   /** 气泡/通知位置：above / below / auto */
   petBubbleSide: BubbleSide;
 }>();
@@ -433,6 +481,7 @@ const emit = defineEmits<{
   resetVolume: [];
   updateLive2dFps: [value: number];
   resetLive2dFps: [];
+  updateLive2dClickJelly: [value: boolean];
   updateBubbleSide: [value: BubbleSide];
 }>();
 
