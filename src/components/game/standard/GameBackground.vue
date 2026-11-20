@@ -1,6 +1,6 @@
 <template>
   <!-- 背景图 + 背景光照滤镜 -->
-  <div v-if="backgroundSrc" class="fixed inset-0" :style="bgLightingFilter">
+  <div v-if="backgroundSrc && !lightingStageActive" class="fixed inset-0" :style="bgLightingFilter">
     <ImageAcrossFade
       ref="imageFadeRef"
       class="game-background"
@@ -129,6 +129,8 @@
 import { ref, watch, computed, onMounted, onBeforeUnmount } from "vue";
 import { convertFileSrc } from "@tauri-apps/api/core";
 import defaultBackgroundUrl from "@/assets/images/default_bg.webp";
+import { resolveBackgroundSrc } from "@/utils/background-src";
+import { lightingStageActive } from "@/composables/game/useSceneLightingStage";
 import { toPlayableMediaUrl } from "@/utils/mediaUrl";
 import { useUIStore } from "../../../stores/modules/ui/ui";
 import { useGameStore } from "../../../stores/modules/game";
@@ -150,21 +152,7 @@ import Fog from "./particles/Fog.vue";
 const uiStore = useUIStore();
 const gameStore = useGameStore();
 
-const backgroundSrc = computed(() => {
-  const bg = uiStore.currentBackground;
-  // 设置里保存的是构建期别名（稳定标识），运行时浏览器无法解析，落到打包后的默认背景
-  if (bg.startsWith("@/assets/images/default_bg")) return defaultBackgroundUrl;
-  if (
-    !bg ||
-    bg.startsWith("http://") ||
-    bg.startsWith("https://") ||
-    bg.startsWith("@/") ||
-    bg.startsWith("data:")
-  ) {
-    return bg || "";
-  }
-  return convertFileSrc(bg);
-});
+const backgroundSrc = computed(() => resolveBackgroundSrc(uiStore.currentBackground));
 
 // 向全局 BGM 层（BgmLayer）登记「游戏渲染层在场」：
 // /chat 与剧本编辑器试玩覆盖层都会挂载本组件，BgmLayer 据此决定是否允许出声

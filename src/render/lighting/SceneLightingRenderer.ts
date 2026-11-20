@@ -1,0 +1,989 @@
+/**
+ * 场景光影渲染器（2.5D 多光源，第二层：角色合成）。
+ *
+ * 一条完整的绘制链：
+ *
+ * ```
+ * 背景 pass        -> FBO(bg)          逐像素多光源着色
+ * 模糊 pass ×2 pass -> FBO(wrap)       给光包裹用的柔化背景（横向 + 纵向）
+ * 角色合成 pass ×N -> FBO(scene)       每槽一遍：立绘 × 灯光 × 伪法线/深度 × 光包裹，
+ *                                      乒乓叠加到场景目标，槽序即前后序
+ * ```
+ *
+ * 与 `BackgroundLightingRenderer` 的关系：那个类只做第一层、直接画到屏幕，
+ * 适合没有角色的场景（或单独调试背景光照）。这个类是完整版，背景先落到离屏
+ * 目标再与立绘合成。两者共用同一套 GLSL 与灯光打包逻辑，数值口径一致。
+ *
+ * 不含泛光、景深与指标统计 —— 那些属于「合成与指标」层。
+ */
+
+import type {
+  LightSource,
+  LightingCameraParams,
+  LightingCompositingParams,
+  LightingGlobalParams,
+  LightingMaterialParams,
+} from "../../api/services/scene";
+import { BLUR_FRAGMENT_SHADER, CHARACTER_FRAGMENT_SHADER } from "./characterShader";
+import { BACKGROUND_FRAGMENT_SHADER, VERTEX_SHADER } from "./glsl";
+import { BLOOM_PREFILTER_FRAGMENT_SHADER, FINAL_COMPOSITE_FRAGMENT_SHADER } from "./postProcess";
+import { packLights } from "./lights";
+import { createFlatNormalTexture, generatePseudoDepth, generatePseudoNormal } from "./pseudoDepth";
+
+/**
+ * 伪法线 / 伪深度贴图的长边上限。
+ *
+ * 立绘实际是 2304×3072（7M 像素）：按原尺寸生成深度要读 28MB 像素、再传一张
+ * 28MB 的纹理，主线程会卡 0.7s 以上，低配机直接失败。这类贴图只是给着色器
+ * 做「相对关系」，1024 已经足够，超出只会变慢不会变好看。
+ */
+const MAP_MAX_DIM = 768;
+
+/**
+ * 深度图还可以更小：它本质是「越靠下越近 + 一点横向鼓起」的低频场，
+ * 512 与 3072 在画面上看不出差别，但生成量差 36 倍。
+ */
+const DEPTH_MAX_DIM = 512;
+
+/**
+ * 立绘槽上限。合成按槽逐遍叠加，槽数只影响遍数与贴图内存，
+ * 单遍占用的纹理单元数不变，所以不受 WebGL1 采样器数组的限制。
+ */
+export const MAX_CHARACTERS = 4;
+
+/** 舞台像素尺寸（已乘设备像素比）。 */
+export interface StageSize {
+  width: number;
+  height: number;
+}
+
+/** 矩形：`[x, y, width, height]`，单位为舞台像素。 */
+export type Rect = readonly [number, number, number, number];
+
+/** 单帧渲染输入。 */
+export interface SceneLightingFrame {
+  stage: StageSize;
+  /** 背景图在舞台上的覆盖矩形（cover 缩放后可能超出舞台，允许负值）。 */
+  backgroundRect: Rect;
+  /** 各立绘槽在舞台上的矩形，下标 = 槽号（见 `setCharacter`）。
+   * 绘制顺序即数组顺序：0 在最底层，后面的槽叠在前面之上；空数组 = 纯背景。
+   * 未上传或零尺寸的槽跳过。 */
+  characterRects: readonly Rect[];
+  /** 各槽专属光影，下标与 `characterRects` 对齐；null/缺省用帧级那套。
+   * 多角色同台时背景恒用帧级（场景默认），角色专属只落在各自立绘上。 */
+  characterSets?: readonly (CharacterLightingSet | null)[];
+  lights: readonly LightSource[];
+  global?: LightingGlobalParams | null;
+  compositing?: LightingCompositingParams | null;
+  material?: LightingMaterialParams | null;
+  /** 相机参数；目前只有 `dof` 参与渲染（背景景深）。 */
+  camera?: LightingCameraParams | null;
+  /** 背景平均色（sRGB 0-1）；不传则用上传背景时算好的值。 */
+  averageColor?: readonly [number, number, number];
+  /**
+   * overlay 径向渐变异色层（旧界面的双色光晕 + mix-blend-mode）。
+   * 这组字段一直在 `LightingParams` 里，2.5D 路径此前没有消费。
+   */
+  overlay?: SceneOverlayParams | null;
+}
+
+/** overlay 径向渐变的渲染参数。 */
+export interface SceneOverlayParams {
+  enabled: boolean;
+  /** 中心色（hex） */
+  color1: string;
+  /** 边缘色（hex） */
+  color2: string;
+  /** 半径百分比，0–100 */
+  radius: number;
+  /** 不透明度，0–1 */
+  opacity: number;
+  /** 中心点，舞台归一化坐标（0–1，y 向下） */
+  center: readonly [number, number];
+  /** CSS mix-blend-mode 名称 */
+  mode: string;
+}
+
+/** 立绘可选贴图。`depth` / `normal` 传 `"auto"` 时从立绘本身生成。 */
+export interface CharacterMaps {
+  normal?: TexImageSource | "auto" | null;
+  depth?: TexImageSource | "auto" | null;
+}
+
+/**
+ * 单个立绘槽的专属光影。只覆盖角色 pass，背景 pass 恒用帧级那套。
+ * 缺省的组回落帧级默认值；`camera` 不参与（景深只作用于背景）。
+ */
+export interface CharacterLightingSet {
+  lights: readonly LightSource[];
+  global?: LightingGlobalParams | null;
+  compositing?: LightingCompositingParams | null;
+  material?: LightingMaterialParams | null;
+}
+
+/** CSS mix-blend-mode → 着色器里的模式编码，见 postProcess.ts 的 blendMode()。 */
+const BLEND_MODE_CODE: Record<string, number> = {
+  normal: 0,
+  multiply: 1,
+  screen: 2,
+  overlay: 3,
+  "soft-light": 4,
+  darken: 5,
+  lighten: 6,
+};
+
+function blendModeCode(mode: string | null | undefined): number {
+  if (!mode) return 0;
+  return BLEND_MODE_CODE[mode.trim().toLowerCase()] ?? 0;
+}
+
+/** hex → sRGB 0-1。调色在 sRGB 空间做，和 CSS filter 的口径一致。 */
+function hexToSrgb(hex: string | null | undefined): [number, number, number] {
+  const m = /^#([0-9a-fA-F]{6})$/.exec((hex ?? "").trim());
+  if (!m) return [1, 1, 1];
+  const v = m[1];
+  return [
+    parseInt(v.slice(0, 2), 16) / 255,
+    parseInt(v.slice(2, 4), 16) / 255,
+    parseInt(v.slice(4, 6), 16) / 255,
+  ];
+}
+
+/** 色相角 → 最大分量为 1 的 RGB，用作乘性偏色（不让整体变亮或变暗）。 */
+function hueToUnitRgb(deg: number): [number, number, number] {
+  const h = ((((deg % 360) + 360) % 360) / 60) % 6;
+  const x = 1 - Math.abs((h % 2) - 1);
+  if (h < 1) return [1, x, 0];
+  if (h < 2) return [x, 1, 0];
+  if (h < 3) return [0, 1, x];
+  if (h < 4) return [0, x, 1];
+  if (h < 5) return [x, 0, 1];
+  return [1, 0, x];
+}
+
+function clamp01(v: number): number {
+  return Math.min(1, Math.max(0, v));
+}
+
+interface RenderTarget {
+  fbo: WebGLFramebuffer;
+  tex: WebGLTexture;
+  width: number;
+  height: number;
+}
+
+interface CharacterSlot {
+  texture: WebGLTexture;
+  normalTexture: WebGLTexture;
+  depthTexture: WebGLTexture;
+  ready: boolean;
+  normalReady: boolean;
+  depthReady: boolean;
+}
+
+interface CompiledProgram {
+  program: WebGLProgram;
+  uniforms: Record<string, WebGLUniformLocation | null>;
+}
+
+const QUAD_VERTICES = new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]);
+
+/** 光包裹用的模糊：半径与迭代次数取自设计稿，改动前先在沙箱里对比。 */
+const WRAP_BLUR_RADIUS = 1.45;
+const WRAP_BLUR_ITERATIONS = 2;
+
+const DEFAULT_GLOBAL: LightingGlobalParams = {
+  master: 1,
+  ambient_blend: 0.5,
+  albedo_protect: 0.5,
+  soft_knee: 0.5,
+  lift: 0,
+  mono: 0,
+  // 调色组默认中性，与旧存档行为一致
+  saturation: 1,
+  contrast: 1,
+  tint_hue: 0,
+  tint_amount: 0,
+  char_exposure: 1,
+  bg_exposure: 1,
+};
+
+const DEFAULT_COMPOSITING: LightingCompositingParams = {
+  light_wrap: 0.6,
+  rim_width: 6,
+  bloom_int: 0,
+  bloom_thresh: 0.7,
+  glow_color: "#ffffff",
+};
+
+const DEFAULT_MATERIAL: LightingMaterialParams = {
+  use_normal: true,
+  normal_strength: 1,
+  cel_thresh: 0.5,
+  cel_softness: 0.06,
+  spec_int: 0.45,
+  spec_gloss: 24,
+  self_shadow_int: 0.35,
+  use_depth: true,
+};
+
+const BG_UNIFORMS = [
+  "uLCount",
+  "uKeyIndex",
+  "uLType[0]",
+  "uLColor[0]",
+  "uLInt[0]",
+  "uLPos[0]",
+  "uLRad[0]",
+  "uLSoft[0]",
+  "uLAxis[0]",
+  "uLCos[0]",
+  "uLPen[0]",
+  "uBgTex",
+  "uStageSize",
+  "uBgRect",
+  "uSoftKnee",
+  "uLift",
+  "uBgAvgSrgb",
+  "uExposure",
+];
+
+const BLUR_UNIFORMS = ["uTex", "uStep"];
+
+const BLOOM_UNIFORMS = ["uSceneTex", "uThresh", "uGlowColor"];
+
+const FINAL_UNIFORMS = [
+  "uSceneTex",
+  "uBloom1Tex",
+  "uBloom2Tex",
+  "uBloomInt",
+  "uMono",
+  "uSaturation",
+  "uContrast",
+  "uTintColor",
+  "uTintAmount",
+  "uOverlayEnabled",
+  "uOverlayColor1",
+  "uOverlayColor2",
+  "uOverlayCenter",
+  "uOverlayRadius",
+  "uOverlayMode",
+  "uStageAspect",
+];
+
+const CHARACTER_UNIFORMS = [
+  "uLCount",
+  "uKeyIndex",
+  "uLType[0]",
+  "uLColor[0]",
+  "uLInt[0]",
+  "uLPos[0]",
+  "uLRad[0]",
+  "uLSoft[0]",
+  "uLAxis[0]",
+  "uLCos[0]",
+  "uLPen[0]",
+  "uCharTex",
+  "uBgSceneTex",
+  "uBgWrapTex",
+  "uNormalTex",
+  "uDepthTex",
+  "uHasNormal",
+  "uHasDepth",
+  "uNormalStrength",
+  "uCelThresh",
+  "uCelSoftness",
+  "uSpecInt",
+  "uSpecGloss",
+  "uSelfShadowInt",
+  "uStageSize",
+  "uCharRect",
+  "uAlbedoProtect",
+  "uSoftKnee",
+  "uLift",
+  "uAmbientBlend",
+  "uLightWrap",
+  "uRimWidth",
+  "uCharOnly",
+  "uBgAvgSrgb",
+  "uCharExposure",
+];
+
+function compileShader(gl: WebGLRenderingContext, type: number, source: string): WebGLShader {
+  const shader = gl.createShader(type);
+  if (!shader) throw new Error("无法创建 shader 对象");
+  gl.shaderSource(shader, source);
+  gl.compileShader(shader);
+  if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+    const log = gl.getShaderInfoLog(shader) ?? "(无日志)";
+    gl.deleteShader(shader);
+    throw new Error(`${type === gl.VERTEX_SHADER ? "vertex" : "fragment"} shader 编译失败: ${log}`);
+  }
+  return shader;
+}
+
+function linkProgram(
+  gl: WebGLRenderingContext,
+  fragmentSource: string,
+  uniformNames: string[],
+): CompiledProgram {
+  const program = gl.createProgram();
+  if (!program) throw new Error("无法创建 program 对象");
+  const vs = compileShader(gl, gl.VERTEX_SHADER, VERTEX_SHADER);
+  const fs = compileShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+  gl.attachShader(program, vs);
+  gl.attachShader(program, fs);
+  gl.linkProgram(program);
+  gl.deleteShader(vs);
+  gl.deleteShader(fs);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+    const log = gl.getProgramInfoLog(program) ?? "(无日志)";
+    gl.deleteProgram(program);
+    throw new Error(`program 链接失败: ${log}`);
+  }
+  const uniforms: Record<string, WebGLUniformLocation | null> = {};
+  for (const name of uniformNames) uniforms[name] = gl.getUniformLocation(program, name);
+  return { program, uniforms };
+}
+
+function createTarget(gl: WebGLRenderingContext, width: number, height: number): RenderTarget {
+  const tex = gl.createTexture();
+  const fbo = gl.createFramebuffer();
+  if (!tex || !fbo) throw new Error("无法创建离屏渲染目标");
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+  gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  return { fbo, tex, width, height };
+}
+
+/** 完整场景光影渲染器（背景 + 立绘合成）。 */
+export class SceneLightingRenderer {
+  private readonly gl: WebGLRenderingContext;
+  private readonly bgProgram: CompiledProgram;
+  private readonly blurProgram: CompiledProgram;
+  private readonly charProgram: CompiledProgram;
+  private readonly bloomProgram: CompiledProgram;
+  private readonly finalProgram: CompiledProgram;
+  private readonly quadBuffer: WebGLBuffer;
+
+  private readonly backgroundTexture: WebGLTexture;
+  private readonly characters: CharacterSlot[];
+
+  private bgTarget: RenderTarget | null = null;
+  private sceneTargetA: RenderTarget | null = null;
+  private sceneTargetB: RenderTarget | null = null;
+  private wrapTargetA: RenderTarget | null = null;
+  private wrapTargetB: RenderTarget | null = null;
+  private dofTargetA: RenderTarget | null = null;
+  private dofTargetB: RenderTarget | null = null;
+  private bloomTarget1A: RenderTarget | null = null;
+  private bloomTarget1B: RenderTarget | null = null;
+  private bloomTarget2A: RenderTarget | null = null;
+  private bloomTarget2B: RenderTarget | null = null;
+
+  private backgroundReadyFlag = false;
+  /** 最近一次贴图错误（中文可读）；空串表示正常。界面用它显示原因，而不是白屏。 */
+  private errorText = "";
+  private averageColor: readonly [number, number, number] = [0.5, 0.5, 0.5];
+  private disposed = false;
+
+  constructor(canvas: HTMLCanvasElement) {
+    const gl = canvas.getContext("webgl", {
+      alpha: false,
+      antialias: false,
+      depth: false,
+      premultipliedAlpha: false,
+      preserveDrawingBuffer: true,
+    });
+    if (!gl) throw new Error("当前环境不支持 WebGL");
+    // 上下文已经丢了（上一任 dispose 时主动 loseContext，或 GPU 重置）：此时 shader
+    // 编译会静默失败，抛出来的只有一句没有日志的「编译失败」，很难查到真正原因
+    if (gl.isContextLost()) throw new Error("画布的 WebGL 上下文已丢失，需要换一块画布");
+    this.gl = gl;
+
+    this.bgProgram = linkProgram(gl, BACKGROUND_FRAGMENT_SHADER, BG_UNIFORMS);
+    this.blurProgram = linkProgram(gl, BLUR_FRAGMENT_SHADER, BLUR_UNIFORMS);
+    this.charProgram = linkProgram(gl, CHARACTER_FRAGMENT_SHADER, CHARACTER_UNIFORMS);
+    this.bloomProgram = linkProgram(gl, BLOOM_PREFILTER_FRAGMENT_SHADER, BLOOM_UNIFORMS);
+    this.finalProgram = linkProgram(gl, FINAL_COMPOSITE_FRAGMENT_SHADER, FINAL_UNIFORMS);
+
+    const buffer = gl.createBuffer();
+    if (!buffer) throw new Error("无法创建顶点缓冲");
+    this.quadBuffer = buffer;
+    gl.bindBuffer(gl.ARRAY_BUFFER, buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, QUAD_VERTICES, gl.STATIC_DRAW);
+
+    this.backgroundTexture = this.createTexture();
+    this.characters = Array.from({ length: MAX_CHARACTERS }, () => {
+      const slot: CharacterSlot = {
+        texture: this.createTexture(),
+        normalTexture: this.createTexture(),
+        depthTexture: this.createTexture(),
+        ready: false,
+        normalReady: false,
+        depthReady: false,
+      };
+      this.uploadTexture(slot.normalTexture, createFlatNormalTexture());
+      return slot;
+    });
+  }
+
+  /** 供界面读取的最近错误文案 */
+  get lastError(): string {
+    return this.errorText;
+  }
+
+  /** 背景贴图是否就绪。调用方据此决定「继续用 WebGL」还是「回退旧路径」。 */
+  get backgroundReady(): boolean {
+    return this.backgroundReadyFlag;
+  }
+
+  /** 是否有任一槽的立绘贴图就绪（诊断用）。 */
+  get characterReady(): boolean {
+    return this.characters.some((slot) => slot.ready);
+  }
+
+  /** 统一错误落点：不上抛，只记文案 —— 一张坏图不该让整块画布消失。 */
+  private fail(stage: string, err: unknown): void {
+    const msg = err instanceof Error ? err.message : String(err);
+    this.errorText = `${stage}：${msg.slice(0, 60)}`;
+    console.warn("[lighting]", this.errorText, err);
+  }
+
+  static isSupported(): boolean {
+    try {
+      return Boolean(document.createElement("canvas").getContext("webgl"));
+    } catch {
+      return false;
+    }
+  }
+
+  private createTexture(): WebGLTexture {
+    const gl = this.gl;
+    const tex = gl.createTexture();
+    if (!tex) throw new Error("无法创建纹理");
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    return tex;
+  }
+
+  private uploadTexture(tex: WebGLTexture, source: TexImageSource): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  }
+
+  resize(width: number, height: number): void {
+    const gl = this.gl;
+    const canvas = gl.canvas as HTMLCanvasElement;
+    const w = Math.max(1, Math.round(width));
+    const h = Math.max(1, Math.round(height));
+    if (canvas.width === w && canvas.height === h && this.bgTarget) return;
+    canvas.width = w;
+    canvas.height = h;
+    const allTargets = [
+      this.bgTarget,
+      this.sceneTargetA,
+      this.sceneTargetB,
+      this.wrapTargetA,
+      this.wrapTargetB,
+      this.dofTargetA,
+      this.dofTargetB,
+      this.bloomTarget1A,
+      this.bloomTarget1B,
+      this.bloomTarget2A,
+      this.bloomTarget2B,
+    ];
+    for (const target of allTargets) {
+      if (target) {
+        gl.deleteFramebuffer(target.fbo);
+        gl.deleteTexture(target.tex);
+      }
+    }
+
+    // 分层尺寸与设计稿一致：全分辨率场景、半分辨率泛光/景深、四分之一光包裹
+    const hw = Math.max(1, w >> 1);
+    const hh = Math.max(1, h >> 1);
+    const qw = Math.max(1, w >> 2);
+    const qh = Math.max(1, h >> 2);
+
+    this.bgTarget = createTarget(gl, w, h);
+    this.sceneTargetA = createTarget(gl, w, h);
+    this.sceneTargetB = createTarget(gl, w, h);
+    this.dofTargetA = createTarget(gl, hw, hh);
+    this.dofTargetB = createTarget(gl, hw, hh);
+    this.bloomTarget1A = createTarget(gl, hw, hh);
+    this.bloomTarget1B = createTarget(gl, hw, hh);
+    this.wrapTargetA = createTarget(gl, qw, qh);
+    this.wrapTargetB = createTarget(gl, qw, qh);
+    this.bloomTarget2A = createTarget(gl, qw, qh);
+    this.bloomTarget2B = createTarget(gl, qw, qh);
+  }
+
+  setBackground(source: TexImageSource): void {
+    try {
+      this.uploadTexture(this.backgroundTexture, source);
+      this.backgroundReadyFlag = true;
+      this.averageColor = estimateAverageColor(source);
+      this.errorText = "";
+    } catch (err) {
+      // 跨源图片在这里会被 WebGL 拒绝（texImage2D SecurityError）
+      this.backgroundReadyFlag = false;
+      this.fail("场景底图上传失败", err);
+    }
+  }
+
+  /** 上传指定槽的立绘；槽号即绘制顺序，0 在最底层。 */
+  setCharacter(source: TexImageSource, maps: CharacterMaps = {}, slot = 0): void {
+    const target = this.characters[slot];
+    if (!target) return;
+    try {
+      this.uploadTexture(target.texture, source);
+      target.ready = true;
+      this.errorText = "";
+    } catch (err) {
+      target.ready = false;
+      this.fail("立绘上传失败", err);
+      return;
+    }
+
+    // 法线：显式传图就用图，传 "auto"（默认）从立绘算伪法线，传 null 退回平法线。
+    // 生成可能因为图片跨域/脏画布抛错，**必须自己兜住**：否则后面的深度也一并丢掉，
+    // 表现就是「人物能看，法线和深度都没有」。
+    const normalSource = maps.normal === undefined ? "auto" : maps.normal;
+    try {
+      if (normalSource === "auto") {
+        this.uploadTexture(target.normalTexture, generatePseudoNormal(source, MAP_MAX_DIM));
+        target.normalReady = true;
+      } else if (normalSource) {
+        this.uploadTexture(target.normalTexture, normalSource);
+        target.normalReady = true;
+      } else {
+        this.uploadTexture(target.normalTexture, createFlatNormalTexture());
+        target.normalReady = false;
+      }
+    } catch (err) {
+      console.warn("[lighting] 法线生成失败，回退平法线:", err);
+      this.uploadTexture(target.normalTexture, createFlatNormalTexture());
+      target.normalReady = false;
+    }
+
+    const depthSource = maps.depth ?? "auto";
+    try {
+      if (depthSource === "auto") {
+        const size = readSourceSize(source);
+        const longest = Math.max(size.width, size.height);
+        const scale = longest > DEPTH_MAX_DIM ? DEPTH_MAX_DIM / longest : 1;
+        this.uploadTexture(
+          target.depthTexture,
+          generatePseudoDepth(
+            source,
+            Math.max(1, Math.round(size.width * scale)),
+            Math.max(1, Math.round(size.height * scale)),
+          ),
+        );
+        target.depthReady = true;
+      } else if (depthSource) {
+        this.uploadTexture(target.depthTexture, depthSource);
+        target.depthReady = true;
+      } else {
+        this.uploadTexture(target.depthTexture, createFlatNormalTexture());
+        target.depthReady = false;
+      }
+    } catch (err) {
+      console.warn("[lighting] 深度生成失败，回退平面深度:", err);
+      this.uploadTexture(target.depthTexture, createFlatNormalTexture());
+      target.depthReady = false;
+    }
+  }
+
+  clearCharacter(slot = 0): void {
+    const target = this.characters[slot];
+    if (!target) return;
+    target.ready = false;
+    target.normalReady = false;
+    target.depthReady = false;
+  }
+
+  /** 画一帧。背景未就绪时什么都不做。 */
+  render(frame: SceneLightingFrame): void {
+    if (this.disposed || !this.backgroundReadyFlag) return;
+    const gl = this.gl;
+    const bgTarget = this.bgTarget;
+    const wrapA = this.wrapTargetA;
+    const wrapB = this.wrapTargetB;
+    if (!bgTarget || !wrapA || !wrapB) return;
+
+    const { stage, lights } = frame;
+    const globalParams = { ...DEFAULT_GLOBAL, ...(frame.global ?? {}) };
+    const compositing = { ...DEFAULT_COMPOSITING, ...(frame.compositing ?? {}) };
+    const material = { ...DEFAULT_MATERIAL, ...(frame.material ?? {}) };
+    const packed = packLights(lights, stage.width, stage.height, globalParams.master);
+
+    // ---- Pass 1：背景多光源着色 -> bgTarget ----
+    gl.bindFramebuffer(gl.FRAMEBUFFER, bgTarget.fbo);
+    gl.viewport(0, 0, bgTarget.width, bgTarget.height);
+    gl.useProgram(this.bgProgram.program);
+    this.applyLightUniforms(this.bgProgram, packed);
+    gl.uniform2f(this.bgProgram.uniforms.uStageSize ?? null, stage.width, stage.height);
+    gl.uniform4f(
+      this.bgProgram.uniforms.uBgRect ?? null,
+      frame.backgroundRect[0],
+      frame.backgroundRect[1],
+      frame.backgroundRect[2],
+      frame.backgroundRect[3],
+    );
+    gl.uniform1f(this.bgProgram.uniforms.uSoftKnee ?? null, globalParams.soft_knee);
+    gl.uniform1f(this.bgProgram.uniforms.uLift ?? null, globalParams.lift);
+    gl.uniform1f(this.bgProgram.uniforms.uExposure ?? null, globalParams.bg_exposure ?? 1);
+    const avg = frame.averageColor ?? this.averageColor;
+    gl.uniform3f(this.bgProgram.uniforms.uBgAvgSrgb ?? null, avg[0], avg[1], avg[2]);
+    this.bindTextureUnit(0, this.backgroundTexture);
+    gl.uniform1i(this.bgProgram.uniforms.uBgTex ?? null, 0);
+    this.drawQuad();
+
+    // ---- Pass 2：双向高斯模糊 -> wrapB（光包裹用）----
+    this.blur(bgTarget.tex, wrapA, wrapB, WRAP_BLUR_RADIUS, WRAP_BLUR_ITERATIONS);
+
+    // ---- Pass 3：背景景深（可选）----
+    let bgSceneTex: WebGLTexture = bgTarget.tex;
+    const dof = frame.camera?.dof ?? 0;
+    const dofA = this.dofTargetA;
+    const dofB = this.dofTargetB;
+    if (dof > 0.05 && dofA && dofB) {
+      const dofScale = Math.max(0.25, (dof / 6) * (Math.min(dofB.width, dofB.height) / 360));
+      this.blur(bgTarget.tex, dofA, dofB, dofScale, 2);
+      bgSceneTex = dofB.tex;
+    }
+
+    // ---- Pass 4：角色合成 -> 场景目标（多槽乒乓叠加）----
+    // 每槽跑一遍角色 pass：读上一遍的场景结果当背景、写另一块场景目标。
+    // 着色器在立绘矩形外早退，所以重活只落在各槽矩形内，多槽的增量开销有界。
+    const sceneA = this.sceneTargetA;
+    const sceneB = this.sceneTargetB;
+    if (!sceneA || !sceneB) return;
+
+    const entries: {
+      slot: CharacterSlot;
+      rect: Rect;
+      packed: ReturnType<typeof packLights>;
+      global: LightingGlobalParams;
+      compositing: LightingCompositingParams;
+      material: LightingMaterialParams;
+    }[] = [];
+    const rectCount = Math.min(frame.characterRects.length, this.characters.length);
+    for (let i = 0; i < rectCount; i++) {
+      const slot = this.characters[i];
+      const rect = frame.characterRects[i];
+      if (!(slot.ready && rect[2] > 0 && rect[3] > 0)) continue;
+      const set = frame.characterSets?.[i];
+      if (set) {
+        const g = { ...DEFAULT_GLOBAL, ...(set.global ?? {}) };
+        const c = { ...DEFAULT_COMPOSITING, ...(set.compositing ?? {}) };
+        const m = { ...DEFAULT_MATERIAL, ...(set.material ?? {}) };
+        entries.push({
+          slot,
+          rect,
+          packed: packLights(set.lights, stage.width, stage.height, g.master),
+          global: g,
+          compositing: c,
+          material: m,
+        });
+      } else {
+        entries.push({ slot, rect, packed, global: globalParams, compositing, material });
+      }
+    }
+
+    gl.useProgram(this.charProgram.program);
+    const cu = this.charProgram.uniforms;
+    gl.uniform1i(cu.uCharTex ?? null, 0);
+    gl.uniform1i(cu.uBgSceneTex ?? null, 1);
+    gl.uniform1i(cu.uBgWrapTex ?? null, 2);
+    gl.uniform1i(cu.uNormalTex ?? null, 3);
+    gl.uniform1i(cu.uDepthTex ?? null, 4);
+    this.bindTextureUnit(2, wrapB.tex);
+    gl.uniform2f(cu.uStageSize ?? null, stage.width, stage.height);
+    gl.uniform3f(cu.uBgAvgSrgb ?? null, avg[0], avg[1], avg[2]);
+    // 场景路径恒走「背景+角色」分支：uCharOnly=1 是设计稿里指标pass的语义
+    // （黑底抽角色像素），拿来当纯背景开关会整屏输出黑
+    gl.uniform1f(cu.uCharOnly ?? null, 0);
+    // 帧级参数先铺一遍：纯背景 pass（无立绘）也要有合法 uniform
+    this.applyCharacterParams(packed, globalParams, compositing, material);
+
+    let readTex = bgSceneTex;
+    let writeTarget = sceneA;
+    const passCount = Math.max(1, entries.length);
+    for (let p = 0; p < passCount; p++) {
+      const entry = entries[p];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, writeTarget.fbo);
+      gl.viewport(0, 0, writeTarget.width, writeTarget.height);
+      this.bindTextureUnit(1, readTex);
+      if (entry) {
+        // 每槽用自己的那套光；没配专属的槽回落帧级（场景默认）
+        this.applyCharacterParams(entry.packed, entry.global, entry.compositing, entry.material);
+        this.bindTextureUnit(0, entry.slot.texture);
+        this.bindTextureUnit(3, entry.slot.normalTexture);
+        this.bindTextureUnit(4, entry.slot.depthTexture);
+        gl.uniform4f(
+          cu.uCharRect ?? null,
+          entry.rect[0],
+          entry.rect[1],
+          entry.rect[2],
+          entry.rect[3],
+        );
+        gl.uniform1f(
+          cu.uHasNormal ?? null,
+          entry.slot.normalReady && entry.material.use_normal ? 1 : 0,
+        );
+        gl.uniform1f(
+          cu.uHasDepth ?? null,
+          entry.slot.depthReady && entry.material.use_depth ? 1 : 0,
+        );
+      } else {
+        // 没有立绘：零矩形让全屏早退，把已着色的背景抄进场景目标，
+        // 后面的调色 / overlay / 泛光才有输入
+        this.bindTextureUnit(0, this.characters[0].texture);
+        this.bindTextureUnit(3, this.characters[0].normalTexture);
+        this.bindTextureUnit(4, this.characters[0].depthTexture);
+        gl.uniform4f(cu.uCharRect ?? null, 0, 0, 0, 0);
+        gl.uniform1f(cu.uHasNormal ?? null, 0);
+        gl.uniform1f(cu.uHasDepth ?? null, 0);
+      }
+      this.drawQuad();
+      readTex = writeTarget.tex;
+      writeTarget = writeTarget === sceneA ? sceneB : sceneA;
+    }
+    const sceneTex = readTex;
+
+    // ---- Pass 5：亮部提取 + 两级泛光 ----
+    let bloom1Tex: WebGLTexture | null = null;
+    let bloom2Tex: WebGLTexture | null = null;
+    const b1a = this.bloomTarget1A;
+    const b1b = this.bloomTarget1B;
+    const b2a = this.bloomTarget2A;
+    const b2b = this.bloomTarget2B;
+    if (compositing.bloom_int > 0.005 && b1a && b1b && b2a && b2b && dofA) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, b1a.fbo);
+      gl.viewport(0, 0, b1a.width, b1a.height);
+      gl.useProgram(this.bloomProgram.program);
+      this.bindTextureUnit(0, sceneTex);
+      gl.uniform1i(this.bloomProgram.uniforms.uSceneTex ?? null, 0);
+      gl.uniform1f(this.bloomProgram.uniforms.uThresh ?? null, compositing.bloom_thresh);
+      const glow = hexToSrgb(compositing.glow_color);
+      gl.uniform3f(this.bloomProgram.uniforms.uGlowColor ?? null, glow[0], glow[1], glow[2]);
+      this.drawQuad();
+
+      // 第一级：小半径，给高光描边；结果留在 b1b
+      this.blur(b1a.tex, dofA, b1b, 1.25, 2);
+      // 第二级：大半径，铺成雾状光晕；结果留在 b2b
+      this.blur(b1b.tex, b2a, b2b, 2.25, 3);
+      bloom1Tex = b1b.tex;
+      bloom2Tex = b2b.tex;
+    }
+
+    // ---- Pass 6：最终合成 -> 屏幕 ----
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
+    gl.useProgram(this.finalProgram.program);
+    const fu = this.finalProgram.uniforms;
+    this.bindTextureUnit(0, sceneTex);
+    this.bindTextureUnit(1, bloom1Tex ?? sceneTex);
+    this.bindTextureUnit(2, bloom2Tex ?? sceneTex);
+    gl.uniform1i(fu.uSceneTex ?? null, 0);
+    gl.uniform1i(fu.uBloom1Tex ?? null, 1);
+    gl.uniform1i(fu.uBloom2Tex ?? null, 2);
+    gl.uniform1f(fu.uBloomInt ?? null, bloom1Tex ? compositing.bloom_int : 0);
+    gl.uniform1f(fu.uMono ?? null, globalParams.mono);
+
+    // 调色：与旧 CSS filter 的 saturation / contrast / sepia 对应，但作用于整幅合成结果
+    gl.uniform1f(fu.uSaturation ?? null, globalParams.saturation ?? 1);
+    gl.uniform1f(fu.uContrast ?? null, globalParams.contrast ?? 1);
+    const tint = hueToUnitRgb(globalParams.tint_hue ?? 0);
+    gl.uniform3f(fu.uTintColor ?? null, tint[0], tint[1], tint[2]);
+    gl.uniform1f(fu.uTintAmount ?? null, clamp01(globalParams.tint_amount ?? 0));
+
+    // overlay：中心点来自旧 light_x / light_y（0–100 → 0–1）
+    const ov = frame.overlay;
+    const ovOn = !!ov?.enabled;
+    gl.uniform1f(fu.uOverlayEnabled ?? null, ovOn ? 1 : 0);
+    gl.uniform1f(fu.uStageAspect ?? null, stage.height > 0 ? stage.width / stage.height : 1);
+    if (ov && ovOn) {
+      const c1 = hexToSrgb(ov.color1);
+      const c2 = hexToSrgb(ov.color2);
+      gl.uniform4f(fu.uOverlayColor1 ?? null, c1[0], c1[1], c1[2], clamp01(ov.opacity));
+      gl.uniform4f(fu.uOverlayColor2 ?? null, c2[0], c2[1], c2[2], 1);
+      gl.uniform2f(fu.uOverlayCenter ?? null, ov.center[0], ov.center[1]);
+      gl.uniform1f(fu.uOverlayRadius ?? null, Math.max(0.02, (ov.radius ?? 50) / 100));
+      gl.uniform1f(fu.uOverlayMode ?? null, blendModeCode(ov.mode));
+    }
+    this.drawQuad();
+  }
+
+  private applyLightUniforms(target: CompiledProgram, packed: ReturnType<typeof packLights>): void {
+    const gl = this.gl;
+    const u = target.uniforms;
+    gl.uniform1i(u.uLCount ?? null, packed.count);
+    gl.uniform1i(u.uKeyIndex ?? null, packed.keyIndex);
+    gl.uniform1iv(u["uLType[0]"] ?? null, packed.types);
+    gl.uniform3fv(u["uLColor[0]"] ?? null, packed.colors);
+    gl.uniform1fv(u["uLInt[0]"] ?? null, packed.intens);
+    gl.uniform3fv(u["uLPos[0]"] ?? null, packed.pos);
+    gl.uniform1fv(u["uLRad[0]"] ?? null, packed.rads);
+    gl.uniform1fv(u["uLSoft[0]"] ?? null, packed.softs);
+    gl.uniform3fv(u["uLAxis[0]"] ?? null, packed.axes);
+    gl.uniform1fv(u["uLCos[0]"] ?? null, packed.cos);
+    gl.uniform1fv(u["uLPen[0]"] ?? null, packed.pen);
+  }
+
+  /** 角色 pass 的灯光 + 材质 + 全局 + 合成参数。每槽各调一次，槽间互不串味。
+   * 不含纹理单元、舞台尺寸、背景平均色与 uCharRect —— 那些是帧级或逐槽几何。 */
+  private applyCharacterParams(
+    packed: ReturnType<typeof packLights>,
+    globalParams: LightingGlobalParams,
+    compositing: LightingCompositingParams,
+    material: LightingMaterialParams,
+  ): void {
+    const gl = this.gl;
+    this.applyLightUniforms(this.charProgram, packed);
+    const cu = this.charProgram.uniforms;
+    gl.uniform1f(cu.uNormalStrength ?? null, material.normal_strength);
+    gl.uniform1f(cu.uCelThresh ?? null, material.cel_thresh);
+    gl.uniform1f(cu.uCelSoftness ?? null, material.cel_softness);
+    gl.uniform1f(cu.uSpecInt ?? null, material.spec_int);
+    gl.uniform1f(cu.uSpecGloss ?? null, material.spec_gloss);
+    gl.uniform1f(cu.uSelfShadowInt ?? null, material.self_shadow_int);
+    gl.uniform1f(cu.uAlbedoProtect ?? null, globalParams.albedo_protect);
+    gl.uniform1f(cu.uSoftKnee ?? null, globalParams.soft_knee);
+    gl.uniform1f(cu.uLift ?? null, globalParams.lift);
+    gl.uniform1f(cu.uAmbientBlend ?? null, globalParams.ambient_blend);
+    gl.uniform1f(cu.uCharExposure ?? null, globalParams.char_exposure ?? 1);
+    gl.uniform1f(cu.uLightWrap ?? null, compositing.light_wrap);
+    gl.uniform1f(cu.uRimWidth ?? null, compositing.rim_width);
+  }
+
+  private blur(
+    source: WebGLTexture,
+    targetA: RenderTarget,
+    targetB: RenderTarget,
+    radiusScale: number,
+    iterations: number,
+  ): void {
+    const gl = this.gl;
+    const u = this.blurProgram.uniforms;
+    gl.useProgram(this.blurProgram.program);
+    gl.uniform1i(u.uTex ?? null, 0);
+
+    let current = source;
+    for (let i = 0; i < iterations; i++) {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targetA.fbo);
+      gl.viewport(0, 0, targetA.width, targetA.height);
+      this.bindTextureUnit(0, current);
+      gl.uniform2f(u.uStep ?? null, radiusScale / targetA.width, 0);
+      this.drawQuad();
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, targetB.fbo);
+      gl.viewport(0, 0, targetB.width, targetB.height);
+      this.bindTextureUnit(0, targetA.tex);
+      gl.uniform2f(u.uStep ?? null, 0, radiusScale / targetB.height);
+      this.drawQuad();
+
+      current = targetB.tex;
+    }
+  }
+
+  private bindTextureUnit(unit: number, tex: WebGLTexture): void {
+    const gl = this.gl;
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+  }
+
+  private drawQuad(): void {
+    const gl = this.gl;
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuffer);
+    const aPos = gl.getAttribLocation(gl.getParameter(gl.CURRENT_PROGRAM) as WebGLProgram, "aPos");
+    if (aPos >= 0) {
+      gl.enableVertexAttribArray(aPos);
+      gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    }
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+  }
+
+  dispose(): void {
+    if (this.disposed) return;
+    const gl = this.gl;
+    const allTargets = [
+      this.bgTarget,
+      this.sceneTargetA,
+      this.sceneTargetB,
+      this.wrapTargetA,
+      this.wrapTargetB,
+      this.dofTargetA,
+      this.dofTargetB,
+      this.bloomTarget1A,
+      this.bloomTarget1B,
+      this.bloomTarget2A,
+      this.bloomTarget2B,
+    ];
+    for (const target of allTargets) {
+      if (target) {
+        gl.deleteFramebuffer(target.fbo);
+        gl.deleteTexture(target.tex);
+      }
+    }
+    gl.deleteProgram(this.bgProgram.program);
+    gl.deleteProgram(this.blurProgram.program);
+    gl.deleteProgram(this.charProgram.program);
+    gl.deleteProgram(this.bloomProgram.program);
+    gl.deleteProgram(this.finalProgram.program);
+    gl.deleteBuffer(this.quadBuffer);
+    gl.deleteTexture(this.backgroundTexture);
+    for (const slot of this.characters) {
+      gl.deleteTexture(slot.texture);
+      gl.deleteTexture(slot.normalTexture);
+      gl.deleteTexture(slot.depthTexture);
+    }
+    this.disposed = true;
+    // deleteFramebuffer / deleteTexture 只还 GPU 资源，上下文本身要等 canvas 被 GC
+    // 才释放。反复开关工作台会累积上下文（Chromium 约 16 个上限，会挤掉别的 canvas），
+    // 这里主动 lose 掉。
+    gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+}
+
+function readSourceSize(source: TexImageSource): { width: number; height: number } {
+  const anySource = source as {
+    width?: number;
+    height?: number;
+    videoWidth?: number;
+    videoHeight?: number;
+  };
+  return {
+    width: anySource.width ?? anySource.videoWidth ?? 1,
+    height: anySource.height ?? anySource.videoHeight ?? 1,
+  };
+}
+
+function estimateAverageColor(source: TexImageSource): [number, number, number] {
+  try {
+    const canvas = document.createElement("canvas");
+    canvas.width = 1;
+    canvas.height = 1;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (!ctx) return [0.5, 0.5, 0.5];
+    ctx.drawImage(source as CanvasImageSource, 0, 0, 1, 1);
+    const [r, g, b] = ctx.getImageData(0, 0, 1, 1).data;
+    return [r / 255, g / 255, b / 255];
+  } catch {
+    return [0.5, 0.5, 0.5];
+  }
+}
