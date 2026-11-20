@@ -14,7 +14,6 @@ pub mod stage;
 pub mod title;
 pub mod tools;
 
-/// 对拍台：把喂给模型的文本逐字节钉住，等价重构靠它自证没改行为（只在测试里编译）。
 pub use command_executor::ApprovalMap;
 pub use core::CancelFlag;
 
@@ -48,5 +47,3 @@ impl Default for SkillAgentState {
         }
     }
 }
-
-#[cfg(test)] mod perf_probe;

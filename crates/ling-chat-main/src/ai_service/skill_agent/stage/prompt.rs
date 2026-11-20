@@ -228,9 +228,7 @@ pub struct TaskBlockParts {
     pub ordered: String,
 }
 
-/// 与 [`build_task_block`] 逐字等价的第二份独立实现：把同一批段落按原顺序收进一个
-/// `Vec<(PartKind, String)>`，再同源派生出 fixed / varying / ordered 三份文本。
-/// 这是交叉对拍用，绝不能让 build_task_block 反过来调用本函数。
+/// 构造任务提示词，并拆分为固定段、随项变化段和原始顺序文本。
 pub fn build_task_parts(input: &TaskBlockInput<'_>) -> TaskBlockParts {
     let TaskBlockInput {
         task,

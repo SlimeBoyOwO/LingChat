@@ -523,7 +523,7 @@ fn save_queue(
 }
 
 /// 拼一项请求的消息表：system + 历史 + 交接材料（前面各项 + 状态）+ 本轮动态材料 + 本项任务书（放最后，走 user 角色）。
-pub(super) fn item_messages(
+fn item_messages(
     system_prompt: String,
     base_history: &[LlmMessage],
     handoff_digest: &str,
