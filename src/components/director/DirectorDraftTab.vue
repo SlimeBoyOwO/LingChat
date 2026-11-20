@@ -1,6 +1,5 @@
 <template>
   <div class="flex h-full min-h-0 flex-col">
-    <!-- 顶部：导演模式开关 + 每 N 轮 -->
     <div class="shrink-0 space-y-2 border-b border-white/8 px-3 pt-1 pb-3">
       <div class="flex items-center gap-2 text-[0.72rem] text-white/70">
         <span>{{ $t("game.director.draft.modeEnabled") }}</span>
@@ -10,7 +9,7 @@
           :aria-checked="store.directorMode.enabled"
           class="relative ml-auto h-5 w-9 shrink-0 rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-40"
           :class="store.directorMode.enabled ? 'bg-brand/70' : 'bg-white/15'"
-          :disabled="store.loadingMode || !store.available"
+          :disabled="modeBusy || !store.available"
           @click="toggleMode"
         >
           <span
@@ -19,7 +18,6 @@
           ></span>
         </button>
       </div>
-
       <div class="flex items-center gap-2 text-[0.72rem] text-white/70">
         <span>{{ $t("game.director.draft.intervalPrefix") }}</span>
         <input
@@ -27,22 +25,20 @@
           type="number"
           min="1"
           max="20"
-          class="w-12 rounded-md border border-white/12 bg-black/20 px-1.5 py-1 text-center text-[0.72rem] text-white/85 outline-none focus:border-brand/50 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="store.loadingMode || !store.available"
+          class="focus:border-brand/50 w-12 rounded-md border border-white/12 bg-black/20 px-1.5 py-1 text-center text-[0.72rem] text-white/85 outline-none disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="modeBusy || !store.available"
+          @input="intervalDirty = true"
           @change="commitInterval"
         />
         <span>{{ $t("game.director.draft.intervalSuffix") }}</span>
       </div>
-
       <p class="text-[0.64rem] text-white/35">{{ sinceLastText }}</p>
     </div>
 
-    <!-- 中部：草案状态 + 事件清单 -->
     <div class="min-h-0 flex-1 overflow-y-auto px-3 py-2">
       <p v-if="!store.available" class="px-2 py-8 text-center text-[0.78rem] text-white/35">
         {{ $t("game.director.unavailable.title") }}
       </p>
-
       <template v-else>
         <div v-if="draft" class="space-y-2">
           <div class="flex items-center gap-2 text-[0.68rem]">
@@ -57,21 +53,19 @@
             </span>
             <button
               class="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-white/12 px-2 py-1 text-white/60 transition-colors hover:bg-white/8 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
-              :disabled="store.loadingMode"
+              :disabled="modeBusy || draftBusy"
               @click="reload"
             >
               <RefreshCw :size="11" :class="{ 'animate-spin': store.loadingMode }" />
               {{ $t("game.director.draft.refresh") }}
             </button>
           </div>
-
           <p
             v-if="draft.status === 'failed' && draft.error"
             class="rounded-lg border border-red-400/30 bg-red-400/8 px-2 py-1.5 text-[0.66rem] leading-relaxed text-red-300/85"
           >
             {{ draft.error }}
           </p>
-
           <p
             v-if="draft.events.length === 0"
             class="px-2 py-6 text-center text-[0.72rem] text-white/35"
@@ -82,7 +76,6 @@
                 : $t("game.director.draft.noEvents")
             }}
           </p>
-
           <ul v-else class="space-y-1.5">
             <li
               v-for="(ev, index) in draft.events"
@@ -103,7 +96,6 @@
             </li>
           </ul>
         </div>
-
         <div v-else class="px-4 py-10 text-center">
           <Clapperboard :size="24" class="mx-auto mb-2 text-white/20" />
           <p class="text-[0.78rem] text-white/45">{{ $t("game.director.draft.empty") }}</p>
@@ -114,9 +106,8 @@
       </template>
     </div>
 
-    <!-- 底部：应用结果 + 待确认操作 -->
     <div
-      v-if="store.applyResult || draft?.status === 'pending'"
+      v-if="store.applyResult || store.modeError || actionableDraft"
       class="shrink-0 space-y-2 border-t border-white/8 px-3 py-2"
     >
       <p
@@ -133,21 +124,33 @@
               })
         }}
       </p>
-
-      <div v-if="draft?.status === 'pending'" class="flex gap-2">
+      <p v-if="store.modeError" class="text-[0.66rem] leading-relaxed text-red-300">
+        {{ $t("game.director.draft.operationFailed", { error: store.modeError }) }}
+      </p>
+      <div v-if="actionableDraft" class="flex gap-2">
         <button
-          class="flex-1 rounded-lg border border-brand/40 bg-brand/15 px-2 py-1.5 text-[0.72rem] text-brand transition-colors hover:bg-brand/25 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="store.confirming"
+          v-if="draft?.status === 'pending'"
+          class="border-brand/40 bg-brand/15 text-brand hover:bg-brand/25 flex-1 rounded-lg border px-2 py-1.5 text-[0.72rem] transition-colors disabled:cursor-not-allowed disabled:opacity-40"
+          :disabled="draftBusy"
           @click="confirmPlay"
         >
-          {{ store.confirming ? $t("game.director.draft.statusApplying") : $t("game.director.draft.confirm") }}
+          {{
+            store.confirming
+              ? $t("game.director.draft.statusApplying")
+              : $t("game.director.draft.confirm")
+          }}
         </button>
         <button
           class="rounded-lg border border-white/12 px-3 py-1.5 text-[0.72rem] text-white/60 transition-colors hover:bg-white/8 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
-          :disabled="store.confirming"
+          :class="{ 'flex-1': draft?.status === 'failed' }"
+          :disabled="draftBusy"
           @click="discard"
         >
-          {{ $t("game.director.draft.discard") }}
+          {{
+            store.discarding
+              ? $t("game.director.draft.discarding")
+              : $t("game.director.draft.discard")
+          }}
         </button>
       </div>
     </div>
@@ -155,7 +158,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import { useI18n } from "vue-i18n";
 import { Clapperboard, RefreshCw } from "@lucide/vue";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
@@ -167,33 +170,39 @@ const { t } = useI18n();
 const store = useDirectorStore();
 const gameStore = useGameStore();
 const dialogStore = useDialogStore();
-
 const draft = computed(() => store.draft);
 const intervalInput = ref(store.directorMode.interval);
+const intervalDirty = ref(false);
+const dialogOpening = ref(false);
+const modeBusy = computed(
+  () => store.loadingMode || store.savingMode || store.confirming || store.discarding,
+);
+const draftBusy = computed(() => store.confirming || store.discarding || dialogOpening.value);
+const actionableDraft = computed(
+  () => draft.value?.status === "pending" || draft.value?.status === "failed",
+);
 
-// 后端 loadMode / setMode 回读后同步输入框，避免本地显示与真实值脱节
 watch(
   () => store.directorMode.interval,
-  (v) => {
-    intervalInput.value = v;
+  (value) => {
+    if (!intervalDirty.value) intervalInput.value = value;
   },
 );
 
-/** 当前对话序号取本地已呈现的最后一条玩家消息序号，与后端 seq 同一套计数。 */
 const currentSeq = computed(() => {
   let max = 0;
-  for (const m of gameStore.dialogHistory) {
-    if (typeof m.userMessageSeq === "number" && m.userMessageSeq > max) max = m.userMessageSeq;
+  for (const message of gameStore.dialogHistory) {
+    if (typeof message.userMessageSeq === "number" && message.userMessageSeq > max) {
+      max = message.userMessageSeq;
+    }
   }
   return max;
 });
-
 const sinceLastText = computed(() => {
   const last = store.directorMode.lastGeneratedSeq;
   if (last == null) return t("game.director.draft.notGenerated");
   return t("game.director.draft.sinceLast", { n: Math.max(0, currentSeq.value - last) });
 });
-
 const STATUS_LABELS: Record<DirectorDraft["status"], string> = {
   idle: "game.director.draft.statusIdle",
   generating: "game.director.draft.statusGenerating",
@@ -201,88 +210,94 @@ const STATUS_LABELS: Record<DirectorDraft["status"], string> = {
   applying: "game.director.draft.statusApplying",
   failed: "game.director.draft.statusFailed",
 };
-
 const statusText = (status: DirectorDraft["status"]) => t(STATUS_LABELS[status]);
-
 const statusClass = (status: DirectorDraft["status"]) => {
-  switch (status) {
-    case "generating":
-    case "applying":
-      return "border-amber-400/40 text-amber-300";
-    case "pending":
-      return "border-brand/40 text-brand";
-    case "failed":
-      return "border-red-400/40 text-red-300";
-    default:
-      return "border-white/12 text-white/40";
-  }
+  if (status === "generating" || status === "applying") return "border-amber-400/40 text-amber-300";
+  if (status === "pending") return "border-brand/40 text-brand";
+  if (status === "failed") return "border-red-400/40 text-red-300";
+  return "border-white/12 text-white/40";
 };
-
-const argsSummary = (ev: DirectorDraftEvent) => summarizeDirectorArgs(ev.params);
-const argsFull = (ev: DirectorDraftEvent) =>
-  summarizeDirectorArgs(ev.params, Number.MAX_SAFE_INTEGER) || "—";
+const argsSummary = (event: DirectorDraftEvent) => summarizeDirectorArgs(event.params);
+const argsFull = (event: DirectorDraftEvent) =>
+  summarizeDirectorArgs(event.params, Number.MAX_SAFE_INTEGER) || "—";
 
 function toggleMode() {
-  if (store.loadingMode) return;
+  if (modeBusy.value) return;
   void store.setMode(!store.directorMode.enabled);
 }
 
-function commitInterval() {
+async function commitInterval() {
+  if (modeBusy.value) return;
   const raw = Number(intervalInput.value);
-  const value = Number.isFinite(raw)
-    ? Math.min(20, Math.max(1, Math.round(raw)))
-    : store.directorMode.interval;
+  const previous = store.directorMode.interval;
+  const value = Number.isFinite(raw) ? Math.min(20, Math.max(1, Math.round(raw))) : previous;
   intervalInput.value = value;
-  void store.setMode(store.directorMode.enabled, value);
+  intervalDirty.value = false;
+  if (value === previous) return;
+  const saved = await store.setMode(store.directorMode.enabled, value);
+  if (!saved && !intervalDirty.value) intervalInput.value = store.directorMode.interval;
 }
 
 function reload() {
-  void store.loadMode();
+  if (!modeBusy.value && !draftBusy.value) void store.loadMode();
 }
 
 async function confirmPlay() {
-  if (!(await dialogStore.confirm(t("game.director.draft.confirmDialog")))) return;
-  await store.confirmDraft();
+  if (draftBusy.value || draft.value?.status !== "pending") return;
+  dialogOpening.value = true;
+  try {
+    if (!(await dialogStore.confirm(t("game.director.draft.confirmDialog")))) return;
+    await store.confirmDraft();
+  } finally {
+    dialogOpening.value = false;
+  }
 }
 
-function discard() {
-  void store.discardDraft();
+async function discard() {
+  if (draftBusy.value || !actionableDraft.value) return;
+  await store.discardDraft();
 }
 
-// 生成中 / 应用中的草案由后端异步推进，简单轮询即可拿到最终状态
-let timer: ReturnType<typeof setInterval> | null = null;
-
+let timer: ReturnType<typeof setTimeout> | null = null;
+let pollVersion = 0;
 function stopPolling() {
-  if (timer) {
-    clearInterval(timer);
-    timer = null;
-  }
+  pollVersion++;
+  if (timer) clearTimeout(timer);
+  timer = null;
 }
 
+/** 异步草案只在上一轮读取结束后调度下一次，卸载时使回调失效。 */
 function syncPolling() {
+  stopPolling();
   const status = store.draft?.status;
-  if (status === "generating" || status === "applying") {
-    if (!timer) timer = setInterval(() => void store.loadDraft(), 1500);
-  } else {
-    stopPolling();
-  }
+  if (status !== "generating" && status !== "applying") return;
+  const version = pollVersion;
+  timer = setTimeout(async () => {
+    timer = null;
+    if (version !== pollVersion) return;
+    await store.loadMode(true);
+    if (version === pollVersion) syncPolling();
+  }, 1500);
 }
 
-watch(() => store.draft?.status, syncPolling);
-
-onMounted(() => {
-  void store.loadMode();
-  void store.loadDraft();
-  syncPolling();
-});
-
-// 面板先于状态加载挂载时，就绪后再补一次
 watch(
-  () => store.ready,
-  (ready) => {
-    if (ready) void store.loadMode();
+  () => store.saveId,
+  () => {
+    intervalDirty.value = false;
+    intervalInput.value = store.directorMode.interval;
   },
 );
-
+watch(
+  () => [store.ready, store.available] as const,
+  ([ready, available]) => {
+    if (ready && available) void store.loadMode();
+  },
+  { immediate: true },
+);
+watch(
+  () => [store.draft?.status, store.confirming, store.discarding, store.savingMode] as const,
+  syncPolling,
+  { immediate: true },
+);
 onBeforeUnmount(stopPolling);
 </script>

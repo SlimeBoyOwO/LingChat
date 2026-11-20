@@ -1,11 +1,4 @@
-//! 导演 Agent 专用工具注册表与首批只读工具。
-//!
-//! 注册表独立存在（同 god_agent_registry 的隔离写法），不接入角色聊天的
-//! GeneratorSource / 权限矩阵，也不进工具权限页——导演工具的授权由导演
-//! 运行层自己决定（见 docs/decisions-director-agent.md 架构基线）。
-//! 先注册两个只读工具打通回路：director_get_world_state（现场快照）与
-//! director_list_events（D3 的 10 类确定性事件清单）；步骤二再补上 9 类
-//! 真实可执行的事件工具，以及 set_variable 的拒绝占位。
+//! 导演工具使用独立注册表，授权由运行层控制。
 
 use std::sync::Arc;
 
@@ -18,34 +11,37 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::types::ToolDefinition;
 
 use super::event_tools::{
-    DIRECTOR_DIALOGUE, DIRECTOR_SET_VARIABLE, DirectorEventTool, EXECUTABLE_EVENT_TYPES,
-    RejectedEventTool, event_tool_name,
+    DirectorEventTool, EXECUTABLE_EVENT_TYPES, RejectedEventTool, event_tool_name,
 };
 
 pub const DIRECTOR_GET_WORLD_STATE: &str = "director_get_world_state";
 pub const DIRECTOR_LIST_EVENTS: &str = "director_list_events";
 
-/// 导演工具循环最多带工具定义的生成轮数。
 pub const MAX_TOOL_ROUNDS: usize = 8;
-/// 单轮最多执行的工具调用数，超出部分不下发、不执行。
 pub const MAX_TOOL_CALLS_PER_ROUND: usize = 6;
 
-/// 一轮工具生成结束后，工具循环下一步的决策。
+/// 超限调用不执行，但保留配对失败结果。
+pub fn deferred_tool_error(index: usize) -> Option<String> {
+    (index >= MAX_TOOL_CALLS_PER_ROUND).then(|| {
+        json!({
+            "ok": false,
+            "error": {
+                "code": "call_limit",
+                "message": "本轮工具调用数超过上限，该调用未执行。"
+            }
+        })
+        .to_string()
+    })
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LoopStep {
-    /// 模型没有请求工具：本轮正文即最终答复，正常结束。
     Finish,
-    /// 带上工具定义进入下一轮。
     ContinueWithTools,
-    /// 已用满工具轮数：下一轮不带工具定义做一次收尾生成。
     FinalSynthesis,
 }
 
-/// 根据刚结束的轮序号与本轮是否请求工具，决定下一步。
-///
-/// `round` 从 0 起；带工具的轮为 0..MAX_TOOL_ROUNDS-1。第
-/// MAX_TOOL_ROUNDS-1 轮仍请求工具时，改走一次不带工具定义的收尾，
-/// 既保住已完成的工具结果，又不会无限循环。
+/// 达到轮数上限后，以不带工具的收尾轮结束循环。
 pub fn plan_next_step(round: usize, had_tool_calls: bool) -> LoopStep {
     if !had_tool_calls {
         return LoopStep::Finish;
@@ -57,7 +53,6 @@ pub fn plan_next_step(round: usize, had_tool_calls: bool) -> LoopStep {
     }
 }
 
-/// 构建导演专用注册表。
 pub fn director_registry() -> ToolRegistry {
     let registry = ToolRegistry::new();
     registry
@@ -66,7 +61,6 @@ pub fn director_registry() -> ToolRegistry {
     registry
         .register(Arc::new(ListEvents))
         .expect("注册 director_list_events 失败");
-    // 8 类确定性事件：定义从 schema.rs 转换，执行复用既有剧本事件处理器
     for &type_key in EXECUTABLE_EVENT_TYPES {
         let tool = DirectorEventTool::new(type_key)
             .unwrap_or_else(|| panic!("schema 缺少事件 {type_key} 的定义"));
@@ -74,7 +68,6 @@ pub fn director_registry() -> ToolRegistry {
             .register(Arc::new(tool))
             .unwrap_or_else(|_| panic!("注册 {type_key} 事件工具失败"));
     }
-    // set_variable / dialogue 只保留在清单里，按名字调用时返回明确拒绝文案
     registry
         .register(Arc::new(RejectedEventTool::set_variable()))
         .expect("注册 director_set_variable 占位失败");
@@ -84,7 +77,6 @@ pub fn director_registry() -> ToolRegistry {
     registry
 }
 
-/// D3 确定性事件清单：名字 + 一句话说明。set_variable 保留但首期不可执行。
 const DETERMINISTIC_EVENTS: &[(&str, &str)] = &[
     ("narration", "插入一段旁白文本，多行时逐行依次显示。"),
     ("player", "以玩家名义插入一句台词，进入对话历史。"),
@@ -101,11 +93,6 @@ const DETERMINISTIC_EVENTS: &[(&str, &str)] = &[
     ("set_variable", "给剧本变量赋值，可带执行条件。"),
 ];
 
-// ============================================================
-// director_get_world_state
-// ============================================================
-
-/// 查询当前现场摘要：模式、场景、背景、音乐与在场角色名。
 pub struct GetWorldState;
 
 #[async_trait]
@@ -126,7 +113,7 @@ impl Tool for GetWorldState {
     ) -> Result<ToolResult, ToolError> {
         let app = context.require_app()?;
         let game_status = game_status_handle(&app).await;
-        // 锁内只做数据快照，取完即释放，不跨 await 持锁
+        // 获取现场快照后立即释放锁
         let (mode, scene, background, music, roles) = {
             let gs = game_status.lock().await;
             let mode = match gs.script_status.as_ref() {
@@ -168,11 +155,6 @@ impl Tool for GetWorldState {
     }
 }
 
-// ============================================================
-// director_list_events
-// ============================================================
-
-/// 列出导演可用的事件类型清单（D3 十类），支持按名字子串过滤。
 pub struct ListEvents;
 
 #[async_trait]
@@ -209,7 +191,6 @@ impl Tool for ListEvents {
             .iter()
             .filter(|(name, _)| filter.is_empty() || name.to_lowercase().contains(&filter))
             .map(|(name, description)| {
-                // 让模型一眼区分「可安排」与「清单里保留但暂不可用」
                 let (name, description) = (*name, *description);
                 let available = EXECUTABLE_EVENT_TYPES.contains(&name);
                 json!({
@@ -224,7 +205,6 @@ impl Tool for ListEvents {
     }
 }
 
-/// 空值与 none 统一显示为「无」，其余原样返回。
 fn present_text(value: &str) -> &str {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("none") {
@@ -234,10 +214,6 @@ fn present_text(value: &str) -> &str {
     }
 }
 
-// ============================================================
-// 测试
-// ============================================================
-
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
@@ -245,8 +221,9 @@ mod tests {
     use super::*;
     use crate::ai_service::game_system::script_engine::schema::build_schema;
     use crate::ai_service::god_agent::director::event_tools::{
-        DIALOGUE_REJECT_MESSAGE, SET_VARIABLE_REJECT_MESSAGE, event_tool_definition,
-        executable_event_spec, validate_event_arguments,
+        DIALOGUE_REJECT_MESSAGE, DIRECTOR_DIALOGUE, DIRECTOR_SET_VARIABLE,
+        SET_VARIABLE_REJECT_MESSAGE, event_tool_definition, executable_event_spec,
+        validate_event_arguments,
     };
     use crate::ai_service::tools::executor::ToolExecutor;
 
@@ -261,7 +238,6 @@ mod tests {
         assert_eq!(definition.function.parameters["type"], "object");
 
         let definitions = registry.definitions();
-        // 2 个只读工具 + 8 类事件工具 + 2 个拒绝占位（set_variable / dialogue）
         assert_eq!(definitions.len(), 12, "导演工具总数应为 12");
         assert!(
             definitions
@@ -273,7 +249,6 @@ mod tests {
                 .iter()
                 .any(|d| d.function.name == DIRECTOR_SET_VARIABLE)
         );
-        // dialogue 与 set_variable 一样只以拒绝占位出现：名字在注册表里，但不在可执行白名单内
         assert!(
             !EXECUTABLE_EVENT_TYPES.contains(&"dialogue"),
             "dialogue 不应出现在可执行事件白名单里"
@@ -308,8 +283,6 @@ mod tests {
             "未知工具名不应在注册表中"
         );
 
-        // 执行器同样拒绝未知工具，返回稳定的错误编码而非 panic。
-        // 执行器先查权限再查存在性，所以这里要把名字放进 allowed 才能测到 unknown_tool 分支。
         let mut allowed: HashSet<String> = registry
             .definitions()
             .into_iter()
@@ -341,7 +314,6 @@ mod tests {
         let events = all["events"].as_array().expect("events 应为数组");
         assert_eq!(events.len(), 10, "D3 首批应恰好十类事件");
         assert!(events.iter().any(|e| e["name"] == "narration"));
-        // dialogue / set_variable 清单可见，但自动标记为不可用
         for name in ["dialogue", "set_variable"] {
             let entry = events
                 .iter()
@@ -351,7 +323,6 @@ mod tests {
             assert!(entry["tool"].is_null(), "{name} 不应给出可执行工具名");
         }
 
-        // filter 过滤只保留命中的事件
         let filtered = tool
             .execute(&context, json!({ "filter": "music" }))
             .await
@@ -389,7 +360,6 @@ mod tests {
 
     #[test]
     fn 工具轮数上限触发无工具定义的收尾生成() {
-        // 前几轮仍带工具继续；最后一轮带工具时转收尾，防止无限循环
         assert_eq!(plan_next_step(0, true), LoopStep::ContinueWithTools);
         assert_eq!(
             plan_next_step(MAX_TOOL_ROUNDS - 2, true),
@@ -407,16 +377,15 @@ mod tests {
 
     #[test]
     fn 单轮工具调用上限生效() {
-        // 超上限的调用被裁掉，仍然只执行上限内的那些
-        let calls: Vec<usize> = (0..MAX_TOOL_CALLS_PER_ROUND + 3).collect();
-        let executed: Vec<usize> = calls.into_iter().take(MAX_TOOL_CALLS_PER_ROUND).collect();
-        assert_eq!(executed.len(), MAX_TOOL_CALLS_PER_ROUND);
-        assert_eq!(executed.last().copied(), Some(MAX_TOOL_CALLS_PER_ROUND - 1));
+        for index in 0..MAX_TOOL_CALLS_PER_ROUND {
+            assert_eq!(deferred_tool_error(index), None);
+        }
+        let output = deferred_tool_error(MAX_TOOL_CALLS_PER_ROUND).expect("超限调用应被拒绝");
+        assert!(output.contains("call_limit"));
     }
 
     #[test]
     fn 八类事件工具名与必填字段齐全() {
-        // 8 类工具的定义必须来自 schema.rs，required 与 schema 逐项一致
         for &type_key in EXECUTABLE_EVENT_TYPES {
             let definition = event_tool_definition(type_key)
                 .unwrap_or_else(|| panic!("{type_key} 应能生成工具定义"));
@@ -457,7 +426,6 @@ mod tests {
 
     #[test]
     fn 未知事件类型被拒绝() {
-        // 白名单外、schema 内有定义的事件（交互/AI/流程类）一律不生成工具
         for type_key in [
             "choices",
             "input",
@@ -486,7 +454,6 @@ mod tests {
             .expect_err("空白素材名应返回错误");
         assert!(error.contains("imagePath"), "错误信息应点明字段: {error}");
 
-        // dialogue 已降级为拒绝占位，但校验函数本身仍按 schema 字段表工作
         let spec = build_schema()
             .events
             .into_iter()
@@ -501,7 +468,6 @@ mod tests {
             validate_event_arguments(&spec, &json!({ "character": "", "text": "你好" })).is_err(),
             "dialogue 的 character 不能为空"
         );
-        // emotion 不做枚举/范围校验：表外的字符串由前端回落成「正常」
         assert!(
             validate_event_arguments(
                 &spec,
@@ -552,7 +518,6 @@ mod tests {
     #[tokio::test]
     async fn 事件工具缺宿主环境时明确报参数或上下文错误() {
         let registry = director_registry();
-        // 缺必填参数：先被工具内校验挡下，返回 InvalidArguments 而非 panic
         let narration = registry
             .get(&event_tool_name("narration"))
             .expect("应能取到 narration 工具");
@@ -565,7 +530,6 @@ mod tests {
             "错误应点明字段: {error}"
         );
 
-        // 参数齐全但没有 AppHandle：应明确报缺少宿主环境，而不是 panic
         let error = narration
             .execute(
                 &ToolContext::new(HashSet::new()),
@@ -582,7 +546,6 @@ mod tests {
     #[test]
     fn 字段类型与select候选值校验生效() {
         let spec = executable_event_spec("music").expect("music 应可执行");
-        // 数字字段类型错误
         assert!(
             validate_event_arguments(
                 &spec,
@@ -591,7 +554,6 @@ mod tests {
             .is_err(),
             "playbackSpeed 必须是数字"
         );
-        // 素材类字段只校验非空字符串，不检查文件是否存在（MVP）
         assert!(
             validate_event_arguments(
                 &spec,

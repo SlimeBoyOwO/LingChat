@@ -1,9 +1,7 @@
 <template>
   <div class="flex h-full min-h-0 flex-col">
     <div class="flex shrink-0 items-center gap-2 px-3 pt-1 pb-2 text-[0.66rem]">
-      <span class="text-white/40">
-        {{ $t("game.director.tools.count", { n: pairs.length }) }}
-      </span>
+      <span class="text-white/40">{{ $t("game.director.tools.count", { n: pairs.length }) }}</span>
       <button
         class="ml-auto inline-flex shrink-0 items-center gap-1 rounded-md border border-white/12 px-2 py-1 text-white/60 transition-colors hover:bg-white/8 hover:text-white/85 disabled:cursor-not-allowed disabled:opacity-40"
         :disabled="store.loadingTools || !store.available"
@@ -15,7 +13,6 @@
     </div>
 
     <div class="min-h-0 flex-1 space-y-3 overflow-y-auto px-3 py-1">
-      <!-- 本轮调用：来自 store 的实时状态，收尾归档后随消息进入下方历史 -->
       <section v-if="activeEntries.length > 0">
         <p class="mb-1.5 text-[0.66rem] font-medium text-white/40">
           {{ $t("game.director.tools.currentRound") }}
@@ -70,12 +67,8 @@
         </p>
       </div>
 
-      <!-- 历史调用：后端落库的 assistant.tool_calls + tool 结果 -->
       <section v-if="pairs.length > 0">
-        <p
-          v-if="activeEntries.length > 0"
-          class="mb-1.5 text-[0.66rem] font-medium text-white/40"
-        >
+        <p v-if="activeEntries.length > 0" class="mb-1.5 text-[0.66rem] font-medium text-white/40">
           {{ $t("game.director.tools.history") }}
         </p>
         <ul class="space-y-2">
@@ -86,30 +79,34 @@
           >
             <div class="flex items-center gap-1.5 text-[0.68rem]">
               <span class="text-sky-300/85">{{ pair.call.function.name }}</span>
-              <span class="truncate font-mono text-[0.62rem] text-white/30">{{ pair.call.id }}</span>
+              <span class="truncate font-mono text-[0.62rem] text-white/30">{{
+                pair.call.id
+              }}</span>
               <span
                 v-if="pair.result"
                 class="ml-auto shrink-0 rounded-full border px-1.5 py-px text-[0.6rem]"
                 :class="
-                  okOf(pair.result) ? 'border-brand/40 text-brand' : 'border-red-400/40 text-red-300'
+                  okOf(pair.result)
+                    ? 'border-brand/40 text-brand'
+                    : 'border-red-400/40 text-red-300'
                 "
               >
                 {{
-                  okOf(pair.result) ? $t("game.director.tools.ok") : $t("game.director.tools.failed")
+                  okOf(pair.result)
+                    ? $t("game.director.tools.ok")
+                    : $t("game.director.tools.failed")
                 }}
               </span>
               <span v-else class="ml-auto shrink-0 text-[0.6rem] text-white/30">
                 {{ $t("game.director.tools.noResult") }}
               </span>
             </div>
-
             <p class="mt-1.5 mb-0.5 text-[0.62rem] text-white/30">
               {{ $t("game.director.tools.args") }}
             </p>
             <pre
               class="max-h-40 overflow-y-auto rounded bg-black/30 p-1.5 font-mono text-[0.62rem] break-all whitespace-pre-wrap text-white/60"
               >{{ prettyJson(pair.call.function.arguments) }}</pre>
-
             <template v-if="pair.result">
               <p class="mt-1.5 mb-0.5 text-[0.62rem] text-white/30">
                 {{ $t("game.director.tools.result") }}
@@ -126,64 +123,41 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, watch } from "vue";
+import { computed, watch } from "vue";
 import { RefreshCw, Wrench } from "@lucide/vue";
-import { useDirectorStore, summarizeDirectorArgs } from "@/stores/modules/director";
-import type { DirectorActiveTool } from "@/stores/modules/director";
-import type { DirectorMessage, DirectorToolCall } from "@/api/services/director";
+import {
+  isDirectorToolResultOk,
+  pairDirectorToolHistory,
+  summarizeDirectorArgs,
+  useDirectorStore,
+  type DirectorActiveTool,
+} from "@/stores/modules/director";
+import type { DirectorMessage } from "@/api/services/director";
 import { i18n } from "@/locales";
 
 const store = useDirectorStore();
 const t = i18n.global.t;
-
-/** 本轮进行中的调用（保持事件到达顺序） */
 const activeEntries = computed(() =>
   Object.entries(store.activeTools).map(([id, entry]) => ({ id, ...entry })),
 );
+const pairs = computed(() => pairDirectorToolHistory(store.toolHistory));
 
-/** 工具调用与结果的配对：assistant.tool_calls + 紧随其后的 role=tool 消息 */
-const pairs = computed(() => {
-  const results = new Map<string, DirectorMessage>();
-  for (const m of store.toolHistory) {
-    if (m.role === "tool" && m.toolCallId) results.set(m.toolCallId, m);
-  }
-  const out: { call: DirectorToolCall; result: DirectorMessage | undefined }[] = [];
-  for (const m of store.toolHistory) {
-    if (m.role !== "assistant" || !m.toolCalls) continue;
-    for (const call of m.toolCalls) out.push({ call, result: results.get(call.id) });
-  }
-  return out;
-});
-
-const statusClass = (status: DirectorActiveTool["status"]) =>
-  status === "running"
-    ? "border-amber-400/40 text-amber-300"
-    : status === "ok"
-      ? "border-brand/40 text-brand"
-      : "border-red-400/40 text-red-300";
-
-const statusText = (status: DirectorActiveTool["status"]) =>
-  status === "running"
-    ? t("game.director.tools.running")
-    : status === "ok"
-      ? t("game.director.tools.ok")
-      : t("game.director.tools.failed");
-
+const statusClass = (status: DirectorActiveTool["status"]) => {
+  if (status === "running") return "border-amber-400/40 text-amber-300";
+  if (status === "ok") return "border-brand/40 text-brand";
+  if (status === "error") return "border-red-400/40 text-red-300";
+  return "border-white/12 text-white/40";
+};
+const statusText = (status: DirectorActiveTool["status"]) => {
+  if (status === "running") return t("game.director.tools.running");
+  if (status === "ok") return t("game.director.tools.ok");
+  if (status === "error") return t("game.director.tools.failed");
+  return t("game.director.tools.noResult");
+};
 const argsSummary = (entry: DirectorActiveTool) => summarizeDirectorArgs(entry.args);
 const argsFull = (entry: DirectorActiveTool) =>
   summarizeDirectorArgs(entry.args, Number.MAX_SAFE_INTEGER) || "—";
-
-/** 工具结果由 ToolExecutor 统一编码成 {"ok":false,...}，不抛异常 */
-function okOf(result: DirectorMessage): boolean {
-  const raw = result.content ?? "";
-  try {
-    const parsed = JSON.parse(raw) as { ok?: boolean };
-    return parsed.ok !== false;
-  } catch {
-    return true;
-  }
-}
-
+const okOf = (result: DirectorMessage) => isDirectorToolResultOk(result.content);
 const prettyJson = (raw: string) => {
   if (!raw) return "—";
   try {
@@ -197,13 +171,11 @@ function reload() {
   void store.loadToolHistory();
 }
 
-onMounted(() => {
-  if (store.ready && store.available) reload();
-});
 watch(
-  () => store.ready,
-  (ready) => {
-    if (ready && store.available) reload();
+  () => [store.ready, store.available, store.saveId] as const,
+  ([ready, available]) => {
+    if (ready && available) reload();
   },
+  { immediate: true },
 );
 </script>

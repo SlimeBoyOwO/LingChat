@@ -93,25 +93,30 @@ export default {
     empty: {
       chat: "No conversation yet. Tell the director what you want to see and it will arrange the next scene.",
       tools: "The director hasn't called any tools yet",
-      toolsHint: "Once script events are registered as tools, each call's arguments and results will be listed here.",
+      toolsHint:
+        "Once script events are registered as tools, each call's arguments and results will be listed here.",
     },
     unavailable: {
       title: "Director service is not ready",
       hint: "Can't talk to the director right now, please try again later.",
       noLlm: "No chat model available",
-      noLlmHint: "The director reuses the god agent's model config, pick an available chat model in settings first.",
+      noLlmHint:
+        "The director reuses the god agent's model config, pick an available chat model in settings first.",
     },
     inputPlaceholder: "Tell the director how the scene should go…",
     send: "Send",
     stop: "Stop",
+    stopping: "Stopping…",
     clear: "Clear chat",
-    clearConfirm: "Clear the current director chat? The director thread saved in this save slot will also be removed.",
+    clearConfirm:
+      "Clear the current director chat? The director thread saved in this save slot will also be removed.",
     thinking: "The director is thinking…",
     reasoning: "Reasoning",
     context: {
       refresh: "Rebuild",
       refreshing: "Rebuilding…",
-      refreshHint: "Rebuild the context from the current scene, present roles and recent lines, view-only, does not affect the next request",
+      refreshHint:
+        "Rebuild the context from the current scene, present roles and recent lines, view-only, does not affect the next request",
       systemChars: "system {n} chars",
       historyChars: "history {n} chars",
       messageCount: "{n} messages",
@@ -123,7 +128,8 @@ export default {
       roleAssistant: "Director",
       roleTool: "Tool",
       loading: "Building context…",
-      noSnapshot: "No context snapshot yet. Send a line to let the director look at the scene, or rebuild from the top right.",
+      noSnapshot:
+        "No context snapshot yet. Send a line to let the director look at the scene, or rebuild from the top right.",
     },
     tools: {
       count: "{n} calls",
@@ -149,14 +155,17 @@ export default {
       statusGenerating: "Generating…",
       statusPending: "Pending",
       statusApplying: "Applying…",
-      statusFailed: "Apply failed",
+      statusFailed: "Failed",
       eventCount: "{n} events",
       noEvents: "No events in the draft",
       empty: "No mini script draft yet",
-      emptyHint: "Turn on director mode and a draft will be prepared every set number of rounds. Nothing plays until you confirm.",
+      emptyHint:
+        "Turn on director mode and a draft will be prepared every set number of rounds. Nothing plays until you confirm.",
       refresh: "Refresh",
       confirm: "Confirm playback",
       discard: "Discard",
+      discarding: "Discarding…",
+      operationFailed: "Operation failed: {error}",
       confirmDialog: "Play these script events in draft order?",
       applySuccess: "{n} events played",
       applyFailed: "Played {n} events, then failed: {error}",

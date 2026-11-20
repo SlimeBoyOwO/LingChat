@@ -92,25 +92,30 @@ export default {
     empty: {
       chat: "まだ会話がありません。見たい展開をディレクターに伝えると、次の筋を立ててくれます。",
       tools: "ディレクターはまだツールを呼び出していません",
-      toolsHint: "シナリオイベントがツールとして登録されると、ここに呼び出しの引数と結果が並びます。",
+      toolsHint:
+        "シナリオイベントがツールとして登録されると、ここに呼び出しの引数と結果が並びます。",
     },
     unavailable: {
       title: "ディレクターはまだ準備できていません",
       hint: "今はディレクターと話せません、しばらくしてからもう一度お試しください。",
       noLlm: "利用できる会話モデルがありません",
-      noLlmHint: "ディレクターは上位エージェントのモデル設定を共用します。設定で利用できる会話モデルを選んでください。",
+      noLlmHint:
+        "ディレクターは上位エージェントのモデル設定を共用します。設定で利用できる会話モデルを選んでください。",
     },
     inputPlaceholder: "見たい展開をディレクターに…",
     send: "送信",
     stop: "停止",
+    stopping: "停止中…",
     clear: "会話を消去",
-    clearConfirm: "現在のディレクターとの会話を消去しますか？セーブに保存されたこの行も一緒に消えます。",
+    clearConfirm:
+      "現在のディレクターとの会話を消去しますか？セーブに保存されたこの行も一緒に消えます。",
     thinking: "ディレクターは考えています…",
     reasoning: "思考の過程",
     context: {
       refresh: "再構築",
       refreshing: "再構築中…",
-      refreshHint: "現在のシーン、在場キャラと最近の台詞から文脈を再構築します。閲覧専用で次のリクエストには影響しません",
+      refreshHint:
+        "現在のシーン、在場キャラと最近の台詞から文脈を再構築します。閲覧専用で次のリクエストには影響しません",
       systemChars: "system {n} 文字",
       historyChars: "履歴 {n} 文字",
       messageCount: "メッセージ {n} 件",
@@ -122,7 +127,8 @@ export default {
       roleAssistant: "ディレクター",
       roleTool: "ツール",
       loading: "文脈を構築しています…",
-      noSnapshot: "文脈スナップショットはまだありません。何か話しかけるか、右上の再構築を押してください。",
+      noSnapshot:
+        "文脈スナップショットはまだありません。何か話しかけるか、右上の再構築を押してください。",
     },
     tools: {
       count: "呼び出し {n} 回",
@@ -148,14 +154,17 @@ export default {
       statusGenerating: "生成中…",
       statusPending: "確認待ち",
       statusApplying: "適用中…",
-      statusFailed: "適用失敗",
+      statusFailed: "失敗",
       eventCount: "イベント {n} 件",
       noEvents: "草案にイベントがありません",
       empty: "小脚本の草案はまだありません",
-      emptyHint: "ディレクターモードをオンにすると、設定したラウンド数ごとに草案が作られます。確認するまでは再生されません。",
+      emptyHint:
+        "ディレクターモードをオンにすると、設定したラウンド数ごとに草案が作られます。確認するまでは再生されません。",
       refresh: "更新",
       confirm: "再生を確定",
       discard: "破棄",
+      discarding: "破棄中…",
+      operationFailed: "操作に失敗しました：{error}",
       confirmDialog: "草案の順番どおりにシナリオイベントを再生しますか？",
       applySuccess: "{n} 件のイベントを再生しました",
       applyFailed: "{n} 件再生後に失敗：{error}",

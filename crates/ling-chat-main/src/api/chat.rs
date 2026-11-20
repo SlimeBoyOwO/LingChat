@@ -297,17 +297,23 @@ async fn dispatch_chat_turn(
             }
         }
 
-        match generator.process_message(text).await {
-            Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
-            Err(e) => tracing::error!("消息生成失败: {:#}", e),
+        let succeeded = match generator.process_message(text).await {
+            Ok(acc) => {
+                tracing::info!("消息生成完成，长度: {}", acc.len());
+                true
+            },
+            Err(e) => {
+                tracing::error!("消息生成失败: {:#}", e);
+                false
+            },
+        };
+        if !succeeded {
+            return;
         }
 
-        // 导演周期小剧本触发（D4）：主回复已完成、台词表已增长后再判定轮次；
-        // 整个检查放进独立后台任务，不阻塞本轮收尾。
         let cycle_app = app.clone();
         tokio::spawn(async move {
             let state = cycle_app.state::<AppState>();
-            // D1 闸门复用导演命令层的判定，避免两处规则漂移。
             let tools_enabled = super::director::director_tools_enabled(&state).await;
             if let Some(core) = state.god_agent.clone() {
                 core.director
