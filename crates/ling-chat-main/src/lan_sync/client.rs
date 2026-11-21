@@ -205,18 +205,7 @@ pub async fn fetch_db_records(peer: &PeerInfo) -> Result<super::messages::DbReco
         .await
         .map_err(|e| format!("解析数据库记录失败 [{}:{}]: {}", peer.host, peer.port, e))?;
 
-    let total: usize = records.roles.len()
-        + records.role_hotwords.as_ref().map_or(0, Vec::len)
-        + records.global_hotwords.as_ref().map_or(0, Vec::len)
-        + records.hotword_categories.as_ref().map_or(0, Vec::len)
-        + records.library_hotwords.as_ref().map_or(0, Vec::len)
-        + records.saves.len()
-        + records.running_scripts.len()
-        + records.adventure_unlocks.len()
-        + records.lines.len()
-        + records.memory_banks.len()
-        + records.line_perceptions.len();
-    info!("拉取数据库记录完成: {} 条记录", total);
+    info!("拉取数据库记录完成: {} 条记录", records.total_rows());
     Ok(records)
 }
 
@@ -226,17 +215,7 @@ pub async fn push_db_records(
     records: &super::messages::DbRecords,
 ) -> Result<(), String> {
     let url = format!("http://{}:{}/db-records", peer.host, peer.port);
-    let total: usize = records.roles.len()
-        + records.role_hotwords.as_ref().map_or(0, Vec::len)
-        + records.global_hotwords.as_ref().map_or(0, Vec::len)
-        + records.hotword_categories.as_ref().map_or(0, Vec::len)
-        + records.library_hotwords.as_ref().map_or(0, Vec::len)
-        + records.saves.len()
-        + records.running_scripts.len()
-        + records.adventure_unlocks.len()
-        + records.lines.len()
-        + records.memory_banks.len()
-        + records.line_perceptions.len();
+    let total = records.total_rows();
     info!(
         "推送数据库记录到 {}:{} ({} 条)",
         peer.host, peer.port, total

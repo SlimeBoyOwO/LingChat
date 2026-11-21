@@ -159,16 +159,16 @@ fn enqueue(
 fn take_prompt_batches(queue: Vec<QueuedPromptLine>) -> Vec<(PromptRole, String)> {
     let mut batches: Vec<(PromptRole, String)> = Vec::new();
     for line in queue {
-        if let Some(last) = batches.last_mut() {
-            if matches!(
+        if let Some(last) = batches.last_mut()
+            && matches!(
                 (&last.0, &line.role),
                 (PromptRole::Narrator, PromptRole::Narrator)
-            ) && last.1.len() + line.text.len() < MAX_QUEUED_LINE_CHARS
-            {
-                last.1.push('\n');
-                last.1.push_str(&line.text);
-                continue;
-            }
+            )
+            && last.1.len() + line.text.len() < MAX_QUEUED_LINE_CHARS
+        {
+            last.1.push('\n');
+            last.1.push_str(&line.text);
+            continue;
         }
         batches.push((line.role, line.text));
     }
@@ -242,13 +242,12 @@ pub(super) fn resolve_recent_index(
     }
 
     for distance in 1..=ANCHOR_SEARCH_WINDOW {
-        if let Some(index) = anchor.index.checked_sub(distance) {
-            if lines
+        if let Some(index) = anchor.index.checked_sub(distance)
+            && lines
                 .get(index)
                 .is_some_and(|line| anchor.fingerprint.matches(line))
-            {
-                return Some(index);
-            }
+        {
+            return Some(index);
         }
         let index = anchor.index + distance;
         if index < lines.len()

@@ -73,18 +73,18 @@ impl ScriptManager {
 
         // 1. Scan `character/<character>/<script>/` (two levels)
         let char_dir = scripts_dir.join("character");
-        if char_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&char_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        if let Ok(sub_entries) = fs::read_dir(&path) {
-                            for sub in sub_entries.flatten() {
-                                let sub_path = sub.path();
-                                if sub_path.is_dir() {
-                                    self.try_load_script(&sub_path);
-                                }
-                            }
+        if char_dir.exists()
+            && let Ok(entries) = fs::read_dir(&char_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir()
+                    && let Ok(sub_entries) = fs::read_dir(&path)
+                {
+                    for sub in sub_entries.flatten() {
+                        let sub_path = sub.path();
+                        if sub_path.is_dir() {
+                            self.try_load_script(&sub_path);
                         }
                     }
                 }
@@ -93,13 +93,13 @@ impl ScriptManager {
 
         // 2. Scan `standalone/<script>/` (one level)
         let standalone_dir = scripts_dir.join("standalone");
-        if standalone_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&standalone_dir) {
-                for entry in entries.flatten() {
-                    let path = entry.path();
-                    if path.is_dir() {
-                        self.try_load_script(&path);
-                    }
+        if standalone_dir.exists()
+            && let Ok(entries) = fs::read_dir(&standalone_dir)
+        {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    self.try_load_script(&path);
                 }
             }
         }
@@ -292,10 +292,10 @@ impl ScriptManager {
         ctx.game_status.lock().await.script_status = Some(script.clone());
 
         // Load player info from script settings
-        if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str()) {
-            if !user_name.is_empty() {
-                ctx.game_status.lock().await.player.user_name = user_name.to_string();
-            }
+        if let Some(user_name) = script.settings.get("user_name").and_then(|v| v.as_str())
+            && !user_name.is_empty()
+        {
+            ctx.game_status.lock().await.player.user_name = user_name.to_string();
         }
         if let Some(user_subtitle) = script
             .settings

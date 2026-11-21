@@ -29,7 +29,6 @@ use crate::utils::prompt::{PromptOptions, PromptRole, sys_prompt_builder_by_sett
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub struct PlayerIdentityInit {
-    pub id: Option<String>,
     pub name: String,
     pub subtitle: String,
     pub prompt: String,
@@ -63,7 +62,7 @@ pub struct WebInitData {
     pub last_bgm_mode: Option<String>,
     /// 上次环境音轨道（JSON 字符串，前端解析）
     pub last_ambient_tracks: Option<String>,
-    pub player_identity_id: Option<String>,
+    pub player_role_id: Option<i32>,
     pub player_identity: PlayerIdentityInit,
     /// 本局绑定的存档 id（`None` = 还没开存档），前端据此锁定身份切换 UI。
     pub active_save_id: Option<i32>,
@@ -313,25 +312,25 @@ pub async fn get_tts_cache_info(app: AppHandle) -> Result<serde_json::Value, Str
     let mut orphan_size: u64 = 0;
     let mut orphan_files: usize = 0;
 
-    if voice_dir.exists() {
-        if let Ok(entries) = std::fs::read_dir(&voice_dir) {
-            for entry in entries.flatten() {
-                let path = entry.path();
-                if !path.is_file() {
-                    continue;
-                }
-                let name = entry.file_name().to_string_lossy().to_string();
-                let size = if let Ok(metadata) = std::fs::metadata(&path) {
-                    metadata.len()
-                } else {
-                    0
-                };
-                file_count += 1;
-                total_size += size;
-                if !referenced.contains(&name) {
-                    orphan_files += 1;
-                    orphan_size += size;
-                }
+    if voice_dir.exists()
+        && let Ok(entries) = std::fs::read_dir(&voice_dir)
+    {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if !path.is_file() {
+                continue;
+            }
+            let name = entry.file_name().to_string_lossy().to_string();
+            let size = if let Ok(metadata) = std::fs::metadata(&path) {
+                metadata.len()
+            } else {
+                0
+            };
+            file_count += 1;
+            total_size += size;
+            if !referenced.contains(&name) {
+                orphan_files += 1;
+                orphan_size += size;
             }
         }
     }
@@ -443,7 +442,7 @@ pub fn compute_user_message_seqs(line_list: &[GameLine]) -> Vec<Option<u32>> {
     line_list
         .iter()
         .map(|gl| {
-            if gl.base.sender_role_id == Some(0) && matches!(gl.attribute(), LineAttribute::User) {
+            if matches!(gl.attribute(), LineAttribute::User) {
                 count += 1;
                 Some(count)
             } else {
@@ -486,7 +485,7 @@ pub(crate) async fn build_web_init_data(
         weather_effect,
         background_music,
         scene_awareness_enabled,
-        player_identity_id,
+        player_role_id,
         player_identity,
         active_save_id,
         active_script,
@@ -516,24 +515,22 @@ pub(crate) async fn build_web_init_data(
         let mut sid = gs.current_scene_id.clone();
 
         // 若无当前场景，尝试从 store 恢复上次选择的场景
-        if sid.is_none() {
-            if let Ok(store) = app.store(config::STORE_FILE) {
-                if let Some(v) = store.get(config::session::LAST_SCENE_ID) {
-                    if let Some(id) = v.as_str() {
-                        sid = Some(id.to_string());
-                    }
-                }
-            }
+        if sid.is_none()
+            && let Ok(store) = app.store(config::STORE_FILE)
+            && let Some(v) = store.get(config::session::LAST_SCENE_ID)
+            && let Some(id) = v.as_str()
+        {
+            sid = Some(id.to_string());
         }
 
         // 若仍无场景，随机选一个
         if sid.is_none() {
             let store = SceneStore::new(&service.data_dir);
-            if let Ok(scenes) = store.load_all() {
-                if !scenes.is_empty() {
-                    let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
-                    sid = Some(scenes[idx].id.clone());
-                }
+            if let Ok(scenes) = store.load_all()
+                && !scenes.is_empty()
+            {
+                let idx = chrono::Utc::now().timestamp_subsec_nanos() as usize % scenes.len();
+                sid = Some(scenes[idx].id.clone());
             }
         }
 
@@ -558,10 +555,10 @@ pub(crate) async fn build_web_init_data(
         );
 
         // 从 store 恢复场景感知开关
-        if let Ok(store) = app.store(config::STORE_FILE) {
-            if let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED) {
-                gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
-            }
+        if let Ok(store) = app.store(config::STORE_FILE)
+            && let Some(v) = store.get(config::session::SCENE_AWARENESS_ENABLED)
+        {
+            gs.scene_awareness_enabled = v.as_bool().unwrap_or(true);
         }
         let scene_awareness = gs.scene_awareness_enabled;
 
@@ -581,9 +578,8 @@ pub(crate) async fn build_web_init_data(
             })
             .collect();
 
-        let player_identity_id = gs.player.identity_id.clone();
+        let player_role_id = gs.player.player_role_id;
         let player_identity = PlayerIdentityInit {
-            id: gs.player.identity_id.clone(),
             name: gs.player.user_name.clone(),
             subtitle: gs.player.user_subtitle.clone(),
             prompt: gs.player.user_prompt.clone(),
@@ -603,7 +599,7 @@ pub(crate) async fn build_web_init_data(
             gs.weather_effect.clone(),
             gs.background_music.clone(),
             scene_awareness,
-            player_identity_id,
+            player_role_id,
             player_identity,
             gs.active_save_id,
             active_script,
@@ -650,7 +646,7 @@ pub(crate) async fn build_web_init_data(
         last_bgm_paused,
         last_bgm_mode,
         last_ambient_tracks,
-        player_identity_id,
+        player_role_id,
         player_identity,
         active_save_id,
         active_script,
@@ -705,11 +701,7 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
                 .clone()
                 .unwrap_or_else(|| format!("角色{}", role_id));
 
-            let speaker_relations = runtime_relations::load_effective(
-                &crate::api::data_dir(),
-                &role.settings.character_folder,
-                &gs,
-            );
+            let speaker_relations = runtime_relations::load_effective(role_id, &gs);
             let alias = effective_user_alias(&role.settings, &gs.player.user_name);
             let player_block =
                 crate::ai_service::game_system::player_identity::persona::player_block_for(
@@ -753,8 +745,8 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
         // 上台 + 刷新记忆（让新角色感知后续台词）
         gs.onstage_role(role_id);
 
-        let identity_id = gs.player.identity_id.clone();
-        gs.seed_identity_affection(db, role_id, identity_id.as_deref())
+        let player_role_id = gs.player.player_role_id;
+        gs.seed_player_affection(db, role_id, player_role_id)
             .await
             .map_err(|e| format!("播种好感度失败: {}", e))?;
 
@@ -762,7 +754,6 @@ pub async fn add_role_to_scene(app: AppHandle, role_id: i32) -> Result<JsonValue
         crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
             &mut gs,
             db,
-            &crate::api::data_dir(),
             prompt_options,
         )
         .await
@@ -851,7 +842,6 @@ pub async fn remove_role_from_scene(app: AppHandle, role_id: i32) -> Result<Json
         crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
             &mut gs,
             db,
-            &crate::api::data_dir(),
             prompt_options,
         )
         .await

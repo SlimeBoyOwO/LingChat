@@ -6,8 +6,8 @@ use sea_orm::{
     ActiveModelTrait, ColumnTrait, ConnectionTrait, EntityTrait, QueryFilter, QueryOrder, Set,
 };
 
-use crate::db::entities::hotword_weight::normalize_weight;
-use crate::db::entities::{global_hotword, hotword_category, library_hotword, role_hotword};
+use crate::db::entities::hotword::{self, KIND_GLOBAL, KIND_LIBRARY, KIND_ROLE, normalize_weight};
+use crate::db::entities::hotword_category;
 
 /// 每作用域条数上限（角色与全局同一口径）。
 const MAX_ROWS_PER_ROLE: usize = 200;
@@ -118,6 +118,34 @@ fn validate_and_merge(
     validate_and_merge_by(rows, max_rows, |_, text| text.to_string())
 }
 
+/// 按作用域整表替换：先删该作用域的行，再按归并结果插入。
+async fn replace_scope<C: ConnectionTrait>(
+    db: &C,
+    kind: &str,
+    role_id: Option<i32>,
+    merged: Vec<MergedRow>,
+) -> Result<(), anyhow::Error> {
+    let mut delete = hotword::Entity::delete_many().filter(hotword::Column::Kind.eq(kind));
+    if let Some(role_id) = role_id {
+        delete = delete.filter(hotword::Column::RoleId.eq(role_id));
+    }
+    delete.exec(db).await.map_err(|e| anyhow!(e))?;
+
+    for MergedRow { text, weight, .. } in merged {
+        hotword::ActiveModel {
+            kind: Set(kind.to_string()),
+            role_id: Set(role_id),
+            text: Set(text),
+            weight: Set(weight),
+            ..Default::default()
+        }
+        .insert(db)
+        .await
+        .map_err(|e| anyhow!(e))?;
+    }
+    Ok(())
+}
+
 pub struct HotwordRepo;
 
 impl HotwordRepo {
@@ -125,10 +153,11 @@ impl HotwordRepo {
     pub async fn list_by_role<C: ConnectionTrait>(
         db: &C,
         role_id: i32,
-    ) -> Result<Vec<role_hotword::Model>, anyhow::Error> {
-        role_hotword::Entity::find()
-            .filter(role_hotword::Column::RoleId.eq(role_id))
-            .order_by_asc(role_hotword::Column::Id)
+    ) -> Result<Vec<hotword::Model>, anyhow::Error> {
+        hotword::Entity::find()
+            .filter(hotword::Column::Kind.eq(KIND_ROLE))
+            .filter(hotword::Column::RoleId.eq(role_id))
+            .order_by_asc(hotword::Column::Id)
             .all(db)
             .await
             .map_err(|e| anyhow!(e))
@@ -138,16 +167,46 @@ impl HotwordRepo {
     pub async fn list_by_roles<C: ConnectionTrait>(
         db: &C,
         role_ids: &[i32],
-    ) -> Result<Vec<role_hotword::Model>, anyhow::Error> {
+    ) -> Result<Vec<hotword::Model>, anyhow::Error> {
         if role_ids.is_empty() {
             return Ok(Vec::new());
         }
-        role_hotword::Entity::find()
-            .filter(role_hotword::Column::RoleId.is_in(role_ids.iter().copied()))
-            .order_by_asc(role_hotword::Column::Id)
+        hotword::Entity::find()
+            .filter(hotword::Column::Kind.eq(KIND_ROLE))
+            .filter(hotword::Column::RoleId.is_in(role_ids.iter().copied()))
+            .order_by_asc(hotword::Column::Id)
             .all(db)
             .await
             .map_err(|e| anyhow!(e))
+    }
+
+    pub async fn list_global<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<Vec<hotword::Model>, anyhow::Error> {
+        hotword::Entity::find()
+            .filter(hotword::Column::Kind.eq(KIND_GLOBAL))
+            .order_by_asc(hotword::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| anyhow!(e))
+    }
+
+    /// 词库两张表，皆按 id 升序 = 插入顺序（整表替换按序插入）。
+    pub async fn list_library<C: ConnectionTrait>(
+        db: &C,
+    ) -> Result<(Vec<hotword_category::Model>, Vec<hotword::Model>), anyhow::Error> {
+        let categories = hotword_category::Entity::find()
+            .order_by_asc(hotword_category::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| anyhow!(e))?;
+        let words = hotword::Entity::find()
+            .filter(hotword::Column::Kind.eq(KIND_LIBRARY))
+            .order_by_asc(hotword::Column::Id)
+            .all(db)
+            .await
+            .map_err(|e| anyhow!(e))?;
+        Ok((categories, words))
     }
 
     /// 整表替换（delete + insert），入参按 trim 后的 `text` 归并取 max weight。
@@ -159,23 +218,7 @@ impl HotwordRepo {
         rows: &[(String, i32)],
     ) -> Result<(), anyhow::Error> {
         let merged = validate_and_merge(rows, MAX_ROWS_PER_ROLE)?;
-        role_hotword::Entity::delete_many()
-            .filter(role_hotword::Column::RoleId.eq(role_id))
-            .exec(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        for MergedRow { text, weight, .. } in merged {
-            role_hotword::ActiveModel {
-                role_id: Set(role_id),
-                text: Set(text),
-                weight: Set(weight),
-                ..Default::default()
-            }
-            .insert(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        }
-        Ok(())
+        replace_scope(db, KIND_ROLE, Some(role_id), merged).await
     }
 
     pub async fn replace_global<C: ConnectionTrait>(
@@ -183,48 +226,21 @@ impl HotwordRepo {
         rows: &[(String, i32)],
     ) -> Result<(), anyhow::Error> {
         let merged = validate_and_merge(rows, MAX_ROWS_PER_ROLE)?;
-        global_hotword::Entity::delete_many()
+        replace_scope(db, KIND_GLOBAL, None, merged).await
+    }
+
+    /// 删除某角色的全部热词（删角色时调用）。必须带 `kind`，见 [`replace_scope`]。
+    pub async fn delete_by_role<C: ConnectionTrait>(
+        db: &C,
+        role_id: i32,
+    ) -> Result<(), anyhow::Error> {
+        hotword::Entity::delete_many()
+            .filter(hotword::Column::Kind.eq(KIND_ROLE))
+            .filter(hotword::Column::RoleId.eq(role_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!(e))?;
-        for MergedRow { text, weight, .. } in merged {
-            global_hotword::ActiveModel {
-                text: Set(text),
-                weight: Set(weight),
-                ..Default::default()
-            }
-            .insert(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        }
         Ok(())
-    }
-
-    pub async fn list_global<C: ConnectionTrait>(
-        db: &C,
-    ) -> Result<Vec<global_hotword::Model>, anyhow::Error> {
-        global_hotword::Entity::find()
-            .order_by_asc(global_hotword::Column::Id)
-            .all(db)
-            .await
-            .map_err(|e| anyhow!(e))
-    }
-
-    /// 词库两张表，皆按 id 升序 = 插入顺序（整表替换按序插入）。
-    pub async fn list_library<C: ConnectionTrait>(
-        db: &C,
-    ) -> Result<(Vec<hotword_category::Model>, Vec<library_hotword::Model>), anyhow::Error> {
-        let categories = hotword_category::Entity::find()
-            .order_by_asc(hotword_category::Column::Id)
-            .all(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        let words = library_hotword::Entity::find()
-            .order_by_asc(library_hotword::Column::Id)
-            .all(db)
-            .await
-            .map_err(|e| anyhow!(e))?;
-        Ok((categories, words))
     }
 
     /// 词库整表替换（两表一起重建）。`categories` 的顺序 = 插入顺序，
@@ -253,7 +269,7 @@ impl HotwordRepo {
                     "分类名超长：{chars} 字符 > {MAX_CATEGORY_NAME_CHARS}"
                 ));
             }
-            // 与 DB 的 UNIQUE(name)（BINARY）同口径：trim 后精确比较
+            // 与 DB 的唯一索引同口径：trim 后精确比较
             if names.iter().any(|n| n == name) {
                 return Err(anyhow!("分类名重复：{name}"));
             }
@@ -261,10 +277,10 @@ impl HotwordRepo {
         }
 
         for (index, _, _) in words.iter() {
-            if let Some(index) = index {
-                if *index >= names.len() {
-                    return Err(anyhow!("词条的分类下标越界：{index} >= {}", names.len()));
-                }
+            if let Some(index) = index
+                && *index >= names.len()
+            {
+                return Err(anyhow!("词条的分类下标越界：{index} >= {}", names.len()));
             }
         }
 
@@ -277,7 +293,8 @@ impl HotwordRepo {
             (words[index].0, text.to_string())
         })?;
 
-        library_hotword::Entity::delete_many()
+        hotword::Entity::delete_many()
+            .filter(hotword::Column::Kind.eq(KIND_LIBRARY))
             .exec(db)
             .await
             .map_err(|e| anyhow!(e))?;
@@ -301,9 +318,9 @@ impl HotwordRepo {
 
         // 归并后按首现下标取回原入参的分类（越界已在上方校验）
         for row in merged {
-            let category_id = words[row.first_index].0.map(|index| ids[index]);
-            library_hotword::ActiveModel {
-                category_id: Set(category_id),
+            hotword::ActiveModel {
+                kind: Set(KIND_LIBRARY.to_string()),
+                category_id: Set(words[row.first_index].0.map(|index| ids[index])),
                 text: Set(row.text),
                 weight: Set(row.weight),
                 ..Default::default()

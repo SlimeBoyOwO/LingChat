@@ -9,7 +9,7 @@ use tauri::{AppHandle, Manager};
 use crate::AppState;
 use crate::ai_service::asr::provider::Hotword;
 use crate::api::asr::HotwordInput;
-use crate::db::entities::{global_hotword, role_hotword};
+use crate::db::entities::hotword;
 use crate::db::managers::hotword_repo::HotwordRepo;
 
 /// 热词的对外表示；比 provider 侧的 `Hotword` 多一个 `role_id`（DB 概念）。
@@ -17,29 +17,19 @@ use crate::db::managers::hotword_repo::HotwordRepo;
 pub struct RoleHotword {
     pub text: String,
     pub weight: u8,
-    /// 供 UI 归因展示。
+    /// 供 UI 归因展示；全局热词恒为 0（存储里 `role_id` 为空）。
     pub role_id: i32,
 }
 
 impl RoleHotword {
     /// weight 走实体层的离散归一（`[1, 5] ∪ {50}`）。
-    /// 读侧也要归一：DDL 的 `CHECK` 只兜底写入，LAN 镜像会送来旧的非法值，
-    /// 直接 `as u8` 还会静默回绕。
-    fn from_parts(text: String, weight: i32, role_id: i32) -> Self {
+    /// 读侧也要归一：LAN 镜像会送来旧的非法值，直接 `as u8` 还会静默回绕。
+    fn from_model(row: hotword::Model) -> Self {
         Self {
-            text,
-            weight: crate::db::entities::hotword_weight::normalize_weight(weight) as u8,
-            role_id,
+            text: row.text,
+            weight: hotword::normalize_weight(row.weight) as u8,
+            role_id: row.role_id.unwrap_or_default(),
         }
-    }
-
-    fn from_model(row: role_hotword::Model) -> Self {
-        Self::from_parts(row.text, row.weight, row.role_id)
-    }
-
-    /// 全局热词共用同一对外结构，`role_id` 恒为 0（占位：不入库、不上行）。
-    fn from_global(row: global_hotword::Model) -> Self {
-        Self::from_parts(row.text, row.weight, 0)
     }
 }
 
@@ -80,9 +70,12 @@ async fn scene_hotwords(
     }
 
     // IN 查询的返回顺序未定义，按 role_ids 重新分组。
-    let mut by_role: HashMap<i32, Vec<role_hotword::Model>> = HashMap::new();
+    let mut by_role: HashMap<i32, Vec<hotword::Model>> = HashMap::new();
     for row in HotwordRepo::list_by_roles(db, &role_ids).await? {
-        by_role.entry(row.role_id).or_default().push(row);
+        by_role
+            .entry(row.role_id.unwrap_or_default())
+            .or_default()
+            .push(row);
     }
 
     let mut out = Vec::new();
@@ -166,10 +159,10 @@ pub async fn save_role_hotwords(
 
 // 全局热词（与场景角色热词取并集参与识别）
 
-/// 全局热词。绝不写进 `role_hotword`——那里的 `role_id = 0` 是 User 的真实数据。
+/// 全局热词。存储里 `kind = global`、两列归属为空，与角色热词天然隔离。
 async fn global_hotwords(db: &DatabaseConnection) -> Result<Vec<RoleHotword>, anyhow::Error> {
     let rows = HotwordRepo::list_global(db).await?;
-    Ok(rows.into_iter().map(RoleHotword::from_global).collect())
+    Ok(rows.into_iter().map(RoleHotword::from_model).collect())
 }
 
 async fn save_global(
@@ -226,7 +219,7 @@ async fn library(db: &DatabaseConnection) -> Result<HotwordLibrary, anyhow::Erro
                 // 悬空 category_id（防御旧设备或手改 payload）归未分类
                 category_index: row.category_id.and_then(|id| index_of.get(&id).copied()),
                 text: row.text,
-                weight: crate::db::entities::hotword_weight::normalize_weight(row.weight) as u8,
+                weight: hotword::normalize_weight(row.weight) as u8,
             })
             .collect(),
     })

@@ -7,8 +7,10 @@
 //! [`embedding`] 提供 ONNX 句向量引擎，供笔记 / 记忆检索与 Tool RAG 复用。
 //! [`retrieval`] 维护按角色隔离的笔记向量索引并提供 Top-K 检索。
 //! [`vector`] 基于 sqlite-vec 提供本地向量存储，检索能力由调用方按需组合。
+//! [`ort_env`] 持有进程唯一的 ONNX Runtime 环境，所有会话构建都从这里取用。
 
 pub mod embedding;
+pub mod ort_env;
 pub mod retrieval;
 pub mod vector;
 
@@ -31,6 +33,18 @@ pub struct Note {
     #[serde(default)]
     pub tags: Vec<String>,
     pub created_at: String,
+}
+
+impl Note {
+    /// 生成一条新笔记：uuid 主键 + UTC 时间戳。
+    pub fn new(content: String, tags: Vec<String>) -> Self {
+        Self {
+            id: uuid::Uuid::new_v4().to_string(),
+            content,
+            tags,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        }
+    }
 }
 
 /// 笔记库读写失败。
@@ -114,12 +128,7 @@ impl NotesStore {
         tags: Vec<String>,
     ) -> Result<String, NoteError> {
         let mut notes = self.load(role_name)?;
-        let note = Note {
-            id: uuid::Uuid::new_v4().to_string(),
-            content,
-            tags,
-            created_at: chrono::Utc::now().to_rfc3339(),
-        };
+        let note = Note::new(content, tags);
         let id = note.id.clone();
         notes.push(note);
         self.save(role_name, &notes)?;

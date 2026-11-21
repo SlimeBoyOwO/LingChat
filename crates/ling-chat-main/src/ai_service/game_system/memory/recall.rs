@@ -36,7 +36,7 @@ pub struct RecallStamp {
     pub role_id: i32,
     pub display_name: String,
     pub generation: u64,
-    identity_id: Option<String>,
+    player_role_id: Option<i32>,
     revision: u64,
     lines: Vec<String>,
 }
@@ -50,7 +50,7 @@ impl RecallStamp {
                 .ok_or_else(|| anyhow::anyhow!("当前没有对话角色"))?,
             display_name,
             generation: status.preview_generation,
-            identity_id: status.player.identity_id.clone(),
+            player_role_id: status.player.player_role_id,
             revision: 0,
             lines: line_fingerprints(&status.line_list)?,
         })
@@ -63,7 +63,7 @@ impl RecallStamp {
     pub fn matches_history(&self, status: &GameStatus) -> bool {
         // 允许在本轮末尾追加新台词，但之前的历史必须保持不变。
         status.active_save_id == self.save_id
-            && status.player.identity_id == self.identity_id
+            && status.player.player_role_id == self.player_role_id
             && status.preview_generation == self.generation
             && status.line_list.len() >= self.lines.len()
             && line_fingerprints(&status.line_list[..self.lines.len()])
@@ -82,7 +82,6 @@ fn line_fingerprints(lines: &[GameLine]) -> Result<Vec<String>> {
             Ok(memory_version(&(
                 line.attribute(),
                 line.sender_role_id(),
-                &line.base.identity_id,
                 &line.base.round_id,
                 &line.base.display_name,
                 line.content(),

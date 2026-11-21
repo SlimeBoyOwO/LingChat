@@ -195,15 +195,13 @@ impl MessageGenerator {
         // 已经越界时交给上面的数量纠偏，不再叠一条「要有变化」；本轮没落下台词时
         // 不检查，否则会拿上一轮的结论重复排同一条提示。
         let produced_lines = round_replies.iter().any(|round| round.landed_lines > 0);
-        if produced_lines {
-            if let Some((count, streak)) = same_length_streak(&gs.line_list) {
-                let in_range = match mode.accepted_range() {
-                    Some((min, max)) => (min..=max).contains(&count),
-                    None => true,
-                };
-                if streak >= REPETITION_MIN_ROUNDS && in_range {
-                    texts.push(repetition_text(streak, count));
-                }
+        if produced_lines && let Some((count, streak)) = same_length_streak(&gs.line_list) {
+            let in_range = match mode.accepted_range() {
+                Some((min, max)) => (min..=max).contains(&count),
+                None => true,
+            };
+            if streak >= REPETITION_MIN_ROUNDS && in_range {
+                texts.push(repetition_text(streak, count));
             }
         }
 
@@ -287,10 +285,10 @@ fn reply_query<'a>(lines: impl Iterator<Item = &'a GameLine>) -> String {
         if !content.is_empty() {
             parts.push(content);
         }
-        if let Some(action) = line.base.action_content.as_deref().map(str::trim) {
-            if !action.is_empty() {
-                parts.push(action);
-            }
+        if let Some(action) = line.base.action_content.as_deref().map(str::trim)
+            && !action.is_empty()
+        {
+            parts.push(action);
         }
     }
     parts.join("\n")

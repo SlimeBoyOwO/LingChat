@@ -5,7 +5,7 @@ members = [
     "crates/ling-chat-plugins",
     "crates/ling-chat-notes",
 ]
-resolver = "2"
+resolver = "3"
 
 # 三个成员共用的包版本。
 [workspace.package]

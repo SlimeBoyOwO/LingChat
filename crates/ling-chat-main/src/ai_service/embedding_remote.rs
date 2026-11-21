@@ -446,22 +446,21 @@ impl WarmingTask {
 
     /// 登记任务句柄（代号不匹配说明已被新一轮取代）。
     pub fn attach(&self, generation: u64, handle: tauri::async_runtime::JoinHandle<()>) {
-        if let Ok(mut guard) = self.run.lock() {
-            if let Some(run) = guard.as_mut().filter(|run| run.generation == generation) {
-                run.handle = Some(handle);
-            }
+        if let Ok(mut guard) = self.run.lock()
+            && let Some(run) = guard.as_mut().filter(|run| run.generation == generation)
+        {
+            run.handle = Some(handle);
         }
     }
 
     /// 任务体收尾：只清理自己这一轮，不动后继任务。
     pub fn finish(&self, generation: u64) {
-        if let Ok(mut guard) = self.run.lock() {
-            if guard
+        if let Ok(mut guard) = self.run.lock()
+            && guard
                 .as_ref()
                 .is_some_and(|run| run.generation == generation)
-            {
-                *guard = None;
-            }
+        {
+            *guard = None;
         }
     }
 }

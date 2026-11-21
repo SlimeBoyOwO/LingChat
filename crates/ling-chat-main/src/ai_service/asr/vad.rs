@@ -5,7 +5,7 @@
 //! 事件映射为 `asr://*` 事件推送给前端。
 
 use std::path::PathBuf;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 
 use ndarray::Array2;
 use ort::session::Session;
@@ -61,7 +61,8 @@ impl VadState {
 
 /// Silero VAD wrapper。
 pub struct AsrVad {
-    session: Mutex<Option<Session>>,
+    /// 推理会话。用 std 锁而非 tokio 锁：`run` 在阻塞池里执行，guard 不能跨 await。
+    session: Arc<StdMutex<Option<Session>>>,
     state: Arc<Mutex<VadState>>,
     /// 语音切分状态机（独立于模型推理，见 vad_segmenter.rs）。
     segmenter: Mutex<super::vad_segmenter::VadSegmenter>,
@@ -80,12 +81,16 @@ impl AsrVad {
         }
         let model_path = resolve_vad_model_path(app)?;
         tracing::info!("[ASR/VAD] loading model from {}", model_path.display());
-        let session = Session::builder()
+        let environment = ling_chat_notes::ort_env::environment()
+            .map_err(|e| AsrError::EngineLoadFailed(format!("ONNX environment: {e}")))?;
+        let session = Session::builder(environment)
             .map_err(|e| AsrError::EngineLoadFailed(format!("SessionBuilder: {e}")))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
             .map_err(|e| AsrError::EngineLoadFailed(format!("optimization level: {e}")))?
             .with_intra_threads(1)
             .map_err(|e| AsrError::EngineLoadFailed(format!("intra threads: {e}")))?
+            .with_inter_threads(1)
+            .map_err(|e| AsrError::EngineLoadFailed(format!("inter threads: {e}")))?
             .commit_from_file(model_path.as_path())
             .map_err(|e| {
                 AsrError::EngineLoadFailed(format!(
@@ -94,7 +99,7 @@ impl AsrVad {
                 ))
             })?;
         Ok(Self {
-            session: Mutex::new(Some(session)),
+            session: Arc::new(StdMutex::new(Some(session))),
             state: Arc::new(Mutex::new(VadState::new())),
             segmenter: Mutex::new(super::vad_segmenter::VadSegmenter::new()),
         })
@@ -126,13 +131,12 @@ impl AsrVad {
         app: &AppHandle,
         pcm: &[f32],
     ) -> Result<Option<VadProcessResult>, AsrError> {
-        let mut session_guard = self.session.lock().await;
-        let session = match session_guard.as_mut() {
-            Some(s) => s,
-            None => return Ok(None), // fail-open: 模型未加载返回 None
-        };
+        // 模型未加载时 fail-open，且不更新 context（与原行为一致）。
+        if self.session.lock().is_ok_and(|g| g.is_none()) {
+            return Ok(None);
+        }
 
-        // 取 state + 拼 context（先算完释放 state 锁再推理）
+        // 取 state + 拼 context（先算完释放 state 锁，推理放到阻塞池）。
         let (input_samples, state_tensor) = {
             let mut st = self.state.lock().await;
             let mut input = Vec::with_capacity(VAD_CONTEXT_SAMPLES + pcm.len());
@@ -145,52 +149,80 @@ impl AsrVad {
             (input, state_tensor)
         };
 
+        // ONNX 推理是同步阻塞的，放到阻塞池，避免长期占用 async worker。
+        let session = Arc::clone(&self.session);
         let input_len = input_samples.len();
-        let input = ndarray::Array::from_shape_vec((1, input_len), input_samples).map_err(|e| {
-            tracing::error!("[ASR/VAD] input shape 构造失败 (len={}): {e}", input_len);
-            AsrError::EngineLoadFailed(format!("input shape: {e}"))
-        })?;
-        let input_t = Tensor::from_array(input).map_err(|e| {
-            tracing::error!("[ASR/VAD] input Tensor::from_array 失败: {e}");
-            AsrError::EngineLoadFailed(format!("input tensor: {e}"))
-        })?;
-        let state_t = Tensor::from_array(state_tensor).map_err(|e| {
-            tracing::error!("[ASR/VAD] state Tensor::from_array 失败: {e}");
-            AsrError::EngineLoadFailed(format!("state tensor: {e}"))
-        })?;
-        let sr_t = Tensor::from_array(ndarray::arr0(16000i64)).map_err(|e| {
-            tracing::error!("[ASR/VAD] sr Tensor::from_array 失败: {e}");
-            AsrError::EngineLoadFailed(format!("sr tensor: {e}"))
-        })?;
+        let inferred = tokio::task::spawn_blocking(
+            move || -> Result<Option<(f32, Option<Array2<f32>>)>, AsrError> {
+                let mut session_guard = session
+                    .lock()
+                    .map_err(|_| AsrError::EngineLoadFailed("VAD session 锁已中毒".into()))?;
+                let Some(session) = session_guard.as_mut() else {
+                    return Ok(None); // fail-open: 模型未加载
+                };
 
-        let outputs = session
-            .run(ort::inputs![
-                "input" => input_t,
-                "state" => state_t,
-                "sr" => sr_t,
-            ])
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] session.run 失败: {e}");
-                AsrError::EngineLoadFailed(format!("vad forward: {e}"))
-            })?;
+                let input =
+                    ndarray::Array::from_shape_vec((1, input_len), input_samples).map_err(|e| {
+                        tracing::error!("[ASR/VAD] input shape 构造失败 (len={input_len}): {e}");
+                        AsrError::EngineLoadFailed(format!("input shape: {e}"))
+                    })?;
+                let input_t = Tensor::from_array(input).map_err(|e| {
+                    tracing::error!("[ASR/VAD] input Tensor::from_array 失败: {e}");
+                    AsrError::EngineLoadFailed(format!("input tensor: {e}"))
+                })?;
+                let state_t = Tensor::from_array(state_tensor).map_err(|e| {
+                    tracing::error!("[ASR/VAD] state Tensor::from_array 失败: {e}");
+                    AsrError::EngineLoadFailed(format!("state tensor: {e}"))
+                })?;
+                let sr_t = Tensor::from_array(ndarray::arr0(16000i64)).map_err(|e| {
+                    tracing::error!("[ASR/VAD] sr Tensor::from_array 失败: {e}");
+                    AsrError::EngineLoadFailed(format!("sr tensor: {e}"))
+                })?;
 
-        // 解析输出：prob + 更新后的 stateN
-        let prob = outputs["output"]
-            .try_extract_array::<f32>()
-            .map_err(|e| {
-                tracing::error!("[ASR/VAD] extract output 失败: {e}");
-                AsrError::EngineLoadFailed(format!("extract prob: {e}"))
-            })?
-            .as_slice()
-            .and_then(|s| s.first())
-            .copied()
-            .unwrap_or(0.0);
+                let outputs = session
+                    .run(ort::inputs![
+                        "input" => input_t,
+                        "state" => state_t,
+                        "sr" => sr_t,
+                    ])
+                    .map_err(|e| {
+                        tracing::error!("[ASR/VAD] session.run 失败: {e}");
+                        AsrError::EngineLoadFailed(format!("vad forward: {e}"))
+                    })?;
 
-        if let Ok(state_n) = outputs["stateN"].try_extract_array::<f32>() {
-            let data: Vec<f32> = state_n.iter().copied().collect();
-            if let Ok(arr) = Array2::from_shape_vec((2, VAD_STATE_DIM), data) {
-                self.state.lock().await.state = arr;
-            }
+                // 解析输出：prob + 更新后的 stateN
+                let prob = outputs["output"]
+                    .try_extract_array::<f32>()
+                    .map_err(|e| {
+                        tracing::error!("[ASR/VAD] extract output 失败: {e}");
+                        AsrError::EngineLoadFailed(format!("extract prob: {e}"))
+                    })?
+                    .as_slice()
+                    .and_then(|s| s.first())
+                    .copied()
+                    .unwrap_or(0.0);
+
+                let new_state =
+                    outputs["stateN"]
+                        .try_extract_array::<f32>()
+                        .ok()
+                        .and_then(|state_n| {
+                            let data: Vec<f32> = state_n.iter().copied().collect();
+                            Array2::from_shape_vec((2, VAD_STATE_DIM), data).ok()
+                        });
+
+                Ok(Some((prob, new_state)))
+            },
+        )
+        .await
+        .map_err(|e| AsrError::EngineLoadFailed(format!("vad join: {e}")))??;
+
+        let Some((prob, new_state)) = inferred else {
+            return Ok(None); // fail-open: 模型未加载
+        };
+
+        if let Some(arr) = new_state {
+            self.state.lock().await.state = arr;
         }
 
         // 切分状态机：prob → 事件 → emit

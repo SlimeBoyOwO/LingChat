@@ -2,7 +2,7 @@
 //!
 //! 集中所有「把图片/视频交给视觉模型识别」的请求逻辑，替代原先散落在
 //! `screen_analyzer` 与 `tools/read_media_file` 里的两套手写 HTTP：
-//! - 图片走 genai（OpenAI 兼容 adapter），与项目其余 LLM 调用统一；
+//! - 图片按供应商协议路由；Codex 复用订阅 Responses 客户端，兼容接口走 genai；
 //! - 视频保留裸 reqwest（genai 0.6.5 不支持 `video_url`），但代码位置也收敛到这里。
 
 use anyhow::{Result, anyhow};
@@ -17,8 +17,9 @@ use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
 use serde_json::Value;
 
+use crate::ai_service::llm::LlmConfig;
 use crate::ai_service::llm::provider_config::LlmProviderConfig;
-use crate::ai_service::llm::providers::normalize_base_url;
+use crate::ai_service::llm::providers::{CodexProvider, normalize_base_url};
 
 /// 一次视觉识别的结果（文本 + 用量）。
 pub struct VisionResult {
@@ -27,19 +28,33 @@ pub struct VisionResult {
     pub output_tokens: Option<u32>,
 }
 
-/// 视觉请求的目标端点（`base_url` 已按视觉协议改写为 OpenAI 兼容端点）。
-pub struct VisionTarget {
-    pub api_key: String,
-    pub base_url: String,
-    pub model: String,
+/// 保留供应商协议，避免把订阅凭据和空 base_url 当成普通兼容接口。
+#[derive(Clone, Debug)]
+pub enum VisionTarget {
+    Codex(LlmConfig),
+    OpenAiCompatible {
+        api_key: String,
+        base_url: String,
+        model: String,
+    },
 }
 
 impl VisionTarget {
-    pub fn from_provider(provider: &LlmProviderConfig) -> Self {
-        Self {
+    pub fn from_provider(provider: &LlmProviderConfig, timeout_secs: u64) -> Self {
+        if provider.provider.eq_ignore_ascii_case("codex") {
+            return Self::Codex(provider.to_llm_config(timeout_secs));
+        }
+        Self::OpenAiCompatible {
             api_key: provider.api_key.clone(),
             base_url: vision_base_url(provider),
             model: provider.model.clone(),
+        }
+    }
+
+    pub fn model(&self) -> &str {
+        match self {
+            Self::Codex(config) => &config.model,
+            Self::OpenAiCompatible { model, .. } => model,
         }
     }
 }
@@ -67,7 +82,7 @@ pub fn vision_base_url(provider: &LlmProviderConfig) -> String {
     }
 }
 
-/// 图片识别：走 genai（固定 OpenAI 兼容 adapter）。
+/// 图片识别：复用各供应商的认证与图片输入协议。
 pub async fn analyze_image(
     http: &Client,
     target: &VisionTarget,
@@ -84,6 +99,29 @@ pub async fn analyze_image(
         "data:{mime};base64,{}",
         base64::prelude::BASE64_STANDARD.encode(&image_bytes)
     );
+    let (api_key, base_url, model) = match target {
+        VisionTarget::Codex(config) => {
+            let (text, usage) = CodexProvider::from_config(config)?
+                .complete_vision(prompt, data_url, max_tokens)
+                .await
+                .map_err(|error| anyhow!("Codex 视觉模型请求失败: {error}"))?;
+            if text.trim().is_empty() {
+                return Err(anyhow!(
+                    "Codex 视觉模型未返回图片识别文本，请检查输出上限和推理设置"
+                ));
+            }
+            return Ok(VisionResult {
+                text,
+                input_tokens: usage.map(|u| u.prompt_tokens.min(u32::MAX as u64) as u32),
+                output_tokens: usage.map(|u| u.completion_tokens.min(u32::MAX as u64) as u32),
+            });
+        },
+        VisionTarget::OpenAiCompatible {
+            api_key,
+            base_url,
+            model,
+        } => (api_key, base_url, model),
+    };
     let content = MessageContent::from_parts(vec![
         ContentPart::Text(prompt.to_string()),
         ContentPart::from_binary_url(mime.to_string(), data_url, None),
@@ -92,8 +130,8 @@ pub async fn analyze_image(
 
     // genai 的 OpenAI adapter 用 `Url::join("chat/completions")` 拼路径，
     // base_url 必须以 `/` 结尾，否则 `v1` 会被当成文件替换掉（同 #787 的坑）。
-    let key = target.api_key.clone();
-    let base = normalize_base_url(&target.base_url);
+    let key = api_key.clone();
+    let base = normalize_base_url(base_url);
     let client = GenaiClient::builder()
         .with_reqwest(http.clone())
         .with_adapter_kind(AdapterKind::OpenAI)
@@ -107,7 +145,7 @@ pub async fn analyze_image(
     let opts = ChatOptions::default().with_max_tokens(max_tokens);
 
     let response = client
-        .exec_chat(&target.model, chat_req, Some(&opts))
+        .exec_chat(model, chat_req, Some(&opts))
         .await
         .map_err(|e| anyhow!("视觉模型请求失败: {e}"))?;
 
@@ -161,12 +199,22 @@ pub async fn analyze_video(
     mime: &str,
     max_tokens: u32,
 ) -> Result<VisionResult> {
+    let VisionTarget::OpenAiCompatible {
+        api_key,
+        base_url,
+        model,
+    } = target
+    else {
+        return Err(anyhow!(
+            "Codex 订阅视觉通道不接收 video_url；请改用图片，或选择支持视频输入的视觉供应商"
+        ));
+    };
     let data_url = format!(
         "data:{mime};base64,{}",
         base64::prelude::BASE64_STANDARD.encode(video_bytes)
     );
     let payload = serde_json::json!({
-        "model": target.model,
+        "model": model,
         "messages": [{
             "role": "user",
             "content": [
@@ -177,10 +225,10 @@ pub async fn analyze_video(
         "max_tokens": max_tokens,
     });
 
-    let endpoint = format!("{}/chat/completions", target.base_url.trim_end_matches('/'));
+    let endpoint = format!("{}/chat/completions", base_url.trim_end_matches('/'));
     let response = http
         .post(endpoint)
-        .bearer_auth(&target.api_key)
+        .bearer_auth(api_key)
         .json(&payload)
         .send()
         .await

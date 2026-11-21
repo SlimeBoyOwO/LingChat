@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { ref } from "vue";
 import { i18n } from "@/locales";
+import type { ImageGenerationSettings } from "./image-generation";
 
 /** 网页搜索工具配置（与后端 WebSearchSettings 对应，字段保持 snake_case）。 */
 export interface WebSearchSettings {
@@ -45,6 +46,7 @@ export type ToolAccessMode = "manual" | "auto_approve" | "full_access";
 export type ToolRecommendMode = "off" | "agent" | "rag";
 
 export interface ToolSettings {
+  image_generation: ImageGenerationSettings;
   web_search: WebSearchSettings;
   media_file: MediaFileSettings;
   /** 笔记语义检索与 Tool RAG 的向量化后端 */
@@ -81,6 +83,7 @@ export interface ToolRuntimeInfo {
 
 /** 「其他工具」分组（与后端 TOOL_GROUPS 对齐；web_search 有独立设置区） */
 export const TOOL_GROUP_KEYS = [
+  "image_generation",
   "schedule",
   "memory",
   "character",
@@ -95,6 +98,7 @@ export const TOOL_GROUP_KEYS = [
 
 /** 工具包卡片的展示顺序；plugin 由后端目录里的插件工具动态插入。 */
 export const TOOL_PACKAGE_ORDER = [
+  "image_generation",
   "web_search",
   "schedule",
   "memory",

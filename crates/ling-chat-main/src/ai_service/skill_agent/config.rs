@@ -155,10 +155,10 @@ const WINDOW_PROBE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs
 pub async fn resolve_context_window(llm: &LlmClient) -> usize {
     let cfg = llm.config();
     let key = format!("{}/{}", cfg.provider, cfg.model);
-    if let Ok(cache) = window_cache().lock() {
-        if let Some(found) = cache.get(&key) {
-            return *found;
-        }
+    if let Ok(cache) = window_cache().lock()
+        && let Some(found) = cache.get(&key)
+    {
+        return *found;
     }
 
     let reported = match tokio::time::timeout(WINDOW_PROBE_TIMEOUT, llm.list_models()).await {

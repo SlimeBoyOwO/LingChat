@@ -15,6 +15,9 @@ pub const LLM_TRANSLATE_PROVIDER_ID: &str = "llm.translate_provider_id";
 pub const LLM_GOD_AGENT_PROVIDER_ID: &str = "llm.god_agent_provider_id";
 pub const LLM_VISION_PROVIDER_ID: &str = "llm.vision_provider_id";
 
+/// Codex 模型目录的固定客户端版本，按提供商 ID 保存。
+pub const CODEX_CLIENT_VERSIONS: &str = "codex.client_versions";
+
 // ========== LLM 生成参数（对应 TEMPERATURE / TOP_P / ENABLE_THINKING） ==========
 pub const LLM_TEMPERATURE: &str = "llm.temperature";
 pub const LLM_TOP_P: &str = "llm.top_p";

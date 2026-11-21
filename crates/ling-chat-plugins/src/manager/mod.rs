@@ -299,10 +299,10 @@ impl PluginManager {
                 let records = self.store.lock().await;
                 records.get(id).map(ws_open_input)
             };
-            if let Some(input) = input {
-                if let Err(e) = self.ws.spawn(id, &input, None, None) {
-                    tracing::warn!(plugin = %id, "建立 WS 连接失败: {e}");
-                }
+            if let Some(input) = input
+                && let Err(e) = self.ws.spawn(id, &input, None, None)
+            {
+                tracing::warn!(plugin = %id, "建立 WS 连接失败: {e}");
             }
         } else {
             self.cancel_plugin(id).await;

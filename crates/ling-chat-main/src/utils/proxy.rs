@@ -83,12 +83,11 @@ async fn detect_proxy_uncached() -> Option<String> {
 /// 结果缓存 10 分钟。
 pub async fn detect_proxy() -> Option<String> {
     {
-        if let Ok(guard) = CACHE.lock() {
-            if let Some((cached, at)) = &*guard {
-                if at.elapsed() < CACHE_TTL {
-                    return cached.clone();
-                }
-            }
+        if let Ok(guard) = CACHE.lock()
+            && let Some((cached, at)) = &*guard
+            && at.elapsed() < CACHE_TTL
+        {
+            return cached.clone();
         }
     }
     let found = detect_proxy_uncached().await;

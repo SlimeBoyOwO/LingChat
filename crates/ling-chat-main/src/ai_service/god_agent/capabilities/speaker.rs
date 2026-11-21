@@ -11,7 +11,7 @@ use tauri::AppHandle;
 
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::player_identity::{
-    RelationEndpoint, effective_user_alias, resolve_relation, runtime_relations,
+    effective_user_alias, resolve_relation, runtime_relations,
 };
 use crate::ai_service::tools::agent::{AgentOutput, AgentTask};
 use crate::ai_service::tools::builtin::god_agent::SELECT_NEXT_SPEAKER;
@@ -56,9 +56,8 @@ pub struct SpeakerView {
 impl SpeakerView {
     /// 锁内快照。`recent_window` 决定截取多少条台词。
     pub fn capture(gs: &GameStatus, recent_window: usize) -> Self {
-        let data_dir = crate::api::data_dir();
         let identity_name = gs.player.user_name.clone();
-        let identity_id = gs.player.identity_id.clone();
+        let player_role_id = gs.player.player_role_id;
 
         // 两遍：先收在场成员与各自的有效关系表（每角色读盘一次），再两两解析角色间认知。
         let mut npcs: Vec<NpcInfo> = Vec::new();
@@ -67,32 +66,28 @@ impl SpeakerView {
             let Some(role) = gs.role_manager.get_loaded(role_id) else {
                 continue;
             };
-            let folder = role.settings.character_folder.clone();
-            let relations = runtime_relations::load_effective(&data_dir, &folder, gs);
+            let relations = runtime_relations::load_effective(role_id, gs);
             let name = role
                 .display_name
                 .clone()
                 .unwrap_or_else(|| format!("角色{role_id}"));
             let player_alias = effective_user_alias(&role.settings, &identity_name);
-            // 玩家对该角色的认知（身份卡 relations，内存快照），如"妹妹"。
+            // 玩家对该角色的认知（玩家角色 relations，内存快照），如"妹妹"。
             let player_view_of_npc = gs
                 .player
                 .relations
-                .get(&RelationEndpoint::Ai(folder.clone()).key())
+                .get(&role_id)
                 .map(|text| text.trim().to_string())
                 .filter(|text| !text.is_empty());
-            let player_relation = resolve_relation(
-                &RelationEndpoint::Ai(folder.clone()),
-                &RelationEndpoint::Me(identity_id.clone().unwrap_or_default()),
-                &relations,
-                &HashMap::new(),
-                None,
-            )
-            .map(|view| view.text);
+            let player_relation = player_role_id
+                .and_then(|player_role_id| {
+                    resolve_relation(role_id, player_role_id, &relations, &HashMap::new(), None)
+                })
+                .map(|view| view.text);
             let player_affection_tier = crate::ai_service::affection::resolve_var(
                 &gs.global_variables,
                 role_id,
-                identity_id.as_deref(),
+                player_role_id,
             )
             .and_then(crate::ai_service::affection::state_from_value)
             .map(|state| {
@@ -110,7 +105,7 @@ impl SpeakerView {
                 peer_relations: Vec::new(),
             });
             members.push(PeerMember {
-                folder,
+                role_id,
                 name,
                 relations,
             });

@@ -25,9 +25,9 @@ pub(crate) fn is_real_dialogue(line: &GameLine) -> bool {
     match line.attribute() {
         // 角色回复：assistant 且归属某角色（工具调用的空内容载体行 sender 为空，排除）
         LineAttribute::Assistant => line.base.sender_role_id.is_some(),
-        // 玩家发言：sender_role_id==0（DB 不变量）且非旁白/系统/剧情内容
+        // 玩家发言：非旁白/系统/剧情内容（0 是旧档哨兵，新档指向玩家角色）
         LineAttribute::User => {
-            line.base.sender_role_id == Some(0)
+            line.base.sender_role_id.is_some()
                 && !line
                     .base
                     .content
@@ -192,10 +192,10 @@ impl AutoSaveManager {
         }
 
         // 0b. 冷却期：刚进入一局，先别动上一局的自动存档
-        if let Some(until) = self.grace_until {
-            if Instant::now() < until {
-                return Ok(());
-            }
+        if let Some(until) = self.grace_until
+            && Instant::now() < until
+        {
+            return Ok(());
         }
 
         // 1. Compute current hash (returns None if there is no real dialogue)
@@ -229,16 +229,19 @@ impl AutoSaveManager {
 
         // 4a. Sync lines (smart diff)。自动存档位只跟踪当前这一局，允许在无共同锚点
         //     （切过角色、开过新档）时整体接管重建，而不是永久拒绝写入。
-        if let Err(e) = SaveRepo::sync_lines(&self.db, save_id, &lines, true).await {
-            let _ = self.app.emit(
-                "save:auto-save-failed",
-                AutoSaveFailedPayload {
-                    message: e.to_string(),
-                    timestamp: Local::now().format("%H:%M:%S").to_string(),
-                },
-            );
-            return Err(format!("同步台词失败: {}", e));
-        }
+        let synced_ids = match SaveRepo::sync_lines(&self.db, save_id, &lines, true).await {
+            Ok(ids) => ids,
+            Err(e) => {
+                let _ = self.app.emit(
+                    "save:auto-save-failed",
+                    AutoSaveFailedPayload {
+                        message: e.to_string(),
+                        timestamp: Local::now().format("%H:%M:%S").to_string(),
+                    },
+                );
+                return Err(format!("同步台词失败: {}", e));
+            },
+        };
 
         // 4b. 台词落库成功后再刷新档位元数据，与内容同进同退；
         //     写的是绑定档时保持用户自己的标题与主角（与快速存档一致）。
@@ -256,22 +259,23 @@ impl AutoSaveManager {
         // 4c. Set active save
         {
             let mut gs = service.game_status.lock().await;
+            // 存档是快照：先按当前会话同步笔记，再切换归属
+            if let Err(e) = gs.rebind_save_notes(&self.db, save_id).await {
+                tracing::warn!("[AutoSave] 存档笔记同步失败: {e}");
+            }
             gs.active_save_id = Some(save_id);
             // 回填行 id：让后续锚点按 id 命中（重建人设行后仍能安全落档）。
-            if let Err(e) = SaveRepo::bind_line_ids(&self.db, save_id, &mut gs.line_list).await {
-                tracing::warn!("[AutoSave] 回填台词行 id 失败: {e}");
-            }
+            SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
         }
 
-        // 记录本局使用的「我的身份」，否则读自动存档会沿用全局当前身份。
+        // 记录本局使用的玩家角色，否则读自动存档会沿用全局当前身份。
         {
-            let identity_id = service.game_status.lock().await.player.identity_id.clone();
-            if let Some(ref id) = identity_id {
-                if !id.trim().is_empty() {
-                    if let Err(e) = SaveRepo::upsert_save_identity(&self.db, save_id, id).await {
-                        tracing::warn!("[AutoSave] 记录本局身份失败: {e}");
-                    }
-                }
+            let player_role_id = service.game_status.lock().await.player.player_role_id;
+            if player_role_id.is_some()
+                && let Err(e) =
+                    SaveRepo::update_save_player_role(&self.db, save_id, player_role_id).await
+            {
+                tracing::warn!("[AutoSave] 记录本局玩家角色失败: {e}");
             }
         }
 

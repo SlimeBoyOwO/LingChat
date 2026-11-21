@@ -358,8 +358,8 @@ impl ProactiveSystem {
             let (game_status, preview_generation) = {
                 let svc = self.ai_service.lock().await;
                 let gs = svc.game_status.clone();
-                let gen = gs.lock().await.preview_generation;
-                (gs, gen)
+                let preview_gen = gs.lock().await.preview_generation;
+                (gs, preview_gen)
             };
             GeneratorDeps {
                 source: GeneratorSource::Proactive,
@@ -506,38 +506,36 @@ impl ProactiveSystem {
         // ─── 日程闹钟 ───
         if sys.config.enable_schedule_reminder
             && (sys.config.enable_proactive_system || sys.config.force_schedule_reminder)
-        {
-            if let Some(raw_prompt) = sys
+            && let Some(raw_prompt) = sys
                 .schedule_manager
                 .check_schedule_reminder(&user_name, &settings_snap)
-            {
-                tracing::info!("[ProactiveSystem] Schedule alarm delivering immediately");
-                let formatted = PromptRole::System.build_prompt(&raw_prompt);
-                sys.deliver(formatted, None).await?;
-                return Ok(true);
-            }
+        {
+            tracing::info!("[ProactiveSystem] Schedule alarm delivering immediately");
+            let formatted = PromptRole::System.build_prompt(&raw_prompt);
+            sys.deliver(formatted, None).await?;
+            return Ok(true);
         }
 
         // ─── 待办截止提醒 ───
-        if sys.config.enable_proactive_system || sys.config.force_todo_reminder {
-            if let Some(reminder) = sys.schedule_manager.check_todo_reminder(&settings_snap) {
-                if sys.config.todo_reminder_style == "toast" {
-                    events::emit_proactive_remind(
-                        &sys.app,
-                        role_name.unwrap_or_else(|| "LingChat".to_string()),
-                        reminder.todo_text,
-                        reminder.minutes_before,
-                    );
-                } else {
-                    let raw_prompt = format!(
-                        "{{你想起来 {} 有件事快到期了：'{}'，还有 {} 分钟就到截止时间。提醒他一下吧？}}",
-                        user_name, reminder.todo_text, reminder.minutes_before
-                    );
-                    let formatted = PromptRole::System.build_prompt(&raw_prompt);
-                    sys.deliver(formatted, None).await?;
-                }
-                return Ok(true);
+        if (sys.config.enable_proactive_system || sys.config.force_todo_reminder)
+            && let Some(reminder) = sys.schedule_manager.check_todo_reminder(&settings_snap)
+        {
+            if sys.config.todo_reminder_style == "toast" {
+                events::emit_proactive_remind(
+                    &sys.app,
+                    role_name.unwrap_or_else(|| "LingChat".to_string()),
+                    reminder.todo_text,
+                    reminder.minutes_before,
+                );
+            } else {
+                let raw_prompt = format!(
+                    "{{你想起来 {} 有件事快到期了：'{}'，还有 {} 分钟就到截止时间。提醒他一下吧？}}",
+                    user_name, reminder.todo_text, reminder.minutes_before
+                );
+                let formatted = PromptRole::System.build_prompt(&raw_prompt);
+                sys.deliver(formatted, None).await?;
             }
+            return Ok(true);
         }
 
         Ok(false)

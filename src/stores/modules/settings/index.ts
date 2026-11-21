@@ -74,6 +74,7 @@ export const DEFAULT_SETTINGS = {
     scale: 1, // 桌宠缩放比例
     live2dFps: 30, // Live2D 渲染帧率上限（0 = 不限制）；桌宠窗口小，30 帧足够且显著降 CPU
     bubbleSide: "above" as BubbleSide, // 气泡/通知位置：气泡在宠物的哪一侧（四向 + 自动）
+    live2dClickJelly: true, // Live2D 待机点击是否播放果冻回弹（模型自带触摸动作，可与回弹叠加）
   },
   // 剧本编辑器快捷键（默认不含 Command 键；可在编辑器快捷键面板自定义）
   shortcuts: DEFAULT_SHORTCUTS,
@@ -153,6 +154,8 @@ export interface PetSettings {
   live2dFps: number;
   /** 气泡/通知位置 */
   bubbleSide: BubbleSide;
+  /** Live2D 待机点击是否播放果冻回弹 */
+  live2dClickJelly: boolean;
 }
 
 export interface SettingsState {
@@ -427,6 +430,14 @@ export const useSettingsStore = defineStore("settings", {
         this.pet = { ...DEFAULT_SETTINGS.pet };
       }
       this.pet.live2dFps = fps;
+    },
+
+    // 设置 Live2D 待机点击是否播放果冻回弹
+    setPetLive2dClickJelly(enabled: boolean) {
+      if (!this.pet) {
+        this.pet = { ...DEFAULT_SETTINGS.pet };
+      }
+      this.pet.live2dClickJelly = enabled;
     },
   },
 

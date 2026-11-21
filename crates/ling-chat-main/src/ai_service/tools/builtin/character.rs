@@ -158,7 +158,6 @@ impl Tool for CharacterSwitch {
         crate::ai_service::game_system::player_identity::persona::rebuild_and_refresh(
             &mut gs,
             &state.db,
-            &crate::api::data_dir(),
             prompt_options,
         )
         .await
@@ -186,10 +185,8 @@ fn canonical_clothes(available: &[ClothesItem], raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     let is_root_alias =
         trimmed.is_empty() || trimmed == "默认" || trimmed.eq_ignore_ascii_case("default");
-    if is_root_alias {
-        if let Some(root) = available.iter().find(|item| item.title == "默认") {
-            return Some(root.title.clone());
-        }
+    if is_root_alias && let Some(root) = available.iter().find(|item| item.title == "默认") {
+        return Some(root.title.clone());
     }
     available
         .iter()

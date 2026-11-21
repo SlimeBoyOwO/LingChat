@@ -45,36 +45,36 @@ impl StrategyDispatcher {
         let today_str = now.format("%m-%d").to_string();
 
         // 1. 检查 ImportantDay (如果是今天且今天未触发过)
-        if config.enable_important_day_reminder {
-            if let Some(important_days) = &settings.important_days {
-                let last_talk_date = game_status
-                    .last_dialog_time
-                    .map(|dt| dt.format("%m-%d").to_string())
-                    .unwrap_or_default();
+        if config.enable_important_day_reminder
+            && let Some(important_days) = &settings.important_days
+        {
+            let last_talk_date = game_status
+                .last_dialog_time
+                .map(|dt| dt.format("%m-%d").to_string())
+                .unwrap_or_default();
 
-                if last_talk_date != today_str {
-                    for day in important_days {
-                        if day.date.ends_with(&today_str) {
-                            let desc = day.desc.as_deref().unwrap_or("");
-                            let char_name = game_status
-                                .current_role_id
-                                .and_then(|rid| game_status.role_manager.get_loaded(rid))
-                                .and_then(|role| role.display_name.clone())
-                                .unwrap_or_else(|| "小灵".to_string());
+            if last_talk_date != today_str {
+                for day in important_days {
+                    if day.date.ends_with(&today_str) {
+                        let desc = day.desc.as_deref().unwrap_or("");
+                        let char_name = game_status
+                            .current_role_id
+                            .and_then(|rid| game_status.role_manager.get_loaded(rid))
+                            .and_then(|role| role.display_name.clone())
+                            .unwrap_or_else(|| "小灵".to_string());
 
-                            tracing::info!(
-                                "[StrategyDispatcher] Triggered important day reminder: {}",
-                                day.title
-                            );
-                            return Some(ProactivePrompt {
-                                raw_prompt: format!(
-                                    "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
-                                    day.title, desc, char_name
-                                ),
-                                intent_type: IntentType::ImportantDay,
-                                transient_image: None,
-                            });
-                        }
+                        tracing::info!(
+                            "[StrategyDispatcher] Triggered important day reminder: {}",
+                            day.title
+                        );
+                        return Some(ProactivePrompt {
+                            raw_prompt: format!(
+                                "{{今天是特殊的一天：{}，{}。可以和{}聊聊哦}}",
+                                day.title, desc, char_name
+                            ),
+                            intent_type: IntentType::ImportantDay,
+                            transient_image: None,
+                        });
                     }
                 }
             }

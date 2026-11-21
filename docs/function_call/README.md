@@ -106,6 +106,6 @@ PR #523 的目标：
         │                  → 最多 MAX_TOOL_ROUNDS=3 轮
    → tool_messages 写入 line 表（assistant 带 tool_call JSON / tool 带 {tool_call_id,result}）
    → refresh_memories → MemoryBuilder 按台词表重建 role.memory（工具历史已入记忆）
-   → 最终 LLM 流 → producer/consumer → add_assistant_line（试玩代号守卫）
+   → 最终 LLM 流 → producer/consumer → publisher 按句序提交并发布（add_assistant_line 做试玩代号守卫）
    → 下次生成时 get_current_context 读 role.memory，工具历史完整参与上下文
 ```

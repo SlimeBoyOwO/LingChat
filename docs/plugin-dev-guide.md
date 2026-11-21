@@ -216,7 +216,7 @@ def run(ctx):
     call_tool = ctx["call_tool"]
     status = call_tool("status_get_current", {})
     todos = call_tool("schedule_get_all", {})
-    notes = call_tool("memory_get_notes", {"role": "莱姆"})
+    notes = call_tool("memory_get_notes", {"scope": "role", "role": "莱姆"})
     return {"ok": True, "now_role": status.get("current_role_id")}
 ```
 
@@ -667,7 +667,7 @@ def on_start(ctx):
 - 参数：`{ id: integer(必), group?: string }`（`group` 同上）
 - 返回：`{ ok: true, id: number, group: string }`
 
-### 记忆（角色笔记文件 + 自动记忆库）
+### 记忆（存档笔记 + 角色全局笔记 + 自动记忆库）
 
 **`memory_get_current`**
 
@@ -676,23 +676,31 @@ def on_start(ctx):
 
 **`memory_get_notes`**
 
-- 参数：`{ role?: string }`（不传读当前角色；传其他角色名只读）
-- 返回：`{ ok: true, notes: [ { id, content, tags: string[], created_at: string(RFC3339) } ] }`
+- 参数：`{ scope?: "merged" | "save" | "role", role?: string, query?: string, top_k?: integer }`
+  - `scope` 默认 `merged`：当前存档笔记 + 当前角色的全局笔记，合并去重后返回。
+  - `scope="save"` 只查当前存档；`scope="role"` 只查角色全局。
+  - `role` 指定要读全局笔记的角色名，省略时用当前角色；`scope="save"` 时忽略。
+  - 不传 `query` 返回全部；传 `query` 按语义检索，`top_k` 默认 8、范围 1–20。
+- 返回：`{ ok: true, notes: [ { id, content, tags: string[], created_at: string(RFC3339), source: "save" | "role" } ], total?, returned?, retrieved? }`
+  - `source` 标明每条笔记来自当前存档还是角色全局。
 
 **`memory_add_note`**
 
-- 参数：`{ content: string(必), tags?: string[] }`（仅写当前角色）
-- 返回：`{ ok: true, id: string }`
+- 参数：`{ content: string(必), tags?: string[], scope?: "save" | "role" }`
+  - 默认 `save` 写当前存档（同档内所有角色共享）；`scope="role"` 写当前角色的全局笔记，仅用于必须跨存档保留的关键信息。
+- 返回：`{ ok: true, id: string, source: "save" | "role" }`
 
 **`memory_update_note`**
 
-- 参数：`{ id: string(必), content?: string, tags?: string[] }`（至少一项）
-- 返回：`{ ok: true, id: string }`
+- 参数：`{ id: string(必), content?: string, tags?: string[], scope?: "save" | "role" }`（至少一项内容变更）
+  - 不传 `scope` 时先找当前存档，找不到再找当前角色的全局笔记。
+- 返回：`{ ok: true, id: string, source: "save" | "role" }`
 
 **`memory_delete_note`**
 
-- 参数：`{ id: string(必) }`
-- 返回：`{ ok: true, id: string }`
+- 参数：`{ id: string(必), scope?: "save" | "role" }`
+  - 不传 `scope` 时先找当前存档，找不到再找当前角色的全局笔记。
+- 返回：`{ ok: true, id: string, source: "save" | "role" }`
 
 ### 状态（读运行时 `game_status`）
 

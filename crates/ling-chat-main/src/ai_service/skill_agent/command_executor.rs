@@ -433,10 +433,10 @@ async fn capture_pipe<R: AsyncRead + Unpin>(
         };
         let previous = total.fetch_add(read, Ordering::Relaxed);
         let keep = limit.saturating_sub(previous).min(read);
-        if keep > 0 {
-            if let Ok(mut captured) = buffer.lock() {
-                captured.extend_from_slice(&chunk[..keep]);
-            }
+        if keep > 0
+            && let Ok(mut captured) = buffer.lock()
+        {
+            captured.extend_from_slice(&chunk[..keep]);
         }
         if previous.saturating_add(read) > limit && !exceeded.swap(true, Ordering::AcqRel) {
             notify.notify_one();

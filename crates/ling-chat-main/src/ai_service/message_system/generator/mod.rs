@@ -4,8 +4,8 @@
 //! 1. 把用户消息（如有）走 MessageProcessor 预处理后，作为 USER 行入 GameStatus。
 //! 2. 读取当前角色的 memory 作为 LLM 上下文。
 //! 3. 启动 StreamProducer 从 LLM 流中切句子，送入 consumer 并行处理（情绪解析 + 翻译 + TTS）。
-//! 4. 按顺序把 `ReplyResponse` 通过 Tauri `Emitter` 发给前端（event: `ai:reply`）。
-//! 5. 每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪）。
+//! 4. 提交阶段按句子序号串行：每个段落作为 assistant LINE 入 GameStatus（带 TTS/动作/情绪），
+//!    再通过 Tauri `Emitter` 发 `ai:reply` 给前端，并转发给订阅的插件。
 //!
 //! 钦灵：这一模块是整个 LC 的核心模块，务必保证设计合理
 
@@ -13,7 +13,11 @@ mod backfill;
 mod post;
 mod pre;
 
+#[cfg(test)]
+mod ordering_tests;
+
 use std::collections::HashMap;
+use std::future::Future;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
@@ -70,13 +74,12 @@ pub struct GeneratorDeps {
     pub suppress_thinking: bool,
     /// 构建 deps 时捕获的 `GameStatus.preview_generation`。写入台词前比对，
     /// 不一致说明本轮生成已过期（试玩被中止后游离任务仍在写），丢弃写入。
-    /// 自由对话的代号恒为当前值，比对恒等，行为不变。
     pub generation: u64,
     /// 是否运行在编辑器试玩中。为 true 时回复带 `preview_gen` 标记，
     /// 前端据此丢弃中止后迟到的流式回复。
     pub is_preview: bool,
     /// 当轮附带的多模态图片（`data:image/...;base64,...` data URL）。
-    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进**当轮** LLM 上下文，
+    /// 由「该模型支持原生识图」的对话路径设置：图片仅拼接进当轮 LLM 上下文，
     /// 不写入角色记忆，从源头控制上下文/缓存占用。
     pub transient_image: Option<String>,
     /// 本轮 user 行的下标。提示行在 `process_message` 之前写好的路径由调用方传入，
@@ -92,7 +95,7 @@ struct UserMessageContext {
     temp: Option<String>,
     /// 插入的用户行在 line_list 中的索引。
     line_index: Option<usize>,
-    /// 用户消息序号（1-indexed，按 sender_role_id==0 且 User 属性计数）。
+    /// 用户消息序号，从 1 开始，按 User 属性计数，与撤回定位一致。
     seq: Option<u32>,
 }
 
@@ -378,28 +381,41 @@ impl MessageGenerator {
         // 由最终句（is_final）的 consumer 快照并挂载到台词行与前端响应。
         let thinking_buf = Arc::new(Mutex::new(String::new()));
 
-        // 句子序号 → 台词表行下标。回填时按它定位每轮前导行：
+        // 句子序号 → 台词表行下标，供回填定位每轮前导行：
         let sentence_lines: Arc<Mutex<Vec<(usize, usize)>>> = Arc::new(Mutex::new(Vec::new()));
 
-        // publisher：按索引顺序 emit 到前端（并在推进到栅栏索引时回 ack）
-        let app = self.deps.app.clone();
-        let publish_status = self.deps.game_status.clone();
-        let publish_recall = recall.clone();
-        let publish_db = self.deps.db.clone();
+        // publisher：按索引顺序提交（写台词表）并发布，推进到栅栏索引时回 ack。
+        // 写入放在这一侧而不是 consumer，台词表顺序才等于句子顺序。
+        let mut commit_deps = SentenceDeps::from(&self.deps);
+        commit_deps.sentence_lines = Some(sentence_lines.clone());
+        commit_deps.recall = Some(recall.clone());
+        let commit_app = self.deps.app.clone();
+        let guard = PublishGuard {
+            status: self.deps.game_status.clone(),
+            recall: recall.clone(),
+            db: self.deps.db.clone(),
+            store: ling_chat_notes::NotesStore::new(data_dir()),
+        };
         let publisher = tokio::spawn(async move {
-            publish_ordered(
-                publish_rx,
-                |resp| {
-                    app.emit(event_names::AI_REPLY, resp)
-                        .map_err(anyhow::Error::from)
-                },
-                Some(PublishGuard {
-                    status: publish_status,
-                    recall: publish_recall,
-                    db: publish_db,
-                    store: ling_chat_notes::NotesStore::new(data_dir()),
-                }),
-            )
+            publish_ordered(publish_rx, Some(guard), move |index, resp, stamp| {
+                let mut deps = commit_deps.clone();
+                deps.recall_stamp = stamp;
+                let app = commit_app.clone();
+                async move {
+                    if !add_assistant_line(&deps, &resp, Some(index)).await? {
+                        return Ok(false);
+                    }
+                    let status = deps.game_status.lock().await;
+                    if !sentence_is_current(&deps, &status) {
+                        return Ok(false);
+                    }
+                    app.emit(event_names::AI_REPLY, &resp)
+                        .map_err(anyhow::Error::from)?;
+                    drop(status);
+                    crate::plugin_contract::notify_reply(&resp);
+                    Ok(true)
+                }
+            })
             .await
         });
 
@@ -407,19 +423,14 @@ impl MessageGenerator {
         let sentence_rx = Arc::new(Mutex::new(sentence_rx));
         let concurrency = self.deps.concurrency.max(1);
         let mut consumer_tasks = Vec::with_capacity(concurrency);
+        let consumer_deps = SentenceDeps::from(&self.deps);
         for cid in 0..concurrency {
-            let deps = self.deps.clone();
+            let sdeps = consumer_deps.clone();
             let sentence_rx = sentence_rx.clone();
             let publish_tx = publish_tx.clone();
             let user_message = user_message.clone();
             let thinking_buf = thinking_buf.clone();
-            let sentence_lines = sentence_lines.clone();
-            let recall = recall.clone();
             consumer_tasks.push(tokio::spawn(async move {
-                // 句子处理仅需最小依赖集；llm / 工具等不在消费端使用。
-                let mut sdeps = SentenceDeps::from(&deps);
-                sdeps.recall = Some(recall);
-                sdeps.sentence_lines = Some(sentence_lines.clone());
                 loop {
                     let item = {
                         let mut rx = sentence_rx.lock().await;
@@ -429,28 +440,20 @@ impl MessageGenerator {
                         break;
                     };
                     let (sentence, index, is_final, stamp) = match item {
-                        // 呈现栅栏不是句子：不解析、不翻译、不合成语音，只参与保序。
-                        // ack 由 publisher 推进到该索引时回传；若 publisher 已退出则
-                        // ack 随 send 失败被丢弃，工具侧据此 fail-closed。
                         SentenceItem::BeforeTools { index, ack, stamp } => {
-                            if publish_tx
+                            // 发布器退出后丢弃栅栏（工具侧 fail-closed），不 break 以免关掉句子通道
+                            let _ = publish_tx
                                 .send(PublishItem::BeforeTools { index, ack, stamp })
-                                .await
-                                .is_err()
-                            {
-                                break;
-                            }
+                                .await;
                             continue;
                         },
                         SentenceItem::Reply(sentence, index, is_final, stamp) => {
                             (sentence, index, is_final, stamp)
                         },
                     };
-                    sdeps.recall_stamp = stamp;
-                    let resp = match consume_sentence(
+                    let resp = match prepare_sentence(
                         &sdeps,
                         sentence,
-                        Some(index),
                         &user_message,
                         is_final,
                         user_message_seq,
@@ -469,7 +472,7 @@ impl MessageGenerator {
                         .send(PublishItem::Reply {
                             index,
                             response: resp,
-                            stamp: sdeps.recall_stamp.clone(),
+                            stamp,
                         })
                         .await;
                     if is_final {
@@ -488,13 +491,27 @@ impl MessageGenerator {
             thinking_buf,
             tool_calls_seen,
         );
-        let output = producer.run().await.context("StreamProducer 失败")?;
+        // producer 出错时收口后台任务：否则 publisher / consumer 会游离到本轮之外
+        let output = match producer.run().await.context("StreamProducer 失败") {
+            Ok(output) => output,
+            Err(error) => {
+                publisher.abort();
+                for task in &consumer_tasks {
+                    task.abort();
+                }
+                for task in consumer_tasks {
+                    let _ = task.await;
+                }
+                let _ = publisher.await;
+                return Err(error);
+            },
+        };
         let acc = output.accumulated;
 
         for t in consumer_tasks {
             let _ = t.await;
         }
-        // publisher 的返回值 = 是否成功发出过收尾句（`is_final`）。
+        // publisher 的返回值 = 是否成功提交并发出过收尾句（`is_final`）。
         let published_final = publisher.await.unwrap_or(false);
 
         // 流已消费完毕：每轮工具消息与前导组都完整了，按组回填。
@@ -605,21 +622,16 @@ pub(super) struct PublishGuard {
     store: ling_chat_notes::NotesStore,
 }
 
-/// 按索引顺序发布；栅栏在其索引被推进到时回传"此前是否已发布过回复"。
-///
-/// 返回值 = **是否成功发出过收尾句（`is_final`）**：
-/// - `true`：某条 `is_final` 的回复已 emit；
-/// - `false`：`emit` 失败而中断，或通道关闭时都没等到终句。
-///
-/// `emit` 失败会立即返回，`pending` 里尚未回传的 ack 随函数一起被丢弃，
-/// 工具侧因此 fail-closed（不会在回复发布失败后继续执行工具）。
-///
-/// 生产与顺序契约测试共用本函数（`ordering_tests`）。
-pub(super) async fn publish_ordered(
+/// 按索引顺序提交并发布；栅栏在其索引被推进到时回传此前是否提交并发布过回复。
+pub(super) async fn publish_ordered<F, Fut>(
     mut rx: mpsc::Receiver<PublishItem>,
-    mut emit: impl FnMut(&ReplyResponse) -> Result<()>,
     guard: Option<PublishGuard>,
-) -> bool {
+    mut commit_and_emit: F,
+) -> bool
+where
+    F: FnMut(usize, ReplyResponse, Option<RecallStamp>) -> Fut + Send,
+    Fut: Future<Output = Result<bool>> + Send,
+{
     let mut next_index = 0usize;
     let mut reply_before_fence = false;
     let mut pending: HashMap<usize, PublishItem> = HashMap::new();
@@ -628,7 +640,13 @@ pub(super) async fn publish_ordered(
         while let Some(item) = pending.remove(&next_index) {
             next_index += 1;
             // 翻译或语音处理可能晚于上下文变化，发布前再校验任务来源。
-            let status = if let Some(guard) = &guard {
+            if let Some(guard) = &guard {
+                if item
+                    .stamp()
+                    .is_none_or(|stamp| !guard.recall.is_current(stamp))
+                {
+                    continue;
+                }
                 if let Err(error) = guard.recall.validate(&guard.db, &guard.store).await {
                     tracing::warn!("发送前记忆来源复核失败: {error}");
                     return false;
@@ -643,30 +661,27 @@ pub(super) async fn publish_ordered(
                 {
                     continue;
                 }
-                Some(status)
-            } else {
-                None
-            };
+                if let PublishItem::BeforeTools { ack, .. } = item {
+                    let _ = ack.send(reply_before_fence);
+                    reply_before_fence = false;
+                    continue;
+                }
+            }
             match item {
                 PublishItem::Reply {
+                    index,
                     response: Some(resp),
                     stamp,
-                    ..
                 } => {
-                    if let (Some(status), Some(stamp)) = (&status, stamp) {
-                        if !stamp.matches(status) {
-                            return false;
-                        }
-                    }
                     let is_final = resp.is_final;
-                    if let Err(e) = emit(&resp) {
-                        tracing::warn!("emit ai:reply 失败: {e}");
-                        return false;
+                    match commit_and_emit(index, resp, stamp).await {
+                        Ok(true) => {},
+                        Ok(false) => return false,
+                        Err(e) => {
+                            tracing::warn!("提交或发布 ai:reply 失败: {e:#}");
+                            return false;
+                        },
                     }
-                    // 插件信号：同一条回复也转发给订阅了 ai_reply 的插件
-                    //（补字段与派发在启动时登记的回调里，见 plugin_contract::set_reply_hook）。
-                    // 测试环境未登记回调，这里自然跳过。
-                    crate::plugin_contract::notify_reply(&resp);
                     reply_before_fence = true;
                     if is_final {
                         return true;
@@ -678,14 +693,13 @@ pub(super) async fn publish_ordered(
                     reply_before_fence = false;
                 },
             }
-            drop(status);
         }
     }
     false
 }
 
 // ============================================================
-// consumer 句子处理
+// 句子准备与提交
 // ============================================================
 
 /// 句子序号 → 台词表行下标。
@@ -703,10 +717,6 @@ pub struct SentenceDeps {
     pub generation: u64,
     pub is_preview: bool,
     /// 「这一句正文落成了台词表第几行」的台账（句子序号 → 行下标）。
-    ///
-    /// 工具闭环下前导台词只做呈现，生成结束后要按台账把它先落的那些行抹掉
-    /// （同一段原文已经在带 `tool_call` 的助手行里）。非生成路径（剧本固定台词）
-    /// 传 `None`：那边没有句子序号，也不存在要抹的行。
     pub sentence_lines: Option<SentenceLineLedger>,
     /// 当前回合的共享会话，剧本固定台词不经过检索时为空。
     pub recall: Option<Arc<RecallSession>>,
@@ -739,10 +749,7 @@ pub struct ReplyOverrides {
     pub duration: Option<f64>,
 }
 
-/// 处理单个句子：解析 → 富化 → 构建响应 → 保存行。
-///
-/// 供 MessageGenerator 的 consumer 池与剧本 `dialogue` 事件复用。
-/// `overrides` 让固定台词覆盖响应字段（显示名/副标题/时长），生成路径传默认值。
+/// 剧本固定台词的完整入口：准备一条台词，随后按给定顺序写入台词表。
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn consume_sentence(
     deps: &SentenceDeps,
@@ -754,18 +761,38 @@ pub(crate) async fn consume_sentence(
     thinking_buf: &Mutex<String>,
     overrides: &ReplyOverrides,
 ) -> Result<Option<ReplyResponse>> {
-    if sentence.is_empty() {
+    let Some(response) = prepare_sentence(
+        deps,
+        sentence,
+        user_message,
+        is_final,
+        user_message_seq,
+        thinking_buf,
+        overrides,
+    )
+    .await?
+    else {
+        return Ok(None);
+    };
+    // 代号已切换（试玩中止/读档）时不把这条过期回复交给调用方
+    if !add_assistant_line(deps, &response, sentence_index).await? {
         return Ok(None);
     }
-    if let Some(stamp) = &deps.recall_stamp {
-        if !stamp.matches(&*deps.game_status.lock().await)
-            || deps
-                .recall
-                .as_ref()
-                .is_some_and(|recall| !recall.is_current(stamp))
-        {
-            return Ok(None);
-        }
+    Ok(Some(response))
+}
+
+/// 只做句子准备：解析 → 富化（翻译/TTS）→ 构建响应 → 终句挂思考链。
+async fn prepare_sentence(
+    deps: &SentenceDeps,
+    sentence: String,
+    user_message: &str,
+    is_final: bool,
+    user_message_seq: Option<u32>,
+    thinking_buf: &Mutex<String>,
+    overrides: &ReplyOverrides,
+) -> Result<Option<ReplyResponse>> {
+    if sentence.is_empty() {
+        return Ok(None);
     }
 
     // 1. 解析情绪分段
@@ -796,31 +823,6 @@ pub(crate) async fn consume_sentence(
         }
     }
 
-    // 4. 写入 GameStatus
-    add_assistant_line(deps, &response, sentence_index).await?;
-
-    // 会话代号复核（与 add_assistant_line 内守卫一致）：若本句写入已被丢弃，
-    // 说明读档/切角色/清对话已切换会话（旧流式任务游离），前端也已切到新会话——
-    // 这里返回 None，不再把这条过期回复发布给前端（防旧角色台词串进新对话展示）。
-    {
-        let gs = deps.game_status.lock().await;
-        if gs.preview_generation != deps.generation
-            || deps
-                .recall
-                .as_ref()
-                .is_some_and(|recall| !recall.matches(&gs))
-            || deps.recall_stamp.as_ref().is_some_and(|stamp| {
-                !stamp.matches(&gs)
-                    || deps
-                        .recall
-                        .as_ref()
-                        .is_some_and(|recall| !recall.is_current(stamp))
-            })
-        {
-            return Ok(None);
-        }
-    }
-
     Ok(Some(response))
 }
 
@@ -839,16 +841,10 @@ fn parse_segments(deps: &SentenceDeps, sentence: &str) -> Vec<EmotionSegment> {
 fn tts_translation_language(tts_type: &str, voice_lang: &str) -> Option<&'static str> {
     match (tts_type, voice_lang) {
         ("gsv" | "opentts" | "sbv2" | "fishs2", "en") => Some("en"),
-        // IndexTTS 2.5 起官方支持中/英/日/西班牙/阿拉伯语：
-        // voice_lang 为非中文目标语言时先翻译成对应语言再合成
-        // （日语台词主模型已自带 japanese_text，无需在此强制重译）
         ("indextts2", "en") => Some("en"),
         ("indextts2", "es") => Some("es"),
         ("indextts2", "ar") => Some("ar"),
         ("gsv" | "opentts", "ko") => Some("ko"),
-        // CosyVoice 多语言自动检测：voice_lang 为 en/ko/de/fr/ru/pt 时先翻译成目标语言
-        // 再合成，否则会朗读主模型默认附带的日文译文（japanese_text）；
-        // ja 例外——主模型已自带日文译文，无需重译
         ("cosyvoice", "en") => Some("en"),
         ("cosyvoice", "ko") => Some("ko"),
         ("cosyvoice", "de") => Some("de"),
@@ -1006,27 +1002,16 @@ async fn build_reply_response(
     Ok(response)
 }
 
-/// Step D: 将 assistant LINE 写入 GameStatus。
+/// Step D: 将 assistant LINE 写入 GameStatus；返回 false 表示会话已过期，没有写入。
 async fn add_assistant_line(
     deps: &SentenceDeps,
     response: &ReplyResponse,
     sentence_index: Option<usize>,
-) -> Result<()> {
-    if let Some(recall) = &deps.recall {
-        recall
-            .validate(&deps.db, &ling_chat_notes::NotesStore::new(data_dir()))
-            .await?;
-    }
-    {
-        let gs = deps.game_status.lock().await;
-        if gs.preview_generation != deps.generation {
-            tracing::warn!(
-                "[Generator] 丢弃过期试玩回复（代号 {} != 当前 {}），试玩已结束",
-                deps.generation,
-                gs.preview_generation
-            );
-            return Ok(());
-        }
+) -> Result<bool> {
+    // 代号校验与写入共用一次加锁：校验通过后不会再被读档/切角色插进来
+    let mut gs = deps.game_status.lock().await;
+    if !sentence_is_current(deps, &gs) {
+        return Ok(false);
     }
     let line = LineBase {
         content: response.message.clone(),
@@ -1042,27 +1027,21 @@ async fn add_assistant_line(
         attribute: LineAttributeExt(LineAttribute::Assistant),
         ..Default::default()
     };
-    let mut gs = deps.game_status.lock().await;
-    if gs.preview_generation != deps.generation
-        || deps
-            .recall
-            .as_ref()
-            .is_some_and(|recall| !recall.matches(&gs))
-        || deps.recall_stamp.as_ref().is_some_and(|stamp| {
-            !stamp.matches(&gs)
-                || deps
-                    .recall
-                    .as_ref()
-                    .is_some_and(|recall| !recall.is_current(stamp))
-        })
-    {
-        return Ok(());
-    }
     gs.add_line(&deps.db, line).await?;
-    // 台账：这一句落成了哪一行。工具闭环回填时按它抹掉「前导台词」先落的行。
-    // 记录与写入同在一把锁里，另一个 consumer 插不进来，行下标不会错位。
+    // 台账：这一句落成了哪一行。提交阶段串行写入，行下标单调递增，不会错位。
     if let (Some(ledger), Some(index)) = (&deps.sentence_lines, sentence_index) {
         ledger.lock().await.push((index, gs.line_list.len() - 1));
     }
-    Ok(())
+    Ok(true)
+}
+
+fn sentence_is_current(deps: &SentenceDeps, status: &GameStatus) -> bool {
+    status.preview_generation == deps.generation
+        && deps.recall_stamp.as_ref().is_none_or(|stamp| {
+            stamp.matches(status)
+                && deps
+                    .recall
+                    .as_ref()
+                    .is_none_or(|recall| recall.is_current(stamp))
+        })
 }

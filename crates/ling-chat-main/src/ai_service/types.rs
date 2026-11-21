@@ -79,20 +79,18 @@ pub struct FunctionSchema {
 pub(crate) fn parse_tool_args(raw: &str) -> Value {
     let mut args: Value = serde_json::from_str(raw).unwrap_or(Value::Null);
 
-    if let Some(s) = args.as_str() {
-        if let Ok(parsed) = serde_json::from_str::<Value>(s) {
-            args = parsed;
-        }
+    if let Some(s) = args.as_str()
+        && let Ok(parsed) = serde_json::from_str::<Value>(s)
+    {
+        args = parsed;
     }
 
-    if let Value::Object(map) = &args {
-        if map.len() == 1 {
-            if let Some(inner) = map.get("arguments").or_else(|| map.get("params")) {
-                if inner.is_object() {
-                    args = inner.clone();
-                }
-            }
-        }
+    if let Value::Object(map) = &args
+        && map.len() == 1
+        && let Some(inner) = map.get("arguments").or_else(|| map.get("params"))
+        && inner.is_object()
+    {
+        args = inner.clone();
     }
 
     if !args.is_object() {
@@ -194,8 +192,6 @@ pub struct LineBase {
     pub attribute: LineAttributeExt,
     pub sender_role_id: Option<i32>,
     pub display_name: Option<String>,
-    /// 该玩家台词行归属的「我的身份」id；旁白/系统/旧数据为 None。
-    pub identity_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -417,16 +413,15 @@ where
     D: serde::Deserializer<'de>,
 {
     let anchor = Option::<Live2dFocusAnchor>::deserialize(deserializer)?;
-    if let Some(anchor) = &anchor {
-        if !anchor.x.is_finite()
+    if let Some(anchor) = &anchor
+        && (!anchor.x.is_finite()
             || !anchor.y.is_finite()
             || !(0.0..=1.0).contains(&anchor.x)
-            || !(0.0..=1.0).contains(&anchor.y)
-        {
-            return Err(serde::de::Error::custom(
-                "focus_anchor x/y must be finite values between 0 and 1",
-            ));
-        }
+            || !(0.0..=1.0).contains(&anchor.y))
+    {
+        return Err(serde::de::Error::custom(
+            "focus_anchor x/y must be finite values between 0 and 1",
+        ));
     }
     Ok(anchor)
 }
@@ -916,12 +911,12 @@ pub struct Player {
     pub user_name: String,
     pub user_subtitle: String,
     pub user_prompt: String,
-    /// 当前「我的身份」的不可变 id。`None` = 尚未选择身份（使用合成身份）。
+    /// 当前玩家角色（身份卡）的 role id；None 表示还没有可用身份。
     #[serde(default)]
-    pub identity_id: Option<String>,
-    /// 当前身份对其他对象的关系，键为 `ai:<角色文件夹>` / `me:<身份 id>`。
+    pub player_role_id: Option<i32>,
+    /// 当前玩家角色对其他角色的认知，键为目标 role id。
     #[serde(default)]
-    pub relations: HashMap<String, String>,
+    pub relations: HashMap<i32, String>,
 }
 
 // ==========================================

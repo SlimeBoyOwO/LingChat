@@ -98,12 +98,15 @@ impl EmotionClassifier {
             return Err(anyhow!("标签映射文件不存在: {}", mapping_path.display()));
         }
 
-        let session = Session::builder()
+        let environment = ling_chat_notes::ort_env::environment()?;
+        let session = Session::builder(environment)
             .map_err(|e| anyhow!("创建 SessionBuilder 失败: {e}"))?
             .with_optimization_level(ort::session::builder::GraphOptimizationLevel::Level3)
             .map_err(|e| anyhow!("设置优化级别失败: {e}"))?
             .with_intra_threads(1)
             .map_err(|e| anyhow!("设置线程数失败: {e}"))?
+            .with_inter_threads(1)
+            .map_err(|e| anyhow!("设置 inter 线程数失败: {e}"))?
             .commit_from_file(&onnx_path)
             .map_err(|e| anyhow!("加载 ONNX 模型失败 ({}): {e}", onnx_path.display()))?;
 

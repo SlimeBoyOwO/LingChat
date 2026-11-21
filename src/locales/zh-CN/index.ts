@@ -12,6 +12,7 @@ import scriptEditor from "./scriptEditor";
 import misc from "./misc";
 
 export default {
+  imageGeneration,
   common,
   nav,
   advance,
@@ -25,3 +26,4 @@ export default {
   scriptEditor,
   misc,
 };
+import imageGeneration from "./imageGeneration";

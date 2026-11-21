@@ -185,10 +185,10 @@ fn compress_sevenz(
 ) -> Result<(), ArchiveError> {
     use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
 
-    if let Some(parent) = out.parent() {
-        if !parent.exists() {
-            std::fs::create_dir_all(parent)?;
-        }
+    if let Some(parent) = out.parent()
+        && !parent.exists()
+    {
+        std::fs::create_dir_all(parent)?;
     }
 
     let file = File::create(out)?;

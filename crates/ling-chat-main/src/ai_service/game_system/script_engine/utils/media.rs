@@ -135,10 +135,10 @@ fn resolve_exact(
     if let Some(sp) = script_path {
         for candidate in media_type.subdir_candidates() {
             let candidate_path = sp.join("Assets").join(candidate).join(file_path);
-            if candidate_path.exists() {
-                if let Ok(canon) = candidate_path.canonicalize() {
-                    return Some(canon.to_string_lossy().into_owned());
-                }
+            if candidate_path.exists()
+                && let Ok(canon) = candidate_path.canonicalize()
+            {
+                return Some(canon.to_string_lossy().into_owned());
             }
         }
     }
@@ -148,10 +148,10 @@ fn resolve_exact(
         .join("game_data")
         .join(media_type.fallback_dir())
         .join(file_path);
-    if fallback_path.exists() {
-        if let Ok(canon) = fallback_path.canonicalize() {
-            return Some(canon.to_string_lossy().into_owned());
-        }
+    if fallback_path.exists()
+        && let Ok(canon) = fallback_path.canonicalize()
+    {
+        return Some(canon.to_string_lossy().into_owned());
     }
 
     None

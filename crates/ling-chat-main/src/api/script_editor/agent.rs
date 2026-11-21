@@ -17,7 +17,7 @@ use crate::ai_service::skill_agent::events::SkillAgentEvent;
 use crate::ai_service::skill_agent::{db, skills, stage};
 use crate::ai_service::types::LlmMessage;
 use crate::config::keys;
-use crate::db::entities::skill_agent_conversation;
+use crate::db::entities::agent_conversation;
 
 /// Agent 设置（前端可读写；沙箱目录为空表示默认 `data/`）。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -82,7 +82,7 @@ pub struct AgentDefaultDirs {
     pub sandbox_dir: String,
 }
 
-fn conv_to_info(c: &skill_agent_conversation::Model) -> ConversationInfo {
+fn conv_to_info(c: &agent_conversation::Model) -> ConversationInfo {
     ConversationInfo {
         id: c.id,
         title: c.title.clone(),
@@ -165,19 +165,27 @@ pub async fn editor_agent_get_default_dirs(app: AppHandle) -> AgentDefaultDirs {
 #[tauri::command]
 pub async fn editor_agent_list_skills(app: AppHandle) -> Vec<skills::SkillInfo> {
     let config = SkillAgentConfig::load(&app);
-    skills::find_all_skills(&config.resolve_skills_dir())
+    let skills_dir = config.resolve_skills_dir();
+    tokio::task::spawn_blocking(move || skills::find_all_skills(&skills_dir))
+        .await
+        .unwrap_or_default()
 }
 
 #[tauri::command]
 pub async fn editor_agent_read_skill(app: AppHandle, name: String) -> Result<SkillContent, String> {
     let config = SkillAgentConfig::load(&app);
-    let res = skills::find_skill(&config.resolve_skills_dir(), &name)
-        .ok_or_else(|| format!("未找到技能: {}", name))?;
-    Ok(SkillContent {
-        name: res.name,
-        base_directory: res.base_directory.to_string_lossy().to_string(),
-        content: res.content,
+    let skills_dir = config.resolve_skills_dir();
+    tokio::task::spawn_blocking(move || {
+        let res =
+            skills::find_skill(&skills_dir, &name).ok_or_else(|| format!("未找到技能: {name}"))?;
+        Ok(SkillContent {
+            name: res.name,
+            base_directory: res.base_directory.to_string_lossy().to_string(),
+            content: res.content,
+        })
     })
+    .await
+    .map_err(|e| format!("读取技能任务失败: {e}"))?
 }
 
 /// 新建会话。只记录创建时的剧本 key（不存剧本内容快照）。
@@ -220,7 +228,7 @@ pub async fn editor_agent_delete_conversation(
     state: State<'_, AppState>,
     conversation_id: i32,
 ) -> Result<(), String> {
-    db::delete_conversation(&state.db, conversation_id).await
+    db::delete_skill_conversation(&state.db, conversation_id).await
 }
 
 #[tauri::command]
@@ -284,10 +292,14 @@ pub struct AgentArtifact {
 const ARTIFACT_MAX_BYTES: u64 = 64 * 1024;
 
 /// 列出剧本包里的流程产物：直接读目录而不是列固定清单，加新产物不用改这里。
+///
+/// 必须是 async：同步 `#[tauri::command]` 跑在 UI 主线程，读盘会把整窗卡死。
 #[tauri::command]
-pub fn editor_agent_list_artifacts(script_key: String) -> Result<Vec<AgentArtifact>, String> {
+pub async fn editor_agent_list_artifacts(script_key: String) -> Result<Vec<AgentArtifact>, String> {
     let dir = crate::utils::script_paths::resolve_script_dir(&script_key)?;
-    Ok(read_artifacts(&dir))
+    tokio::task::spawn_blocking(move || read_artifacts(&dir))
+        .await
+        .map_err(|e| format!("读取流程产物任务失败: {e}"))
 }
 
 fn read_artifacts(script_dir: &Path) -> Vec<AgentArtifact> {
@@ -350,7 +362,6 @@ pub async fn editor_agent_start_chat(
         },
     };
 
-    let stage_snapshot = stage::derive(script_key.as_deref());
     let llm = resolve_skill_agent_provider(&app, Some(true))
         .ok_or_else(|| "未配置可用的 LLM provider，请在「LLM 设置」中配置模型后再试".to_string())?;
     let config = SkillAgentConfig::load(&app);
@@ -368,6 +379,17 @@ pub async fn editor_agent_start_chat(
     let user_msg_id = db::insert_message(&state.db, conversation_id, &user_msg, None, None).await?;
     history.push(user_msg);
 
+    // 阶段推导与剧本枚举会扫盘，甩到阻塞池以免卡住异步运行时
+    let script_key_for_stage = script_key.clone();
+    let (stage_snapshot, existing_script_keys) = tokio::task::spawn_blocking(move || {
+        (
+            stage::derive(script_key_for_stage.as_deref()),
+            crate::utils::script_paths::enumerate_script_keys(),
+        )
+    })
+    .await
+    .map_err(|e| format!("读取剧本阶段任务失败: {e}"))?;
+
     let ctx = SkillAgentRunContext {
         conversation_id,
         channel: channel.clone(),
@@ -380,7 +402,7 @@ pub async fn editor_agent_start_chat(
         skills_dir,
         data_dir: crate::data_dir::get_data_dir().clone(),
         script_key,
-        existing_script_keys: crate::utils::script_paths::enumerate_script_keys(),
+        existing_script_keys,
         stage_snapshot,
         bound_script_key: std::sync::Mutex::new(None),
         context_window,

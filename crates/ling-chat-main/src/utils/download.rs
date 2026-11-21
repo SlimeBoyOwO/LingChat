@@ -124,11 +124,11 @@ pub async fn download_to_file(
 
     while let Some(chunk) = stream.next().await {
         // 取消检查
-        if let Some(ref token) = cancel {
-            if token.is_cancelled() {
-                let _ = tokio::fs::remove_file(&tmp).await;
-                return Err("download cancelled".into());
-            }
+        if let Some(ref token) = cancel
+            && token.is_cancelled()
+        {
+            let _ = tokio::fs::remove_file(&tmp).await;
+            return Err("download cancelled".into());
         }
 
         let chunk = chunk.map_err(|e| format!("chunk: {e}"))?;

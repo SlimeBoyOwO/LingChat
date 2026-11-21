@@ -252,10 +252,10 @@ impl FileTools {
         append: bool,
     ) -> anyhow::Result<WriteResult> {
         let file = self.sanitize(path)?;
-        if let Some(parent) = file.parent() {
-            if !parent.as_os_str().is_empty() {
-                std::fs::create_dir_all(parent)?;
-            }
+        if let Some(parent) = file.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            std::fs::create_dir_all(parent)?;
         }
         if append && file.exists() {
             use std::io::Write;
@@ -431,10 +431,10 @@ impl FileTools {
             if collected >= cap {
                 break;
             }
-            if let (Some(matcher), Some(pattern)) = (&file_matcher, file_glob) {
-                if !glob_matches_file(matcher, pattern, &dir, &file) {
-                    continue;
-                }
+            if let (Some(matcher), Some(pattern)) = (&file_matcher, file_glob)
+                && !glob_matches_file(matcher, pattern, &dir, &file)
+            {
+                continue;
             }
             let Ok(metadata) = std::fs::metadata(&file) else {
                 continue;

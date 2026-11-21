@@ -32,3 +32,12 @@ pub fn create_llm_client(cfg: LlmConfig) -> Result<LlmClient> {
     };
     Ok(LlmClient::new(cfg, http, provider))
 }
+
+pub(super) fn create_codex_client(
+    cfg: LlmConfig,
+    client_version: Option<String>,
+) -> Result<LlmClient> {
+    let http = build_http_client(cfg.timeout_secs)?;
+    let provider = CodexProvider::from_config(&cfg)?.with_catalog_version(client_version);
+    Ok(LlmClient::new(cfg, http, Box::new(provider)))
+}

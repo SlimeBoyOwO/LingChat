@@ -551,10 +551,13 @@ impl VoiceMaker {
     ) {
         self.lang = lang.into();
         self.provider = TtsProvider::new(&self.audio_format);
-        if let Err(e) = self.set_tts_settings(cfg, tts_type, name) {
-            tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
-        } else {
-            tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
+        match self.set_tts_settings(cfg, tts_type, name) {
+            Err(e) => {
+                tracing::warn!("切换语音语言后重新初始化 TTS 失败: {e}");
+            },
+            _ => {
+                tracing::info!("语音语言已切换为: {}, tts_type: {}", self.lang, tts_type);
+            },
         }
     }
 

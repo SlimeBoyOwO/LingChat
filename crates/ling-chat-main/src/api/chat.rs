@@ -54,8 +54,7 @@ async fn relation_ready_now(app: &AppHandle) -> bool {
     if role_ids.is_empty() {
         return true;
     }
-    let identity_id = gs.player.identity_id.clone().unwrap_or_default();
-    let statuses = relation_ready_all(&gs, &crate::api::data_dir(), &identity_id, &role_ids);
+    let statuses = relation_ready_all(&gs, gs.player.player_role_id, &role_ids);
     statuses.iter().all(|s| s.role_side && s.identity_side)
 }
 
@@ -169,33 +168,33 @@ async fn dispatch_chat_turn(
 
     // 截图交给识图投递决定：原生生图当轮直发（不写记忆），否则转述成旁白台词写进 line_list。
     // 必须在创建 GeneratorDeps 之前完成，旁白要排在本轮上下文里。
-    if let Some(ref b64) = screenshot_base64 {
-        if let Ok(image_bytes) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, b64) {
-            let delivery = {
-                let mut sa = state.screen_analyzer.lock().await;
-                deliver_image(
-                    &app,
-                    &mut sa,
-                    &image_bytes,
-                    ImageIntent::ChatScreenshot {
-                        user_name: &user_name,
-                        user_text: text.as_deref().unwrap_or_default(),
-                    },
-                )
-                .await
-            };
+    if let Some(ref b64) = screenshot_base64
+        && let Ok(image_bytes) = base64::Engine::decode(&base64::prelude::BASE64_STANDARD, b64)
+    {
+        let delivery = {
+            let mut sa = state.screen_analyzer.lock().await;
+            deliver_image(
+                &app,
+                &mut sa,
+                &image_bytes,
+                ImageIntent::ChatScreenshot {
+                    user_name: &user_name,
+                    user_text: text.as_deref().unwrap_or_default(),
+                },
+            )
+            .await
+        };
 
-            transient_image = delivery.attach;
-            if let Some(narration) = delivery.text {
-                let mut gs = game_status.lock().await;
-                gs.add_line(
-                    &state.db,
-                    PromptLine::new(PromptRole::Narrator, narration.as_str()).into_base(),
-                )
-                .await
-                .map_err(|e| format!("添加旁白台词失败: {}", e))?;
-                tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
-            }
+        transient_image = delivery.attach;
+        if let Some(narration) = delivery.text {
+            let mut gs = game_status.lock().await;
+            gs.add_line(
+                &state.db,
+                PromptLine::new(PromptRole::Narrator, narration.as_str()).into_base(),
+            )
+            .await
+            .map_err(|e| format!("添加旁白台词失败: {}", e))?;
+            tracing::info!("[Chat] Screenshot analysis narration added to game_status.");
         }
     }
 
@@ -529,9 +528,7 @@ pub async fn rollback_conversation(
             .line_list
             .iter()
             .position(|line| {
-                if line.base.sender_role_id == Some(0)
-                    && matches!(line.attribute(), LineAttribute::User)
-                {
+                if matches!(line.attribute(), LineAttribute::User) {
                     count += 1;
                     count == message_seq
                 } else {
@@ -606,10 +603,11 @@ pub async fn generate_line_voice(app: AppHandle, line_seq: u32) -> Result<String
     // ===== 预热（先于生成，保证配好 TTS 后第一次点击就能成功） =====
     {
         let local_state = app.state::<LocalTtsState>();
-        if !local_state.engine.is_ready().await && local_state.paths.asset_present("deberta") {
-            if let Err(e) = local_state.engine.init(&local_state.paths).await {
-                tracing::error!("生成语音前初始化本地 TTS 引擎失败: {e}");
-            }
+        if !local_state.engine.is_ready().await
+            && local_state.paths.asset_present("deberta")
+            && let Err(e) = local_state.engine.init(&local_state.paths).await
+        {
+            tracing::error!("生成语音前初始化本地 TTS 引擎失败: {e}");
         }
     }
 

@@ -1,6 +1,7 @@
 pub mod affection;
 pub mod asr;
 pub mod config;
+pub mod image_generation;
 // 嵌入引擎实现已下沉到 notes crate，这里保持 `ai_service::embedding` 路径稳定。
 pub use ling_chat_notes::embedding;
 // 云端向量化后端与本地/云端路由（依赖 HTTP 栈，不能放进 notes crate）。

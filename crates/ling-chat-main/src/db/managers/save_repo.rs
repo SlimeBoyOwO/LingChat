@@ -5,7 +5,8 @@ use std::collections::{HashMap, HashSet};
 
 use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{
-    line, line_perception, memory_bank, running_script, save, save_identity,
+    agent_conversation, agent_message, line, line_perception, memory_bank, running_script, save,
+    save_note,
 };
 
 pub struct SaveRepo;
@@ -121,6 +122,23 @@ impl SaveRepo {
         Ok(())
     }
 
+    pub async fn update_save_player_role(
+        db: &DatabaseConnection,
+        save_id: i32,
+        role_id: Option<i32>,
+    ) -> Result<()> {
+        let model = save::Entity::find_by_id(save_id)
+            .one(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?
+            .context("Save not found")?;
+        let mut active: save::ActiveModel = model.into();
+        active.player_role_id = Set(role_id);
+        active.update_date = Set(Utc::now().naive_utc());
+        active.update(db).await.map_err(|e| anyhow!("{e}"))?;
+        Ok(())
+    }
+
     #[allow(dead_code)]
     pub async fn update_save_last_message(
         db: &DatabaseConnection,
@@ -158,6 +176,9 @@ impl SaveRepo {
 
     pub async fn delete_save(db: &DatabaseConnection, save_id: i32) -> Result<bool> {
         super::memory_index_repo::MemoryIndexRepo::delete_for_save(db, save_id).await?;
+        // 导演会话不属于台词树，先按存档清掉
+        Self::delete_agent_conversations_by_save(db, save_id).await?;
+
         // Delete all line_perception rows for this save's lines
         let line_ids: Vec<i32> = line::Entity::find()
             .select_only()
@@ -183,8 +204,9 @@ impl SaveRepo {
             .await
             .map_err(|e| anyhow!("{e}"))?;
 
-        save_identity::Entity::delete_many()
-            .filter(save_identity::Column::SaveId.eq(save_id))
+        // 存档级笔记随档删除
+        save_note::Entity::delete_many()
+            .filter(save_note::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
@@ -303,7 +325,6 @@ impl SaveRepo {
                         attribute: LineAttributeExt(db_line.attribute),
                         sender_role_id: db_line.sender_role_id,
                         display_name: db_line.display_name,
-                        identity_id: db_line.identity_id,
                     },
                     perceived_role_ids: perceived,
                 })
@@ -341,12 +362,15 @@ impl SaveRepo {
     /// 自动存档传 true——它的档位只跟踪"当前这一局"，被别的会话（切角色、开新档）
     /// 占住时必须整体重建，否则会永久拒绝写入、自动存档彻底停摆；手动存档/语音
     /// 回填等路径传 false，继续由安全网拦截，避免误删另一段对话的历史。
+    ///
+    /// 返回与 `input_lines` 等长、按位置对齐的数据库行号，调用方可直接回填内存台词表，
+    /// 不必再查一次库。
     pub async fn sync_lines(
         db: &DatabaseConnection,
         save_id: i32,
         input_lines: &[GameLine],
         allow_rebuild: bool,
-    ) -> Result<()> {
+    ) -> Result<Vec<i32>> {
         let db_lines = Self::get_line_list(db, save_id).await?;
 
         // Walk both lists to find divergence point
@@ -358,27 +382,11 @@ impl SaveRepo {
             let input_line = &input_lines[i];
 
             // Try ID match first
-            if let Some(input_id) = input_line.base.id {
-                if input_id == db_line.id {
-                    // Same ID — update if any persisted field changed
-                    if !same_line_fields(db_line, input_line) {
-                        let mut active: line::ActiveModel = db_line.clone().into();
-                        active.content = Set(input_line.base.content.clone());
-                        active.attribute = Set(input_line.base.attribute.0.clone());
-                        active.sender_role_id = Set(input_line.base.sender_role_id);
-                        active.original_emotion = Set(input_line.base.original_emotion.clone());
-                        active.predicted_emotion = Set(input_line.base.predicted_emotion.clone());
-                        active.tts_content = Set(input_line.base.tts_content.clone());
-                        active.action_content = Set(input_line.base.action_content.clone());
-                        active.audio_file = Set(input_line.base.audio_file.clone());
-                        active.thinking = Set(input_line.base.thinking.clone());
-                        active.display_name = Set(input_line.base.display_name.clone());
-                        active.identity_id = Set(input_line.base.identity_id.clone());
-                        active.tool_call = Set(input_line.base.tool_call.clone());
-                        active.round_id = Set(input_line.base.round_id.clone());
-                    }
-                    continue;
-                }
+            if let Some(input_id) = input_line.base.id
+                && input_id == db_line.id
+            {
+                // 同一行：字段是否要改写由后面的更新阶段判定，这里只负责推进锚点。
+                continue;
             }
 
             // Try weak match using every persisted field except generated IDs.
@@ -427,11 +435,12 @@ impl SaveRepo {
                 .map_err(|e| anyhow!("{e}"))?;
         }
 
-        let matched_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
+        // 与输入行按位置对齐的最终行号：分歧点之前沿用库里已有的行，之后是新插入的行。
+        let mut synced_ids: Vec<i32> = db_lines[..diverge].iter().map(|l| l.id).collect();
         let mut existing_perceptions: HashMap<i32, Vec<i32>> = HashMap::new();
-        if !matched_ids.is_empty() {
+        if !synced_ids.is_empty() {
             let rows = line_perception::Entity::find()
-                .filter(line_perception::Column::LineId.is_in(matched_ids))
+                .filter(line_perception::Column::LineId.is_in(synced_ids.clone()))
                 .all(&txn)
                 .await
                 .map_err(|e| anyhow!("{e}"))?;
@@ -521,7 +530,6 @@ impl SaveRepo {
                     attribute: Set(input_line.base.attribute.0.clone()),
                     sender_role_id: Set(input_line.base.sender_role_id),
                     display_name: Set(input_line.base.display_name.clone()),
-                    identity_id: Set(input_line.base.identity_id.clone()),
                     original_emotion: Set(input_line.base.original_emotion.clone()),
                     predicted_emotion: Set(input_line.base.predicted_emotion.clone()),
                     tts_content: Set(input_line.base.tts_content.clone()),
@@ -547,6 +555,7 @@ impl SaveRepo {
                     perception.insert(&txn).await.map_err(|e| anyhow!("{e}"))?;
                 }
 
+                synced_ids.push(new_id);
                 parent_id = Some(new_id);
             }
         }
@@ -570,7 +579,7 @@ impl SaveRepo {
 
         txn.commit().await.map_err(|e| anyhow!("{e}"))?;
 
-        Ok(())
+        Ok(synced_ids)
     }
 
     /// 输入台词表能否安全写入该存档：存档为空，或首行与输入首行匹配（与 sync_lines 的锚点规则一致）。
@@ -585,30 +594,20 @@ impl SaveRepo {
         }
         let db_line = &db_lines[0];
         let input_line = &input_lines[0];
-        if let Some(input_id) = input_line.base.id {
-            if input_id == db_line.id {
-                return Ok(true);
-            }
+        if let Some(input_id) = input_line.base.id
+            && input_id == db_line.id
+        {
+            return Ok(true);
         }
         Ok(same_line_fields(db_line, input_line))
     }
 
-    /// 内存行拿到 id 后，后续锚点按 id 命中——人设行重建改动了首行内容也不会再触发"首行分歧"。
-    pub async fn bind_line_ids(
-        db: &DatabaseConnection,
-        save_id: i32,
-        lines: &mut [GameLine],
-    ) -> Result<()> {
-        let db_lines = Self::get_line_list(db, save_id).await?;
-        for (i, db_line) in db_lines.iter().enumerate() {
-            if i >= lines.len() {
-                break;
-            }
-            if lines[i].base.id.is_none() {
-                lines[i].base.id = Some(db_line.id);
-            }
+    /// 把 sync_lines 返回的行号回填到内存台词表，省掉一次按存档重读全部台词。
+    /// 这些行号是库里的权威值：弱匹配命中的内存行原本带着对不上的 id，这里一并纠正。
+    pub fn bind_line_ids(lines: &mut [GameLine], synced_ids: &[i32]) {
+        for (line, &id) in lines.iter_mut().zip(synced_ids) {
+            line.base.id = Some(id);
         }
-        Ok(())
     }
 }
 
@@ -661,6 +660,40 @@ impl SaveRepo {
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;
+        Ok(())
+    }
+
+    /// 删除该存档绑定的导演会话及其消息。
+    pub async fn delete_agent_conversations_by_save(
+        db: &DatabaseConnection,
+        save_id: i32,
+    ) -> Result<()> {
+        let txn = db.begin().await.map_err(|e| anyhow!("{e}"))?;
+
+        let conversation_ids: Vec<i32> = agent_conversation::Entity::find()
+            .select_only()
+            .column(agent_conversation::Column::Id)
+            .filter(agent_conversation::Column::SaveId.eq(save_id))
+            .filter(agent_conversation::Column::Kind.eq(agent_conversation::KIND_DIRECTOR))
+            .into_tuple()
+            .all(&txn)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
+        if !conversation_ids.is_empty() {
+            agent_message::Entity::delete_many()
+                .filter(agent_message::Column::ConversationId.is_in(conversation_ids.clone()))
+                .exec(&txn)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+            agent_conversation::Entity::delete_many()
+                .filter(agent_conversation::Column::Id.is_in(conversation_ids))
+                .exec(&txn)
+                .await
+                .map_err(|e| anyhow!("{e}"))?;
+        }
+
+        txn.commit().await.map_err(|e| anyhow!("{e}"))?;
         Ok(())
     }
 }
@@ -733,56 +766,27 @@ impl SaveRepo {
         Ok(())
     }
 
-    pub async fn upsert_save_identity(
+    pub async fn get_save_player_role(
         db: &DatabaseConnection,
         save_id: i32,
-        identity_id: &str,
-    ) -> Result<()> {
-        let now = Utc::now().naive_utc().to_string();
-
-        if let Some(existing) = save_identity::Entity::find_by_id(save_id)
+    ) -> Result<Option<i32>> {
+        Ok(save::Entity::find_by_id(save_id)
             .one(db)
             .await
             .map_err(|e| anyhow!("{e}"))?
-        {
-            let mut active: save_identity::ActiveModel = existing.into();
-            active.identity_id = Set(identity_id.to_string());
-            active.updated_at = Set(now);
-            active.update(db).await.map_err(|e| anyhow!("{e}"))?;
-        } else {
-            let active = save_identity::ActiveModel {
-                save_id: Set(save_id),
-                identity_id: Set(identity_id.to_string()),
-                created_at: Set(now.clone()),
-                updated_at: Set(now),
-            };
-            active.insert(db).await.map_err(|e| anyhow!("{e}"))?;
-        }
-
-        Ok(())
+            .and_then(|m| m.player_role_id))
     }
 
-    pub async fn get_save_identity(
+    pub async fn find_saves_using_player_role(
         db: &DatabaseConnection,
-        save_id: i32,
-    ) -> Result<Option<String>> {
-        Ok(save_identity::Entity::find_by_id(save_id)
-            .one(db)
-            .await
-            .map_err(|e| anyhow!("{e}"))?
-            .map(|m| m.identity_id))
-    }
-
-    pub async fn find_saves_using_identity(
-        db: &DatabaseConnection,
-        identity_id: &str,
+        role_id: i32,
     ) -> Result<Vec<i32>> {
-        save_identity::Entity::find()
-            .filter(save_identity::Column::IdentityId.eq(identity_id))
+        save::Entity::find()
+            .filter(save::Column::PlayerRoleId.eq(role_id))
             .all(db)
             .await
             .map_err(|e| anyhow!("{e}"))
-            .map(|rows| rows.into_iter().map(|r| r.save_id).collect())
+            .map(|rows| rows.into_iter().map(|r| r.id).collect())
     }
 
     pub async fn clear_running_script(db: &DatabaseConnection, save_id: i32) -> Result<()> {

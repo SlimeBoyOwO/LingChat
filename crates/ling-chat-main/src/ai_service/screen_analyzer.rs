@@ -31,9 +31,7 @@ fn build_analyzer_client() -> Client {
 /// 屏幕分析器的配置（从环境/Store 加载）。
 #[derive(Clone, Debug)]
 pub struct ScreenAnalyzerConfig {
-    pub vd_api_key: String,
-    pub vd_base_url: String,
-    pub vd_model: String,
+    pub target: Option<VisionTarget>,
     /// 图片超过端点大小限制时是否自动压缩（全局开关 `llm.auto_compress_image`，默认 true）。
     pub auto_compress_oversize: bool,
 }
@@ -41,10 +39,7 @@ pub struct ScreenAnalyzerConfig {
 impl Default for ScreenAnalyzerConfig {
     fn default() -> Self {
         Self {
-            vd_api_key: String::new(),
-            vd_base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1".to_string(),
-            // model 为空表示未配置任何视觉 provider，分析会被跳过
-            vd_model: String::new(),
+            target: None,
             auto_compress_oversize: true,
         }
     }
@@ -53,16 +48,15 @@ impl Default for ScreenAnalyzerConfig {
 impl ScreenAnalyzerConfig {
     /// 从大模型管理解析视觉分析配置：
     /// 优先使用「视觉模型」角色指定的 provider，缺省时跟随对话模型；
-    /// 都没有可用配置时返回默认值（model 为空，分析会被跳过）。
+    /// 都没有可用配置时返回默认值（target 为空，分析会被跳过）。
     pub fn resolve(app: &AppHandle) -> Self {
         let Some(provider) = resolve_vision_provider(app) else {
             return Self::default();
         };
 
-        // 截图分析固定走 OpenAI 兼容的 chat/completions + image_url 协议
         if !matches!(
             provider.provider.as_str(),
-            "openai" | "deepseek" | "lmstudio" | "kimicode"
+            "openai" | "deepseek" | "lmstudio" | "kimicode" | "codex"
         ) {
             tracing::warn!(
                 "[ScreenAnalyzer] Provider '{}' may not support the OpenAI-compatible vision API",
@@ -71,9 +65,10 @@ impl ScreenAnalyzerConfig {
         }
 
         Self {
-            vd_api_key: provider.api_key.clone(),
-            vd_base_url: vision::vision_base_url(&provider),
-            vd_model: provider.model.clone(),
+            target: Some(VisionTarget::from_provider(
+                &provider,
+                ANALYZER_HTTP_TIMEOUT_SECS,
+            )),
             auto_compress_oversize: crate::config::app_config::AppConfig::load(app)
                 .map(|c| c.auto_compress_image)
                 .unwrap_or(true),
@@ -122,7 +117,12 @@ impl ScreenAnalyzer {
         prompt: &str,
         mime: &str,
     ) -> Option<String> {
-        if self.config.vd_model.is_empty() {
+        if self
+            .config
+            .target
+            .as_ref()
+            .is_none_or(|target| target.model().is_empty())
+        {
             tracing::warn!(
                 "[ScreenAnalyzer] Vision provider model is not configured, skipping image analysis."
             );
@@ -136,15 +136,11 @@ impl ScreenAnalyzer {
     async fn run_vision(&mut self, prompt: &str, image_bytes: &[u8], mime: &str) -> Option<String> {
         // reqwest::Client 内部为 Arc，克隆廉价；避免跨 await 借用 self.client。
         let client = self.client.clone();
-        let target = VisionTarget {
-            api_key: self.config.vd_api_key.clone(),
-            base_url: self.config.vd_base_url.clone(),
-            model: self.config.vd_model.clone(),
-        };
+        let target = self.config.target.clone()?;
 
         tracing::info!(
             "[ScreenAnalyzer] Sending image to VLM ({}) for analysis...",
-            target.model
+            target.model()
         );
         let start = Instant::now();
         let result = vision::analyze_image(
@@ -310,6 +306,7 @@ pub async fn deliver_image(
         tracing::warn!("[Vision] {} 图片编码失败，回退到旁白转述。", intent.label());
     }
 
+    analyzer.update_config(ScreenAnalyzerConfig::resolve(app));
     let Some(narration) = analyzer
         .analyze_image(
             image_bytes,

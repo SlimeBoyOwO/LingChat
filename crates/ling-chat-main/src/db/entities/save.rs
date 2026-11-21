@@ -13,7 +13,11 @@ pub struct Model {
     pub update_date: DateTime,
     pub running_script_id: Option<i32>,
     pub last_message_id: Option<i32>,
+    /// 聊天/剧本的主 AI 角色。
     pub main_role_id: Option<i32>,
+    /// 本存档使用的玩家角色（身份卡）；应用层引用，无 SQL 外键。
+    #[serde(default)]
+    pub player_role_id: Option<i32>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

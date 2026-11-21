@@ -1,0 +1,373 @@
+id = "qq_onebot"
+name = "QQ · OneBot v11"
+description = "（0.6.0 插件，1.0 测试版）把 SnowLuma（QQ↔OneBot v11）接进对话：群里按 AstrBot 那套规则唤醒（@或前缀）、白名单、限速、忽略自己/@全体；角色说完的话自动发回原群或私聊。也可以主动发消息。"
+version = "1.0.0"
+author = "Lufu_Enter"
+
+# 顶层键必须写在第一个表之前，否则会被解析成那个表的字段。
+# 群里说的话要当成玩家发言送进对话。
+send_user_message = true
+
+# 只连本机回环上的 OneBot，避免这个插件被指向任意外部地址。
+ws_allow = ["ws://127.0.0.1:", "ws://localhost:"]
+
+# ───────────────────────── 连接 ─────────────────────────
+
+[[config]]
+key = "ws_url"
+label = "SnowLuma OneBot WebSocket 地址"
+kind = "string"
+required = false
+default = "ws://127.0.0.1:3001"
+hint = "SnowLuma 的 WebUI 在 5099，但 OneBot 端口是另一回事：在 WebUI 里配「WebSocket 服务端」时自己填的端口（常见 3001）。本插件作为客户端连过去。"
+
+[[config]]
+key = "access_token"
+label = "OneBot access_token"
+kind = "string"
+required = false
+is_token = true
+hint = "SnowLuma 那边配了 token 就填一样的；没配留空。"
+
+# ───────────────────────── 群聊规则（仿 AstrBot）─────────────────────────
+
+[[config]]
+key = "wake_prefix"
+label = "唤醒前缀"
+kind = "string"
+required = false
+default = "/"
+hint = "多个用逗号分隔，例如「/,鱼」。私聊默认不需要前缀，群聊默认需要 @ 或前缀。"
+
+[[config]]
+key = "at_required_in_group"
+label = "群聊必须 @ 或带前缀"
+kind = "boolean"
+required = false
+default = true
+
+[[config]]
+key = "friend_needs_prefix"
+label = "私聊也必须带前缀"
+kind = "boolean"
+required = false
+default = false
+
+[[config]]
+key = "ignore_bot_self"
+label = "忽略自己发的消息"
+kind = "boolean"
+required = false
+default = true
+
+[[config]]
+key = "ignore_at_all"
+label = "忽略 @全体成员"
+kind = "boolean"
+required = false
+default = true
+
+[[config]]
+key = "enable_whitelist"
+label = "启用会话白名单"
+kind = "boolean"
+required = false
+default = false
+
+[[config]]
+key = "whitelist"
+label = "白名单会话"
+kind = "string"
+required = false
+default = ""
+hint = "每行一个，形如 group:123456 或 private:987654；群号/QQ 号都行。启用白名单后只处理这里列出的会话。"
+
+[[config]]
+key = "rate_time"
+label = "限速窗口（秒）"
+kind = "number"
+required = false
+default = 60
+
+[[config]]
+key = "rate_count"
+label = "窗口内最多回复条数"
+kind = "number"
+required = false
+default = 10
+hint = "0 = 不限速。超过就不回（等同 AstrBot 的 discard 策略）。"
+
+[[config]]
+key = "admins"
+label = "管理员 QQ 号"
+kind = "string"
+required = false
+default = ""
+hint = "逗号分隔；给将来的管理指令用。"
+
+[[config]]
+key = "owner_qq"
+label = "主人 QQ 号"
+kind = "string"
+required = false
+default = ""
+hint = "填你自己的 QQ 号（多个用逗号）。群友发言会被标成【群友】，只有这里的号算【主人】，面板（羁绊/好感）只认主人。"
+
+
+# ───────────────────────── 回复行为 ─────────────────────────
+
+[[config]]
+key = "max_len"
+label = "单条消息最大长度"
+kind = "number"
+required = false
+default = 800
+
+[[config]]
+key = "unique_session"
+label = "把发言人和群带进对话"
+kind = "boolean"
+required = false
+default = true
+hint = "开启后送进对话的文本形如「【QQ·群123｜昵称(456)】内容」，角色能分清是谁在哪个群说话。"
+
+[[config]]
+key = "reply_with_quote"
+label = "回复时引用原消息"
+kind = "boolean"
+required = false
+default = false
+
+[[config]]
+key = "reply_with_mention"
+label = "群里回复时 @ 发言人"
+kind = "boolean"
+required = false
+default = false
+
+[[config]]
+key = "reply_prefix"
+label = "回复前缀"
+kind = "string"
+required = false
+default = ""
+
+# ───────────────────────── 状态桥（存“该回哪个群”）─────────────────────────
+
+[[config]]
+key = "state_url"
+label = "本机执行桥地址"
+kind = "string"
+required = false
+default = "http://127.0.0.1:8767"
+hint = "插件每次调用都新建解释器，没有跨调用内存，所以借桥的 kv 记住这一轮的群/私聊。"
+
+[[config]]
+key = "state_token"
+label = "本机执行桥 Token"
+kind = "string"
+required = false
+is_token = true
+
+# ───────────────────────── 连接与回调 ─────────────────────────
+
+[[ws]]
+id = "ob"
+mode = "client"
+url = "ws://127.0.0.1:3001"
+# 需要 access token 时不要写在这里：填插件配置里的 access_token，
+# on_start 会用 ws_open 把 token 拼到地址上（同官方 mc_maid_bridge 的做法）。
+auto_reconnect = true
+script = "hooks.py"
+handler = "on_ws"
+
+[[subscribe]]
+signal = "line_shown"
+script = "hooks.py"
+handler = "on_line_shown"
+
+[startup]
+script = "hooks.py"
+handler = "on_start"
+required = false
+retries = 2
+retry_interval_ms = 5000
+
+# ───────────────────────── 工具 ─────────────────────────
+
+[[tools]]
+name = "qq_connect"
+examples = ["连上QQ吧", "重连一下QQ", "QQ怎么断了", "重新连接OneBot"]
+description = "手动重新打开 OneBot 连接。改过 ws_url / access_token，或者启动时没连上时用它。参数为空。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 8000
+
+[[tools]]
+name = "qq_status"
+description = "看 QQ 连接状态、当前该回复到哪个会话、以及群聊规则摘要（唤醒前缀、白名单、限速）。排查“为什么群里不回我”时先用它。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 8000
+
+[[tools]]
+name = "qq_send"
+description = "主动往指定 QQ 群或私聊发一条消息（不需要等对方先说话）。text 是要发的正文；群聊填 group_id，私聊填 user_id。"
+parameters = '{ "type":"object", "properties":{ "text":{ "type":"string", "description":"要发送的正文" }, "emotion":{ "type":"string", "description":"可选：情绪名（正常/调皮/害羞…），会在同一条消息里附带对应立绘" }, "group_id":{ "type":"integer", "description":"群号；发给群时填" }, "user_id":{ "type":"integer", "description":"QQ 号；发给私聊时填" } }, "required":["text"] }'
+script = "main.py"
+timeout_ms = 10000
+
+# ───────────────────────── 群聊上下文（看得见别人说话）─────────────────────────
+
+[[config]]
+key = "group_context_enabled"
+label = "让角色看见群里的其它消息"
+kind = "boolean"
+required = false
+default = true
+hint = "开启后每条群消息都会记进上下文缓冲；被叫到时把最近几条一起给她，她就不会不知道刚才在聊什么。"
+
+[[config]]
+key = "group_context_size"
+label = "上下文缓冲保留条数"
+kind = "number"
+required = false
+default = 12
+
+[[config]]
+key = "group_context_inject"
+label = "每次带几条最近群聊"
+kind = "number"
+required = false
+default = 6
+hint = "0 = 不带（只给当前这句）。太多会稀释当下话题。"
+
+[[config]]
+key = "group_context_ttl_s"
+label = "上下文有效期（秒）"
+kind = "number"
+required = false
+default = 600
+
+# ───────────────────────── 回复分段 ─────────────────────────
+
+[[config]]
+key = "reply_length_mode"
+label = "LC 回复长度档"
+kind = "string"
+required = false
+default = "short"
+hint = "short = 1~2 句（推荐，QQ 里不刷屏）/ normal = 3~5 句 / free = 不限。连上时会调 set_reply_length_mode。"
+
+[[config]]
+key = "merge_lines"
+label = "整轮合并成一条"
+kind = "boolean"
+required = false
+default = true
+hint = "关掉的话每句台词单独发一条（像连珠炮）。"
+
+[[config]]
+key = "line_joiner"
+label = "合并时的分隔符"
+kind = "string"
+required = false
+default = "\\n"
+
+[[config]]
+key = "max_chars_per_message"
+label = "单条消息最大字数"
+kind = "number"
+required = false
+default = 300
+hint = "超过就按句号切开分条发；0 = 不切。"
+
+[[tools]]
+name = "qq_context"
+description = "主动看一眼群里刚才在聊什么（不需要别人先叫你）。group_id 省略时用当前这一轮的群；limit 是看几条（默认 10，最多 50）。刚醒来想知道上下文时用它。"
+parameters = '{ "type":"object", "properties":{ "group_id":{ "type":"integer", "description":"群号；省略则用当前会话的群" }, "limit":{ "type":"integer", "minimum":1, "maximum":50, "description":"看最近几条（默认 10）" } } }'
+script = "main.py"
+timeout_ms = 8000
+
+# ───────────────────────── 主动插话（AstrBot 的 active_reply）─────────────────────────
+
+[[config]]
+key = "max_lines_per_turn"
+label = "攒几句发一条"
+kind = "number"
+required = false
+default = 3
+hint = "LC 的 isFinal 不可靠：攒够这么多句就先发一条，剩下的接着攒。设 1 = 每句一条（不推荐）。"
+
+[[config]]
+key = "line_gap_seconds"
+label = "判定上一批说完了的间隔（秒）"
+kind = "number"
+required = false
+default = 2
+hint = "相邻两句间隔超过这个时间，就认为上一批已经说完，先把攒的发出去。"
+
+[[config]]
+key = "debug"
+label = "记录调试信息"
+kind = "boolean"
+required = false
+default = false
+hint = "打开后会把每句台词、宿主 API 回执写进桥的 KV，排障用；平时关着省额度。"
+
+[[config]]
+key = "emotion_image_enabled"
+label = "回复时带上立绘表情"
+kind = "boolean"
+required = false
+default = true
+hint = "按 LC 上屏时的情绪，取 avatar 目录里同名的图，和文字合并在同一条消息里发。"
+
+[[config]]
+key = "emotion_image_dir"
+label = "立绘目录"
+kind = "string"
+required = false
+default = ""
+hint = "每个情绪一张图（正常.webp / 调皮.webp / 害羞.webp …）。换角色就改这里。"
+
+[[config]]
+key = "emotion_image_position"
+label = "立绘放在文字前还是后"
+kind = "string"
+required = false
+default = "after"
+hint = "after = 文字在上、图在下（推荐）；before = 图在上。"
+
+# ───────────────────────── 单目标模式（可选）─────────────────────────
+
+[[config]]
+key = "default_target_group"
+label = "固定回复到群号"
+kind = "string"
+required = false
+default = ""
+hint = "不配状态后端时必填：所有回复都发到这个群。配了 state_url 的话会被自动识别出的群覆盖。"
+
+[[config]]
+key = "default_target_user"
+label = "固定回复到私聊 QQ"
+kind = "string"
+required = false
+default = ""
+hint = "同上，但发给私聊。和群号二选一。"
+
+[[config]]
+key = "state_url"
+label = "状态后端地址（可选）"
+kind = "string"
+required = false
+default = ""
+hint = "留空 = 单目标模式：一句一条直发，不需要任何外部服务。填了才支持多群并发 + 合并多条 + 限速。"
+
+[[config]]
+key = "state_token"
+label = "状态后端 Token"
+kind = "secret"
+required = false
+default = ""
