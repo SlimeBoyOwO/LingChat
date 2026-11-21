@@ -994,6 +994,10 @@ export default {
       importTitle: "Import Font File (.ttf / .woff2)",
       demo: "Font Sample 字体演示 123",
     },
+    navPosition: {
+      title: "Settings Nav Bar Position",
+      desc: "Move the settings nav bar to the bottom of the screen; defaults to the top on desktop and the bottom on mobile",
+    },
     speed: {
       title: "Text Display Speed",
       label: "Slow/Fast",

@@ -5,8 +5,12 @@
     :class="{ 'slide-in-right': slideFromRight && !panelLeaving, 'is-leaving': panelLeaving }"
     v-show="panelVisible"
   >
-    <div class="w-full shrink-0">
-      <SettingsNav ref="settingsNavRef" @remove-more-menu-from-a="onAddFromA" />
+    <div class="w-full shrink-0" ref="navWrapRef" :class="{ 'order-last': navAtBottom }">
+      <SettingsNav
+        ref="settingsNavRef"
+        :placement="navAtBottom ? 'bottom' : 'top'"
+        @remove-more-menu-from-a="onAddFromA"
+      />
     </div>
 
     <div
@@ -21,7 +25,8 @@
           <component
             :is="currentTabComponent"
             :key="uiStore.currentSettingsTab"
-            class="absolute inset-0 overflow-y-auto"
+            class="absolute inset-x-0 bottom-0 overflow-y-auto"
+            :class="navAtBottom ? 'top-(--safe-area-inset-top)' : 'top-0'"
             ref="settingsAdvanceRef"
             @remove-more-menu-from-b="onAddFromB"
           />
@@ -32,7 +37,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref, watch, type Component } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from "vue";
+import { useSettingsStore } from "../../stores/modules/settings";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import {
   SettingsAchievement,
@@ -60,6 +66,59 @@ const emit = defineEmits<{ (e: "closed"): void }>();
 const LEAVE_MS = 420;
 
 const uiStore = useUIStore();
+const settingsStore = useSettingsStore();
+// 导航栏可置于面板底部：桌面端默认顶部，移动端默认底部，用户可在文本设置页改
+const navAtBottom = computed(() => settingsStore.settingsNavAtBottom);
+
+// ========== 导航栏位置切换动效（FLIP）==========
+// 导航栏顶部↔底部靠 flex order 切换，是即时重排，无法用 top/bottom 过渡。
+// FLIP 做法：watch 在模板重渲染前（flush pre）先量出两个元素旧位置（First），
+// nextTick 后布局已变，再量新位置（Last），把位移差写成 transform（Invert，
+// 让元素「假装还在旧位置」），再过渡回 0（Play）平滑滑到新位置。
+// 全程只动 transform，不触发逐帧布局，配合与 tab 切换一致的缓动曲线，流畅不打扰。
+const navWrapRef = ref<HTMLElement | null>(null);
+const NAV_MOVE_MS = 320;
+let navMoveTimer: number | null = null;
+
+const flipToNewPosition = (el: HTMLElement, dy: number) => {
+  el.style.transition = "none";
+  el.style.transform = `translateY(${dy}px)`;
+  void el.offsetHeight; // 强制同步重排，让反转位置先落屏
+  el.style.transition = `transform ${NAV_MOVE_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`;
+  el.style.transform = "";
+};
+
+watch(
+  () => settingsStore.settingsNavAtBottom,
+  async () => {
+    const nav = navWrapRef.value;
+    const content = contentRef.value;
+    if (!nav || !content) return;
+    // 上一次动画若未播完，先把元素强制拉回布局位，保证 First 量到稳定位置
+    nav.style.transition = "none";
+    nav.style.transform = "";
+    content.style.transition = "none";
+    content.style.transform = "";
+    void content.offsetHeight;
+    const navFirst = nav.getBoundingClientRect();
+    const contentFirst = content.getBoundingClientRect();
+    // 等 Vue 应用新的 order-last 并完成布局
+    await nextTick();
+    const navLast = nav.getBoundingClientRect();
+    const contentLast = content.getBoundingClientRect();
+    // 滑动途中导航栏盖在内容区上方，避免被平移中的内容区盖住
+    nav.style.zIndex = "50";
+    flipToNewPosition(nav, navFirst.top - navLast.top);
+    flipToNewPosition(content, contentFirst.top - contentLast.top);
+    if (navMoveTimer !== null) clearTimeout(navMoveTimer);
+    navMoveTimer = window.setTimeout(() => {
+      navMoveTimer = null;
+      nav.style.transition = "";
+      nav.style.zIndex = "";
+      content.style.transition = "";
+    }, NAV_MOVE_MS + 80);
+  },
+);
 
 // 获取 A 组件和 B 组件的 Ref 实例
 const settingsNavRef = ref<InstanceType<typeof SettingsNav> | null>(null);
@@ -110,6 +169,7 @@ function startLeave() {
 onUnmounted(() => {
   cancelLeave();
   if (contentFrame !== null) cancelAnimationFrame(contentFrame);
+  if (navMoveTimer !== null) clearTimeout(navMoveTimer);
 });
 
 watch(
@@ -139,7 +199,7 @@ watch(
 );
 
 // ========== 手机端左右滑动切换标签 ==========
-// 导航栏在顶部，手机端通过水平滑动内容区切换设置页
+// 导航栏可置于面板顶部或底部，手机端通过水平滑动内容区切换设置页
 // 标签顺序与 SettingsNav 导航一致
 const TABS = [
   "character",

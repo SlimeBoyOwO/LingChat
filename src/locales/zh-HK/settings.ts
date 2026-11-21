@@ -958,6 +958,10 @@ export default {
       importTitle: "匯入字體文件 (.ttf / .woff2)",
       demo: "字體示範 Font Sample 123",
     },
+    navPosition: {
+      title: "設定導覽欄位置",
+      desc: "撳開就將設定導覽欄移去畫面底部；預設桌面喺頂、手機喺底",
+    },
     speed: {
       title: "文字顯示速度",
       label: "慢/快",

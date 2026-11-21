@@ -1238,6 +1238,10 @@ export default {
       importTitle: "导入字体文件 (.ttf / .woff2)",
       demo: "字体演示 Font Sample 123",
     },
+    navPosition: {
+      title: "设置导航栏位置",
+      desc: "开启后设置导航栏移到屏幕底部；默认桌面端在顶部、移动端在底部",
+    },
     speed: {
       title: "文字显示速度",
       label: "慢/快",

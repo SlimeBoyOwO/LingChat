@@ -14,7 +14,16 @@ import {
 import type { ShortcutAction, ShortcutBinding } from "@/utils/shortcuts";
 import { DEFAULT_SHORTCUTS, sanitizeShortcuts } from "@/utils/shortcuts";
 import { isWeatherEffect } from "@/components/game/standard/particles";
+import { isMobile } from "@/utils/platform";
 import { defineStore } from "pinia";
+
+/**
+ * 设置面板导航栏位置。
+ *
+ * `auto` = 跟随设备：桌面端在顶部，移动端在底部（拇指可达）；
+ * `top` / `bottom` = 用户手动指定后固定，不再随设备变化。
+ */
+export type SettingsNavPosition = "auto" | "top" | "bottom";
 
 // 默认设置值
 export const DEFAULT_SETTINGS = {
@@ -62,6 +71,7 @@ export const DEFAULT_SETTINGS = {
     sceneAwarenessEnabled: true, // 场景感知开关
     hdrModeEnabled: false, // HDR 模式开关（仅 Windows）
     locale: "zh-CN", // 界面显示语言（i18n，'zh-CN' / 'ja'）
+    settingsNavPosition: "auto" as SettingsNavPosition, // 设置面板导航栏位置
     affectionHeartbeatEnabled: true, // 好感度爱心心跳动画开关（关闭后液体爱心静止）
     affectionWaveEnabled: true, // 好感度爱心液体波浪动画开关（关闭后液面为静止平面）
   },
@@ -132,6 +142,8 @@ export interface DisplaySettings {
   sceneAwarenessEnabled: boolean;
   hdrModeEnabled: boolean;
   locale: string;
+  /** 设置面板导航栏位置：auto 跟随设备（桌面顶部 / 移动端底部） */
+  settingsNavPosition: SettingsNavPosition;
   affectionHeartbeatEnabled: boolean;
   affectionWaveEnabled: boolean;
 }
@@ -214,6 +226,12 @@ export const useSettingsStore = defineStore("settings", {
     hdrModeEnabled: (state) => state.display.hdrModeEnabled,
     // 界面显示语言（i18n）
     uiLocale: (state) => state.display.locale,
+    // 设置面板导航栏是否在底部（auto 时移动端在底部、桌面端在顶部）
+    settingsNavAtBottom: (state): boolean => {
+      const position = state.display.settingsNavPosition;
+      if (position === "top" || position === "bottom") return position === "bottom";
+      return isMobile();
+    },
     // 好感度爱心心跳动画开关（旧持久化数据缺该字段时回退 true）
     affectionHeartbeatEnabled: (state) => state.display.affectionHeartbeatEnabled ?? true,
     // 好感度爱心液体波浪动画开关（同上回退 true）
@@ -374,6 +392,11 @@ export const useSettingsStore = defineStore("settings", {
     // 设置光标特效引擎
     setCursorEffectEngine(engine: CursorEffectEngine) {
       this.display.cursorEffectEngine = engine;
+    },
+
+    // 设置设置面板导航栏位置
+    setSettingsNavPosition(position: SettingsNavPosition) {
+      this.display.settingsNavPosition = position;
     },
 
     // 设置流星动画帧率
