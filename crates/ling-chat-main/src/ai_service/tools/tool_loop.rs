@@ -727,7 +727,9 @@ fn presentation_stream(stream: ChunkStream) -> PresentationStream {
     Box::pin(stream.filter_map(|chunk| async move {
         match chunk {
             Ok(LlmChunk::ToolCalls(calls)) => {
-                tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
+                if !calls.is_empty() {
+                    tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
+                }
                 None
             },
             Ok(chunk) => Some(Ok(PresentationChunk::Chunk(chunk))),

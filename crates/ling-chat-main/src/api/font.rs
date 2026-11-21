@@ -69,7 +69,7 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
         if logfont.is_null() {
             return 1; // 继续枚举
         }
-        let lf = &*logfont;
+        let lf = unsafe { &*logfont };
         // lfFaceName 是 [u16; 32]，以 0 结尾
         let mut len = 0usize;
         while len < lf.lfFaceName.len() && lf.lfFaceName[len] != 0 {
@@ -81,7 +81,7 @@ pub fn list_system_fonts() -> Result<Vec<FontFamilyInfo>, String> {
 
         let store_ptr = lparam.0 as *const RefCell<Vec<String>>;
         if !store_ptr.is_null() {
-            let store = &*store_ptr;
+            let store = unsafe { &*store_ptr };
             if let Ok(mut guard) = store.try_borrow_mut() {
                 if !name.is_empty() && !guard.iter().any(|n| n.eq_ignore_ascii_case(&name)) {
                     guard.push(name);

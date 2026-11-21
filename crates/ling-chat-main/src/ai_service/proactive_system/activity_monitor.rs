@@ -263,7 +263,7 @@ unsafe extern "system" fn keyboard_hook_callback(
     if code >= 0 {
         let msg = w_param.0 as u32;
         if msg == WM_KEYDOWN || msg == WM_SYSKEYDOWN {
-            let kbd_struct = *(l_param.0 as *const KBDLLHOOKSTRUCT);
+            let kbd_struct = unsafe { *(l_param.0 as *const KBDLLHOOKSTRUCT) };
             let vk = kbd_struct.vkCode;
 
             // Game Keys: W(0x57), A(0x41), S(0x53), D(0x44), Space(0x20), Left(0x25), Up(0x26), Right(0x27), Down(0x28)
@@ -289,7 +289,7 @@ unsafe extern "system" fn keyboard_hook_callback(
             }
         }
     }
-    CallNextHookEx(None, code, w_param, l_param)
+    unsafe { CallNextHookEx(None, code, w_param, l_param) }
 }
 
 #[cfg(target_os = "windows")]
@@ -300,7 +300,7 @@ unsafe extern "system" fn mouse_hook_callback(
 ) -> LRESULT {
     if code >= 0 {
         let msg = w_param.0 as u32;
-        let ms_struct = *(l_param.0 as *const MSLLHOOKSTRUCT);
+        let ms_struct = unsafe { *(l_param.0 as *const MSLLHOOKSTRUCT) };
         let pt = ms_struct.pt;
 
         if let Some(inner_arc) = GLOBAL_MONITOR_INNER.get() {
@@ -327,7 +327,7 @@ unsafe extern "system" fn mouse_hook_callback(
             }
         }
     }
-    CallNextHookEx(None, code, w_param, l_param)
+    unsafe { CallNextHookEx(None, code, w_param, l_param) }
 }
 
 #[cfg(target_os = "windows")]
