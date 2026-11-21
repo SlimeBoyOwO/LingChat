@@ -20,12 +20,15 @@ impl MigratorTrait for Migrator {
             Box::new(m20261015_000001_add_line_identity_id::Migration),
             // 身份索引表（文件为真源，本表供查询）：必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261016_000001_create_player_identity_index::Migration),
+            Box::new(m20261018_000001_create_memory_index::Migration),
+            Box::new(m20261018_000002_add_memory_chunking_version::Migration),
             // 工具轮标识：前导台词、载体与工具结果共享，记忆构建器据此分组。
             Box::new(m20261020_000001_add_line_round_id::Migration),
             // 角色与玩家身份的认知关系（多对多），从 relations.yml 迁入。
             Box::new(m20261030_000001_create_role_identity_relation::Migration),
             // 该表追加初始好感度覆写列。
             Box::new(m20261030_000002_add_role_identity_affection::Migration),
+            Box::new(m20261113_000001_memory_chunk_ranges::Migration),
             // 玩家身份并入 role：身份表、存档绑定、认知关系与台词归属一次迁移。
             Box::new(m20261114_000001_merge_player_identity_into_role::Migration),
             // 台词表按存档查询的索引。必须追加在末尾，保持时间戳单调递增。
@@ -37,6 +40,7 @@ impl MigratorTrait for Migrator {
             Box::new(m20261116_000001_create_hotword::Migration),
             // 存档级手动笔记（同档内角色共享）。必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261116_000001_create_save_note::Migration),
+            Box::new(m20261121_000001_merge_memory_embeddings::Migration),
         ]
     }
 }
@@ -52,11 +56,15 @@ pub mod m20260918_000001_create_save_identity;
 pub mod m20261011_000001_remove_asr_language;
 pub mod m20261015_000001_add_line_identity_id;
 pub mod m20261016_000001_create_player_identity_index;
+pub mod m20261018_000001_create_memory_index;
+pub mod m20261018_000002_add_memory_chunking_version;
 pub mod m20261020_000001_add_line_round_id;
 pub mod m20261030_000001_create_role_identity_relation;
 pub mod m20261030_000002_add_role_identity_affection;
+pub mod m20261113_000001_memory_chunk_ranges;
 pub mod m20261114_000001_merge_player_identity_into_role;
 pub mod m20261115_000001_agent_conversation_director;
 pub mod m20261115_000001_index_line_save_id;
 pub mod m20261116_000001_create_hotword;
 pub mod m20261116_000001_create_save_note;
+pub mod m20261121_000001_merge_memory_embeddings;

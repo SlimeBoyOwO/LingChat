@@ -9,6 +9,7 @@ fn reply(index: usize, is_final: bool) -> PublishItem {
     PublishItem::Reply {
         index,
         response: Some(response),
+        stamp: None,
     }
 }
 
@@ -22,7 +23,7 @@ async fn out_of_order_arrival_commits_before_emit_in_index_order() {
     let log = Arc::new(Mutex::new(Vec::new()));
     let captured = log.clone();
     assert!(
-        publish_ordered(rx, move |index, response| {
+        publish_ordered(rx, None, move |index, response, _| {
             let log = captured.clone();
             async move {
                 assert_eq!(response.message, index.to_string());
@@ -44,9 +45,13 @@ async fn out_of_order_arrival_commits_before_emit_in_index_order() {
 async fn fence_ack_waits_for_commit_and_emit() {
     let (tx, rx) = mpsc::channel(4);
     let (ack, mut fence) = oneshot::channel();
-    tx.send(PublishItem::BeforeTools { index: 1, ack })
-        .await
-        .unwrap();
+    tx.send(PublishItem::BeforeTools {
+        index: 1,
+        ack,
+        stamp: None,
+    })
+    .await
+    .unwrap();
     tx.send(reply(0, false)).await.unwrap();
     drop(tx);
 
@@ -54,7 +59,7 @@ async fn fence_ack_waits_for_commit_and_emit() {
     let (release, released) = oneshot::channel::<()>();
     let mut entered = Some(entered);
     let mut released = Some(released);
-    let publisher = tokio::spawn(publish_ordered(rx, move |_, _| {
+    let publisher = tokio::spawn(publish_ordered(rx, None, move |_, _, _| {
         let entered = entered.take().unwrap();
         let released = released.take().unwrap();
         async move {
@@ -80,14 +85,18 @@ async fn failed_or_stale_commit_stops_later_commits_and_fails_fence_closed() {
         let (tx, rx) = mpsc::channel(4);
         tx.send(reply(2, true)).await.unwrap();
         let (ack, fence) = oneshot::channel();
-        tx.send(PublishItem::BeforeTools { index: 1, ack })
-            .await
-            .unwrap();
+        tx.send(PublishItem::BeforeTools {
+            index: 1,
+            ack,
+            stamp: None,
+        })
+        .await
+        .unwrap();
         tx.send(reply(0, false)).await.unwrap();
         drop(tx);
 
         assert!(
-            !publish_ordered(rx, move |index, _| async move {
+            !publish_ordered(rx, None, move |index, _, _| async move {
                 assert_eq!(index, 0);
                 if stale {
                     Ok(false)
@@ -107,6 +116,7 @@ async fn skipped_reply_does_not_block_final() {
     tx.send(PublishItem::Reply {
         index: 0,
         response: None,
+        stamp: None,
     })
     .await
     .unwrap();
@@ -114,7 +124,7 @@ async fn skipped_reply_does_not_block_final() {
     drop(tx);
 
     assert!(
-        publish_ordered(rx, |index, _| async move {
+        publish_ordered(rx, None, |index, _, _| async move {
             assert_eq!(index, 1);
             Ok(true)
         })

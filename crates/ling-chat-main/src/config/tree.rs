@@ -264,8 +264,20 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
         feat_subs.insert(
             "记忆系统".to_string(),
             Subcategory {
-                description: "在这里设定永久记忆效果；本组设置保存后需重启 LingChat 才会应用到压缩引擎".to_string(),
+                description: "设定永久记忆效果；摘要压缩设置需重启，历史检索开关与超时设置保存后即时生效".to_string(),
                 settings: vec![
+                    ConfigSetting {
+                        key: keys::MEMORY_RAG_ENABLED.to_string(),
+                        value: read_setting(app, keys::MEMORY_RAG_ENABLED, &app_defaults.memory_rag_enabled.to_string()),
+                        description: "自动回忆与历史记忆检索（立即生效，关闭后仍保留原有摘要与笔记）".to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::MEMORY_RAG_TIMEOUT_MS.to_string(),
+                        value: read_setting(app, keys::MEMORY_RAG_TIMEOUT_MS, &app_defaults.memory_rag_timeout_ms.to_string()),
+                        description: "记忆检索等待上限（100–10000 毫秒，默认 2000；超时继续普通聊天）".to_string(),
+                        setting_type: "text".to_string(),
+                    },
                     ConfigSetting {
                         key: keys::USE_PERSISTENT_MEMORY.to_string(),
                         value: read_setting(
