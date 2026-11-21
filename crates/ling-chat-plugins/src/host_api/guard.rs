@@ -134,3 +134,29 @@ pub(crate) fn set_capture_allow(allow: bool) -> CaptureAllowGuard {
 pub(super) fn current_capture_allow() -> bool {
     CAPTURE_ALLOW.with(|cell| *cell.borrow())
 }
+
+thread_local! {
+    /// 当前线程正在执行的插件是否声明了 `director_task` 能力。它会花掉一轮
+    /// 后台导演生成，必须由 manifest 单独声明。
+    static DIRECTOR_TASK_ALLOW: RefCell<bool> = const { RefCell::new(false) };
+}
+
+pub(crate) struct DirectorTaskAllowGuard {
+    prev: bool,
+}
+
+impl Drop for DirectorTaskAllowGuard {
+    fn drop(&mut self) {
+        DIRECTOR_TASK_ALLOW.with(|cell| *cell.borrow_mut() = self.prev);
+    }
+}
+
+pub(crate) fn set_director_task_allow(allow: bool) -> DirectorTaskAllowGuard {
+    DIRECTOR_TASK_ALLOW.with(|cell| DirectorTaskAllowGuard {
+        prev: cell.replace(allow),
+    })
+}
+
+pub(super) fn current_director_task_allow() -> bool {
+    DIRECTOR_TASK_ALLOW.with(|cell| *cell.borrow())
+}

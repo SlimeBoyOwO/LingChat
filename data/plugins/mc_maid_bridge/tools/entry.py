@@ -5,6 +5,7 @@ manifest 里所有工具都指向这个脚本；每个行为模块自己维护 T
 """
 
 from tools.action import TOOLS as ACTION_TOOLS
+from tools.building import TOOLS as BUILDING_TOOLS
 from tools.combat import TOOLS as COMBAT_TOOLS
 from tools.headwear import TOOLS as HEADWEAR_TOOLS
 from tools.item import TOOLS as ITEM_TOOLS
@@ -23,6 +24,7 @@ for _part in (
     ITEM_TOOLS,
     HEADWEAR_TOOLS,
     QUERY_TOOLS,
+    BUILDING_TOOLS,
 ):
     TOOLS.update(_part)
 

@@ -9,6 +9,7 @@
 //! - [`SIGNAL_AI_REPLY`]：每条助手回复（自由对话、剧本固定台词、主动消息都会触发）
 //! - [`SIGNAL_LINE_SHOWN`]：主界面开始展示某句台词（与回复生成是两个时机）
 //! - [`SIGNAL_WS_MESSAGE`]：插件声明的 WS 连接的建立 / 断开 / 收到帧 / 出错
+//! - [`SIGNAL_DIRECTOR_TASK`]：插件发起的导演任务完成或失败
 //!
 //! 接入新信号时：
 //! 1. 在 [`SignalRegistry::new`] 里 `register` 一条 [`SignalSpec`]（名称 + payload 字段）；
@@ -51,8 +52,18 @@ pub const SIGNAL_LINE_SHOWN: &str = "line_shown";
 /// （派发时按连接所属插件过滤，见 `PluginManager::dispatch_signal`）。
 pub const SIGNAL_WS_MESSAGE: &str = "ws_message";
 
+/// 插件发起的导演任务进入终态（完成或失败）。
+///
+/// 只派发给发起该任务的插件。payload 只带任务 id、摘要与错误；完整结果要用
+/// `director_task_take` 另外取，避免大对象经过信号。
+pub const SIGNAL_DIRECTOR_TASK: &str = "director_task";
+
 /// [`SIGNAL_WS_MESSAGE`] payload 的顶层字段（camelCase）。
 pub const WS_MESSAGE_FIELDS: &[&str] = &["connId", "mode", "event", "data", "binary", "error"];
+
+/// [`SIGNAL_DIRECTOR_TASK`] payload 的顶层字段（camelCase）。
+pub const DIRECTOR_TASK_FIELDS: &[&str] =
+    &["taskId", "kind", "status", "summary", "hasResult", "error"];
 
 /// [`SIGNAL_AI_REPLY`] payload 的顶层字段（camelCase）。
 ///
@@ -171,6 +182,11 @@ impl SignalRegistry {
             name: SIGNAL_WS_MESSAGE,
             description: "插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错",
             fields: WS_MESSAGE_FIELDS,
+        });
+        registry.register(SignalSpec {
+            name: SIGNAL_DIRECTOR_TASK,
+            description: "插件发起的导演任务完成或失败",
+            fields: DIRECTOR_TASK_FIELDS,
         });
         registry
     }

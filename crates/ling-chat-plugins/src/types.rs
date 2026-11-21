@@ -305,6 +305,10 @@ pub struct PluginManifest {
     /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮 LLM 生成
     #[serde(default)]
     pub trigger_proactive: bool,
+    /// 是否允许向导演 Agent 投递后台任务（本期是建筑规划）。
+    /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮后台生成
+    #[serde(default)]
+    pub director_task: bool,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
@@ -336,6 +340,8 @@ pub struct PluginRunEnv {
     pub capture_screen: bool,
     /// manifest `trigger_proactive` 声明：是否允许请求宿主主动开口。
     pub trigger_proactive: bool,
+    /// manifest `director_task` 声明：是否允许向导演 Agent 投递后台任务。
+    pub director_task: bool,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。

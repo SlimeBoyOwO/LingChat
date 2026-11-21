@@ -106,7 +106,7 @@ parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_
 
 改完 `manifest.toml`（或往 `data/plugins` 里换过脚本）后，在 设置 → 插件 页点「重新扫描插件」即可生效，不用重启应用。注意页面上那个启用开关不管用：它只是拿内存里已经解析过的那份 manifest 重新注册工具，不会重读文件。
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）以及接管实时台词语音（`[voice_play_back]`），见后文对应章节。
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）、向导演 Agent 投递后台任务的能力（`director_task`）以及接管实时台词语音（`[voice_play_back]`），见后文对应章节。
 
 **工具的下发与权限**：插件启用时，宿主会把它声明的工具一并授权给默认角色组（与工具设置页里打开开关同义），工具才会随主聊天下发给 LLM、也才能进 Tool RAG 的候选池；同时也会写进「主动对话」映射到的场景组，让游戏事件触发的那一轮也搜得到、调得动（场景组是一份早先写死的工具快照，不补进去的话插件工具只在玩家开口的那一轮可用）。禁用插件时两处授权一起收回。
 
@@ -348,11 +348,12 @@ match = { emotion = "高兴" }      # 可选，见下
 
 ### 已注册的信号
 
-| 信号         | 触发时机                                                 | payload                                              |
-| ------------ | -------------------------------------------------------- | ---------------------------------------------------- |
-| `ai_reply`   | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发   | 与前端 `ai:reply` 事件一致（camelCase），见下        |
-| `line_shown` | 主界面**开始展示**某句台词（逐句；被合并的短句各算一次） | 与该句的 `ai_reply` 同形，少一个 `avatarDir`         |
-| `ws_message` | 插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错          | `{ connId, mode, event, data, binary, error }`，见下 |
+| 信号            | 触发时机                                                 | payload                                               |
+| --------------- | -------------------------------------------------------- | ----------------------------------------------------- |
+| `ai_reply`      | 每条助手回复。自由对话、剧本固定台词、主动消息都会触发   | 与前端 `ai:reply` 事件一致（camelCase），见下         |
+| `line_shown`    | 主界面**开始展示**某句台词（逐句；被合并的短句各算一次） | 与该句的 `ai_reply` 同形，少一个 `avatarDir`          |
+| `ws_message`    | 插件声明的 WS 连接：建立 / 断开 / 收到帧 / 出错          | `{ connId, mode, event, data, binary, error }`，见下  |
+| `director_task` | 插件发起的导演任务完成或失败（只派发给发起者）           | `{ taskId, kind, status, summary, hasResult, error }` |
 
 `ai_reply` 的 payload 顶层字段：`type`、`duration`、`isFinal`、`character`、`roleId`、`emotion`、`originalTag`、`message`、`ttsText`、`motionText`、`audioFile`、`originalMessage`、`displayName`、`displaySubtitle`、`userMessageSeq`、`thinking`、`previewGen`。
 
@@ -378,6 +379,8 @@ match = { emotion = "高兴" }      # 可选，见下
 
 > `ws_message` 只派发给**声明了该连接的插件**——别的插件就算订阅了同名信号也收不到。
 > 连接本身用 `[[ws]]` 声明、用 `ws_open` / `ws_send` / `ws_close` 操作，见「WebSocket 连接」。`ws_message` 的 handler `ctx` 与 `ai_reply` 完全一致（`ctx["signal"]` 为 `"ws_message"`）。
+
+`director_task` 只派发给**发起该任务的插件**。`status` 为 `done` / `failed`；payload 里只有任务 id、摘要与错误，完整结果用 `director_task_take(task_id=...)` 取——大对象不经过信号。
 
 > 声明**未注册**的信号是安全的：加载时只对未注册的信号打一条 warn，不算 manifest 错误，插件包在信号上线前后都能正常安装启用。
 >
@@ -1050,6 +1053,39 @@ trigger_proactive("")
 | `{ "ok": false, "error": "..." }`                                    | 没声明该能力 / 宿主未就绪                |
 
 > 主动对话系统**总开关关掉时**也会走到 `proactive_disabled`——这正是它该有的行为：用户关了主动对话，插件就别再让它自己开口。
+
+### 导演后台任务：`director_task_start` / `director_task_status` / `director_task_take`
+
+把一件耗时的事交给上帝 Agent 的导演分支在后台跑，不占当前对话轮次。**需要 manifest 顶层声明 `director_task = true`**。
+
+任务内容由插件给：任务说明、用户消息、提交工具的名称与参数 schema 都随请求传入，宿主不解释具体领域。`kind` 只是标签，用于任务 id 与信号回传。
+
+```python
+from plugin_host import director_task_start, director_task_status, director_task_take
+
+r = director_task_start("building", {
+    "system_prompt": "你是……（任务说明与约束）",
+    "prompt": "……（本次任务的用户消息）",
+    "include_recent": True,          # 由宿主在消息末尾追加最近对话，默认 True
+    "submit": {
+        "tool": "submit_building_blueprint",
+        "description": "提交最终结果。",
+        "parameters": {...},         # 提交工具的 JSON Schema
+        "result_field": "blueprint", # 取哪个参数作为结果
+        "summary_field": "summary",  # 可选：取哪段文字作为短摘要
+    },
+})
+# {"ok": True, "task_id": "building-..."}
+```
+
+- 立刻返回；同一时间只跑一个任务，已有任务在跑时返回 `{ok: False, error}`。
+- `system_prompt`、`prompt` 与提交工具定义都有体积上限，超过时直接拒绝。
+- 导演在自己的工具循环里调用 `submit.tool`，整个任务只认一次提交。宿主按字段名取出结果与摘要并保存，不解释内容。
+- 任务进入终态后宿主派发 `director_task` 信号（只发给发起者）；payload 只带 id、状态、摘要与错误。
+- `director_task_status(task_id=None)` 查进度；省略 id 查本插件最近一次任务。返回 `{ok, task}`，没有任务时 `task` 为 `null`。
+- `director_task_take(task_id=None)` 取走结果；只能在 `status == "done"` 时取，取走后 `hasResult` 变为 false。
+- 任务状态：`running` / `done` / `failed`。超时、模型报错或没交结果都只通知失败，不自动重试。
+- 仅内存：重启即失；任务结束时若发现存档已换，按失败收尾。
 
 ### WebSocket：`ws_open` / `ws_close` / `ws_send` / `ws_status`
 

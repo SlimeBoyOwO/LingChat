@@ -227,3 +227,6 @@ data/plugins/**/*.py[cod]
 prev-build-*/
 
 .dsh-ops/
+
+# 参考文献不必上传
+reference.md

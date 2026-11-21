@@ -1,9 +1,9 @@
 //! 插件宿主原生模块 `plugin_host`：注入给插件 Python 脚本的全部宿主能力。
 //!
 //! 按能力分文件：HTTP 在 `http`，角色/界面控制在 `character`，上下文在 `context`，
-//! 读素材在 `assets`，送消息/抓屏/主动开口在 `conversation`，WS 控制在 `websocket`。
-//! 本文件保留 `#[pymodule]` 导出面——20 个 `#[pyfunction]` 只做签名与转发，插件作者
-//! 看到的仍是一个 `plugin_host` 模块。
+//! 读素材在 `assets`，送消息/抓屏/主动开口在 `conversation`，WS 控制在 `websocket`，
+//! 导演后台任务在 `director_task`。本文件保留 `#[pymodule]` 导出面——每个
+//! `#[pyfunction]` 只做签名与转发，插件作者看到的仍是一个 `plugin_host` 模块。
 //!
 //! 新增宿主能力时：实现写进对应能力文件，在下面的 `plugin_host` 里挂一行转发。
 
@@ -11,6 +11,7 @@ mod assets;
 mod character;
 mod context;
 mod conversation;
+mod director_task;
 mod guard;
 mod http;
 mod websocket;
@@ -23,7 +24,8 @@ use rustpython_vm::{PyObjectRef, VirtualMachine, builtins::PyListRef, function::
 
 pub(crate) use assets::check_relative_data_path;
 pub(crate) use guard::{
-    set_capture_allow, set_current_plugin, set_proactive_allow, set_read_allow, set_send_allow,
+    set_capture_allow, set_current_plugin, set_director_task_allow, set_proactive_allow,
+    set_read_allow, set_send_allow,
 };
 
 /// 插件脚本在独立线程执行，线程上无 tokio runtime 上下文；
@@ -323,6 +325,54 @@ mod plugin_host {
     #[pyfunction]
     fn compress_context(vm: &VirtualMachine) -> PyResult<PyObjectRef> {
         super::context::compress_context(vm)
+    }
+
+    /// 向导演 Agent 投递一个后台任务，立刻返回任务 id。
+    ///
+    /// 用法：`director_task_start("building", {"system_prompt": "...", "prompt": "...", "submit": {...}})`
+    ///
+    /// 任务说明、用户消息与提交工具定义都由插件提供，宿主不解释具体领域。
+    /// **需要 manifest 顶层声明 `director_task = true`**。任务在后台跑，不占角色
+    /// 这一轮对话；已有任务在跑时直接拒绝。任务进入终态后宿主派发 `director_task`
+    /// 信号，结果用 `director_task_take` 按 id 取。
+    ///
+    /// 返回：`{ "ok": true, "task_id": "..." }` 或 `{ "ok": false, "error": "..." }`。
+    #[pyfunction]
+    fn director_task_start(
+        kind: String,
+        request: PyObjectRef,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::director_task::director_task_start(kind, request, vm)
+    }
+
+    /// 查询导演任务进度。省略 `task_id` 时查当前插件最近一次任务。
+    ///
+    /// 用法：`director_task_status()` / `director_task_status(task_id="...")`
+    ///
+    /// 返回：`{ "ok": true, "task": {taskId, kind, status, summary, error, hasResult,
+    /// startedAt, finishedAt} }`；没有任务时 `task` 为 `null`。
+    #[pyfunction]
+    fn director_task_status(
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::director_task::director_task_status(kwargs, vm)
+    }
+
+    /// 取走导演任务的结果（本期是建筑蓝图）。省略 `task_id` 时取当前插件最近一次任务。
+    ///
+    /// 用法：`director_task_take()` / `director_task_take(task_id="...")`
+    ///
+    /// 只能在任务状态为 `done` 时取；取走后 `hasResult` 变为 false。
+    /// 返回：`{ "ok": true, "taskId", "kind", "summary", "result" }` 或
+    /// `{ "ok": false, "error": "..." }`。
+    #[pyfunction]
+    fn director_task_take(
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::director_task::director_task_take(kwargs, vm)
     }
 
     /// 启用一个已在 manifest 声明的 WebSocket 连接。
