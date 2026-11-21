@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 use anyhow::{Context, Result, ensure};
 use ling_chat_notes::memory::{
     EmbeddingVersion, IndexedMemoryChunk, IndexedMemoryDocument, MemoryChunk, MemoryDocument,
-    MemoryEmbeddingRecord, MemoryScope, MemoryScopeKey, memory_version,
+    MemoryEmbeddingRecord, MemoryScope, MemoryScopeKey,
 };
 use sea_orm::sea_query::OnConflict;
 use sea_orm::{
@@ -14,11 +14,10 @@ use sea_orm::{
 
 use super::save_repo::SaveRepo;
 use crate::ai_service::game_system::memory::scope::MemoryScopeSnapshot;
-use crate::db::entities::{memory_chunk, memory_document, memory_embedding, memory_index_state};
+use crate::db::entities::{memory_chunk, memory_document, memory_index_state};
 
 #[derive(Debug)]
 pub struct MemoryIndexSnapshot {
-    pub generation: i64,
     pub scope_key: Option<MemoryScopeKey>,
     pub index_version: Option<String>,
     pub documents: Vec<IndexedMemoryDocument>,
@@ -37,7 +36,6 @@ impl MemoryIndexRepo {
         let state = memory_index_state::Entity::find_by_id((key.save_id, key.role_id))
             .one(&transaction)
             .await?;
-        let generation = state.as_ref().map_or(0, |state| state.generation);
         let (scope_key, index_version) = if let Some(state) = state {
             (
                 serde_json::from_str(&state.scope_key).ok(),
@@ -92,21 +90,6 @@ impl MemoryIndexRepo {
                 .all(&transaction)
                 .await?
         };
-        let chunk_ids: Vec<String> = chunks.iter().map(|chunk| chunk.id.clone()).collect();
-        let embedding_rows = if chunk_ids.is_empty() {
-            Vec::new()
-        } else {
-            memory_embedding::Entity::find()
-                .filter(memory_embedding::Column::ChunkId.is_in(chunk_ids))
-                .all(&transaction)
-                .await?
-        };
-        let embeddings: HashMap<_, _> = embedding_rows
-            .into_iter()
-            .map(|embedding| (embedding.chunk_id.clone(), embedding))
-            .collect();
-
-        let expected_model_version = memory_version(model)?;
         let mut next_offsets = HashMap::new();
         for row in chunks {
             let Some(document) = documents.get_mut(&row.document_id) else {
@@ -143,20 +126,12 @@ impl MemoryIndexRepo {
                 continue;
             }
             next_offsets.insert(row.document_id, end_byte);
-            let embedding = embeddings
-                .get(&chunk.id)
-                .and_then(|embedding| {
-                    serde_json::from_str::<MemoryEmbeddingRecord>(&embedding.payload).ok()
-                })
+            let embedding = row
+                .embedding
+                .as_deref()
+                .and_then(|payload| serde_json::from_str::<MemoryEmbeddingRecord>(payload).ok())
                 .filter(|embedding| {
-                    embedding.model == *model
-                        && embedding.validate_for(&chunk).is_ok()
-                        && embeddings
-                            .get(&chunk.id)
-                            .is_some_and(|stored| stored.chunk_version == chunk.version)
-                        && embeddings
-                            .get(&chunk.id)
-                            .is_some_and(|stored| stored.model_version == expected_model_version)
+                    embedding.model == *model && embedding.validate_for(&chunk).is_ok()
                 });
             document
                 .chunks
@@ -166,7 +141,6 @@ impl MemoryIndexRepo {
         let mut documents: Vec<_> = documents.into_values().collect();
         documents.sort_by(|left, right| left.document.id.cmp(&right.document.id));
         Ok(MemoryIndexSnapshot {
-            generation,
             scope_key,
             index_version,
             documents,
@@ -176,7 +150,7 @@ impl MemoryIndexRepo {
     pub(crate) async fn commit(
         db: &DatabaseConnection,
         scope: &MemoryScopeSnapshot,
-        expected_generation: i64,
+        expected_index_version: Option<&str>,
         index_version: &str,
         desired: &[IndexedMemoryDocument],
         changed: &HashSet<String>,
@@ -227,8 +201,13 @@ impl MemoryIndexRepo {
             );
         }
         let transaction = db.begin().await?;
+        let current_index_version =
+            memory_index_state::Entity::find_by_id((key.save_id, key.role_id))
+                .one(&transaction)
+                .await?
+                .map(|state| state.index_version);
         ensure!(
-            generation(&transaction, key).await? == expected_generation,
+            current_index_version.as_deref() == expected_index_version,
             "索引已被其他任务更新，请重试"
         );
         let mut history = SaveRepo::get_memory_gameline_list(&transaction, key.save_id).await?;
@@ -288,26 +267,20 @@ impl MemoryIndexRepo {
                     version: Set(chunk.version.clone()),
                     start_byte: Set(start_byte),
                     end_byte: Set(end_byte),
+                    embedding: Set(item_chunk
+                        .embedding
+                        .as_ref()
+                        .map(serde_json::to_string)
+                        .transpose()?),
                 })
                 .exec(&transaction)
                 .await?;
                 start_byte = end_byte;
-                if let Some(embedding) = &item_chunk.embedding {
-                    memory_embedding::Entity::insert(memory_embedding::ActiveModel {
-                        chunk_id: Set(chunk.id.clone()),
-                        chunk_version: Set(chunk.version.clone()),
-                        model_version: Set(memory_version(&embedding.model)?),
-                        payload: Set(serde_json::to_string(embedding)?),
-                    })
-                    .exec(&transaction)
-                    .await?;
-                }
             }
         }
         memory_index_state::Entity::insert(memory_index_state::ActiveModel {
             save_id: Set(key.save_id),
             role_id: Set(key.role_id),
-            generation: Set(expected_generation + 1),
             scope_key: Set(serde_json::to_string(key)?),
             index_version: Set(index_version.to_owned()),
         })
@@ -317,7 +290,6 @@ impl MemoryIndexRepo {
                 memory_index_state::Column::RoleId,
             ])
             .update_columns([
-                memory_index_state::Column::Generation,
                 memory_index_state::Column::ScopeKey,
                 memory_index_state::Column::IndexVersion,
             ])
@@ -372,29 +344,8 @@ fn memory_kind_name(kind: ling_chat_notes::memory::MemoryKind) -> &'static str {
     }
 }
 
-async fn generation(db: &impl sea_orm::ConnectionTrait, key: &MemoryScopeKey) -> Result<i64> {
-    Ok(
-        memory_index_state::Entity::find_by_id((key.save_id, key.role_id))
-            .one(db)
-            .await?
-            .map(|state| state.generation)
-            .unwrap_or(0),
-    )
-}
-
 // 按依赖顺序显式删除，兼容未启用 SQLite 外键级联的已有连接。
 async fn delete_document(db: &impl sea_orm::ConnectionTrait, id: &str) -> Result<()> {
-    let chunks = memory_chunk::Entity::find()
-        .filter(memory_chunk::Column::DocumentId.eq(id.to_owned()))
-        .all(db)
-        .await?;
-    let chunk_ids: Vec<String> = chunks.into_iter().map(|chunk| chunk.id).collect();
-    if !chunk_ids.is_empty() {
-        memory_embedding::Entity::delete_many()
-            .filter(memory_embedding::Column::ChunkId.is_in(chunk_ids))
-            .exec(db)
-            .await?;
-    }
     memory_chunk::Entity::delete_many()
         .filter(memory_chunk::Column::DocumentId.eq(id.to_owned()))
         .exec(db)

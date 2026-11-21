@@ -165,7 +165,6 @@ pub async fn stream_with_tool_loop(
     recall: Arc<RecallSession>,
     reply_mode: ReplyLengthMode,
 ) -> Result<ToolLoopResult> {
-    validate_recall(app, &recall).await?;
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let (settings, tool_rag) = {
         let state = app.state::<AppState>();
@@ -187,6 +186,7 @@ pub async fn stream_with_tool_loop(
     );
     let initial_definitions = registry.definitions_for_allowed(&initial_allowed);
     if initial_definitions.is_empty() || !llm.supports_streaming_tools() {
+        validate_recall(app, &recall).await?;
         if !initial_definitions.is_empty() {
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
@@ -213,12 +213,8 @@ pub async fn stream_with_tool_loop(
         let executor = ToolExecutor::new(&registry);
         let mut messages = messages;
         // 切换到一个原本不在场的角色时，它的历史记忆不会包含触发切换的用户消息；
-        // 保留这一条，重建上下文后补回，避免新角色只看到孤立的 tool_result。
-        let active_user_message = messages
-            .iter()
-            .rev()
-            .find(|message| message.role == "user")
-            .cloned();
+        // 从未注入回忆的基础上下文取这条消息，避免把旧角色检索到的资料带过去。
+        let active_user_message = recall.latest_base_user_message();
         let mut active_role_name = role_name;
         let mut persisted_tool_result_chars = 0usize;
         let mut continuation_history = Vec::new();

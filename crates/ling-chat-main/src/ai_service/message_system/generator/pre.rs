@@ -164,9 +164,9 @@ impl MessageGenerator {
         {
             let state = self.deps.app.state::<crate::AppState>();
             let config = AppConfig::load(&self.deps.app).unwrap_or_default();
-            let snapshot = state
+            let outcome = state
                 .memory_recall
-                .retrieve(
+                .recall(
                     &self.deps.db,
                     &ling_chat_notes::NotesStore::new(data_dir()),
                     &recall,
@@ -177,19 +177,12 @@ impl MessageGenerator {
                         config.memory_rag_timeout_ms.clamp(100, 10000),
                     )),
                 )
-                .await;
+                .await?;
             anyhow::ensure!(
                 recall.matches(&*self.deps.game_status.lock().await),
                 "检索期间当前会话已变化"
             );
-            match snapshot {
-                Ok(snapshot) => {
-                    if let Some(response) = snapshot.response {
-                        inject_references(&mut context, &recall.references(&response)?.references);
-                    }
-                },
-                Err(error) => tracing::warn!("自动记忆检索失败，继续普通聊天: {error}"),
-            }
+            inject_references(&mut context, &outcome.selection.references);
         }
         Ok(Some((context, recall)))
     }

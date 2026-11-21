@@ -36,6 +36,7 @@ impl MigratorTrait for Migrator {
             // 该表追加初始好感度覆写列。
             Box::new(m20261030_000002_add_role_identity_affection::Migration),
             Box::new(m20261113_000001_memory_chunk_ranges::Migration),
+            Box::new(m20261121_000001_merge_memory_embeddings::Migration),
         ]
     }
 }
@@ -63,3 +64,4 @@ pub mod m20261023_000001_library_hotword_unique_per_category;
 pub mod m20261030_000001_create_role_identity_relation;
 pub mod m20261030_000002_add_role_identity_affection;
 pub mod m20261113_000001_memory_chunk_ranges;
+pub mod m20261121_000001_merge_memory_embeddings;

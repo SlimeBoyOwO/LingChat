@@ -14,12 +14,9 @@ use ling_chat_notes::memory_retrieval::{
 };
 use sea_orm::DatabaseConnection;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
-
-use crate::db::managers::memory_index_repo::{MemoryIndexRepo, MemoryIndexSnapshot};
 
 use super::cache::{CacheUsage, MemoryCacheConfig, MemoryCacheStats, MemoryCaches};
-use super::index::MemoryEncoder;
+use super::index::{MemoryEncoder, SyncedMemoryIndex};
 use super::scope::MemoryScopeSnapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -72,41 +69,40 @@ impl MemorySearcher {
         self.caches.clear();
     }
 
-    pub async fn search(
+    pub(super) async fn search(
         &self,
         db: &DatabaseConnection,
         store: &NotesStore,
-        save_id: i32,
-        role_id: i32,
         role_display_name: &str,
+        index: SyncedMemoryIndex,
         query: &str,
         recent_context: &str,
         settings: &SearchSettings,
     ) -> Result<MemorySearchResponse> {
-        // 先确定本次查询的范围和模型，缓存及结果都要与这份快照对应。
         let settings_version = settings.version()?;
         let query = SearchQuery::new(query, recent_context)?;
-        let scope =
-            MemoryScopeSnapshot::load(db, store, save_id, role_id, role_display_name).await?;
-        let encoder = self.encoder.clone();
-        let model = tokio::task::spawn_blocking(move || encoder.version()).await?;
-        let snapshot = MemoryIndexRepo::load(db, &scope, &model).await?;
-        let index_is_current = snapshot.scope_key.as_ref() == Some(scope.key());
+        let SyncedMemoryIndex {
+            report,
+            model,
+            documents,
+        } = index;
+        let scope_key = report.scope_key;
+        let index_version = report.index_version;
         let working_query = query.clone();
         let working_model = model.clone();
-        let working_key = scope.key().clone();
+        let working_key = scope_key.clone();
+        let working_index_version = index_version.clone();
         let settings = settings.clone();
         let working_settings_version = settings_version.clone();
         let encoder = self.encoder.clone();
         let caches = self.caches.clone();
-        let (result, vector_status, cache, index_version, result_key) =
+        let (result, vector_status, cache, result_key) =
             tokio::task::spawn_blocking(move || -> Result<_> {
-                let index_version = index_fingerprint(&snapshot, &working_model)?;
                 // 结果缓存绑定角色、存档、索引和检索参数，不能跨范围复用。
                 let result_key = memory_version(&(
                     "memory-result-cache-v1",
                     &working_key,
-                    &index_version,
+                    &working_index_version,
                     &working_model,
                     encoder.max_tokens(),
                     &working_query,
@@ -115,19 +111,13 @@ impl MemorySearcher {
                 let mut cache = CacheUsage::default();
                 if let Some(cached) = caches.get::<CachedResult>(false, &result_key) {
                     // 缓存只记录命中的身份，取回时仍从当前索引还原正文。
-                    if let Some(result) = cached.restore(&snapshot.documents, &settings) {
+                    if let Some(result) = cached.restore(&documents, &settings) {
                         cache.result_hit = true;
-                        return Ok((
-                            result,
-                            cached.vector_status,
-                            cache,
-                            index_version,
-                            result_key,
-                        ));
+                        return Ok((result, cached.vector_status, cache, result_key));
                     }
                     caches.remove(false, &result_key);
                 }
-                let has_vectors = snapshot.documents.iter().any(|document| {
+                let has_vectors = documents.iter().any(|document| {
                     document
                         .chunks
                         .iter()
@@ -151,7 +141,7 @@ impl MemorySearcher {
                 );
                 caches.record_search();
                 let result = hybrid_search(
-                    &snapshot.documents,
+                    &documents,
                     &working_query,
                     &working_model,
                     vector.as_deref(),
@@ -160,14 +150,20 @@ impl MemorySearcher {
                 if result.diagnostics.invalid_query_vector {
                     status = QueryVectorStatus::InvalidVector;
                 }
-                Ok((result, status, cache, index_version, result_key))
+                Ok((result, status, cache, result_key))
             })
             .await??;
         // 推理在后台执行期间可能发生撤回或编辑，缓存命中也必须再次复核。
-        let current =
-            MemoryScopeSnapshot::load(db, store, save_id, role_id, role_display_name).await?;
+        let current = MemoryScopeSnapshot::load(
+            db,
+            store,
+            scope_key.save_id,
+            scope_key.role_id,
+            role_display_name,
+        )
+        .await?;
         ensure!(
-            current.key() == scope.key(),
+            current.key() == &scope_key,
             "历史或笔记已变化，丢弃旧检索结果"
         );
         // 临时分词或推理失败不写结果缓存，模型恢复后下次查询可以立即重试。
@@ -186,9 +182,9 @@ impl MemorySearcher {
             );
         }
         Ok(MemorySearchResponse {
-            scope_key: scope.key().clone(),
+            scope_key,
             index_version,
-            index_is_current,
+            index_is_current: true,
             model,
             settings_version,
             query,
@@ -235,50 +231,6 @@ fn query_vector(
             Err(_) => (None, QueryVectorStatus::InferenceFailed),
         },
     }
-}
-
-// 向量内容也参与指纹，防止只替换向量、未修改文档版本时误用旧结果。
-fn index_fingerprint(snapshot: &MemoryIndexSnapshot, model: &EmbeddingVersion) -> Result<String> {
-    let identity = memory_version(&(
-        "search-index-v2",
-        snapshot.generation,
-        &snapshot.index_version,
-        model,
-        snapshot
-            .documents
-            .iter()
-            .map(|document| {
-                (
-                    &document.document.id,
-                    &document.document.version,
-                    &document.chunking_version,
-                    document
-                        .chunks
-                        .iter()
-                        .map(|chunk| {
-                            (
-                                &chunk.chunk.id,
-                                &chunk.chunk.version,
-                                chunk.embedding.is_some(),
-                            )
-                        })
-                        .collect::<Vec<_>>(),
-                )
-            })
-            .collect::<Vec<_>>(),
-    ))?;
-    let mut digest = Sha256::new();
-    digest.update(identity.as_bytes());
-    for document in &snapshot.documents {
-        for chunk in &document.chunks {
-            if let Some(embedding) = &chunk.embedding {
-                for value in &embedding.values {
-                    digest.update(value.to_le_bytes());
-                }
-            }
-        }
-    }
-    Ok(format!("{:x}", digest.finalize()))
 }
 
 // 结果缓存只保存身份与匹配解释，正文始终从本次已授权的索引中重新取得。

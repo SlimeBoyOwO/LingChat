@@ -181,6 +181,15 @@ impl RecallSession {
             .clone()
     }
 
+    pub(crate) fn latest_base_user_message(&self) -> Option<LlmMessage> {
+        self.base_context
+            .read()
+            .unwrap_or_else(|error| error.into_inner())
+            .iter()
+            .rfind(|message| message.role == "user")
+            .cloned()
+    }
+
     pub fn append_context(&self, message: LlmMessage) {
         self.base_context
             .write()
@@ -306,8 +315,13 @@ impl RecallSession {
         }
     }
 
-    pub fn references(&self, response: &MemorySearchResponse) -> Result<RecallSelection> {
+    fn references(
+        &self,
+        expected_stamp: &RecallStamp,
+        response: &MemorySearchResponse,
+    ) -> Result<RecallSelection> {
         let stamp = self.stamp.read().unwrap_or_else(|error| error.into_inner());
+        ensure!(*stamp == *expected_stamp, "检索期间回忆会话已变化");
         ensure!(
             stamp.save_id == Some(response.scope_key.save_id)
                 && stamp.role_id == response.scope_key.role_id,
@@ -330,7 +344,9 @@ impl RecallSession {
                 selection.already_provided += 1;
                 continue;
             }
-            if budget.hits >= 5 || budget.characters + characters > 1800 {
+            if budget.hits >= SearchSettings::MAX_HITS
+                || budget.characters + characters > SearchSettings::MAX_CHARACTERS
+            {
                 selection.budget_excluded += 1;
                 continue;
             }
@@ -377,6 +393,11 @@ pub struct RecallDebugSnapshot {
     pub stamp: RecallStamp,
 }
 
+pub struct RecallOutcome {
+    pub snapshot: RecallDebugSnapshot,
+    pub selection: RecallSelection,
+}
+
 pub struct MemoryRecall {
     indexer: MemoryIndexer,
     searcher: MemorySearcher,
@@ -401,7 +422,8 @@ impl MemoryRecall {
             .clone()
     }
 
-    pub async fn retrieve(
+    /// 两个回忆入口都从这里取资料，共用整轮去重和额度。
+    pub async fn recall(
         self: &Arc<Self>,
         db: &DatabaseConnection,
         store: &NotesStore,
@@ -410,7 +432,7 @@ impl MemoryRecall {
         settings: SearchSettings,
         enabled: bool,
         timeout: Duration,
-    ) -> Result<RecallDebugSnapshot> {
+    ) -> Result<RecallOutcome> {
         settings.validate()?;
         ling_chat_notes::memory_retrieval::SearchQuery::new(query, "")?;
         let stamp = session.stamp();
@@ -443,7 +465,7 @@ impl MemoryRecall {
                             stamp.lines.starts_with(&saved),
                             "当前对话与持久化历史不一致，跳过旧索引"
                         );
-                        service
+                        let index = service
                             .indexer
                             .sync(
                                 &db,
@@ -459,9 +481,8 @@ impl MemoryRecall {
                             .search(
                                 &db,
                                 &store,
-                                save_id,
-                                stamp.role_id,
                                 &stamp.display_name,
+                                index,
                                 &query,
                                 &recent,
                                 &settings,
@@ -497,7 +518,20 @@ impl MemoryRecall {
             .latest
             .lock()
             .unwrap_or_else(|error| error.into_inner()) = Some(snapshot.clone());
-        Ok(snapshot)
+        // 调试保留原始命中；调用方只拿筛选后的新增引用，不再自行扣减预算。
+        let selection = if let Some(response) = &snapshot.response {
+            session.references(&snapshot.stamp, response)?
+        } else {
+            ensure!(
+                session.is_current(&snapshot.stamp),
+                "检索期间回忆会话已变化"
+            );
+            RecallSelection::default()
+        };
+        Ok(RecallOutcome {
+            snapshot,
+            selection,
+        })
     }
 }
 

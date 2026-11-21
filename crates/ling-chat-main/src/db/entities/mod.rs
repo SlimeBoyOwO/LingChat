@@ -8,7 +8,6 @@ pub mod line_perception;
 pub mod memory_bank;
 pub mod memory_chunk;
 pub mod memory_document;
-pub mod memory_embedding;
 pub mod memory_index_state;
 pub mod player_identity;
 pub mod role;

@@ -11,6 +11,7 @@ use ling_chat_notes::memory::{
     MemoryEmbeddingRecord, MemoryKind, MemoryScope, MemoryScopeKey, MemorySource, memory_version,
 };
 use sea_orm::DatabaseConnection;
+use sha2::{Digest, Sha256};
 
 use crate::ai_service::embedding::EmbeddingEngine;
 use crate::db::entities::line::LineAttribute;
@@ -61,6 +62,12 @@ pub struct MemoryIndexReport {
     pub oversized_chunks: usize,
 }
 
+pub(super) struct SyncedMemoryIndex {
+    pub report: MemoryIndexReport,
+    pub model: EmbeddingVersion,
+    pub documents: Vec<IndexedMemoryDocument>,
+}
+
 pub struct MemoryIndexer {
     encoder: Arc<dyn MemoryEncoder>,
     token_budget: usize,
@@ -74,7 +81,7 @@ impl MemoryIndexer {
         }
     }
 
-    pub async fn sync(
+    pub(super) async fn sync(
         &self,
         db: &DatabaseConnection,
         store: &NotesStore,
@@ -82,7 +89,7 @@ impl MemoryIndexer {
         role_id: i32,
         role_display_name: &str,
         mode: IndexMode,
-    ) -> Result<MemoryIndexReport> {
+    ) -> Result<SyncedMemoryIndex> {
         ensure!(self.token_budget > 2, "模型 token 上限不足");
         // 先固定这次要处理的历史和笔记，后面提交前还会再取一次确认。
         let scope =
@@ -90,19 +97,19 @@ impl MemoryIndexer {
         let encoder = self.encoder.clone();
         let model = tokio::task::spawn_blocking(move || encoder.version()).await?;
         let existing = MemoryIndexRepo::load(db, &scope, &model).await?;
-        let generation = existing.generation;
         let old_key = existing.scope_key;
         let old_index_version = existing.index_version;
         let encoder = self.encoder.clone();
         let token_budget = self.token_budget;
         let working_scope = scope.clone();
+        let working_model = model.clone();
         // 分词和 ONNX 推理是同步计算，放到阻塞线程，不占用异步执行线程。
         let (desired, changed, report) = tokio::task::spawn_blocking(move || {
             prepare_index(
                 &working_scope,
                 existing.documents,
                 encoder.as_ref(),
-                &model,
+                &working_model,
                 token_budget,
                 mode,
             )
@@ -123,7 +130,7 @@ impl MemoryIndexer {
             MemoryIndexRepo::commit(
                 db,
                 &current,
-                generation,
+                old_index_version.as_deref(),
                 &report.index_version,
                 &desired,
                 &changed,
@@ -137,7 +144,11 @@ impl MemoryIndexer {
                 "部分记忆保留词法索引，本次未保存向量"
             );
         }
-        Ok(report)
+        Ok(SyncedMemoryIndex {
+            report,
+            model,
+            documents: desired,
+        })
     }
 }
 
@@ -284,7 +295,15 @@ fn prepare_index(
     desired.sort_by(|left, right| left.document.id.cmp(&right.document.id));
     report.documents = desired.len();
     report.changed_documents = changed.len();
-    let manifest: Vec<_> = desired
+    report.index_version = index_fingerprint(&desired, model)?;
+    Ok((desired, changed, report))
+}
+
+fn index_fingerprint(
+    documents: &[IndexedMemoryDocument],
+    model: &EmbeddingVersion,
+) -> Result<String> {
+    let manifest: Vec<_> = documents
         .iter()
         .map(|item| {
             (
@@ -298,9 +317,19 @@ fn prepare_index(
             )
         })
         .collect();
-    report.index_version =
-        memory_version(&("memory-index-v2:turn-sentence-v2", budget, model, manifest))?;
-    Ok((desired, changed, report))
+    let identity = memory_version(&("memory-index-v3", model, manifest))?;
+    let mut digest = Sha256::new();
+    digest.update(identity.as_bytes());
+    for document in documents {
+        for chunk in &document.chunks {
+            if let Some(embedding) = &chunk.embedding {
+                for value in &embedding.values {
+                    digest.update(value.to_le_bytes());
+                }
+            }
+        }
+    }
+    Ok(format!("{:x}", digest.finalize()))
 }
 
 // 必须按顺序无遗漏地还原原文，缺块或缺向量时才会重新补齐。

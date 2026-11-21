@@ -33,8 +33,8 @@ impl Default for SearchSettings {
     fn default() -> Self {
         Self {
             route_limit: 20,
-            max_hits: 5,
-            max_characters: 1800,
+            max_hits: Self::MAX_HITS,
+            max_characters: Self::MAX_CHARACTERS,
             per_document_limit: 2,
             vector_threshold: 0.50,
             lexical_threshold: 0.30,
@@ -54,10 +54,13 @@ pub enum SearchError {
 }
 
 impl SearchSettings {
+    pub const MAX_HITS: usize = 5;
+    pub const MAX_CHARACTERS: usize = 1800;
+
     pub fn validate(&self) -> Result<(), SearchError> {
         if !(1..=20).contains(&self.route_limit)
-            || self.max_hits > 5
-            || self.max_characters > 1800
+            || self.max_hits > Self::MAX_HITS
+            || self.max_characters > Self::MAX_CHARACTERS
             || !(1..=2).contains(&self.per_document_limit)
             || !self.vector_threshold.is_finite()
             || !(0.0..=1.0).contains(&self.vector_threshold)

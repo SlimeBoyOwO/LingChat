@@ -8,7 +8,6 @@ pub struct Model {
     pub save_id: i32,
     #[sea_orm(primary_key, auto_increment = false)]
     pub role_id: i32,
-    pub generation: i64,
     pub scope_key: String,
     pub index_version: String,
 }
