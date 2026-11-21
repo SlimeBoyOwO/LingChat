@@ -45,7 +45,9 @@ export default defineConfig(async () => ({
   server: {
     port: 1420,
     strictPort: true,
-    host: host || false,
+    // 监听所有地址（含 IPv6）。tauri.conf.json 的 devUrl 是 localhost，
+    // 若只监听 127.0.0.1，WebView2 解析到 ::1 时会连不上，表现为白屏。
+    host: host || true,
     hmr: host
       ? {
           protocol: "ws",
