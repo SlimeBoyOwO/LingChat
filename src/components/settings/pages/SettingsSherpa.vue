@@ -34,23 +34,23 @@
                 <button
                   v-if="!model.installed"
                   class="btn-icon btn-download"
-                  :disabled="downloading === model.id"
+                  :disabled="isDownloading(model.id)"
                   @click.stop="downloadModel(model.id)"
                 >
-                  <Loader2 v-if="downloading === model.id" :size="14" class="spin" />
+                  <Loader2 v-if="isDownloading(model.id)" :size="14" class="spin" />
                   <Download v-else :size="14" />
                 </button>
                 <button
                   v-else
                   class="btn-icon btn-delete"
-                  :disabled="deleting === model.id"
+                  :disabled="deleting === model.id || isDownloading(model.id)"
                   @click.stop="deleteModel(model.id)"
                 >
                   <Loader2 v-if="deleting === model.id" :size="14" class="spin" />
                   <Trash2 v-else :size="14" />
                 </button>
               </div>
-              <div v-if="downloading === model.id" class="model-progress">
+              <div v-if="isDownloading(model.id)" class="model-progress">
                 <div class="progress-track">
                   <div
                     class="progress-fill"
@@ -386,9 +386,24 @@ const uiStore = useUIStore();
 
 const availableModels = ref<SherpaOnnxModelRecord[]>([]);
 const selectedModelId = ref("");
-const downloading = ref<string | null>(null);
+const downloading = ref<Record<string, boolean>>({});
 const deleting = ref<string | null>(null);
 const progressByModel = ref<Record<string, number>>({});
+
+/** 每个模型独立记录下载状态，允许多个模型同时下载。 */
+function isDownloading(modelId: string): boolean {
+  return downloading.value[modelId] === true;
+}
+
+function setDownloading(modelId: string, active: boolean) {
+  const next = { ...downloading.value };
+  if (active) {
+    next[modelId] = true;
+  } else {
+    delete next[modelId];
+  }
+  downloading.value = next;
+}
 const testing = ref(false);
 /** 当前模型自带的音色列表（读 ONNX metadata，不加载模型）。 */
 const speakers = ref<SherpaSpeakersInfo | null>(null);
@@ -536,37 +551,47 @@ function speakerLabel(speaker: { sid: number; name: string }): string {
 /**
  * Android 13+ 需要通知权限才能显示下载保活通知。
  * 未授权时前台服务仍能保活，所以这里只是尽力申请，失败不阻断下载。
+ * 并发下载共用同一次申请，避免连续弹多个系统对话框。
  */
-async function ensureAndroidNotificationPermission(): Promise<void> {
-  if (!isAndroid()) return;
-  try {
-    if (!(await isPermissionGranted())) {
-      await requestPermission();
+let notificationPermissionRequest: Promise<void> | null = null;
+
+function ensureAndroidNotificationPermission(): Promise<void> {
+  if (!isAndroid()) return Promise.resolve();
+  notificationPermissionRequest ??= (async () => {
+    try {
+      if (!(await isPermissionGranted())) {
+        await requestPermission();
+      }
+    } catch (error) {
+      console.warn("请求通知权限失败:", error);
+    } finally {
+      notificationPermissionRequest = null;
     }
-  } catch (error) {
-    console.warn("请求通知权限失败:", error);
-  }
+  })();
+  return notificationPermissionRequest;
 }
 
 async function downloadModel(modelId: string) {
-  // 先申请权限再开始下载，避免下载已经跑起来才弹系统对话框。
-  await ensureAndroidNotificationPermission();
-  downloading.value = modelId;
+  // 同一模型只允许一个下载任务；不同模型互不影响，可同时进行。
+  if (isDownloading(modelId)) return;
+  setDownloading(modelId, true);
   const next = { ...progressByModel.value };
   delete next[modelId];
   progressByModel.value = next;
   try {
+    await ensureAndroidNotificationPermission();
     await downloadSherpaModel(modelId);
     progressByModel.value = { ...progressByModel.value, [modelId]: 100 };
     await loadModels();
   } catch (error) {
     console.error("下载模型失败:", error);
   } finally {
-    downloading.value = null;
+    setDownloading(modelId, false);
   }
 }
 
 async function deleteModel(modelId: string) {
+  if (isDownloading(modelId)) return;
   deleting.value = modelId;
   try {
     await deleteSherpaModel(modelId);

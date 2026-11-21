@@ -31,10 +31,23 @@ pub struct SherpaModelRecord {
     pub path: String,
 }
 
-/// Sherpa 模型命令的共享状态：只保留正在下载的模型 ID。
-#[derive(Default)]
+/// 所有模型共享的文件下载并发上限，避免同时下载多个模型时连接数爆炸。
+const MAX_CONCURRENT_FILE_DOWNLOADS: usize = 6;
+
+/// Sherpa 模型命令的共享状态：正在下载的模型 ID + 全局下载槽位。
 pub struct SherpaModelsState {
     pub downloading: Arc<Mutex<std::collections::HashSet<String>>>,
+    /// 多个模型共享同一组槽位：每个文件下载占一个，模型之间公平排队。
+    pub download_slots: Arc<tokio::sync::Semaphore>,
+}
+
+impl Default for SherpaModelsState {
+    fn default() -> Self {
+        Self {
+            downloading: Arc::new(Mutex::new(std::collections::HashSet::new())),
+            download_slots: Arc::new(tokio::sync::Semaphore::new(MAX_CONCURRENT_FILE_DOWNLOADS)),
+        }
+    }
 }
 
 /// 在 setup 中初始化 Sherpa 模型命令状态。
@@ -480,7 +493,7 @@ pub async fn sherpa_download_model(
         in_flight.insert(model_id.clone());
     }
 
-    let result = run_download(&app, entry).await;
+    let result = run_download(&app, entry, state.download_slots.clone()).await;
     {
         let mut in_flight = state.downloading.lock().await;
         in_flight.remove(&model_id);
@@ -496,7 +509,11 @@ async fn repo_dir_total_bytes(entry: &SherpaCatalogEntry) -> u64 {
     }
 }
 
-async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Result<(), String> {
+async fn run_download(
+    app: &AppHandle,
+    entry: &'static SherpaCatalogEntry,
+    download_slots: Arc<tokio::sync::Semaphore>,
+) -> Result<(), String> {
     // Android 息屏后系统会挂起应用；下载期间用前台服务保活，结束（含失败）自动释放。
     let _keepalive = crate::utils::android_keepalive::KeepAliveGuard::start(entry.display_name);
 
@@ -523,16 +540,13 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
         .await
         .map_err(|e| format!("创建模型目录失败: {e}"))?;
 
-    // espeak-ng-data 由多个模型共享，先下载一次再按需拷贝。
-    let shared_cache = model_root.join("_cache").join("espeak-ng-data");
-    let shared_espeak = dir_has_espeak(&files);
-
+    // 每个模型都下载到自己目录，不走共享 espeak 缓存：多个模型并发下载时，
+    // 共享缓存路径会互相覆盖同一个 `.part` 文件。缓存不再参与下载流程。
     let client = crate::utils::download::build_download_client()
         .map_err(|e| format!("创建下载客户端失败: {e}"))?;
 
     let done = Arc::new(std::sync::atomic::AtomicU64::new(0));
-    let concurrency = 6usize;
-    let sem = Arc::new(tokio::sync::Semaphore::new(concurrency));
+    let sem = download_slots;
     let app_progress = app.clone();
     let mid = dir.to_string();
     let total_f = total as f64;
@@ -542,36 +556,13 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
         let client = client.clone();
         let sem = sem.clone();
         let target_dir = target_dir.clone();
-        let shared_cache = shared_cache.clone();
         let app_progress = app_progress.clone();
         let done_for_file = done.clone();
         let mid = mid.clone();
 
         tasks.push(tokio::spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore");
-            // espeak-ng-data 走共享缓存；缓存文件大小不对（上次中断/截断）就重下。
-            let is_espeak = f.rel.starts_with("espeak-ng-data/");
-            let sub = if is_espeak {
-                f.rel["espeak-ng-data/".len()..].to_string()
-            } else {
-                String::new()
-            };
-            let cache_path = shared_cache.join(&sub);
-            let cache_ready = if is_espeak {
-                match tokio::fs::metadata(&cache_path).await {
-                    Ok(metadata) => metadata.is_file() && (f.size == 0 || metadata.len() == f.size),
-                    Err(_) => false,
-                }
-            } else {
-                false
-            };
-            let dest = if is_espeak && cache_ready {
-                target_dir.join("espeak-ng-data").join(&sub)
-            } else if is_espeak {
-                cache_path
-            } else {
-                target_dir.join(&f.rel)
-            };
+            let dest = target_dir.join(&f.rel);
             if let Some(parent) = dest.parent() {
                 let _ = tokio::fs::create_dir_all(parent).await;
             }
@@ -621,26 +612,6 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
         return Err(e);
     }
 
-    // 把共享 espeak-ng-data 拷进本模型目录；失败则清理半成品。
-    if shared_espeak {
-        let src = model_root.join("_cache").join("espeak-ng-data");
-        let dst = target_dir.join("espeak-ng-data");
-        if src.exists() {
-            let copied = tokio::task::spawn_blocking(move || {
-                crate::utils::archive::copy_dir_recursive(&src, &dst)
-            })
-            .await
-            .map_err(|error| format!("复制 espeak-ng-data 任务失败: {error}"))
-            .and_then(|result| {
-                result.map_err(|error| format!("复制 espeak-ng-data 失败: {error}"))
-            });
-            if let Err(error) = copied {
-                let _ = tokio::fs::remove_dir_all(&target_dir).await;
-                return Err(error);
-            }
-        }
-    }
-
     // 最后核对每个文件的大小并写完整性清单；任何一项不符都删除整个模型目录。
     if let Err(error) = crate::ai_service::tts::local::sherpa_onnx_manager::write_model_manifest(
         &target_dir,
@@ -653,10 +624,6 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
     }
 
     Ok(())
-}
-
-fn dir_has_espeak(files: &[RepoFile]) -> bool {
-    files.iter().any(|f| f.rel.starts_with("espeak-ng-data/"))
 }
 
 /// 试听合成：按前端 settings 构造 adapter，合成 WAV 并返回临时路径。
