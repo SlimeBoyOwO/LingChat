@@ -68,9 +68,13 @@ fn record_from(info: &SherpaOnnxModelInfo) -> SherpaModelRecord {
 
 /// 列出 Sherpa 模型（内置清单 + 已安装状态）。
 #[tauri::command]
-pub async fn sherpa_list_models() -> Result<Vec<SherpaModelRecord>, String> {
+pub async fn sherpa_list_models(
+    state: State<'_, SherpaModelsState>,
+) -> Result<Vec<SherpaModelRecord>, String> {
     let root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
-    let models = scan_models(&root)
+    // 正在下载的模型目录里有 `.part`，扫描时不能因为“不完整”把它删掉。
+    let in_flight = state.downloading.lock().await.clone();
+    let models = scan_models(&root, &in_flight)
         .await
         .map_err(|e| format!("扫描模型失败: {e}"))?;
     let mut installed: std::collections::HashMap<String, SherpaModelRecord> = models
@@ -493,16 +497,31 @@ async fn repo_dir_total_bytes(entry: &SherpaCatalogEntry) -> u64 {
 }
 
 async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Result<(), String> {
+    // Android 息屏后系统会挂起应用；下载期间用前台服务保活，结束（含失败）自动释放。
+    let _keepalive = crate::utils::android_keepalive::KeepAliveGuard::start(entry.display_name);
+
     let dir = entry.dir;
     let model_root = crate::ai_service::tts::local::sherpa_onnx_manager::sherpa_onnx_models_root();
     let target_dir = model_root.join(dir);
-    let _ = tokio::fs::create_dir_all(&target_dir).await;
 
     let files = fetch_repo_files(entry).await?;
     let total: u64 = files.iter().map(|f| f.size).sum();
     if total == 0 {
         return Err(format!("模型 {dir} 无可下载文件（大小未知）"));
     }
+    // 收尾时按这份“期望文件表”核对落盘结果并写清单。
+    let manifest_files: Vec<(String, u64)> =
+        files.iter().map(|f| (f.rel.clone(), f.size)).collect();
+
+    // 重新下载一律从干净目录开始：上次中断留下的 `.part`/旧文件不能混进新清单。
+    if target_dir.exists() {
+        tokio::fs::remove_dir_all(&target_dir)
+            .await
+            .map_err(|e| format!("清理旧模型目录失败: {e}"))?;
+    }
+    tokio::fs::create_dir_all(&target_dir)
+        .await
+        .map_err(|e| format!("创建模型目录失败: {e}"))?;
 
     // espeak-ng-data 由多个模型共享，先下载一次再按需拷贝。
     let shared_cache = model_root.join("_cache").join("espeak-ng-data");
@@ -530,17 +549,26 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
 
         tasks.push(tokio::spawn(async move {
             let _permit = sem.acquire_owned().await.expect("semaphore");
-            // espeak-ng-data 走共享缓存。
+            // espeak-ng-data 走共享缓存；缓存文件大小不对（上次中断/截断）就重下。
             let is_espeak = f.rel.starts_with("espeak-ng-data/");
             let sub = if is_espeak {
                 f.rel["espeak-ng-data/".len()..].to_string()
             } else {
                 String::new()
             };
-            let dest = if is_espeak && shared_cache.join(&sub).exists() {
+            let cache_path = shared_cache.join(&sub);
+            let cache_ready = if is_espeak {
+                match tokio::fs::metadata(&cache_path).await {
+                    Ok(metadata) => metadata.is_file() && (f.size == 0 || metadata.len() == f.size),
+                    Err(_) => false,
+                }
+            } else {
+                false
+            };
+            let dest = if is_espeak && cache_ready {
                 target_dir.join("espeak-ng-data").join(&sub)
             } else if is_espeak {
-                shared_cache.join(&sub)
+                cache_path
             } else {
                 target_dir.join(&f.rel)
             };
@@ -576,16 +604,21 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
     for task in tasks {
         // `task.await` 是 `Result<Result<(), String>, JoinError>`：内层 `Err` 才是
         // 单文件下载失败，必须一并捕获，否则会被当成下载成功（留下半成品模型）。
+        // 这里不提前 break：等所有任务落盘后再清理，避免删除目录时还有写入。
         match task.await {
             Err(join_err) => {
                 any_err.get_or_insert(format!("下载任务异常: {join_err}"));
-                break;
             },
             Ok(Err(e)) => {
                 any_err.get_or_insert(e);
             },
             Ok(Ok(())) => {},
         }
+    }
+
+    if let Some(e) = any_err {
+        let _ = tokio::fs::remove_dir_all(&target_dir).await;
+        return Err(e);
     }
 
     // 把共享 espeak-ng-data 拷进本模型目录；失败则清理半成品。
@@ -608,10 +641,17 @@ async fn run_download(app: &AppHandle, entry: &'static SherpaCatalogEntry) -> Re
         }
     }
 
-    if let Some(e) = any_err {
+    // 最后核对每个文件的大小并写完整性清单；任何一项不符都删除整个模型目录。
+    if let Err(error) = crate::ai_service::tts::local::sherpa_onnx_manager::write_model_manifest(
+        &target_dir,
+        &manifest_files,
+    )
+    .await
+    {
         let _ = tokio::fs::remove_dir_all(&target_dir).await;
-        return Err(e);
+        return Err(error);
     }
+
     Ok(())
 }
 

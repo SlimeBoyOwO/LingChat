@@ -359,6 +359,7 @@ import {
 } from "@lucide/vue";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import { isPermissionGranted, requestPermission } from "@tauri-apps/plugin-notification";
 import { MenuItem, MenuPage } from "../../ui";
 import {
   listSherpaModels,
@@ -376,6 +377,7 @@ import {
 import { playLocalAudio, stopCurrentAudio } from "@/utils/mediaUrl";
 import { decodePathFileName } from "@/utils/path";
 import { audioDialogFilters } from "@/utils/dialogFilters";
+import { isAndroid } from "@/utils/platform";
 import { useUIStore } from "@/stores/modules/ui/ui";
 
 const { t } = useI18n();
@@ -531,7 +533,24 @@ function speakerLabel(speaker: { sid: number; name: string }): string {
   return speaker.name ? `${speaker.sid} · ${speaker.name}` : String(speaker.sid);
 }
 
+/**
+ * Android 13+ 需要通知权限才能显示下载保活通知。
+ * 未授权时前台服务仍能保活，所以这里只是尽力申请，失败不阻断下载。
+ */
+async function ensureAndroidNotificationPermission(): Promise<void> {
+  if (!isAndroid()) return;
+  try {
+    if (!(await isPermissionGranted())) {
+      await requestPermission();
+    }
+  } catch (error) {
+    console.warn("请求通知权限失败:", error);
+  }
+}
+
 async function downloadModel(modelId: string) {
+  // 先申请权限再开始下载，避免下载已经跑起来才弹系统对话框。
+  await ensureAndroidNotificationPermission();
   downloading.value = modelId;
   const next = { ...progressByModel.value };
   delete next[modelId];

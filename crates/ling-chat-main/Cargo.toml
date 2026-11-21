@@ -174,6 +174,9 @@ sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
 [target.'cfg(target_os = "android")'.dependencies]
 sherpa-onnx = { version = "=2.0.1", default-features = false, features = ["shared"] }
 sherpa-onnx-sys = { version = "=2.0.1", default-features = false }
+# 下载保活：通过 JNI 启动 Kotlin 前台服务。版本与 tauri 保持一致，避免重复编译。
+jni = "0.21"
+ndk-context = "0.1"
 
 # iOS 同样只能动态链接：官方提供的 xcframework 是「sherpa 动态库 + 静态 ORT」，
 # 由 scripts/setup-ios-sherpa.mjs 预先下到 src-tauri/sherpa-onnx.xcframework，

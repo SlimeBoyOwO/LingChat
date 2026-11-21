@@ -1,3 +1,4 @@
+pub mod android_keepalive;
 pub mod archive;
 pub mod audio;
 pub mod cpu_perf;
