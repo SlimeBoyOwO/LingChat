@@ -5,6 +5,7 @@ import com.github.tartaricacid.touhoulittlemaid.api.task.IMaidTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskIdle;
 import com.lingchat.maidbridge.action.core.MaidActionController;
+import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.place.MaidPlaceController;
@@ -37,6 +38,7 @@ public final class LongTaskGuard {
         boolean running = MaidAttackController.isRunning(maid)
                 || MaidMineController.isRunning(maid)
                 || MaidPlaceController.isRunning(maid)
+                || MaidBuildController.isRunning(maid)
                 || MaidActionController.isRunning(maid)
                 // 她自己界面里那个工作模式也算「有任务」：农场、钓鱼这些干到一半被拽回来
                 // 同样会中断；空闲模式才回到正常的跟随

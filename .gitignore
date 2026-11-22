@@ -228,5 +228,8 @@ prev-build-*/
 
 .dsh-ops/
 
+# 女仆寻路沙盘（本机研究工具，不入库）
+temp/maid-sim/
+
 # 参考文献不必上传
 reference.md

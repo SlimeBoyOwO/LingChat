@@ -2,10 +2,7 @@ package com.lingchat.maidbridge.action.place;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonObject;
-import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.core.MaidActionController;
-import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.mine.MineRules;
 import com.lingchat.maidbridge.action.mine.MineTargets;
 import com.lingchat.maidbridge.bridge.Envelope;
@@ -21,7 +18,6 @@ import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
-import net.minecraft.world.entity.Entity;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
@@ -30,7 +26,6 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 
 /**
@@ -147,11 +142,6 @@ public class MaidPlaceHandler implements MessageHandler {
                     replaceable ? "那一格旁边没有能贴着放的面" : "那一格已经被别的东西占了",
                     rawItem, rawAt, rawFacing, scene(maid, target));
         }
-        if (occupiedByOther(level, target, maid)) {
-            return rejected(
-                    "occupied", "那一格里站着别的人或动物",
-                    rawItem, rawAt, rawFacing, scene(maid, target));
-        }
         if (!MaidInventory.has(maid, item)) {
             return rejected(
                     "no_item", "她身上没有这种方块",
@@ -168,12 +158,7 @@ public class MaidPlaceHandler implements MessageHandler {
 
     /** 开新的放置之前把别的会写寻路的都收掉：动作、攻击、挖掘与上一轮放置。 */
     private static String stopOtherActions(MinecraftServer server, EntityMaid maid) {
-        MaidAttackController.cancel();
-        String replaced = MaidActionController.cancelCurrent(server);
-        MaidMineController.cancel(server);
-        MaidPlaceController.cancel(server);
-        MaidActuator.standUp(maid);
-        return replaced;
+        return MaidActionController.stopOtherActions(server, maid, "被放方块的事叫走了").replaced();
     }
 
     /** 目标写法 → 规范写法：裸名补 minecraft:；认不出或标签给 null。 */
@@ -185,15 +170,6 @@ public class MaidPlaceHandler implements MessageHandler {
         ResourceLocation id =
                 ResourceLocation.tryParse(bare.contains(":") ? bare : "minecraft:" + bare);
         return id == null ? null : id.toString();
-    }
-
-    private static boolean occupiedByOther(Level level, BlockPos target, EntityMaid maid) {
-        for (Entity entity : level.getEntities(maid, new AABB(target))) {
-            if (entity.isAlive() && !entity.isSpectator()) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static JsonObject accepted(

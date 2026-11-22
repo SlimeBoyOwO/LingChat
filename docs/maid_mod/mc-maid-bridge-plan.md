@@ -207,7 +207,7 @@ id 与枚举串，中文全在插件。老模组缺的新帧（`maid_look_around
 - **连接刚建立时别问「连上了吗」**：宿主登记可能还没落定，`ws_status` 会说没连上；绑定直接
   问女仆是谁，每次上屏时再幂等重申。
 - **工具只在主聊天可用**：主动对话与剧本拿不到工具；按需「看一眼」只在玩家跟她说话那一轮用得上。
-- **模组 jar 要手动拷**：改模组后必须关游戏、拷 `extension/maid_mod/build/libs/*.jar` 到 mods；
+- **模组 jar 要手动拷**：改模组后必须关游戏、拷 `extension/maid_mod/build/libs/*.jar` 到本机整合包的 mods（具体路径见 [reference.md](reference.md)）；
   只改插件则重启 LingChat 即可。没拷 jar 时旧功能照常、新功能彻底静默。
 
 ## 明确不做

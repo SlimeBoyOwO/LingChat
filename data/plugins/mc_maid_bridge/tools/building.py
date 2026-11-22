@@ -1,8 +1,9 @@
-"""建筑工具：把建筑愿望交给导演生成蓝图，以及查生成进度。
+"""建筑工具：固定小木屋的现场施工，以及把复杂建筑交给导演生成蓝图。
 
-建筑提示词与提交工具 schema 都由本插件组装，宿主只跑通用的导演任务循环。蓝图不回到
-女仆这里：导演完成后由宿主的 director_task 信号通知插件，插件再按任务 id 取走；转给
-模组施工是下一期。工具只负责投递与查进度，不阻塞当前对话。
+这一期先用一张写死的小木屋图纸跑通「插件发图纸、模组自己盖」：`maid_build_house`
+立刻返回，模组按 tick 一块块放，缺料、够不着或盖完才通过事件旁白再叫 LLM。
+导演那条链（`maid_plan_building` / `maid_building_status`）保持不变，蓝图以后接同一条
+施工帧；提示词与提交工具 schema 都由本插件组装，宿主只跑通用任务循环。
 """
 
 import json
@@ -10,13 +11,34 @@ import json
 from plugin_host import director_task_start, director_task_status
 
 from bridge import ask, ready
-from naming import names
-from tools.common import LOOK_TIMEOUT_MS
+from naming import names, narrate
+from tools.common import ACTION_TIMEOUT_MS, LOOK_TIMEOUT_MS, STATE_TIMEOUT_MS
 from tools.context import snapshot
 from wording import as_int
 
 PLAN_TOOL = "maid_plan_building"
 STATUS_TOOL = "maid_building_status"
+BUILD_TOOL = "maid_build_house"
+CLIMB_TOOL = "maid_build_climb_test"
+
+# 施工帧与固定图纸。这一期先把蓝图写死成一座 7×7 的小木屋，用来验证模组侧
+# 能不能不经过 LLM 一块块盖起来；导演生成的蓝图以后走同一条施工帧。
+BUILD_FRAME = "maid_build"
+HOUSE_NAME = "小木屋"
+# 垫脚测试柱：2×2、8 格高。下面几层从地面够得着，最上面两层只能先垫一块走上去，
+# 用来验证施工器「垫一格再走上去」这一条在真机上成不成立。
+CLIMB_NAME = "垫脚测试柱"
+CLIMB_BLOCK = "minecraft:cobblestone"
+CLIMB_SIDE = 2
+CLIMB_HEIGHT = 8
+HOUSE_SIDE = 7
+# 施工起点放在她正前方几格，房子以锚点为中心，免得一开始就把她圈在地基里；
+# 7×7 的房子比原来的 5×5 深一格，留 5 格她就不会站在门廊上。
+ANCHOR_DISTANCE = 5
+# 四个朝向（原版 yaw 每 90 度一档）的前进方向：南、西、北、东。
+FORWARD = ((0, 1), (-1, 0), (0, -1), (1, 0))
+# 图纸的正面朝北；旋转时按北、东、南、西的顺序跟着转。
+FACINGS = ("north", "east", "south", "west")
 
 # 等级 → 最大边长（方块）。规模约束只在插件侧校验，宿主不解释建筑语义。
 LEVEL_LIMITS = {"small": 9, "medium": 17, "large": 33, "custom": 33}
@@ -100,7 +122,11 @@ def _plan_building(ctx):
 
 
 def _building_status(_ctx):
-    """查当前建筑任务：生成中 / 已完成 / 失败。"""
+    """查当前建筑任务：施工进行到哪，或者导演还在不在设计。"""
+    progress = _build_progress()
+    if progress:
+        return {"ok": True, "message": progress}
+
     result = director_task_status()
     if not result.get("ok"):
         return {"ok": False, "error": result.get("error") or "查不到导演任务的进度"}
@@ -125,6 +151,270 @@ def _building_status(_ctx):
             "message": f"上一次设计没能完成：{error or '导演没有给出原因'}。",
         }
     return {"ok": True, "message": f"导演任务的状态是{status or '未知'}。"}
+
+
+def _build_progress():
+    """模组那边的施工进度；没在施工、没盖过或老模组认不出这一帧时返回空串。"""
+    response, error = ask({"type": "maid_build_status", "data": {}}, STATE_TIMEOUT_MS)
+    if error or response.get("type") != "maid_build_status_result":
+        return ""
+    data = response.get("data") or {}
+    status = (data.get("status") or "").strip()
+    name = (data.get("name") or "").strip() or HOUSE_NAME
+    placed = as_int(data.get("placed"), 0)
+    total = as_int(data.get("total"), 0)
+    maid, _ = names()
+    if status == "running":
+        return f"{maid}还在盖{name}，已经放了{placed}/{total}块。"
+    if status == "done":
+        return f"上一座{name}已经盖好了。"
+    if status == "partial":
+        return f"上一座{name}盖了一部分，放了{placed}/{total}块，还没盖完。"
+    if status == "failed":
+        return f"上一座{name}没能盖成。"
+    return ""
+
+
+def _build_house(ctx):
+    """用固定图纸盖一座小木屋；立刻返回，施工在模组里按 tick 推进。"""
+    maid, error = ready(ctx)
+    if not maid:
+        return {"ok": False, "error": error}
+
+    pose, error = _maid_pose(maid)
+    if error:
+        return {"ok": False, "error": error}
+
+    steps = _facing_step(pose["yaw"])
+    frame, error = _send_build(maid, HOUSE_NAME, _front_anchor(pose, steps), _small_house(steps))
+    if error:
+        return {"ok": False, "error": error}
+
+    maid_name, _ = names()
+    if frame.get("resumed"):
+        return {
+            "ok": True,
+            "message": (
+                f"{maid_name}回到之前没盖完的工地接着盖{HOUSE_NAME}了；"
+                f"缺材料或者盖好了，{maid_name}会开口。"
+            ),
+        }
+    return {
+        "ok": True,
+        "message": (
+            f"{maid_name}拿着图纸开始盖{HOUSE_NAME}了，一共{as_int(frame.get('cells'), 0)}块；"
+            f"缺材料或者盖好了，{maid_name}会开口。"
+        ),
+    }
+
+
+def _build_climb_test(ctx):
+    """施工器的垫脚测试：在面前立一根 2×2、8 格高的柱子，顶上两层只能垫上去。"""
+    maid, error = ready(ctx)
+    if not maid:
+        return {"ok": False, "error": error}
+
+    pose, error = _maid_pose(maid)
+    if error:
+        return {"ok": False, "error": error}
+
+    steps = _facing_step(pose["yaw"])
+    low = -(CLIMB_SIDE // 2)
+    cells = [
+        {"x": low + x, "y": y, "z": low + z, "block": CLIMB_BLOCK}
+        for y in range(CLIMB_HEIGHT)
+        for x in range(CLIMB_SIDE)
+        for z in range(CLIMB_SIDE)
+    ]
+    frame, error = _send_build(maid, CLIMB_NAME, _front_anchor(pose, steps), cells)
+    if error:
+        return {"ok": False, "error": error}
+
+    maid_name, _ = names()
+    if frame.get("resumed"):
+        return {"ok": True, "message": f"{maid_name}回到上次没盖完的{CLIMB_NAME}接着垫去了。"}
+    return {
+        "ok": True,
+        "message": (
+            f"{maid_name}在她面前立一根{as_int(frame.get('cells'), 0)}块的柱子，"
+            f"顶上两层得自己垫上去；盖好或卡住她会开口。"
+        ),
+    }
+
+
+def _front_anchor(pose, steps):
+    """她正前方几格的中心，作为图纸锚点。"""
+    forward_x, forward_z = FORWARD[steps]
+    return {
+        "x": _floor(pose["x"] + forward_x * ANCHOR_DISTANCE + 0.5),
+        "y": _floor(pose["y"]),
+        "z": _floor(pose["z"] + forward_z * ANCHOR_DISTANCE + 0.5),
+    }
+
+
+def _send_build(maid, name, anchor, cells):
+    """把一张图纸交给模组施工。返回 (受理结果, 错误说明)。"""
+    response, error = ask(
+        {
+            "type": BUILD_FRAME,
+            "data": {"maid_id": maid, "name": name, "anchor": anchor, "cells": cells},
+        },
+        ACTION_TIMEOUT_MS,
+    )
+    if error:
+        return None, error
+    frame = response.get("data") or {}
+    if response.get("type") == "error":
+        message = narrate(frame.get("message"))
+        if "不支持" in (message or ""):
+            message = "这个模组版本还不支持盖房子"
+        return None, message or "游戏那边没能开始盖"
+    if not frame.get("accepted"):
+        return None, narrate(frame.get("reason")) or "游戏拒绝了这次施工"
+    return frame, ""
+
+
+def _maid_pose(maid):
+    """问她此刻站在哪、朝哪边。返回 (位置与朝向, 错误说明)。"""
+    response, error = ask({"type": "maid_state", "data": {"maid_id": maid}}, ANCHOR_TIMEOUT_MS)
+    if error:
+        return None, error
+    if response.get("type") == "error":
+        message = narrate((response.get("data") or {}).get("message"))
+        return None, message or "游戏那边没能回答她在哪"
+    payload = response.get("data") or {}
+    if payload.get("known") and (payload.get("dead") or payload.get("unconscious")):
+        return None, "她现在不省人事，没法盖房"
+    position = payload.get("position")
+    if not isinstance(position, dict) or any(key not in position for key in ("x", "y", "z")):
+        return None, "拿不到她在世界里的位置，没法定施工起点"
+    return {
+        "x": float(position["x"]),
+        "y": float(position["y"]),
+        "z": float(position["z"]),
+        "yaw": float(position.get("yaw") or 0.0),
+    }, ""
+
+
+def _floor(value):
+    """向下取整。内嵌解释器没有 math 模块，int() 又是向零截断，只能自己补负数这一档。"""
+    whole = int(value)
+    return whole - 1 if value < whole else whole
+
+
+def _facing_step(yaw):
+    """原版 yaw → 0 南、1 西、2 北、3 东。"""
+    return _floor(yaw / 90.0 + 0.5) % 4
+
+
+def _is_window(x, z, y):
+    """第二层墙上的窗：正面两扇、背面三扇、两侧各两扇。"""
+    if y != 2:
+        return False
+    if z == 0:
+        return x in (1, 5)
+    if z == HOUSE_SIDE - 1:
+        return x in (1, 3, 5)
+    if x in (0, HOUSE_SIDE - 1):
+        return z in (2, 4)
+    return False
+
+
+def _small_house(steps):
+    """固定的小木屋：7×7，石砖墙基、原木角柱、玻璃窗、木门、石砖烟囱、门廊，
+    屋顶是三层阶梯式的橡木台阶。
+
+    坐标先用 0 到 6 的平面格子（z=0 是带门的正面），最后按她的朝向旋转、平移到中心。
+    门的上半格由原版的放置逻辑一起放出来，所以图纸里只写下半格。
+    """
+    half = HOUSE_SIDE // 2
+    last = HOUSE_SIDE - 1
+    plan = {}
+
+    def put(x, y, z, block, facing=""):
+        plan[(x, y, z)] = (block, facing)
+
+    # 地板：中间木板，四周围一圈石砖
+    for z in range(HOUSE_SIDE):
+        for x in range(HOUSE_SIDE):
+            if x in (0, last) or z in (0, last):
+                put(x, 0, z, "minecraft:stone_bricks")
+            else:
+                put(x, 0, z, "minecraft:oak_planks")
+
+    # 墙：三层，四角原木；底层石砖，上面两层木板，第二层开窗
+    for y in (1, 2, 3):
+        for z in range(HOUSE_SIDE):
+            for x in range(HOUSE_SIDE):
+                if x not in (0, last) and z not in (0, last):
+                    continue
+                if x in (0, last) and z in (0, last):
+                    block = "minecraft:oak_log"
+                elif x == half and z == 0 and y == 1:
+                    block = "minecraft:oak_door"
+                elif x == half and z == 0 and y == 2:
+                    # 门的上半格跟随下半格一起放，不能单独立项
+                    continue
+                elif y == 1:
+                    block = "minecraft:stone_bricks"
+                elif _is_window(x, z, y):
+                    block = "minecraft:glass_pane"
+                else:
+                    block = "minecraft:oak_planks"
+                put(x, y, z, block, "north" if block == "minecraft:oak_door" else "")
+
+    # 门上方再开一扇小窗
+    put(half, 3, 0, "minecraft:glass_pane")
+
+    # 屋顶：三层，每层四周是向内的橡木台阶，中间木板
+    for y, edge in ((4, 3), (5, 2), (6, 1)):
+        for z in range(half - edge, half + edge + 1):
+            for x in range(half - edge, half + edge + 1):
+                if abs(x - half) != edge and abs(z - half) != edge:
+                    put(x, y, z, "minecraft:oak_planks")
+                    continue
+                if z == half - edge:
+                    facing = "south"
+                elif z == half + edge:
+                    facing = "north"
+                elif x == half - edge:
+                    facing = "east"
+                else:
+                    facing = "west"
+                put(x, y, z, "minecraft:oak_stairs", facing)
+
+    # 烟囱：贴在后墙偏东，从地面穿出屋顶
+    for y in range(0, 7):
+        put(last - 1, y, last, "minecraft:stone_bricks")
+
+    # 门廊：门前一格台阶和两根栅栏柱
+    for x in (half - 1, half, half + 1):
+        put(x, 0, -1, "minecraft:oak_stairs", "south")
+    for x in (half - 1, half + 1):
+        put(x, 1, -1, "minecraft:oak_fence")
+        put(x, 2, -1, "minecraft:oak_fence")
+
+    cells = [(x, y, z, block, facing) for (x, y, z), (block, facing) in plan.items()]
+    cells.sort(key=lambda cell: (cell[1], cell[2], cell[0]))
+    return [_rotate_cell(cell, steps) for cell in cells]
+
+
+def _rotate_cell(cell, steps):
+    """把正面朝北的图纸转到她面朝的那一边，并换成以中心为原点的偏移。"""
+    x, y, z, block, facing = cell
+    last = HOUSE_SIDE - 1
+    if steps == 0:
+        rx, rz = x, z
+    elif steps == 1:
+        rx, rz = last - z, x
+    elif steps == 2:
+        rx, rz = last - x, last - z
+    else:
+        rx, rz = z, last - x
+    out = {"x": rx - HOUSE_SIDE // 2, "y": y, "z": rz - HOUSE_SIDE // 2, "block": block}
+    if facing:
+        out["facing"] = FACINGS[(FACINGS.index(facing) + steps) % 4]
+    return out
 
 
 def _system_prompt(scale):
@@ -251,4 +541,6 @@ def _map_text(data):
 TOOLS = {
     PLAN_TOOL: _plan_building,
     STATUS_TOOL: _building_status,
+    BUILD_TOOL: _build_house,
+    CLIMB_TOOL: _build_climb_test,
 }

@@ -167,6 +167,15 @@ public final class MaidMineController {
         return maid.level().getGameTime() - lastMineTick <= RECENT_MINE_TICKS;
     }
 
+    /** 别处（施工、清障）挖下来的方块也算她挖的：背包差分别报成主人放进来的。 */
+    public static void markMined(EntityMaid maid) {
+        if (maid == null) {
+            return;
+        }
+        lastMineId = maid.getStringUUID();
+        lastMineTick = maid.level().getGameTime();
+    }
+
     /** 每个服务端 tick 推进一次（主线程）。 */
     public static void tick(MinecraftServer server) {
         Run run = current;

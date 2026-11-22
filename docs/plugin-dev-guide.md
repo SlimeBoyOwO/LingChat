@@ -1150,6 +1150,7 @@ def run(ctx):
 以下都是为了用户安全考虑，当然不是没有跳过沙箱的方法，但是最好还是别用哦（不然禁止上传官方创意工坊）
 
 - 禁用的顶层模块：`os`、`subprocess`、`shutil`、`pathlib`、`ctypes`、`sysconfig`
+- 标准库是 RustPython 自带的那份，不是本机 CPython：只有纯 Python 实现与已移植的原生模块，`math`、`cmath` 这类尚未移植，`import math` 会报 `No module named 'math'`。取整、开方这类简单计算自己写；需要复杂数学运算时用 `call_tool` 走宿主能力。
 - 环境变量只有 manifest `[[env]]` 白名单内的会注入 `ctx["env"]`
 - 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。唯一相关的能力是 `import` 插件目录内的模块与包（见「拆成多个文件与子目录」）：那份源码由宿主读进解释器，脚本自己依然碰不到文件。
 - 网络出站：`http_get` / `http_post` 可发往任意 URL；WebSocket client 连接受 manifest `ws_allow` 白名单约束（省略 `ws_allow` = 允许全网段），且脚本只能操作自己在 `[[ws]]` 里声明过的连接。

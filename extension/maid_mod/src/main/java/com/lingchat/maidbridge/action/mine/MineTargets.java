@@ -1,6 +1,7 @@
 package com.lingchat.maidbridge.action.mine;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.lingchat.maidbridge.action.SearchBudget;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
 import com.lingchat.maidbridge.perception.spatial.SightLine;
@@ -11,6 +12,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -29,6 +31,8 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -46,6 +50,14 @@ public final class MineTargets {
     private static final double EYE_REACH = MineRules.REACH + 0.5F;
     /** 找落脚点时最多验几个候选的寻路：每个候选都要算一次路径，不能把一圈全试完。 */
     private static final int PATH_CHECKS = 8;
+    /** 盖房子时多验几个：屋顶周围「看着很近」的落脚点多半上不去，真正能站的往往排在后面。 */
+    private static final int BUILD_PATH_CHECKS = 24;
+    /** 找到几个能走到的就按路径步数挑最短的，不必把二十四个都算完。 */
+    private static final int BUILD_PATH_RANK = 8;
+    /** 放置时最多看几个候选的视线：射线比寻路便宜，但也别把一圈全扫完。 */
+    private static final int SIGHT_SCAN = 32;
+    /** 盖房子时多扫一些：室内那些看得见墙、看不见外面的站位会占掉前面的名额。 */
+    private static final int BUILD_SIGHT_SCAN = 64;
 
     private MineTargets() {
     }
@@ -214,28 +226,110 @@ public final class MineTargets {
     }
 
     /**
-     * 放置用的落脚点：伸手够得着要放的那一格就行。
+     * 放置用的落脚点：够得着、看得见、而且寻路能走到；看不见的站位直接跳过。
      *
-     * <p>不用「视线落到目标」那一条：目标是空格子，射线打不到它。中间隔没隔着东西由
-     * 放置上下文按支撑面另判。
+     * <p>只看「伸手够得着」会让墙另一面的格子永远选到室内那一侧，走过去才发现被挡。
+     * 视线由调用方从那个站位的眼睛去判，这里只负责把看不见的筛掉。
      */
-    public static BlockPos standForPlacement(EntityMaid maid, BlockPos target) {
-        if (!(maid.level() instanceof ServerLevel level)) {
+    public static BlockPos standForPlacement(
+            EntityMaid maid, BlockPos target, Set<BlockPos> skip,
+            Predicate<BlockPos> canSee) {
+        if (!(maid.level() instanceof ServerLevel)) {
             return null;
         }
         List<BlockPos> candidates = standCandidates(maid, target);
-        int checks = Math.min(candidates.size(), PATH_CHECKS);
-        for (int i = 0; i < checks; i++) {
-            BlockPos stand = candidates.get(i);
+        int checked = 0;
+        int scanned = 0;
+        for (BlockPos stand : candidates) {
+            if (checked >= PATH_CHECKS || scanned >= SIGHT_SCAN) {
+                break;
+            }
+            if (skip.contains(stand)) {
+                continue;
+            }
             Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
             if (eye.distanceTo(Vec3.atCenterOf(target)) > EYE_REACH) {
                 continue;
             }
+            scanned++;
+            if (!canSee.test(stand)) {
+                continue;
+            }
+            checked++;
             if (stand.closerToCenterThan(maid.position(), 2.0) || maid.canPathReach(stand)) {
                 return stand;
             }
         }
         return null;
+    }
+
+    /**
+     * 盖房子用的落脚点：优先站到已经盖好的图纸格上，再按寻路步数挑最近的一个。
+     *
+     * <p>只比直线距离会选中「看着近、其实要绕一大圈」的站位，也会让屋顶周围的高台
+     * 排到前面。这里对能走到的候选按路径长度计分，够得着仍按眼睛到方块外壳的口径算。
+     * 看不见这一格的站位不算：墙背面的格子只剩外侧地面可选，她才会真的绕出去。
+     *
+     * <p>每次寻路都从 {@code budget} 领一次额度：屋里屋外不通时，逐个候选算路能卡住
+     * 整个服务端；额度用完就带着当前最好的候选回去，下一 tick 再接着算。
+     */
+    public static BlockPos standForBuilding(
+            EntityMaid maid, BlockPos target, Set<BlockPos> built,
+            Set<BlockPos> skip, Set<BlockPos> unreachable, Predicate<BlockPos> canSee,
+            SearchBudget budget) {
+        if (!(maid.level() instanceof ServerLevel)) {
+            return null;
+        }
+        List<BlockPos> candidates = standCandidates(maid, target);
+        int feetY = maid.blockPosition().getY();
+        candidates.sort(Comparator
+                .comparingInt((BlockPos stand) -> built.contains(stand.below()) ? 0 : 1)
+                .thenComparingInt(stand -> stand.getY() <= feetY + 1 ? 0 : 1)
+                .thenComparingDouble(stand -> stand.distSqr(target)));
+        int evaluated = 0;
+        int reachable = 0;
+        int scanned = 0;
+        BlockPos best = null;
+        double bestCost = Double.MAX_VALUE;
+        for (BlockPos stand : candidates) {
+            if (evaluated >= BUILD_PATH_CHECKS || scanned >= BUILD_SIGHT_SCAN) {
+                break;
+            }
+            // 从她现在站的地方算过一遍走不到的，她没挪窝之前不再算
+            if (skip.contains(stand) || unreachable.contains(stand)) {
+                continue;
+            }
+            Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
+            if (new AABB(target).distanceToSqr(eye) > MineRules.REACH * MineRules.REACH) {
+                continue;
+            }
+            scanned++;
+            if (!canSee.test(stand)) {
+                continue;
+            }
+            evaluated++;
+            if (stand.closerToCenterThan(maid.position(), 2.0)) {
+                return stand;
+            }
+            if (!budget.take()) {
+                break;
+            }
+            Path path = maid.getNavigation().createPath(stand, 0);
+            if (path == null || !path.canReach()) {
+                unreachable.add(stand);
+                continue;
+            }
+            reachable++;
+            double cost = path.getNodeCount();
+            if (cost < bestCost) {
+                bestCost = cost;
+                best = stand;
+            }
+            if (reachable >= BUILD_PATH_RANK) {
+                break;
+            }
+        }
+        return best;
     }
 
     /** 目标周围站得下、在活动范围里的格子，按离目标远近排好。 */
@@ -263,6 +357,40 @@ public final class MineTargets {
         }
         candidates.sort(Comparator.comparingDouble(stand -> stand.distSqr(target)));
         return candidates;
+    }
+
+    /**
+     * 垫脚前先出屋：目标附近一处头顶露天的落脚点。
+     *
+     * <p>在屋里往房顶垫，头顶先撞到天花板，垫不上去；找一处能看见天空的站位让她先走到
+     * 外面，再沿外墙往上垫。候选就在目标周围，太远的空地没有用。
+     */
+    public static BlockPos stageFor(EntityMaid maid, BlockPos target, SearchBudget budget) {
+        if (!(maid.level() instanceof ServerLevel level)) {
+            return null;
+        }
+        List<BlockPos> candidates = standCandidates(maid, target);
+        int checks = 0;
+        for (BlockPos stand : candidates) {
+            if (checks >= PATH_CHECKS) {
+                break;
+            }
+            if (!level.isLoaded(stand.above()) || !level.canSeeSky(stand.above())) {
+                continue;
+            }
+            // 她现在站的这一处不算：要找的是「走出去」的地方
+            if (stand.closerToCenterThan(maid.position(), 2.0)) {
+                continue;
+            }
+            checks++;
+            if (!budget.take()) {
+                return null;
+            }
+            if (maid.canPathReach(stand)) {
+                return stand;
+            }
+        }
+        return null;
     }
 
     /** 目标周围有没有能站人的空格：只看空间，不问寻路。失败回执用它说「站不下」。 */
@@ -470,7 +598,7 @@ public final class MineTargets {
     }
 
     /** 她能站在这一格上吗：自己和头顶是空的，脚下有东西接着。 */
-    private static boolean standable(Level level, BlockPos pos) {
+    public static boolean standable(Level level, BlockPos pos) {
         if (!level.isLoaded(pos) || !level.isLoaded(pos.above())) {
             return false;
         }

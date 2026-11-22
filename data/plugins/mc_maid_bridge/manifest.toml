@@ -190,16 +190,32 @@ timeout_ms = 15000
 
 [[tools]]
 name = "maid_plan_building"
-examples = ["给我盖座小屋", "在这里建个凉亭", "用木头搭一座塔", "盖个带院子的房子"]
-description = "把主人想要的建筑交给导演设计蓝图。prompt 写清楚想建什么、做什么用、想要什么风格或材料；scale 选规模等级，custom 时再给宽高深。工具立刻返回，蓝图设计好之后会通知；生成期间可以正常聊天。"
+examples = ["给我设计一座大宅子", "在这里规划一座塔", "设计一个带院子的别墅", "设计一座大型建筑"]
+description = "把复杂或大型建筑交给导演设计蓝图。简单的小房子用 maid_build_house 直接施工，不要走这里。prompt 写清楚想建什么、做什么用、想要什么风格或材料；scale 选规模等级，custom 时再给宽高深。工具立刻返回，蓝图设计好之后会通知；生成期间可以正常聊天。"
 parameters = '{ "type":"object", "properties":{ "prompt":{ "type":"string", "description":"想建什么：类型、用途、风格、希望用的材料" }, "scale":{ "type":"string", "enum":["small","medium","large","custom"], "description":"规模等级：small ≤9×9×9，medium ≤17×17×17，large ≤33×33×33；custom 需另给三边。默认 medium" }, "width":{ "type":"integer", "minimum":1, "maximum":33, "description":"宽（x 轴，方块数）；custom 必填" }, "height":{ "type":"integer", "minimum":1, "maximum":33, "description":"高（y 轴，方块数）；custom 必填" }, "depth":{ "type":"integer", "minimum":1, "maximum":33, "description":"深（z 轴，方块数）；custom 必填" } }, "required":["prompt"] }'
 script = "tools/entry.py"
 timeout_ms = 15000
 
 [[tools]]
+name = "maid_build_house"
+examples = ["帮我造个小木屋", "帮我造个小房子", "造个小木屋", "给我建个小屋", "帮我建个房子", "在这里盖个房子"]
+description = "用一张预先定好的小木屋图纸，当场开始给自己盖一座 7×7 的小木屋：石砖墙基、原木角柱、玻璃窗、木门、石砖烟囱、门前台阶和三层斜屋顶。材料从她背包里出；工具立刻返回，施工在后台一块块进行，缺料、够不着或盖完才会再开口。上一座没盖完时再调用一次会走回原工地接着盖。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_build_climb_test"
+examples = ["测试垫脚", "试试能不能垫上去", "造根高柱子试试爬高"]
+description = "调试用：在自己面前立一根 2×2、8 格高的圆石柱子，最上面两层从地面够不着，只能先垫一格走上去再放，用来验证施工器的垫脚能力。创造模式不耗材料，生存模式要她背包里至少有 32 块圆石。工具立刻返回，盖好或卡住时她会开口。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
 name = "maid_building_status"
-examples = ["建得怎么样了", "房子盖好了吗", "设计完了没有"]
-description = "查当前建筑任务的进度：导演还在设计、已经设计好、还是失败了。"
+examples = ["建得怎么样了", "房子盖好了吗", "小木屋盖好了吗", "小木屋造得怎么样了", "设计完了没有"]
+description = "查当前建筑进度：小木屋施工到第几块了、盖完没有、缺没缺料；没有施工任务时再看导演还在不在设计。"
 parameters = '{ "type":"object", "properties":{} }'
 script = "tools/entry.py"
 timeout_ms = 8000

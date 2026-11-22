@@ -3,9 +3,6 @@ package com.lingchat.maidbridge.action.mine;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.action.core.MaidActionController;
-import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.attack.MaidAttackController;
-import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
@@ -386,13 +383,7 @@ public class MaidMineHandler implements MessageHandler {
 
     /** 开新的挖掘之前把别的会写寻路的都收掉：动作、攻击与上一轮挖掘。 */
     private static String stopOtherActions(MinecraftServer server, EntityMaid maid) {
-        MaidAttackController.cancel();
-        String replaced = MaidActionController.cancelCurrent(server);
-        // 上一轮挖掘留下的裂纹与寻路也一并清掉，再开始新的
-        MaidMineController.cancel(server);
-        MaidPlaceController.cancel(server);
-        MaidActuator.standUp(maid);
-        return replaced;
+        return MaidActionController.stopOtherActions(server, maid, "被挖方块的事叫走了").replaced();
     }
 
     /** 清单里只有一种方块时给它的 id，混着几种给空串。 */

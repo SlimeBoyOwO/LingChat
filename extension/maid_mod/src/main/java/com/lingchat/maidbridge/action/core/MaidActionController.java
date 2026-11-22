@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
+import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.maid.MaidQueries;
@@ -64,6 +65,7 @@ public final class MaidActionController {
         if (reject != null) {
             return ActionFrames.rejected(action, reject.code(), reject.reason());
         }
+        MaidBuildController.cancelByOther(server, "被别的事叫走了");
 
         // 就地躺下：不走过去，当场换姿势，然后一直挂着——直到新动作顶掉它或她自己爬起来
         if (action.isGroundLie()) {
@@ -197,6 +199,27 @@ public final class MaidActionController {
      */
     public static String cancelCurrent(MinecraftServer server) {
         return cancel(server);
+    }
+
+    /** stopOtherActions 的结果：被顶掉的动作名（没有为空串）与有没有真的把她叫起来。 */
+    public record StopResult(String replaced, boolean stoodUp) {
+    }
+
+    /**
+     * 别的指令要接手时，把在跑的其它动作都收掉并让她站直。
+     *
+     * <p>攻击、动作、挖掘、放置与施工都会写寻路目标，同时留着两套她会在两个目标之间来回走。
+     * 各自给还在等收尾的插件一个交代；reason 是这一轮打断的说法，由调用方按自己的事由传入。
+     */
+    public static StopResult stopOtherActions(
+            MinecraftServer server, EntityMaid maid, String reason) {
+        MaidAttackController.cancel();
+        String replaced = cancel(server);
+        MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
+        MaidBuildController.cancelByOther(server, reason);
+        boolean stoodUp = MaidActuator.standUp(maid);
+        return new StopResult(replaced, stoodUp);
     }
 
     private static void act(EntityMaid maid, Run run, ActionRun.Command command) {

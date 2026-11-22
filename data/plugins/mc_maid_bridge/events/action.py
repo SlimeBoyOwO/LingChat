@@ -108,8 +108,59 @@ def maid_place_done(data):
     return f"{maid}没能把{name}放下：{reason}。" if reason else f"{maid}没能把{name}放下。"
 
 
+def maid_build_done(data):
+    """施工收尾：盖完了、缺料停下了，还是被别的事叫走了。
+
+    施工期间不该再调用 LLM；这条旁白是缺料、够不着、完工这些特殊情况唯一的开口依据。
+    缺料时把还差多少件念清楚，玩家补料后可以让女仆再盖一次，已经盖好的格子会自动跳过。
+    """
+    maid, _ = names()
+    name = (data.get("name") or "小木屋").strip() or "小木屋"
+    status = (data.get("status") or "").strip()
+    if status == "done":
+        return f"{maid}把{name}盖好了。"
+
+    shortage = _build_shortage(data.get("materials"))
+    if shortage:
+        if status == "failed":
+            return f"{maid}没能开始盖{name}，材料不够：还差{shortage}。凑齐了再让{maid}动手。"
+        return f"{maid}把{name}盖到一半，材料不够了：还差{shortage}。补上材料再让{maid}接着盖就行。"
+
+    reason = narrate(data.get("reason"))
+    if status == "partial":
+        text = f"{maid}把{name}盖了一部分，剩下的没盖完"
+    elif status == "failed":
+        text = f"{maid}没能把{name}盖起来"
+    else:
+        text = f"{maid}没再盖{name}了"
+    return text + (f"：{reason}。" if reason else "。")
+
+
+def _build_shortage(materials):
+    """缺料清单 → 「32 块橡木木板、6 块玻璃」。最多念六种。"""
+    if not isinstance(materials, list):
+        return ""
+    parts = []
+    for one in materials[:6]:
+        if not isinstance(one, dict):
+            continue
+        item = (one.get("item") or "").strip()
+        count = as_int(one.get("count"), 0)
+        if item and count > 0:
+            unit = "扇" if item.endswith("_door") else "块"
+            parts.append(f"{count}{unit}{name_of(BLOCK_NAMES, item, '材料')}")
+    return "、".join(parts)
+
+
 SPECS = {
     "action_done": EventSpec(action_done, urgent=True, ttl=60, snapshot=True),
     "maid_mine_done": EventSpec(maid_mine_done, urgent=True, ttl=120),
     "maid_place_done": EventSpec(maid_place_done, urgent=True, ttl=60),
+    "maid_build_done": EventSpec(
+        maid_build_done,
+        urgent=True,
+        ttl=300,
+        merge_key="maid_build",
+        severity=lambda data: 3 if (data.get("status") or "").strip() == "done" else 2,
+    ),
 }
