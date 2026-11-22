@@ -194,12 +194,7 @@ import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/conf
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
 import { RefreshCw } from "@lucide/vue";
-import {
-  escapeAttrValue,
-  focusElementBySelector,
-  focusSettingAnchor,
-} from "@/components/settings/search/jumpHighlight";
-import type { SettingsJumpTarget } from "@/stores/modules/ui/ui";
+import { useJumpRevealer } from "@/components/settings/search/advanceJump";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
@@ -277,11 +272,6 @@ const selectSubcategory = (category: string, subcategory: string) => {
   if (uiStore.isNarrowScreen) {
     narrowViewLevel.value = "content";
   }
-  void nextTick(() => {
-    navContainerRef.value
-      ?.querySelector<HTMLElement>(".adv-nav-link.active")
-      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
-  });
 };
 
 const saveSettings = async () => {
@@ -347,12 +337,20 @@ const forceReconnectTts = async () => {
   }
 };
 
-const loadConfig = async (selectFirst = true) => {
+let configLoadPromise: Promise<void> | null = null;
+let pendingJumpReveals = 0;
+
+const runLoadConfig = async (selectFirst = true) => {
   isLoading.value = true;
   try {
     configData.value = await getEnvConfigSettings();
 
-    if (selectFirst && Object.keys(configData.value).length > 0) {
+    if (
+      selectFirst &&
+      pendingJumpReveals === 0 &&
+      !activeSelection.category &&
+      Object.keys(configData.value).length > 0
+    ) {
       const firstCategory = Object.keys(configData.value)[0];
       if (firstCategory) {
         const firstSubcategory = Object.keys(
@@ -373,6 +371,14 @@ const loadConfig = async (selectFirst = true) => {
   } finally {
     isLoading.value = false;
   }
+};
+
+const loadConfig = (selectFirst = true): Promise<void> => {
+  const task = runLoadConfig(selectFirst);
+  configLoadPromise = task;
+  return task.finally(() => {
+    if (configLoadPromise === task) configLoadPromise = null;
+  });
 };
 
 // --- 导航指示器逻辑 ---
@@ -415,66 +421,52 @@ watch(
   { deep: true },
 );
 
-const applyOtherJump = async (jump: SettingsJumpTarget) => {
-  if (Object.keys(configData.value).length === 0) return;
+useJumpRevealer("other", async (target) => {
+  pendingJumpReveals += 1;
+  try {
+    if (configLoadPromise) {
+      await configLoadPromise;
+    } else if (Object.keys(configData.value).length === 0) {
+      await loadConfig(false);
+    }
 
-  const targetCat = jump.category;
-  let targetSub = jump.subcategory;
+    if (Object.keys(configData.value).length === 0) return;
 
-  if (targetCat && (!targetSub || !configData.value[targetCat]?.subcategories?.[targetSub])) {
-    const subs = Object.keys(configData.value[targetCat]?.subcategories ?? {});
-    targetSub = subs[0];
+    const targetCat = target.category;
+    let targetSub = target.subcategory;
+
+    if (targetCat && (!targetSub || !configData.value[targetCat]?.subcategories?.[targetSub])) {
+      targetSub = Object.keys(configData.value[targetCat]?.subcategories ?? {})[0];
+    }
+
+    if (targetCat && targetSub && configData.value[targetCat]?.subcategories?.[targetSub]) {
+      selectSubcategory(targetCat, targetSub);
+    } else if (!activeSelection.category) {
+      const firstCat = Object.keys(configData.value)[0];
+      const firstSub = firstCat
+        ? Object.keys(configData.value[firstCat]?.subcategories ?? {})[0]
+        : undefined;
+      if (firstCat && firstSub) {
+        selectSubcategory(firstCat, firstSub);
+      }
+    }
+
+    await nextTick();
+    updateIndicatorPosition();
+    navContainerRef.value
+      ?.querySelector<HTMLElement>(".adv-nav-link.active")
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } finally {
+    pendingJumpReveals -= 1;
   }
-
-  if (targetCat && targetSub && configData.value[targetCat]?.subcategories?.[targetSub]) {
-    selectSubcategory(targetCat, targetSub);
-  }
-
-  await nextTick();
-  updateIndicatorPosition();
-
-  const delayMs = jump.crossTab ? 340 : 40;
-  if (jump.settingKey) {
-    await focusElementBySelector(`[data-setting-key="${escapeAttrValue(jump.settingKey)}"]`, {
-      delayMs,
-    });
-  } else if (jump.anchor) {
-    await focusSettingAnchor(jump.anchor, {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor,
-    });
-  }
-};
-
-const consumePendingOtherJump = async () => {
-  const jump = uiStore.pendingSettingsJump;
-  if (!jump || jump.settingsTab !== "advance" || jump.advanceTab !== "other") return;
-  if (Object.keys(configData.value).length === 0) return;
-  const snapshot: SettingsJumpTarget = { ...jump };
-  uiStore.clearPendingSettingsJump();
-  await applyOtherJump(snapshot);
-};
-
-watch(
-  () => uiStore.pendingSettingsJump?.nonce,
-  () => {
-    void consumePendingOtherJump();
-  },
-  { flush: "post" },
-);
+});
 
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  const hasJump =
-    uiStore.pendingSettingsJump?.settingsTab === "advance" &&
-    uiStore.pendingSettingsJump?.advanceTab === "other";
-  await loadConfig(!hasJump);
+  await (configLoadPromise ?? loadConfig());
   await nextTick();
   updateIndicatorPosition();
   setupNavResizeObserver();
-  if (hasJump) {
-    await consumePendingOtherJump();
-  }
 });
 
 onUnmounted(() => {

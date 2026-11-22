@@ -121,7 +121,7 @@
       </div>
 
       <!-- Role assignment -->
-      <div data-setting-anchor="llm-roles" class="mt-4 shrink-0 border-t border-white/10 pt-4">
+      <div class="mt-4 shrink-0 border-t border-white/10 pt-4">
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
           <div data-setting-anchor="llm-role-chat" class="flex flex-col gap-1.5 rounded-lg">
             <label class="text-xs font-medium text-white/60">{{
@@ -981,29 +981,10 @@ import {
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { useI18n } from "vue-i18n";
 import { llmPresets as presets, type LlmPreset } from "@/constants/llm-presets";
-import {
-  focusSettingAnchor,
-  useSettingsJumpConsumer,
-} from "@/components/settings/search/jumpHighlight";
 
 const store = useLlmProvidersStore();
 const uiStore = useUIStore();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "llm",
-  async (jump) => {
-    if (!store.loaded) {
-      await store.load();
-    }
-    if (jump.anchor) {
-      await focusSettingAnchor(jump.anchor, {
-        crossTab: jump.crossTab,
-        fallbackAnchor: jump.fallbackAnchor || "llm-list",
-      });
-    }
-  },
-);
 
 function applyPreset(preset: LlmPreset) {
   editing.label = preset.label;

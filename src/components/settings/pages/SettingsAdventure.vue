@@ -1,10 +1,7 @@
 <template>
   <MenuPage>
     <!-- 独立剧本部分 -->
-    <MenuItem
-      data-setting-anchor="adventure-standalone"
-      :title="$t('settings.adventure.standalone.title')"
-    >
+    <MenuItem :title="$t('settings.adventure.standalone.title')">
       <template #header>
         <FileText :size="20" />
       </template>
@@ -74,7 +71,7 @@
     </MenuItem>
 
     <!-- 羁绊冒险部分 -->
-    <MenuItem data-setting-anchor="adventure-bond" :title="$t('settings.adventure.bond.title')">
+    <MenuItem :title="$t('settings.adventure.bond.title')">
       <template #header>
         <Book :size="20" />
       </template>
@@ -160,22 +157,11 @@ import { getAvatarFile } from "@/api/services/character";
 import { Birdhouse, Book, FileText, UserPlus } from "@lucide/vue";
 import { getStandaloneScriptList, startScript as startScriptApi } from "@/api/services/script-info";
 import type { ScriptSummary } from "@/api/services/script-info";
-import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 const gameStore = useGameStore();
 const uiStore = useUIStore();
 const router = useRouter();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "adventure",
-  async (jump) => {
-    await focusSettingAnchor(jump.anchor || "adventure-bond", {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor || "adventure-bond",
-    });
-  },
-);
 // 独立剧本相关状态
 const standaloneScripts = ref<ScriptSummary[]>([]);
 const standaloneScriptsLoading = ref(true);

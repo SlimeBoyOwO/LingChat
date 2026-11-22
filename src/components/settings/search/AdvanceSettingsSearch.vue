@@ -1,6 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 flex-col">
-    <!-- 搜索输入栏：固定在「主菜单」选项卡正下方、卡片网格上方 -->
+  <div :class="hasQuery ? 'flex min-h-0 flex-1 flex-col' : 'shrink-0'">
     <div class="shrink-0 px-2 pb-3">
       <div
         class="group focus-within:border-brand/70 flex items-center gap-2.5 rounded-xl border border-white/15 bg-black/25 px-3.5 py-2.5 backdrop-blur-md transition-all duration-200 focus-within:bg-black/35 focus-within:shadow-[0_0_16px_rgba(121,217,255,0.18)]"
@@ -61,9 +60,8 @@
       </div>
     </div>
 
-    <!-- 内容区：有关键词时切换为检索结果，清空后无痕恢复原卡片网格 -->
-    <div ref="listScrollRef" class="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-      <div v-if="hasQuery" class="space-y-2 p-2">
+    <div v-if="hasQuery" class="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+      <div class="space-y-2 p-2">
         <div
           v-if="results.length === 0"
           class="flex flex-col items-center justify-center rounded-2xl border border-white/10 bg-white/5 px-6 py-12 text-center"
@@ -99,7 +97,6 @@
           @click="selectEntry(entry.item)"
         >
           <div class="min-w-0 flex-1">
-            <!-- 面包屑 + 原始键名 / 重启提示 -->
             <div class="flex flex-wrap items-center gap-1.5">
               <template v-for="(crumb, cIdx) in entry.item.breadcrumbs" :key="cIdx">
                 <ChevronRight v-if="cIdx > 0" :size="12" class="shrink-0 text-white/35" />
@@ -136,7 +133,6 @@
               </span>
             </div>
 
-            <!-- 主标题 -->
             <div class="mt-1 truncate text-sm font-semibold text-white">
               <template
                 v-for="(seg, sIdx) in splitHighlightSegments(entry.item.title, query)"
@@ -149,7 +145,6 @@
               </template>
             </div>
 
-            <!-- 描述预览 -->
             <p
               v-if="entry.item.description"
               class="mt-0.5 line-clamp-2 text-xs leading-relaxed text-white/60"
@@ -166,7 +161,6 @@
             </p>
           </div>
 
-          <!-- 右侧跳转标识 -->
           <span
             class="flex shrink-0 items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-medium transition-colors"
             :class="
@@ -180,8 +174,6 @@
           </span>
         </button>
       </div>
-
-      <slot v-else />
     </div>
   </div>
 </template>
@@ -190,37 +182,35 @@
 import {
   computed,
   nextTick,
+  onActivated,
   onBeforeUnmount,
+  onDeactivated,
   onMounted,
   ref,
   watch,
   type ComponentPublicInstance,
 } from "vue";
 import { ArrowRight, ChevronRight, Loader2, Search, SearchX, X } from "@lucide/vue";
+import { useAdvanceJump } from "./advanceJump";
 import {
   splitHighlightSegments,
   useSettingsSearch,
   type SettingsSearchItem,
 } from "./useSettingsSearch";
 
-const emit = defineEmits<{
-  select: [item: SettingsSearchItem];
-}>();
+const query = defineModel<string>({ default: "" });
+const { jumpTo } = useAdvanceJump();
 
-const query = ref("");
 const activeIndex = ref(0);
 const inputRef = ref<HTMLInputElement | null>(null);
 const resultRefs = ref<Array<HTMLElement | null>>([]);
+let isActive = true;
 
 const hasQuery = computed(() => query.value.trim().length > 0);
 const { results, totalMatches, loadingDynamic, ensureCatalogData } = useSettingsSearch(query);
 
 function setResultEl(index: number, el: Element | ComponentPublicInstance | null) {
-  if (el instanceof HTMLElement) {
-    resultRefs.value[index] = el;
-  } else {
-    resultRefs.value[index] = null;
-  }
+  resultRefs.value[index] = el instanceof HTMLElement ? el : null;
 }
 
 watch(results, (list) => {
@@ -241,9 +231,9 @@ function clearQuery() {
 }
 
 function selectEntry(item: SettingsSearchItem) {
-  query.value = "";
   activeIndex.value = 0;
-  emit("select", item);
+  inputRef.value?.blur();
+  void jumpTo(item.target);
 }
 
 function scrollActiveIntoView() {
@@ -292,19 +282,30 @@ function handleInputKeydown(event: KeyboardEvent) {
 }
 
 function handleGlobalKeydown(event: KeyboardEvent) {
+  if (!isActive || !inputRef.value || inputRef.value.getClientRects().length === 0) return;
   if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
-    inputRef.value?.focus();
-    inputRef.value?.select();
+    inputRef.value.focus();
+    inputRef.value.select();
   }
 }
 
 onMounted(() => {
+  isActive = true;
   void ensureCatalogData();
   window.addEventListener("keydown", handleGlobalKeydown);
 });
 
+onActivated(() => {
+  isActive = true;
+});
+
+onDeactivated(() => {
+  isActive = false;
+});
+
 onBeforeUnmount(() => {
+  isActive = false;
   window.removeEventListener("keydown", handleGlobalKeydown);
 });
 </script>

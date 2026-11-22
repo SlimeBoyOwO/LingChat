@@ -1,5 +1,5 @@
 <template>
-  <div class="flex h-full min-h-0 flex-col">
+  <div ref="rootRef" class="flex h-full min-h-0 flex-col">
     <div class="relative min-h-0 flex-1 overflow-hidden">
       <div class="custom-scrollbar absolute inset-0 overflow-y-auto px-1 pb-8">
         <!-- Android 说明 -->
@@ -76,7 +76,7 @@
           <ToolPackCard
             v-for="pack in filteredPackages"
             :key="pack.group"
-            :data-tool-group="pack.group"
+            :data-setting-anchor="`tool-pack-${pack.group}`"
             :group="pack.group"
             :title="groupTitle(pack.group)"
             :help="groupHelp(pack.group)"
@@ -123,7 +123,11 @@
       </div>
 
       <!-- 覆盖式子页 -->
-      <Transition name="tool-subpage">
+      <Transition
+        name="tool-subpage"
+        @after-enter="resolveSubpageEnter"
+        @enter-cancelled="resolveSubpageEnter"
+      >
         <div
           v-if="activeSubpage && activeDraft"
           class="absolute inset-0 z-10 flex flex-col bg-black/40 p-2 backdrop-blur-xl"
@@ -149,7 +153,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref, watch, type Component } from "vue";
+import { computed, nextTick, onMounted, onUnmounted, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
 import {
   toolDisplayName,
@@ -159,12 +163,8 @@ import {
 import { useToolSettingsStore } from "@/stores/modules/settings/tools";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { isAndroid } from "@/utils/platform";
-import {
-  escapeAttrValue,
-  focusElementBySelector,
-  focusSettingAnchor,
-  useSettingsJumpConsumer,
-} from "@/components/settings/search/jumpHighlight";
+import { useJumpRevealer } from "@/components/settings/search/advanceJump";
+import { escapeAttrValue } from "@/components/settings/search/jumpHighlight";
 import ToolPackCard from "@/components/settings/tools/ToolPackCard.vue";
 import ToolPackSubpage from "@/components/settings/tools/ToolPackSubpage.vue";
 import WebSearchPanel from "@/components/settings/tools/panels/WebSearchPanel.vue";
@@ -316,55 +316,142 @@ async function resetActive() {
   store.openDraft(activeSubpage.value);
 }
 
+const rootRef = ref<HTMLElement | null>(null);
+let loadInFlight: Promise<void> | null = null;
+const activeTransitionCleanups = new Set<() => void>();
+let subpageEnterResolvers: Array<() => void> = [];
+
+function resolveSubpageEnter() {
+  const pending = subpageEnterResolvers;
+  subpageEnterResolvers = [];
+  for (const done of pending) done();
+}
+
+function parseMaxCssTimeMs(value: string): number {
+  let maxMs = 0;
+  for (const part of value.split(",")) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    const num = Number.parseFloat(trimmed);
+    if (!Number.isFinite(num) || num <= 0) continue;
+    const ms = trimmed.endsWith("ms") ? num : num * 1000;
+    if (ms > maxMs) maxMs = ms;
+  }
+  return maxMs;
+}
+
+function waitForSubpageEnter(): Promise<void> {
+  return new Promise((resolve) => {
+    let settled = false;
+    let fallbackTimer: number | null = null;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      activeTransitionCleanups.delete(finish);
+      resolve();
+    };
+
+    subpageEnterResolvers.push(finish);
+    activeTransitionCleanups.add(finish);
+    // 兜底：若测试环境或外部中断未触发 Transition 生命周期钩子，避免永久挂起
+    fallbackTimer = window.setTimeout(finish, 400);
+  });
+}
+
+function waitForPackExpand(group: string): Promise<void> {
+  const selector = `[data-setting-anchor="${escapeAttrValue(`tool-pack-${group}`)}"] .pack-body`;
+  const packBody = rootRef.value?.querySelector<HTMLElement>(selector) ?? null;
+  if (!packBody) return Promise.resolve();
+
+  const style = window.getComputedStyle(packBody);
+  const totalMs =
+    parseMaxCssTimeMs(style.transitionDuration) + parseMaxCssTimeMs(style.transitionDelay);
+  if (totalMs <= 1) {
+    return new Promise((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  }
+
+  return new Promise((resolve) => {
+    let settled = false;
+    let fallbackTimer: number | null = null;
+
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      packBody.removeEventListener("transitionend", onTransitionEnd);
+      if (fallbackTimer !== null) {
+        window.clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+      activeTransitionCleanups.delete(finish);
+      resolve();
+    };
+
+    const onTransitionEnd = (event: TransitionEvent) => {
+      if (event.target === packBody && event.propertyName === "grid-template-rows") {
+        finish();
+      }
+    };
+
+    packBody.addEventListener("transitionend", onTransitionEnd);
+    activeTransitionCleanups.add(finish);
+    fallbackTimer = window.setTimeout(finish, Math.ceil(totalMs) + 60);
+  });
+}
+
 onMounted(() => {
-  void store.load();
+  const task = store.load();
+  loadInFlight = task;
+  void task.finally(() => {
+    if (loadInFlight === task) loadInFlight = null;
+  });
 });
 
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "tools",
-  async (jump) => {
-    if (store.orderedPackages.length === 0) {
-      await store.load();
-    }
+onUnmounted(() => {
+  resolveSubpageEnter();
+  for (const cleanup of [...activeTransitionCleanups]) cleanup();
+});
 
-    searchQuery.value = "";
+useJumpRevealer("tools", async (target) => {
+  if (loadInFlight) {
+    await loadInFlight;
+  } else if (store.orderedPackages.length === 0) {
+    await store.load();
+  }
 
-    if (jump.openToolSubpage && jump.toolGroup) {
-      openSubpage(jump.toolGroup);
-      const anchor = jump.anchor || "tools-subpage-panel";
-      await focusSettingAnchor(anchor, {
-        crossTab: jump.crossTab,
-        fallbackAnchor: jump.fallbackAnchor || "tools-subpage-panel",
-      });
-      return;
-    }
+  searchQuery.value = "";
 
-    if (activeSubpage.value) {
-      closeSubpage();
+  if (target.openToolSubpage && target.toolGroup) {
+    const wasClosed = !activeSubpage.value;
+    openSubpage(target.toolGroup);
+    const enterPromise = wasClosed && Boolean(activeDraft.value) ? waitForSubpageEnter() : null;
+    await nextTick();
+    if (enterPromise) {
+      await enterPromise;
     }
+    return;
+  }
 
-    if (jump.toolGroup && !expandedGroups.value.includes(jump.toolGroup)) {
-      expandedGroups.value.push(jump.toolGroup);
-    }
+  if (activeSubpage.value) {
+    closeSubpage();
+  }
 
-    if (jump.anchor) {
-      const delayMs = jump.crossTab ? 360 : 230;
-      await focusElementBySelector(`[data-setting-anchor="${escapeAttrValue(jump.anchor)}"]`, {
-        delayMs,
-        fallbackSelector: jump.toolGroup
-          ? `[data-tool-group="${escapeAttrValue(jump.toolGroup)}"]`
-          : undefined,
-      });
-      return;
-    }
-
-    if (jump.toolGroup) {
-      await focusElementBySelector(`[data-tool-group="${escapeAttrValue(jump.toolGroup)}"]`, {
-        delayMs: jump.crossTab ? 360 : 120,
-      });
-    }
-  },
-);
+  const newlyExpanded =
+    Boolean(target.toolGroup) && !expandedGroups.value.includes(target.toolGroup!);
+  if (newlyExpanded && target.toolGroup) {
+    expandedGroups.value.push(target.toolGroup);
+  }
+  await nextTick();
+  if (newlyExpanded && target.toolGroup) {
+    await waitForPackExpand(target.toolGroup);
+  }
+});
 </script>
 
 <style scoped>

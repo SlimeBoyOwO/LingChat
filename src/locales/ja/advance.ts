@@ -49,14 +49,14 @@ export default {
   },
   search: {
     placeholder:
-      "設定項目・サブ設定・設定キーを検索（例: TTS、WEATHER_CITY、CosyVoice、ショートカット…）",
+      "詳細設定・モデル・音声・ツール・設定キーを検索（例: LLM、TTS、ASR、投写、WEATHER_CITY…）",
     clear: "検索をクリア",
     resultCount: "{count} 件の設定が見つかりました",
     resultCountCapped: "上位 {shown} 件を表示中（全 {total} 件）",
     loadingDynamic: "詳細設定キーを読み込み中…",
     emptyTitle: "一致する設定項目が見つかりません",
     emptyHint:
-      "機能名や英語キー・関連語で検索してみてください（例: 天気、timeout、音声、ホットワード、配信）",
+      "詳細設定の項目名・ツール名・設定キーで検索してみてください（例: LLM、timeout、音声、ホットワード、配信、記憶）",
     shortcutHint: "Ctrl+K フォーカス · ↑↓ 選択 · Enter 移動 · Esc クリア",
     jumpLabel: "移動",
     restartTag: "再起動で反映",
@@ -84,10 +84,6 @@ export default {
       ttsInstalled: "インストール済みのローカルキャラクター音声モデルを管理します",
       toolsWebSearch:
         "Keenable / Kimi / BoCha / DeepSeek / Tavily / Codex・プロキシ設定を構成します",
-      textAutoAdvance: "オート進行有効時のメッセージ切り替え間隔を調整します",
-      textTtsCache: "不要になった孤立音声キャッシュを検出して削除します",
-      charList: "キャラクターの切り替え・編集・新規作成を行います",
-      achievement: "実績の一覧と解除状況を確認します",
     },
   },
 };

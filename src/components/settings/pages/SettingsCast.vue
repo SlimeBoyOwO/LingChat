@@ -284,10 +284,6 @@ import { computed, onActivated, onMounted, onUnmounted, ref } from "vue";
 import { useI18n } from "vue-i18n";
 import { Button, Slider, Toggle } from "../../base";
 import { MenuItem } from "../../ui";
-import {
-  focusSettingAnchor,
-  useSettingsJumpConsumer,
-} from "@/components/settings/search/jumpHighlight";
 
 interface CastStatus {
   enabled: boolean;
@@ -313,18 +309,6 @@ interface CastStatus {
 }
 
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "cast",
-  async (jump) => {
-    if (jump.anchor) {
-      await focusSettingAnchor(jump.anchor, {
-        crossTab: jump.crossTab,
-        fallbackAnchor: jump.fallbackAnchor || "cast-enable",
-      });
-    }
-  },
-);
 
 const status = ref<CastStatus | null>(null);
 const enabled = computed(() => status.value?.enabled ?? false);

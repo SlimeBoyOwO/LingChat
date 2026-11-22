@@ -294,14 +294,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onActivated, onMounted, ref, watch } from "vue";
+import { computed, nextTick, onActivated, onMounted, ref, watch } from "vue";
 import { Button } from "../../base";
 import { ChevronDown, RefreshCw } from "@lucide/vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import {
-  focusSettingAnchor,
-  useSettingsJumpConsumer,
-} from "@/components/settings/search/jumpHighlight";
+import { useJumpRevealer } from "@/components/settings/search/advanceJump";
 import { i18n } from "@/locales";
 import {
   getMemoryDebugOverview,
@@ -325,20 +322,17 @@ const showStore = ref(true);
 const showInjected = ref(false);
 const showContext = ref(false);
 
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "memory",
-  async (jump) => {
-    if (jump.anchor === "memory-store") showStore.value = true;
-    if (jump.anchor === "memory-injected") showInjected.value = true;
-    if (jump.anchor === "memory-context") showContext.value = true;
-    if (jump.anchor) {
-      await focusSettingAnchor(jump.anchor, {
-        crossTab: jump.crossTab,
-        fallbackAnchor: jump.fallbackAnchor || "memory-overview",
-      });
-    }
-  },
-);
+let refreshInFlight: Promise<void> | null = null;
+
+useJumpRevealer("memory", async (target) => {
+  if (target.anchor === "memory-store") showStore.value = true;
+  if (target.anchor === "memory-injected") showInjected.value = true;
+  if (target.anchor === "memory-context") showContext.value = true;
+  if (refreshInFlight) {
+    await refreshInFlight;
+  }
+  await nextTick();
+});
 
 const roles = computed<MemoryDebugRole[]>(() => overview.value?.roles ?? []);
 const runtime = computed<MemorySystemSnapshot | null>(() => snapshot.value?.runtime ?? null);
@@ -443,7 +437,7 @@ const selectRole = async (roleId: number) => {
   await loadSnapshot(roleId);
 };
 
-const refreshAll = async () => {
+const doRefreshAll = async () => {
   loading.value = true;
   error.value = "";
   try {
@@ -469,6 +463,14 @@ const refreshAll = async () => {
   } finally {
     loading.value = false;
   }
+};
+
+const refreshAll = (): Promise<void> => {
+  const task = doRefreshAll();
+  refreshInFlight = task;
+  return task.finally(() => {
+    if (refreshInFlight === task) refreshInFlight = null;
+  });
 };
 
 onMounted(refreshAll);

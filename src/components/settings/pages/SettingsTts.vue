@@ -713,10 +713,6 @@ import {
 import { MenuItem } from "@/components/ui";
 import { useDialogStore } from "@/stores/modules/ui/dialog";
 import { useUIStore } from "@/stores/modules/ui/ui";
-import {
-  focusSettingAnchor,
-  useSettingsJumpConsumer,
-} from "@/components/settings/search/jumpHighlight";
 import * as TtsLocal from "@/api/services/tts/tts-local";
 import * as TtsCosyvoice from "@/api/services/tts/tts-cosyvoice";
 import { speedToLengthScale } from "@/utils/tts/tts-speed";
@@ -731,18 +727,6 @@ import type {
 const dialogStore = useDialogStore();
 const uiStore = useUIStore();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "advance" && jump.advanceTab === "tts",
-  async (jump) => {
-    if (jump.anchor) {
-      await focusSettingAnchor(jump.anchor, {
-        crossTab: jump.crossTab,
-        fallbackAnchor: jump.fallbackAnchor || "tts-switch",
-      });
-    }
-  },
-);
 const catalog = ref<readonly CatalogAsset[]>([]);
 const status = ref<TtsLocalStatus | null>(null);
 const snapshot = ref<TtsLocalInstallSnapshot>({ assets: [], voices: [] });

@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem data-setting-anchor="save-create" :title="$t('settings.save.create.title')">
+    <MenuItem :title="$t('settings.save.create.title')">
       <template #header>
         <PencilLine :size="20" />
       </template>
@@ -37,7 +37,7 @@
         </p>
       </div>
     </MenuItem>
-    <MenuItem data-setting-anchor="save-list" :title="$t('settings.save.list.title')">
+    <MenuItem :title="$t('settings.save.list.title')">
       <template #header>
         <LayoutList :size="20" />
       </template>
@@ -215,7 +215,6 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { SaveInfo } from "../../../types";
 import type { WebInitData } from "../../../api/services/game-info";
 import { Save as SaveIcon, PencilLine, LayoutList, Clock } from "@lucide/vue";
-import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 interface SaveListResponse {
   saves: SaveInfo[];
@@ -232,16 +231,6 @@ const uiStore = useUIStore();
 const dialogStore = useDialogStore();
 const router = useRouter();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "save",
-  async (jump) => {
-    await focusSettingAnchor(jump.anchor || "save-create", {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor || "save-create",
-    });
-  },
-);
 
 const saves = ref<SaveInfo[]>([]);
 const newSaveTitle = ref("");

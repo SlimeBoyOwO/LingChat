@@ -86,7 +86,10 @@
 
       <!-- ====== 主菜单 ====== -->
       <div v-if="advanceTab === 'menu'" class="flex min-h-0 flex-1 flex-col overflow-hidden">
-        <SettingsAdvanceMenu @navigate="advanceTab = $event" />
+        <AdvanceSettingsSearch v-model="searchQuery" />
+        <div v-show="!searchQuery.trim()" class="min-h-0 flex-1 overflow-y-auto">
+          <SettingsAdvanceMenu @navigate="advanceTab = $event" />
+        </div>
       </div>
 
       <!-- ====== 大模型管理 ====== -->
@@ -131,7 +134,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { MenuPage } from "../../ui";
 import SettingsLlmProviders from "./SettingsLlmProviders.vue";
 import SettingsAdvanceMenu from "./SettingsAdvanceMenu.vue";
@@ -142,8 +145,11 @@ import SettingsTools from "./SettingsTools.vue";
 import SettingsAdvanceOther from "./SettingsAdvanceOther.vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import SettingsCast from "./SettingsCast.vue";
+import AdvanceSettingsSearch from "../search/AdvanceSettingsSearch.vue";
+import { provideAdvanceJump } from "../search/advanceJump";
 
 const uiStore = useUIStore();
+const searchQuery = ref("");
 
 // 子标签状态放在 ui store，供「日程 → 工具调用」等入口直接跳转定位
 const advanceTab = computed({
@@ -151,6 +157,16 @@ const advanceTab = computed({
   set: (tab: string) => {
     uiStore.advanceTab = tab;
   },
+});
+
+watch(advanceTab, (tab) => {
+  if (tab !== "menu") {
+    searchQuery.value = "";
+  }
+});
+
+provideAdvanceJump(advanceTab, () => {
+  searchQuery.value = "";
 });
 
 const advanceOtherRef = ref<InstanceType<typeof SettingsAdvanceOther> | null>(null);

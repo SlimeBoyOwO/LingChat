@@ -51,15 +51,14 @@ export default {
     affectionToggleFailed: "Failed to toggle the affection system, please try again later",
   },
   search: {
-    placeholder:
-      "Search settings, sub-options, or config keys (e.g. TTS, WEATHER_CITY, CosyVoice, hotkey…)",
+    placeholder: "Search advanced settings: models, TTS, ASR, tools, cast, memory, or config keys…",
     clear: "Clear search",
     resultCount: "{count} matching settings",
     resultCountCapped: "Showing top {shown} of {total} results",
     loadingDynamic: "Indexing all advanced config keys…",
     emptyTitle: "No matching settings found",
     emptyHint:
-      "Try another keyword, module name, or raw key (e.g. weather, timeout, voice, hotword, cast)",
+      "Try an advanced setting, tool name, or config key (e.g. LLM, timeout, CosyVoice, hotword, cast, memory)",
     shortcutHint: "Ctrl+K Focus · ↑↓ Select · Enter Jump · Esc Clear",
     jumpLabel: "Open",
     restartTag: "Restart required",
@@ -88,10 +87,6 @@ export default {
       ttsInstalled: "Manage installed local character voice models",
       toolsWebSearch:
         "Configure Keenable / Kimi / BoCha / DeepSeek / Tavily / Codex and proxy settings",
-      textAutoAdvance: "Adjust the pause interval when auto-advance dialogue is enabled",
-      textTtsCache: "Check and clean orphaned local TTS audio cache files",
-      charList: "Switch characters, edit character configs, or create a new character",
-      achievement: "View unlocked and locked achievements",
     },
   },
 };

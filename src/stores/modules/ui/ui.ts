@@ -11,22 +11,6 @@ export type NotificationType = "error" | "success" | "info" | "warning";
 export type ScheduleViewType =
   "schedule_groups" | "schedule_details" | "todo_groups" | "todo_detail" | "calendar";
 
-/** 设置搜索跳转意图：由高级设置主菜单搜索框写入，目标设置页挂载或激活后消费并高亮对应卡片/配置行 */
-export interface SettingsJumpTarget {
-  settingsTab: string;
-  advanceTab?: string;
-  category?: string;
-  subcategory?: string;
-  settingKey?: string;
-  toolGroup?: string;
-  openToolSubpage?: boolean;
-  anchor?: string;
-  fallbackAnchor?: string;
-  llmProviderId?: string;
-  crossTab?: boolean;
-  nonce?: number;
-}
-
 // 通知状态接口
 interface NotificationState {
   isVisible: boolean;
@@ -52,9 +36,6 @@ interface UIState {
 
   /** 关系引导「去填写」的待处理意图：聊天页写入，设置页消费后清空 */
   pendingRelationGuide: { kind: "role" | "identity"; roleId: number } | null;
-
-  /** 设置搜索跳转的待定位目标 */
-  pendingSettingsJump: SettingsJumpTarget | null;
 
   currentBackgroundTransition: number;
   currentPresentPic: string;
@@ -129,7 +110,6 @@ export const useUIStore = defineStore("ui", {
     currentSettingsTab: "text",
     advanceTab: "menu",
     pendingRelationGuide: null,
-    pendingSettingsJump: null,
     currentBackgroundTransition: 300,
     currentPresentPic: "",
     currentPresentPicScale: 1,
@@ -278,24 +258,6 @@ export const useUIStore = defineStore("ui", {
 
     setPendingRelationGuide(guide: UIState["pendingRelationGuide"]) {
       this.pendingRelationGuide = guide;
-    },
-
-    /** 从设置搜索跳转到目标页面及具体设置卡片/行 */
-    jumpToSetting(target: Omit<SettingsJumpTarget, "nonce" | "crossTab">) {
-      const crossTab = this.currentSettingsTab !== target.settingsTab;
-      this.currentSettingsTab = target.settingsTab;
-      if (target.advanceTab) {
-        this.advanceTab = target.advanceTab;
-      }
-      this.pendingSettingsJump = {
-        ...target,
-        crossTab,
-        nonce: Date.now() + Math.random(),
-      };
-    },
-
-    clearPendingSettingsJump() {
-      this.pendingSettingsJump = null;
     },
 
     // ========== Notification Actions ==========

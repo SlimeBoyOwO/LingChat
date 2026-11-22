@@ -1,13 +1,9 @@
 <template>
   <MenuPage>
     <!-- ========== 场景管理（含背景分类、收藏排序、右键移动） ========== -->
-    <SceneManageSection data-setting-anchor="bg-scene" />
+    <SceneManageSection />
 
-    <MenuItem
-      data-setting-anchor="bg-particle"
-      :title="$t('settings.background.particle.title')"
-      size="large"
-    >
+    <MenuItem :title="$t('settings.background.particle.title')" size="large">
       <template #header>
         <Sparkles :size="20" />
       </template>
@@ -26,11 +22,7 @@
     </MenuItem>
 
     <!-- 天气与上面的氛围特效分层，两者可以同时开着 -->
-    <MenuItem
-      data-setting-anchor="bg-weather"
-      :title="$t('settings.background.weather.title')"
-      size="large"
-    >
+    <MenuItem :title="$t('settings.background.weather.title')" size="large">
       <template #header>
         <CloudLightning :size="20" />
       </template>
@@ -73,11 +65,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="bg-anim-switch"
-      :title="$t('settings.background.animation.switchTitle')"
-      size="large"
-    >
+    <MenuItem :title="$t('settings.background.animation.switchTitle')" size="large">
       <template #header>
         <Settings :size="20" />
       </template>
@@ -132,12 +120,7 @@
     </MenuItem>
 
     <!-- HDR 模式（仅 Windows：WebView2 强制色彩配置在 HDR 下会发灰/发暗） -->
-    <MenuItem
-      v-if="isWindows()"
-      data-setting-anchor="bg-hdr"
-      :title="$t('settings.background.hdr.title')"
-      size="large"
-    >
+    <MenuItem v-if="isWindows()" :title="$t('settings.background.hdr.title')" size="large">
       <template #header>
         <Settings :size="20" />
       </template>
@@ -158,11 +141,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="bg-anim-settings"
-      :title="$t('settings.background.animation.settingsTitle')"
-      size="large"
-    >
+    <MenuItem :title="$t('settings.background.animation.settingsTitle')" size="large">
       <template #header>
         <Sparkles :size="20" />
       </template>
@@ -225,11 +204,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="bg-perf"
-      :title="$t('settings.background.perf.title')"
-      size="large"
-    >
+    <MenuItem :title="$t('settings.background.perf.title')" size="large">
       <template #header>
         <Cpu :size="20" />
       </template>
@@ -402,22 +377,11 @@ import {
 } from "../../../api/services/gpu-perf";
 import { Settings, Cpu } from "@lucide/vue";
 import SceneManageSection from "../background/SceneManageSection.vue";
-import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
 const dialogStore = useDialogStore();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "background",
-  async (jump) => {
-    await focusSettingAnchor(jump.anchor || "bg-scene", {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor || "bg-scene",
-    });
-  },
-);
 
 // 粒子选项来自注册表，与桌宠设置页读同一份真相。
 // 从前这里是六个硬编码按钮：星辉（BA）并入主界面可选项时只接了渲染分支，

@@ -1,7 +1,7 @@
 <template>
   <MenuPage>
     <!-- 输出音频设备切换（顶部） -->
-    <MenuItem data-setting-anchor="sound-device" :title="$t('settings.sound.device.title')">
+    <MenuItem :title="$t('settings.sound.device.title')">
       <template #header>
         <Speaker :size="20" class="text-amber-400" />
       </template>
@@ -53,11 +53,7 @@
     </MenuItem>
 
     <!-- 音量控制部分 -->
-    <MenuItem
-      data-setting-anchor="sound-volume"
-      :title="$t('settings.sound.volume.character')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.sound.volume.character')" size="small">
       <template #header>
         <MicVocal :size="20" class="text-indigo-400" />
       </template>
@@ -94,11 +90,7 @@
     </MenuItem>
 
     <!-- 对话打字音效开关 -->
-    <MenuItem
-      data-setting-anchor="sound-voice-sound"
-      :title="$t('settings.text.voiceSound.title')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.text.voiceSound.title')" size="small">
       <template #header>
         <Earth :size="20" class="text-orange-400" />
       </template>
@@ -122,11 +114,7 @@
     </MenuItem>
 
     <!-- 声音测试 -->
-    <MenuItem
-      data-setting-anchor="sound-test"
-      :title="$t('settings.sound.test.title')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.sound.test.title')" size="small">
       <template #header>
         <FlaskConical :size="20" class="text-pink-400" />
       </template>
@@ -144,7 +132,7 @@
     </MenuItem>
 
     <!-- 背景音乐设置部分 -->
-    <MenuItem data-setting-anchor="sound-bgm" :title="$t('settings.sound.bgm.title')">
+    <MenuItem :title="$t('settings.sound.bgm.title')">
       <template #header>
         <Headphones :size="20" class="text-purple-400" />
       </template>
@@ -341,7 +329,7 @@
     </MenuItem>
 
     <!-- 环境音管理 -->
-    <MenuItem data-setting-anchor="sound-ambient" :title="$t('settings.sound.ambient.title')">
+    <MenuItem :title="$t('settings.sound.ambient.title')">
       <template #header>
         <Wind :size="20" class="text-teal-400" />
       </template>
@@ -562,23 +550,12 @@ import {
   FolderOpen,
   Earth,
 } from "@lucide/vue";
-import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
 
 const uiStore = useUIStore();
 const settingsStore = useSettingsStore();
 const dialogStore = useDialogStore();
 const roleStore = useRoleArchiveStore();
 const { t } = useI18n();
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "sound",
-  async (jump) => {
-    await focusSettingAnchor(jump.anchor || "sound-device", {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor || "sound-device",
-    });
-  },
-);
 
 // 状态绑定
 const characterVolume = computed({

@@ -45,13 +45,15 @@ export default {
     affectionToggleFailed: "切換好感度系統失敗，請稍後重試",
   },
   search: {
-    placeholder: "搜尋設定項目、子選項或設定鍵（如 TTS、WEATHER_CITY、看螢幕、CosyVoice、快速鍵…）",
+    placeholder:
+      "搜尋進階設定、模型、語音、工具或設定鍵（如 TTS、WEATHER_CITY、看螢幕、CosyVoice、熱詞…）",
     clear: "清除搜尋",
     resultCount: "找到 {count} 項設定",
     resultCountCapped: "已顯示前 {shown} 項（共 {total} 項）",
     loadingDynamic: "正在索引全部進階設定項目…",
     emptyTitle: "找不到符合的設定項目",
-    emptyHint: "試試輸入功能名稱、英文鍵名或同義詞（例如：天氣、timeout、音色、熱詞、投影）",
+    emptyHint:
+      "試試輸入進階設定項目、工具名稱或設定鍵（例如：大模型、timeout、音色、熱詞、投影、記憶）",
     shortcutHint: "Ctrl+K 聚焦 · ↑↓ 選擇 · Enter 跳轉 · Esc 清除",
     jumpLabel: "前往",
     restartTag: "需重啟生效",
@@ -79,10 +81,6 @@ export default {
       ttsInstalled: "管理已安裝的本地角色語音模型",
       toolsWebSearch:
         "設定 Keenable / Kimi / 博查 / DeepSeek / Tavily / Codex / 代理位址等聯網搜尋參數",
-      textAutoAdvance: "調整開啟自動對話後的語句切換停頓時間",
-      textTtsCache: "偵測與清理孤兒語音快取檔案",
-      charList: "切換目前角色、編輯角色設定或建立新角色",
-      achievement: "查看已解鎖與未解鎖成就",
     },
   },
 };

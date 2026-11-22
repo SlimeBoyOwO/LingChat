@@ -1,6 +1,6 @@
 <template>
   <MenuPage>
-    <MenuItem data-setting-anchor="char-list" :title="$t('settings.character.list.title')">
+    <MenuItem :title="$t('settings.character.list.title')">
       <template #header>
         <Rabbit :size="20" />
       </template>
@@ -60,7 +60,7 @@
     </MenuItem>
 
     <!-- 我的身份：换身份 = 开一段新对话（本局已开始则不能原地换） -->
-    <MenuItem data-setting-anchor="char-identity" :title="$t('settings.identity.title')">
+    <MenuItem :title="$t('settings.identity.title')">
       <template #header>
         <User :size="20" />
       </template>
@@ -257,12 +257,7 @@
     />
 
     <!-- 打开文件夹依赖桌面端文件管理器，移动端不可用，整卡隐藏 -->
-    <MenuItem
-      v-if="!isAndroid()"
-      data-setting-anchor="char-open-folder"
-      :title="$t('settings.character.openFolder.title')"
-      size="small"
-    >
+    <MenuItem v-if="!isAndroid()" :title="$t('settings.character.openFolder.title')" size="small">
       <template #header>
         <FolderOpen :size="20" />
       </template>
@@ -273,11 +268,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="char-import"
-      :title="$t('settings.character.import.title')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.character.import.title')" size="small">
       <template #header>
         <PackageOpen :size="20" />
       </template>
@@ -301,11 +292,7 @@
       </div>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="char-refresh"
-      :title="$t('settings.character.refresh.title')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.character.refresh.title')" size="small">
       <template #header>
         <RefreshCcw :size="20" />
       </template>
@@ -314,11 +301,7 @@
       }}</Button>
     </MenuItem>
 
-    <MenuItem
-      data-setting-anchor="char-workshop"
-      :title="$t('settings.character.workshop.title')"
-      size="small"
-    >
+    <MenuItem :title="$t('settings.character.workshop.title')" size="small">
       <template #header>
         <Birdhouse :size="20" />
       </template>
@@ -365,17 +348,6 @@ import { useDialogStore } from "../../../stores/modules/ui/dialog";
 import type { Character as ApiCharacter, Clothes } from "../../../types";
 import { isAndroid } from "@/utils/platform";
 import RoleArchiveProgress from "@/components/ui/RoleArchiveProgress.vue";
-import { focusSettingAnchor, useSettingsJumpConsumer } from "../search/jumpHighlight";
-
-useSettingsJumpConsumer(
-  (jump) => jump.settingsTab === "character",
-  async (jump) => {
-    await focusSettingAnchor(jump.anchor || "char-list", {
-      crossTab: jump.crossTab,
-      fallbackAnchor: jump.fallbackAnchor || "char-list",
-    });
-  },
-);
 
 interface CharacterCardData {
   id: number;

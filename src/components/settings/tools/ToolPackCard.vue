@@ -92,7 +92,6 @@
             <label
               v-for="tool in tools"
               :key="tool.name"
-              :data-tool-name="tool.name"
               :data-setting-anchor="`tool-row-${tool.name}`"
               class="flex items-start gap-2.5 rounded-lg px-2 py-1.5 transition-colors duration-150"
               :class="
