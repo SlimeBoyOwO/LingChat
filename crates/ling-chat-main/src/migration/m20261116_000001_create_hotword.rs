@@ -5,8 +5,9 @@ use crate::db::entities::hotword::{KIND_GLOBAL, KIND_LIBRARY, KIND_ROLE};
 /// 三张作用域热词表（`role_hotword` / `global_hotword` / `library_hotword`）合并为单表
 /// `hotword`：用 `kind` 区分作用域，`role_id` / `category_id` 承载归属（issue #951）。
 ///
-/// 热词未发版，旧表直接丢弃、不搬数据。旧迁移文件已删除，跑过 dev 版的库须先用
-/// `scripts/repair-hotword-migration.mjs` 清掉账本里的旧记录，否则启动会对账失败。
+/// 热词未发版，旧表直接丢弃、不搬数据。旧迁移文件已删除，跑过 dev 版的库账本里会
+/// 留下这些记录；`init_db` 会忽略本构建不认识的记录，因此无需先跑
+/// `scripts/repair-hotword-migration.mjs`。
 ///
 /// sea-orm 1.x 不为 SQLite 迁移开事务，故整段可重入：先 `IF EXISTS` 清场（含上一轮失败
 /// 留下的新表），再建表建索引。唯一性用部分唯一索引表达，不写 `CHECK`：权重口径由
