@@ -33,6 +33,9 @@ pub fn setup(
     app: &mut tauri::App<tauri::Wry>,
     log_filter: LogFilterHandle,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    // 启动早期诊断：tracing 就绪前的阶段只能靠 logcat 留痕（见 platform::early_log）
+    crate::app::platform::early_log("setup: 进入");
+
     // 设置日志桥接的应用句柄
     utils::log_bridge::set_app_handle(app.handle().clone());
 
@@ -57,6 +60,7 @@ pub fn setup(
     // 便携版判断依赖执行文件目录，须先初始化。
     data_dir::init_exec_dir();
     data_dir::init_data_dir(app.handle());
+    crate::app::platform::early_log("setup: 数据目录已解析");
 
     // 管理各种状态
     app.manage(api::pet::HitTestState::default());
@@ -80,7 +84,9 @@ pub fn setup(
     let rt = tokio::runtime::Runtime::new()?;
     // 本地 TTS（SBV2 进程内实现）：解析路径、注册 State/开关并收敛运行时。
     let local_tts = ai_service::tts::local::setup::bootstrap(app)?;
+    crate::app::platform::early_log("setup: 本地 TTS 就绪");
     let (db, app_config) = rt.block_on(data::bootstrap(app))?;
+    crate::app::platform::early_log("setup: 数据层就绪");
 
     // 语音快捷键全局注册（失去焦点可用）由**前端界面门控**驱动：仅 /chat 与
     // /pet 界面注册，离开界面注销释放 OS 键位（见 composables/asr 的 chatActive
@@ -109,6 +115,7 @@ pub fn setup(
         inner,
         auto_save_manager,
     } = build::build_service_graph(app, &rt, db, app_config, Some(local_tts.runtime.clone()))?;
+    crate::app::platform::early_log("setup: 服务图就绪");
 
     // 填充 AppState。块作用域必须保留：`State<'_>` 借用 `app`，
     // 而下面还要继续用 `app.handle()`。
@@ -119,6 +126,7 @@ pub fn setup(
 
     // 依赖完整 AppState 的后台任务与处理器。
     background::run(app, &rt, &local_tts, auto_save_manager)?;
+    crate::app::platform::early_log("setup: 后台任务已启动");
 
     // 系统托盘（桌面端）：轻量模式隐藏/还原主窗口的入口。
     // Linux 缺少 appindicator 时托盘可能不可用，不应影响主功能启动。
