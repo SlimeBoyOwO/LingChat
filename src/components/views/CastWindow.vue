@@ -9,6 +9,7 @@
     <!-- 背景层（背景图 + 粒子效果 + BGM） -->
     <div class="cast-layer z-0">
       <GameBackground />
+      <LightingStage />
     </div>
     <!-- 角色舞台层（Live2D 直接复用现有组件，天然支持）：
          缩放作为 cast-scale prop 注入 Live2D / 立绘布局（作用于模型本体，保持贴底定位）；
@@ -45,7 +46,12 @@
 import { computed, onMounted, onUnmounted, reactive } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import { GameBackground, GameRolesStage, GameDialog } from "@/components/game/standard";
+import {
+  GameBackground,
+  GameRolesStage,
+  GameDialog,
+  LightingStage,
+} from "@/components/game/standard";
 import { Button } from "@/components/base";
 import SchedulePanel from "@/components/schedule/SchedulePanel.vue";
 import SettingsPanel from "@/components/settings/SettingsPanel.vue";

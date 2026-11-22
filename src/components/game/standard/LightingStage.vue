@@ -1,0 +1,536 @@
+<template>
+  <!--
+    2.5D 光影舞台。
+
+    场景带 `lighting.lights` 时，用 WebGL 逐像素重画背景，并让 GameBackground
+    让出它那一层。
+
+    角色分两种：
+      - 静态立绘（avatar_mode: image）：由 `useStaticAvatarTakeover` 接管 —— 读 DOM
+        里那个 <img> 的矩形、灌进渲染器、把 DOM 图藏起来，光照才能真正打在人物上。
+      - Live2D：拿不到每帧位图，只能打背景，立绘仍由 Live2DRolePresentation 渲染。
+
+    没有灯光的场景完全不启用，旧路径（CSS 滤镜 + 径向渐变）照旧。
+  -->
+  <canvas
+    v-show="enabled"
+    ref="canvasRef"
+    :key="canvasKey"
+    class="lighting-stage"
+    aria-hidden="true"
+  ></canvas>
+</template>
+
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
+import { useGameStore } from "@/stores/modules/game";
+import { useUIStore } from "@/stores/modules/ui/ui";
+import { resolveBackgroundSrc } from "@/utils/background-src";
+import {
+  SceneLightingRenderer,
+  generatePseudoDepth,
+  generatePseudoNormal,
+  MAX_CHARACTERS,
+  type CharacterLightingSet,
+} from "@/render/lighting";
+import { loadTexImage, type LoadedImage } from "@/render/lighting/loadImage";
+import { useStaticAvatarTakeover } from "@/composables/game/useStaticAvatarTakeover";
+import {
+  acquireLightingStage,
+  releaseLightingStage,
+} from "@/composables/game/useSceneLightingStage";
+
+const gameStore = useGameStore();
+const uiStore = useUIStore();
+
+const canvasRef = ref<HTMLCanvasElement | null>(null);
+/**
+ * 画布代号。`renderer.dispose()` 会主动 loseContext 还掉上下文（否则反复开关
+ * 工作台会累积到 Chromium 的 ~16 个上限），而丢过上下文的 canvas 再取还是那个
+ * 死上下文：shader 编译静默失败，舞台再也起不来。这里每次拆台就换一块新 canvas。
+ */
+const canvasKey = ref(0);
+const enabled = ref(false);
+
+const lighting = computed(() => gameStore.currentScene?.lighting ?? null);
+
+/**
+ * 是否单角色同台。只决定「整帧那套光」怎么选：
+ * 单角色时角色专属那套连背景一起换（沿用旧口径）；多角色时背景恒用场景默认，
+ * 角色专属只落在各自立绘上（见 characterSets）。接管本身不再受角色数限制。
+ */
+const singleRole = computed(() => gameStore.presentRolesList.length === 1);
+
+/** 台上那个角色；多角色同台时为 null（整帧不吃专属光影） */
+const stageRoleId = computed(() =>
+  singleRole.value ? (gameStore.presentRolesList[0]?.roleId ?? null) : null,
+);
+
+/** 在场角色 id，按舞台前后序（GameRolesStage 按它 v-for，数组后面的盖前面的）。
+ * 槽号 = 下标，0 在最底层，与渲染器 characterRects 对齐。 */
+const stageRoleIds = computed(() => gameStore.presentRolesList.map((r) => r.roleId));
+
+/**
+ * 实际生效的那套光影（整帧级：背景 + 没配专属的立绘）。
+ *
+ * 单角色对话时优先用工作台给这个角色配的专属那套，没配就回落场景默认；
+ * 多角色同台一律用场景默认。旧的 CSS 滤镜与叠加层字段是场景级的，
+ * 所以整份展开后只覆盖 2.5D 的五组。
+ */
+const activeSet = computed(() => {
+  const l = lighting.value;
+  if (!l) return null;
+  const set = stageRoleId.value === null ? null : l.role_sets?.[String(stageRoleId.value)];
+  if (!set || !Array.isArray(set.lights) || set.lights.length === 0) return l;
+  return {
+    ...l,
+    lights: set.lights,
+    global: set.global,
+    compositing: set.compositing,
+    material: set.material,
+    camera: set.camera,
+  };
+});
+
+/**
+ * 各立绘槽的专属光影，下标与 stageRoleIds 对齐。
+ *
+ * 只在多角色时产出：背景恒用场景默认（activeSet），这里给每个配了专属的角色
+ * 单独那套，没配的回落 null（渲染器用帧级场景默认）。单角色返回 null ——
+ * 那条路走 activeSet 整体切换，保持改前的像素口径。
+ */
+const characterSets = computed<(CharacterLightingSet | null)[] | null>(() => {
+  if (singleRole.value) return null;
+  const sets = lighting.value?.role_sets;
+  if (!sets) return null;
+  return stageRoleIds.value.slice(0, MAX_CHARACTERS).map((id) => {
+    const set = sets[String(id)];
+    return set && Array.isArray(set.lights) && set.lights.length > 0 ? set : null;
+  });
+});
+
+/** 当前吃的是不是某个角色的专属光影，只用于日志与状态行 */
+const usesRoleSet = computed(() => !!activeSet.value && activeSet.value !== lighting.value);
+
+const hasLights = computed(() => (activeSet.value?.lights?.length ?? 0) > 0);
+
+/**
+ * 旧的 overlay 径向渐变异色层。字段一直在 LightingParams 里，只是 2.5D 路径
+ * 之前没消费它 —— 不接的话，开了工作台的场景会丢掉原来那层双色光晕。
+ */
+const overlayParams = computed(() => {
+  const l = lighting.value;
+  if (!l) return null;
+  return {
+    enabled: !!l.overlay_enabled,
+    color1: l.overlay_color1 || "#ffd9b0",
+    color2: l.overlay_color2 || "#000000",
+    radius: l.overlay_radius ?? 50,
+    opacity: l.overlay_opacity ?? 0.5,
+    center: [(l.light_x ?? 50) / 100, (l.light_y ?? 50) / 100] as [number, number],
+    mode: l.blend_mode || "normal",
+  };
+});
+const backgroundSrc = computed(() => resolveBackgroundSrc(uiStore.currentBackground));
+
+/**
+ * 立绘法线/深度缓存。立绘是 2304×3072，一次生成约 300ms；表情切换很频繁，
+ * 不缓存的话每换一次脸就卡一下。按图片 URL 存，最多留 8 张。
+ */
+const mapCache = new Map<string, { normal: HTMLCanvasElement; depth: HTMLCanvasElement }>();
+const MAP_CACHE_MAX = 8;
+
+/** 伪法线长边上限，与渲染器内部一致。 */
+const NORMAL_MAX_DIM = 768;
+/** 伪深度长边上限，与渲染器内部一致。 */
+const DEPTH_MAX_DIM = 512;
+
+const takeover = useStaticAvatarTakeover({
+  enabled: () => enabled.value && hasLights.value,
+  canvas: () => canvasRef.value,
+  roleIds: () => stageRoleIds.value,
+  onStatus: (status, detail) => {
+    if (status === "active") console.info("[lighting] 静态立绘已接管", detail ?? "");
+    else if (status === "fail")
+      console.warn("[lighting] 立绘接管失败，保持 DOM 渲染：", detail ?? "");
+    else console.info("[lighting] 立绘未接管", detail ?? "");
+  },
+});
+
+/** 生成（或从缓存取）法线/深度，避免每次换表情都重算。 */
+function mapsFor(src: string, loaded: LoadedImage) {
+  const cached = mapCache.get(src);
+  if (cached) return cached;
+
+  const longest = Math.max(loaded.width, loaded.height) || 1;
+  const scale = longest > DEPTH_MAX_DIM ? DEPTH_MAX_DIM / longest : 1;
+  const depth = generatePseudoDepth(
+    loaded.source,
+    Math.max(1, Math.round(loaded.width * scale)),
+    Math.max(1, Math.round(loaded.height * scale)),
+  );
+  const normal = generatePseudoNormal(loaded.source, NORMAL_MAX_DIM);
+
+  if (mapCache.size >= MAP_CACHE_MAX) {
+    const oldest = mapCache.keys().next().value;
+    if (oldest) mapCache.delete(oldest);
+  }
+  const entry = { normal, depth };
+  mapCache.set(src, entry);
+  return entry;
+}
+
+let renderer: SceneLightingRenderer | null = null;
+let background: { source: TexImageSource; width: number; height: number } | null = null;
+let observer: ResizeObserver | null = null;
+let acquired = false;
+let loadToken = 0;
+/** start() 会被背景到位、参数变化等多条路触发，用旗标挡住并发重入 */
+let starting = false;
+/** 接管补捞心跳的定时器 id，0 = 没在跑 */
+let heartbeat = 0;
+/** 各槽已灌进渲染器的立绘 URL，下标 = 槽号；空串 = 该槽没图。用来避免重复上传 */
+const slotSources: string[] = [];
+
+/**
+ * 按设备像素比取画布尺寸。
+ *
+ * 必须交给 `renderer.resize()`：离屏目标（背景 / 场景 / 模糊 / 泛光）都是在
+ * 它里面分配的。只写 `canvas.width/height` 的话 `bgTarget` 一直是 null，
+ * `render()` 会静默 return —— 画布保持黑色，看着就像"光影没生效"。
+ */
+function syncCanvasSize(): { width: number; height: number } {
+  const canvas = canvasRef.value;
+  if (!canvas) return { width: 0, height: 0 };
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = Math.max(1, Math.round(canvas.clientWidth * dpr));
+  const height = Math.max(1, Math.round(canvas.clientHeight * dpr));
+  renderer?.resize(width, height);
+  return { width, height };
+}
+
+/** 实际重绘次数，用于离线量「呼吸动画会不会把整条管线跑满」 */
+let drawCount = 0;
+
+function draw(): void {
+  if (!renderer || !background || !canvasRef.value) return;
+  drawCount += 1;
+  const { width, height } = syncCanvasSize();
+  if (width <= 1 || height <= 1) return;
+
+  // 背景按 cover 铺满舞台，与 ImageAcrossFade 的 object-fit: cover 等价
+  const scale = Math.max(width / background.width, height / background.height);
+  const bgWidth = background.width * scale;
+  const bgHeight = background.height * scale;
+  const bgRect: [number, number, number, number] = [
+    (width - bgWidth) / 2,
+    (height - bgHeight) / 2,
+    bgWidth,
+    bgHeight,
+  ];
+
+  renderer.render({
+    lights: activeSet.value?.lights ?? [],
+    global: activeSet.value?.global ?? null,
+    compositing: activeSet.value?.compositing ?? null,
+    material: activeSet.value?.material ?? null,
+    camera: activeSet.value?.camera ?? null,
+    overlay: overlayParams.value,
+    stage: { width, height },
+    backgroundRect: bgRect,
+    // 槽序 = 在场序，0 在最底层；没接管/没量到的槽给零矩形，渲染器跳过。
+    // 全零或空数组 = 着色器走「纯背景」分支（Live2D、接管失败、或还没量到）
+    characterRects: takeover.slots.value.map((s) => (s.active && s.rect ? s.rect : [0, 0, 0, 0])),
+    // 多角色时各槽专属光影；单角色为 null，整帧走 activeSet
+    characterSets: characterSets.value ?? undefined,
+  });
+}
+
+/**
+ * 把接管快照同步进渲染器各槽：换了图的槽灌纹理（法线/深度走缓存），
+ * 下线或清空的槽 clearCharacter。槽号 = 在场序下标，与 characterRects 对齐。
+ */
+function syncRendererSlots(): void {
+  if (!renderer) return;
+  const slots = takeover.slots.value;
+  for (let i = 0; i < MAX_CHARACTERS; i++) {
+    const s = slots[i];
+    if (s?.active && s.image) {
+      if (slotSources[i] === s.source) continue;
+      try {
+        const maps = mapsFor(s.source, s.image);
+        renderer.setCharacter(s.image.source, maps, i);
+      } catch (err) {
+        // 生成失败就交给渲染器自己算 auto，再不行它会回退平法线
+        console.warn("[lighting] 立绘贴图准备失败，交回渲染器处理:", err);
+        renderer.setCharacter(s.image.source, { normal: "auto", depth: "auto" }, i);
+      }
+      slotSources[i] = s.source;
+    } else if (slotSources[i]) {
+      renderer.clearCharacter(i);
+      slotSources[i] = "";
+    }
+  }
+}
+
+function stopTakeoverHeartbeat(): void {
+  if (heartbeat) window.clearInterval(heartbeat);
+  heartbeat = 0;
+}
+
+/**
+ * 接管补捞心跳。
+ *
+ * 有界重试会超窗：真实链路里立绘要 invoke 取路径、再解码 2304x3072 的大图，
+ * 慢机器上两秒打不住，超窗之后就没人再补 —— 切角色 / 说话 / 换表情任何一次
+ * 错过都会变成长期不吃光。舞台活着期间每 600ms 补一次 sync，接管上就空转，
+ * 代价是一次 querySelectorAll，换来自愈。
+ */
+function startTakeoverHeartbeat(): void {
+  if (heartbeat) return;
+  heartbeat = window.setInterval(() => {
+    if (!renderer) return;
+    const slots = takeover.slots.value;
+    // 全部接管上就空转；还有没接上的（含刚上场、图解码慢）才补捞
+    if (slots.length && slots.every((s) => s.active)) return;
+    void takeover.sync();
+  }, 600);
+}
+
+function teardown(): void {
+  // 顺序要紧：先把立绘还给 DOM，再拆渲染器 —— 否则中途失败时人物会消失
+  takeover.release();
+  stopTakeoverHeartbeat();
+  if (acquired) {
+    releaseLightingStage();
+    acquired = false;
+  }
+  enabled.value = false;
+  observer?.disconnect();
+  observer = null;
+  renderer?.dispose();
+  renderer = null;
+  background = null;
+  slotSources.length = 0;
+  // 换一块干净画布：这块的上下文已经随 dispose 丢掉了，复用只会静默失败
+  canvasKey.value += 1;
+}
+
+async function applyBackground(src: string): Promise<void> {
+  if (!src) {
+    // 让位给了 WebGL、却连背景图都没有 → GameBackground 已经隐藏，会露出一块空白
+    if (renderer) console.info("[lighting] 没有背景图，回退到 CSS 光影");
+    teardown();
+    return;
+  }
+  const token = ++loadToken;
+  const loaded = await loadTexImage(src);
+  // 期间又换了背景或实例已销毁，丢弃这次结果
+  if (token !== loadToken) return;
+  if (!loaded || loaded.tainted) {
+    // 背景图拿不到（协议不支持 / 文件缺失 / 跨源污染）时让出背景层，
+    // 宁可退回 CSS 路径也不要留一块黑板
+    console.warn(
+      "[lighting] 背景加载失败，回退到 CSS 光影",
+      src,
+      loaded ? "图片会污染画布，WebGL 不能上传" : "取不到位图",
+    );
+    teardown();
+    return;
+  }
+  if (!renderer) {
+    // 舞台还没起来（或上一次失败后拆掉了）：借这次背景到位重新拉起。
+    // 少了这条，背景晚于场景到位时舞台会永久停在 CSS 路径，之后调光影全无反应。
+    await start();
+    return;
+  }
+  background = { source: loaded.source, width: loaded.width, height: loaded.height };
+  renderer.setBackground(loaded.source);
+  draw();
+}
+
+/** 起舞台的门槛检查 + 并发闸；真正的启动流程在 startStage。 */
+async function start(): Promise<void> {
+  if (starting) return;
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+  if (!hasLights.value) return;
+  if (!SceneLightingRenderer.isSupported()) {
+    // 这里以前是静默 return：控制台一句话都没有，看着就是「光影没生效」却无从查起
+    console.info("[lighting] 当前环境不支持 WebGL，走 CSS 光影");
+    return;
+  }
+  starting = true;
+  try {
+    await startStage();
+  } finally {
+    starting = false;
+  }
+}
+
+async function startStage(): Promise<void> {
+  // 先让画布可见，否则 display:none 下 clientWidth 为 0，尺寸会被量成 1x1
+  enabled.value = true;
+  await nextTick();
+  await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+  // 画布要等 nextTick 之后再取：teardown 会按 :key 换一块新的，
+  // 拿旧的那块等于拿一块已经 loseContext 的死上下文
+  const canvas = canvasRef.value;
+  if (!canvas) return;
+
+  try {
+    renderer = new SceneLightingRenderer(canvas);
+  } catch (err) {
+    // WebGL 不可用时退回旧路径，不让整屏背景因为光影挂掉
+    console.warn("[lighting] WebGL 初始化失败，回退到 CSS 光影", err);
+    teardown();
+    return;
+  }
+
+  syncCanvasSize();
+
+  observer?.disconnect();
+  observer = new ResizeObserver(() => draw());
+  observer.observe(canvas);
+
+  if (!acquired) {
+    acquireLightingStage();
+    acquired = true;
+  }
+
+  // immediate 的 watch 在 renderer 就绪前就跑过了，这里必须补一次
+  await applyBackground(backgroundSrc.value);
+  if (!renderer) return;
+
+  // 自检：贴图没真正就绪就把背景层还回去。
+  // 只置 enabled 不管后果的话，GameBackground 已经隐藏，用户看到的是一片空白。
+  if (!renderer.backgroundReady) {
+    console.warn("[lighting] 背景贴图未就绪，回退到 CSS 光影：", renderer.lastError);
+    teardown();
+    return;
+  }
+
+  // 背景就绪后再试接管立绘；没接上就靠心跳一直补捞
+  await takeover.sync();
+  startTakeoverHeartbeat();
+
+  // 一行说清当前状态，方便在控制台一眼判断卡在哪一环
+  const stage = syncCanvasSize();
+  console.info(
+    `[lighting] WebGL 生效：场景「${gameStore.currentScene?.scene_name ?? "?"}」` +
+      `${activeSet.value?.lights?.length ?? 0} 盏灯 · ${stage.width}x${stage.height} · ` +
+      (usesRoleSet.value
+        ? `角色「${gameStore.presentRolesList[0]?.roleName ?? stageRoleId.value}」专属光影 · `
+        : "场景默认光影 · ") +
+      `立绘接管 ${takeover.slots.value.filter((s) => s.active).length}/${takeover.slots.value.length}`,
+  );
+  draw();
+}
+
+watch(backgroundSrc, (src) => void applyBackground(src));
+
+// 说话人切换：新说话人的立绘可能还在解码，解码完补一次接管。
+// 多角色时各槽早已各自绑定，这里只是给慢解码的那张图加个 load 补捞。
+watch(
+  () => gameStore.currentInteractRoleId,
+  () => {
+    if (!(enabled.value && hasLights.value)) return;
+    void takeover.sync();
+    const el = document.querySelector<HTMLElement>(
+      `[data-lighting-avatar][data-role-id="${String(gameStore.currentInteractRoleId ?? "")}"]`,
+    );
+    for (const img of el?.querySelectorAll("img") ?? []) {
+      if (!img.complete) img.addEventListener("load", () => void takeover.sync(), { once: true });
+    }
+  },
+);
+
+// 角色上下场 / 换前后序：按新的在场序重建槽列表
+watch(stageRoleIds, () => {
+  if (renderer) void takeover.sync();
+});
+
+// 换人 / 换那套光影时留一行，方便回答「为什么这个角色的光和上一个不一样」
+watch([stageRoleId, usesRoleSet], () => {
+  if (!renderer) return;
+  console.info(
+    usesRoleSet.value
+      ? `[lighting] 改用角色「${gameStore.presentRolesList[0]?.roleName ?? stageRoleId.value}」的专属光影`
+      : "[lighting] 改用场景默认光影",
+  );
+});
+
+watch(
+  hasLights,
+  async (has) => {
+    if (has) {
+      await start();
+      return;
+    }
+    if (renderer) {
+      console.info(
+        "[lighting] 当前场景没有多光源数据，走 CSS 路径：",
+        gameStore.currentScene?.scene_name ?? "(无场景)",
+      );
+    }
+    teardown();
+  },
+  { immediate: true },
+);
+
+// 灯位/强度变化、或切到另一个角色（专属光影换了那套）时重绘；不需要 rAF，
+// 场景参数不是逐帧动画。舞台已经退回 CSS 时（renderer 为 null）要能把它重新拉起来，
+// 否则「先失败一次、之后怎么调都没反应」。多角色的各槽专属光在 characterSets 里。
+watch(
+  [activeSet, characterSets],
+  () => {
+    if (renderer) draw();
+    else void start();
+  },
+  { deep: true },
+);
+
+// 接管快照变化（上下场 / 换表情 / 呼吸动画量到新矩形）→ 同步各槽纹理并重绘。
+// 快照只在状态真变时发布，所以这里不会每帧空转。
+watch(takeover.slots, () => {
+  syncRendererSlots();
+  draw();
+});
+
+onMounted(() => {
+  if (hasLights.value) void start();
+});
+
+onBeforeUnmount(() => {
+  loadToken += 1;
+  teardown();
+});
+
+// 离线 harness / 排障用：把接管状态暴露出去，便于量矩形、看渲染器状态
+defineExpose({
+  takeover,
+  debug: () => ({
+    hasRenderer: !!renderer,
+    backgroundReady: renderer?.backgroundReady ?? null,
+    characterReady: renderer?.characterReady ?? null,
+    lastError: renderer?.lastError ?? "",
+    charRects: takeover.slots.value.map((s) => (s.active ? s.rect : null)),
+    slotRoleIds: takeover.slots.value.map((s) => s.roleId),
+    active: takeover.active.value,
+    stage: canvasRef.value ? { w: canvasRef.value.width, h: canvasRef.value.height } : null,
+    drawCount,
+  }),
+});
+</script>
+
+<style scoped>
+.lighting-stage {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+  pointer-events: none;
+}
+</style>
