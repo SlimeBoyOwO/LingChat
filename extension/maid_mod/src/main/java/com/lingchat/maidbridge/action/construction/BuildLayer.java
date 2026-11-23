@@ -244,6 +244,7 @@ final class BuildLayer {
             cell.triedStands.clear();
             cell.propped = false;
             cell.bridges = 0;
+            cell.drops = 0;
         }
         run.retried = true;
         return resetLayer(run);
@@ -333,17 +334,18 @@ final class BuildLayer {
     }
 
     /**
-     * 把本层还没做的格子按她现在的位置重排。
+     * 把本层还没做的格子按她现在的位置重排，由远及近。
      *
-     * <p>图纸按锚点附近排过一遍，她走到哪它不会跟着变；每遍重扫时重排一次，
-     * 这一层两头各剩几格时就不用横穿整栋楼去放一块再走回来。
+     * <p>先放离她远的那一头，边放边往自己这边退：反过来先放近的，会在身后留下一圈
+     * 没放的格子，人退不出去，也没法从外侧绕。图纸按锚点附近排过一遍，她走到哪它不会
+     * 跟着变；每遍重扫时重排一次，这一层两头各剩几格时也不用横穿整栋楼。
      */
     static void orderLayer(Run run, EntityMaid maid) {
         BlockPos here = maid.blockPosition();
         run.cells.subList(run.layerStart, run.layerEnd).sort(
                 Comparator.comparingInt((Cell cell) -> cell.state.open() ? 0 : 1)
                         .thenComparingInt(cell -> supported(run.level, cell.pos) ? 0 : 1)
-                        .thenComparingDouble(cell -> cell.pos.distSqr(here)));
+                        .thenComparingDouble(cell -> -cell.pos.distSqr(here)));
     }
 
     /**

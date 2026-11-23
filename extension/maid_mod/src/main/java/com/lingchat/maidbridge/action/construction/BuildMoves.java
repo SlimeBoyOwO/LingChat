@@ -172,7 +172,7 @@ final class BuildMoves {
         @Override
         public Status tick(Run run, EntityMaid maid) {
             if (cell.steps >= ScaffoldRules.MAX_STEPS
-                    || !stepRoom(run, maid, top) || !put(run, maid, top, item)) {
+                    || !stepRoom(run, maid, top) || !put(run, maid, cell, top, item)) {
                 return Status.FAILED;
             }
             cell.steps++;
@@ -229,7 +229,7 @@ final class BuildMoves {
             if (maid.getY() < pos.getY() + 1.02) {
                 return Status.BUSY;
             }
-            if (!put(run, maid, pos, item)) {
+            if (!put(run, maid, cell, pos, item)) {
                 temporary(run, cell, Failure.PLACE_FAILED);
                 return Status.FAILED;
             }
@@ -258,10 +258,17 @@ final class BuildMoves {
     static final class HopMove implements Move {
         final Cell cell;
         final MaidParkour.Runner runner;
+        /** 落地后立刻试放；只为下到地面而跳时不必试，交给下一 tick 重新找路。 */
+        final boolean placeAfter;
 
         HopMove(Cell cell, MaidParkour.Runner runner) {
+            this(cell, runner, true);
+        }
+
+        HopMove(Cell cell, MaidParkour.Runner runner, boolean placeAfter) {
             this.cell = cell;
             this.runner = runner;
+            this.placeAfter = placeAfter;
         }
 
         @Override
@@ -282,7 +289,9 @@ final class BuildMoves {
             // 站定之后就是放这一格；失败时 triedStands 会记住这个落点，下一轮换别处
             run.move = null;
             run.stand = maid.blockPosition();
-            tryPlace(run, maid, cell);
+            if (placeAfter) {
+                tryPlace(run, maid, cell);
+            }
             return Status.DONE;
         }
 
@@ -363,6 +372,103 @@ final class BuildMoves {
     }
 
     /**
+     * 自己正站在目标格里、周围又没有实地可站：在旁边的空中搭一格，站过去再放。
+     *
+     * <p>屋顶、墙头这类地方，脚下这块就是建筑本身，边上直接是空的。把与脚下同一层的
+     * 邻格垫出来（要有依托、看得见才放），走过去，目标格就空出来了；下一 tick 再放。
+     */
+    static boolean stepAside(Run run, EntityMaid maid, Cell cell) {
+        if (cell.steps >= ScaffoldRules.MAX_STEPS
+                || run.scaffold.size() >= ScaffoldRules.MAX_BLOCKS) {
+            return false;
+        }
+        BlockPos feet = maid.blockPosition();
+        if (!canJumpHere(run, maid)) {
+            return false;
+        }
+        Item item = scaffoldItem(run, maid);
+        if (item == null) {
+            return false;
+        }
+        for (Direction side : Direction.Plane.HORIZONTAL) {
+            BlockPos stand = feet.relative(side);
+            // 图格上不能站人，那就不是「让开」而是又占一格
+            if (run.blueprint.contains(stand) || cell.triedStands.contains(stand)) {
+                continue;
+            }
+            if (!freeForStep(run, stand)
+                    || !freeForStep(run, stand.above())
+                    || selfInside(stand, maid)
+                    || otherEntityInside(run, stand, maid)) {
+                continue;
+            }
+            if (solidCell(run.level, stand.below())) {
+                walkOnly(run, maid, cell, stand);
+                return true;
+            }
+            BlockPos floor = stand.below();
+            if (run.blueprint.contains(floor)
+                    || !freeForStep(run, floor)
+                    || !withinReach(maid, floor)
+                    || otherEntityInside(run, floor, maid)
+                    || !put(run, maid, cell, floor, item)) {
+                continue;
+            }
+            cell.steps++;
+            run.cooldown = PASS_BREAK_TICKS;
+            walkOnly(run, maid, cell, stand);
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * 目标在她下面：先跳到目标附近的地面，落地之后再按正常流程寻路。
+     *
+     * <p>女仆的寻路不跳崖，站在屋顶、墙头或者自己搭的柱子上时，墙根、地基那几格
+     * 无论从哪算都到不了。落点只要求站得住、比她低、离目标不远，不要求当场放得下；
+     * 落到地面以后，选站位与视线都按平地上的距离重新算，接下来交给普通走路。
+     */
+    static boolean dropDown(Run run, EntityMaid maid, Cell cell) {
+        if (run.move != null || !maid.onGround() || cell.drops >= MAX_DROPS) {
+            return false;
+        }
+        if (cell.hopUntil > run.level.getGameTime()) {
+            return false;
+        }
+        // 落在实地（不是自己垫的方块）上：目标附近、比她低、不超过四格
+        Predicate<BlockPos> landing = stand -> stand.getY() <= cell.pos.getY() + 1
+                && Math.abs(stand.getX() - cell.pos.getX()) <= 4
+                && Math.abs(stand.getZ() - cell.pos.getZ()) <= 4
+                && !run.scaffold.containsKey(stand.below());
+        List<BlockPos> chain = MaidParkour.planToPlace(
+                maid, cell.pos, cell.triedStands, landing, ParkourRules.DEEP_FALL);
+        if (chain.isEmpty()) {
+            cell.hopUntil = run.level.getGameTime() + HOP_RETRY_TICKS;
+            return false;
+        }
+        run.stand = null;
+        MaidParkour.Runner runner = new MaidParkour.Runner(maid, chain, ParkourRules.DEEP_FALL);
+        if (runner.failed()) {
+            cell.triedStands.addAll(chain);
+            cell.hopUntil = run.level.getGameTime() + HOP_RETRY_TICKS;
+            return false;
+        }
+        cell.drops++;
+        // 落到地面以后，是从高处试出来的那批站位都不作数了，重新找
+        cell.triedStands.clear();
+        cell.waits = 0;
+        LOGGER.info("施工下落：为 {} 跳到 {}", cell.pos, chain.get(chain.size() - 1));
+        run.move = new HopMove(cell, runner, false);
+        return true;
+    }
+
+    /** 她脚下踩的是不是自己垫出来的方块：是的话，寻路失败时可以跳回地面重来。 */
+    static boolean onScaffold(Run run, EntityMaid maid) {
+        return run.scaffold.containsKey(maid.blockPosition().below());
+    }
+
+    /**
      * 平着搭路：目标与脚下齐平、中间又走不过去时，就地铺一格、走过去，再接着铺。
      *
      * <p>玩家在起床战争里就是这么搭的：方块放在脚下同一层，人始终走在同一个高度。
@@ -412,11 +518,12 @@ final class BuildMoves {
                 return false;
             }
             Item item = scaffoldItem(run, maid);
-            if (item == null || !put(run, maid, floor, item)) {
+            if (item == null || !put(run, maid, cell, floor, item)) {
                 return false;
             }
             cell.bridges++;
             run.cooldown = PASS_BREAK_TICKS;
+            LOGGER.info("施工搭路：为 {} 把 {} 铺在 {}", cell.pos, item, floor);
             walkOnly(run, maid, cell, ahead);
             return true;
         }
@@ -517,7 +624,7 @@ final class BuildMoves {
             return jumpUp(run, maid, cell);
         }
         if (!bestSupportReady) {
-            if (!put(run, maid, bestTop.below(), item)) {
+            if (!put(run, maid, cell, bestTop.below(), item)) {
                 return false;
             }
             // 托底只是前半个动作，升高数等到顶块放上去才算
@@ -525,7 +632,7 @@ final class BuildMoves {
             run.cooldown = PASS_BREAK_TICKS;
             return true;
         }
-        if (!put(run, maid, bestTop, item)) {
+        if (!put(run, maid, cell, bestTop, item)) {
             return false;
         }
         cell.steps++;
@@ -663,7 +770,7 @@ final class BuildMoves {
     }
 
     /** 放一块垫脚方块：扣料、记账，她走开后由 cleanScaffold 拆掉。 */
-    static boolean put(Run run, EntityMaid maid, BlockPos pos, Item item) {
+    static boolean put(Run run, EntityMaid maid, Cell cell, BlockPos pos, Item item) {
         if (run.scaffold.size() >= ScaffoldRules.MAX_BLOCKS) {
             return false;
         }
@@ -693,6 +800,7 @@ final class BuildMoves {
         run.nextPlace = null;
         run.nextPlaceIn = 0;
         run.scaffold.put(pos.immutable(), block);
+        run.scaffoldOwner.put(pos.immutable(), cell);
         run.stepPlaced++;
         return true;
     }
@@ -717,6 +825,7 @@ final class BuildMoves {
             BlockPos pos = entry.getKey();
             BlockState state = run.level.getBlockState(pos);
             if (state.getBlock() != entry.getValue()) {
+                run.scaffoldOwner.remove(pos);
                 iterator.remove();
                 continue;
             }
@@ -726,10 +835,16 @@ final class BuildMoves {
             if (!run.forceClean && run.stand != null && pos.distSqr(run.stand) <= 4) {
                 continue;
             }
+            // 为还没放好的格子搭的桥和依托先留着：她还没走到那儿，拆了她就再也走不过去
+            Cell owner = run.scaffoldOwner.get(pos);
+            if (!run.forceClean && owner != null && owner.state.open()) {
+                continue;
+            }
             run.level.destroyBlock(pos, false);
             if (run.consumeMaterials) {
                 giveBack(run, maid, entry.getValue().asItem());
             }
+            run.scaffoldOwner.remove(pos);
             iterator.remove();
         }
     }

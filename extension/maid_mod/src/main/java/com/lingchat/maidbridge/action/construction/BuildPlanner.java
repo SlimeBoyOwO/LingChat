@@ -203,6 +203,10 @@ final class BuildPlanner {
                     startWalk(run, maid, cell, away);
                     return Step.HANDLED;
                 }
+                // 周围没有实地可站（屋顶、墙头边上就是空的）：在旁边空中搭一格再站过去
+                if (stepAside(run, maid, cell)) {
+                    return Step.HANDLED;
+                }
                 if (run.search.spent()) {
                     return Step.WAIT;
                 }
@@ -211,6 +215,11 @@ final class BuildPlanner {
             }
             case CONTINUE -> {
             }
+        }
+        // 目标明显在下面：先跳下去落到地面，再从地面找站位——她不会跳崖，
+        // 站在屋顶上往墙根那几格放，怎么算都走不过去
+        if (cell.pos.getY() <= maid.blockPosition().getY() - 2 && dropDown(run, maid, cell)) {
+            return Step.HANDLED;
         }
         // 依托面还没出现（屋顶中间那格要等旁边先放）：先跳过，不算这一格失败，
         // 否则试满六次就被当成够不着，后面放好的邻居也救不回来
@@ -278,6 +287,11 @@ final class BuildPlanner {
                 return Step.WAIT;
             }
             if (stageOutside(run, maid, cell)) {
+                return Step.HANDLED;
+            }
+            // 脚下踩的是自己垫的方块或桥，站着也找不到路：先跳回地面的实地，下一 tick
+            // 从地面重新开始——在半空里反复算站位只会一直卡住
+            if (onScaffold(run, maid) && dropDown(run, maid, cell)) {
                 return Step.HANDLED;
             }
             giveUp(run, cell, canJumpHere(run, maid) ? Failure.NO_STAND : Failure.NO_HEADROOM);
@@ -465,11 +479,12 @@ final class BuildPlanner {
         // 先核几何：贴不上的位置不必转头去试，免得每扫到这一格就把她的视线拽过来
         if (item == null
                 || Placement.context(maid, new ItemStack(item), foot, null, null, null) == null
-                || !put(run, maid, foot, item)) {
+                || !put(run, maid, cell, foot, item)) {
             return false;
         }
         cell.propped = true;
         run.cooldown = PASS_BREAK_TICKS;
+        LOGGER.info("施工垫依托：为 {} 把 {} 垫在 {}", cell.pos, item, foot);
         return true;
     }
 

@@ -19,6 +19,7 @@ import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -90,6 +91,8 @@ public final class MaidBuildController {
     static final int PATHS_PER_TICK = 6;
     /** 同一条跑跳路线没算通，隔这么久再试，别每 tick 都重算一遍。 */
     static final int HOP_RETRY_TICKS = 40;
+    /** 同一格最多为她从高处跳下去两次：一次能落十格，落完还要往下也只再补一次。 */
+    static final int MAX_DROPS = 2;
     /** 调试时多久算一次「下一块放哪」：每格都要验视线，不能每 tick 都算。 */
     static final int NEXT_PLACE_TICKS = 10;
     /** 原地起跳的初速：与玩家跳跃一致，刚好够她升过一整格。 */
@@ -124,6 +127,8 @@ public final class MaidBuildController {
         int steps;
         /** 为这一格平铺过几块路：齐平的缺口一块一块搭过去。 */
         int bridges;
+        /** 为这一格从高处跳下去过几次：落地之后还要往下时，别在两级之间来回跳。 */
+        int drops;
         /** 已经为这一格在目标底下垫过依托，再没有依托就真放不下了。 */
         boolean propped;
         /** 这一格被活物占着，等到这个游戏刻之后再试。 */
@@ -173,6 +178,8 @@ public final class MaidBuildController {
         final Set<BlockPos> blueprint = new HashSet<>();
         /** 她为够到高处垫下的临时方块，她走开后逐块拆掉。 */
         final Map<BlockPos, Block> scaffold = new LinkedHashMap<>();
+        /** 每块垫脚方块是为哪一格搭的：那一格还没放好之前不拆，拆了她就走不过去。 */
+        final Map<BlockPos, Cell> scaffoldOwner = new HashMap<>();
         /** 已经做过一轮补试：剩下的格子再不行就真有定论了。 */
         boolean retried;
         /** 这一 tick 还剩几次寻路；每 tick 开头重新发一份。 */
