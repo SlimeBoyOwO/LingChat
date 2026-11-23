@@ -3,17 +3,23 @@
 //! 同一个模型目录、模型类型、执行后端和采样参数只加载一份 `OfflineTts`；
 //! 不同角色的 sid、语速、参考音频仍由各自的 `SherpaOnnxAdapter` 持有。
 //!
-//! 缓存使用 `Weak`：最后一个适配器释放后，引擎会随 `Arc` 自动销毁，
-//! 不会因为“曾经加载过”而永久占住模型内存。
+//! 正常使用跟着适配器走：最后一个适配器释放后引擎自动销毁。另外保留最近一份
+//! 引擎的强引用一段时间，读档、切角色、试听这些会先清空角色再重建的路径因此
+//! 不必重新加载模型——模型加载是首次合成的大头，推理本身只占几十毫秒。
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock, Weak};
+use std::time::{Duration, Instant};
 
 use anyhow::Result;
 use sherpa_onnx::OfflineTts;
 
 use super::SherpaTuning;
+
+/// 最近使用的引擎保持强引用的时长；只保活一份，避免多模型同时驻留内存。
+const RECENT_TTL: Duration = Duration::from_secs(10 * 60);
 
 /// 一个可跨角色复用的推理引擎。
 pub(super) struct SharedSherpaEngine {
@@ -21,6 +27,8 @@ pub(super) struct SharedSherpaEngine {
     pub(super) sample_rate: i32,
     /// 串行化同一引擎上的合成，避免多个角色同时调用原生 TTS。
     pub(super) generate_lock: tokio::sync::Mutex<()>,
+    /// 已经跑通过一次合成（预热或真实合成）。同一引擎只预热一次。
+    warmed: AtomicBool,
 }
 
 impl SharedSherpaEngine {
@@ -30,7 +38,22 @@ impl SharedSherpaEngine {
             tts,
             sample_rate,
             generate_lock: tokio::sync::Mutex::new(()),
+            warmed: AtomicBool::new(false),
         }
+    }
+
+    /// 抢占预热权；已预热或已有预热在跑时返回 false。
+    pub(super) fn claim_warmup(&self) -> bool {
+        !self.warmed.swap(true, Ordering::AcqRel)
+    }
+
+    /// 合成成功后引擎已经热了，后续预热可以直接跳过。
+    pub(super) fn mark_warmed(&self) {
+        self.warmed.store(true, Ordering::Release);
+    }
+
+    pub(super) fn reset_warmup(&self) {
+        self.warmed.store(false, Ordering::Release);
     }
 }
 
@@ -69,11 +92,63 @@ impl EngineKey {
     }
 }
 
-type Registry = Mutex<HashMap<EngineKey, Weak<SharedSherpaEngine>>>;
+/// 引擎缓存：`live` 跟踪仍被适配器持有的引擎，`recent` 额外保活最近一份。
+struct Registry {
+    live: HashMap<EngineKey, Weak<SharedSherpaEngine>>,
+    recent: Option<RecentEngine>,
+}
 
-fn registry() -> &'static Registry {
-    static REGISTRY: OnceLock<Registry> = OnceLock::new();
-    REGISTRY.get_or_init(|| Mutex::new(HashMap::new()))
+struct RecentEngine {
+    key: EngineKey,
+    engine: Arc<SharedSherpaEngine>,
+    last_used: Instant,
+}
+
+impl Registry {
+    fn new() -> Self {
+        Self {
+            live: HashMap::new(),
+            recent: None,
+        }
+    }
+
+    /// 清掉已经没人持有的弱引用；最近引擎由强引用保活，不会被误删。
+    fn prune(&mut self) {
+        self.live.retain(|_, engine| engine.strong_count() > 0);
+    }
+
+    fn touch(&mut self, key: &EngineKey, engine: &Arc<SharedSherpaEngine>) {
+        self.recent = Some(RecentEngine {
+            key: key.clone(),
+            engine: Arc::clone(engine),
+            last_used: Instant::now(),
+        });
+    }
+
+    fn lookup(&mut self, key: &EngineKey) -> Option<Arc<SharedSherpaEngine>> {
+        self.prune();
+        if let Some(engine) = self.live.get(key).and_then(Weak::upgrade) {
+            self.touch(key, &engine);
+            return Some(engine);
+        }
+        let recent = self.recent.as_ref()?;
+        if &recent.key != key {
+            return None;
+        }
+        if recent.last_used.elapsed() >= RECENT_TTL {
+            // 超过保活时长就放掉，别让旧模型一直占着内存。
+            self.recent = None;
+            return None;
+        }
+        let engine = Arc::clone(&recent.engine);
+        self.touch(key, &engine);
+        Some(engine)
+    }
+}
+
+fn registry() -> &'static Mutex<Registry> {
+    static REGISTRY: OnceLock<Mutex<Registry>> = OnceLock::new();
+    REGISTRY.get_or_init(|| Mutex::new(Registry::new()))
 }
 
 /// 进程级推理闸门：同一时刻只让一份 Sherpa 合成真正跑在 CPU 上。
@@ -87,10 +162,62 @@ pub(super) fn inference_gate() -> &'static tokio::sync::Semaphore {
     GATE.get_or_init(|| tokio::sync::Semaphore::new(1))
 }
 
-fn lock_registry() -> std::sync::MutexGuard<'static, HashMap<EngineKey, Weak<SharedSherpaEngine>>> {
+fn lock_registry() -> std::sync::MutexGuard<'static, Registry> {
     registry()
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// 每次真实合成后调用：让保活时长跟着最后一次使用走，长时间聊天后读档也不重载。
+pub(super) fn note_use(engine: &Arc<SharedSherpaEngine>) {
+    let mut cache = lock_registry();
+    if let Some(recent) = cache.recent.as_mut()
+        && Arc::ptr_eq(&recent.engine, engine)
+    {
+        recent.last_used = Instant::now();
+    }
+}
+
+/// 到点放掉保活引用；期间引擎又被使用过就按最新时间续期。
+///
+/// 还有适配器持有时，保活引用不额外占内存，先留着保证读档/切角色能命中；
+/// 适配器全部释放后才开始计算保活时长。
+fn schedule_release(engine: &Arc<SharedSherpaEngine>) {
+    let Ok(handle) = tokio::runtime::Handle::try_current() else {
+        return;
+    };
+    let engine = Arc::downgrade(engine);
+    handle.spawn(async move {
+        loop {
+            let Some(engine) = engine.upgrade() else {
+                return;
+            };
+            let wait = {
+                let mut cache = lock_registry();
+                let Some(recent) = cache.recent.as_ref() else {
+                    return;
+                };
+                if !Arc::ptr_eq(&recent.engine, &engine) {
+                    return;
+                }
+                let held = cache
+                    .live
+                    .get(&recent.key)
+                    .is_some_and(|weak| weak.strong_count() > 1);
+                if held {
+                    Duration::from_secs(60)
+                } else {
+                    let remaining = RECENT_TTL.saturating_sub(recent.last_used.elapsed());
+                    if remaining.is_zero() {
+                        cache.recent = None;
+                        return;
+                    }
+                    remaining
+                }
+            };
+            tokio::time::sleep(wait).await;
+        }
+    });
 }
 
 /// 取回已加载的共享引擎；不存在时调用 `create` 加载。
@@ -102,22 +229,24 @@ pub(super) fn get_or_create(
     key: EngineKey,
     create: impl FnOnce() -> Result<SharedSherpaEngine>,
 ) -> Result<(Arc<SharedSherpaEngine>, bool)> {
-    {
-        let mut cache = lock_registry();
-        cache.retain(|_, engine| engine.strong_count() > 0);
-        if let Some(engine) = cache.get(&key).and_then(Weak::upgrade) {
-            return Ok((engine, true));
-        }
+    if let Some(engine) = lock_registry().lookup(&key) {
+        schedule_release(&engine);
+        return Ok((engine, true));
     }
 
     let engine = Arc::new(create()?);
 
     let mut cache = lock_registry();
-    cache.retain(|_, engine| engine.strong_count() > 0);
-    if let Some(existing) = cache.get(&key).and_then(Weak::upgrade) {
+    // 加载期间可能有同 key 的引擎先进缓存，复用它，别重复占内存。
+    if let Some(existing) = cache.lookup(&key) {
+        drop(cache);
+        schedule_release(&existing);
         return Ok((existing, true));
     }
-    cache.insert(key, Arc::downgrade(&engine));
+    cache.live.insert(key.clone(), Arc::downgrade(&engine));
+    cache.touch(&key, &engine);
+    drop(cache);
+    schedule_release(&engine);
     Ok((engine, false))
 }
 

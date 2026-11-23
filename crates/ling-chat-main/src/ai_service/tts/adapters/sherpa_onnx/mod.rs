@@ -25,7 +25,7 @@ use audio::{
     normalize_loudness, strip_edge_silence,
 };
 use engine::{model_reads_latin, needs_digit_normalization, pick_sid};
-use shared::{SharedSherpaEngine, inference_gate};
+use shared::{SharedSherpaEngine, inference_gate, note_use};
 use text::{
     CLAUSE_PAUSE, ReadableScripts, collapse_cjk_spaces, emotion_prosody, has_inner_clause_punct,
     readable_scripts, reads_han_as_chinese, resolve_emotion, split_clauses, strip_unreadable,
@@ -194,12 +194,18 @@ impl SherpaOnnxAdapter {
 
         // 只使用 CPU 推理：不做 GPU/NNAPI/DirectML 后端选择。
         let key = shared::EngineKey::new(model_dir, &model_type, tuning);
+        let started = Instant::now();
         let (engine, reused) = shared::get_or_create(key, || {
             let tts = engine::create_engine(&model_type, model_dir, tuning)?;
             Ok(SharedSherpaEngine::new(tts))
         })?;
         if reused {
             tracing::debug!("Sherpa-ONNX 复用已加载模型: {model_path}");
+        } else {
+            tracing::info!(
+                "Sherpa-ONNX 模型加载完成: {model_path}, 用时={:?}",
+                started.elapsed()
+            );
         }
 
         let sr = engine.sample_rate;
@@ -371,14 +377,26 @@ impl TtsAdapter for SherpaOnnxAdapter {
         // 不同模型/参考音频的输出电平差很多，统一按 RMS 对齐，避免听感上的「声音很小」。
         normalize_loudness(&mut samples);
 
+        self.engine.mark_warmed();
+        note_use(&self.engine);
         Ok(f32_to_wav(&samples, sample_rate))
     }
 
     async fn warmup(&self) -> Result<()> {
         // 模型加载发生在构造阶段，但 ORT 的算子/内存池、ZipVoice 的参考音频特征
         // 都要到第一次 generate 才真正初始化；这里丢弃一次极短音频即可预热。
+        // 同一份引擎只预热一次：角色重建、读档后重复预热纯属浪费。
+        if !self.engine.claim_warmup() {
+            return Ok(());
+        }
         let started = Instant::now();
-        let audio = self.generate_voice(self.warmup_text(), "中立").await?;
+        let audio = match self.generate_voice(self.warmup_text(), "中立").await {
+            Ok(audio) => audio,
+            Err(error) => {
+                self.engine.reset_warmup();
+                return Err(error);
+            },
+        };
         tracing::debug!(
             "Sherpa-ONNX 预热完成: model_type={}, 音频字节={}, 用时={:?}",
             self.model_type,
