@@ -3,6 +3,7 @@ package com.lingchat.maidbridge.action.construction;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.lingchat.maidbridge.action.mine.MineRules;
 import com.lingchat.maidbridge.action.place.PlaceRules;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
@@ -23,6 +24,7 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.BlockHitResult;
 
 /**
  * {@code maid_build}：按插件给的图纸施工。
@@ -65,16 +67,30 @@ public class MaidBuildHandler implements MessageHandler {
 
     private static JsonObject build(MinecraftServer server, EntityMaid maid, JsonObject data) {
         JsonObject anchorObject = objectOf(data, "anchor");
-        if (anchorObject == null) {
+        // 准星指定：图纸以玩家指着的那一格为中心，它上面一格起算施工区
+        boolean looked = anchorObject != null && boolOf(anchorObject, "looked");
+        BlockPos anchor;
+        if (looked) {
+            ServerPlayer owner = MaidQueries.owner(maid);
+            if (owner == null || owner.level() != maid.level()) {
+                return rejected("player_away", "玩家不在这里，不知道要盖在哪", "", 0);
+            }
+            BlockHitResult gaze = MaidQueries.gazeHit(owner, MineRules.ANCHOR_RAY);
+            if (gaze == null) {
+                return rejected("no_target", "先看向要盖的那片地面，再让她开工", "", 0);
+            }
+            anchor = gaze.getBlockPos();
+        } else if (anchorObject != null) {
+            Integer anchorX = intOf(anchorObject, "x");
+            Integer anchorY = intOf(anchorObject, "y");
+            Integer anchorZ = intOf(anchorObject, "z");
+            if (anchorX == null || anchorY == null || anchorZ == null) {
+                return rejected("bad_anchor", "施工起点缺少坐标", "", 0);
+            }
+            anchor = new BlockPos(anchorX, anchorY, anchorZ);
+        } else {
             return rejected("bad_anchor", "没有给出施工起点", "", 0);
         }
-        Integer anchorX = intOf(anchorObject, "x");
-        Integer anchorY = intOf(anchorObject, "y");
-        Integer anchorZ = intOf(anchorObject, "z");
-        if (anchorX == null || anchorY == null || anchorZ == null) {
-            return rejected("bad_anchor", "施工起点缺少坐标", "", 0);
-        }
-        BlockPos anchor = new BlockPos(anchorX, anchorY, anchorZ);
         Level level = maid.level();
         if (!level.isLoaded(anchor)) {
             return rejected("not_loaded", "施工起点还没加载出来", "", 0);
@@ -124,6 +140,10 @@ public class MaidBuildHandler implements MessageHandler {
         // 免得半成品和新朝向对不上，也免得她跑远之后又另起一座。
         String signature = signatureOf(specs);
         MaidBuildController.Resume resume = MaidBuildController.resume(signature, maid);
+        // 准星指着别处再喊一次：那是另起一座，不是走回旧工地补料
+        if (resume != null && looked && !nearSite(resume.targets(), anchor)) {
+            resume = null;
+        }
 
         String name = Envelope.string(data, "name");
         if (name.isEmpty()) {
@@ -161,6 +181,7 @@ public class MaidBuildHandler implements MessageHandler {
             }
         }
 
+        logAccepted(level, name, anchor, baseY, looked, resume != null, targets);
         ServerPlayer owner = MaidQueries.owner(maid);
         boolean creative = owner != null && owner.isCreative();
         // 创造模式下她不用背包里的材料；生存模式默认扣料，图纸也可以显式说不要扣
@@ -175,6 +196,41 @@ public class MaidBuildHandler implements MessageHandler {
         result.addProperty("creative", creative);
         result.addProperty("consume_materials", consume);
         return Envelope.response(Protocol.MAID_BUILD_RESULT, result);
+    }
+
+    /** 受理时打一行现场：锚点、起点、最低层各格上下是什么方块，卡住时好对账。 */
+    private static void logAccepted(
+            Level level, String name, BlockPos anchor, int baseY, boolean looked, boolean resumed,
+            List<MaidBuildController.Target> targets) {
+        int lowest = Integer.MAX_VALUE;
+        for (MaidBuildController.Target target : targets) {
+            lowest = Math.min(lowest, target.pos().getY());
+        }
+        StringBuilder sample = new StringBuilder();
+        int shown = 0;
+        for (MaidBuildController.Target target : targets) {
+            BlockPos pos = target.pos();
+            if (pos.getY() != lowest || shown >= 8) {
+                continue;
+            }
+            if (shown > 0) {
+                sample.append("；");
+            }
+            sample.append(pos.getX()).append(',').append(pos.getY()).append(',').append(pos.getZ())
+                    .append(" 本格=").append(blockName(level, pos))
+                    .append(" 下方=").append(blockName(level, pos.below()));
+            shown++;
+        }
+        MaidBuildController.LOGGER.info(
+                "施工受理：{}，锚点 {}（{}），起点 y={}，最低层 y={}，共 {} 格，续建 {}，现场 {}",
+                name, anchor, looked ? "准星指定" : "坐标指定", baseY, lowest,
+                targets.size(), resumed, sample);
+    }
+
+    private static String blockName(Level level, BlockPos pos) {
+        return level.isLoaded(pos)
+                ? BuiltInRegistries.BLOCK.getKey(level.getBlockState(pos).getBlock()).toString()
+                : "未加载";
     }
 
     /**
@@ -212,16 +268,64 @@ public class MaidBuildHandler implements MessageHandler {
         return best;
     }
 
-    /** 地板所在的最高地面之上那一层；没有地板格就按锚点原样。 */
+    /** 找地面时向下看这么多格：山坡、台地底下差着好几层也要找得到。 */
+    private static final int GROUND_SCAN = 16;
+
+    /**
+     * 图纸最低一层该落在哪。
+     *
+     * <p>先按锚点算：最低那一层的格子底下有依托就照旧。没有依托说明整张图纸悬空——
+     * 插件给的锚点常常是她脚这一格，图纸最低层若是相对 y=1，直接按锚点算就会整座
+     * 悬空一格，施工器连第一块都放不了（每一格都找不到能贴的面）。这时把最低层放到
+     * 它脚下最近的地面上；正常图纸仍按锚点原样。
+     */
     private static int baseY(Level level, BlockPos anchor, List<CellSpec> specs) {
+        int lowest = Integer.MAX_VALUE;
+        for (CellSpec spec : specs) {
+            lowest = Math.min(lowest, spec.y());
+        }
+        int base = anchor.getY();
+        if (lowest != 0 && grounded(level, anchor, specs, lowest, base)) {
+            return base;
+        }
+        int ground = groundUnder(level, anchor, specs, lowest, base);
+        return ground == Integer.MIN_VALUE ? base : ground + 1 - lowest;
+    }
+
+    /** 最低那一层至少有一格底下是实心的：图纸已经坐在地上，别动它。 */
+    private static boolean grounded(
+            Level level, BlockPos anchor, List<CellSpec> specs, int lowest, int base) {
+        for (CellSpec spec : specs) {
+            if (spec.y() != lowest) {
+                continue;
+            }
+            BlockPos below = new BlockPos(
+                    anchor.getX() + spec.x(), base + spec.y() - 1, anchor.getZ() + spec.z());
+            if (!level.isLoaded(below)) {
+                return true;
+            }
+            BlockState state = level.getBlockState(below);
+            if (state.isAir() || !state.getFluidState().isEmpty()) {
+                continue;
+            }
+            if (!state.getCollisionShape(level, below).isEmpty()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 最低那一层脚下的最高实心格；一层都找不到给 MIN_VALUE。 */
+    private static int groundUnder(
+            Level level, BlockPos anchor, List<CellSpec> specs, int lowest, int base) {
         int highest = Integer.MIN_VALUE;
         for (CellSpec spec : specs) {
-            if (spec.y() != 0) {
+            if (spec.y() != lowest) {
                 continue;
             }
             int x = anchor.getX() + spec.x();
             int z = anchor.getZ() + spec.z();
-            for (int y = anchor.getY() + 1; y >= anchor.getY() - 1; y--) {
+            for (int y = base + lowest + 1; y >= base + lowest - GROUND_SCAN; y--) {
                 BlockPos pos = new BlockPos(x, y, z);
                 if (!level.isLoaded(pos)) {
                     continue;
@@ -237,7 +341,7 @@ public class MaidBuildHandler implements MessageHandler {
                 break;
             }
         }
-        return highest == Integer.MIN_VALUE ? anchor.getY() : highest + 1;
+        return highest;
     }
 
     private static Block blockOf(String token) {
@@ -257,6 +361,41 @@ public class MaidBuildHandler implements MessageHandler {
     private static JsonObject objectOf(JsonObject object, String key) {
         JsonElement element = object == null ? null : object.get(key);
         return element != null && element.isJsonObject() ? element.getAsJsonObject() : null;
+    }
+
+    private static boolean boolOf(JsonObject object, String key) {
+        JsonElement element = object == null ? null : object.get(key);
+        return element != null
+                && element.isJsonPrimitive()
+                && element.getAsJsonPrimitive().isBoolean()
+                && element.getAsBoolean();
+    }
+
+    /**
+     * 准星指着的地方是不是上一座没盖完的工地。
+     *
+     * <p>指回工地就接着盖；指着另一片地方就是要另起一座。范围按上一座的格子外扩一圈，
+     * 指到墙上、屋顶上、地基边都算同一处工地。
+     */
+    private static boolean nearSite(List<MaidBuildController.Target> targets, BlockPos point) {
+        int minX = Integer.MAX_VALUE;
+        int maxX = Integer.MIN_VALUE;
+        int minY = Integer.MAX_VALUE;
+        int maxY = Integer.MIN_VALUE;
+        int minZ = Integer.MAX_VALUE;
+        int maxZ = Integer.MIN_VALUE;
+        for (MaidBuildController.Target target : targets) {
+            BlockPos pos = target.pos();
+            minX = Math.min(minX, pos.getX());
+            maxX = Math.max(maxX, pos.getX());
+            minY = Math.min(minY, pos.getY());
+            maxY = Math.max(maxY, pos.getY());
+            minZ = Math.min(minZ, pos.getZ());
+            maxZ = Math.max(maxZ, pos.getZ());
+        }
+        return point.getX() >= minX - 1 && point.getX() <= maxX + 1
+                && point.getY() >= minY - 2 && point.getY() <= maxY + 2
+                && point.getZ() >= minZ - 1 && point.getZ() <= maxZ + 1;
     }
 
     private static Integer intOf(JsonObject object, String key) {

@@ -8,20 +8,15 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.SearchBudget;
+import com.lingchat.maidbridge.action.construction.BuildRules.CellState;
+import com.lingchat.maidbridge.action.construction.BuildRules.Failure;
 import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.mine.MaidMineController;
-import com.lingchat.maidbridge.action.mine.MineRules;
-import com.lingchat.maidbridge.action.mine.MineTargets;
-import com.lingchat.maidbridge.action.place.Placement;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.debug.PathDebug;
-import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
-import com.lingchat.maidbridge.perception.item.ItemReporter;
-import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -29,28 +24,20 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
-import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.EquipmentSlot;
-import net.minecraft.world.entity.ai.memory.MemoryModuleType;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.BlockPlaceContext;
 import net.minecraft.world.level.block.Block;
-import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
-import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.Vec3;
-import net.neoforged.neoforge.items.wrapper.CombinedInvWrapper;
+
+import com.lingchat.maidbridge.action.construction.BuildMoves.Move;
+import static com.lingchat.maidbridge.action.construction.BuildLayer.*;
+import static com.lingchat.maidbridge.action.construction.BuildMoves.*;
+import static com.lingchat.maidbridge.action.construction.BuildPlanner.*;
 
 /**
  * 按图纸盖房子：走过每一格、够得着就放，没料或走不到就记下来，盖完推一条收尾事件。
@@ -72,82 +59,81 @@ import net.neoforged.neoforge.items.wrapper.CombinedInvWrapper;
  * 这一格记成 short_of_material，别的能放继续放，收尾时把还差多少件一起交回插件。
  */
 public final class MaidBuildController {
-    private static final org.slf4j.Logger LOGGER =
+    static final org.slf4j.Logger LOGGER =
             org.slf4j.LoggerFactory.getLogger("lingchat_maid_bridge");
     /** 每放一块之间的基础间隔，再叠一点随机，避免像 for 循环一样一块接一块。 */
-    private static final int PLACE_INTERVAL_BASE = 5;
-    private static final int PLACE_INTERVAL_JITTER = 4;
+    static final int PLACE_INTERVAL_BASE = 5;
+    static final int PLACE_INTERVAL_JITTER = 4;
     /** 下一格要转大角度时额外多等几 tick，让视线先转过去。 */
-    private static final int TURN_EXTRA_TICKS = 5;
+    static final int TURN_EXTRA_TICKS = 5;
     /** 两遍之间歇一下。 */
-    private static final int PASS_BREAK_TICKS = 2;
+    static final int PASS_BREAK_TICKS = 2;
     /** 走路卡住这么久还没到落脚点，就认为这条路走不通。 */
-    private static final int STUCK_TICKS = 80;
+    static final int STUCK_TICKS = 80;
     /** 这么久几乎没有位移才叫卡住：绕路时离目标变远是正常的，不能按直线距离判。 */
-    private static final int WALK_STILL_TICKS = 80;
+    static final int WALK_STILL_TICKS = 80;
     /** 从受理到收工最多等这么久（约四十分钟）：中型房子的块数多，二十分钟会半途收手。 */
-    private static final int BUILD_TIMEOUT_TICKS = 48000;
-    /** 一层连续几遍没有新进展就判这一层剩格不可达，换下一层。 */
-    private static final int MAX_STALL_PASSES = 3;
+    static final int BUILD_TIMEOUT_TICKS = 48000;
     /** 一 tick 最多判几格，避免第一次扫描时对整张图纸算寻路。 */
-    private static final int MAX_SCAN_PER_TICK = 6;
+    static final int MAX_SCAN_PER_TICK = 6;
     /** 站到离目标这么近就能放（底面中心距离平方）。 */
-    private static final double AT_STAND = 4.0;
+    static final double AT_STAND = 4.0;
     /** 同一格最多换几个站位：换了这么多还看不见就认了，别在原地转圈。 */
-    private static final int MAX_STAND_TRIES = 4;
+    static final int MAX_STAND_TRIES = 4;
     /** 目标格被活物占着时先放一放，过这么久再试。 */
-    private static final int ENTITY_RETRY_TICKS = 100;
+    static final int ENTITY_RETRY_TICKS = 100;
+    /** 这一层全被活物占着时最多等这么久（约十秒）；再等下去不如先搁置换层。 */
+    static final int HOLD_GIVEUP_TICKS = 200;
+    /** 同一格连续因为寻路额度用完而没推进，最多等这么久（约六秒）。 */
+    static final int MAX_CELL_WAITS = 120;
     /** 每一 tick 最多算几次寻路：屋里屋外不通时，一次全算完会把服务端卡住。 */
-    private static final int PATHS_PER_TICK = 6;
+    static final int PATHS_PER_TICK = 6;
     /** 同一条跑跳路线没算通，隔这么久再试，别每 tick 都重算一遍。 */
-    private static final int HOP_RETRY_TICKS = 40;
+    static final int HOP_RETRY_TICKS = 40;
     /** 调试时多久算一次「下一块放哪」：每格都要验视线，不能每 tick 都算。 */
-    private static final int NEXT_PLACE_TICKS = 10;
+    static final int NEXT_PLACE_TICKS = 10;
     /** 原地起跳的初速：与玩家跳跃一致，刚好够她升过一整格。 */
-    private static final double JUMP_POWER = 0.42;
+    static final double JUMP_POWER = 0.42;
     /** 起跳后最多等这么久：没离地、也没把方块补进去就放手。 */
-    private static final int JUMP_TIMEOUT_TICKS = 20;
+    static final int JUMP_TIMEOUT_TICKS = 20;
     /** 垫完一块之后等这么久再判下一格，让她先落回新方块上。 */
-    private static final int JUMP_LAND_TICKS = 10;
+    static final int JUMP_LAND_TICKS = 10;
     /** 收尾时走去一个落脚点离开垫脚块，最多等这么久。 */
-    private static final int CLEANUP_TIMEOUT_TICKS = 120;
+    static final int CLEANUP_TIMEOUT_TICKS = 120;
     /** 实在没有落脚点可去时，等这么久就把她脚下的垫脚块也拆掉，让她落回地面。 */
-    private static final int CLEANUP_WAIT_TICKS = 30;
+    static final int CLEANUP_WAIT_TICKS = 30;
 
     /** 图纸里的一格，已经换算到世界坐标。 */
     public record Target(BlockPos pos, Block block, Float yaw) {
     }
 
-    /** 处理一格的结果：动手了、这一格先跳过、还是这一 tick 的寻路额度用完了。 */
-    private enum Step {
-        HANDLED,
-        SKIP,
-        WAIT
-    }
 
-    private static final class Cell {
+    static final class Cell {
         final BlockPos pos;
         final Block block;
         final Item item;
         final String itemId;
         final Float yaw;
-        boolean done;
-        /** 这一轮不再为它努力：缺料、被挡、液体、走不到。 */
-        boolean settled;
-        /** 这一轮没放上，先记着：等别的格子都做完再回来补试。 */
-        boolean deferred;
-        /** 已经补试过一次：再不行就当真失败收尾，免得在同一个地方反复打转。 */
-        boolean confirmed;
-        /** 最后一次没放上的原因，等这一层整轮没进展时再收进失败清单。 */
-        String lastFailure = "no_stand";
+        /** 这一格在整轮施工里的进度：待做、搁置等补试、补试中、完成、失败。 */
+        CellState state = CellState.PENDING;
+        /** 最后一次没放上的原因，搁置或收账时按它记账。 */
+        Failure failure = Failure.NO_STAND;
         /** 为这一格试过、但没能放上的站位：换位置时跳过，避免来回走。 */
         final Set<BlockPos> triedStands = new HashSet<>();
         /** 为这一格垫过几次脚（按升高次数算），防止在原地反复搭。 */
         int steps;
+        /** 为这一格平铺过几块路：齐平的缺口一块一块搭过去。 */
+        int bridges;
+        /** 已经为这一格在目标底下垫过依托，再没有依托就真放不下了。 */
+        boolean propped;
         /** 这一格被活物占着，等到这个游戏刻之后再试。 */
         long holdUntil;
         /** 这一格的跑跳路线没算通，等到这个游戏刻之后再算。 */
         long hopUntil;
+        /** 连续因为寻路额度用完而停在这一格的 tick 数。 */
+        int waits;
+        /** 有没有真的为它试过：没试过的格子收账时不拿默认原因顶数。 */
+        boolean attempted;
 
         Cell(Target target) {
             this.pos = target.pos();
@@ -158,7 +144,7 @@ public final class MaidBuildController {
         }
     }
 
-    private static final class Run {
+    static final class Run {
         final String maidId;
         final ServerLevel level;
         final String name;
@@ -169,37 +155,24 @@ public final class MaidBuildController {
         int placed;
         int ticks;
         int cooldown;
-        Cell walkingTo;
+        /** 同一时刻只有一个动作：走路、垫脚、起跳垫高、跑跳。 */
+        Move move;
+        /** 她正赶过去或正踩着的落脚点；选格和收尾时用来护着那一格。 */
         BlockPos stand;
-        /** 走向垫脚块必须真的踩上去：差半格就判到站会让她从斜角起跳。 */
-        boolean tightArrival;
-        int walkTicks;
-        int walkStill;
-        Vec3 walkLast;
         /** 当前处理的层在格子表里的下标区间。 */
         int layerStart;
         int layerEnd;
         int cursor;
         int layerPassPlaced;
         int stallPasses;
+        /** 这一层第一次全被活物占住的时间；挪开或换层就清零。 */
+        long heldSince;
         /** 图纸里已经放好的格子，用来优先站到自己盖出来的面上。 */
         final Set<BlockPos> built = new HashSet<>();
         /** 图纸占着的格子：垫脚不能占掉图纸自己的位置。 */
         final Set<BlockPos> blueprint = new HashSet<>();
         /** 她为够到高处垫下的临时方块，她走开后逐块拆掉。 */
         final Map<BlockPos, Block> scaffold = new LinkedHashMap<>();
-        /** 垫脚还差顶上那一块：这一 tick 先放托底，下一 tick 再放它并走上去。 */
-        BlockPos stepTop;
-        Cell stepFor;
-        Item stepItem;
-        /** 正在原地起跳往上垫：跳起来之后把方块补在她原来站的那一格。 */
-        Cell jumpFor;
-        BlockPos jumpPos;
-        Item jumpItem;
-        int jumpTicks;
-        /** 正在跑的一段跳：跨过缺口时用它替代垫脚。 */
-        MaidParkour.Runner hop;
-        Cell hopCell;
         /** 已经做过一轮补试：剩下的格子再不行就真有定论了。 */
         boolean retried;
         /** 这一 tick 还剩几次寻路；每 tick 开头重新发一份。 */
@@ -233,6 +206,10 @@ public final class MaidBuildController {
         /** 调试用：下一块大概率要放的位置，隔一会儿重算一次。 */
         BlockPos nextPlace;
         int nextPlaceIn;
+        /** 调试计数：有多少次因为这一格找不到依托面而跳过。 */
+        int noSupportSkips;
+        /** 调试计数：有多少次撞上挖不动的方块。 */
+        int blockedSkips;
 
         Run(EntityMaid maid, String name, List<Cell> cells, boolean consumeMaterials) {
             this.maidId = maid.getStringUUID();
@@ -244,21 +221,36 @@ public final class MaidBuildController {
         }
     }
 
-    private static Run current;
-    /** 上一张图纸的锚点与状态：补料后重调时用它接着原来的工地，而不是按新朝向另起一座。 */
-    private static String lastSignature = "";
-    private static BlockPos lastAnchor;
-    private static int lastBaseY;
-    private static ServerLevel lastLevel;
-    private static String lastDimension = "";
-    private static String lastStatus = "";
-    private static String lastName = "";
-    private static int lastPlaced;
-    private static int lastTotal;
-    /** 上一张图纸已经换算好的世界坐标；接着盖时原样复用，免得旋转后的图纸和半成品对不上。 */
-    private static List<Target> lastTargets = List.of();
 
-    private MaidBuildController() {
+    static Run current;
+    /** 这一 tick 从哪个出口结束的：连续停在同一个出口就说明在原地打转。 */
+    static String lastStop = "";
+    static int stopTicks;
+
+    /** 记一笔本 tick 的出口；同一出口连续出现时累加，状态栏里一眼能看出循环。 */
+    static void stop(String where) {
+        if (where.equals(lastStop)) {
+            stopTicks++;
+        } else {
+            lastStop = where;
+            stopTicks = 1;
+        }
+    }
+
+    /** 上一张图纸的锚点与状态：补料后重调时用它接着原来的工地，而不是按新朝向另起一座。 */
+    static String lastSignature = "";
+    static BlockPos lastAnchor;
+    static int lastBaseY;
+    static ServerLevel lastLevel;
+    static String lastDimension = "";
+    static String lastStatus = "";
+    static String lastName = "";
+    static int lastPlaced;
+    static int lastTotal;
+    /** 上一张图纸已经换算好的世界坐标；接着盖时原样复用，免得旋转后的图纸和半成品对不上。 */
+    static List<Target> lastTargets = List.of();
+
+    MaidBuildController() {
     }
 
     /** 当前或上一座房子的施工进度；没盖过返回 status=none。 */
@@ -356,11 +348,9 @@ public final class MaidBuildController {
             run.blueprint.add(cell.pos);
             BlockState state = run.level.getBlockState(cell.pos);
             if (matches(cell, state)) {
-                cell.done = true;
-                run.built.add(cell.pos);
-                run.placed++;
+                markDone(run, cell);
             } else if (state.getBlock() instanceof LiquidBlock) {
-                settle(run, cell, "liquid");
+                settle(run, cell, Failure.LIQUID);
             }
             // 被别的方块占着的先不判死：施工时会走过去把它挖掉，再放图纸这一块
         }
@@ -397,8 +387,7 @@ public final class MaidBuildController {
         if (maid != null) {
             // 换工地、停服时不讲究落脚点，垫出来的方块一块都不留
             run.stand = null;
-            clearJump(run);
-            clearHop(run, maid);
+            cancelMove(run, maid);
             run.forceClean = true;
             cleanScaffold(run, maid);
             MaidActuator.stopWalking(maid);
@@ -409,7 +398,7 @@ public final class MaidBuildController {
     }
 
     /** 把她施工前的工作模式换回去。 */
-    private static void restoreTask(Run run, EntityMaid maid) {
+    static void restoreTask(Run run, EntityMaid maid) {
         if (run.previousTask != null) {
             maid.setTask(run.previousTask);
             run.previousTask = null;
@@ -457,6 +446,7 @@ public final class MaidBuildController {
             if (PathDebug.watching(maid)) {
                 reportDebug(run, maid);
             }
+            stop("收尾");
             cleaning(server, run, maid);
             return;
         }
@@ -482,25 +472,15 @@ public final class MaidBuildController {
         cleanScaffold(run, maid);
         if (run.cooldown > 0) {
             run.cooldown--;
-            if (run.walkingTo != null) {
-                MaidActuator.walkToPos(maid, run.stand, 0);
+            if (run.move != null && run.move.stand() != null) {
+                MaidActuator.walkToPos(maid, run.move.stand(), 0);
             }
+            stop("歇");
             return;
         }
-        if (run.stepTop != null) {
-            topStep(run, maid);
-            return;
-        }
-        if (run.jumpFor != null) {
-            jumping(run, maid);
-            return;
-        }
-        if (run.hop != null) {
-            hopping(run, maid);
-            return;
-        }
-        if (run.walkingTo != null) {
-            walking(run, maid);
+        if (run.move != null) {
+            advance(run, maid);
+            stop("动");
             return;
         }
         if (run.needOrder) {
@@ -514,82 +494,14 @@ public final class MaidBuildController {
         // 这一 tick 的寻路额度用完了、游标还停在这一层中间：下个 tick 接着扫，
         // 不能当成「这一遍没进展」——那会让好好的格子被提前收进失败清单
         if (run.cursor < run.layerEnd) {
+            stop("扫");
             return;
         }
         endLayer(server, run);
     }
 
-    /** 走到落脚点就试着放；走不到就换站位重试这一格，不把整栋楼耗在一条路上。 */
-    private static void walking(Run run, EntityMaid maid) {
-        if (arrived(run.stand, maid, run.tightArrival)) {
-            Cell cell = run.walkingTo;
-            run.walkingTo = null;
-            tryPlace(run, maid, cell);
-            return;
-        }
-        // 绕路时离目标变远是正常的，只看她自己有没有真的在动
-        Vec3 now = maid.position();
-        if (run.walkLast != null && now.distanceToSqr(run.walkLast) < 0.0025) {
-            run.walkStill++;
-        } else {
-            run.walkStill = 0;
-        }
-        run.walkLast = now;
-        boolean noPath = ++run.walkTicks > STUCK_TICKS
-                && maid.getBrain().hasMemoryValue(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
-        if (noPath || run.walkStill > WALK_STILL_TICKS) {
-            Cell cell = run.walkingTo;
-            run.walkingTo = null;
-            run.cooldown = PASS_BREAK_TICKS;
-            if (cell == null) {
-                return;
-            }
-            if (run.stand != null) {
-                cell.triedStands.add(run.stand);
-            }
-            // 这一格没走到：下个 tick 先换站位、跑跳或垫脚再试它，别直接扫下一格去
-            run.active = cell;
-            return;
-        }
-        MaidActuator.walkToPos(maid, run.stand, 0);
-    }
 
-    /** 换一个站位：重置走路进度，下一次 tick 开始走。 */
-    private static void startWalk(Run run, EntityMaid maid, Cell cell, BlockPos stand, boolean tight) {
-        run.stand = stand;
-        run.standFor = cell;
-        run.walkingTo = cell;
-        run.tightArrival = tight;
-        run.nextPlaceIn = 0;
-        run.walkTicks = 0;
-        run.walkStill = 0;
-        run.walkLast = maid.position();
-        MaidActuator.walkToPos(maid, stand, 0);
-    }
 
-    /** 这一格被活物占着，还没到重试的时候。 */
-    private static boolean held(Cell cell, ServerLevel level) {
-        return cell.holdUntil > level.getGameTime();
-    }
-
-    /** 在屋里被天花板顶住时，先去附近一处露天的地方，再沿外墙往上垫。 */
-    private static boolean stageOutside(Run run, EntityMaid maid, Cell cell) {
-        if (run.level.canSeeSky(maid.blockPosition().above())) {
-            return false;
-        }
-        BlockPos stage = MineTargets.stageFor(maid, cell.pos, run.search);
-        if (stage == null) {
-            return false;
-        }
-        startWalk(run, maid, cell, stage, true);
-        return true;
-    }
-
-    /** 她此刻能不能起跳：脚与头两格之外，头顶上面还要再让出一格。 */
-    private static boolean canJumpHere(Run run, EntityMaid maid) {
-        BlockPos feet = maid.blockPosition();
-        return freeForStep(run, feet.above()) && freeForStep(run, feet.above(2));
-    }
 
     /**
      * 调试可视化：这一 tick 她在干什么、正对着哪一格、站在哪、下一块大概放哪里。
@@ -597,26 +509,17 @@ public final class MaidBuildController {
      * <p>白框标的是她手上这一格——走路时是目的地，放的时候就是手上这一块；空闲时才退回
      * 「下一块大概放哪」。以前这里取的是本层第一格没做的，和真正在放的那一格经常对不上。
      */
-    private static void reportDebug(Run run, EntityMaid maid) {
+    static void reportDebug(Run run, EntityMaid maid) {
         predictNext(run, maid);
         Cell focus;
         String phase;
         if (run.cleaning) {
             phase = "收尾：收拾垫脚块";
             focus = null;
-        } else if (run.stepTop != null) {
-            phase = "垫脚：先放托底";
-            focus = run.stepFor;
-        } else if (run.jumpFor != null) {
-            phase = "原地起跳垫高";
-            focus = run.jumpFor;
-        } else if (run.hop != null) {
-            phase = "跑跳过缺口";
-            focus = run.hopCell;
-        } else if (run.walkingTo != null) {
-            phase = "走向落脚点";
-            focus = run.walkingTo;
-        } else if (run.active != null && !run.active.done && !run.active.settled) {
+        } else if (run.move != null) {
+            phase = run.move.phase();
+            focus = run.move.cell();
+        } else if (run.active != null && run.active.state.open()) {
             phase = "准备放这一格";
             focus = run.active;
         } else {
@@ -630,11 +533,12 @@ public final class MaidBuildController {
                 : BuiltInRegistries.BLOCK.getKey(named.block).toString();
         PathDebug.report(
                 maid, phase, run.stand, target,
-                run.hop == null ? List.of() : run.hop.chain(), run.nextPlace, block);
+                run.move == null ? List.of() : run.move.chain(),
+                run.nextPlace, block);
     }
 
     /** 按坐标回头找图纸里那一格：调试栏里报方块名用。 */
-    private static Cell cellAt(Run run, BlockPos pos) {
+    static Cell cellAt(Run run, BlockPos pos) {
         if (pos == null) {
             return null;
         }
@@ -647,7 +551,7 @@ public final class MaidBuildController {
     }
 
     /** 隔一会儿算一次「下一块放哪」：放置、开走之后立即作废，下一次用到时重算。 */
-    private static BlockPos predictNext(Run run, EntityMaid maid) {
+    static BlockPos predictNext(Run run, EntityMaid maid) {
         if (run.nextPlaceIn <= 0) {
             run.nextPlace = nextPlacement(run, maid);
             run.nextPlaceIn = NEXT_PLACE_TICKS;
@@ -655,945 +559,68 @@ public final class MaidBuildController {
         return run.nextPlace;
     }
 
-    /**
-     * 下一块大概率放哪：手上正垫的顶块/起跳位优先，其次是要走过去的那一格；
-     * 都放过之后按「此刻够得着又看得见」从头找，跟真正的放置顺序同一套判据。
-     */
-    private static BlockPos nextPlacement(Run run, EntityMaid maid) {
-        if (run.stepTop != null) {
-            return run.stepTop;
-        }
-        if (run.jumpFor != null) {
-            return run.jumpPos;
-        }
-        if (run.walkingTo != null) {
-            return run.walkingTo.pos;
-        }
-        if (run.hop != null || run.cleaning) {
-            return null;
-        }
-        boolean doorsOnly = onlyDoorsLeft(run);
-        int scanned = 0;
-        int checked = 0;
-        for (int i = run.layerStart; i < run.layerEnd && scanned < 64 && checked < 8; i++) {
-            scanned++;
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled || held(cell, run.level) || reservedStand(run, cell)) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            BlockState state = run.level.getBlockState(cell.pos);
-            if (matches(cell, state)) {
-                continue;
-            }
-            if (!state.isAir() && !state.canBeReplaced()) {
-                continue;
-            }
-            if (run.consumeMaterials && MaidInventory.count(maid, cell.item) <= 0) {
-                continue;
-            }
-            if (!withinReach(maid, cell.pos) || selfInside(cell.pos, maid)
-                    || otherEntityInside(run, cell.pos, maid)) {
-                continue;
-            }
-            checked++;
-            if (visibleContext(maid, cell) != null) {
-                return cell.pos;
-            }
-        }
-        return null;
-    }
 
-    /** 调试指令里补一句施工进度：没有工地、或者上一 tick 的寻路额度剩多少。 */
+    /** 调试指令里补一句施工进度：这一层还剩什么、上一 tick 的寻路额度剩多少。 */
     public static String debugStatus() {
         Run run = current;
         if (run == null) {
             return "｜施工：没有在进行";
         }
-        return "｜施工 " + run.placed + "/" + run.total
-                + "｜上一 tick 寻路额度剩余 " + run.search.left() + "/" + run.search.total();
-    }
-
-    /**
-     * 从当前游标往后找一格现在能处理的；处理了（放了或开始走过去）返回真。
-     *
-     * <p>手上那一格没做完之前先回头做它：走到一半没走通、到站了却看不见，都换站位重试，
-     * 而不是直接扫下一格。否则一层两头各有一格放着，她就会在这条线上来回跑。
-     */
-    private static boolean next(Run run, EntityMaid maid) {
-        // 先把站在原地够得着的格子放掉，别为了一格远处的跑过去又跑回来
-        if (placeReachable(run, maid)) {
-            return true;
-        }
-        Cell active = run.active;
-        if (active != null && (active.done || active.settled)) {
-            run.active = null;
-            active = null;
-        }
-        if (active != null) {
-            Step step = work(run, maid, active);
-            if (step != Step.SKIP) {
-                return true;
-            }
-            run.active = null;
-        }
-        int scanned = 0;
         boolean doorsOnly = onlyDoorsLeft(run);
-        while (run.cursor < run.layerEnd && scanned < MAX_SCAN_PER_TICK) {
-            scanned++;
-            Cell cell = run.cells.get(run.cursor++);
-            if (cell.done || cell.settled || held(cell, run.level)) {
-                continue;
-            }
-            // 门留到别的格子都放好之后再装，施工期间那个门洞一直敞着，她好进出
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            run.active = cell;
-            Step step = work(run, maid, cell);
-            if (step != Step.SKIP) {
-                return true;
-            }
-            run.active = null;
-        }
-        return false;
-    }
-
-    /**
-     * 处理一格的完整流程：这一格现在是什么、够不够得着、站哪放得下。
-     *
-     * <p>WAIT 表示寻路额度用完了：这一格留着（{@link Run#active}）下个 tick 接着来，
-     * 不能被当成「扫完了」把游标推过去。
-     */
-    private static Step work(Run run, EntityMaid maid, Cell cell) {
-        if (reservedStand(run, cell)) {
-            return Step.SKIP;
-        }
-        BlockState state = run.level.getBlockState(cell.pos);
-        if (matches(cell, state)) {
-            markDone(run, cell);
-            return Step.SKIP;
-        }
-        if (state.getBlock() instanceof LiquidBlock) {
-            settle(run, cell, "liquid");
-            return Step.SKIP;
-        }
-        if (!state.isAir() && !state.canBeReplaced()) {
-            // 被别的方块占着：够得着就挖掉（掉落进她背包），够不着先走过去
-            if (!maid.canDestroyBlock(cell.pos)) {
-                defer(run, cell, "blocked");
-                return Step.SKIP;
-            }
-            if (MineTargets.canMine(maid, cell.pos)) {
-                clearCell(run, maid, cell);
-                return Step.HANDLED;
-            }
-            BlockPos dig = MineTargets.standFor(maid, cell.pos);
-            if (dig == null) {
-                temporary(run, cell, "no_stand");
-                return Step.SKIP;
-            }
-            startWalk(run, maid, cell, dig, true);
-            return Step.HANDLED;
-        }
-        if (run.consumeMaterials && MaidInventory.count(maid, cell.item) <= 0) {
-            missing(run, cell);
-            return Step.SKIP;
-        }
-        if (otherEntityInside(run, cell.pos, maid)) {
-            // 别的活物挡着：先不管，过一会儿自动重试
-            cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-            temporary(run, cell, "blocked_by_entity");
-            return Step.SKIP;
-        }
-        if (selfInside(cell.pos, maid)) {
-            // 自己站在要放的那一格：先挪出去，别把自己埋了
-            BlockPos away = MineTargets.standForBuilding(
-                    maid, cell.pos, run.built, cell.triedStands, run.unreachable,
-                    stand -> true, run.search);
-            if (away != null && !away.equals(maid.blockPosition())) {
-                startWalk(run, maid, cell, away, true);
-                return Step.HANDLED;
-            }
-            if (run.search.spent()) {
-                return Step.WAIT;
-            }
-            temporary(run, cell, "self_blocked");
-            return Step.SKIP;
-        }
-        // 依托面还没出现（屋顶中间那格要等旁边先放）：先跳过，不算这一格失败，
-        // 否则试满六次就被当成够不着，后面放好的邻居也救不回来
-        if (context(maid, cell) == null) {
-            return Step.SKIP;
-        }
-        if (withinReach(maid, cell.pos)) {
-            // 够得着还要看得见：隔着一面墙、一根柱子伸过去是不行的
-            if (visibleContext(maid, cell) != null) {
-                place(run, maid, cell);
-                return Step.HANDLED;
-            }
-            if (walkToAnotherStand(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (run.search.spent()) {
-                return Step.WAIT;
-            }
-            // 换不到站位：缺口另一头够得着、又站得住的话，先试试跑跳过去
-            if (hopToPlace(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 还是不行就再垫一格把眼睛抬高：柱子顶上那几格只能这么看见
-            if (stepUp(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (stageOutside(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            giveUp(run, cell, canJumpHere(run, maid) ? "no_sight" : "no_headroom");
-            return Step.SKIP;
-        }
-        Predicate<BlockPos> canSee = stand -> Placement.seesFrom(maid, stand, cell.pos, null);
-        BlockPos stand = MineTargets.standForBuilding(
-                maid, cell.pos, run.built, cell.triedStands, run.unreachable, canSee,
-                run.search);
-        if (stand == null) {
-            if (run.search.spent()) {
-                return Step.WAIT;
-            }
-            // 没有能走过去的站位：缺口另一头若一跳能到，就不用垫方块
-            if (hopToPlace(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (stepUp(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (stageOutside(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            giveUp(run, cell, canJumpHere(run, maid) ? "no_stand" : "no_headroom");
-            return Step.SKIP;
-        }
-        startWalk(run, maid, cell, stand, true);
-        return Step.HANDLED;
-    }
-
-    /** 够得着却看不见这一格：换一个能看见它的站位再走过去。 */
-    private static boolean walkToAnotherStand(Run run, EntityMaid maid, Cell cell) {
-        if (cell.triedStands.size() >= MAX_STAND_TRIES) {
-            return false;
-        }
-        Predicate<BlockPos> canSee = stand -> Placement.seesFrom(maid, stand, cell.pos, null);
-        BlockPos other = MineTargets.standForBuilding(
-                maid, cell.pos, run.built, cell.triedStands, run.unreachable, canSee,
-                run.search);
-        if (other == null || other.equals(maid.blockPosition())) {
-            return false;
-        }
-        startWalk(run, maid, cell, other, true);
-        return true;
-    }
-
-    /**
-     * 这一格暂时没辙：先把原因记下。
-     *
-     * <p>站位已经换过几轮还不行，就不再让这一层回头找它：先搁到补试那一轮，
-     * 免得两层之间来回跑。
-     */
-    private static void giveUp(Run run, Cell cell, String failure) {
-        temporary(run, cell, failure);
-        if (cell.triedStands.size() >= MAX_STAND_TRIES) {
-            defer(run, cell, failure);
-        }
-    }
-
-    /**
-     * 这一格是不是她正赶过去的落脚点：到站之前放上去，她就没地方站了。
-     *
-     * <p>只挡「为别的格子选的落脚点」：那一格自己的目标做完就放开，之后该放照样放。
-     */
-    private static boolean reservedStand(Run run, Cell cell) {
-        Cell owner = run.standFor;
-        return run.stand != null && owner != null && owner != cell
-                && !owner.done && !owner.settled && cell.pos.equals(run.stand);
-    }
-
-    /** 这一格放的是不是图纸要的那一块：火把挂到墙上时原版会换成 wall_torch。 */
-    private static boolean matches(Cell cell, BlockState state) {
-        Block block = state.getBlock();
-        return cell.block == block || (cell.block == Blocks.TORCH && block == Blocks.WALL_TORCH);
-    }
-
-    /** 站在原地伸手够得着的格子先放掉；一格都放不了返回假。 */
-    private static boolean placeReachable(Run run, EntityMaid maid) {
-        boolean doorsOnly = onlyDoorsLeft(run);
+        int open = 0;
+        int waiting = 0;
+        int reserved = 0;
         for (int i = run.layerStart; i < run.layerEnd; i++) {
             Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled || held(cell, run.level) || reservedStand(run, cell)) {
+            if (!inPass(cell, doorsOnly)) {
                 continue;
             }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
+            open++;
+            if (held(cell, run.level)) {
+                waiting++;
             }
-            BlockState state = run.level.getBlockState(cell.pos);
-            if (matches(cell, state)) {
-                markDone(run, cell);
-                continue;
-            }
-            if (state.getBlock() instanceof LiquidBlock) {
-                settle(run, cell, "liquid");
-                continue;
-            }
-            if (!state.isAir() && !state.canBeReplaced()) {
-                // 留给 next()：够得着就挖掉，够不着先走过去
-                continue;
-            }
-            if (run.consumeMaterials && MaidInventory.count(maid, cell.item) <= 0) {
-                missing(run, cell);
-                continue;
-            }
-            if (!withinReach(maid, cell.pos) || selfInside(cell.pos, maid)
-                    || otherEntityInside(run, cell.pos, maid)) {
-                continue;
-            }
-            if (visibleContext(maid, cell) != null) {
-                run.active = cell;
-                place(run, maid, cell);
-                return true;
+            if (reservedStand(run, cell)) {
+                reserved++;
             }
         }
-        return false;
-    }
-
-    private static void tryPlace(Run run, EntityMaid maid, Cell cell) {
-        BlockState state = run.level.getBlockState(cell.pos);
-        if (matches(cell, state)) {
-            markDone(run, cell);
-            return;
-        }
-        if (state.getBlock() instanceof LiquidBlock) {
-            settle(run, cell, "liquid");
-            return;
-        }
-        if (!state.isAir() && !state.canBeReplaced()) {
-            // 走过来发现这一格被别的方块占着：挖掉它，下一遍再放
-            if (maid.canDestroyBlock(cell.pos) && MineTargets.canMine(maid, cell.pos)) {
-                clearCell(run, maid, cell);
-            } else {
-                temporary(run, cell, "blocked");
+        int deferred = 0;
+        for (Cell cell : run.cells) {
+            if (cell.state == CellState.DEFERRED) {
+                deferred++;
             }
-            return;
         }
-        if (run.consumeMaterials && MaidInventory.count(maid, cell.item) <= 0) {
-            missing(run, cell);
-            return;
-        }
-        if (otherEntityInside(run, cell.pos, maid)) {
-            // 别的活物挡着：先放一放，过一会儿自动重试
-            cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-            temporary(run, cell, "blocked_by_entity");
-            return;
-        }
-        if (selfInside(cell.pos, maid)) {
-            // 还站在这一格里：下个 tick 先挪开再放
-            run.active = cell;
-            return;
-        }
-        if (!withinReach(maid, cell.pos)) {
-            // 垫上去之后可能还差一点：别在超出玩家距离的地方把方块放出来，换个站位再试
-            if (run.stand != null) {
-                cell.triedStands.add(run.stand);
-            }
-            temporary(run, cell, "out_of_reach");
-            run.active = cell;
-            return;
-        }
-        if (visibleContext(maid, cell) == null) {
-            // 依托面还没出现，或者目标被别的方块挡住：下一遍再试，不记失败次数
-            if (context(maid, cell) == null) {
-                return;
-            }
-            if (run.stand != null) {
-                cell.triedStands.add(run.stand);
-            }
-            temporary(run, cell, "no_sight");
-            // 那一格还留着：下个 tick 先换个看得见它的站位，别扫到别处去
-            run.active = cell;
-            return;
-        }
-        run.active = cell;
-        place(run, maid, cell);
-    }
-
-    private static void place(Run run, EntityMaid maid, Cell cell) {
-        MaidActuator.stopWalking(maid);
-        lookToward(maid, cell.pos);
-        BlockPlaceContext context = visibleContext(maid, cell);
-        if (context == null) {
-            temporary(run, cell, "no_sight");
-            run.active = cell;
-            return;
-        }
-        ((BlockItem) cell.item).place(context);
-        BlockState after = run.level.getBlockState(cell.pos);
-        if (!matches(cell, after)) {
-            temporary(run, cell, "place_failed");
-            return;
-        }
-        upright(run.level, cell.pos);
-        if (run.consumeMaterials && MaidInventory.takeOne(maid, cell.item)) {
-            // 少掉的是她放下去的那一块，账上记一笔：不然背包差分把这次消耗说成主人拿走了
-            ItemReporter.markRemoval(cell.itemId, 1);
-        }
-        maid.swing(InteractionHand.MAIN_HAND);
-        run.active = null;
-        run.nextPlace = null;
-        run.nextPlaceIn = 0;
-        markDone(run, cell);
-        run.cooldown = placeInterval(run, maid, cell);
-        // 世界变了，之前算不到的站位可能就能走到了
-        run.unreachable.clear();
-    }
-
-    /**
-     * 把目标格里的别的方块挖掉：工具、耐久、掉落都按挖掘那一套来。
-     *
-     * <p>车万女仆的 {@code destroyBlock} 会把掉落直接塞进她的库存；这一笔是她自己挖的，
-     * 让背包差分别再报成「主人放进来的」。
-     */
-    private static void clearCell(Run run, EntityMaid maid, Cell cell) {
-        BlockState state = run.level.getBlockState(cell.pos);
-        if (!maid.canDestroyBlock(cell.pos)) {
-            defer(run, cell, "blocked");
-            return;
-        }
-        MineTargets.equipBestTool(maid, state);
-        MaidActuator.stopWalking(maid);
-        MaidActuator.lookAtPos(maid, cell.pos);
-        if (!maid.destroyBlock(cell.pos, true)) {
-            defer(run, cell, "blocked");
-            return;
-        }
-        maid.swing(InteractionHand.MAIN_HAND);
-        ItemStack used = maid.getMainHandItem();
-        if (!used.isEmpty()) {
-            used.hurtAndBreak(1, maid, EquipmentSlot.MAINHAND);
-        }
-        TerrainMemory.reveal(maid, cell.pos, run.level.getGameTime());
-        MaidMineController.markMined(maid);
-        // 世界变了，之前算不到的站位可能就能走到了
-        run.unreachable.clear();
-    }
-
-    /** 原木这类有朝向轴的方块强制竖着放，不按她点的那一面横过来。 */
-    private static void upright(ServerLevel level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        if (!state.hasProperty(BlockStateProperties.AXIS)
-                || state.getValue(BlockStateProperties.AXIS) == Direction.Axis.Y) {
-            return;
-        }
-        level.setBlock(pos, state.setValue(BlockStateProperties.AXIS, Direction.Axis.Y), 3);
-    }
-
-    /**
-     * 每块之间留一点随机间隔；下一格要转的角度越大，多等几 tick 让视线先转过去。
-     *
-     * <p>固定间隔会让整栋楼像机器刷出来的一样；视线从墙这头跳到那头时，她的头还没
-     * 转过去，下一块就已经放上了。
-     */
-    private static int placeInterval(Run run, EntityMaid maid, Cell placed) {
-        int interval = PLACE_INTERVAL_BASE + run.level.random.nextInt(PLACE_INTERVAL_JITTER);
-        // 下一块大概率是那一格就看向那一格：以前取本层第一格，视线经常跟真正要放的对不上
-        BlockPos next = predictNext(run, maid);
-        if (next == null || next.equals(placed.pos)) {
-            return interval;
-        }
-        // 先把视线挪到下一格，冷却这段时间她正好转头；不然头还没动方块就出来了
-        MaidActuator.lookAtPos(maid, next);
-        Vec3 eye = maid.getEyePosition();
-        Vec3 from = Vec3.atCenterOf(placed.pos).subtract(eye);
-        Vec3 to = Vec3.atCenterOf(next).subtract(eye);
-        if (from.lengthSqr() < 1.0E-4 || to.lengthSqr() < 1.0E-4) {
-            return interval;
-        }
-        double cosine = from.normalize().dot(to.normalize());
-        double angle = Math.acos(Math.max(-1.0, Math.min(1.0, cosine)));
-        int extra = (int) Math.round(angle / (Math.PI / 6));
-        return interval + Math.min(TURN_EXTRA_TICKS, extra);
-    }
-
-    /**
-     * 把身子和头一起转向这一格再动手。
-     *
-     * <p>转头控制一 tick 只转三十度，放方块却就在同一 tick：只写视线目标的话，方块
-     * 常常是她背对着放下的，朝向也跟着旧身体角度走。这里先把朝向拨到位再拼放置上下文。
-     */
-    private static void lookToward(EntityMaid maid, BlockPos pos) {
-        Vec3 eye = maid.getEyePosition();
-        double dx = pos.getX() + 0.5 - eye.x;
-        double dy = pos.getY() + 0.5 - eye.y;
-        double dz = pos.getZ() + 0.5 - eye.z;
-        float yaw = (float) (Math.toDegrees(Math.atan2(dz, dx)) - 90.0);
-        float pitch = (float) -Math.toDegrees(Math.atan2(dy, Math.sqrt(dx * dx + dz * dz)));
-        maid.setYRot(yaw);
-        maid.setYHeadRot(yaw);
-        maid.setYBodyRot(yaw);
-        maid.setXRot(pitch);
-        MaidActuator.lookAtPos(maid, pos);
-    }
-
-    /**
-     * 够不着时在她脚下垫一格：升上去、或者平着挪到能放的位置。
-     *
-     * <p>她的寻路只能上一格（再多就要跳跃输入），所以每 tick 只垫一格：先在她脚下
-     * 这一层找一格空位，把方块放进去，再把寻路目标设到新方块的顶上。下一 tick 她
-     * 站高一格，再判还差多少。目标还高过两层时，每垫一格都必须比现在更接近目标；
-     * 目标与她齐平或只高一格时（屋顶那一步大多是这种），只要垫完放得下就垫，
-     * 方向可以偏离目标——边上往往只有那一侧是空的。
-     *
-     * <p>托底那块先垫：顶块立在一块空地上放不住，得有下面的方块给它当依托。
-     * 四面没有能垫的位置时改原地起跳，见 {@link #jumpUp}。
-     */
-    private static boolean stepUp(Run run, EntityMaid maid, Cell cell) {
-        if (cell.steps >= ScaffoldRules.MAX_STEPS
-                || run.scaffold.size() >= ScaffoldRules.MAX_BLOCKS) {
-            return false;
-        }
-        BlockPos feet = maid.blockPosition();
-        int rise = cell.pos.getY() - feet.getY();
-        if (!ScaffoldRules.mayStep(rise)) {
-            return false;
-        }
-        // 头顶被方块压住时她既跳不起来也迈不上去：先走开（交给 stageOutside），别在原地耗
-        if (!canJumpHere(run, maid)) {
-            return false;
-        }
-        if (!ScaffoldRules.nearEnough(
-                cell.pos.getX() - feet.getX(), cell.pos.getZ() - feet.getZ())) {
-            return false;
-        }
-        Item item = scaffoldItem(run, maid);
-        if (item == null) {
-            return false;
-        }
-        Vec3 target = Vec3.atCenterOf(cell.pos);
-        double current = Vec3.atBottomCenterOf(feet).distanceToSqr(target);
-        // 目标就在正上方：原地跳起来把脚下垫高，别为了垫一格先横着挪出去再爬回来
-        if (rise >= 2 && cell.pos.getX() == feet.getX() && cell.pos.getZ() == feet.getZ()
-                && jumpUp(run, maid, cell)) {
-            return true;
-        }
-        BlockPos bestTop = null;
-        boolean bestSupportReady = false;
-        double bestCost = Double.MAX_VALUE;
-        BlockPos placeTop = null;
-        boolean placeSupportReady = false;
-        double placeCost = Double.MAX_VALUE;
-        // 只往上下左右四个方向垫：斜着放她会从斜角起跳，被旁边的方块一挡就落回原高度
-        for (Direction side : Direction.Plane.HORIZONTAL) {
-            BlockPos top = feet.relative(side);
-            if (!stepRoom(run, maid, top)) {
-                continue;
-            }
-            double score = Vec3.atBottomCenterOf(top.above()).distanceToSqr(target);
-            if (ScaffoldRules.mustApproach(rise) && score > current - 0.5) {
-                continue;
-            }
-            BlockPos support = top.below();
-            boolean supportReady = solidCell(run.level, support);
-            if (!supportReady) {
-                if (run.blueprint.contains(support) || !freeForStep(run, support)
-                        || Placement.context(
-                                        maid, new ItemStack(item), support, null, null, null)
-                                == null
-                        || !Placement.seesNow(maid, support, null)) {
-                    continue;
+        long waited = run.heldSince == 0
+                ? 0
+                : Math.max(0, run.level.getGameTime() - run.heldSince) / 20;
+        int pending = 0;
+        int retrying = 0;
+        int failed = 0;
+        for (Cell cell : run.cells) {
+            switch (cell.state) {
+                case PENDING -> pending++;
+                case RETRYING -> retrying++;
+                case FAILED -> failed++;
+                default -> {
                 }
-            } else if (!Placement.seesNow(maid, top, null)) {
-                // 垫脚块也得是她看得见的地方：看不见就换一侧
-                continue;
-            }
-            // 底下已经实心就省下一块料，同分时优先
-            double cost = score + (supportReady ? 0.0 : 0.5);
-            if (canPlaceFrom(maid, top.above(), cell.pos) && cost < placeCost) {
-                placeCost = cost;
-                placeTop = top;
-                placeSupportReady = supportReady;
-            }
-            if (cost < bestCost) {
-                bestCost = cost;
-                bestTop = top;
-                bestSupportReady = supportReady;
             }
         }
-        // 垫完就能放的站位优先：目标与她齐平时，这一格就是为了站过去
-        if (placeTop != null) {
-            bestTop = placeTop;
-            bestSupportReady = placeSupportReady;
-        }
-        if (bestTop == null) {
-            // 四个方向都垫不出去（贴着墙、被围住）：只能原地往上垫
-            return jumpUp(run, maid, cell);
-        }
-        if (!bestSupportReady) {
-            if (!put(run, maid, bestTop.below(), item)) {
-                return false;
-            }
-            // 托底只是前半个动作，升高数等到顶块放上去才算
-            run.stepTop = bestTop;
-            run.stepFor = cell;
-            run.stepItem = item;
-            run.cooldown = PASS_BREAK_TICKS;
-            return true;
-        }
-        if (!put(run, maid, bestTop, item)) {
-            return false;
-        }
-        cell.steps++;
-        climbOnto(run, maid, cell, bestTop.above());
-        return true;
+        String hand = run.active == null ? "-" : run.active.pos + ":" + run.active.state;
+        return "｜施工 " + run.placed + "/" + run.total
+                + "｜本层 开 " + open + "·等活物 " + waiting + "·预留 " + reserved
+                + "·搁置 " + deferred
+                + (waited > 0 ? "·已等 " + waited + "s" : "")
+                + "｜全 待 " + pending + "·补 " + retrying + "·败 " + failed
+                + "｜停 " + lastStop + "×" + stopTicks
+                + "｜行 " + run.cursor + "/" + run.layerStart + "-" + run.layerEnd
+                + "｜手 " + hand
+                + "｜心跳 " + run.ticks
+                + "｜额度 " + run.search.left() + "/" + run.search.total();
     }
 
-    /** 上一 tick 已经垫好托底，这一 tick 把顶块放上再走上去。 */
-    private static void topStep(Run run, EntityMaid maid) {
-        BlockPos top = run.stepTop;
-        Cell cell = run.stepFor;
-        Item item = run.stepItem;
-        run.stepTop = null;
-        run.stepFor = null;
-        run.stepItem = null;
-        if (top == null || cell == null || item == null) {
-            return;
-        }
-        if (cell.steps >= ScaffoldRules.MAX_STEPS) {
-            return;
-        }
-        if (!stepRoom(run, maid, top) || !put(run, maid, top, item)) {
-            return;
-        }
-        cell.steps++;
-        climbOnto(run, maid, cell, top.above());
-    }
 
-    /**
-     * 原地跳起来把脚下的方块补上：站在一格空位里起跳，脚一离地就把方块放进原来那一格，
-     * 落下来就升了一整格。
-     *
-     * <p>四个方向都垫不出去（贴着墙、被围住），或者目标就在正上方时只能这么往上，玩家
-     * 搭柱子也是这个手法。起跳要有三格净空：脚一格、头一格、跳起来还要一格，否则头先撞上
-     * 天花板，一格也升不上去。
-     */
-    private static boolean jumpUp(Run run, EntityMaid maid, Cell cell) {
-        if (cell.steps >= ScaffoldRules.MAX_STEPS
-                || run.scaffold.size() >= ScaffoldRules.MAX_BLOCKS) {
-            return false;
-        }
-        if (!maid.onGround()) {
-            return false;
-        }
-        BlockPos feet = maid.blockPosition();
-        if (run.blueprint.contains(feet)
-                || !run.level.getBlockState(feet).canBeReplaced()
-                || !freeForStep(run, feet.above())
-                || !freeForStep(run, feet.above(2))
-                || !solidCell(run.level, feet.below())
-                || otherEntityInside(run, feet, maid)) {
-            return false;
-        }
-        Item item = scaffoldItem(run, maid);
-        if (item == null) {
-            return false;
-        }
-        MaidActuator.stopWalking(maid);
-        MaidActuator.lookAtPos(maid, cell.pos);
-        maid.setDeltaMovement(0.0, JUMP_POWER, 0.0);
-        // 人一离地，脚下这块就不在碰撞盒里了：先把她要落脚的那一格记成站位，
-        // 收尾拆垫脚块时才会护着它，不会刚放上去就拆掉
-        run.stand = feet.above().immutable();
-        run.jumpFor = cell;
-        run.jumpPos = feet.immutable();
-        run.jumpItem = item;
-        run.jumpTicks = 0;
-        return true;
-    }
-
-    /** 起跳之后盯着她离地：脚升过一整格，就把方块补进原来站的那一格。 */
-    private static void jumping(Run run, EntityMaid maid) {
-        Cell cell = run.jumpFor;
-        BlockPos pos = run.jumpPos;
-        if (cell == null || pos == null) {
-            clearJump(run);
-            return;
-        }
-        if (++run.jumpTicks > JUMP_TIMEOUT_TICKS) {
-            // 跳不起来（头顶被封、被别的模组按住）：这一格换别的办法
-            clearJump(run);
-            temporary(run, cell, "no_stand");
-            return;
-        }
-        if (maid.onGround()) {
-            if (!maid.blockPosition().equals(pos) || run.jumpTicks > 3) {
-                // 被挤开了，或者推了几下都没离地
-                clearJump(run);
-                temporary(run, cell, "no_stand");
-                return;
-            }
-            maid.setDeltaMovement(0.0, JUMP_POWER, 0.0);
-            return;
-        }
-        if (maid.getY() < pos.getY() + 1.02) {
-            return;
-        }
-        // 人已经离开那一格：把方块补进去，落下来就踩在这一块上
-        Item item = run.jumpItem;
-        clearJump(run);
-        if (!put(run, maid, pos, item)) {
-            temporary(run, cell, "place_failed");
-            return;
-        }
-        cell.steps++;
-        run.cooldown = JUMP_LAND_TICKS;
-    }
-
-    private static void clearJump(Run run) {
-        run.jumpFor = null;
-        run.jumpPos = null;
-        run.jumpItem = null;
-        run.jumpTicks = 0;
-    }
-
-    /** 跑跳的时候按弧线摆位置，走完这一段再决定放不放。 */
-    private static void hopping(Run run, EntityMaid maid) {
-        MaidParkour.Runner hop = run.hop;
-        hop.tick();
-        if (hop.failed()) {
-            Cell cell = run.hopCell;
-            run.hop = null;
-            run.hopCell = null;
-            if (cell != null) {
-                // 这条路线走不通：记下来，换别的落点或者退回垫脚
-                cell.triedStands.addAll(hop.chain());
-                temporary(run, cell, "no_path");
-            }
-            run.cooldown = PASS_BREAK_TICKS;
-            return;
-        }
-        if (!hop.done()) {
-            return;
-        }
-        Cell cell = run.hopCell;
-        run.hop = null;
-        run.hopCell = null;
-        run.cooldown = PASS_BREAK_TICKS;
-        LOGGER.info("施工跑跳：{} 跳后落在 {}", hop.chain().size(), maid.blockPosition());
-        // 站定之后就是放这一格；失败时 triedStands 会记住这个落点，下一轮换别处
-        run.stand = maid.blockPosition();
-        if (cell != null) {
-            tryPlace(run, maid, cell);
-        }
-    }
-
-    /**
-     * 从她脚下找一条跑跳路线，落到能放下这一格的站位上。
-     *
-     * <p>只在走不过去之后试：先算落点够不够得着、看不看得见，再验一次跳过不过得去。
-     * 路线上的每一跳都按「平地四格、抬一格三格、往下最多三格」算；她站在高处、目标
-     * 在下面时再放开到十格，建筑模式摔落伤害已经免掉，从屋檐跳下去比垫一路便宜。
-     */
-    private static boolean hopToPlace(Run run, EntityMaid maid, Cell cell) {
-        if (run.hop != null || !maid.onGround() || run.hopPlanned) {
-            return false;
-        }
-        // 一条路线要逐格验视线，很贵：同一 tick 只算一条，同一步没算通隔两秒再试
-        if (cell.hopUntil > run.level.getGameTime()) {
-            return false;
-        }
-        run.hopPlanned = true;
-        Predicate<BlockPos> canPlace = stand -> canPlaceFrom(maid, stand, cell.pos);
-        int maxFall = ParkourRules.MAX_FALL;
-        List<BlockPos> chain = MaidParkour.planToPlace(
-                maid, cell.pos, cell.triedStands, canPlace, maxFall);
-        if (chain.isEmpty() && maid.getY() > cell.pos.getY() + ParkourRules.MAX_FALL) {
-            // 高处够不到下面的站位：建筑模式免摔伤，直接从屋檐跳下去，不必先垫一路
-            maxFall = ParkourRules.DEEP_FALL;
-            chain = MaidParkour.planToPlace(
-                    maid, cell.pos, cell.triedStands, canPlace, maxFall);
-        }
-        if (chain.isEmpty()) {
-            cell.hopUntil = run.level.getGameTime() + HOP_RETRY_TICKS;
-            return false;
-        }
-        run.walkingTo = null;
-        run.stand = null;
-        run.hopCell = cell;
-        run.hop = new MaidParkour.Runner(maid, chain, maxFall);
-        if (run.hop.failed()) {
-            cell.triedStands.addAll(chain);
-            cell.hopUntil = run.level.getGameTime() + HOP_RETRY_TICKS;
-            run.hop = null;
-            run.hopCell = null;
-            return false;
-        }
-        return true;
-    }
-
-    private static void clearHop(Run run, EntityMaid maid) {
-        if (run.hop != null) {
-            run.hop.cancel();
-            run.hop = null;
-        }
-        run.hopCell = null;
-    }
-
-    /** 站到这一格之后够得着、也看得见目标吗：垫这一脚、跳这一步到底有没有用。 */
-    private static boolean canPlaceFrom(EntityMaid maid, BlockPos stand, BlockPos target) {
-        if (stand.equals(target)) {
-            return false;
-        }
-        Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
-        if (new AABB(target).distanceToSqr(eye) > MineRules.REACH * MineRules.REACH) {
-            return false;
-        }
-        return Placement.seesFrom(maid, stand, target, null);
-    }
-
-    /** 这一格能不能当垫脚石：位置空着、头顶有地方站、不在图纸里、她伸手够得着。 */
-    private static boolean stepRoom(Run run, EntityMaid maid, BlockPos top) {
-        if (run.blueprint.contains(top) || !freeForStep(run, top)) {
-            return false;
-        }
-        // 站上去要两格高：脚一格、头一格，否则会被房顶卡住
-        if (!freeForStep(run, top.above()) || !freeForStep(run, top.above(2))) {
-            return false;
-        }
-        return !selfInside(top, maid)
-                && !otherEntityInside(run, top, maid)
-                && !otherEntityInside(run, top.above(), maid)
-                && withinReach(maid, top);
-    }
-
-    private static boolean freeForStep(Run run, BlockPos pos) {
-        BlockState state = run.level.getBlockState(pos);
-        if (!state.isAir() && !state.canBeReplaced()) {
-            return false;
-        }
-        return !(state.getBlock() instanceof LiquidBlock);
-    }
-
-    private static void climbOnto(Run run, EntityMaid maid, Cell cell, BlockPos stand) {
-        // 必须真的踩到新方块上：差一格就判到站，她会从斜角起跳，落在原来高度的方块上
-        startWalk(run, maid, cell, stand, true);
-    }
-
-    /** 垫脚用的方块：优先她自己背着的整方块；创造模式她背包空着时借一块圆石。 */
-    private static Item scaffoldItem(Run run, EntityMaid maid) {
-        Item carried = MaidInventory.scaffoldBlock(maid);
-        if (carried != null) {
-            return carried;
-        }
-        return run.consumeMaterials ? null : Blocks.COBBLESTONE.asItem();
-    }
-
-    /** 放一块垫脚方块：扣料、记账，她走开后由 cleanScaffold 拆掉。 */
-    private static boolean put(Run run, EntityMaid maid, BlockPos pos, Item item) {
-        if (run.scaffold.size() >= ScaffoldRules.MAX_BLOCKS) {
-            return false;
-        }
-        if (run.consumeMaterials && !MaidInventory.has(maid, item)) {
-            return false;
-        }
-        if (!freeForStep(run, pos) || selfInside(pos, maid) || otherEntityInside(run, pos, maid)) {
-            return false;
-        }
-        Block block = ((BlockItem) item).getBlock();
-        MaidActuator.stopWalking(maid);
-        lookToward(maid, pos);
-        BlockPlaceContext context =
-                Placement.visibleContext(maid, new ItemStack(item), pos, null, null, null);
-        if (context == null) {
-            return false;
-        }
-        ((BlockItem) item).place(context);
-        if (run.level.getBlockState(pos).getBlock() != block) {
-            return false;
-        }
-        upright(run.level, pos);
-        if (run.consumeMaterials && MaidInventory.takeOne(maid, item)) {
-            ItemReporter.markRemoval(BuiltInRegistries.ITEM.getKey(item).toString(), 1);
-        }
-        maid.swing(InteractionHand.MAIN_HAND);
-        run.nextPlace = null;
-        run.nextPlaceIn = 0;
-        run.scaffold.put(pos.immutable(), block);
-        run.stepPlaced++;
-        return true;
-    }
-
-    /**
-     * 她已经离开的垫脚块就拆掉：留一地毛刺不像话，生存模式下把方块还回她背包。
-     *
-     * <p>人还踩在上面、或者正走过去的垫脚块先留着，否则会拆掉自己脚下的台阶。
-     */
-    private static void cleanScaffold(Run run, EntityMaid maid) {
-        if (run.scaffold.isEmpty()) {
-            return;
-        }
-        // 正走过去、正在垫下一块、正在起跳或跑跳时先不拆：拆了脚下的台阶她就上不去了
-        if (!run.forceClean
-                && (run.walkingTo != null || run.stepTop != null || run.jumpFor != null
-                        || run.hop != null)) {
-            return;
-        }
-        AABB body = maid.getBoundingBox().inflate(0.1);
-        var iterator = run.scaffold.entrySet().iterator();
-        while (iterator.hasNext()) {
-            Map.Entry<BlockPos, Block> entry = iterator.next();
-            BlockPos pos = entry.getKey();
-            BlockState state = run.level.getBlockState(pos);
-            if (state.getBlock() != entry.getValue()) {
-                iterator.remove();
-                continue;
-            }
-            if (!run.forceClean && body.intersects(new AABB(pos))) {
-                continue;
-            }
-            if (!run.forceClean
-                    && ((run.stand != null && pos.distSqr(run.stand) <= 4)
-                            || (run.stepTop != null && pos.distSqr(run.stepTop) <= 4))) {
-                continue;
-            }
-            run.level.destroyBlock(pos, false);
-            if (run.consumeMaterials) {
-                giveBack(run, maid, entry.getValue().asItem());
-            }
-            iterator.remove();
-        }
-    }
-
-    /** 把垫脚拆下来的方块塞回她背包；塞不下就掉在她脚下。 */
-    private static void giveBack(Run run, EntityMaid maid, Item item) {
-        ItemStack stack = new ItemStack(item);
-        int count = stack.getCount();
-        CombinedInvWrapper backpack = maid.getAvailableBackpackInv();
-        for (int slot = 0; slot < backpack.getSlots() && !stack.isEmpty(); slot++) {
-            if (slot == MaidInventory.HEADWEAR_SLOT) {
-                continue;
-            }
-            stack = backpack.insertItem(slot, stack, false);
-        }
-        int inserted = count - stack.getCount();
-        if (inserted > 0) {
-            // 这块本来就该在她身上：背包差分别把它说成主人刚塞进来的
-            ItemReporter.suppressHandGain(new ItemStack(item, inserted));
-        }
-        if (!stack.isEmpty()) {
-            Block.popResource(run.level, maid.blockPosition(), stack);
-        }
-    }
 
     /** 收工阶段每 tick 推进：先走去落脚点，路上把垫脚块拆掉，拆干净再真正收尾。 */
-    private static void cleaning(MinecraftServer server, Run run, EntityMaid maid) {
+    static void cleaning(MinecraftServer server, Run run, EntityMaid maid) {
         if (++run.cleanTicks > CLEANUP_TIMEOUT_TICKS) {
             run.forceClean = true;
             cleanScaffold(run, maid);
@@ -1624,7 +651,7 @@ public final class MaidBuildController {
      *
      * <p>只在她身边几格内找；找不到给 null，由收尾阶段等一会儿直接拆。
      */
-    private static BlockPos awayStand(Run run, EntityMaid maid) {
+    static BlockPos awayStand(Run run, EntityMaid maid) {
         BlockPos here = maid.blockPosition();
         BlockPos best = null;
         double bestScore = Double.MAX_VALUE;
@@ -1646,7 +673,7 @@ public final class MaidBuildController {
         return best;
     }
 
-    private static boolean cleanupStand(Run run, BlockPos stand) {
+    static boolean cleanupStand(Run run, BlockPos stand) {
         if (run.scaffold.containsKey(stand) || run.scaffold.containsKey(stand.below())) {
             return false;
         }
@@ -1659,318 +686,9 @@ public final class MaidBuildController {
         return solidCell(run.level, stand.below());
     }
 
-    private static BlockPlaceContext context(EntityMaid maid, Cell cell) {
-        return Placement.context(maid, new ItemStack(cell.item), cell.pos, null, null, cell.yaw);
-    }
 
-    private static BlockPlaceContext visibleContext(EntityMaid maid, Cell cell) {
-        return Placement.visibleContext(
-                maid, new ItemStack(cell.item), cell.pos, null, null, cell.yaw);
-    }
 
-    private static void markDone(Run run, Cell cell) {
-        if (cell.done) {
-            return;
-        }
-        cell.done = true;
-        run.built.add(cell.pos);
-        run.placed++;
-        releaseStand(run, cell);
-    }
-
-    /** 这一格不用再为它守着了：它占着的落脚点可以正常放了。 */
-    private static void releaseStand(Run run, Cell cell) {
-        if (run.standFor == cell) {
-            run.standFor = null;
-        }
-    }
-
-    /** 缺料：这一轮不再为这一格努力，但把还差多少件记下来交给插件。 */
-    private static void missing(Run run, Cell cell) {
-        if (cell.settled) {
-            return;
-        }
-        cell.settled = true;
-        run.missing.merge(cell.itemId, 1, Integer::sum);
-    }
-
-    /** 这一遍还不放弃：记下原因，等这一层整轮没有新进展时再一起收。 */
-    private static void temporary(Run run, Cell cell, String failure) {
-        cell.lastFailure = failure;
-    }
-
-    /** 这一格有定论了：记进失败清单，收尾时交给插件。 */
-    private static void settle(Run run, Cell cell, String failure) {
-        if (cell.done) {
-            return;
-        }
-        releaseStand(run, cell);
-        boolean already = cell.settled && !cell.deferred;
-        cell.settled = true;
-        cell.deferred = false;
-        if (already) {
-            return;
-        }
-        String code = failure == null || failure.isEmpty() ? "out_of_reach" : failure;
-        run.failed.merge(code, 1, Integer::sum);
-    }
-
-    /**
-     * 这一轮先放一放：别的格子放好之后，缺依托、被挡住的常常就能放了。
-     *
-     * <p>整张图纸过完一遍再回头补试，补试过还是不行的才由 {@link #settle} 记账。
-     */
-    private static void defer(Run run, Cell cell, String failure) {
-        if (cell.done || cell.settled) {
-            return;
-        }
-        releaseStand(run, cell);
-        cell.settled = true;
-        cell.deferred = true;
-        cell.lastFailure = failure == null || failure.isEmpty() ? "out_of_reach" : failure;
-    }
-
-    /**
-     * 一层走完：这一层还有没盖的、这一遍又有新进展，就再走一遍；连续几遍没有进展
-     * 才把这层剩下的格子收进失败清单，换下一层。
-     */
-    private static void endLayer(MinecraftServer server, Run run) {
-        if (run.placed >= run.total) {
-            finish(server, run, "");
-            return;
-        }
-        if (!layerHasOpen(run)) {
-            if (!moveOn(run) && !retryRound(run)) {
-                finish(server, run, "");
-                return;
-            }
-            run.cooldown = PASS_BREAK_TICKS;
-            return;
-        }
-        // 剩下的都在等活物挪开：先歇一会儿，不算这一层失败
-        if (openCellsHeld(run)) {
-            run.stallPasses = 0;
-            restartPass(run);
-            run.cooldown = PASS_BREAK_TICKS;
-            return;
-        }
-        // 垫脚也算这一遍的进展：爬上去要好几步，不能爬一半就被当成走不到收掉
-        if (run.placed + run.stepPlaced > run.layerPassPlaced) {
-            run.layerPassPlaced = run.placed + run.stepPlaced;
-            run.stallPasses = 0;
-            restartPass(run);
-            run.cooldown = PASS_BREAK_TICKS;
-            return;
-        }
-        run.stallPasses++;
-        if (run.stallPasses < MAX_STALL_PASSES) {
-            restartPass(run);
-            run.cooldown = PASS_BREAK_TICKS;
-            return;
-        }
-        if (run.retried) {
-            // 补试过了还是不行：这一格才算真有定论
-            settleLayer(run);
-        } else {
-            // 先记着，等整张图纸都过一遍再回来补试
-            deferLayer(run);
-        }
-        if (!moveOn(run) && !retryRound(run)) {
-            finish(server, run, "");
-            return;
-        }
-        run.cooldown = PASS_BREAK_TICKS;
-    }
-
-    private static boolean layerHasOpen(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        for (int i = run.layerStart; i < run.layerEnd; i++) {
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    /** 这一层剩下的格子是不是全在等活物挪开。 */
-    private static boolean openCellsHeld(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        boolean any = false;
-        for (int i = run.layerStart; i < run.layerEnd; i++) {
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            any = true;
-            if (!held(cell, run.level)) {
-                return false;
-            }
-        }
-        return any;
-    }
-
-    /** 这一层暂时收不起来：先记着，别的层放完之后还会回来补。 */
-    private static void deferLayer(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        for (int i = run.layerStart; i < run.layerEnd; i++) {
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            defer(run, cell, cell.lastFailure);
-        }
-    }
-
-    /**
-     * 整张图纸都过完了：把之前没放上的格子放回来再试一轮。
-     *
-     * <p>别的方块放好之后，原来缺依托、被别的方块挡住的格子常常就能放了。每一格只补试
-     * 一次：补过还是不行的由 {@link #settle} 记账，不会在同一个地方反复打转。
-     */
-    private static boolean retryRound(Run run) {
-        boolean any = false;
-        for (Cell cell : run.cells) {
-            if (!cell.done && cell.deferred && !cell.confirmed) {
-                any = true;
-                break;
-            }
-        }
-        if (!any) {
-            return false;
-        }
-        for (Cell cell : run.cells) {
-            if (cell.done || !cell.deferred || cell.confirmed) {
-                continue;
-            }
-            cell.settled = false;
-            cell.deferred = false;
-            cell.confirmed = true;
-            // 周围已经变样了，之前试过的站位不一定还成立
-            cell.triedStands.clear();
-        }
-        run.retried = true;
-        return resetLayer(run);
-    }
-
-    private static void settleLayer(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        for (int i = run.layerStart; i < run.layerEnd; i++) {
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            settle(run, cell, cell.lastFailure);
-        }
-    }
-
-    /** 换到下一层还有没盖的格子；没有了就回头看门。 */
-    private static boolean moveOn(Run run) {
-        return advanceLayer(run) || openDoorLayer(run);
-    }
-
-    /** 换到下一层还有没盖的格子；没有了返回假。 */
-    private static boolean advanceLayer(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        for (int i = run.layerEnd; i < run.cells.size(); i++) {
-            Cell cell = run.cells.get(i);
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            setLayer(run, cell.pos.getY());
-            return true;
-        }
-        return false;
-    }
-
-    /**
-     * 别的格子都处理完了，再回到门所在的那一层把门装上。
-     *
-     * <p>门在施工期间一直故意留着，不能因为所在层「没有进展」就被当成走不到收掉。
-     */
-    private static boolean openDoorLayer(Run run) {
-        if (!onlyDoorsLeft(run)) {
-            return false;
-        }
-        for (Cell cell : run.cells) {
-            if (!cell.done && !cell.settled && cell.block == Blocks.OAK_DOOR) {
-                setLayer(run, cell.pos.getY());
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static boolean resetLayer(Run run) {
-        boolean doorsOnly = onlyDoorsLeft(run);
-        for (Cell cell : run.cells) {
-            if (cell.done || cell.settled) {
-                continue;
-            }
-            if (!doorsOnly && cell.block == Blocks.OAK_DOOR) {
-                continue;
-            }
-            setLayer(run, cell.pos.getY());
-            return true;
-        }
-        return false;
-    }
-
-    private static void setLayer(Run run, int y) {
-        int start = 0;
-        while (start < run.cells.size() && run.cells.get(start).pos.getY() < y) {
-            start++;
-        }
-        int end = start;
-        while (end < run.cells.size() && run.cells.get(end).pos.getY() == y) {
-            end++;
-        }
-        run.layerStart = start;
-        run.layerEnd = end;
-        run.active = null;
-        run.standFor = null;
-        restartPass(run);
-        run.layerPassPlaced = run.placed + run.stepPlaced;
-        run.stallPasses = 0;
-    }
-
-    /** 这一遍重头再扫：顺序按她此刻站的位置重排，先做近的。 */
-    private static void restartPass(Run run) {
-        run.cursor = run.layerStart;
-        run.needOrder = true;
-    }
-
-    /**
-     * 把本层还没做的格子按她现在的位置重排。
-     *
-     * <p>图纸按锚点附近排过一遍，她走到哪它不会跟着变；每遍重扫时重排一次，
-     * 这一层两头各剩几格时就不用横穿整栋楼去放一块再走回来。
-     */
-    private static void orderLayer(Run run, EntityMaid maid) {
-        BlockPos here = maid.blockPosition();
-        run.cells.subList(run.layerStart, run.layerEnd).sort(
-                Comparator.comparingInt((Cell cell) -> cell.done || cell.settled ? 1 : 0)
-                        .thenComparingInt(cell -> supported(run.level, cell.pos) ? 0 : 1)
-                        .thenComparingDouble(cell -> cell.pos.distSqr(here)));
-    }
-
-    private static void finish(MinecraftServer server, Run run, String reasonCode) {
+    static void finish(MinecraftServer server, Run run, String reasonCode) {
         finish(server, run, reasonCode, "");
     }
 
@@ -1980,7 +698,7 @@ public final class MaidBuildController {
      * <p>被人抱走、打晕、被别的指令顶掉时不拖：那几种情况她本来就要离开，
      * 直接按下面的收尾走，能拆的当场拆掉。
      */
-    private static void finish(MinecraftServer server, Run run, String reasonCode, String reason) {
+    static void finish(MinecraftServer server, Run run, String reasonCode, String reason) {
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         boolean natural = reasonCode == null || reasonCode.isEmpty() || "timeout".equals(reasonCode);
         if (natural && !run.cleaning && maid != null && !maid.isRemoved() && !run.scaffold.isEmpty()) {
@@ -1989,10 +707,7 @@ public final class MaidBuildController {
             run.pendingCode = reasonCode == null ? "" : reasonCode;
             run.pendingReason = reason == null ? "" : reason;
             run.stand = null;
-            run.stepTop = null;
-            run.stepFor = null;
-            clearJump(run);
-            clearHop(run, maid);
+            cancelMove(run, maid);
             run.cleanStand = awayStand(run, maid);
             if (run.cleanStand != null) {
                 MaidActuator.walkToPos(maid, run.cleanStand, 0);
@@ -2002,14 +717,12 @@ public final class MaidBuildController {
         finishNow(server, run, reasonCode, reason);
     }
 
-    private static void finishNow(MinecraftServer server, Run run, String reasonCode, String reason) {
+    static void finishNow(MinecraftServer server, Run run, String reasonCode, String reason) {
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         if (maid != null) {
             // 中断的路上不再护着脚下那块：垫出来的方块一块都不留
             run.stand = null;
-            run.stepTop = null;
-            clearJump(run);
-            clearHop(run, maid);
+            cancelMove(run, maid);
             run.forceClean = true;
             cleanScaffold(run, maid);
         }
@@ -2023,8 +736,8 @@ public final class MaidBuildController {
 
         // 补试阶段又落下的格子也要有个说法，别在失败清单里凭空消失
         for (Cell cell : run.cells) {
-            if (!cell.done && cell.settled && cell.deferred) {
-                settle(run, cell, cell.lastFailure);
+            if (cell.state == CellState.DEFERRED) {
+                settle(run, cell, cell.failure);
             }
         }
         int remaining = Math.max(0, run.total - run.placed);
@@ -2039,6 +752,10 @@ public final class MaidBuildController {
             code = naturalReason(run);
         }
         String text = reason == null || reason.isEmpty() ? reasonText(code) : reason;
+        LOGGER.info(
+                "施工收工：{}，放置 {}/{}，原因 {}，失败 {}，无支撑跳过 {}，挖不动 {}",
+                status, run.placed, run.total, code, run.failed,
+                run.noSupportSkips, run.blockedSkips);
 
         JsonObject data = EventFrames.base("maid_build_done", run.maidId);
         data.addProperty("status", status);
@@ -2063,7 +780,7 @@ public final class MaidBuildController {
         }
     }
 
-    private static String naturalReason(Run run) {
+    static String naturalReason(Run run) {
         if (!run.missing.isEmpty()) {
             return "short_of_material";
         }
@@ -2076,7 +793,7 @@ public final class MaidBuildController {
         return "incomplete";
     }
 
-    private static String reasonText(String code) {
+    static String reasonText(String code) {
         return switch (code == null ? "" : code) {
             case "short_of_material" -> "材料不够了";
             case "out_of_reach" -> "有几格她够不着或者放不下";
@@ -2095,37 +812,8 @@ public final class MaidBuildController {
         };
     }
 
-    /**
-     * 除了门以外的格子都已经放好：这时候才装门，施工期间门洞保持敞开。
-     *
-     * <p>只看「放好了」，不看「settled」：有格子因为够不着、被挡或液体放弃时，门先不装，
-     * 她之后回来补料、接着盖还能从门洞进出；否则半成品把门口封死，人就困在里外了。
-     */
-    private static boolean onlyDoorsLeft(Run run) {
-        for (Cell cell : run.cells) {
-            if (cell.done) {
-                continue;
-            }
-            if (cell.block != Blocks.OAK_DOOR) {
-                return false;
-            }
-        }
-        return true;
-    }
 
-    private static boolean supported(ServerLevel level, BlockPos pos) {
-        return solidCell(level, pos.below());
-    }
-
-    /** 这一格是不是实心方块：垫脚块要立在它上面，或者它自己就得先垫出来。 */
-    private static boolean solidCell(ServerLevel level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        return !state.isAir()
-                && state.getFluidState().isEmpty()
-                && !state.getCollisionShape(level, pos).isEmpty();
-    }
-
-    private static boolean arrived(BlockPos stand, EntityMaid maid) {
+    static boolean arrived(BlockPos stand, EntityMaid maid) {
         return arrived(stand, maid, false);
     }
 
@@ -2133,7 +821,7 @@ public final class MaidBuildController {
      * 到没到落脚点。垫脚时要求她真的站进那一格，差半格不算——
      * 不然下一步会从斜角往对面跳，被旁边的方块挡住后再也上不去。
      */
-    private static boolean arrived(BlockPos stand, EntityMaid maid, boolean tight) {
+    static boolean arrived(BlockPos stand, EntityMaid maid, boolean tight) {
         if (stand == null) {
             return false;
         }
@@ -2144,26 +832,4 @@ public final class MaidBuildController {
                 || maid.blockPosition().distManhattan(stand) <= 1;
     }
 
-    /**
-     * 手够不够得着：按原版口径量眼睛到方块外壳的距离，不是到方块中心。
-     *
-     * <p>中心距离会把「站在旁边、眼睛到中心五格」也算够得着，实际却点不到面。
-     */
-    private static boolean withinReach(EntityMaid maid, BlockPos target) {
-        return new AABB(target).distanceToSqr(maid.getEyePosition())
-                <= MineRules.REACH * MineRules.REACH;
-    }
-
-    private static boolean selfInside(BlockPos target, EntityMaid maid) {
-        return maid.getBoundingBox().intersects(new AABB(target));
-    }
-
-    private static boolean otherEntityInside(Run run, BlockPos target, EntityMaid maid) {
-        for (Entity entity : run.level.getEntities(maid, new AABB(target))) {
-            if (entity.isAlive() && !entity.isSpectator()) {
-                return true;
-            }
-        }
-        return false;
-    }
 }

@@ -33,11 +33,9 @@ CLIMB_SIDE = 2
 CLIMB_HEIGHT = 8
 # 图纸按正方形方格旋转，HOUSE_SIDE 既是方格边长也是旋转参照，换成非正方形就对不上中心。
 HOUSE_SIDE = 11
-# 施工起点放在她正前方几格，房子以锚点为中心，免得一开始就把她圈在地基里；
-# 11×11 的房子连同外挑一格的屋檐前后各占 6 格，留 9 格门廊才不会压在她脚下。
-ANCHOR_DISTANCE = 9
-# 四个朝向（原版 yaw 每 90 度一档）的前进方向：南、西、北、东。
-FORWARD = ((0, 1), (-1, 0), (0, -1), (1, 0))
+# 施工位置由主人准星决定：指着哪一格地面，图纸就以那一格为中心，它上面一格起算施工区。
+# 图纸只跟着她的朝向转（门朝哪边），位置不再从她脚下推算。
+LOOKED_ANCHOR = {"looked": True}
 # 图纸的正面朝北；旋转时按北、东、南、西的顺序跟着转。
 FACINGS = ("north", "east", "south", "west")
 
@@ -187,11 +185,11 @@ def _build_house(ctx):
         return {"ok": False, "error": error}
 
     steps = _facing_step(pose["yaw"])
-    frame, error = _send_build(maid, HOUSE_NAME, _front_anchor(pose, steps), _small_house(steps))
+    frame, error = _send_build(maid, HOUSE_NAME, LOOKED_ANCHOR, _small_house(steps))
     if error:
         return {"ok": False, "error": error}
 
-    maid_name, _ = names()
+    maid_name, player_name = names()
     if frame.get("resumed"):
         return {
             "ok": True,
@@ -203,14 +201,14 @@ def _build_house(ctx):
     return {
         "ok": True,
         "message": (
-            f"{maid_name}拿着图纸开始盖{HOUSE_NAME}了，一共{as_int(frame.get('cells'), 0)}块；"
-            f"缺材料或者盖好了，{maid_name}会开口。"
+            f"{maid_name}在{player_name}指着的地方开始盖{HOUSE_NAME}了，"
+            f"一共{as_int(frame.get('cells'), 0)}块；缺材料或者盖好了，{maid_name}会开口。"
         ),
     }
 
 
 def _build_climb_test(ctx):
-    """施工器的垫脚测试：在面前立一根 2×2、8 格高的柱子，顶上两层只能垫上去。"""
+    """施工器的垫脚测试：在主人指着的地方立一根 2×2、8 格高的柱子，顶上两层只能垫上去。"""
     maid, error = ready(ctx)
     if not maid:
         return {"ok": False, "error": error}
@@ -227,7 +225,7 @@ def _build_climb_test(ctx):
         for x in range(CLIMB_SIDE)
         for z in range(CLIMB_SIDE)
     ]
-    frame, error = _send_build(maid, CLIMB_NAME, _front_anchor(pose, steps), cells)
+    frame, error = _send_build(maid, CLIMB_NAME, LOOKED_ANCHOR, cells)
     if error:
         return {"ok": False, "error": error}
 
@@ -237,24 +235,17 @@ def _build_climb_test(ctx):
     return {
         "ok": True,
         "message": (
-            f"{maid_name}在她面前立一根{as_int(frame.get('cells'), 0)}块的柱子，"
+            f"{maid_name}在指着的地方立一根{as_int(frame.get('cells'), 0)}块的柱子，"
             f"顶上两层得自己垫上去；盖好或卡住她会开口。"
         ),
     }
 
 
-def _front_anchor(pose, steps):
-    """她正前方几格的中心，作为图纸锚点。"""
-    forward_x, forward_z = FORWARD[steps]
-    return {
-        "x": _floor(pose["x"] + forward_x * ANCHOR_DISTANCE + 0.5),
-        "y": _floor(pose["y"]),
-        "z": _floor(pose["z"] + forward_z * ANCHOR_DISTANCE + 0.5),
-    }
-
-
 def _send_build(maid, name, anchor, cells):
-    """把一张图纸交给模组施工。返回 (受理结果, 错误说明)。"""
+    """把一张图纸交给模组施工。返回 (受理结果, 错误说明)。
+
+    anchor 写 {"looked": True} 时由模组按主人准星定位置；写坐标则是显式指定。
+    """
     response, error = ask(
         {
             "type": BUILD_FRAME,
@@ -271,7 +262,10 @@ def _send_build(maid, name, anchor, cells):
             message = "这个模组版本还不支持盖房子"
         return None, message or "游戏那边没能开始盖"
     if not frame.get("accepted"):
-        return None, narrate(frame.get("reason")) or "游戏拒绝了这次施工"
+        reason = narrate(frame.get("reason")) or "游戏拒绝了这次施工"
+        if "施工起点缺少坐标" in reason:
+            reason = "游戏里装的是旧版模组，还不认识按准星定施工位置"
+        return None, reason
     return frame, ""
 
 
