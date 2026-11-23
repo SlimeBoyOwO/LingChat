@@ -44,7 +44,8 @@ public final class MaidParkour {
      * 与沙盘里的规则一致。中间落点在 {@code skip} 里的不再选，避免反复试同一条死路。
      */
     public static List<BlockPos> planToPlace(
-            EntityMaid maid, BlockPos target, Set<BlockPos> skip, Predicate<BlockPos> canPlace) {
+            EntityMaid maid, BlockPos target, Set<BlockPos> skip, Predicate<BlockPos> canPlace,
+            int maxFall) {
         if (!(maid.level() instanceof ServerLevel level) || !maid.onGround()) {
             return List.of();
         }
@@ -65,7 +66,7 @@ public final class MaidParkour {
             if (node.depth >= MAX_HOPS) {
                 continue;
             }
-            for (BlockPos next : hopLandings(level, maid, node.pos)) {
+            for (BlockPos next : hopLandings(level, maid, node.pos, maxFall)) {
                 if (skip.contains(next) || !seen.add(next)) {
                     continue;
                 }
@@ -76,14 +77,13 @@ public final class MaidParkour {
     }
 
     /** 两次跑跳之间能落的格子。 */
-    private static List<BlockPos> hopLandings(ServerLevel level, EntityMaid maid, BlockPos from) {
+    private static List<BlockPos> hopLandings(
+            ServerLevel level, EntityMaid maid, BlockPos from, int maxFall) {
         List<BlockPos> out = new ArrayList<>();
         for (Direction dir : Direction.Plane.HORIZONTAL) {
-            for (int distance = ParkourRules.MIN_DISTANCE;
-                    distance <= ParkourRules.MAX_DISTANCE;
-                    distance++) {
-                for (int rise = ParkourRules.MAX_RISE; rise >= -ParkourRules.MAX_FALL; rise--) {
-                    if (!ParkourRules.allowed(distance, rise)) {
+            for (int distance = 1; distance <= ParkourRules.MAX_DISTANCE; distance++) {
+                for (int rise = ParkourRules.MAX_RISE; rise >= -maxFall; rise--) {
+                    if (!ParkourRules.allowed(distance, rise, maxFall)) {
                         continue;
                     }
                     BlockPos to = from.offset(
@@ -94,7 +94,7 @@ public final class MaidParkour {
                     if (maid.hasRestriction() && !maid.isWithinRestriction(to)) {
                         continue;
                     }
-                    if (canHop(level, from, to)) {
+                    if (canHop(level, from, to, maxFall)) {
                         out.add(to);
                     }
                 }
@@ -104,10 +104,10 @@ public final class MaidParkour {
     }
 
     /** 这一跳能不能跳：距离、高差、落点、飞行包络与断口深度一起判。 */
-    public static boolean canHop(ServerLevel level, BlockPos from, BlockPos to) {
+    public static boolean canHop(ServerLevel level, BlockPos from, BlockPos to, int maxFall) {
         int rise = to.getY() - from.getY();
         int distance = Math.abs(to.getX() - from.getX()) + Math.abs(to.getZ() - from.getZ());
-        if (!ParkourRules.allowed(distance, rise)) {
+        if (!ParkourRules.allowed(distance, rise, maxFall)) {
             return false;
         }
         if (!MineTargets.standable(level, from) || !MineTargets.standable(level, to)) {
@@ -123,6 +123,15 @@ public final class MaidParkour {
                 || !clear(level, to.above(3))) {
             return false;
         }
+        boolean deep = rise < -ParkourRules.MAX_FALL;
+        if (deep) {
+            // 深落是自己摆位置往下走：落点上方的整根柱子要空到起跳高度，不能从屋檐里穿下去
+            for (int y = to.getY() + 1; y <= from.getY() + ARC_CLEARANCE; y++) {
+                if (!clear(level, to.atY(y))) {
+                    return false;
+                }
+            }
+        }
         int minY = Math.min(from.getY(), to.getY());
         int maxY = Math.max(from.getY(), to.getY());
         int stepX = Integer.signum(to.getX() - from.getX());
@@ -137,14 +146,14 @@ public final class MaidParkour {
             }
             if (!MineTargets.standable(level, cell)) {
                 gap = true;
-                // 断口下面三格内不能是岩浆、火这类；近处有危险就宁可垫方块
-                if (!safeBelow(level, cell, from.getY())) {
+                // 断口下面不能是岩浆、火这类；近处有危险就宁可垫方块
+                if (!safeBelow(level, cell, from.getY(), maxFall)) {
                     return false;
                 }
             }
         }
-        // 地面连续时走过去更省，不生成这种空跳
-        return gap;
+        // 地面连续时走过去更省，不生成这种空跳；深落是往下走，不要求中间有断口
+        return gap || deep;
     }
 
     /** 落点底下是不是整格方块：台阶、栅栏、半砖不能当跑跳的落脚台。 */
@@ -168,8 +177,8 @@ public final class MaidParkour {
      * <p>深谷可以跳：弧线是我们自己按落点摆的，半路不会掉下去；但近处要是有岩浆，
      * 一旦被打断就救不回来，宁可改去垫方块。
      */
-    private static boolean safeBelow(ServerLevel level, BlockPos cell, int fromY) {
-        for (int y = fromY - 1; y >= fromY - 1 - ParkourRules.MAX_FALL; y--) {
+    private static boolean safeBelow(ServerLevel level, BlockPos cell, int fromY, int maxFall) {
+        for (int y = fromY - 1; y >= fromY - 1 - maxFall; y--) {
             BlockPos pos = cell.atY(y);
             if (!level.isLoaded(pos)) {
                 return false;
@@ -229,6 +238,7 @@ public final class MaidParkour {
     public static final class Runner {
         private final EntityMaid maid;
         private final List<BlockPos> chain;
+        private final int maxFall;
         private int index;
         private int ticks;
         private int total;
@@ -238,9 +248,10 @@ public final class MaidParkour {
         private boolean done;
         private boolean failed;
 
-        public Runner(EntityMaid maid, List<BlockPos> chain) {
+        public Runner(EntityMaid maid, List<BlockPos> chain, int maxFall) {
             this.maid = maid;
             this.chain = List.copyOf(chain);
+            this.maxFall = maxFall;
             if (!(maid.level() instanceof ServerLevel level)
                     || this.chain.isEmpty()
                     || !maid.onGround()) {
@@ -249,7 +260,7 @@ public final class MaidParkour {
                 return;
             }
             this.from = maid.blockPosition();
-            if (!canHop(level, from, this.chain.get(0))) {
+            if (!canHop(level, from, this.chain.get(0), maxFall)) {
                 failed = true;
                 restore();
                 return;
@@ -306,7 +317,7 @@ public final class MaidParkour {
                 return;
             }
             BlockPos next = chain.get(index);
-            if (!canHop(level, from, next)) {
+            if (!canHop(level, from, next, maxFall)) {
                 fail();
                 return;
             }

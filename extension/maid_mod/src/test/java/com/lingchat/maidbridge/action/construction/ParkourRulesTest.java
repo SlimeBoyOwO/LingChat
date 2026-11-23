@@ -36,6 +36,15 @@ class ParkourRulesTest {
     }
 
     @Test
+    void deepDropOnlyOpensWhenAsked() {
+        assertFalse(ParkourRules.allowed(2, -4));
+        assertTrue(ParkourRules.allowed(2, -4, ParkourRules.DEEP_FALL));
+        assertTrue(ParkourRules.allowed(1, -4, ParkourRules.DEEP_FALL));
+        assertFalse(ParkourRules.allowed(1, 0, ParkourRules.DEEP_FALL));
+        assertFalse(ParkourRules.allowed(2, -11, ParkourRules.DEEP_FALL));
+    }
+
+    @Test
     void fallingStaysAirborneLonger() {
         assertEquals(ParkourRules.FLIGHT_TICKS, ParkourRules.flightTicks(0));
         assertEquals(ParkourRules.FLIGHT_TICKS, ParkourRules.flightTicks(1));

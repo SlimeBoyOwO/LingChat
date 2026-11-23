@@ -14,6 +14,8 @@ import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.integration.carry.CarryOnPresent;
 import com.lingchat.maidbridge.chat.ChatPushListener;
 import com.lingchat.maidbridge.chat.SendChatHandler;
+import com.lingchat.maidbridge.debug.PathDebug;
+import com.lingchat.maidbridge.debug.PathingCommands;
 import com.lingchat.maidbridge.perception.item.BackpackWatcher;
 import com.lingchat.maidbridge.perception.item.ItemReporter;
 import com.lingchat.maidbridge.action.feed.MaidFeeder;
@@ -46,6 +48,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -91,6 +94,7 @@ public class LingChatMaidBridge {
             }
         }
 
+        NeoForge.EVENT_BUS.addListener(PathingCommands::register);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerStarting);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerStopping);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerTick);
@@ -213,6 +217,8 @@ public class LingChatMaidBridge {
         MaidMineController.cancel(event.getServer());
         MaidPlaceController.cancel(event.getServer());
         MaidBuildController.cancel(event.getServer());
+        // 寻路可视化盯着的女仆与画面数据都是这一个世界的
+        PathDebug.reset();
     }
 
     private static void onServerTick(ServerTickEvent.Post event) {
@@ -233,6 +239,8 @@ public class LingChatMaidBridge {
         MaidPlaceController.tick(event.getServer());
         // 施工：按图纸一格一格放，缺料或走不到就记下来，收尾推一条事件
         MaidBuildController.tick(event.getServer());
+        // 调试时把这一帧的寻路画出来；没开就什么都不做
+        PathDebug.tick(event.getServer());
         // 喂食的待收尾有寿命：没吃成的那口要还给她，金苹果等不到吃完就作废
         MaidFeeder.tick(event.getServer());
         // 主人举着她最爱吃的东西、她凑过来讨食的那一刻

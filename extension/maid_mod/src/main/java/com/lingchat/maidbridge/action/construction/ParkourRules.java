@@ -13,8 +13,10 @@ public final class ParkourRules {
     public static final int UP_DISTANCE = 3;
     /** 往上最多抬一格。 */
     public static final int MAX_RISE = 1;
-    /** 往下最多落三格：再深就可能摔伤，也不该往那边跳。 */
+    /** 往下最多落三格：正常的跑跳不该往更深的地方跳。 */
     public static final int MAX_FALL = 3;
+    /** 建筑模式下可以落这么深：摔落伤害已经免掉，从屋顶下到地面不必先铺垫脚。 */
+    public static final int DEEP_FALL = 10;
     /** 至少隔两格才叫跑跳：相邻一格交给普通走路和跳上一格。 */
     public static final int MIN_DISTANCE = 2;
     /** 平地这一跳大约飞多少 tick，用来折算横向速度。 */
@@ -25,7 +27,18 @@ public final class ParkourRules {
 
     /** 这一跳允许吗：距离与高差同时满足才有意义。 */
     public static boolean allowed(int distance, int rise) {
-        if (distance < MIN_DISTANCE || rise > MAX_RISE || rise < -MAX_FALL) {
+        return allowed(distance, rise, MAX_FALL);
+    }
+
+    /**
+     * 同上，但允许落得更深；往下时距离放到一格也认。
+     *
+     * <p>一格之内的平地、上坡仍交给走路，不让它变成一次跑跳；只有往下掉才允许
+     * 紧贴着一格落，从屋檐边跳下去就属于这种。
+     */
+    public static boolean allowed(int distance, int rise, int maxFall) {
+        int minDistance = rise < 0 ? 1 : MIN_DISTANCE;
+        if (distance < minDistance || rise > MAX_RISE || rise < -maxFall) {
             return false;
         }
         return distance <= (rise > 0 ? UP_DISTANCE : MAX_DISTANCE);

@@ -21,7 +21,7 @@ STATUS_TOOL = "maid_building_status"
 BUILD_TOOL = "maid_build_house"
 CLIMB_TOOL = "maid_build_climb_test"
 
-# 施工帧与固定图纸。这一期先把蓝图写死成一座 7×7 的小木屋，用来验证模组侧
+# 施工帧与固定图纸。这一期先把蓝图写死成一座 11×11 的中型木屋，用来验证模组侧
 # 能不能不经过 LLM 一块块盖起来；导演生成的蓝图以后走同一条施工帧。
 BUILD_FRAME = "maid_build"
 HOUSE_NAME = "小木屋"
@@ -31,10 +31,11 @@ CLIMB_NAME = "垫脚测试柱"
 CLIMB_BLOCK = "minecraft:cobblestone"
 CLIMB_SIDE = 2
 CLIMB_HEIGHT = 8
-HOUSE_SIDE = 7
+# 图纸按正方形方格旋转，HOUSE_SIDE 既是方格边长也是旋转参照，换成非正方形就对不上中心。
+HOUSE_SIDE = 11
 # 施工起点放在她正前方几格，房子以锚点为中心，免得一开始就把她圈在地基里；
-# 7×7 的房子比原来的 5×5 深一格，留 5 格她就不会站在门廊上。
-ANCHOR_DISTANCE = 5
+# 11×11 的房子连同外挑一格的屋檐前后各占 6 格，留 9 格门廊才不会压在她脚下。
+ANCHOR_DISTANCE = 9
 # 四个朝向（原版 yaw 每 90 度一档）的前进方向：南、西、北、东。
 FORWARD = ((0, 1), (-1, 0), (0, -1), (1, 0))
 # 图纸的正面朝北；旋转时按北、东、南、西的顺序跟着转。
@@ -287,7 +288,7 @@ def _maid_pose(maid):
         return None, "她现在不省人事，没法盖房"
     position = payload.get("position")
     if not isinstance(position, dict) or any(key not in position for key in ("x", "y", "z")):
-        return None, "拿不到她在世界里的位置，没法定施工起点"
+        return None, "模组没认出这只女仆（UUID 可能变了），或者游戏里装的是旧版模组，没法定施工起点"
     return {
         "x": float(position["x"]),
         "y": float(position["y"]),
@@ -308,23 +309,23 @@ def _facing_step(yaw):
 
 
 def _is_window(x, z, y):
-    """第二层墙上的窗：正面两扇、背面三扇、两侧各两扇。"""
-    if y != 2:
+    """两格高的窗：正面两对、背面两对、两侧各两对，中柱与门框保持实墙。"""
+    if y not in (2, 3):
         return False
     if z == 0:
-        return x in (1, 5)
+        return x in (2, 3, 7, 8)
     if z == HOUSE_SIDE - 1:
-        return x in (1, 3, 5)
+        return x in (3, 4, 6, 7)
     if x in (0, HOUSE_SIDE - 1):
-        return z in (2, 4)
+        return z in (3, 4, 6, 7)
     return False
 
 
 def _small_house(steps):
-    """固定的小木屋：7×7，石砖墙基、原木角柱、玻璃窗、木门、石砖烟囱、门廊，
-    屋顶是三层阶梯式的橡木台阶。
+    """固定的中型木屋：11×11，四层墙高、外挑一格的高屋顶，带门廊、阁楼感与烟囱。
 
-    坐标先用 0 到 6 的平面格子（z=0 是带门的正面），最后按她的朝向旋转、平移到中心。
+    材料统一成石砖、云杉木板与台阶、橡木原木与栅栏、玻璃板、火把和灯笼。
+    坐标先用 0 到 10 的平面格子（z=0 是带门的正面），最后按她的朝向旋转、平移到中心。
     门的上半格由原版的放置逻辑一起放出来，所以图纸里只写下半格。
     """
     half = HOUSE_SIDE // 2
@@ -334,16 +335,20 @@ def _small_house(steps):
     def put(x, y, z, block, facing=""):
         plan[(x, y, z)] = (block, facing)
 
-    # 地板：中间木板，四周围一圈石砖
+    # 地板：外圈石砖，屋里铺云杉木板；门前铺一小块门廊和一级台阶
     for z in range(HOUSE_SIDE):
         for x in range(HOUSE_SIDE):
             if x in (0, last) or z in (0, last):
                 put(x, 0, z, "minecraft:stone_bricks")
             else:
-                put(x, 0, z, "minecraft:oak_planks")
+                put(x, 0, z, "minecraft:spruce_planks")
+    for x in range(half - 2, half + 3):
+        put(x, 0, -1, "minecraft:spruce_planks")
+    for x in range(half - 1, half + 2):
+        put(x, 0, -2, "minecraft:spruce_stairs", "south")
 
-    # 墙：三层，四角原木；底层石砖，上面两层木板，第二层开窗
-    for y in (1, 2, 3):
+    # 墙：四层，四角与三面中柱是橡木原木；底层石砖，上面云杉木板，窗开两格高
+    for y in (1, 2, 3, 4):
         for z in range(HOUSE_SIDE):
             for x in range(HOUSE_SIDE):
                 if x not in (0, last) and z not in (0, last):
@@ -355,23 +360,24 @@ def _small_house(steps):
                 elif x == half and z == 0 and y == 2:
                     # 门的上半格跟随下半格一起放，不能单独立项
                     continue
+                elif (x in (0, last) and z == half) or (x == half and z == last):
+                    block = "minecraft:oak_log"
+                elif x in (half - 1, half + 1) and z == 0 and y in (1, 2):
+                    block = "minecraft:oak_log"
                 elif y == 1:
                     block = "minecraft:stone_bricks"
                 elif _is_window(x, z, y):
                     block = "minecraft:glass_pane"
                 else:
-                    block = "minecraft:oak_planks"
+                    block = "minecraft:spruce_planks"
                 put(x, y, z, block, "north" if block == "minecraft:oak_door" else "")
 
-    # 门上方再开一扇小窗
-    put(half, 3, 0, "minecraft:glass_pane")
-
-    # 屋顶：三层，每层四周是向内的橡木台阶，中间木板
-    for y, edge in ((4, 3), (5, 2), (6, 1)):
+    # 屋顶：从墙顶往外挑一格，之后每层向内收一格；外圈台阶，里面铺木板
+    for y, edge in ((5, 6), (6, 5), (7, 4), (8, 3), (9, 2), (10, 1)):
         for z in range(half - edge, half + edge + 1):
             for x in range(half - edge, half + edge + 1):
                 if abs(x - half) != edge and abs(z - half) != edge:
-                    put(x, y, z, "minecraft:oak_planks")
+                    put(x, y, z, "minecraft:spruce_planks")
                     continue
                 if z == half - edge:
                     facing = "south"
@@ -381,18 +387,31 @@ def _small_house(steps):
                     facing = "east"
                 else:
                     facing = "west"
-                put(x, y, z, "minecraft:oak_stairs", facing)
+                put(x, y, z, "minecraft:spruce_stairs", facing)
+    # 顶脊压一块半砖
+    put(half, 11, half, "minecraft:spruce_slab")
+    # 门廊屋檐下留两块实心木板挂灯笼，其余外圈保持台阶
+    for x in (half - 1, half + 1):
+        put(x, 5, -1, "minecraft:spruce_planks")
 
-    # 烟囱：贴在后墙偏东，从地面穿出屋顶
-    for y in range(0, 7):
-        put(last - 1, y, last, "minecraft:stone_bricks")
+    # 烟囱：贴在后墙偏东，从地基一路穿出屋顶（里面不放火）
+    for y in range(0, 10):
+        put(last - 2, y, last, "minecraft:stone_bricks")
+    put(last - 2, 10, last, "minecraft:stone_brick_slab")
 
-    # 门廊：门前一格台阶和两根栅栏柱
-    for x in (half - 1, half, half + 1):
-        put(x, 0, -1, "minecraft:oak_stairs", "south")
+    # 门廊：两根原木柱撑住屋檐，中间留一格宽的进出口，柱间安栅栏
+    for x in (half - 2, half + 2):
+        for y in (1, 2, 3, 4):
+            put(x, y, -1, "minecraft:oak_log")
     for x in (half - 1, half + 1):
         put(x, 1, -1, "minecraft:oak_fence")
-        put(x, 2, -1, "minecraft:oak_fence")
+
+    # 火把：两面山墙各挂两支；灯笼：门廊屋檐下悬两盏
+    for x in (1, last - 1):
+        put(x, 3, -1, "minecraft:torch")
+        put(x, 3, last + 1, "minecraft:torch")
+    for x in (half - 1, half + 1):
+        put(x, 4, -1, "minecraft:lantern")
 
     cells = [(x, y, z, block, facing) for (x, y, z), (block, facing) in plan.items()]
     cells.sort(key=lambda cell: (cell[1], cell[2], cell[0]))
@@ -508,7 +527,7 @@ def _build_context(maid):
         anchor = payload.get("position")
         dimension = payload.get("dimension") or dimension
     if not isinstance(anchor, dict):
-        return None, "拿不到她在世界里的位置，没法锁定施工起点"
+        return None, "模组没认出这只女仆（UUID 可能变了），或者游戏里装的是旧版模组，没法锁定施工起点"
 
     return {
         "dimension": dimension,

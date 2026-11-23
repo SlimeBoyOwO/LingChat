@@ -2,6 +2,7 @@ package com.lingchat.maidbridge.action.mine;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.SearchBudget;
+import com.lingchat.maidbridge.debug.PathDebug;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
 import com.lingchat.maidbridge.perception.spatial.SightLine;
@@ -54,6 +55,16 @@ public final class MineTargets {
     private static final int BUILD_PATH_CHECKS = 24;
     /** 找到几个能走到的就按路径步数挑最短的，不必把二十四个都算完。 */
     private static final int BUILD_PATH_RANK = 8;
+    /** 盖房子时第一圈找多宽：够得着是 4.5 格，只扫 ±2 会漏掉屋顶外沿那些站位。 */
+    private static final int BUILD_RING = 4;
+    private static final int BUILD_DOWN = 6;
+    private static final int BUILD_UP = 3;
+    /** 第一圈一个都找不到时扩到这一圈，再远就没意义了：够不着也走不回来。 */
+    private static final int BUILD_RING_WIDE = 6;
+    private static final int BUILD_DOWN_WIDE = 8;
+    private static final int BUILD_UP_WIDE = 5;
+    /** 每圈最多判这么多格：扩圈之后候选数量翻几倍，判定次数得有个数。 */
+    private static final int MAX_STAND_LOOKUPS = 1400;
     /** 放置时最多看几个候选的视线：射线比寻路便宜，但也别把一圈全扫完。 */
     private static final int SIGHT_SCAN = 32;
     /** 盖房子时多扫一些：室内那些看得见墙、看不见外面的站位会占掉前面的名额。 */
@@ -280,12 +291,35 @@ public final class MineTargets {
         if (!(maid.level() instanceof ServerLevel)) {
             return null;
         }
-        List<BlockPos> candidates = standCandidates(maid, target);
+        PathDebug.searchRange(maid, target, BUILD_RING, BUILD_DOWN, BUILD_UP);
+        BlockPos best = pickBuildingStand(
+                maid, target, buildingCandidates(maid, target, BUILD_RING, BUILD_DOWN, BUILD_UP),
+                built, skip, unreachable, canSee, budget);
+        if (best != null || budget.spent()) {
+            return best;
+        }
+        // 近的几圈一处都站不上：扩一圈再找。屋顶外沿能站的往往在三四格外，
+        // 贴着目标找只会到处报「没有落脚点」
+        PathDebug.searchRange(
+                maid, target, BUILD_RING_WIDE, BUILD_DOWN_WIDE, BUILD_UP_WIDE);
+        return pickBuildingStand(
+                maid, target,
+                buildingCandidates(maid, target, BUILD_RING_WIDE, BUILD_DOWN_WIDE, BUILD_UP_WIDE),
+                built, skip, unreachable, canSee, budget);
+    }
+
+    /** 在一圈候选里挑路最短的站位；挑不到给 null。 */
+    private static BlockPos pickBuildingStand(
+            EntityMaid maid, BlockPos target, List<BlockPos> candidates, Set<BlockPos> built,
+            Set<BlockPos> skip, Set<BlockPos> unreachable, Predicate<BlockPos> canSee,
+            SearchBudget budget) {
         int feetY = maid.blockPosition().getY();
+        // 不站在头顶上方、离得近的先看；是不是站在已盖好的面上只当同距时的加分项。
+        // 把「已盖好」放第一位会把屋外草地这类站位一直挤在名额之外，墙外那几格就永远没人站
         candidates.sort(Comparator
-                .comparingInt((BlockPos stand) -> built.contains(stand.below()) ? 0 : 1)
-                .thenComparingInt(stand -> stand.getY() <= feetY + 1 ? 0 : 1)
-                .thenComparingDouble(stand -> stand.distSqr(target)));
+                .comparingInt((BlockPos stand) -> stand.getY() <= feetY + 1 ? 0 : 1)
+                .thenComparingDouble(stand -> stand.distSqr(target))
+                .thenComparingInt(stand -> built.contains(stand.below()) ? 0 : 1));
         int evaluated = 0;
         int reachable = 0;
         int scanned = 0;
@@ -297,18 +331,22 @@ public final class MineTargets {
             }
             // 从她现在站的地方算过一遍走不到的，她没挪窝之前不再算
             if (skip.contains(stand) || unreachable.contains(stand)) {
+                PathDebug.probe(maid, target, stand, PathDebug.Verdict.SKIPPED);
                 continue;
             }
             Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
             if (new AABB(target).distanceToSqr(eye) > MineRules.REACH * MineRules.REACH) {
+                PathDebug.probe(maid, target, stand, PathDebug.Verdict.OUT_OF_REACH);
                 continue;
             }
             scanned++;
             if (!canSee.test(stand)) {
+                PathDebug.probe(maid, target, stand, PathDebug.Verdict.NO_SIGHT);
                 continue;
             }
             evaluated++;
             if (stand.closerToCenterThan(maid.position(), 2.0)) {
+                PathDebug.probe(maid, target, stand, PathDebug.Verdict.REACHABLE);
                 return stand;
             }
             if (!budget.take()) {
@@ -317,8 +355,10 @@ public final class MineTargets {
             Path path = maid.getNavigation().createPath(stand, 0);
             if (path == null || !path.canReach()) {
                 unreachable.add(stand);
+                PathDebug.probe(maid, target, stand, PathDebug.Verdict.NO_PATH);
                 continue;
             }
+            PathDebug.probe(maid, target, stand, PathDebug.Verdict.REACHABLE);
             reachable++;
             double cost = path.getNodeCount();
             if (cost < bestCost) {
@@ -334,28 +374,65 @@ public final class MineTargets {
 
     /** 目标周围站得下、在活动范围里的格子，按离目标远近排好。 */
     private static List<BlockPos> standCandidates(EntityMaid maid, BlockPos target) {
+        return standCandidates(maid, target, 2, 6, 2);
+    }
+
+    /**
+     * 目标周围一圈站得下的格子：横向 {@code radius} 格，纵向 -{@code down} 到 +{@code up}。
+     *
+     * <p>从里往外一圈一圈扫，扫到上限就停：判定次数有数，扩圈时才不会一下子多出几千次
+     * 方块读取；近处的格子先拿到，远处的本来就常常够不着。
+     */
+    private static List<BlockPos> standCandidates(
+            EntityMaid maid, BlockPos target, int radius, int down, int up) {
         ServerLevel level = (ServerLevel) maid.level();
         List<BlockPos> candidates = new ArrayList<>();
         BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = -6; dy <= 2; dy++) {
-                    if (dx == 0 && dy == 0 && dz == 0) {
+        int looked = 0;
+        scan:
+        for (int ring = 0; ring <= radius; ring++) {
+            for (int dx = -ring; dx <= ring; dx++) {
+                for (int dz = -ring; dz <= ring; dz++) {
+                    if (Math.max(Math.abs(dx), Math.abs(dz)) != ring) {
                         continue;
                     }
-                    pos.setWithOffset(target, dx, dy, dz);
-                    BlockPos stand = pos.immutable();
-                    if (!standable(level, stand)) {
-                        continue;
+                    for (int dy = -down; dy <= up; dy++) {
+                        if (dx == 0 && dy == 0 && dz == 0) {
+                            continue;
+                        }
+                        if (++looked > MAX_STAND_LOOKUPS) {
+                            break scan;
+                        }
+                        pos.setWithOffset(target, dx, dy, dz);
+                        BlockPos stand = pos.immutable();
+                        if (!standable(level, stand)) {
+                            continue;
+                        }
+                        if (maid.hasRestriction() && !maid.isWithinRestriction(stand)) {
+                            continue;
+                        }
+                        candidates.add(stand);
                     }
-                    if (maid.hasRestriction() && !maid.isWithinRestriction(stand)) {
-                        continue;
-                    }
-                    candidates.add(stand);
                 }
             }
         }
         candidates.sort(Comparator.comparingDouble(stand -> stand.distSqr(target)));
+        return candidates;
+    }
+
+    /**
+     * 盖房子的一圈候选：目标和这一圈里站得下的格子，外加她自己脚下那一格。
+     *
+     * <p>她此刻站的地方可能正好够得着，但落在这一圈之外（比如屋顶外沿的活，她站在
+     * 三格外的墙头上），漏掉它就会为同一件事多走一趟。
+     */
+    private static List<BlockPos> buildingCandidates(
+            EntityMaid maid, BlockPos target, int radius, int down, int up) {
+        List<BlockPos> candidates = standCandidates(maid, target, radius, down, up);
+        BlockPos here = maid.blockPosition();
+        if (!here.equals(target) && standable(maid.level(), here) && !candidates.contains(here)) {
+            candidates.add(here);
+        }
         return candidates;
     }
 
