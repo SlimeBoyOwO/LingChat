@@ -10,6 +10,7 @@
     "build": "vue-tsc --noEmit --skipLibCheck && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "dev:mcp": "tauri dev --config src-tauri/tauri.mcp.conf.json --features mcp-debug",
     "android:prepare": "tauri android init && node scripts/generate-android-icons.mjs",
     "android:dev": "tauri android dev",
     "android:build": "node scripts/prepare-bundled-resources.mjs 9 && tauri android build --target aarch64 --apk",

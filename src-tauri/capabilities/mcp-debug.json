@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "mcp-debug",
+  "description": "开发期 MCP 调试桥（仅在 mcp-debug feature 下由 tauri.mcp.conf.json 启用）",
+  "windows": ["main", "settings", "log", "screenshot-overlay", "cast", "pet_bubble", "todo_widget"],
+  "permissions": ["mcp-bridge:default"]
+}

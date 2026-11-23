@@ -24,6 +24,8 @@ crate-type = ["cdylib", "rlib"]
 # 移动端（Android/iOS）构建时必须启用：让 webview 从应用内嵌资产加载前端
 # （不走 devUrl）。桌面端不受影响。
 custom-protocol = ["tauri/custom-protocol"]
+# 开发期 MCP 调试桥。仅 `pnpm dev:mcp` 显式启用，release 构建不编译该插件。
+mcp-debug = ["dep:tauri-plugin-mcp-bridge"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -48,6 +50,11 @@ tauri-plugin-fs = "2"
 tauri-plugin-notification = "2.4"
 tauri-plugin-screenshots = { path = "plugins/tauri-plugin-screenshots" }
 tauri-plugin-android-fs = "28"
+# 开发期 MCP 调试桥：mcp-debug feature 下编译，向外部 MCP 客户端暴露
+# 截图、DOM、IPC 监控等调试能力。不要进发布构建。
+# 必须 >=0.13.2：0.13.0 的 windows 依赖停留在 windows-core 0.61，
+# 与 Tauri 2.12 使用的 0.62 冲突，Windows 上编译失败。
+tauri-plugin-mcp-bridge = { version = "0.13.2", optional = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 # setup 编排里直接用到 DatabaseConnection 类型与少量 EntityTrait 调用
