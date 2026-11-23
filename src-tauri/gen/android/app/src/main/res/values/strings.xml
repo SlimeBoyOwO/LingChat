@@ -1,4 +1,8 @@
 <resources>
     <string name="app_name">LingChat</string>
     <string name="main_activity_title">LingChat</string>
+    <string name="download_keepalive_channel">模型下载</string>
+    <string name="download_keepalive_title">正在下载模型</string>
+    <string name="download_keepalive_title_with_label">正在下载 %1$s</string>
+    <string name="download_keepalive_description">下载完成后会自动停止，息屏也能继续。</string>
 </resources>

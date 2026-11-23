@@ -24,6 +24,20 @@ GEN_APPLE="src-tauri/gen/apple"
 
 # --- 1. Initialize the Xcode project ----------------------------------------
 
+# Sherpa-ONNX 的 xcframework 必须先于 `tauri ios init` 就位：tauri.ios.conf.json 的
+# bundle.iOS.frameworks 引用它，XcodeGen 生成工程时要求路径已存在。
+node scripts/setup-ios-sherpa.mjs
+
+# bundle.iOS.frameworks 的变更只在重新生成工程时生效（tauri 的限制）。老工程里
+# 没有 sherpa xcframework 引用时直接重建（gen/apple 是 gitignored 的本地产物）。
+if [ -d "$GEN_APPLE" ]; then
+  EXISTING_PBXPROJ="$(ls "$GEN_APPLE"/*.xcodeproj/project.pbxproj 2>/dev/null | head -1 || true)"
+  if [ -n "$EXISTING_PBXPROJ" ] && ! grep -q "sherpa-onnx.xcframework" "$EXISTING_PBXPROJ"; then
+    echo "[configure-ios] 旧工程未引用 sherpa-onnx.xcframework，重新生成 Xcode 工程"
+    rm -rf "$GEN_APPLE"
+  fi
+fi
+
 if [ ! -d "$GEN_APPLE" ]; then
   echo "[configure-ios] gen/apple missing, running: pnpm tauri ios init --ci"
   if ! command -v xcodegen >/dev/null 2>&1; then

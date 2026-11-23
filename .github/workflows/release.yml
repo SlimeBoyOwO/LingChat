@@ -127,9 +127,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # Windows 必须 +crt-static：sherpa-onnx 的 Windows 预编译包是 /MT 静态 CRT。
           RUSTFLAGS: |
             ${{ runner.os == 'Linux' && '' || '' }}
-            ${{ runner.os == 'Windows' && '-C linker=rust-lld' || '' }}
+            ${{ runner.os == 'Windows' && '-C linker=rust-lld -C target-feature=+crt-static' || '' }}
             ${{ runner.os == 'macOS' && '' || '' }}
         with:
           # 不用 tauri-action 内置的 uploadWorkflowArtifacts：

@@ -12,6 +12,10 @@ pub use ling_chat_main::{AppState, ChatComponents, InnerAppState, ScreenshotCapt
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Android 上 stderr 通向 /dev/null，且 panic 会被 stop_unwind 捕获后 abort；
+    // 先挂 logcat 桥，启动早期失败才有记录。
+    app::platform::install_panic_logger();
+
     // TLS 兜底：rustls 依赖图同时启用 aws-lc-rs（本项目显式）与 ring
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
@@ -25,8 +29,19 @@ pub fn run() {
     // Windows：设置 WebView2 颜色配置文件（强制使用线性 sRGB）。
     app::platform::apply_webview2_color_profile(&context.config().identifier);
 
-    app::builder::build()
-        .setup(move |app| app::setup::setup(app, log_filter))
-        .run(context)
-        .expect("error while running tauri application");
+    let result = app::builder::build()
+        .setup(move |app| {
+            let result = app::setup::setup(app, log_filter);
+            if let Err(error) = &result {
+                // setup 返回 Err 时 Tauri 只会 panic 最外层消息，底层原因须在这里留痕。
+                app::platform::log_error_chain("setup", error.as_ref());
+            }
+            result
+        })
+        .run(context);
+
+    if let Err(error) = result {
+        app::platform::log_error_chain("事件循环", &error);
+        panic!("error while running tauri application: {error}");
+    }
 }

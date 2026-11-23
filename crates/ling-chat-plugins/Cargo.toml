@@ -34,6 +34,10 @@ rustpython-vm = { version = "0.5", default-features = false, features = [
     "stdio",
     "serde",
     "freeze-stdlib",
+    # Android bionic 只有 128 个 TLS key；RustPython 默认给每个内建类型各开一个
+    # thread_local，解释器还没建完就会 "out of TLS keys" abort。开启 threading
+    # 后 StaticCell 改用全局 OnceLock，不再按类型消耗 TLS key。
+    "threading",
 ] }
 rustpython-pylib = { version = "0.5", features = ["freeze-stdlib"] }
 rustpython-derive = "0.5"

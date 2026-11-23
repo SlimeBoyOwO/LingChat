@@ -369,6 +369,33 @@ pub struct VoiceModel {
     pub sbv2_local_cloud_fallback_model: Option<String>,
     pub sbv2_local_cloud_fallback_speaker_id: Option<String>,
     pub cosyvoice_voice_id: Option<String>,
+    /// Sherpa-ONNX 模型名（对应 `data/sherpa_onnx_models/<name>/`）。
+    #[serde(default, rename = "sherpa_onnx_model_name")]
+    pub sherpa_onnx_model_name: Option<String>,
+    /// 模型类型（vits / fastspeech2 / matcha / kokoro / kitten / zipvoice / pocket / supertonic）。
+    #[serde(default, rename = "sherpa_onnx_model_type")]
+    pub sherpa_onnx_model_type: Option<String>,
+    /// 朗读语言（zh / ja / en 等）。
+    #[serde(default, rename = "sherpa_onnx_lang", alias = "sherpa_onnx_language")]
+    pub sherpa_onnx_language: Option<String>,
+    /// 音色（模型内 speaker，如 female / male 或数字 sid）。
+    #[serde(default, rename = "sherpa_onnx_voice")]
+    pub sherpa_onnx_voice: Option<String>,
+    /// 语速（0.5–2.0，1.0 为原速）。
+    #[serde(default, rename = "sherpa_onnx_speed")]
+    pub sherpa_onnx_speed: Option<f32>,
+    /// ZipVoice 推理步数（1–10，默认 4）。
+    #[serde(default, rename = "sherpa_onnx_num_steps")]
+    pub sherpa_onnx_num_steps: Option<i32>,
+    /// ZipVoice 引导强度（1.0–10.0，默认 1.0）。
+    #[serde(default, rename = "sherpa_onnx_guidance_scale")]
+    pub sherpa_onnx_guidance_scale: Option<f32>,
+    /// 零样本参考音频路径。
+    #[serde(default, rename = "sherpa_onnx_ref_audio_path")]
+    pub sherpa_onnx_ref_audio_path: Option<String>,
+    /// 零样本参考文本。
+    #[serde(default, rename = "sherpa_onnx_ref_text")]
+    pub sherpa_onnx_ref_text: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

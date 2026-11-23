@@ -40,6 +40,13 @@ fn resolve_exec_dir() -> PathBuf {
         .to_path_buf()
 }
 
+/// 获取已缓存的 data 目录；没初始化时返回 `None`。
+///
+/// 给不经过 App 启动流程的调用方（单测、集成测试、外部工具）用。
+pub fn try_get_data_dir() -> Option<&'static PathBuf> {
+    DATA_DIR.get()
+}
+
 /// 解析 data 目录路径。
 ///
 /// 优先级：

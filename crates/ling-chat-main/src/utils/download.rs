@@ -63,7 +63,8 @@ fn progress_update_due(elapsed: Duration, bytes_since_last: u64) -> bool {
 /// - `cancel`：可选的取消令牌，每块数据前检查
 /// - `progress`：可选的进度回调，每 200ms 或 1MB 触发一次
 /// - `client`：可复用的 `reqwest::Client`，避免每次下载都重建连接池
-/// - `expected_size`：当服务器未返回 Content-Length 时使用的估算值
+/// - `expected_size`：期望的文件大小；服务器未返回 Content-Length 时用于进度，
+///   并作为下载完整性校验（实际字节数不符即报错）
 ///
 /// # 返回
 /// 成功返回实际写入字节数；取消/IO/HTTP 错误返回 `Err(String)`。
@@ -82,7 +83,14 @@ pub async fn download_to_file(
             .map_err(|e| format!("mkdir: {e}"))?;
     }
 
-    let tmp = dest.with_extension("part");
+    // 追加 `.part` 而不是替换扩展名：同一目录下 `tokens.txt` 与 `tokens.json`
+    // 若都替换成 `tokens.part` 会互相覆盖。
+    let mut tmp_name = dest
+        .file_name()
+        .ok_or_else(|| "目标路径没有文件名".to_string())?
+        .to_os_string();
+    tmp_name.push(".part");
+    let tmp = dest.with_file_name(tmp_name);
 
     let resp = client
         .get(url)
@@ -112,7 +120,10 @@ pub async fn download_to_file(
         return Err(format!("HTTP {status} from {final_url}: {snippet}"));
     }
 
-    let total = resp.content_length().unwrap_or(expected_size);
+    let declared_len = resp.content_length().filter(|len| *len > 0);
+    let total = declared_len.unwrap_or(expected_size);
+    // 服务端/调用方给出期望大小时，下载结束必须逐字节对上；否则是断流。
+    let expected_len = declared_len.or_else(|| (expected_size > 0).then_some(expected_size));
     let mut stream = resp.bytes_stream();
     let mut file = tokio::fs::File::create(&tmp)
         .await
@@ -121,20 +132,29 @@ pub async fn download_to_file(
     let mut bytes_done: u64 = 0;
     let mut last_emit = Instant::now();
     let mut last_emitted_bytes: u64 = 0;
+    // 出错时先退出循环、关闭文件，再统一清理 `.part`（Windows 上打开着的文件删不掉）。
+    let mut failure: Option<String> = None;
 
     while let Some(chunk) = stream.next().await {
         // 取消检查
         if let Some(ref token) = cancel
             && token.is_cancelled()
         {
-            let _ = tokio::fs::remove_file(&tmp).await;
-            return Err("download cancelled".into());
+            failure = Some("download cancelled".into());
+            break;
         }
 
-        let chunk = chunk.map_err(|e| format!("chunk: {e}"))?;
-        tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
-            .await
-            .map_err(|e| format!("write: {e}"))?;
+        let chunk = match chunk {
+            Ok(chunk) => chunk,
+            Err(e) => {
+                failure = Some(format!("chunk: {e}"));
+                break;
+            },
+        };
+        if let Err(e) = tokio::io::AsyncWriteExt::write_all(&mut file, &chunk).await {
+            failure = Some(format!("write: {e}"));
+            break;
+        }
         bytes_done += chunk.len() as u64;
 
         let now = Instant::now();
@@ -150,12 +170,33 @@ pub async fn download_to_file(
         }
     }
 
-    tokio::io::AsyncWriteExt::shutdown(&mut file)
-        .await
-        .map_err(|e| format!("shutdown: {e}"))?;
-    tokio::fs::rename(&tmp, dest)
-        .await
-        .map_err(|e| format!("rename: {e}"))?;
+    if let Some(error) = failure {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(error);
+    }
+
+    if let Err(e) = tokio::io::AsyncWriteExt::shutdown(&mut file).await {
+        drop(file);
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(format!("shutdown: {e}"));
+    }
+    // Windows 上必须先关闭句柄，否则 rename / remove 会失败。
+    drop(file);
+
+    if let Some(expected) = expected_len
+        && bytes_done != expected
+    {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(format!(
+            "下载不完整: 期望 {expected} 字节，实际 {bytes_done} 字节"
+        ));
+    }
+
+    if let Err(e) = tokio::fs::rename(&tmp, dest).await {
+        let _ = tokio::fs::remove_file(&tmp).await;
+        return Err(format!("rename: {e}"));
+    }
 
     // 完成回调
     if let Some(ref cb) = progress {

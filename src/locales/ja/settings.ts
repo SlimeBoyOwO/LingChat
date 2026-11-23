@@ -525,6 +525,30 @@ export default {
       voiceDialect: "中国語方言",
 
       openttsVoice: "OpenTTS 音色識別子",
+      sherpaOnnx: "Sherpa-ONNX ローカル音声",
+      sherpaOnnxModelName: "Sherpa-ONNX モデル",
+      sherpaOnnxModelType: "モデル種別",
+      sherpaOnnxLanguage: "言語",
+      sherpaOnnxVoice: "音声",
+      sherpaOnnxSpeed: "話速",
+      sherpaOnnxNumSteps: "推論ステップ数",
+      sherpaOnnxNumStepsHint:
+        "ZipVoice の flow-matching サンプリング回数（1〜10）。4 回と 16 回で聴感差はなく、増やすほど遅くなるだけです。",
+      sherpaOnnxGuidanceScale: "ガイダンス強度",
+      sherpaOnnxGuidanceScaleHint:
+        "ZipVoice の guidance_scale（1.0〜10.0）。大きいほど参照音声の声質に寄ります。変更するとモデルを再初期化するため、次の合成は少し遅くなります。",
+      sherpaOnnxParameters: "パラメータ",
+      sherpaOnnxManageModels: "モデル管理",
+      sherpaOnnxVoicesMale: "男性",
+      sherpaOnnxVoicesFemale: "女性",
+      sherpaOnnxVoicesChild: "子供",
+      sherpaOnnxVoicesElderly: "年配",
+      sherpaOnnxModelDir: "モデル保存先",
+      sherpaOnnxStoragePermHint:
+        "モデルはアプリのデータディレクトリ（data/sherpa_onnx_models）に保存されます。追加のストレージ権限は不要です",
+      sherpaOnnxGrantPermission: "権限を付与",
+      noSherpaModel:
+        "Sherpa-ONNX モデルがインストールされていません（TTS 設定からダウンロードしてください）",
     },
     placeholders: {
       openttsVoice: "空欄の場合は詳細設定のグローバル音色識別子を使用します",
@@ -1464,6 +1488,67 @@ export default {
       deviceSwitched: "推論デバイスを切り替えました: {name}",
       deviceSwitchFailed: "推論デバイスの切り替えに失敗: {error}",
     },
+  },
+
+  sherpa: {
+    title: "Sherpa-ONNX ローカル音声",
+    models: "モデル",
+    asrTag: "認識",
+    noModels: "利用可能なモデルがありません。先にダウンロードしてください",
+    manageModels: "モデルフォルダを開く",
+    modelConfig: "モデル設定",
+    modelType: "モデル種別",
+    language: "言語",
+    voice: "音声",
+    voiceAll: "すべての音色",
+    voiceCount: "全 {n} 音色",
+    voiceLoading: "読み込み中…",
+    parameters: "パラメータ",
+    speed: "話速",
+    numSteps: "推論ステップ数",
+    guidanceScale: "ガイダンス強度",
+    tuningHint:
+      "推論ステップ数とガイダンス強度は ZipVoice（flow-matching）でのみ有効で、他のモデルでは無視されます。ここは試聴用の一時値です。実際の読み上げはキャラクター設定の音声ページで調整してください。",
+    advanced: "詳細設定",
+    numThreads: "推論スレッド数",
+    numThreadsAuto: "自動",
+    numThreadsValue: "{n} スレッド",
+    numThreadsHint:
+      "スレッド数を増やすと合成は速くなりますが、音声再生や UI の CPU を奪います。自動では CPU コアを 1 つ確保します。低スペック端末では自動のままを推奨します。",
+    numThreadsSaveFailed: "推論スレッド設定の保存に失敗しました",
+    zeroShot: "ゼロショット音声クローン",
+    zeroShotDesc:
+      "一部のモデル（kokoro/kitten 等）は参照音声 + 参照テキストによるゼロショットクローンに対応しています。",
+    refLoaded: "参照音声を読み込みました",
+    refNone: "参照音声が選択されていません",
+    refChange: "音声を変更",
+    refPick: "音声を選択",
+    refClear: "クリア",
+    refImporting: "インポート中…",
+    refListen: "試聴",
+    refStop: "停止",
+    refPlayFailed: "参照音声の試聴に失敗しました",
+    refImportUnsupported:
+      "認識できない音声形式です（mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な形式に対応。WebM は未対応）",
+    refImportOpus:
+      "マルチチャンネルの Opus（5.1 など）には未対応です。モノラルまたはステレオに変換してからインポートしてください",
+    refImportTooLong: "参照音声が長すぎます。短く切り出してからインポートしてください",
+    refImportFailed: "参照音声のインポートに失敗しました",
+    refImportHint:
+      "mp3 / wav / flac / m4a / aac / ogg（Opus、Vorbis）などの一般的な音声に対応（WebM を除く）。インポート時に WAV へ変換し、アプリのデータディレクトリへコピーします",
+    refText: "参照テキスト",
+    refTextPlaceholder: "参照音声に対応するテキスト……",
+    refTranscribe: "テキストを認識",
+    refTranscribing: "認識中…",
+    refTranscribeFailed: "参照テキストの認識に失敗しました",
+    refTranscribeNoModel:
+      "ローカル音声認識モデルが未インストールです。先にモデル一覧から SenseVoice をダウンロードしてください",
+    refTranscribeEmpty: "テキストを認識できませんでした。参照テキストを手動で入力してください",
+    test: "試聴",
+    testPlaceholder: "試聴するテキストを入力（仮名・ハングルは自動で言語判定）……",
+    synthesizing: "合成中…",
+    listen: "試聴",
+    noModelHint: "インストール済みのモデルを選択してください",
   },
 
   asr: {

@@ -51,6 +51,13 @@ android {
     buildFeatures {
         buildConfig = true
     }
+    // data.7z 本身已压缩，若再被 aapt2 DEFLATE 存放，AssetManager.openFd()
+    // 无法直接打开，tauri-plugin-fs 会退化成把整个资源拷进内存再读；
+    // Android 16 上这条路径会抛异常，导致首次启动读取资源失败而闪退。
+    // 声明 noCompress 让资源以 Stored 存放，openFd 可直接使用。
+    androidResources {
+        noCompress += "7z"
+    }
 }
 
 rust {

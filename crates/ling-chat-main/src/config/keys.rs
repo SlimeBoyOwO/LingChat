@@ -101,6 +101,10 @@ pub const OPENTTS_VOICE: &str = "tts.opentts_voice";
 pub const TTS_AUDIO_FORMAT: &str = "tts.audio_format";
 pub const VOICE_LANG: &str = "tts.voice_lang";
 
+// ========== Sherpa-ONNX 本地推理 ==========
+/// 推理线程数；0 = 自动（按 CPU 核数预留一核）。
+pub const SHERPA_NUM_THREADS: &str = "tts.sherpa_num_threads";
+
 // ========== TTS 云端语音克隆(CosyVoice) ==========
 pub const COSYVOICE_API_KEY: &str = "tts.cosyvoice_api_key";
 pub const COSYVOICE_MODELS: &str = "tts.cosyvoice_models";

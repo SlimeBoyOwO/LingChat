@@ -109,8 +109,7 @@ pub async fn prepare_file_import_source(
 /// Strip path separators and characters that are illegal on FAT/NTFS or
 /// could cause traversal problems. Returns `None` if the cleaned result is
 /// empty (caller should fall back to a default extension).
-#[allow(dead_code)] // only invoked from the `#[cfg(target_os = "android")]` arm above
-fn sanitize_staged_filename(raw: &str) -> Option<String> {
+pub(crate) fn sanitize_staged_filename(raw: &str) -> Option<String> {
     let basename = raw
         .rsplit_once(['/', '\\'])
         .map(|(_, name)| name)
