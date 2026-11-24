@@ -82,13 +82,17 @@ public final class Navigator {
             return status;
         }
         if (++ticks > MAX_TICKS) {
+            // 跑跳的腿不退出就一直关着重力：人会在半空停住
+            endLeg(maid);
             return fail(NavFailure.TIMEOUT);
         }
         if (restTicks > 0) {
             restTicks--;
             return status;
         }
-        if (satisfied(maid)) {
+        // 空中不算到站：跑跳弧线经过目标上方时也算得着，但人还没落地
+        if (maid.onGround() && satisfied(maid)) {
+            endLeg(maid);
             return arrive(maid);
         }
         if (leg == null) {
@@ -135,14 +139,19 @@ public final class Navigator {
 
     /** 收手：停下、还重力，垫出来的方块由调用方决定拆不拆。 */
     public void cancel(EntityMaid maid) {
-        if (leg != null) {
-            leg.exit(this, maid);
-            leg = null;
-        }
+        endLeg(maid);
         queued = null;
         restTicks = 0;
         MaidActuator.stopWalking(maid);
         status = Status.FAILED;
+    }
+
+    /** 结束当前这条腿：跑跳的退出会把重力还回来，别把人留在半空。 */
+    private void endLeg(EntityMaid maid) {
+        if (leg != null) {
+            leg.exit(this, maid);
+            leg = null;
+        }
     }
 
     public Status status() {
