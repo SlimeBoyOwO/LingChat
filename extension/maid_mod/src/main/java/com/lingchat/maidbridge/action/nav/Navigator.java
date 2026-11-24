@@ -1,29 +1,24 @@
 package com.lingchat.maidbridge.action.nav;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
-import com.lingchat.maidbridge.action.SearchBudget;
 import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.place.Placement;
-import java.util.ArrayList;
 import java.util.List;
-import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
-import net.minecraft.core.Direction;
 import net.minecraft.server.level.ServerLevel;
-import net.minecraft.world.InteractionHand;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.item.Item;
-import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.context.BlockPlaceContext;
-import net.minecraft.world.level.Level;
 import net.minecraft.world.phys.Vec3;
 
 /**
- * 把女仆送到目标位置：走、跳下、跑跳、垫脚、搭路、出屋，按环境和预算自己挑。
+ * 把女仆送到目标位置：走、跳下、跑跳、垫脚、搭路、出屋，按环境和额度自己挑。
  *
  * <p>调用方只给目标与边界（不许垫哪里、料从哪来），不关心用哪种手段。每一次目标是一个
  * 小状态机：没有腿在跑就重新规划，选中一条腿就跑到它结束；腿失败记进记忆，换下一种。
  * 腿的进出一律走 enter / tick / exit，跑跳结束会还重力，垫脚结束会记账。
+ *
+ * <p>规划由 {@link RouteSearch} 在落脚点图上一次算出一条动作序列：走、跳下、跑跳、
+ * 搭一格、垫一格各有自己的代价，搜索自己组合，不再按写死的顺序逐个试。序列一段一段
+ * 执行，哪一段失败就整条作废重算。
  */
 public final class Navigator {
     public enum Status {
@@ -34,10 +29,12 @@ public final class Navigator {
 
     /** 一次目标最多换这么多次腿都不成功，就判定走不通。 */
     private static final int MAX_LEG_FAILURES = 5;
-    /** 一次目标最多耗这么久（约半分钟）。 */
-    private static final int MAX_TICKS = 600;
-    /** 连续这么多 tick 一个可行的动作都排不出来，就判定走不通。 */
-    private static final int MAX_IDLE_TICKS = 40;
+    /** 离目标一直不再靠近这么久（约四十五秒）才判超时：绕路、搭一段再走回来都不算白耗。 */
+    private static final int NO_PROGRESS_TICKS = 900;
+    /** 距离比上次的最好成绩近了这么多，才算有进展。 */
+    private static final double PROGRESS_STEP = 0.5;
+    /** 同一个目标最多从高处直落几次。 */
+    private static final int MAX_DROPS = 2;
     /** 原地起跳的初速：与玩家跳跃一致，刚好够她升过一整格。 */
     private static final double JUMP_POWER = 0.42;
     /** 起跳后最多等这么久：没离地、也没把方块补进去就放手。 */
@@ -59,11 +56,18 @@ public final class Navigator {
     private NavFailure lastLegFailure = NavFailure.NO_PATH;
     private BlockPos stand;
     private String phase = "规划";
-    private int ticks;
     private int legFailures;
-    private int idleTicks;
     private int restTicks;
     private int settleWaits;
+
+    /** 正在算的路线图搜索；算到路线就换成下面那一串动作。 */
+    private RouteSearch search;
+    /** 已经算好的动作序列，一段一段执行；失败或走完就丢掉重算。 */
+    private List<RouteSearch.Step> route = List.of();
+    private int routeAt;
+    /** 有进展的判据：离目标最近到过哪里，以及多久没再靠近。 */
+    private double bestDistance = Double.MAX_VALUE;
+    private int stillTicks;
 
     private Navigator(NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
         this.goal = goal;
@@ -77,14 +81,9 @@ public final class Navigator {
         return new Navigator(goal, policy, memory, book);
     }
 
-    public Status tick(EntityMaid maid, SearchBudget budget) {
+    public Status tick(EntityMaid maid) {
         if (status != Status.RUNNING) {
             return status;
-        }
-        if (++ticks > MAX_TICKS) {
-            // 跑跳的腿不退出就一直关着重力：人会在半空停住
-            endLeg(maid);
-            return fail(NavFailure.TIMEOUT);
         }
         if (restTicks > 0) {
             restTicks--;
@@ -95,8 +94,12 @@ public final class Navigator {
             endLeg(maid);
             return arrive(maid);
         }
+        if (stalled(maid)) {
+            endLeg(maid);
+            return fail(NavFailure.TIMEOUT);
+        }
         if (leg == null) {
-            plan(maid, budget);
+            plan(maid);
             if (status != Status.RUNNING) {
                 return status;
             }
@@ -106,13 +109,9 @@ public final class Navigator {
                 leg.enter(this, maid);
             }
             if (leg == null) {
-                // 本 tick 一个可行的动作都没排出来：等几 tick；一直排不出来就是走不通
-                if (++idleTicks > MAX_IDLE_TICKS) {
-                    return fail(canJumpHere(maid) ? NavFailure.NO_STAND : NavFailure.NO_HEADROOM);
-                }
+                // 路线还在算：这个 tick 先站着，不算空转
                 return status;
             }
-            idleTicks = 0;
         }
         Leg.Outcome outcome = leg.tick(this, maid);
         if (outcome == Leg.Outcome.RUNNING) {
@@ -122,8 +121,9 @@ public final class Navigator {
         leg = null;
         finished.exit(this, maid);
         if (outcome == Leg.Outcome.FAILED) {
-            if (++legFailures > MAX_LEG_FAILURES) {
-                return fail(lastLegFailure);
+            moveFailed(lastLegFailure);
+            if (status != Status.RUNNING) {
+                return status;
             }
         } else {
             legFailures = 0;
@@ -132,7 +132,6 @@ public final class Navigator {
             leg = queued;
             queued = null;
             leg.enter(this, maid);
-            idleTicks = 0;
         }
         return status;
     }
@@ -141,6 +140,9 @@ public final class Navigator {
     public void cancel(EntityMaid maid) {
         endLeg(maid);
         queued = null;
+        search = null;
+        route = List.of();
+        routeAt = 0;
         restTicks = 0;
         MaidActuator.stopWalking(maid);
         status = Status.FAILED;
@@ -199,6 +201,18 @@ public final class Navigator {
         return status;
     }
 
+    /**
+     * 这条腿没成：整条路线作废，下一 tick 从她此刻的位置重算；连续失败太多次才判死。
+     */
+    private void moveFailed(NavFailure why) {
+        lastLegFailure = why;
+        route = List.of();
+        routeAt = 0;
+        if (++legFailures > MAX_LEG_FAILURES) {
+            fail(why);
+        }
+    }
+
     private boolean satisfied(EntityMaid maid) {
         if (!(goal instanceof NavGoal.Stand target)) {
             return false;
@@ -208,59 +222,89 @@ public final class Navigator {
         return !here.equals(target.target()) && target.canActFrom().test(here);
     }
 
-    /** 没有腿在跑时重新规划：按由便宜到贵的顺序挑一种手段。 */
-    private void plan(EntityMaid maid, SearchBudget budget) {
+    /**
+     * 离目标一直没更近才算超时。
+     *
+     * <p>绕路、从屋外爬上去、先搭一段再走回来，距离都可能一时变远；只盯着「最近到过
+     * 哪里」，只要她在靠近就不打断。
+     */
+    private boolean stalled(EntityMaid maid) {
+        if (!(goal instanceof NavGoal.Stand target)) {
+            return false;
+        }
+        double distance = maid.position().distanceToSqr(Vec3.atCenterOf(target.target()));
+        if (distance < bestDistance - PROGRESS_STEP) {
+            bestDistance = distance;
+            stillTicks = 0;
+            return false;
+        }
+        return ++stillTicks > NO_PROGRESS_TICKS;
+    }
+
+    /** 没有腿在跑时推进规划：先续上算好的路线，再不行就重算一次。 */
+    private void plan(EntityMaid maid) {
         phase = "规划";
         if (!(maid.level() instanceof ServerLevel level)) {
             fail(NavFailure.NO_STAND);
             return;
         }
-        if (!maid.blockPosition().equals(memory.searchedFrom)) {
-            memory.searchedFrom = maid.blockPosition().immutable();
-            memory.unreachable.clear();
-        }
         if (goal instanceof NavGoal.Settle) {
             planSettle(maid, level);
             return;
         }
+        // 上一条路线还没走完：接着执行下一段，不必每走一步都重算
+        if (routeAt < route.size()) {
+            execute(maid, route.get(routeAt++));
+            return;
+        }
+        route = List.of();
+        routeAt = 0;
         NavGoal.Stand target = (NavGoal.Stand) goal;
-        BlockPos pos = target.target();
-        BlockPos here = maid.blockPosition();
+        if (search == null) {
+            search = RouteSearch.start(
+                    new RouteView(maid, target, policy, memory),
+                    maid.blockPosition(), target.target(), limits());
+        }
+        RouteSearch.State state = search.step();
+        if (state == RouteSearch.State.SEARCHING) {
+            return;
+        }
+        if (state == RouteSearch.State.EXHAUSTED) {
+            search = null;
+            fail(canJumpHere(maid) ? NavFailure.NO_STAND : NavFailure.NO_HEADROOM);
+            return;
+        }
+        route = search.route();
+        search = null;
+        if (route.isEmpty()) {
+            fail(NavFailure.NO_STAND);
+            return;
+        }
+        execute(maid, route.get(routeAt++));
+    }
 
-        // 目标明显在下面：先跳下去落到地面，再从地面找站位
-        if (pos.getY() <= here.getY() - 2 && dropDown(maid, pos)) {
-            return;
+    /** 这一次目标还剩多少额度可以动地形。 */
+    private RouteSearch.Limits limits() {
+        return new RouteSearch.Limits(
+                Math.max(0, ScaffoldRules.MAX_BLOCKS - book.size()),
+                Math.max(0, ScaffoldRules.MAX_STEPS - memory.steps),
+                Math.max(0, ScaffoldRules.MAX_BRIDGE - memory.bridges),
+                Math.max(0, MAX_DROPS - memory.drops));
+    }
+
+    /** 执行路线的一段：走、跳、搭、垫，或者原地起跳。 */
+    private void execute(EntityMaid maid, RouteSearch.Step step) {
+        switch (step.kind()) {
+            case WALK -> startWalk(maid, step.to());
+            case HOP -> hop(maid, step.to(), ParkourRules.MAX_FALL, "跑跳过缺口");
+            case DROP -> {
+                memory.drops++;
+                hop(maid, step.to(), ParkourRules.DEEP_FALL, "跳下");
+            }
+            case BRIDGE -> bridge(maid, step.to());
+            case RISE -> rise(maid, step);
+            case PILLAR -> pillar(maid);
         }
-        // 先找一个站得住、又能对它动手的位置走过去
-        BlockPos found = StandSearch.forBuilding(
-                maid, pos, policy.built(), memory.triedStands, memory.unreachable,
-                target.canActFrom(), budget);
-        if (found != null) {
-            startWalk(maid, found);
-            return;
-        }
-        // 走不过去：跑跳、平着搭路、垫脚、出屋，按这个顺序试
-        if (hopTo(maid, target)) {
-            return;
-        }
-        if (bridgeToward(maid, pos)) {
-            return;
-        }
-        if (stepUp(maid, target)) {
-            return;
-        }
-        // 站位搜索把这一 tick 的额度用完了：下个 tick 接着找，别急着判死
-        if (budget.spent()) {
-            return;
-        }
-        if (stageOutside(maid, pos, budget)) {
-            return;
-        }
-        // 站在自己垫的方块上还是找不到路：先跳回地面重来
-        if (book.standingOn(maid) && dropDown(maid, pos)) {
-            return;
-        }
-        fail(canJumpHere(maid) ? NavFailure.NO_STAND : NavFailure.NO_HEADROOM);
     }
 
     /** 收工：走到实地上，把垫脚拆净。 */
@@ -294,231 +338,65 @@ public final class Navigator {
         queued = next;
     }
 
-    /** 目标下面两格以上：跳过缺口落到附近地面，再从地面重新找路。 */
-    private boolean dropDown(EntityMaid maid, BlockPos target) {
-        if (leg != null || !maid.onGround() || memory.drops >= 2) {
-            return false;
-        }
-        Level level = maid.level();
-        if (memory.hopUntil > level.getGameTime()) {
-            return false;
-        }
-        Predicate<BlockPos> landing = spot -> spot.getY() <= target.getY() + 1
-                && Math.abs(spot.getX() - target.getX()) <= 4
-                && Math.abs(spot.getZ() - target.getZ()) <= 4
-                && !book.contains(spot.below());
-        List<BlockPos> chain = MaidParkour.planTo(
-                maid, memory.triedStands, landing, ParkourRules.DEEP_FALL);
-        if (chain.isEmpty()) {
-            memory.hopUntil = level.getGameTime() + 40;
-            return false;
+    /** 跑跳或直落：一段弧线过去。 */
+    private void hop(EntityMaid maid, BlockPos to, int maxFall, String label) {
+        MaidParkour.Runner runner = new MaidParkour.Runner(maid, List.of(to), maxFall);
+        if (runner.failed()) {
+            memory.triedStands.add(to);
+            moveFailed(NavFailure.NO_PATH);
+            return;
         }
         stand = null;
-        MaidParkour.Runner runner = new MaidParkour.Runner(maid, chain, ParkourRules.DEEP_FALL);
-        if (runner.failed()) {
-            memory.triedStands.addAll(chain);
-            memory.hopUntil = level.getGameTime() + 40;
-            return false;
-        }
-        memory.drops++;
-        // 落到地面以后，从高处试出来的那批站位都不作数了，重新找
-        memory.triedStands.clear();
-        push(new HopLeg(runner, "跳下"), "跳过缺口落到地面");
-        return true;
+        push(new HopLeg(runner, label), label);
     }
 
-    /** 缺口另一头够得着、又站得住：先试试跑跳过去。 */
-    private boolean hopTo(EntityMaid maid, NavGoal.Stand target) {
-        if (leg != null || !maid.onGround() || memory.hopUntil > maid.level().getGameTime()) {
-            return false;
-        }
-        int maxFall = ParkourRules.MAX_FALL;
-        List<BlockPos> chain = MaidParkour.planTo(
-                maid, memory.triedStands, target.canActFrom(), maxFall);
-        if (chain.isEmpty() && maid.getY() > target.target().getY() + ParkourRules.MAX_FALL) {
-            // 高处够不到下面的站位：建筑模式免摔伤，直接从屋檐跳下去
-            maxFall = ParkourRules.DEEP_FALL;
-            chain = MaidParkour.planTo(maid, memory.triedStands, target.canActFrom(), maxFall);
-        }
-        if (chain.isEmpty()) {
-            memory.hopUntil = maid.level().getGameTime() + 40;
-            return false;
-        }
-        stand = null;
-        MaidParkour.Runner runner = new MaidParkour.Runner(maid, chain, maxFall);
-        if (runner.failed()) {
-            memory.triedStands.addAll(chain);
-            memory.hopUntil = maid.level().getGameTime() + 40;
-            return false;
-        }
-        push(new HopLeg(runner, "跑跳过缺口"), "跑跳过缺口");
-        return true;
-    }
-
-    /**
-     * 平着搭路：目标与脚下齐平、中间又走不过去时，就地铺一格、走过去，再接着铺。
-     *
-     * <p>前面一格本来就站得住就直接走过去，不多放一块。
-     */
-    private boolean bridgeToward(EntityMaid maid, BlockPos target) {
-        BlockPos feet = maid.blockPosition();
-        int dx = target.getX() - feet.getX();
-        int dz = target.getZ() - feet.getZ();
-        if (!ScaffoldRules.mayBridge(target.getY() - feet.getY())
-                || Math.abs(dx) + Math.abs(dz) < 2) {
-            return false;
-        }
-        if (memory.bridges >= ScaffoldRules.MAX_BRIDGE
-                || !ScaffoldRules.nearEnough(dx, dz)
-                || book.size() >= ScaffoldRules.MAX_BLOCKS
-                || !canJumpHere(maid)) {
-            return false;
-        }
-        Direction step = ScaffoldRules.alongX(dx, dz)
-                ? Direction.getNearest(dx, 0, 0)
-                : Direction.getNearest(0, 0, dz);
-        BlockPos ahead = feet.relative(step);
-        // 前面是目标格或图纸要的位置就不能站进去：那是要放方块的地方
-        if (ahead.equals(target) || !policy.canBuildOn(ahead)) {
-            return false;
-        }
-        if (memory.triedStands.contains(ahead)) {
-            return false;
-        }
-        if (!Terrain.free(maid.level(), ahead)
-                || !Terrain.free(maid.level(), ahead.above())
-                || Bodies.self(ahead, maid)
-                || Bodies.other(maid.level(), ahead, maid)) {
-            return false;
-        }
-        if (Terrain.solid(maid.level(), ahead.below())) {
-            startWalk(maid, ahead);
-            return true;
-        }
-        // 前面悬空：在它下面铺一块，走过去还是同一个高度
-        BlockPos floor = ahead.below();
-        if (!policy.canBuildOn(floor)
-                || !Terrain.free(maid.level(), floor)
-                || !Terrain.reachable(maid, floor)
-                || Bodies.other(maid.level(), floor, maid)) {
-            return false;
-        }
+    /** 平着搭一格：在下一格脚底补方框，走过去。 */
+    private void bridge(EntityMaid maid, BlockPos to) {
         Item item = ScaffoldBook.item(maid, policy.consumeMaterials());
         if (item == null
-                || !book.put((ServerLevel) maid.level(), maid, floor, item,
+                || !book.put((ServerLevel) maid.level(), maid, to.below(), item,
                         policy.consumeMaterials())) {
-            return false;
+            memory.badBlocks.add(to.below());
+            moveFailed(NavFailure.NO_STAND);
+            return;
         }
         memory.bridges++;
-        startWalk(maid, ahead);
-        return true;
+        startWalk(maid, to);
     }
 
-    /**
-     * 够不着时在她脚下垫一格：升上去、或者平着挪到能放的位置。
-     *
-     * <p>托底那块先垫：顶块立在一块空地上放不住，得有下面的方块给它当依托。
-     * 四面没有能垫的位置时改原地起跳。
-     */
-    private boolean stepUp(EntityMaid maid, NavGoal.Stand target) {
-        if (memory.steps >= ScaffoldRules.MAX_STEPS
-                || book.size() >= ScaffoldRules.MAX_BLOCKS) {
-            return false;
-        }
-        BlockPos feet = maid.blockPosition();
-        BlockPos pos = target.target();
-        int rise = pos.getY() - feet.getY();
-        if (!ScaffoldRules.mayStep(rise)) {
-            return false;
-        }
-        // 头顶被方块压住时她既跳不起来也迈不上去：先走开，别在原地耗
-        if (!canJumpHere(maid)) {
-            return false;
-        }
-        if (!ScaffoldRules.nearEnough(pos.getX() - feet.getX(), pos.getZ() - feet.getZ())) {
-            return false;
-        }
-        Item item = ScaffoldBook.item(maid, policy.consumeMaterials());
-        if (item == null) {
-            return false;
-        }
-        Vec3 goalCenter = Vec3.atCenterOf(pos);
-        double current = Vec3.atBottomCenterOf(feet).distanceToSqr(goalCenter);
-        // 目标就在正上方：原地跳起来把脚下垫高
-        if (rise >= 2 && pos.getX() == feet.getX() && pos.getZ() == feet.getZ()
-                && jumpUp(maid, feet, pos, item)) {
-            return true;
-        }
-        BlockPos bestTop = null;
-        boolean bestSupportReady = false;
-        double bestCost = Double.MAX_VALUE;
-        BlockPos placeTop = null;
-        boolean placeSupportReady = false;
-        double placeCost = Double.MAX_VALUE;
-        // 只往上下左右四个方向垫：斜着放她会从斜角起跳，被旁边的方块一挡就落回原高度
-        for (Direction side : Direction.Plane.HORIZONTAL) {
-            BlockPos top = feet.relative(side);
-            // 站到这一格去等于站进目标格（或者身体探进目标格）：那正是现在要躲开的位置
-            if (top.equals(pos) || Bodies.selfAt(top.above(), pos, maid)) {
-                continue;
-            }
-            if (!stepRoom(maid, top)) {
-                continue;
-            }
-            double score = Vec3.atBottomCenterOf(top.above()).distanceToSqr(goalCenter);
-            if (ScaffoldRules.mustApproach(rise) && score > current - 0.5) {
-                continue;
-            }
-            BlockPos support = top.below();
-            boolean supportReady = Terrain.solid(maid.level(), support);
-            if (!supportReady) {
-                if (!policy.canBuildOn(support) || !Terrain.free(maid.level(), support)
-                        || Placement.context(maid, new ItemStack(item), support, null, null, null)
-                                == null
-                        || !Placement.seesNow(maid, support, null)) {
-                    continue;
-                }
-            } else if (!Placement.seesNow(maid, top, null)) {
-                // 垫脚块也得是她看得见的地方：看不见就换一侧
-                continue;
-            }
-            // 底下已经实心就省下一块料，同分时优先
-            double cost = score + (supportReady ? 0.0 : 0.5);
-            if (target.canActFrom().test(top.above()) && cost < placeCost) {
-                placeCost = cost;
-                placeTop = top;
-                placeSupportReady = supportReady;
-            }
-            if (cost < bestCost) {
-                bestCost = cost;
-                bestTop = top;
-                bestSupportReady = supportReady;
-            }
-        }
-        // 垫完就能动手的站位优先：目标与她齐平时，这一格就是为了站过去
-        if (placeTop != null) {
-            bestTop = placeTop;
-            bestSupportReady = placeSupportReady;
-        }
-        if (bestTop == null) {
-            return jumpUp(maid, feet, pos, item);
-        }
+    /** 垫一格：先把托底补上，再放顶块，然后走上去。 */
+    private void rise(EntityMaid maid, RouteSearch.Step step) {
         ServerLevel level = (ServerLevel) maid.level();
-        if (!bestSupportReady) {
-            if (!book.put(level, maid, bestTop.below(), item, policy.consumeMaterials())) {
-                return false;
-            }
-            // 托底只是前半个动作，升高数等到顶块放上去才算
-            queued = new StepLeg(bestTop, item);
-            phase = "垫脚：放托底";
-            return true;
+        Item item = ScaffoldBook.item(maid, policy.consumeMaterials());
+        BlockPos block = step.block();
+        if (item == null) {
+            moveFailed(NavFailure.NO_STAND);
+            return;
         }
-        if (!book.put(level, maid, bestTop, item, policy.consumeMaterials())) {
-            return false;
+        if (step.support()
+                && !book.put(level, maid, block.below(), item, policy.consumeMaterials())) {
+            memory.badBlocks.add(block.below());
+            moveFailed(NavFailure.NO_STAND);
+            return;
+        }
+        if (!book.put(level, maid, block, item, policy.consumeMaterials())) {
+            memory.badBlocks.add(block);
+            moveFailed(NavFailure.NO_STAND);
+            return;
         }
         memory.steps++;
-        startWalk(maid, bestTop.above());
-        return true;
+        startWalk(maid, step.to());
+    }
+
+    /** 原地起跳，把脚下这一格补上。 */
+    private void pillar(EntityMaid maid) {
+        BlockPos feet = maid.blockPosition().immutable();
+        Item item = ScaffoldBook.item(maid, policy.consumeMaterials());
+        NavGoal.Stand target = (NavGoal.Stand) goal;
+        if (item == null || !jumpUp(maid, feet, target.target(), item)) {
+            memory.badBlocks.add(feet);
+            moveFailed(NavFailure.NO_STAND);
+        }
     }
 
     /** 原地跳起来把脚下的方块补上，落下来就升了一整格。 */
@@ -545,40 +423,11 @@ public final class Navigator {
         return true;
     }
 
-    /** 在屋里被天花板顶住时，先去附近一处露天的地方，再沿外墙往上垫。 */
-    private boolean stageOutside(EntityMaid maid, BlockPos target, SearchBudget budget) {
-        if (maid.level().canSeeSky(maid.blockPosition().above())) {
-            return false;
-        }
-        BlockPos stage = StandSearch.stageFor(maid, target, budget);
-        if (stage == null) {
-            return false;
-        }
-        startWalk(maid, stage);
-        return true;
-    }
-
     /** 她此刻能不能起跳：脚与头两格之外，头顶上面还要再让出一格。 */
     private boolean canJumpHere(EntityMaid maid) {
         BlockPos feet = maid.blockPosition();
         return Terrain.free(maid.level(), feet.above())
                 && Terrain.free(maid.level(), feet.above(2));
-    }
-
-    /** 这一格能不能当垫脚石：位置空着、头顶有地方站、不在图纸里、她伸手够得着。 */
-    private boolean stepRoom(EntityMaid maid, BlockPos top) {
-        if (!policy.canBuildOn(top) || !Terrain.free(maid.level(), top)) {
-            return false;
-        }
-        // 站上去要两格高：脚一格、头一格，否则会被房顶卡住
-        if (!Terrain.free(maid.level(), top.above())
-                || !Terrain.free(maid.level(), top.above(2))) {
-            return false;
-        }
-        return !Bodies.self(top, maid)
-                && !Bodies.other(maid.level(), top, maid)
-                && !Bodies.other(maid.level(), top.above(), maid)
-                && Terrain.reachable(maid, top);
     }
 
     /** 收工时去哪站着：最近的一格能站人、又不踩着垫脚块的地面。 */
@@ -656,12 +505,6 @@ public final class Navigator {
         public Outcome tick(Navigator nav, EntityMaid maid) {
             if (maid.blockPosition().equals(to)) {
                 MaidActuator.stopWalking(maid);
-                // 人进了格子不代表站得住：半个身子还压在目标格上时，目标照样判成自己占着。
-                // 这种站位记下来，下一轮换一个，否则会在同一格上反复走。
-                if (goal instanceof NavGoal.Stand && !satisfied(maid)) {
-                    memory.triedStands.add(to);
-                    return Outcome.DONE;
-                }
                 stand = to;
                 return Outcome.DONE;
             }
@@ -711,7 +554,6 @@ public final class Navigator {
             runner.tick();
             if (runner.failed()) {
                 memory.triedStands.addAll(runner.chain());
-                memory.hopUntil = maid.level().getGameTime() + 40;
                 lastLegFailure = NavFailure.NO_PATH;
                 return Outcome.FAILED;
             }
@@ -732,32 +574,6 @@ public final class Navigator {
         @Override
         public List<BlockPos> chain() {
             return runner.chain();
-        }
-    }
-
-    /** 垫脚：托底已经放好，把顶块放上再走上去。 */
-    private final class StepLeg implements Leg {
-        private final BlockPos top;
-        private final Item item;
-
-        private StepLeg(BlockPos top, Item item) {
-            this.top = top;
-            this.item = item;
-        }
-
-        @Override
-        public Outcome tick(Navigator nav, EntityMaid maid) {
-            if (memory.steps >= ScaffoldRules.MAX_STEPS
-                    || !stepRoom(maid, top)
-                    || !book.put((ServerLevel) maid.level(), maid, top, item,
-                            policy.consumeMaterials())) {
-                lastLegFailure = NavFailure.NO_STAND;
-                return Outcome.FAILED;
-            }
-            memory.steps++;
-            queued = new WalkLeg(top.above());
-            phase = "垫脚后走上新格";
-            return Outcome.DONE;
         }
     }
 
@@ -793,6 +609,7 @@ public final class Navigator {
             }
             if (!book.put((ServerLevel) maid.level(), maid, pos, item,
                     policy.consumeMaterials())) {
+                memory.badBlocks.add(pos);
                 lastLegFailure = NavFailure.NO_STAND;
                 return Outcome.FAILED;
             }

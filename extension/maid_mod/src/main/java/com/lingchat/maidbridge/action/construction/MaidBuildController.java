@@ -7,7 +7,6 @@ import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
-import com.lingchat.maidbridge.action.SearchBudget;
 import com.lingchat.maidbridge.action.construction.BuildRules.CellState;
 import com.lingchat.maidbridge.action.construction.BuildRules.Failure;
 import com.lingchat.maidbridge.action.construction.BuildRules.PassStats;
@@ -75,8 +74,6 @@ public final class MaidBuildController {
     static final int HOLD_GIVEUP_TICKS = 200;
     /** 同一格连续因为寻路没推进而停住，最多等这么久（约六秒）。 */
     static final int MAX_CELL_WAITS = 120;
-    /** 每一 tick 最多算几次寻路：屋里屋外不通时，一次全算完会把服务端卡住。 */
-    static final int PATHS_PER_TICK = 6;
     /** 调试时多久算一次「下一块放哪」：每格都要验视线，不能每 tick 都算。 */
     static final int NEXT_PLACE_TICKS = 10;
     /** 收尾时走去一个落脚点、拆净垫脚，最多等这么久。 */
@@ -158,8 +155,6 @@ public final class MaidBuildController {
         final Set<BlockPos> blueprint = new HashSet<>();
         /** 已经做过一轮补试：剩下的格子再不行就真有定论了。 */
         boolean retried;
-        /** 这一 tick 还剩几次寻路；每 tick 开头重新发一份。 */
-        SearchBudget search = new SearchBudget(0);
         /** 正在处理的那一格：换了站位、退了再试时都先盯着它，别扫到别的格子去。 */
         Cell active;
         /** 这一层的顺序该按她此刻的位置重排了：换层、重开一遍时各排一次。 */
@@ -414,8 +409,6 @@ public final class MaidBuildController {
             finish(server, run, "timeout", "盖了这么久还没盖完，先停下了");
             return;
         }
-        // 每个 tick 只给这么多寻路：屋里屋外不通时，逐格逐候选算路会把服务端拖住
-        run.search = new SearchBudget(PATHS_PER_TICK);
         if (run.nextPlaceIn > 0) {
             run.nextPlaceIn--;
         }
@@ -440,8 +433,8 @@ public final class MaidBuildController {
         if (next(run, maid)) {
             return;
         }
-        if (run.search.spent()) {
-            stop("额度用完");
+        // 这一 tick 的扫描额度用完、本层还有格子没看过：下个 tick 接着扫，别当成整层扫完
+        if (run.cursor < run.layerEnd) {
             return;
         }
         endPass(server, run, measurePass(run));
@@ -453,7 +446,7 @@ public final class MaidBuildController {
         if (nav == null) {
             return;
         }
-        Navigator.Status status = nav.tick(maid, run.search);
+        Navigator.Status status = nav.tick(maid);
         nav.cleanScaffold(maid);
         run.stand = nav.stand();
         if (status == Navigator.Status.RUNNING) {
@@ -493,7 +486,7 @@ public final class MaidBuildController {
     static void settling(MinecraftServer server, Run run, EntityMaid maid) {
         run.doneTicks++;
         if (run.nav != null) {
-            run.nav.tick(maid, run.search);
+            run.nav.tick(maid);
             run.nav.cleanScaffold(maid);
             run.stand = run.nav.stand();
             if (run.nav.status() == Navigator.Status.RUNNING
@@ -621,8 +614,7 @@ public final class MaidBuildController {
                 + "｜行 " + run.cursor + "/" + run.layerStart + "-" + run.layerEnd
                 + "｜手 " + hand
                 + "｜垫 " + run.book.size()
-                + "｜心跳 " + run.ticks
-                + "｜额度 " + run.search.left() + "/" + run.search.total();
+                + "｜心跳 " + run.ticks;
     }
 
 

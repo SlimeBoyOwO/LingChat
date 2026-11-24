@@ -155,11 +155,10 @@ final class CellFlow {
                 cell.propped = false;
                 cell.navFails = 0;
                 cell.nav.triedStands.clear();
-                cell.nav.unreachable.clear();
+                cell.nav.badBlocks.clear();
                 cell.nav.steps = 0;
                 cell.nav.bridges = 0;
                 cell.nav.drops = 0;
-                cell.nav.hopUntil = 0;
                 yield next;
             }
             case PENDING, DEFERRED -> next;
