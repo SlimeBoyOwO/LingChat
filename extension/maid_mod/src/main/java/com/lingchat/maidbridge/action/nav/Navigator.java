@@ -3,6 +3,8 @@ package com.lingchat.maidbridge.action.nav;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import java.util.List;
+import java.util.Set;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
@@ -48,6 +50,8 @@ public final class Navigator {
     private final NavPolicy policy;
     private final NavMemory memory;
     private final ScaffoldBook book;
+    /** 这次目标能不能动土：玩家身边这类「过来」不该在人家脚边搭桥。 */
+    private final boolean canBuild;
 
     private Leg leg;
     private Leg queued;
@@ -69,16 +73,28 @@ public final class Navigator {
     private double bestDistance = Double.MAX_VALUE;
     private int stillTicks;
 
-    private Navigator(NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
+    private Navigator(
+            NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book, boolean canBuild) {
         this.goal = goal;
         this.policy = policy;
         this.memory = memory;
         this.book = book;
+        this.canBuild = canBuild;
     }
 
     public static Navigator start(
             NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
-        return new Navigator(goal, policy, memory, book);
+        return new Navigator(goal, policy, memory, book, true);
+    }
+
+    /**
+     * 只走不垫：图上的搭路与垫脚边直接不连。
+     *
+     * <p>走到玩家身边这类目标用它可以复用同一套图搜索，又不会在她脚边动土。
+     */
+    public static Navigator walkOnly(NavGoal goal, NavMemory memory) {
+        return new Navigator(
+                goal, new NavPolicy(Set.of(), Set.of(), true), memory, new ScaffoldBook(), false);
     }
 
     public Status tick(EntityMaid maid) {
@@ -214,12 +230,35 @@ public final class Navigator {
     }
 
     private boolean satisfied(EntityMaid maid) {
+        BlockPos here = maid.blockPosition();
+        if (goal instanceof NavGoal.Near near) {
+            return here.distManhattan(near.target()) <= near.closeEnough();
+        }
         if (!(goal instanceof NavGoal.Stand target)) {
             return false;
         }
-        BlockPos here = maid.blockPosition();
         // 站在目标格里不算到：那一格是要放东西的地方
         return !here.equals(target.target()) && target.canActFrom().test(here);
+    }
+
+    /** 这一次目标要去的格子：站位是目标本身，走近是玩家所在那一格。 */
+    private BlockPos goalTarget() {
+        if (goal instanceof NavGoal.Stand stand) {
+            return stand.target();
+        }
+        if (goal instanceof NavGoal.Near near) {
+            return near.target();
+        }
+        return null;
+    }
+
+    /** 图搜索认不认这一格是终点。 */
+    private Predicate<BlockPos> goalTest() {
+        if (goal instanceof NavGoal.Stand stand) {
+            return pos -> !pos.equals(stand.target()) && stand.canActFrom().test(pos);
+        }
+        NavGoal.Near near = (NavGoal.Near) goal;
+        return pos -> pos.distManhattan(near.target()) <= near.closeEnough();
     }
 
     /**
@@ -229,10 +268,11 @@ public final class Navigator {
      * 哪里」，只要她在靠近就不打断。
      */
     private boolean stalled(EntityMaid maid) {
-        if (!(goal instanceof NavGoal.Stand target)) {
+        BlockPos target = goalTarget();
+        if (target == null) {
             return false;
         }
-        double distance = maid.position().distanceToSqr(Vec3.atCenterOf(target.target()));
+        double distance = maid.position().distanceToSqr(Vec3.atCenterOf(target));
         if (distance < bestDistance - PROGRESS_STEP) {
             bestDistance = distance;
             stillTicks = 0;
@@ -259,11 +299,15 @@ public final class Navigator {
         }
         route = List.of();
         routeAt = 0;
-        NavGoal.Stand target = (NavGoal.Stand) goal;
+        BlockPos target = goalTarget();
+        if (target == null) {
+            fail(NavFailure.NO_STAND);
+            return;
+        }
         if (search == null) {
             search = RouteSearch.start(
-                    new RouteView(maid, target, policy, memory),
-                    maid.blockPosition(), target.target(), limits());
+                    new RouteView(maid, target, goalTest(), policy, memory),
+                    maid.blockPosition(), target, limits());
         }
         RouteSearch.State state = search.step();
         if (state == RouteSearch.State.SEARCHING) {
@@ -285,6 +329,9 @@ public final class Navigator {
 
     /** 这一次目标还剩多少额度可以动地形。 */
     private RouteSearch.Limits limits() {
+        if (!canBuild) {
+            return new RouteSearch.Limits(0, 0, 0, Math.max(0, MAX_DROPS - memory.drops));
+        }
         return new RouteSearch.Limits(
                 Math.max(0, ScaffoldRules.MAX_BLOCKS - book.size()),
                 Math.max(0, ScaffoldRules.MAX_STEPS - memory.steps),
@@ -392,8 +439,8 @@ public final class Navigator {
     private void pillar(EntityMaid maid) {
         BlockPos feet = maid.blockPosition().immutable();
         Item item = ScaffoldBook.item(maid, policy.consumeMaterials());
-        NavGoal.Stand target = (NavGoal.Stand) goal;
-        if (item == null || !jumpUp(maid, feet, target.target(), item)) {
+        BlockPos target = goalTarget();
+        if (item == null || target == null || !jumpUp(maid, feet, target, item)) {
             memory.badBlocks.add(feet);
             moveFailed(NavFailure.NO_STAND);
         }

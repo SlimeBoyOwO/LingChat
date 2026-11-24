@@ -14,6 +14,10 @@ public sealed interface NavGoal {
     record Stand(BlockPos target, Predicate<BlockPos> canActFrom) implements NavGoal {
     }
 
+    /** 走到目标附近：玩家身边、某个点；到位按曼哈顿距离判，与动作状态机的口径一致。 */
+    record Near(BlockPos target, int closeEnough) implements NavGoal {
+    }
+
     /** 收工：找一处实地站好，并把自己垫的方块拆净。 */
     record Settle() implements NavGoal {
     }

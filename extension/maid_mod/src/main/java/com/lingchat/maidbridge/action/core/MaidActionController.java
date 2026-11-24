@@ -10,6 +10,9 @@ import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.nav.NavGoal;
+import com.lingchat.maidbridge.action.nav.NavMemory;
+import com.lingchat.maidbridge.action.nav.Navigator;
 import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
@@ -39,6 +42,9 @@ public final class MaidActionController {
         double distance;
         /** 探路的落点：主人一边走一边换，差得不多就不换（见 MaidActuator.scoutPoint）。 */
         BlockPos scoutPoint;
+        /** 走过去用的图搜索；目标挪了格子就换一个新的。 */
+        Navigator nav;
+        BlockPos navTarget;
 
         Run(String maidId, MaidAction action, MaidActuator.Target target) {
             this.maidId = maidId;
@@ -174,6 +180,10 @@ public final class MaidActionController {
         current = null;
         WanderGuard.clear();
         if (maid != null) {
+            if (run.nav != null) {
+                run.nav.cancel(maid);
+                run.nav = null;
+            }
             if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
             }
@@ -230,7 +240,7 @@ public final class MaidActionController {
                 } else {
                     ServerPlayer player = MaidQueries.owner(maid);
                     if (player != null) {
-                        MaidActuator.walkToPlayer(maid, player, run.action.arriveDistance());
+                        walkToPlayer(maid, run, player);
                     }
                 }
             }
@@ -254,11 +264,43 @@ public final class MaidActionController {
         }
     }
 
+    /**
+     * 走到主人身边：与施工共用同一套图搜索，只是不许动土。
+     *
+     * <p>目标取主人此刻站的格子。主人挪了格子就换一个新的寻路，从她此刻的位置重算；
+     * 走不到时挂上「走不到」的记忆，交给动作状态机在四十 tick 内如实收尾。
+     */
+    private static void walkToPlayer(EntityMaid maid, Run run, ServerPlayer player) {
+        BlockPos target = player.blockPosition();
+        if (run.nav == null || !target.equals(run.navTarget)) {
+            if (run.nav != null) {
+                run.nav.cancel(maid);
+            }
+            run.navTarget = target;
+            run.nav = Navigator.walkOnly(
+                    new NavGoal.Near(target, run.action.arriveDistance()), new NavMemory());
+            // 换了目标就把上一次的「走不到」清掉，否则动作状态机会提前收尾
+            MaidActuator.beginWalk(maid);
+        }
+        Navigator.Status status = run.nav.status();
+        if (status == Navigator.Status.RUNNING) {
+            status = run.nav.tick(maid);
+        }
+        if (status == Navigator.Status.FAILED) {
+            MaidActuator.markUnreachable(maid);
+        }
+    }
+
     private static void finish(Run run, ActionRun.Outcome outcome, EntityMaid maid) {
         current = null;
         // 动作完了她还站在那儿：再按一小会儿她的随机游荡，等这一轮的话说完
         WanderGuard.end(run.maidId);
         if (maid != null) {
+            // 跑跳的腿不退出就一直关着重力：先让寻路收手，再停走路
+            if (run.nav != null) {
+                run.nav.cancel(maid);
+                run.nav = null;
+            }
             // 躺着收尾时要真的把她扶起来（床上的也要放开床位）
             if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
