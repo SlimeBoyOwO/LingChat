@@ -53,7 +53,7 @@
         @mouseleave="handleMouseLeave"
       >
         <!-- 主菜单 -->
-        <Transition name="slide-left">
+        <Transition :name="menuTransition">
           <MainMenuOptions
             v-if="menuState === 'main'"
             @start-game="showGameModeMenu"
@@ -64,27 +64,25 @@
         </Transition>
 
         <!-- 游戏模式菜单 -->
-        <Transition name="slide-right">
+        <Transition :name="menuTransition">
           <GameModeOptions
             v-if="menuState === 'gameMode'"
             @back="backToMainMenu"
             @open-scripts="showScriptModeMenu"
-            :loadingScripts="loadingScripts"
-            :scripts="scripts"
           />
         </Transition>
 
         <!-- 剧本模式菜单 -->
-        <Transition name="slide-right">
+        <Transition :name="menuTransition">
           <ScriptModeOptions
             v-if="menuState === 'scriptMode'"
-            @back="showGameModeMenu"
+            @back="backToGameModeMenu"
             :scripts="scripts"
           />
         </Transition>
 
         <!-- 创意工坊菜单 -->
-        <Transition name="slide-right">
+        <Transition :name="menuTransition">
           <WorkshopOptions
             v-if="menuState === 'workshop'"
             @back="backToMainMenu"
@@ -128,8 +126,12 @@ const currentPage = ref("mainMenu");
 const settingsMounted = ref(false);
 let settingsMountFrame: number | null = null;
 const menuState = ref<"main" | "gameMode" | "scriptMode" | "workshop">("main");
+// 菜单切换方向：决定旧页往哪边出、新页从哪边进。前进＝旧页左出、新页右进；
+// 后退＝旧页右出、新页左进。方向必须由导航动作决定而非页面固定，
+// 否则返回时两级菜单的进出方向会对不上
+const navDirection = ref<"forward" | "backward">("forward");
+const menuTransition = computed(() => `slide-${navDirection.value}`);
 const scripts = ref<ScriptSummary[]>([]);
-const loadingScripts = ref(false);
 const starsEnabled = computed(() => settingsStore.mainMenuStarsEnabled);
 const meteorsEnabled = computed(() => settingsStore.mainMenuMeteorsEnabled);
 const meteorFps = computed(() => settingsStore.meteorFps);
@@ -146,20 +148,27 @@ const charRef = ref<HTMLElement | null>(null);
 const starsLayerRef = ref<HTMLElement | null>(null);
 
 /* ================== 菜单逻辑 ================== */
+function navigate(state: typeof menuState.value, direction: typeof navDirection.value) {
+  navDirection.value = direction;
+  menuState.value = state;
+}
 function showGameModeMenu() {
-  menuState.value = "gameMode";
+  navigate("gameMode", "forward");
+}
+function backToGameModeMenu() {
+  navigate("gameMode", "backward");
+}
+function backToMainMenu() {
+  navigate("main", "backward");
 }
 function handleOpenCredits() {
   router.push("/credit");
 }
-function backToMainMenu() {
-  menuState.value = "main";
-}
 function showScriptModeMenu() {
-  menuState.value = "scriptMode";
+  navigate("scriptMode", "forward");
 }
 function showWorkshopMenu() {
-  menuState.value = "workshop";
+  navigate("workshop", "forward");
 }
 function goToGithub() {
   window.open("https://github.com/SlimeBoyOwO/LingChat", "_blank");
@@ -224,7 +233,6 @@ const { handleMouseMove, handleMouseLeave } = useParallaxAnimation(
 
 // 抽取接口请求逻辑，不阻塞动画初始化
 async function fetchScripts() {
-  loadingScripts.value = true;
   try {
     scripts.value = await getScriptList();
   } catch (e) {
@@ -233,8 +241,6 @@ async function fetchScripts() {
       message: t("views.mainMenu.scriptListFailed"),
     });
     scripts.value = [];
-  } finally {
-    loadingScripts.value = false;
   }
 }
 
@@ -273,36 +279,38 @@ onMounted(() => {
 /* 菜单容器 */
 
 /* 页面切换动画 */
-.slide-left-enter-active,
-.slide-left-leave-active,
-.slide-right-enter-active,
-.slide-right-leave-active {
+/* 菜单页切换动画。前进/后退共用同一套时长与曲线，只有位移方向相反，
+   保证同一次切换里旧页和新页朝同一方向移动，不会对穿或互相追赶 */
+.slide-forward-enter-active,
+.slide-forward-leave-active,
+.slide-backward-enter-active,
+.slide-backward-leave-active {
   transition: all 0.4s cubic-bezier(0.7, 0, 0.2, 1);
 }
 
 /* Remove leaving elements from flex flow immediately to prevent layout jump；
    退场期间不再接收点击 */
-.slide-left-leave-active,
-.slide-right-leave-active {
+.slide-forward-leave-active,
+.slide-backward-leave-active {
   position: absolute;
   pointer-events: none;
 }
 
-.slide-left-enter-from,
-.slide-left-leave-to {
-  transform: translateX(-120%);
+.slide-forward-enter-from,
+.slide-backward-leave-to {
+  transform: translateX(120%);
   opacity: 0;
 }
 
-.slide-right-enter-from,
-.slide-right-leave-to {
-  transform: translateX(120%);
+.slide-forward-leave-to,
+.slide-backward-enter-from {
+  transform: translateX(-120%);
   opacity: 0;
 }
 
 /* 菜单列整体退场：观感与开始游戏进二级菜单一致地左滑淡出。
    只定义 leave 不定义 enter —— 回场时若整列也位移，会与内部菜单自身的
-   slide-left 叠加成两倍行程；即时出现，回场动感交给内部菜单与压暗层渐隐 */
+   位移叠加成两倍行程；即时出现，回场动感交给内部菜单与压暗层渐隐 */
 .menu-page-leave-active {
   transition: all 0.4s cubic-bezier(0.7, 0, 0.2, 1);
   position: absolute;

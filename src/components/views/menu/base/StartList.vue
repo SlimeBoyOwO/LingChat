@@ -1,7 +1,6 @@
 <template>
   <nav
-    class="flex flex-col items-stretch"
-    :class="responsive && isUltraWide ? 'grid grid-cols-2' : ''"
+    class="start-list flex max-h-full min-h-0 flex-col items-stretch overflow-x-hidden overflow-y-auto"
     v-bind="$attrs"
   >
     <slot />
@@ -9,42 +8,32 @@
 </template>
 
 <script setup lang="ts">
-import { inject, onUnmounted, provide, ref } from "vue";
-
 defineOptions({ inheritAttrs: false });
-
-interface Props {
-  /** 是否启用超宽屏 2 列切换（仅主菜单开启，二级菜单保持单列） */
-  responsive?: boolean;
-}
-
-const props = withDefaults(defineProps<Props>(), {
-  responsive: false,
-});
-
-const isUltraWide = ref(false);
-
-let mq: MediaQueryList | null = null;
-let mqListener: ((e: MediaQueryListEvent) => void) | null = null;
-
-function update() {
-  const matched = mq ? mq.matches : false;
-  // matchMedia 的 min-aspect-ratio: 2/1 在恰好 2.0 时返回 true，需求是严格 > 2，用 JS 计算修正
-  isUltraWide.value = matched && window.innerWidth / window.innerHeight > 2;
-}
-
-if (typeof window !== "undefined" && typeof window.matchMedia === "function") {
-  mq = window.matchMedia("(min-aspect-ratio: 2/1)");
-  update();
-  mqListener = () => update();
-  mq.addEventListener("change", mqListener);
-}
-
-provide("isUltraWide", isUltraWide);
-
-onUnmounted(() => {
-  if (mq && mqListener) {
-    mq.removeEventListener("change", mqListener);
-  }
-});
 </script>
+
+<style scoped>
+/* 滚动只是兜底，隐藏滚动条避免临界高度时闪动 */
+.start-list {
+  scrollbar-width: none;
+}
+
+.start-list::-webkit-scrollbar {
+  display: none;
+}
+
+/* 主菜单按布局变量切换列数；二级菜单没有 main-menu-list 类，保持单列 */
+.main-menu-list {
+  display: grid;
+  grid-template-columns: repeat(var(--menu-cols, 1), 1fr);
+  column-gap: var(--menu-col-gap, 0px);
+  position: relative;
+  top: var(--menu-list-offset, 0px);
+}
+
+/* 竖屏下二级菜单逐项居中，避免长短不一的条目左对齐成锯齿 */
+@media (max-aspect-ratio: 6/5) {
+  nav:not(.main-menu-list) {
+    align-items: center;
+  }
+}
+</style>
