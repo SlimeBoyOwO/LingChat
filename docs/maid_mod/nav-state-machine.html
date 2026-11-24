@@ -208,8 +208,8 @@
       <text class="lbl" x="318" y="352" text-anchor="start">已在能动手的位置</text>
       <text class="lbl sm" x="318" y="374" text-anchor="start">且不站在目标格里</text>
       <text class="lbl fail" x="884" y="310" text-anchor="start">判死</text>
-      <text class="lbl fail" x="884" y="332" text-anchor="start">连续 40 tick 排不出动作</text>
-      <text class="lbl fail" x="884" y="354" text-anchor="start">或 5 条腿都没成</text>
+      <text class="lbl fail" x="884" y="332" text-anchor="start">5 条腿都没成，或一直没更近</text>
+      <text class="lbl fail" x="884" y="354" text-anchor="start">或图上再也搜不出路线</text>
       <text class="lbl" x="655" y="44" text-anchor="middle">下一 tick：还在跑就继续，跑完才重新规划</text>
       <text class="lbl" x="1258" y="150" text-anchor="end">腿还在跑</text>
       <text class="lbl sm" x="1258" y="170" text-anchor="end">或起跳后歇脚中</text>
@@ -247,7 +247,7 @@
   <div class="notes">
     <div class="note">
       <b>入口先算三件事</b>
-      已经到站或走不通就直接返回；超过 600 tick 报超时；起跳后的歇脚还没数完，本 tick 不动。终点判定比规划更早——站在能动手的位置、又不在目标格里，才算到。
+      已经到站或走不通就直接返回；离目标连续 45 秒没再靠近，才报超时；起跳后的歇脚还没数完，本 tick 不动。终点判定比规划更早——站在能动手的位置、又不在目标格里，才算到。
     </div>
     <div class="note">
       <b>一条腿跨很多 tick</b>
@@ -255,14 +255,14 @@
     </div>
     <div class="note">
       <b>单条腿失败不算走不通</b>
-      记下这次的站位，换一种手段再来。腿失败计数只在成功时清零；连续失败超过 5 条，或连续 2 秒一个动作都排不出，才判死。
+      记下这次的站位，整条路线作废重算。腿失败计数只在成功时清零；连续失败超过 5 条，或图上再也搜不出路线，才判死。
     </div>
   </div>
 
-  <h2>二、规划决策树</h2>
-  <p class="hint">主干是依次追问的问题：成立就选这条手段（「是」），不成立才往下一问（「否」）。越往下越贵，最后一问也不成立才判死。</p>
+  <h2>二、规划：落脚点图上的搜索</h2>
+  <p class="hint">手段不再是按顺序试的兜底，而是图上的边。搜索把走、跳下、跑跳、搭一格、垫一格按代价组合成路线，搜不到才算走不通。</p>
   <div class="canvas">
-    <svg class="dg-b" viewBox="0 0 1400 980" role="img" aria-label="规划决策树">
+    <svg class="dg-b" viewBox="0 0 1400 620" role="img" aria-label="落脚点图搜索的规划流程">
       <defs>
         <marker id="arrow-b" class="marker-edge" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
                 refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
@@ -274,181 +274,62 @@
         </marker>
       </defs>
 
-      <path class="edge" d="M 700 92 L 700 116"/>
-      <path class="edge" d="M 700 182 L 700 211"/>
-      <path class="edge" d="M 700 277 L 700 306"/>
-      <path class="edge" d="M 700 372 L 700 401"/>
-      <path class="edge" d="M 700 467 L 700 496"/>
-      <path class="edge" d="M 700 562 L 700 591"/>
-      <path class="edge" d="M 700 657 L 700 686"/>
-      <path class="edge" d="M 700 752 L 700 781"/>
-      <path class="edge fail" d="M 700 847 L 700 858"/>
+      <path class="edge" d="M 198 120 L 294 120"/>
+      <path class="edge" d="M 860 140 L 934 140"/>
+      <path class="edge fail" d="M 380 248 L 380 342"/>
+      <path class="edge dash" d="M 1146 226 L 1146 300 L 580 300 L 580 250"/>
 
-      <text class="mini" x="714" y="202">否</text>
-      <text class="mini" x="714" y="297">否</text>
-      <text class="mini" x="714" y="392">否</text>
-      <text class="mini" x="714" y="487">否</text>
-      <text class="mini" x="714" y="582">否</text>
-      <text class="mini" x="714" y="677">否</text>
-      <text class="mini" x="714" y="772">否</text>
-      <text class="mini" x="714" y="852">否</text>
+      <text class="lbl" x="897" y="128" text-anchor="middle">找到路线</text>
+      <text class="lbl fail" x="394" y="300">队列空了才判死</text>
+      <text class="lbl sm" x="700" y="292">下一段 / 失败重算</text>
 
-      <circle class="state scan" cx="700" cy="54" r="38"/>
-      <text class="nm" x="700" y="50" text-anchor="middle">规划</text>
-      <text class="tag" x="700" y="72" text-anchor="middle">PLAN</text>
+      <circle class="state move" cx="150" cy="120" r="46"/>
+      <text class="nm" x="150" y="114" text-anchor="middle">起点</text>
+      <text class="tag" x="150" y="136" text-anchor="middle">她脚下这格</text>
 
-      <path class="edge" d="M 570 150 L 500 150"/>
-      <path class="edge" d="M 830 245 L 900 245"/>
-      <path class="edge" d="M 570 340 L 500 340"/>
-      <path class="edge" d="M 830 435 L 900 435"/>
-      <path class="edge" d="M 570 530 L 500 530"/>
-      <path class="edge" d="M 830 625 L 900 625"/>
-      <path class="edge" d="M 570 720 L 500 720"/>
-      <path class="edge" d="M 830 815 L 900 815"/>
+      <rect class="qcard" x="298" y="34" width="564" height="212" rx="12"/>
+      <text class="sec-title" x="322" y="66">落脚点图搜索</text>
+      <text class="mini" x="322" y="96">节点：站得住的格子；木门也算能穿过去</text>
+      <text class="mini" x="322" y="120">边：走 1/格 · 跳下 3 · 跑跳 4 · 搭一格 7 · 垫一格 7～11 · 原地起跳 8</text>
+      <text class="mini" x="322" y="144">目标：站得住（或这一步刚铺出来）、不等于目标格、站过去能动手</text>
+      <text class="mini" x="322" y="168">额度：垫 16 块 · 升 12 次 · 铺 8 块 · 直落 2 次；离目标 16 格内才动土</text>
+      <text class="mini" x="322" y="192">每次调用最多展开 400 个节点，整次最多 6000 个</text>
+      <text class="mini" x="322" y="216">连续走的几格压成一段，交给原版导航一次走完</text>
 
-      <text class="mini" x="535" y="142" text-anchor="middle">是</text>
-      <text class="mini" x="865" y="237" text-anchor="middle">是</text>
-      <text class="mini" x="535" y="332" text-anchor="middle">是</text>
-      <text class="mini" x="865" y="427" text-anchor="middle">是</text>
-      <text class="mini" x="535" y="522" text-anchor="middle">是</text>
-      <text class="mini" x="865" y="617" text-anchor="middle">是</text>
-      <text class="mini" x="535" y="712" text-anchor="middle">是</text>
-      <text class="mini" x="865" y="807" text-anchor="middle">是</text>
+      <rect class="leaf move" x="936" y="56" width="420" height="170" rx="10"/>
+      <text class="leaf-t" x="958" y="86">路线：一段一段执行</text>
+      <text class="leaf-n" x="958" y="112">先执行第一段；成了就接着走下一段</text>
+      <text class="leaf-n" x="958" y="132">哪一段失败，整条作废，从她此刻的位置重算</text>
+      <text class="leaf-n" x="958" y="152">动方块之前再按真实眼睛核一次，和图上算的不同就换路</text>
 
-      <rect class="qcard" x="570" y="118" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="150" r="14"/>
-      <text class="step-num-t" x="592" y="155" text-anchor="middle">1</text>
-      <text class="cond" x="614" y="148">目标低两格以上？</text>
-      <text class="cond-s" x="614" y="168">先落到地面再看</text>
+      <circle class="state failstate" cx="380" cy="392" r="48"/>
+      <text class="nm" x="380" y="386" text-anchor="middle">走不通</text>
+      <text class="tag" x="380" y="408" text-anchor="middle">NO_STAND</text>
+      <text class="tag" x="380" y="424" text-anchor="middle">或 NO_HEADROOM</text>
 
-      <rect class="qcard" x="570" y="213" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="245" r="14"/>
-      <text class="step-num-t" x="592" y="250" text-anchor="middle">2</text>
-      <text class="cond" x="614" y="243">周围有现成站位？</text>
-      <text class="cond-s" x="614" y="263">站得住又能动手</text>
+      <rect class="leaf wait" x="700" y="382" width="386" height="92" rx="10"/>
+      <text class="leaf-t" x="722" y="410">只按有没有更近判超时</text>
+      <text class="leaf-n" x="722" y="434">离目标连续 45 秒没再靠近，才报 TIMEOUT</text>
+      <text class="leaf-n" x="722" y="454">绕路、先出屋再爬外墙都不打断</text>
 
-      <rect class="qcard" x="570" y="308" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="340" r="14"/>
-      <text class="step-num-t" x="592" y="345" text-anchor="middle">3</text>
-      <text class="cond" x="614" y="338">缺口那头有落点？</text>
-      <text class="cond-s" x="614" y="358">整格面、包络全空</text>
-
-      <rect class="qcard" x="570" y="403" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="435" r="14"/>
-      <text class="step-num-t" x="592" y="440" text-anchor="middle">4</text>
-      <text class="cond" x="614" y="433">齐平且前方悬空？</text>
-      <text class="cond-s" x="614" y="453">铺一格就能走过去</text>
-
-      <rect class="qcard" x="570" y="498" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="530" r="14"/>
-      <text class="step-num-t" x="592" y="535" text-anchor="middle">5</text>
-      <text class="cond" x="614" y="528">四邻能垫 / 正上方？</text>
-      <text class="cond-s" x="614" y="548">头顶让得出两格</text>
-
-      <rect class="qcard" x="570" y="593" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="625" r="14"/>
-      <text class="step-num-t" x="592" y="630" text-anchor="middle">6</text>
-      <text class="cond" x="614" y="628">这一 tick 额度用完？</text>
-      <text class="cond-s" x="614" y="648">算路配额只剩零</text>
-
-      <rect class="qcard" x="570" y="688" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="720" r="14"/>
-      <text class="step-num-t" x="592" y="725" text-anchor="middle">7</text>
-      <text class="cond" x="614" y="723">头顶被挡？</text>
-      <text class="cond-s" x="614" y="743">屋里垫不上天花板</text>
-
-      <rect class="qcard" x="570" y="783" width="260" height="64" rx="10"/>
-      <circle class="qnum" cx="592" cy="815" r="14"/>
-      <text class="step-num-t" x="592" y="820" text-anchor="middle">8</text>
-      <text class="cond" x="614" y="818">踩着自己垫的脚？</text>
-      <text class="cond-s" x="614" y="838">脚下那块是临时的</text>
-
-      <rect class="leaf move" x="120" y="118" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(472,150)">
-        <path d="M -18 -8 L -6 -8 L -6 2"/>
-        <path d="M 8 -14 L 8 6"/>
-        <path d="M 3 1 L 8 8 L 13 1"/>
-        <path d="M -18 12 L 18 12"/>
-      </g>
-      <text class="leaf-t" x="136" y="138">跳下</text>
-      <text class="leaf-n" x="136" y="158">目标低两格以上：先落地再重找</text>
-      <text class="leaf-n" x="136" y="176">落点 ≤10 格；40 tick 冷却；最多 2 次</text>
-
-      <rect class="leaf move" x="900" y="213" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(928,245)">
-        <path d="M -16 0 L 12 0"/>
-        <path d="M 6 -5 L 13 0 L 6 5"/>
-        <path d="M -12 10 L -4 10"/>
-        <path d="M -8 6 L 0 6"/>
-      </g>
-      <text class="leaf-t" x="962" y="233">走过去</text>
-      <text class="leaf-n" x="962" y="253">近圈 ±4 找站位，找不到扩到 ±6</text>
-      <text class="leaf-n" x="962" y="271">按路步数取最短；卡住 80 tick 记下这格</text>
-
-      <rect class="leaf move" x="120" y="308" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(472,340)">
-        <path d="M -18 10 Q 0 -18 18 10"/>
-        <path d="M -18 14 L -10 14"/>
-        <path d="M 10 14 L 18 14"/>
-      </g>
-      <text class="leaf-t" x="136" y="328">跑跳</text>
-      <text class="leaf-n" x="136" y="348">缺口那头有验过的整格落点</text>
-      <text class="leaf-n" x="136" y="366">最多 5 段；平地 4 格、抬高 3 格</text>
-
-      <rect class="leaf move" x="900" y="403" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(928,435)">
-        <rect x="-18" y="2" width="9" height="9" rx="1"/>
-        <rect x="-5" y="2" width="9" height="9" rx="1"/>
-        <rect x="8" y="2" width="9" height="9" rx="1"/>
-      </g>
-      <text class="leaf-t" x="962" y="423">搭路</text>
-      <text class="leaf-n" x="962" y="443">齐平、前面悬空、料和次数够</text>
-      <text class="leaf-n" x="962" y="461">最多 8 块；前面有地就直接走</text>
-
-      <rect class="leaf move" x="120" y="498" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(472,530)">
-        <rect x="-14" y="4" width="12" height="8" rx="1"/>
-        <rect x="0" y="-4" width="12" height="8" rx="1"/>
-        <path d="M -17 2 L -17 -12"/>
-        <path d="M -21 -8 L -17 -13 L -13 -8"/>
-      </g>
-      <text class="leaf-t" x="136" y="518">垫脚 / 起跳</text>
-      <text class="leaf-n" x="136" y="538">先托底再顶块；能动手的格优先</text>
-      <text class="leaf-n" x="136" y="556">正上方或四面放不下 → 原地起跳</text>
-
-      <rect class="leaf wait" x="900" y="593" width="380" height="64" rx="10"/>
-      <g class="ico wait" transform="translate(928,625)">
-        <circle cx="0" cy="0" r="14"/>
-        <path d="M 0 0 L 0 -8"/>
-        <path d="M 0 0 L 6 3"/>
-      </g>
-      <text class="leaf-t" x="962" y="613">等一下</text>
-      <text class="leaf-n" x="962" y="633">这一 tick 的算路额度用完了</text>
-      <text class="leaf-n" x="962" y="651">不算失败：下 tick 接着找</text>
-
-      <rect class="leaf move" x="120" y="688" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(472,720)">
-        <path d="M -15 12 L -15 -1 L 0 -12 L 15 -1 L 15 12"/>
-        <circle cx="18" cy="-12" r="4"/>
-      </g>
-      <text class="leaf-t" x="136" y="708">先出屋</text>
-      <text class="leaf-n" x="136" y="728">头顶被挡，附近有露天站位</text>
-      <text class="leaf-n" x="136" y="746">走到见天空处，再沿外墙往上垫</text>
-
-      <rect class="leaf move" x="900" y="783" width="380" height="64" rx="10"/>
-      <g class="ico" transform="translate(928,815)">
-        <path d="M 13 -3 A 14 14 0 1 1 5 12"/>
-        <path d="M 16 -11 L 13 -2 L 4 -4"/>
-      </g>
-      <text class="leaf-t" x="962" y="803">跳下重来</text>
-      <text class="leaf-n" x="962" y="823">她踩在自己刚垫的方块上</text>
-      <text class="leaf-n" x="962" y="841">回地面，清空高处试过的站位</text>
-
-      <circle class="state failstate" cx="700" cy="910" r="50"/>
-      <text class="nm" x="700" y="900" text-anchor="middle">走不通</text>
-      <text class="tag" x="700" y="922" text-anchor="middle">NO_STAND</text>
-      <text class="tag" x="700" y="936" text-anchor="middle">或 NO_HEADROOM</text>
+      <text class="mini-b" x="60" y="540">判死只剩两种：图上再也搜不出路线，或者一直在原地打转。</text>
+      <text class="mini" x="60" y="564">旧版是五条写死的手段依次试，试完就判死；现在手段都是边，能组合出来的路线不会被漏掉。</text>
     </svg>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <b>原版寻路不再一票否决</b>
+      以前先问原版「走不走得到」，算不出路径的站位直接出局；原版不会跳坑、不会垫、不开门，很多能到的位置就这样被筛掉了。现在它只是最便宜的一条边。
+    </div>
+    <div class="note">
+      <b>高目标先上高度</b>
+      目标比她高时，垫脚与原地起跳才是边；沿外墙绕一圈上去（螺旋上升）由这些边自己组合，不需要单独写一条腿。
+    </div>
+    <div class="note">
+      <b>世界边算边改</b>
+      搭路、垫脚会改世界，所以路线一段一段执行，哪一段没走通就丢掉重算；图上算出来的支撑，执行时一定先放下去再走。
+    </div>
   </div>
 
   <h2>三、跑跳的几何</h2>
@@ -500,96 +381,39 @@
     </tbody>
   </table>
 
-  <h2>四、站位搜索与垫脚</h2>
-  <p class="hint">先找「站过去就能动手」的现成位置；找不到才动土。候选先按远近排，能算路的按步数取最短。</p>
-  <div class="canvas">
-    <svg class="dg-d" viewBox="0 0 1200 660" role="img" aria-label="站位搜索与垫脚评分">
-      <defs>
-        <marker id="arrow-d" class="marker-edge" viewBox="0 0 10 10" markerWidth="11" markerHeight="11"
-                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M0,0 L10,5 L0,10 z"/>
-        </marker>
-      </defs>
+  <h2>四、五种手段的判据</h2>
+  <p class="hint">每一种手段都是一类边：先决条件成立才连，代价决定搜索先试谁。能走就不跳，能跳就不动方块。</p>
+  <table>
+    <caption>边的判据与代价</caption>
+    <thead>
+      <tr><th>边</th><th>代价</th><th>什么时候连得上</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>走</td><td>每格 1，斜角 1.41</td><td>目标格站得住；抬高一步要头顶让得开；斜着走要求两边都站得住，不穿墙角</td></tr>
+      <tr><td>跳下</td><td>3</td><td>这个方向走不过去；落点站得住又是整格面；下落 4～10 格；飞行包络全空</td></tr>
+      <tr><td>跑跳</td><td>4</td><td>同上，跨度 2～4 格、最多抬高 1 格；中间必须有断口，断口下三格不能是岩浆、火这类</td></tr>
+      <tr><td>搭一格</td><td>7，耗 1 块</td><td>前方同高、脚下悬空；脚下那格能放、够得着又看得见；不占图纸格</td></tr>
+      <tr><td>垫一格</td><td>7 或 11，耗 1～2 块</td><td>旁边一格空着、头顶让出三格；目标不比自己低；站上去身体不压目标格；没依托就先补托底（+4）</td></tr>
+      <tr><td>原地起跳</td><td>8，耗 1 块</td><td>目标在正上方；脚下实心、头顶让出两格；站上新高度后身体不压目标格</td></tr>
+    </tbody>
+  </table>
 
-      <text class="sec-title" x="99" y="66">站位搜索：以目标为中心逐圈找</text>
-
-      <g class="grid">
-        <line x1="99" y1="119" x2="541" y2="119"/><line x1="99" y1="153" x2="541" y2="153"/>
-        <line x1="99" y1="187" x2="541" y2="187"/><line x1="99" y1="221" x2="541" y2="221"/>
-        <line x1="99" y1="255" x2="541" y2="255"/><line x1="99" y1="289" x2="541" y2="289"/>
-        <line x1="99" y1="323" x2="541" y2="323"/><line x1="99" y1="357" x2="541" y2="357"/>
-        <line x1="99" y1="391" x2="541" y2="391"/><line x1="99" y1="425" x2="541" y2="425"/>
-        <line x1="99" y1="459" x2="541" y2="459"/><line x1="99" y1="493" x2="541" y2="493"/>
-        <line x1="99" y1="527" x2="541" y2="527"/><line x1="99" y1="561" x2="541" y2="561"/>
-        <line x1="99" y1="119" x2="99" y2="561"/><line x1="133" y1="119" x2="133" y2="561"/>
-        <line x1="167" y1="119" x2="167" y2="561"/><line x1="201" y1="119" x2="201" y2="561"/>
-        <line x1="235" y1="119" x2="235" y2="561"/><line x1="269" y1="119" x2="269" y2="561"/>
-        <line x1="303" y1="119" x2="303" y2="561"/><line x1="337" y1="119" x2="337" y2="561"/>
-        <line x1="371" y1="119" x2="371" y2="561"/><line x1="405" y1="119" x2="405" y2="561"/>
-        <line x1="439" y1="119" x2="439" y2="561"/><line x1="473" y1="119" x2="473" y2="561"/>
-        <line x1="507" y1="119" x2="507" y2="561"/><line x1="541" y1="119" x2="541" y2="561"/>
-      </g>
-
-      <rect class="ring" x="235" y="255" width="170" height="170" rx="6"/>
-      <rect class="ring" x="167" y="187" width="306" height="306" rx="6"/>
-
-      <rect class="goal-cell" x="303" y="323" width="34" height="34" rx="3"/>
-      <text class="mini" x="320" y="345" text-anchor="middle">目标</text>
-
-      <circle class="dot" cx="218" cy="306" r="6"/>
-      <circle class="dot" cx="286" cy="408" r="6"/>
-      <circle class="dot" cx="388" cy="408" r="6"/>
-      <circle class="dot" cx="388" cy="272" r="6"/>
-      <circle class="dot" cx="456" cy="340" r="6"/>
-      <circle class="dot" cx="320" cy="238" r="6"/>
-      <circle class="dot" cx="184" cy="442" r="6"/>
-      <circle class="dot" cx="456" cy="238" r="6"/>
-
-      <circle cx="456" cy="340" r="13" fill="none" stroke="var(--wait-stroke)" stroke-width="2"/>
-      <rect x="474" y="330" width="76" height="20" rx="5" fill="var(--panel)" stroke="var(--line)"/>
-      <text class="mini" x="512" y="345" text-anchor="middle">步数最短</text>
-
-      <text class="mini" x="167" y="180" text-anchor="start">近圈 ±4（下 6 / 上 3）</text>
-      <text class="mini" x="99" y="112" text-anchor="start">扩圈 ±6（下 8 / 上 5）</text>
-
-      <text class="mini-b" x="99" y="596">她脚下那格也算候选：已经够得着就不用多走一趟</text>
-      <text class="mini" x="99" y="620">每 tick 从总预算领额度，最多算 6 条路；屋里屋外不通时不算死</text>
-
-      <line x1="590" y1="90" x2="590" y2="610" stroke="var(--line)" stroke-width="1.4"/>
-
-      <text class="sec-title" x="630" y="66">垫脚：先托底，再顶块</text>
-
-      <rect x="660" y="230" width="50" height="50" rx="4" fill="var(--edge)"/>
-      <rect x="660" y="180" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
-      <rect x="660" y="280" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
-      <rect x="610" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
-      <rect x="710" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
-      <rect x="710" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--wait-stroke)" stroke-width="2.4"/>
-
-      <rect class="goal-cell" x="810" y="120" width="50" height="50" rx="4"/>
-      <text class="mini" x="835" y="150" text-anchor="middle">目标</text>
-      <path class="edge dash" d="M 765 225 L 805 178"/>
-
-      <text class="mini" x="685" y="150" text-anchor="middle">四邻都是候选</text>
-      <text class="mini" x="685" y="170" text-anchor="middle">12.0</text>
-      <text class="mini" x="685" y="352" text-anchor="middle">18.2</text>
-      <text class="mini" x="685" y="374" text-anchor="middle">+0.5 托底</text>
-      <text class="mini" x="640" y="222" text-anchor="end">15.7</text>
-      <text class="mini-b" x="768" y="222" text-anchor="start">9.5</text>
-      <text class="mini" x="768" y="242" text-anchor="start">还要托底</text>
-      <text class="mini" x="835" y="196" text-anchor="middle">离目标多远²</text>
-
-      <text class="mini-b" x="630" y="410">分数 = 站上去以后离目标多远²</text>
-      <text class="mini" x="630" y="434">下面没现成依托就先垫托底，分数 +0.5</text>
-      <text class="mini" x="630" y="458">站上去就能动手的那格优先，哪怕要多垫一块</text>
-      <text class="mini" x="630" y="482">四面都放不下时，改原地起跳垫高</text>
-      <text class="mini" x="630" y="518">托底只是前半个动作：顶块放上去才算升高一次</text>
-      <text class="mini" x="630" y="542">每次垫脚都要她看得见、够得着、头顶让出两格</text>
-      <text class="mini" x="630" y="566">踩过的垫脚块记在账本里，走开后拆掉，料还回背包</text>
-    </svg>
+  <div class="notes">
+    <div class="note">
+      <b>目标站不住也能算</b>
+      垫脚和搭路落脚的格子现在还可能是空气：搜索认为「这一步自己铺出了脚下的方块」，就算站得住。执行时先把方块放下去，再走上去。
+    </div>
+    <div class="note">
+      <b>记忆会挡路</b>
+      试过站不上去的格子、放不成功的垫脚位都记在这个目标名下，搜索不再连它们；补试轮开始时全部清空。
+    </div>
+    <div class="note">
+      <b>改了世界就要重新对账</b>
+      搭路和垫脚用她站到格心后的理想眼睛验一遍，真放的时候再用实际眼睛验；放不下就记下这块位置，换一条路。
+    </div>
   </div>
 
-  <h2>五、腿、预算与失败原因</h2>
+  <h2>五、腿、额度与失败原因</h2>
   <table>
     <caption>一条腿怎么开始、怎么算成、失败后留下什么</caption>
     <thead>
@@ -603,16 +427,10 @@
         <td>80 tick 没动或算不出路：这个站位记进试过的清单，报 NO_PATH</td>
       </tr>
       <tr>
-        <td>跑跳 <code>HopLeg</code></td>
-        <td>按提前验过的链子逐段摆位置，每段起跳前再验一次落点</td>
-        <td>走完链子</td>
-        <td>整条链记进试过的站位，40 tick 内不再算跑跳</td>
-      </tr>
-      <tr>
-        <td>垫脚 <code>StepLeg</code></td>
-        <td>托底已经放好，下一 tick 放顶块，然后接一条走腿</td>
-        <td>顶块放上并开始走</td>
-        <td>位置不够或料不够：报 NO_STAND，换别的方向</td>
+        <td>跑跳 / 直落 <code>HopLeg</code></td>
+        <td>按提前验过的落点摆弧线，起跳前再验一次；直落用 10 格深度</td>
+        <td>走完整段</td>
+        <td>落点记进试过的站位，整条路线作废重算</td>
       </tr>
       <tr>
         <td>原地起跳 <code>JumpLeg</code></td>
@@ -621,10 +439,10 @@
         <td>20 tick 没离地或被挤开：报 NO_HEADROOM 或 NO_STAND</td>
       </tr>
       <tr>
-        <td>跳下 <code>HopLeg</code> 深落</td>
-        <td>施工模式免摔，落点放宽到 10 格，落地后清空高处试过的站位</td>
-        <td>落到地面</td>
-        <td>同跑跳；一次目标最多跳 2 次</td>
+        <td>搭路 / 垫脚</td>
+        <td>不走腿：执行路线这一段时先把方块放下，再排一条走腿站上去</td>
+        <td>方块放上并开始走</td>
+        <td>放不下：这块位置记进黑名单，整条路线作废重算</td>
       </tr>
     </tbody>
   </table>
@@ -635,19 +453,14 @@
       <tr><th>名称</th><th>值</th><th>含义</th></tr>
     </thead>
     <tbody>
-      <tr><td>MAX_TICKS</td><td>600</td><td>一次目标最多约 30 秒，到点报 TIMEOUT</td></tr>
-      <tr><td>MAX_LEG_FAILURES</td><td>5</td><td>连续换掉 5 条腿都不成，判死并带上最后一条的原因</td></tr>
-      <tr><td>MAX_IDLE_TICKS</td><td>40</td><td>连续 2 秒排不出任何动作，判死</td></tr>
-      <tr><td>PATHS_PER_TICK</td><td>6</td><td>整个施工每 tick 最多算 6 条路，多出来的留到下 tick</td></tr>
-      <tr><td>PATH_CHECKS / PATH_RANK</td><td>24 / 8</td><td>每圈最多验 24 个候选的路；找到 8 个可达就按步数取最短</td></tr>
-      <tr><td>RING / RING_WIDE</td><td>4 / 6</td><td>站位搜索的近圈与扩圈半径（垂直方向下 6 上 3，扩圈下 8 上 5）</td></tr>
-      <tr><td>SIGHT_SCAN / MAX_LOOKUPS</td><td>64 / 1400</td><td>每圈最多做多少次视线判定、扫多少格</td></tr>
-      <tr><td>STAGE_CHECKS</td><td>8</td><td>出屋最多验几个露天站位</td></tr>
+      <tr><td>NO_PROGRESS_TICKS</td><td>900</td><td>离目标连续 45 秒没再靠近才报 TIMEOUT；没有固定时长上限</td></tr>
+      <tr><td>MAX_LEG_FAILURES</td><td>5</td><td>连续 5 条腿都没成，判死并带上最后一条的原因</td></tr>
+      <tr><td>EXPAND_PER_CALL / MAX_NODES</td><td>400 / 6000</td><td>每次算一小段、整次最多生成这么多节点</td></tr>
+      <tr><td>NEAR</td><td>16</td><td>离目标这么近才试垫脚与搭路，远处的缺口先交给走和跑跳</td></tr>
       <tr><td>MAX_BLOCKS</td><td>16</td><td>一次施工最多同时留着 16 块垫脚</td></tr>
-      <tr><td>MAX_STEPS / MAX_BRIDGE</td><td>6 / 8</td><td>同一个目标最多垫高 6 次、平铺 8 块</td></tr>
-      <tr><td>MAX_RISE / MAX_DISTANCE</td><td>12 / 8</td><td>垫脚的高差与水平上限，超了通常是图纸写错</td></tr>
+      <tr><td>MAX_STEPS / MAX_BRIDGE / MAX_DROPS</td><td>12 / 8 / 2</td><td>同一个目标最多垫高 12 次、平铺 8 块、从高处直落 2 次</td></tr>
       <tr><td>REACH</td><td>4.5</td><td>眼睛到方块外壳，与原版放置口径一致</td></tr>
-      <tr><td>MAX_HOPS / MAX_NODES</td><td>5 / 24</td><td>一条跑跳路线最多 5 段，搜索最多展开 24 个落点</td></tr>
+      <tr><td>跑跳路线</td><td>5 段 / 24 个落点</td><td>一条跑跳链最多 5 段，搜索最多展开 24 个落点</td></tr>
       <tr><td>JUMP_POWER / 超时 / 歇脚</td><td>0.42 / 20 / 10</td><td>起跳初速、等离地的上限、落地后歇多久</td></tr>
     </tbody>
   </table>
@@ -658,11 +471,11 @@
       <tr><th>寻路报的</th><th>调用方记的</th><th>什么时候出现</th></tr>
     </thead>
     <tbody>
-      <tr><td>NO_STAND</td><td>NO_STAND</td><td>四周没有站得住又能动手的位置，也没地方可垫</td></tr>
-      <tr><td>NO_PATH</td><td>NO_PATH</td><td>有位置，但走不过去（卡住、算不出路、跑跳也过不去）</td></tr>
+      <tr><td>NO_STAND</td><td>NO_STAND</td><td>图上搜不出能动手的站位（现成的站不住，也垫不出来）</td></tr>
+      <tr><td>NO_PATH</td><td>NO_PATH</td><td>路线里的某一段没走通，反复失败到上限</td></tr>
       <tr><td>NO_HEADROOM</td><td>NO_HEADROOM</td><td>她待的地方头顶太低，跳不起来也垫不上去</td></tr>
       <tr><td>OUT_OF_REACH</td><td>OUT_OF_REACH</td><td>站到了，但够不着目标</td></tr>
-      <tr><td>TIMEOUT</td><td>NO_PATH</td><td>这一次拖过 600 tick；格子账上仍按走不过去处理</td></tr>
+      <tr><td>TIMEOUT</td><td>NO_PATH</td><td>离目标连续 45 秒没再靠近；格子账上仍按走不过去处理</td></tr>
     </tbody>
   </table>
 
@@ -673,7 +486,7 @@
     </div>
     <div class="note">
       <b>记忆按目标分开存</b>
-      试过的站位、走不到的站位、垫了几次、铺了几块、跳了几次，都由调用方按自己的粒度持有。建筑按格子存，换一格就从干净的记忆开始。
+      试过的站位、放不下的垫脚位、垫了几次、铺了几块、跳了几次，都由调用方按自己的粒度持有。建筑按格子存，换一格就从干净的记忆开始。
     </div>
     <div class="note">
       <b>垫脚账本只记位置</b>
@@ -682,9 +495,8 @@
   </div>
 
   <p class="foot">
-    读图：第一张是状态机——圆是状态，箭头上的字是迁移条件；第二张是规划决策树，主干上的「否」就是代码里的先后顺序；
-    第三、四张是手段的几何与搜索范围，距离按格算。
-    规划里的手段顺序就是代码里的调用顺序，改了顺序等于改了「先走路还是先搭桥」的取舍。
+    读图：第一张是状态机——圆是状态，箭头上的字是迁移条件；第二张是规划：一次图搜索算出整条路线，再一段一段执行；
+    第三张是跑跳的几何，距离按格算。手段的先后不再由代码顺序决定，而是由代价决定：走最便宜，动方块最贵。
   </p>
 </main>
 </body>
