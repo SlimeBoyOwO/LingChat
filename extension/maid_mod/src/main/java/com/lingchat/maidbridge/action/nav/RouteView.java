@@ -23,6 +23,8 @@ final class RouteView implements RouteSearch.View {
     private final Predicate<BlockPos> goal;
     private final NavPolicy policy;
     private final NavMemory memory;
+    /** 她身上有没有能垫的整方块：没有就一条垫脚边都不连。 */
+    private final boolean hasScaffold;
 
     RouteView(EntityMaid maid, BlockPos target, Predicate<BlockPos> goal,
             NavPolicy policy, NavMemory memory) {
@@ -32,6 +34,7 @@ final class RouteView implements RouteSearch.View {
         this.goal = goal;
         this.policy = policy;
         this.memory = memory;
+        this.hasScaffold = ScaffoldBook.item(maid, policy.consumeMaterials()) != null;
     }
 
     @Override
@@ -68,7 +71,8 @@ final class RouteView implements RouteSearch.View {
 
     @Override
     public boolean placeable(BlockPos block, BlockPos from) {
-        if (!allowed(block)
+        if (!hasScaffold
+                || !allowed(block)
                 || !policy.canBuildOn(block)
                 || !Terrain.free(level, block)
                 || memory.badBlocks.contains(block)

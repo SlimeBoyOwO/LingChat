@@ -3,7 +3,6 @@ package com.lingchat.maidbridge.action.nav;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import java.util.List;
-import java.util.Set;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -50,8 +49,6 @@ public final class Navigator {
     private final NavPolicy policy;
     private final NavMemory memory;
     private final ScaffoldBook book;
-    /** 这次目标能不能动土：玩家身边这类「过来」不该在人家脚边搭桥。 */
-    private final boolean canBuild;
 
     private Leg leg;
     private Leg queued;
@@ -73,28 +70,16 @@ public final class Navigator {
     private double bestDistance = Double.MAX_VALUE;
     private int stillTicks;
 
-    private Navigator(
-            NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book, boolean canBuild) {
+    private Navigator(NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
         this.goal = goal;
         this.policy = policy;
         this.memory = memory;
         this.book = book;
-        this.canBuild = canBuild;
     }
 
     public static Navigator start(
             NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
-        return new Navigator(goal, policy, memory, book, true);
-    }
-
-    /**
-     * 只走不垫：图上的搭路与垫脚边直接不连。
-     *
-     * <p>走到玩家身边这类目标用它可以复用同一套图搜索，又不会在她脚边动土。
-     */
-    public static Navigator walkOnly(NavGoal goal, NavMemory memory) {
-        return new Navigator(
-                goal, new NavPolicy(Set.of(), Set.of(), true), memory, new ScaffoldBook(), false);
+        return new Navigator(goal, policy, memory, book);
     }
 
     public Status tick(EntityMaid maid) {
@@ -329,9 +314,6 @@ public final class Navigator {
 
     /** 这一次目标还剩多少额度可以动地形。 */
     private RouteSearch.Limits limits() {
-        if (!canBuild) {
-            return new RouteSearch.Limits(0, 0, 0, Math.max(0, MAX_DROPS - memory.drops));
-        }
         return new RouteSearch.Limits(
                 Math.max(0, ScaffoldRules.MAX_BLOCKS - book.size()),
                 Math.max(0, ScaffoldRules.MAX_STEPS - memory.steps),

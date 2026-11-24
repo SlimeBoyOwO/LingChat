@@ -123,6 +123,10 @@ public final class ScaffoldBook {
             if (!force && body.intersects(new AABB(pos))) {
                 continue;
             }
+            // 她踩着的那块永远留着：拆掉就把人扔下去了（碰撞箱从脚起点，扫不到脚下这块）
+            if (!force && pos.equals(maid.blockPosition().below())) {
+                continue;
+            }
             if (!force && protect != null && pos.distSqr(protect) <= 4) {
                 continue;
             }
