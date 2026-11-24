@@ -13,12 +13,7 @@ import path from "path";
 import { createHash } from "crypto";
 import readline from "readline";
 
-const TARGET_DIR = path.join(
-  process.cwd(),
-  "data",
-  "third_party",
-  "embedding_model_bge_small_zh",
-);
+const TARGET_DIR = path.join(process.cwd(), "data", "third_party", "embedding_model_bge_small_zh");
 
 // 远程路径 -> 本地文件名。统一落成扁平的 model.onnx，便于 Rust 侧按目录解析。
 //
@@ -32,8 +27,7 @@ const FILES = [
 ];
 
 // 换源只改这一处。ModelScope 国内直连稳定，与情绪模型同源。
-const BASE_URL =
-  "https://www.modelscope.cn/models/Xenova/bge-small-zh-v1.5/resolve/master";
+const BASE_URL = "https://www.modelscope.cn/models/Xenova/bge-small-zh-v1.5/resolve/master";
 
 // 是否启用交互式确认（可通过环境变量控制）
 const INTERACTIVE = process.env.INTERACTIVE !== "false";
@@ -117,9 +111,7 @@ async function main() {
     }
 
     const localSha = await calculateSha256(path.join(TARGET_DIR, "config.json"));
-    const remoteSha = createHash("sha256")
-      .update(remoteConfigContent)
-      .digest("hex");
+    const remoteSha = createHash("sha256").update(remoteConfigContent).digest("hex");
 
     if (localSha === remoteSha) {
       console.log(`✅ 本地 config.json 与远程版本一致，无需更新。`);
@@ -147,9 +139,7 @@ async function main() {
       console.log(`✅ 清理完成，开始重新下载所有文件...`);
     } else {
       console.log(`⏭️  非交互模式，跳过重新下载。`);
-      console.log(
-        `💡 如需强制重新下载，请设置环境变量 INTERACTIVE=true 或手动删除文件后重试。`,
-      );
+      console.log(`💡 如需强制重新下载，请设置环境变量 INTERACTIVE=true 或手动删除文件后重试。`);
       return;
     }
   } else {
@@ -174,13 +164,9 @@ async function main() {
   }
 
   if (failed.length === 0) {
-    console.log(
-      `🎉 所有 ${results.length} 个文件下载完成，保存至: ${TARGET_DIR}`,
-    );
+    console.log(`🎉 所有 ${results.length} 个文件下载完成，保存至: ${TARGET_DIR}`);
   } else {
-    console.log(
-      `⚠️ 下载完成: ${results.length - failed.length} 个成功，${failed.length} 个失败`,
-    );
+    console.log(`⚠️ 下载完成: ${results.length - failed.length} 个成功，${failed.length} 个失败`);
     process.exit(1);
   }
 }

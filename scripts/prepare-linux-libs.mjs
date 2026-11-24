@@ -26,9 +26,7 @@ const RUNTIME_LIBS = ["libwebgpu_dawn.so"];
 // beforeBundleCommand 在 debug 构建时带 TAURI_ENV_DEBUG=true；release 优先，
 // debug 作为兜底（本地只构建过 debug 时也能打包）。
 const profileDirs =
-  process.env.TAURI_ENV_DEBUG === "true"
-    ? ["target/debug"]
-    : ["target/release", "target/debug"];
+  process.env.TAURI_ENV_DEBUG === "true" ? ["target/debug"] : ["target/release", "target/debug"];
 
 if (process.platform !== "linux") {
   console.log("[linux-libs] 非 Linux 平台，跳过");
@@ -41,9 +39,7 @@ mkdirSync(destDir, { recursive: true });
 
 let copied = 0;
 for (const name of RUNTIME_LIBS) {
-  const src = profileDirs
-    .map((dir) => join(projectRoot, dir, name))
-    .find((p) => existsSync(p));
+  const src = profileDirs.map((dir) => join(projectRoot, dir, name)).find((p) => existsSync(p));
 
   if (!src) {
     console.log(`[linux-libs] 未找到 ${name}（本架构为静态链接，无需分发）`);

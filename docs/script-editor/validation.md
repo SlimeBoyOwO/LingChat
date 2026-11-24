@@ -79,17 +79,17 @@ ValidationReport
 
 ### 结构 / 通用
 
-| 诊断码                                             | 级别  | 触发                                                                  |
+| 诊断码 | 级别 | 触发 |
 | -------------------------------------------------- | ----- | --------------------------------------------------------------------- | --- | ------------------------------------ |
-| `event.not_a_map`                                  | error | 事件不是键值映射                                                      |
-| `event.missing_type`                               | error | 缺 `type` 字段                                                        |
-| `event.unknown_type`                               | error | 未知事件类型，运行到这里整个剧本中断                                  |
-| `field.required_missing`                           | error | 缺必填字段                                                            |
-| `field.unknown`                                    | warn  | 未知字段（很可能是拼错），会被静默忽略                                |
-| `field.inert`                                      | info  | 遗留字段（`duration` 等 `enabled == false` 的通用字段），引擎从不读取 |
-| `condition.unsupported_operator`                   | error | 用了 `&&                                                              |     | >= <= > < ! ( )`（长运算符优先匹配） |
-| `condition.no_variable` / `condition.bad_variable` | error | 条件左侧没有变量名 / 变量名含空格                                     |
-| `condition.placeholder_not_replaced`               | warn  | condition 里的 `%player%` 不会被替换                                  |
+| `event.not_a_map` | error | 事件不是键值映射 |
+| `event.missing_type` | error | 缺 `type` 字段 |
+| `event.unknown_type` | error | 未知事件类型，运行到这里整个剧本中断 |
+| `field.required_missing` | error | 缺必填字段 |
+| `field.unknown` | warn | 未知字段（很可能是拼错），会被静默忽略 |
+| `field.inert` | info | 遗留字段（`duration` 等 `enabled == false` 的通用字段），引擎从不读取 |
+| `condition.unsupported_operator` | error | 用了 `&&                                                              |     | >= <= > < ! ( )`（长运算符优先匹配） |
+| `condition.no_variable` / `condition.bad_variable` | error | 条件左侧没有变量名 / 变量名含空格 |
+| `condition.placeholder_not_replaced` | warn | condition 里的 `%player%` 不会被替换 |
 
 条件检查有个细节：**只扫运算符左侧**。右值是任意字符串，`bg == city/night` 里的 `/` 是合法内容 —— 早先在整串上找 `/ * ( )` 会把它误判成「用了不支持的运算符」并跳过变量收集。只支持 `var == 值` / `var != 值` / 裸变量真值三种写法；比较是**字符串比较**，未定义变量 `==` 恒假、`!=` 恒真。
 

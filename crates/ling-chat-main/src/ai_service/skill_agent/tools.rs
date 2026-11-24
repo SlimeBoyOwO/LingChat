@@ -625,8 +625,7 @@ async fn with_chapter_check(
         let chapter = stage::evidence::chapter_id_of_path(&path_owned).unwrap_or_default();
         if !check.missing_assets.is_empty()
             && let Some(dir) = snapshot.script_dir.as_deref()
-            && let Err(e) =
-                stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
+            && let Err(e) = stage::evidence::update_assets_gap(dir, &chapter, &check.missing_assets)
         {
             tracing::warn!("[skill_agent] 素材缺口表写入失败: {e}");
         }

@@ -193,8 +193,7 @@
           </div>
           <pre
             class="max-h-72 overflow-y-auto px-3 py-2.5 font-mono text-[0.72rem] leading-relaxed whitespace-pre-wrap text-white/75"
-            >{{ preview.content }}</pre
-          >
+            >{{ preview.content }}</pre>
         </div>
       </div>
     </MenuItem>
