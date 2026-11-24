@@ -1,0 +1,296 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>女仆施工状态机</title>
+<style>
+  :root {
+    --bg: #fbfcfe;
+    --panel: #ffffff;
+    --text: #1c2333;
+    --muted: #5b657a;
+    --line: #d9e0ec;
+    --edge: #44506a;
+    --fail: #b0523a;
+    --scan-fill: #eef4ff;
+    --scan-stroke: #31558c;
+    --move-fill: #f1eefc;
+    --move-stroke: #5a4a96;
+    --wait-fill: #fff4e0;
+    --wait-stroke: #a9711a;
+    --done-fill: #e9f7ee;
+    --done-stroke: #2f7d4a;
+    --comp: rgba(238, 243, 250, 0.55);
+    --comp-stroke: #8aa0c0;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141c;
+      --panel: #161c27;
+      --text: #e8edf7;
+      --muted: #a3adc0;
+      --line: #2a3444;
+      --edge: #9fb0cc;
+      --fail: #e09b83;
+      --scan-fill: #1c2b45;
+      --scan-stroke: #7ea2d8;
+      --move-fill: #241f3a;
+      --move-stroke: #a793e0;
+      --wait-fill: #3a2c15;
+      --wait-stroke: #d6a755;
+      --done-fill: #163224;
+      --done-stroke: #6fc08d;
+      --comp: rgba(34, 45, 64, 0.5);
+      --comp-stroke: #5c7396;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 56px; }
+  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: .02em; }
+  .sub { margin: 0; color: var(--muted); font-size: 14px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px 22px;
+    margin: 18px 0 10px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    font-size: 13px; color: var(--muted);
+  }
+  .legend b { color: var(--text); font-weight: 600; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; }
+  .chip i {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--scan-stroke); background: var(--scan-fill);
+  }
+  .chip i.move { border-color: var(--move-stroke); background: var(--move-fill); }
+  .chip i.wait { border-color: var(--wait-stroke); background: var(--wait-fill); }
+  .chip i.done { border-color: var(--done-stroke); background: var(--done-fill); }
+  .chip s { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge); }
+  .chip s.fail { border-top: 2px dashed var(--fail); }
+  .chip b.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--edge); }
+
+  .canvas { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: auto; }
+  svg { display: block; width: 100%; min-width: 1080px; height: auto; }
+
+  .edge { fill: none; stroke: var(--edge); stroke-width: 2; marker-end: url(#arrow); }
+  .edge.fail { stroke: var(--fail); stroke-dasharray: 7 5; marker-end: url(#arrow-fail); }
+  .lbl {
+    fill: var(--text); font-size: 13px;
+    paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round;
+  }
+  .lbl.fail { fill: var(--fail); }
+  #arrow path { fill: var(--edge); }
+  #arrow-fail path { fill: var(--fail); }
+
+  .composite { fill: var(--comp); stroke: var(--comp-stroke); stroke-width: 1.6; stroke-dasharray: 8 6; }
+  .comp-title { fill: var(--text); font-size: 15px; font-weight: 650; }
+  .comp-sub { fill: var(--muted); font-size: 12.5px; }
+
+  circle.state { stroke-width: 2.2; }
+  circle.scan { fill: var(--scan-fill); stroke: var(--scan-stroke); }
+  circle.move { fill: var(--move-fill); stroke: var(--move-stroke); }
+  circle.wait { fill: var(--wait-fill); stroke: var(--wait-stroke); }
+  circle.done { fill: var(--done-fill); stroke: var(--done-stroke); }
+  .nm { fill: var(--text); font-size: 16px; font-weight: 650; }
+  .tag { fill: var(--muted); font-size: 10px; letter-spacing: .04em; }
+  .pseudo { fill: var(--edge); }
+  .pseudo-ring { fill: none; stroke: var(--edge); stroke-width: 2.5; }
+
+  .notes {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; margin-top: 14px;
+  }
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--wait-stroke);
+    border-radius: 10px; background: var(--panel); padding: 10px 14px; font-size: 13px;
+    color: var(--muted);
+  }
+  .note b { display: block; color: var(--text); font-weight: 650; margin-bottom: 2px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 20px; font-size: 13.5px; }
+  caption { text-align: left; font-weight: 650; padding: 8px 0 10px; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }
+  th { background: var(--scan-fill); font-weight: 600; }
+  td code { font-size: 12.5px; }
+  .foot { margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+  @media print {
+    .canvas { overflow: visible; }
+    svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>女仆施工状态机</h1>
+    <p class="sub">NeoForge 1.21.1 · lingchat_maid_bridge 0.1.0 · 建筑只管四个状态，走路与搭路都在寻路模块里</p>
+  </header>
+
+  <div class="legend">
+    <span class="chip"><b class="dot"></b><b>初始</b> 受理后进入扫描</span>
+    <span class="chip"><i></i><b>扫描</b> 判定这一格怎么处理</span>
+    <span class="chip"><i class="move"></i><b>赶路</b> 寻路模块内部（复合状态）</span>
+    <span class="chip"><i class="wait"></i><b>放置间隔</b></span>
+    <span class="chip"><i class="done"></i><b>收尾</b></span>
+    <span class="chip"><s></s><b>正常迁移</b></span>
+    <span class="chip"><s class="fail"></s><b>走不通</b> 记原因，歇一下再扫</span>
+  </div>
+
+  <div class="canvas">
+    <svg viewBox="0 0 1300 920" role="img" aria-label="女仆施工状态机">
+      <defs>
+        <marker id="arrow" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+        <marker id="arrow-fail" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <!-- 复合状态：寻路 -->
+      <rect class="composite" x="400" y="330" width="620" height="420" rx="24"/>
+      <text class="comp-title" x="420" y="358">PATHING 赶路（寻路模块内部）</text>
+      <text class="comp-sub" x="420" y="692">手段：走 · 跳下 · 跑跳 · 垫脚 · 搭路 · 原地起跳 · 出屋</text>
+      <text class="comp-sub" x="420" y="714">调用方只给目标与边界，手段由这里自己挑</text>
+
+      <!-- 迁移 -->
+      <path class="edge" d="M 132 200 L 214 200"/>
+      <path class="edge" d="M 382 200 L 1082 200"/>
+      <path class="edge" d="M 1086 236 Q 730 320 372 246"/>
+      <path class="edge" d="M 360 262 Q 430 340 515 474"/>
+      <path class="edge" d="M 900 470 Q 1000 380 1098 238"/>
+      <path class="edge" d="M 612 500 L 804 500"/>
+      <path class="edge" d="M 808 526 Q 710 568 612 526"/>
+      <path class="edge" d="M 258 282 L 250 632"/>
+      <path class="edge" d="M 250 766 L 250 832"/>
+
+      <!-- 迁移条件 -->
+      <text class="lbl" x="720" y="182" text-anchor="middle">放下一块</text>
+      <text class="lbl" x="720" y="302" text-anchor="middle">间隔结束</text>
+      <text class="lbl" x="330" y="392" text-anchor="end">需要一个站位</text>
+      <text class="lbl" x="1032" y="420" text-anchor="start">到站 / 走不通</text>
+      <text class="lbl" x="708" y="480" text-anchor="middle">挑一种手段</text>
+      <text class="lbl" x="708" y="584" text-anchor="middle">这条腿结束</text>
+      <text class="lbl" x="196" y="446" text-anchor="end">图纸扫完</text>
+      <text class="lbl" x="196" y="464" text-anchor="end">或被打断</text>
+      <text class="lbl" x="268" y="792" text-anchor="start">拆净垫脚</text>
+      <text class="lbl" x="268" y="810" text-anchor="start">推收尾事件</text>
+
+      <!-- 状态 -->
+      <g>
+        <circle class="state scan" cx="300" cy="200" r="82"/>
+        <text class="nm" x="300" y="196" text-anchor="middle">扫描与判定</text>
+        <text class="tag" x="300" y="220" text-anchor="middle">SCAN</text>
+      </g>
+      <g>
+        <circle class="state move" cx="560" cy="500" r="52"/>
+        <text class="nm" x="560" y="496" text-anchor="middle">规划</text>
+        <text class="tag" x="560" y="518" text-anchor="middle">PLAN</text>
+      </g>
+      <g>
+        <circle class="state move" cx="860" cy="500" r="52"/>
+        <text class="nm" x="860" y="496" text-anchor="middle">执行一条腿</text>
+        <text class="tag" x="860" y="518" text-anchor="middle">RUN</text>
+      </g>
+      <g>
+        <circle class="state wait" cx="1150" cy="200" r="64"/>
+        <text class="nm" x="1150" y="196" text-anchor="middle">放置间隔</text>
+        <text class="tag" x="1150" y="220" text-anchor="middle">PLACE_COOLDOWN</text>
+      </g>
+      <g>
+        <circle class="state done" cx="250" cy="700" r="66"/>
+        <text class="nm" x="250" y="696" text-anchor="middle">收尾</text>
+        <text class="tag" x="250" y="720" text-anchor="middle">DONE</text>
+      </g>
+
+      <!-- 初始与终态 -->
+      <circle class="pseudo" cx="120" cy="200" r="9"/>
+      <circle class="pseudo-ring" cx="250" cy="852" r="17"/>
+      <circle class="pseudo" cx="250" cy="852" r="8"/>
+    </svg>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <b>主循环</b>
+      扫描直接放下一块 → 放置间隔 → 扫描；扫描叫寻路 → 赶路 → 到站试放 → 放置间隔 → 扫描。
+    </div>
+    <div class="note">
+      <b>赶路是复合状态</b>
+      里面的规划与腿是寻路自己的状态机；建筑只等两个结果——到站，或者走不通并带回原因。
+    </div>
+    <div class="note">
+      <b>中断（不经过选格）</b>
+      被抱走、昏迷、被别的指令顶掉时直接收尾；收尾里先走到远处的实地，再把垫脚拆净。
+    </div>
+  </div>
+
+  <table>
+    <caption>相位与代码位置：进入 / 执行 / 退出</caption>
+    <thead>
+      <tr><th>相位</th><th>代码位置</th><th>进入</th><th>执行</th><th>退出</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>扫描与判定</td>
+        <td><code>BuildPhase.SCAN</code> → <code>BuildPlanner.work</code></td>
+        <td>冷却结束、本层换过顺序</td>
+        <td>取一格判定：挖掉、就地放，或下发寻路目标</td>
+        <td>放下 → 间隔；要站位 → 赶路；本层扫完 → 执行决策表或收尾</td>
+      </tr>
+      <tr>
+        <td>赶路</td>
+        <td><code>BuildPhase.PATHING</code> → <code>Navigator</code></td>
+        <td>拿到「站到能放下这一格的位置」的目标与边界</td>
+        <td>规划选手段，执行一条腿；腿结束再规划</td>
+        <td>到站 → 试放；走不通 → 把原因翻回格子账，歇一下回扫描</td>
+      </tr>
+      <tr>
+        <td>放置间隔</td>
+        <td><code>BuildPhase.PLACE_COOLDOWN</code></td>
+        <td>刚放下或刚走完一段</td>
+        <td>倒数几 tick，顺手把走开的垫脚块拆掉</td>
+        <td>间隔结束 → 扫描</td>
+      </tr>
+      <tr>
+        <td>收尾</td>
+        <td><code>BuildPhase.DONE</code> → <code>Navigator</code>（<code>NavGoal.Settle</code>）</td>
+        <td>图纸扫完、超时或被打断</td>
+        <td>走到实地站好，拆净垫脚，把料还回背包</td>
+        <td>推 <code>maid_build_done</code>，会话结束</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption>赶路里的手段：按顺序试，前面的不成立才看后面</caption>
+    <thead>
+      <tr><th>手段</th><th>什么时候用</th><th>失败之后</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>走</td><td>身边有一处站得住、能动手、又走得到的站位</td><td>记下这个站位，换下一个</td></tr>
+      <tr><td>跳下</td><td>目标在她下面两格以上</td><td>隔两秒再算</td></tr>
+      <tr><td>跑跳</td><td>缺口另一头有验过的落点</td><td>整条路线记进试过的站位</td></tr>
+      <tr><td>平着搭路</td><td>目标齐平、前面悬空</td><td>换垫脚或原地起跳</td></tr>
+      <tr><td>垫脚</td><td>够不着，但上下左右有地方垫</td><td>四面都不行就原地起跳</td></tr>
+      <tr><td>原地起跳</td><td>四面垫不出去，或目标就在正上方</td><td>记原因，换别的站位</td></tr>
+      <tr><td>出屋</td><td>头顶被挡，附近有露天站位</td><td>记原因，换别的站位</td></tr>
+    </tbody>
+  </table>
+
+  <p class="foot">
+    读图：圆是状态，箭头是迁移，箭头上的字是迁移条件。虚线框里是寻路模块的内部状态——规划挑一种手段，
+    执行到这条腿结束；它对外只报两个结果。放置本身仍在扫描相位里完成，到站之后只是再试一次。
+  </p>
+</main>
+</body>
+</html>
