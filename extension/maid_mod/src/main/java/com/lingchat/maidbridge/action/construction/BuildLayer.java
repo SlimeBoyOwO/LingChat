@@ -33,10 +33,12 @@ final class BuildLayer {
     }
 
     /**
-     * 一层走完：这一层还有没盖的、这一遍又有新进展，就再走一遍；连续几遍没有进展
-     * 才把这层剩下的格子收进失败清单，换下一层。
+     * 数这一遍的账：有没有进展、连续几遍没进展、本层还剩多少开格。
+     *
+     * <p>只读世界并更新计数，不决定去哪；去向交给纯规则的 {@link BuildRules#endPass}。
+     * 进入收尾相位时数一次，执行时按同一份快照走，中间不重算。
      */
-    static void endLayer(MinecraftServer server, Run run) {
+    static PassStats measurePass(Run run) {
         boolean doorsOnly = onlyDoorsLeft(run);
         // 垫脚也算这一遍的进展：爬上去要好几步，不能爬一半就被当成走不到收掉
         boolean progress = run.placed + run.stepPlaced > run.layerPassPlaced;
@@ -66,7 +68,7 @@ final class BuildLayer {
             run.stallPasses++;
         }
         boolean layerOpen = layerHasOpen(run, doorsOnly);
-        PassEnd end = BuildRules.endPass(new PassStats(
+        return new PassStats(
                 run.placed >= run.total,
                 layerOpen,
                 layerOpen && waitHeld,
@@ -74,8 +76,12 @@ final class BuildLayer {
                 run.stallPasses,
                 run.retried,
                 nextLayerY(run, doorsOnly) != null,
-                hasDeferred(run)));
-        applyEnd(server, run, end);
+                hasDeferred(run));
+    }
+
+    /** 按决策表给出的去向执行这一遍的收尾。 */
+    static void endPass(MinecraftServer server, Run run, PassStats stats) {
+        applyEnd(server, run, BuildRules.endPass(stats));
     }
 
     /** 按纯规则给出的去向执行：动作按顺序来，收工之后的不再执行。 */
@@ -97,7 +103,6 @@ final class BuildLayer {
      */
     private static boolean perform(MinecraftServer server, Run run, Action action) {
         return switch (action) {
-            case NONE -> false;
             case RESCAN -> {
                 restartPass(run);
                 yield false;
@@ -176,7 +181,7 @@ final class BuildLayer {
      * 整张图纸都过完了：把之前没放上的格子放回来再试一轮。
      *
      * <p>别的方块放好之后，原来缺依托、被别的方块挡住的格子常常就能放了。每一格只补试
-     * 一次：补过还是不行的由 {@link #settle} 记账，不会在同一个地方反复打转。
+     * 一次：补过还是不行的由 {@link CellFlow#fail} 记账，不会在同一个地方反复打转。
      */
     static boolean retryRound(Run run) {
         if (!hasDeferred(run)) {
@@ -292,7 +297,7 @@ final class BuildLayer {
     /**
      * 除了门以外的格子都已经放好：这时候才装门，施工期间门洞保持敞开。
      *
-     * <p>只看「放好了」，不看「settled」：有格子因为够不着、被挡或液体放弃时，门先不装，
+     * <p>只看「放好了」，不看「收账了」：有格子因为够不着、被挡或液体放弃时，门先不装，
      * 她之后回来补料、接着盖还能从门洞进出；否则半成品把门口封死，人就困在里外了。
      */
     static boolean onlyDoorsLeft(Run run) {

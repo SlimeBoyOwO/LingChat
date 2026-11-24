@@ -10,6 +10,7 @@ import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.SearchBudget;
 import com.lingchat.maidbridge.action.construction.BuildRules.CellState;
 import com.lingchat.maidbridge.action.construction.BuildRules.Failure;
+import com.lingchat.maidbridge.action.construction.BuildRules.PassStats;
 import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
@@ -162,6 +163,10 @@ public final class MaidBuildController {
         int cooldown;
         /** 同一时刻只有一个动作：走路、垫脚、起跳垫高、跑跳。 */
         Move move;
+        /** 这一 tick 走哪个相位；由运行状态推导，切换时跑进入与退出钩子。 */
+        BuildPhase phase = BuildPhase.SCAN;
+        /** 本层收尾时冻结的统计；只在 CLOSE 相位里有值。 */
+        PassStats passStats;
         /** 她正赶过去或正踩着的落脚点；选格和收尾时用来护着那一格。 */
         BlockPos stand;
         /** 当前处理的层在格子表里的下标区间。 */
@@ -453,8 +458,8 @@ public final class MaidBuildController {
             if (PathDebug.watching(maid)) {
                 reportDebug(run, maid);
             }
-            stop("收尾");
-            cleaning(server, run, maid);
+            BuildPhase.to(run, BuildPhase.CLEAN);
+            run.phase.tick(server, run, maid);
             return;
         }
         if (++run.ticks > BUILD_TIMEOUT_TICKS) {
@@ -477,34 +482,8 @@ public final class MaidBuildController {
             reportDebug(run, maid);
         }
         cleanScaffold(run, maid);
-        if (run.cooldown > 0) {
-            run.cooldown--;
-            if (run.move != null && run.move.stand() != null) {
-                MaidActuator.walkToPos(maid, run.move.stand(), 0);
-            }
-            stop("歇");
-            return;
-        }
-        if (run.move != null) {
-            advance(run, maid);
-            stop("动");
-            return;
-        }
-        if (run.needOrder) {
-            run.needOrder = false;
-            orderLayer(run, maid);
-        }
-
-        if (next(run, maid)) {
-            return;
-        }
-        // 这一 tick 的寻路额度用完了、游标还停在这一层中间：下个 tick 接着扫，
-        // 不能当成「这一遍没进展」——那会让好好的格子被提前收进失败清单
-        if (run.cursor < run.layerEnd) {
-            stop("扫");
-            return;
-        }
-        endLayer(server, run);
+        BuildPhase.to(run, BuildPhase.of(run));
+        run.phase.tick(server, run, maid);
     }
 
 
@@ -526,6 +505,10 @@ public final class MaidBuildController {
         } else if (run.move != null) {
             phase = run.move.phase();
             focus = run.move.cell();
+        } else if (run.cooldown > 0) {
+            // 冷却期间手上没有动作，别报成「扫描下一格」：相位机此刻走的是 COOLDOWN
+            phase = "放置间隔";
+            focus = null;
         } else if (run.active != null && run.active.state.open()) {
             phase = "准备放这一格";
             focus = run.active;
@@ -590,33 +573,29 @@ public final class MaidBuildController {
                 reserved++;
             }
         }
-        int deferred = 0;
-        for (Cell cell : run.cells) {
-            if (cell.state == CellState.DEFERRED) {
-                deferred++;
-            }
-        }
         long waited = run.heldSince == 0
                 ? 0
                 : Math.max(0, run.level.getGameTime() - run.heldSince) / 20;
         int pending = 0;
         int retrying = 0;
         int failed = 0;
+        int deferred = 0;
         for (Cell cell : run.cells) {
             switch (cell.state) {
                 case PENDING -> pending++;
                 case RETRYING -> retrying++;
                 case FAILED -> failed++;
-                default -> {
-                }
+                case DEFERRED -> deferred++;
             }
         }
         String hand = run.active == null ? "-" : run.active.pos + ":" + run.active.state;
         return "｜施工 " + run.placed + "/" + run.total
+                + "｜相 " + BuildPhase.of(run)
                 + "｜本层 开 " + open + "·等活物 " + waiting + "·预留 " + reserved
-                + "·搁置 " + deferred
                 + (waited > 0 ? "·已等 " + waited + "s" : "")
                 + "｜全 待 " + pending + "·补 " + retrying + "·败 " + failed
+                + "·搁置 " + deferred
+                + "｜停遍 " + run.stallPasses + (run.retried ? "·已补" : "")
                 + "｜停 " + lastStop + "×" + stopTicks
                 + "｜行 " + run.cursor + "/" + run.layerStart + "-" + run.layerEnd
                 + "｜手 " + hand
@@ -710,7 +689,6 @@ public final class MaidBuildController {
         boolean natural = reasonCode == null || reasonCode.isEmpty() || "timeout".equals(reasonCode);
         if (natural && !run.cleaning && maid != null && !maid.isRemoved() && !run.scaffold.isEmpty()) {
             run.cleaning = true;
-            run.cleanTicks = 0;
             run.pendingCode = reasonCode == null ? "" : reasonCode;
             run.pendingReason = reason == null ? "" : reason;
             run.stand = null;

@@ -39,11 +39,17 @@ import static com.lingchat.maidbridge.action.construction.MaidBuildController.*;
 
 /** 选格与落子：判定、走路、挖掉、放置。 */
 final class BuildPlanner {
-    /** 处理一格的结果：动手了、这一格先跳过、还是这一 tick 的寻路额度用完了。 */
+    /**
+     * 处理一格的结果：动手了、这一格先跳过、还是这一 tick 的寻路额度用完了。
+     *
+     * <p>CONTINUE 只在本地判定与放置链之间传：表示世界这边没问题，接着往下放置。
+     * 对外的入口（work）永远不会把它交给调用方。
+     */
     enum Step {
         HANDLED,
         SKIP,
-        WAIT
+        WAIT,
+        CONTINUE
     }
 
     /**
@@ -147,6 +153,21 @@ final class BuildPlanner {
     }
 
     /**
+     * 调用一格的场景：决定这一格能不能发起新的移动，以及同一种失败怎么处置。
+     *
+     * <p>以前同一套判定在「原地快放」「扫描推进」「到站试放」里各写了一遍，同一个结论
+     * 在三个地方各自决定记什么、要不要搁置。现在判定只有一份，差异集中在这里。
+     */
+    private enum Mode {
+        /** 原地快放：只处理已有定论的格子和够得着的落子，其余留给扫描。 */
+        PROBE,
+        /** 正常推进：可以走路、跑跳、垫脚、搭路。 */
+        SCAN,
+        /** 刚走到落脚点：只判定与落子，不再发起新的移动。 */
+        ARRIVE
+    }
+
+    /**
      * 处理一格的完整流程：先按本地情况判定，再决定挖掉、走路还是放置。
      *
      * <p>WAIT 表示寻路额度用完了：这一格留着（{@link Run#active}）下个 tick 接着来，
@@ -156,66 +177,107 @@ final class BuildPlanner {
         if (reservedStand(run, cell)) {
             return Step.SKIP;
         }
-        switch (BuildRules.verdict(observe(run, maid, cell))) {
+        Step step = handleVerdict(run, maid, cell, Mode.SCAN);
+        return step == Step.CONTINUE ? scanChain(run, maid, cell) : step;
+    }
+
+    /**
+     * 本地判定：这一格此刻是什么、该怎么处置。
+     *
+     * <p>返回 CONTINUE 表示世界这边没问题，交给后面的放置链。三种场景的差异集中在下面
+     * 六个按 Mode 分叉的位置：原地快放不推进任何格子；到站试放不走去挖、不发起移动；
+     * 扫描才做完整兜底。
+     */
+    private static Step handleVerdict(Run run, EntityMaid maid, Cell cell, Mode mode) {
+        return switch (BuildRules.verdict(observe(run, maid, cell))) {
             case DONE -> {
                 CellFlow.done(run, cell);
-                return Step.SKIP;
+                yield Step.SKIP;
             }
             case LIQUID -> {
                 CellFlow.fail(run, cell, Failure.LIQUID);
-                return Step.SKIP;
+                yield Step.SKIP;
+            }
+            case MISSING -> {
+                CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
+                yield Step.SKIP;
+            }
+            case HELD_BY_ENTITY -> {
+                if (mode == Mode.PROBE) {
+                    yield Step.SKIP;
+                }
+                // 别的活物挡着：先不管，过一会儿自动重试
+                cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
+                CellFlow.hold(run, cell, Failure.BLOCKED_BY_ENTITY);
+                yield Step.SKIP;
             }
             case DIG_BLOCKED -> {
-                run.blockedSkips++;
-                CellFlow.park(run, cell, Failure.OCCUPIED);
-                return Step.SKIP;
+                if (mode == Mode.PROBE) {
+                    yield Step.SKIP;
+                }
+                if (mode == Mode.SCAN) {
+                    run.blockedSkips++;
+                    CellFlow.park(run, cell, Failure.OCCUPIED);
+                } else {
+                    CellFlow.hold(run, cell, Failure.OCCUPIED);
+                }
+                yield Step.SKIP;
             }
             case DIG -> {
+                if (mode == Mode.PROBE) {
+                    yield Step.SKIP;
+                }
                 // 被别的方块占着：够得着就挖掉（掉落进她背包），够不着先走过去
                 if (MineTargets.canMine(maid, cell.pos)) {
                     clearCell(run, maid, cell);
-                    return Step.HANDLED;
+                    yield Step.HANDLED;
+                }
+                if (mode == Mode.ARRIVE) {
+                    // 走过来才发现被占：先记下，下个 tick 由扫描决定走位去挖
+                    CellFlow.hold(run, cell, Failure.OCCUPIED);
+                    yield Step.SKIP;
                 }
                 BlockPos dig = MineTargets.standFor(maid, cell.pos);
                 if (dig == null) {
                     CellFlow.hold(run, cell, Failure.NO_STAND);
-                    return Step.SKIP;
+                    yield Step.SKIP;
                 }
                 startWalk(run, maid, cell, dig);
-                return Step.HANDLED;
-            }
-            case MISSING -> {
-                CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
-                return Step.SKIP;
-            }
-            case HELD_BY_ENTITY -> {
-                // 别的活物挡着：先不管，过一会儿自动重试
-                cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-                CellFlow.hold(run, cell, Failure.BLOCKED_BY_ENTITY);
-                return Step.SKIP;
+                yield Step.HANDLED;
             }
             case SELF_INSIDE -> {
+                if (mode == Mode.PROBE) {
+                    yield Step.SKIP;
+                }
+                if (mode == Mode.ARRIVE) {
+                    // 还站在这一格里：下个 tick 先挪开再放
+                    run.active = cell;
+                    yield Step.SKIP;
+                }
                 // 自己站在要放的那一格：先挪出去，别把自己埋了
                 BlockPos away = MineTargets.standForBuilding(
                         maid, cell.pos, run.built, cell.triedStands, run.unreachable,
                         stand -> true, run.search);
                 if (away != null && !away.equals(maid.blockPosition())) {
                     startWalk(run, maid, cell, away);
-                    return Step.HANDLED;
+                    yield Step.HANDLED;
                 }
                 // 周围没有实地可站（屋顶、墙头边上就是空的）：在旁边空中搭一格再站过去
                 if (stepAside(run, maid, cell)) {
-                    return Step.HANDLED;
+                    yield Step.HANDLED;
                 }
                 if (run.search.spent()) {
-                    return Step.WAIT;
+                    yield Step.WAIT;
                 }
                 CellFlow.hold(run, cell, Failure.SELF_BLOCKED);
-                return Step.SKIP;
+                yield Step.SKIP;
             }
-            case CONTINUE -> {
-            }
-        }
+            case CONTINUE -> Step.CONTINUE;
+        };
+    }
+
+    /** 扫描时推进一格：先看目标是不是在下面，再按「放、走、跳、垫」的顺序试。 */
+    private static Step scanChain(Run run, EntityMaid maid, Cell cell) {
         // 目标明显在下面：先跳下去落到地面，再从地面找站位——她不会跳崖，
         // 站在屋顶上往墙根那几格放，怎么算都走不过去
         if (cell.pos.getY() <= maid.blockPosition().getY() - 2 && dropDown(run, maid, cell)) {
@@ -243,62 +305,93 @@ final class BuildPlanner {
             if (walkToAnotherStand(run, maid, cell)) {
                 return Step.HANDLED;
             }
-            // 换不到站位：缺口另一头够得着、又站得住的话，先试试跑跳过去
-            if (hopToPlace(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 齐平的缺口先平着搭过去：往上垫只会离目标更远
-            if (bridgeToward(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 还是不行就再垫一格把眼睛抬高：柱子顶上那几格只能这么看见。
-            // 垫脚不花寻路额度，必须先于「额度用完」的判断，否则选站位吃掉额度后
-            // 她每 tick 都只等到一个 WAIT，永远走不到垫脚这一步
-            if (stepUp(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (run.search.spent()) {
-                return Step.WAIT;
-            }
-            if (stageOutside(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            CellFlow.holdThenPark(run, cell, canJumpHere(run, maid) ? Failure.NO_SIGHT : Failure.NO_HEADROOM);
-            return Step.SKIP;
+            return fallback(run, maid, cell,
+                    canJumpHere(run, maid) ? Failure.NO_SIGHT : Failure.NO_HEADROOM, false);
         }
         Predicate<BlockPos> canSee = stand -> Placement.seesFrom(maid, stand, cell.pos, null);
         BlockPos stand = MineTargets.standForBuilding(
                 maid, cell.pos, run.built, cell.triedStands, run.unreachable, canSee,
                 run.search);
-        if (stand == null) {
-            // 没有能走过去的站位：缺口另一头若一跳能到，就不用垫方块
-            if (hopToPlace(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 同一层的缺口：就地铺一格走过去，比往上垫更接近目标
-            if (bridgeToward(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 垫脚不花寻路额度：先垫一脚，不能因为选站位吃掉额度就停在这里等
-            if (stepUp(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            if (run.search.spent()) {
-                return Step.WAIT;
-            }
-            if (stageOutside(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            // 脚下踩的是自己垫的方块或桥，站着也找不到路：先跳回地面的实地，下一 tick
-            // 从地面重新开始——在半空里反复算站位只会一直卡住
-            if (onScaffold(run, maid) && dropDown(run, maid, cell)) {
-                return Step.HANDLED;
-            }
-            CellFlow.holdThenPark(run, cell, canJumpHere(run, maid) ? Failure.NO_STAND : Failure.NO_HEADROOM);
+        if (stand != null) {
+            startWalk(run, maid, cell, stand);
+            return Step.HANDLED;
+        }
+        return fallback(run, maid, cell,
+                canJumpHere(run, maid) ? Failure.NO_STAND : Failure.NO_HEADROOM, true);
+    }
+
+    /**
+     * 够不着之后的兜底顺序：跑跳、搭路、垫脚、出屋，最后记原因。
+     *
+     * <p>两条分支以前各写了一遍，顺序稍有出入就没人说得清哪条才对。现在只有这一份；
+     * 只有「站在自己垫的方块上、找不到站位」时才多一步跳回地面。
+     */
+    private static Step fallback(
+            Run run, EntityMaid maid, Cell cell, Failure cause, boolean dropWhenStuck) {
+        // 缺口另一头够得着、又站得住的话，先试试跑跳过去
+        if (hopToPlace(run, maid, cell)) {
+            return Step.HANDLED;
+        }
+        // 齐平的缺口先平着搭过去：往上垫只会离目标更远
+        if (bridgeToward(run, maid, cell)) {
+            return Step.HANDLED;
+        }
+        // 还是不行就再垫一格把眼睛抬高：柱子顶上那几格只能这么看见。
+        // 垫脚不花寻路额度，必须先于「额度用完」的判断，否则选站位吃掉额度后
+        // 她每 tick 都只等到一个 WAIT，永远走不到垫脚这一步
+        if (stepUp(run, maid, cell)) {
+            return Step.HANDLED;
+        }
+        if (run.search.spent()) {
+            return Step.WAIT;
+        }
+        if (stageOutside(run, maid, cell)) {
+            return Step.HANDLED;
+        }
+        // 脚下踩的是自己垫的方块或桥，站着也找不到路：先跳回地面的实地，下一 tick
+        // 从地面重新开始——在半空里反复算站位只会一直卡住
+        if (dropWhenStuck && onScaffold(run, maid) && dropDown(run, maid, cell)) {
+            return Step.HANDLED;
+        }
+        CellFlow.holdThenPark(run, cell, cause);
+        return Step.SKIP;
+    }
+
+    /**
+     * 到站之后的收尾：只看这一格还能不能放，放不了就记下原因并留着它。
+     *
+     * <p>不发起新的移动——刚走完一段路，跑跳、垫脚、搭路都留给下个 tick 的扫描决定，
+     * 否则会在一格上反复换手段。
+     */
+    private static Step arriveChain(Run run, EntityMaid maid, Cell cell) {
+        if (!withinReach(maid, cell.pos)) {
+            // 垫上去之后可能还差一点：别在超出玩家距离的地方把方块放出来，换个站位再试
+            rememberStand(run, cell);
+            CellFlow.hold(run, cell, Failure.OUT_OF_REACH);
+            run.active = cell;
             return Step.SKIP;
         }
-        startWalk(run, maid, cell, stand);
+        if (visibleContext(maid, cell) == null) {
+            // 依托面还没出现，或者目标被别的方块挡住：下一遍再试，不记失败次数
+            if (context(maid, cell) == null) {
+                return Step.SKIP;
+            }
+            rememberStand(run, cell);
+            CellFlow.hold(run, cell, Failure.NO_SIGHT);
+            // 那一格还留着：下个 tick 先换个看得见它的站位，别扫到别处去
+            run.active = cell;
+            return Step.SKIP;
+        }
+        run.active = cell;
+        place(run, maid, cell);
         return Step.HANDLED;
+    }
+
+    /** 记下这次没放成的站位，下一轮换位置时跳过，避免来回走。 */
+    private static void rememberStand(Run run, Cell cell) {
+        if (run.stand != null) {
+            cell.triedStands.add(run.stand);
+        }
     }
 
     /** 够得着却看不见这一格：换一个能看见它的站位再走过去。 */
@@ -357,91 +450,24 @@ final class BuildPlanner {
             if (!inPass(cell, doorsOnly) || held(cell, run.level) || reservedStand(run, cell)) {
                 continue;
             }
-            switch (BuildRules.verdict(observe(run, maid, cell))) {
-                case DONE -> CellFlow.done(run, cell);
-                case LIQUID -> CellFlow.fail(run, cell, Failure.LIQUID);
-                case MISSING -> CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
-                case CONTINUE -> {
-                    // 够得着、看得见就放；其余的留给 next() 去挖、走或垫
-                    if (withinReach(maid, cell.pos) && visibleContext(maid, cell) != null) {
-                        run.active = cell;
-                        place(run, maid, cell);
-                        return true;
-                    }
-                }
-                default -> {
-                    // 被占、被活物挡、自己占着：留给 next()
-                }
+            if (handleVerdict(run, maid, cell, Mode.PROBE) != Step.CONTINUE) {
+                continue;
+            }
+            // 够得着、看得见就放；其余的留给 next() 去挖、走或垫
+            if (withinReach(maid, cell.pos) && visibleContext(maid, cell) != null) {
+                run.active = cell;
+                place(run, maid, cell);
+                return true;
             }
         }
         return false;
     }
 
+    /** 走到落脚点之后试放一次：判定与落子，不发起新的移动。 */
     static void tryPlace(Run run, EntityMaid maid, Cell cell) {
-        switch (BuildRules.verdict(observe(run, maid, cell))) {
-            case DONE -> {
-                CellFlow.done(run, cell);
-                return;
-            }
-            case LIQUID -> {
-                CellFlow.fail(run, cell, Failure.LIQUID);
-                return;
-            }
-            case DIG_BLOCKED -> {
-                CellFlow.hold(run, cell, Failure.OCCUPIED);
-                return;
-            }
-            case DIG -> {
-                // 走过来发现这一格被别的方块占着：能挖就挖掉，下一遍再放
-                if (MineTargets.canMine(maid, cell.pos)) {
-                    clearCell(run, maid, cell);
-                } else {
-                    CellFlow.hold(run, cell, Failure.OCCUPIED);
-                }
-                return;
-            }
-            case MISSING -> {
-                CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
-                return;
-            }
-            case HELD_BY_ENTITY -> {
-                // 别的活物挡着：先放一放，过一会儿自动重试
-                cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-                CellFlow.hold(run, cell, Failure.BLOCKED_BY_ENTITY);
-                return;
-            }
-            case SELF_INSIDE -> {
-                // 还站在这一格里：下个 tick 先挪开再放
-                run.active = cell;
-                return;
-            }
-            case CONTINUE -> {
-            }
+        if (handleVerdict(run, maid, cell, Mode.ARRIVE) == Step.CONTINUE) {
+            arriveChain(run, maid, cell);
         }
-        if (!withinReach(maid, cell.pos)) {
-            // 垫上去之后可能还差一点：别在超出玩家距离的地方把方块放出来，换个站位再试
-            if (run.stand != null) {
-                cell.triedStands.add(run.stand);
-            }
-            CellFlow.hold(run, cell, Failure.OUT_OF_REACH);
-            run.active = cell;
-            return;
-        }
-        if (visibleContext(maid, cell) == null) {
-            // 依托面还没出现，或者目标被别的方块挡住：下一遍再试，不记失败次数
-            if (context(maid, cell) == null) {
-                return;
-            }
-            if (run.stand != null) {
-                cell.triedStands.add(run.stand);
-            }
-            CellFlow.hold(run, cell, Failure.NO_SIGHT);
-            // 那一格还留着：下个 tick 先换个看得见它的站位，别扫到别处去
-            run.active = cell;
-            return;
-        }
-        run.active = cell;
-        place(run, maid, cell);
     }
 
     /**

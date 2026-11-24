@@ -57,7 +57,6 @@ final class BuildRules {
 
     /** 一层收尾时要做的事。按返回的顺序执行，收工之后的不再执行。 */
     enum Action {
-        NONE,
         RESCAN,
         NEXT_LAYER,
         RETRY_ROUND,

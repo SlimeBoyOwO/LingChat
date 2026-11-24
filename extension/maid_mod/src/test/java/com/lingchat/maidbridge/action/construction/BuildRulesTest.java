@@ -62,7 +62,7 @@ class BuildRulesTest {
     }
 
     /**
-     * 全组合扫一遍：每个去向至少有一个动作，且不再出现占位用的 NONE。
+     * 全组合扫一遍：每个去向至少有一个动作。
      *
      * <p>执行器是按枚举穷尽 switch 的，这条测试盯的是决策表本身别产出空管线。
      */
@@ -74,7 +74,6 @@ class BuildRulesTest {
                         bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3),
                         stall, bit(mask, 4), bit(mask, 5), bit(mask, 6)));
                 assertFalse(end.actions().isEmpty());
-                assertFalse(end.actions().contains(Action.NONE));
             }
         }
     }

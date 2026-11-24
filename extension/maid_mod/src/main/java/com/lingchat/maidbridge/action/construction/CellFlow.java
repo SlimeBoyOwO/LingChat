@@ -10,9 +10,10 @@ import com.lingchat.maidbridge.action.construction.MaidBuildController.Run;
  *
  * <pre>
  * PENDING ──┐
- *           ├─→ DONE        放好了
+ *           ├─→ DONE                放好了，或本来就已经符合
  * RETRYING ─┘
- * PENDING/RETRYING ─→ DEFERRED ─→ RETRYING ─→ FAILED   搁置、补试、收账
+ * PENDING/RETRYING ──→ FAILED      液体、缺料，或换成别的方块占着
+ * PENDING ──→ DEFERRED ──→ RETRYING ──→ FAILED   搁置、补试、仍不行
  * </pre>
  *
  * <p>每次迁移分两步：先跑旧状态的退出行为，再跑新状态的进入行为。退出行为负责把为它
