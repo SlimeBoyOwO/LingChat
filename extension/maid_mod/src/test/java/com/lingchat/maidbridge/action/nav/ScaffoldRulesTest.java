@@ -1,4 +1,4 @@
-package com.lingchat.maidbridge.action.construction;
+package com.lingchat.maidbridge.action.nav;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;

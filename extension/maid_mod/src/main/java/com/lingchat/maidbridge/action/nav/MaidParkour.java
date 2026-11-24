@@ -1,8 +1,7 @@
-package com.lingchat.maidbridge.action.construction;
+package com.lingchat.maidbridge.action.nav;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.mine.MineTargets;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -50,7 +49,7 @@ public final class MaidParkour {
             return List.of();
         }
         BlockPos start = maid.blockPosition();
-        if (!MineTargets.standable(level, start)) {
+        if (!Terrain.standable(level, start)) {
             return List.of();
         }
         Set<BlockPos> seen = new HashSet<>();
@@ -110,7 +109,7 @@ public final class MaidParkour {
         if (!ParkourRules.allowed(distance, rise, maxFall)) {
             return false;
         }
-        if (!MineTargets.standable(level, from) || !MineTargets.standable(level, to)) {
+        if (!Terrain.standable(level, from) || !Terrain.standable(level, to)) {
             return false;
         }
         // 落点要落在整格的面上：台阶、栅栏、半砖的顶面高度对不上，摆过去会卡在碰撞盒里
@@ -144,7 +143,7 @@ public final class MaidParkour {
                     return false;
                 }
             }
-            if (!MineTargets.standable(level, cell)) {
+            if (!Terrain.standable(level, cell)) {
                 gap = true;
                 // 断口下面不能是岩浆、火这类；近处有危险就宁可垫方块
                 if (!safeBelow(level, cell, from.getY(), maxFall)) {
@@ -292,7 +291,7 @@ public final class MaidParkour {
                 return;
             }
             BlockPos to = chain.get(index);
-            if (!MineTargets.standable(level, to)) {
+            if (!Terrain.standable(level, to)) {
                 fail();
                 return;
             }

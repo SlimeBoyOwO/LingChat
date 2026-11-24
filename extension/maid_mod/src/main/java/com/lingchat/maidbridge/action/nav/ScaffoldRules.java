@@ -1,4 +1,4 @@
-package com.lingchat.maidbridge.action.construction;
+package com.lingchat.maidbridge.action.nav;
 
 /**
  * 垫脚的判据：什么时候还值得往她脚下垫一块，哪一步必须真的接近目标。

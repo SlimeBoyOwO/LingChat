@@ -1,4 +1,4 @@
-package com.lingchat.maidbridge.action.construction;
+package com.lingchat.maidbridge.action.nav;
 
 /**
  * 跑跳的几何规则：冲刺跳能跨多远、抬高之后还剩多远。

@@ -2,6 +2,7 @@ package com.lingchat.maidbridge.action.mine;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.SearchBudget;
+import com.lingchat.maidbridge.action.nav.Terrain;
 import com.lingchat.maidbridge.debug.PathDebug;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
@@ -674,20 +675,9 @@ public final class MineTargets {
         maid.setItemInHand(InteractionHand.MAIN_HAND, tool);
     }
 
-    /** 她能站在这一格上吗：自己和头顶是空的，脚下有东西接着。 */
+    /** 她能站在这一格上吗：移交给寻路包，挖掘与跑酷共用同一条判定。 */
     public static boolean standable(Level level, BlockPos pos) {
-        if (!level.isLoaded(pos) || !level.isLoaded(pos.above())) {
-            return false;
-        }
-        BlockState feet = level.getBlockState(pos);
-        BlockState head = level.getBlockState(pos.above());
-        if (!feet.isAir() && !feet.canBeReplaced()) {
-            return false;
-        }
-        if (!head.isAir() && !head.canBeReplaced()) {
-            return false;
-        }
-        return !level.getBlockState(pos.below()).getCollisionShape(level, pos.below()).isEmpty();
+        return Terrain.standable(level, pos);
     }
 
     /** 从落脚点的眼睛出发，够得着而且第一眼看到的就是目标。 */
