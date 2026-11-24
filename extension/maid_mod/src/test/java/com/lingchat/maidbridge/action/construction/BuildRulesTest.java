@@ -43,70 +43,94 @@ class BuildRulesTest {
     @Test
     void allPlacedFinishes() {
         PassEnd end = BuildRules.endPass(stats(true, true, false, true, 0, false, true, false));
-        assertEquals(Action.FINISH, end.first());
-        assertEquals(Action.NONE, end.second());
+        assertEquals(Action.FINISH, end.actions().get(0));
+        assertEquals(1, end.actions().size());
     }
 
     @Test
     void closedLayerMovesOnWhenAnotherLayerIsOpen() {
         PassEnd end = BuildRules.endPass(stats(false, false, false, false, 0, false, true, true));
-        assertEquals(Action.NEXT_LAYER, end.first());
+        assertEquals(Action.NEXT_LAYER, end.actions().get(0));
     }
 
     @Test
     void closedLayerRetriesBeforeFinishing() {
         PassEnd end = BuildRules.endPass(stats(false, false, false, false, 0, false, false, true));
-        assertEquals(Action.RETRY_ROUND, end.first());
+        assertEquals(Action.RETRY_ROUND, end.actions().get(0));
+        // 只有这一个动作：以前写成两个槽位时，执行侧漏接过第一槽
+        assertEquals(1, end.actions().size());
+    }
+
+    /**
+     * 全组合扫一遍：每个去向至少有一个动作，且不再出现占位用的 NONE。
+     *
+     * <p>执行器是按枚举穷尽 switch 的，这条测试盯的是决策表本身别产出空管线。
+     */
+    @Test
+    void everyCombinationYieldsRealActions() {
+        for (int mask = 0; mask < 128; mask++) {
+            for (int stall = 0; stall < 4; stall++) {
+                PassEnd end = BuildRules.endPass(stats(
+                        bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3),
+                        stall, bit(mask, 4), bit(mask, 5), bit(mask, 6)));
+                assertFalse(end.actions().isEmpty());
+                assertFalse(end.actions().contains(Action.NONE));
+            }
+        }
+    }
+
+    private static boolean bit(int mask, int index) {
+        return (mask & (1 << index)) != 0;
     }
 
     @Test
     void closedLayerFinishesWithoutWorkLeft() {
         PassEnd end = BuildRules.endPass(stats(false, false, false, false, 0, false, false, false));
-        assertEquals(Action.FINISH, end.first());
+        assertEquals(Action.FINISH, end.actions().get(0));
     }
 
     @Test
     void progressOrHeldCellsKeepScanning() {
-        assertEquals(Action.RESCAN, BuildRules.endPass(normal()).first());
+        assertEquals(Action.RESCAN, BuildRules.endPass(normal()).actions().get(0));
         assertEquals(Action.RESCAN,
-                BuildRules.endPass(stats(false, true, true, false, 2, false, true, false)).first());
+                BuildRules.endPass(stats(false, true, true, false, 2, false, true, false)).actions().get(0));
     }
 
     @Test
     void stallKeepsScanningUntilLimit() {
         assertEquals(Action.RESCAN,
-                BuildRules.endPass(stats(false, true, false, false, 1, false, true, false)).first());
+                BuildRules.endPass(stats(false, true, false, false, 1, false, true, false)).actions().get(0));
         assertEquals(Action.RESCAN,
-                BuildRules.endPass(stats(false, true, false, false, 2, false, true, false)).first());
+                BuildRules.endPass(stats(false, true, false, false, 2, false, true, false)).actions().get(0));
     }
 
     @Test
     void stalledLayerDefersBeforeRetrying() {
         PassEnd end = BuildRules.endPass(stats(false, true, false, false, 3, false, true, true));
-        assertEquals(Action.DEFER_LAYER, end.first());
-        assertEquals(Action.NEXT_LAYER, end.second());
+        assertEquals(Action.DEFER_LAYER, end.actions().get(0));
+        assertEquals(Action.NEXT_LAYER, end.actions().get(1));
     }
 
     @Test
     void stalledLayerSettlesAfterRetryRound() {
         PassEnd end = BuildRules.endPass(stats(false, true, false, false, 3, true, true, false));
-        assertEquals(Action.SETTLE_LAYER, end.first());
-        assertEquals(Action.NEXT_LAYER, end.second());
+        assertEquals(Action.SETTLE_LAYER, end.actions().get(0));
+        assertEquals(Action.NEXT_LAYER, end.actions().get(1));
     }
 
     @Test
     void stalledLayerCanRetryWhenNothingElseToDo() {
         // 搁置之后本层就有可补试的格子了，不必事先已经存在 deferred
         PassEnd end = BuildRules.endPass(stats(false, true, false, false, 3, false, false, false));
-        assertEquals(Action.DEFER_LAYER, end.first());
-        assertEquals(Action.RETRY_ROUND, end.second());
+        assertEquals(Action.DEFER_LAYER, end.actions().get(0));
+        assertEquals(Action.RETRY_ROUND, end.actions().get(1));
     }
 
     @Test
     void stalledLayerFinishesWhenNoWorkLeft() {
         PassEnd end = BuildRules.endPass(stats(false, true, false, false, 3, true, false, false));
-        assertEquals(Action.SETTLE_LAYER, end.first());
-        assertEquals(Action.FINISH, end.second());
+        assertEquals(Action.SETTLE_LAYER, end.actions().get(0));
+        assertEquals(Action.FINISH, end.actions().get(1));
     }
 
     private static BuildRules.Situation situation(

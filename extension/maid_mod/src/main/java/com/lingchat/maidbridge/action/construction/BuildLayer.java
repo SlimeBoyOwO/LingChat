@@ -2,7 +2,6 @@ package com.lingchat.maidbridge.action.construction;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.construction.BuildRules.CellState;
-import com.lingchat.maidbridge.action.construction.BuildRules.Failure;
 import com.lingchat.maidbridge.action.construction.BuildRules.PassEnd;
 import com.lingchat.maidbridge.action.construction.BuildRules.PassStats;
 import java.util.Comparator;
@@ -17,7 +16,11 @@ import com.lingchat.maidbridge.action.construction.MaidBuildController.Cell;
 import com.lingchat.maidbridge.action.construction.MaidBuildController.Run;
 import static com.lingchat.maidbridge.action.construction.MaidBuildController.*;
 
-/** 一格的进度与一层走完后的去向：纯规则的执行侧。 */
+/**
+ * 一层的进度与一层走完后的去向：决策表的执行侧。
+ *
+ * <p>一格自己的状态迁移在 {@link CellFlow}，这里只管按层统计、执行动作管线。
+ */
 final class BuildLayer {
     /** 这一格归这一遍管：还开着；门留到别的格子都放好之后再装。 */
     static boolean inPass(Cell cell, boolean doorsOnly) {
@@ -27,79 +30,6 @@ final class BuildLayer {
     /** 这一格被活物占着，还没到重试的时候。 */
     static boolean held(Cell cell, ServerLevel level) {
         return cell.holdUntil > level.getGameTime();
-    }
-
-    static void markDone(Run run, Cell cell) {
-        if (cell.state == CellState.DONE) {
-            return;
-        }
-        cell.state = CellState.DONE;
-        run.built.add(cell.pos);
-        run.placed++;
-        releaseStand(run, cell);
-    }
-
-    /** 这一格不用再为它守着了：它占着的落脚点可以正常放了。 */
-    static void releaseStand(Run run, Cell cell) {
-        if (run.standFor == cell) {
-            run.standFor = null;
-        }
-    }
-
-    /** 缺料：这一轮不再为这一格努力，但把还差多少件记下来交给插件。 */
-    static void missing(Run run, Cell cell) {
-        if (!cell.state.open()) {
-            return;
-        }
-        cell.state = CellState.FAILED;
-        cell.failure = Failure.SHORT_OF_MATERIAL;
-        releaseStand(run, cell);
-        run.missing.merge(cell.itemId, 1, Integer::sum);
-    }
-
-    /** 这一遍还不放弃：记下原因，等这一层整轮没有新进展时再一起收。 */
-    static void temporary(Run run, Cell cell, Failure failure) {
-        cell.failure = failure;
-        cell.attempted = true;
-    }
-
-    /**
-     * 这一格收账时记哪个原因。
-     *
-     * <p>从没真正试过的格子（依托面还没出现、一遍没轮到）不该拿默认的「没站位」顶数：
-     * 收尾时那样会把「还没盖完」说成「旁边没地方站」。
-     */
-    static String failureCode(Cell cell) {
-        return cell.attempted ? cell.failure.code : "incomplete";
-    }
-
-    /** 这一格有定论了：记进失败清单，收尾时交给插件。 */
-    static void settle(Run run, Cell cell, Failure failure) {
-        if (!cell.state.open()) {
-            return;
-        }
-        releaseStand(run, cell);
-        cell.state = CellState.FAILED;
-        cell.failure = failure;
-        run.failed.merge(failureCode(cell), 1, Integer::sum);
-    }
-
-    /**
-     * 这一轮先放一放：别的格子放好之后，缺依托、被挡住的常常就能放了。
-     *
-     * <p>整张图纸过完一遍再回头补试，补试过还是不行的才由 {@link #settle} 记账。
-     */
-    static void defer(Run run, Cell cell, Failure failure) {
-        if (!cell.state.open()) {
-            return;
-        }
-        releaseStand(run, cell);
-        cell.failure = failure;
-        // 补试那一轮再放弃就直接算失败，不再搁一次
-        cell.state = cell.state == CellState.RETRYING ? CellState.FAILED : CellState.DEFERRED;
-        if (cell.state == CellState.FAILED) {
-            run.failed.merge(failureCode(cell), 1, Integer::sum);
-        }
     }
 
     /**
@@ -148,33 +78,51 @@ final class BuildLayer {
         applyEnd(server, run, end);
     }
 
-    /** 按纯规则给出的去向执行：先搁置或收账，再换层、补试或收工。 */
+    /** 按纯规则给出的去向执行：动作按顺序来，收工之后的不再执行。 */
     static void applyEnd(MinecraftServer server, Run run, PassEnd end) {
-        stop("层:" + end.first() + "/" + end.second());
-        switch (end.first()) {
-            case DEFER_LAYER -> deferLayer(run);
-            case SETTLE_LAYER -> settleLayer(run);
-            case RESCAN -> restartPass(run);
-            // 本层已经没有开格时，换层是决策表的第一个动作，不能只在第二个动作里处理
-            case NEXT_LAYER -> switchLayer(run);
-            case FINISH -> {
-                finish(server, run, "");
+        stop("层:" + end.text());
+        for (Action action : end.actions()) {
+            if (perform(server, run, action)) {
                 return;
-            }
-            default -> {
-            }
-        }
-        switch (end.second()) {
-            case NEXT_LAYER -> switchLayer(run);
-            case RETRY_ROUND -> retryRound(run);
-            case FINISH -> {
-                finish(server, run, "");
-                return;
-            }
-            default -> {
             }
         }
         run.cooldown = PASS_BREAK_TICKS;
+    }
+
+    /**
+     * 执行一个收尾动作；返回真表示收工。
+     *
+     * <p>写成 switch 表达式：新增动作时编译器会逼着这里补一行。以前是两段带 default 的
+     * switch，漏接的动作静默通过，施工会在原地反复空转。
+     */
+    private static boolean perform(MinecraftServer server, Run run, Action action) {
+        return switch (action) {
+            case NONE -> false;
+            case RESCAN -> {
+                restartPass(run);
+                yield false;
+            }
+            case NEXT_LAYER -> {
+                switchLayer(run);
+                yield false;
+            }
+            case RETRY_ROUND -> {
+                retryRound(run);
+                yield false;
+            }
+            case DEFER_LAYER -> {
+                deferLayer(run);
+                yield false;
+            }
+            case SETTLE_LAYER -> {
+                settleLayer(run);
+                yield false;
+            }
+            case FINISH -> {
+                finish(server, run, "");
+                yield true;
+            }
+        };
     }
 
     /** 换到下一处还有开格的层；找不到就留在原地。 */
@@ -220,7 +168,7 @@ final class BuildLayer {
             if (!inPass(cell, doorsOnly)) {
                 continue;
             }
-            defer(run, cell, cell.failure);
+            CellFlow.park(run, cell, cell.failure);
         }
     }
 
@@ -235,16 +183,9 @@ final class BuildLayer {
             return false;
         }
         for (Cell cell : run.cells) {
-            if (cell.state != CellState.DEFERRED) {
-                continue;
+            if (cell.state == CellState.DEFERRED) {
+                CellFlow.retry(run, cell);
             }
-            cell.state = CellState.RETRYING;
-            cell.waits = 0;
-            // 周围已经变样了，之前试过的站位不一定还成立；垫过的依托与铺过的路也重新给一次
-            cell.triedStands.clear();
-            cell.propped = false;
-            cell.bridges = 0;
-            cell.drops = 0;
         }
         run.retried = true;
         return resetLayer(run);
@@ -266,7 +207,7 @@ final class BuildLayer {
             if (!inPass(cell, doorsOnly)) {
                 continue;
             }
-            settle(run, cell, cell.failure);
+            CellFlow.fail(run, cell, cell.failure);
         }
     }
 
@@ -327,7 +268,7 @@ final class BuildLayer {
         run.stallPasses = 0;
     }
 
-    /** 这一遍重头再扫：顺序按她此刻站的位置重排，先做近的。 */
+    /** 这一遍重头再扫：顺序按她此刻站的位置重排，由远及近。 */
     static void restartPass(Run run) {
         run.cursor = run.layerStart;
         run.needOrder = true;

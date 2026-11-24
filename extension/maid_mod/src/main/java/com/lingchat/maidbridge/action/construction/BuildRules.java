@@ -1,5 +1,7 @@
 package com.lingchat.maidbridge.action.construction;
 
+import java.util.List;
+
 /**
  * 施工的纯规则：一格的生命周期与一层走完后的去向。
  *
@@ -53,7 +55,7 @@ final class BuildRules {
         }
     }
 
-    /** 一层收尾时要做的事。第二动作在第一动作（搁置或收账）之后执行。 */
+    /** 一层收尾时要做的事。按返回的顺序执行，收工之后的不再执行。 */
     enum Action {
         NONE,
         RESCAN,
@@ -112,9 +114,34 @@ final class BuildRules {
         return Verdict.CONTINUE;
     }
 
-    record PassEnd(Action first, Action second) {
-        static final PassEnd FINISH = new PassEnd(Action.FINISH, Action.NONE);
-        static final PassEnd RESCAN = new PassEnd(Action.RESCAN, Action.NONE);
+    /**
+     * 一层收尾的去向：有序的动作管线，收工之后的不再执行。
+     *
+     * <p>以前是两个固定槽位，执行侧要写两段 switch 对齐，漏掉一个动作没有任何提示。
+     */
+    record PassEnd(List<Action> actions) {
+        static final PassEnd FINISH = new PassEnd(List.of(Action.FINISH));
+        static final PassEnd RESCAN = new PassEnd(List.of(Action.RESCAN));
+
+        static PassEnd of(Action first) {
+            return new PassEnd(List.of(first));
+        }
+
+        static PassEnd of(Action first, Action second) {
+            return new PassEnd(List.of(first, second));
+        }
+
+        /** 状态栏里显示用：按执行顺序连起来。 */
+        String text() {
+            StringBuilder text = new StringBuilder();
+            for (Action action : actions) {
+                if (!text.isEmpty()) {
+                    text.append('/');
+                }
+                text.append(action);
+            }
+            return text.toString();
+        }
     }
 
     /**
@@ -147,10 +174,10 @@ final class BuildRules {
         }
         if (!stats.layerOpen()) {
             if (stats.canMoveOn()) {
-                return new PassEnd(Action.NEXT_LAYER, Action.NONE);
+                return PassEnd.of(Action.NEXT_LAYER);
             }
             if (stats.canRetryRound()) {
-                return new PassEnd(Action.RETRY_ROUND, Action.NONE);
+                return PassEnd.of(Action.RETRY_ROUND);
             }
             return PassEnd.FINISH;
         }
@@ -166,11 +193,11 @@ final class BuildRules {
         // 哪怕此刻一枚 deferred 都还没有
         boolean retryAfter = stats.canRetryRound() || !stats.retried();
         if (stats.canMoveOn()) {
-            return new PassEnd(first, Action.NEXT_LAYER);
+            return PassEnd.of(first, Action.NEXT_LAYER);
         }
         if (retryAfter) {
-            return new PassEnd(first, Action.RETRY_ROUND);
+            return PassEnd.of(first, Action.RETRY_ROUND);
         }
-        return new PassEnd(first, Action.FINISH);
+        return PassEnd.of(first, Action.FINISH);
     }
 }

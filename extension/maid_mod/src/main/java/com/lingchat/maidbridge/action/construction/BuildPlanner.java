@@ -137,7 +137,7 @@ final class BuildPlanner {
         if (step == Step.WAIT) {
             if (++cell.waits > MAX_CELL_WAITS) {
                 cell.waits = 0;
-                giveUp(run, cell, Failure.NO_STAND);
+                CellFlow.holdThenPark(run, cell, Failure.NO_STAND);
                 return Step.SKIP;
             }
         } else {
@@ -158,16 +158,16 @@ final class BuildPlanner {
         }
         switch (BuildRules.verdict(observe(run, maid, cell))) {
             case DONE -> {
-                markDone(run, cell);
+                CellFlow.done(run, cell);
                 return Step.SKIP;
             }
             case LIQUID -> {
-                settle(run, cell, Failure.LIQUID);
+                CellFlow.fail(run, cell, Failure.LIQUID);
                 return Step.SKIP;
             }
             case DIG_BLOCKED -> {
                 run.blockedSkips++;
-                defer(run, cell, Failure.OCCUPIED);
+                CellFlow.park(run, cell, Failure.OCCUPIED);
                 return Step.SKIP;
             }
             case DIG -> {
@@ -178,20 +178,20 @@ final class BuildPlanner {
                 }
                 BlockPos dig = MineTargets.standFor(maid, cell.pos);
                 if (dig == null) {
-                    temporary(run, cell, Failure.NO_STAND);
+                    CellFlow.hold(run, cell, Failure.NO_STAND);
                     return Step.SKIP;
                 }
                 startWalk(run, maid, cell, dig);
                 return Step.HANDLED;
             }
             case MISSING -> {
-                missing(run, cell);
+                CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
                 return Step.SKIP;
             }
             case HELD_BY_ENTITY -> {
                 // 别的活物挡着：先不管，过一会儿自动重试
                 cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-                temporary(run, cell, Failure.BLOCKED_BY_ENTITY);
+                CellFlow.hold(run, cell, Failure.BLOCKED_BY_ENTITY);
                 return Step.SKIP;
             }
             case SELF_INSIDE -> {
@@ -210,7 +210,7 @@ final class BuildPlanner {
                 if (run.search.spent()) {
                     return Step.WAIT;
                 }
-                temporary(run, cell, Failure.SELF_BLOCKED);
+                CellFlow.hold(run, cell, Failure.SELF_BLOCKED);
                 return Step.SKIP;
             }
             case CONTINUE -> {
@@ -263,7 +263,7 @@ final class BuildPlanner {
             if (stageOutside(run, maid, cell)) {
                 return Step.HANDLED;
             }
-            giveUp(run, cell, canJumpHere(run, maid) ? Failure.NO_SIGHT : Failure.NO_HEADROOM);
+            CellFlow.holdThenPark(run, cell, canJumpHere(run, maid) ? Failure.NO_SIGHT : Failure.NO_HEADROOM);
             return Step.SKIP;
         }
         Predicate<BlockPos> canSee = stand -> Placement.seesFrom(maid, stand, cell.pos, null);
@@ -294,7 +294,7 @@ final class BuildPlanner {
             if (onScaffold(run, maid) && dropDown(run, maid, cell)) {
                 return Step.HANDLED;
             }
-            giveUp(run, cell, canJumpHere(run, maid) ? Failure.NO_STAND : Failure.NO_HEADROOM);
+            CellFlow.holdThenPark(run, cell, canJumpHere(run, maid) ? Failure.NO_STAND : Failure.NO_HEADROOM);
             return Step.SKIP;
         }
         startWalk(run, maid, cell, stand);
@@ -315,19 +315,6 @@ final class BuildPlanner {
         }
         startWalk(run, maid, cell, other);
         return true;
-    }
-
-    /**
-     * 这一格暂时没辙：先把原因记下。
-     *
-     * <p>站位已经换过几轮还不行，就不再让这一层回头找它：先搁到补试那一轮，
-     * 免得两层之间来回跑。
-     */
-    static void giveUp(Run run, Cell cell, Failure failure) {
-        temporary(run, cell, failure);
-        if (cell.triedStands.size() >= MAX_STAND_TRIES) {
-            defer(run, cell, failure);
-        }
     }
 
     /**
@@ -371,9 +358,9 @@ final class BuildPlanner {
                 continue;
             }
             switch (BuildRules.verdict(observe(run, maid, cell))) {
-                case DONE -> markDone(run, cell);
-                case LIQUID -> settle(run, cell, Failure.LIQUID);
-                case MISSING -> missing(run, cell);
+                case DONE -> CellFlow.done(run, cell);
+                case LIQUID -> CellFlow.fail(run, cell, Failure.LIQUID);
+                case MISSING -> CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
                 case CONTINUE -> {
                     // 够得着、看得见就放；其余的留给 next() 去挖、走或垫
                     if (withinReach(maid, cell.pos) && visibleContext(maid, cell) != null) {
@@ -393,15 +380,15 @@ final class BuildPlanner {
     static void tryPlace(Run run, EntityMaid maid, Cell cell) {
         switch (BuildRules.verdict(observe(run, maid, cell))) {
             case DONE -> {
-                markDone(run, cell);
+                CellFlow.done(run, cell);
                 return;
             }
             case LIQUID -> {
-                settle(run, cell, Failure.LIQUID);
+                CellFlow.fail(run, cell, Failure.LIQUID);
                 return;
             }
             case DIG_BLOCKED -> {
-                temporary(run, cell, Failure.OCCUPIED);
+                CellFlow.hold(run, cell, Failure.OCCUPIED);
                 return;
             }
             case DIG -> {
@@ -409,18 +396,18 @@ final class BuildPlanner {
                 if (MineTargets.canMine(maid, cell.pos)) {
                     clearCell(run, maid, cell);
                 } else {
-                    temporary(run, cell, Failure.OCCUPIED);
+                    CellFlow.hold(run, cell, Failure.OCCUPIED);
                 }
                 return;
             }
             case MISSING -> {
-                missing(run, cell);
+                CellFlow.fail(run, cell, Failure.SHORT_OF_MATERIAL);
                 return;
             }
             case HELD_BY_ENTITY -> {
                 // 别的活物挡着：先放一放，过一会儿自动重试
                 cell.holdUntil = run.level.getGameTime() + ENTITY_RETRY_TICKS;
-                temporary(run, cell, Failure.BLOCKED_BY_ENTITY);
+                CellFlow.hold(run, cell, Failure.BLOCKED_BY_ENTITY);
                 return;
             }
             case SELF_INSIDE -> {
@@ -436,7 +423,7 @@ final class BuildPlanner {
             if (run.stand != null) {
                 cell.triedStands.add(run.stand);
             }
-            temporary(run, cell, Failure.OUT_OF_REACH);
+            CellFlow.hold(run, cell, Failure.OUT_OF_REACH);
             run.active = cell;
             return;
         }
@@ -448,7 +435,7 @@ final class BuildPlanner {
             if (run.stand != null) {
                 cell.triedStands.add(run.stand);
             }
-            temporary(run, cell, Failure.NO_SIGHT);
+            CellFlow.hold(run, cell, Failure.NO_SIGHT);
             // 那一格还留着：下个 tick 先换个看得见它的站位，别扫到别处去
             run.active = cell;
             return;
@@ -493,14 +480,14 @@ final class BuildPlanner {
         lookToward(maid, cell.pos);
         BlockPlaceContext context = visibleContext(maid, cell);
         if (context == null) {
-            temporary(run, cell, Failure.NO_SIGHT);
+            CellFlow.hold(run, cell, Failure.NO_SIGHT);
             run.active = cell;
             return;
         }
         ((BlockItem) cell.item).place(context);
         BlockState after = run.level.getBlockState(cell.pos);
         if (!matches(cell, after)) {
-            temporary(run, cell, Failure.PLACE_FAILED);
+            CellFlow.hold(run, cell, Failure.PLACE_FAILED);
             return;
         }
         upright(run.level, cell.pos);
@@ -512,7 +499,7 @@ final class BuildPlanner {
         run.active = null;
         run.nextPlace = null;
         run.nextPlaceIn = 0;
-        markDone(run, cell);
+        CellFlow.done(run, cell);
         run.cooldown = placeInterval(run, maid, cell);
         // 世界变了，之前算不到的站位可能就能走到了
         run.unreachable.clear();
@@ -527,14 +514,14 @@ final class BuildPlanner {
     static void clearCell(Run run, EntityMaid maid, Cell cell) {
         BlockState state = run.level.getBlockState(cell.pos);
         if (!maid.canDestroyBlock(cell.pos)) {
-            defer(run, cell, Failure.OCCUPIED);
+            CellFlow.park(run, cell, Failure.OCCUPIED);
             return;
         }
         MineTargets.equipBestTool(maid, state);
         MaidActuator.stopWalking(maid);
         MaidActuator.lookAtPos(maid, cell.pos);
         if (!maid.destroyBlock(cell.pos, true)) {
-            defer(run, cell, Failure.OCCUPIED);
+            CellFlow.park(run, cell, Failure.OCCUPIED);
             return;
         }
         maid.swing(InteractionHand.MAIN_HAND);

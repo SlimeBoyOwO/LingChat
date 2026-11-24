@@ -355,9 +355,9 @@ public final class MaidBuildController {
             run.blueprint.add(cell.pos);
             BlockState state = run.level.getBlockState(cell.pos);
             if (matches(cell, state)) {
-                markDone(run, cell);
+                CellFlow.done(run, cell);
             } else if (state.getBlock() instanceof LiquidBlock) {
-                settle(run, cell, Failure.LIQUID);
+                CellFlow.fail(run, cell, Failure.LIQUID);
             }
             // 被别的方块占着的先不判死：施工时会走过去把它挖掉，再放图纸这一块
         }
@@ -744,7 +744,7 @@ public final class MaidBuildController {
         // 补试阶段又落下的格子也要有个说法，别在失败清单里凭空消失
         for (Cell cell : run.cells) {
             if (cell.state == CellState.DEFERRED) {
-                settle(run, cell, cell.failure);
+                CellFlow.fail(run, cell, cell.failure);
             }
         }
         int remaining = Math.max(0, run.total - run.placed);

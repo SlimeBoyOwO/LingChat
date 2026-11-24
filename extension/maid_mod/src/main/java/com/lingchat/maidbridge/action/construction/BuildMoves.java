@@ -214,13 +214,13 @@ final class BuildMoves {
         public Status tick(Run run, EntityMaid maid) {
             if (++ticks > JUMP_TIMEOUT_TICKS) {
                 // 跳不起来（头顶被封、被别的模组按住）：这一格换别的办法
-                temporary(run, cell, Failure.NO_STAND);
+                CellFlow.hold(run, cell, Failure.NO_STAND);
                 return Status.FAILED;
             }
             if (maid.onGround()) {
                 if (!maid.blockPosition().equals(pos) || ticks > 3) {
                     // 被挤开了，或者推了几下都没离地
-                    temporary(run, cell, Failure.NO_STAND);
+                    CellFlow.hold(run, cell, Failure.NO_STAND);
                     return Status.FAILED;
                 }
                 maid.setDeltaMovement(0.0, JUMP_POWER, 0.0);
@@ -230,7 +230,7 @@ final class BuildMoves {
                 return Status.BUSY;
             }
             if (!put(run, maid, cell, pos, item)) {
-                temporary(run, cell, Failure.PLACE_FAILED);
+                CellFlow.hold(run, cell, Failure.PLACE_FAILED);
                 return Status.FAILED;
             }
             cell.steps++;
@@ -277,7 +277,7 @@ final class BuildMoves {
             if (runner.failed()) {
                 // 这条路线走不通：记下来，换别的落点或者退回垫脚
                 cell.triedStands.addAll(runner.chain());
-                temporary(run, cell, Failure.NO_PATH);
+                CellFlow.hold(run, cell, Failure.NO_PATH);
                 run.cooldown = PASS_BREAK_TICKS;
                 return Status.FAILED;
             }
