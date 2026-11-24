@@ -34,6 +34,15 @@ class BuildRulesTest {
     }
 
     @Test
+    void deferredCanEnterTheRetryRound() {
+        assertTrue(CellFlow.allowed(CellState.DEFERRED, CellState.RETRYING));
+        assertTrue(CellFlow.allowed(CellState.DEFERRED, CellState.FAILED));
+        assertFalse(CellFlow.allowed(CellState.FAILED, CellState.RETRYING));
+        assertFalse(CellFlow.allowed(CellState.DONE, CellState.RETRYING));
+        assertFalse(CellFlow.allowed(CellState.PENDING, CellState.PENDING));
+    }
+
+    @Test
     void failureCodesKeepWireFormat() {
         assertEquals("blocked", BuildRules.Failure.OCCUPIED.code);
         assertEquals("blocked_by_entity", BuildRules.Failure.BLOCKED_BY_ENTITY.code);

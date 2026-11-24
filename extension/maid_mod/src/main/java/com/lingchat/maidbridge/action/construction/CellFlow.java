@@ -87,13 +87,28 @@ final class CellFlow {
     }
 
     /**
+     * 允许的迁移：搁置还没定论，可以转补试或收账；完成与失败的格子只能再往完成走。
+     *
+     * <p>不能拿 open() 当判据：搁置不是开格，但它正是补试轮要重新打开的状态。
+     */
+    static boolean allowed(CellState from, CellState to) {
+        if (from == to) {
+            return false;
+        }
+        if (from == CellState.DONE || from == CellState.FAILED) {
+            return to == CellState.DONE;
+        }
+        return true;
+    }
+
+    /**
      * 唯一的迁移入口：退出旧状态，换状态，进入新状态。
      *
      * <p>已有定论的格子只能往 DONE 走，其余迁移一律忽略，避免收账之后又被别的路径改回来。
      */
     private static void transition(Run run, Cell cell, CellState next, Failure cause) {
         CellState from = cell.state;
-        if (from == next || (!from.open() && next != CellState.DONE)) {
+        if (!allowed(from, next)) {
             return;
         }
         if (cause != null) {
