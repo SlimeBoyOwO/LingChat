@@ -37,14 +37,13 @@ public final class MaidParkour {
     }
 
     /**
-     * 从她脚下出发，用至多几次跑跳找一个能放下 target 的落脚点。
+     * 从她脚下出发，用至多几次跑跳找一个满足条件的落脚点。
      *
      * <p>返回要依次踩的格子；空列表表示跑跳帮不上忙。只走直线、只沿四个方向，
      * 与沙盘里的规则一致。中间落点在 {@code skip} 里的不再选，避免反复试同一条死路。
      */
-    public static List<BlockPos> planToPlace(
-            EntityMaid maid, BlockPos target, Set<BlockPos> skip, Predicate<BlockPos> canPlace,
-            int maxFall) {
+    public static List<BlockPos> planTo(
+            EntityMaid maid, Set<BlockPos> skip, Predicate<BlockPos> standOk, int maxFall) {
         if (!(maid.level() instanceof ServerLevel level) || !maid.onGround()) {
             return List.of();
         }
@@ -59,7 +58,7 @@ public final class MaidParkour {
         int nodes = 0;
         while (!queue.isEmpty() && nodes++ < MAX_NODES) {
             Node node = queue.poll();
-            if (!node.pos.equals(start) && !skip.contains(node.pos) && canPlace.test(node.pos)) {
+            if (!node.pos.equals(start) && !skip.contains(node.pos) && standOk.test(node.pos)) {
                 return chainOf(node);
             }
             if (node.depth >= MAX_HOPS) {

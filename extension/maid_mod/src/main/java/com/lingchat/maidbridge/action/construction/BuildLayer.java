@@ -4,12 +4,12 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.construction.BuildRules.CellState;
 import com.lingchat.maidbridge.action.construction.BuildRules.PassEnd;
 import com.lingchat.maidbridge.action.construction.BuildRules.PassStats;
+import com.lingchat.maidbridge.action.nav.Terrain;
 import java.util.Comparator;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Blocks;
-import net.minecraft.world.level.block.state.BlockState;
 
 import com.lingchat.maidbridge.action.construction.BuildRules.*;
 import com.lingchat.maidbridge.action.construction.MaidBuildController.Cell;
@@ -41,7 +41,7 @@ final class BuildLayer {
     static PassStats measurePass(Run run) {
         boolean doorsOnly = onlyDoorsLeft(run);
         // 垫脚也算这一遍的进展：爬上去要好几步，不能爬一半就被当成走不到收掉
-        boolean progress = run.placed + run.stepPlaced > run.layerPassPlaced;
+        boolean progress = run.placed + run.book.placed() > run.layerPassPlaced;
         boolean held = openCellsHeld(run, doorsOnly);
         // 全被活物占着就等一会儿；但只等有限几次，不然一只不动的活物能把整座房子耗死
         long now = run.level.getGameTime();
@@ -59,7 +59,7 @@ final class BuildLayer {
             run.heldSince = 0;
         }
         if (progress) {
-            run.layerPassPlaced = run.placed + run.stepPlaced;
+            run.layerPassPlaced = run.placed + run.book.placed();
             run.stallPasses = 0;
         } else if (waitHeld) {
             // 剩下的都在等活物挪开：先歇一会儿，不算这一层失败
@@ -269,7 +269,7 @@ final class BuildLayer {
             run.cells.get(i).waits = 0;
         }
         restartPass(run);
-        run.layerPassPlaced = run.placed + run.stepPlaced;
+        run.layerPassPlaced = run.placed + run.book.placed();
         run.stallPasses = 0;
     }
 
@@ -318,10 +318,7 @@ final class BuildLayer {
 
     /** 这一格是不是实心方块：垫脚块要立在它上面，或者它自己就得先垫出来。 */
     static boolean solidCell(ServerLevel level, BlockPos pos) {
-        BlockState state = level.getBlockState(pos);
-        return !state.isAir()
-                && state.getFluidState().isEmpty()
-                && !state.getCollisionShape(level, pos).isEmpty();
+        return Terrain.solid(level, pos);
     }
 
 }

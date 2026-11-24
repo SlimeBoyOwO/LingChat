@@ -14,13 +14,17 @@ import com.lingchat.maidbridge.action.construction.BuildRules.PassStats;
 import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
+import com.lingchat.maidbridge.action.nav.NavGoal;
+import com.lingchat.maidbridge.action.nav.NavMemory;
+import com.lingchat.maidbridge.action.nav.NavPolicy;
+import com.lingchat.maidbridge.action.nav.Navigator;
+import com.lingchat.maidbridge.action.nav.ScaffoldBook;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.debug.PathDebug;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,28 +38,19 @@ import net.minecraft.world.item.Item;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
-import net.minecraft.world.phys.Vec3;
 
-import com.lingchat.maidbridge.action.construction.BuildMoves.Move;
 import static com.lingchat.maidbridge.action.construction.BuildLayer.*;
-import static com.lingchat.maidbridge.action.construction.BuildMoves.*;
 import static com.lingchat.maidbridge.action.construction.BuildPlanner.*;
 
 /**
- * 按图纸盖房子：走过每一格、够得着就放，没料或走不到就记下来，盖完推一条收尾事件。
+ * 按图纸盖房子：扫描决定这一格怎么处理，寻路负责把她送到能干活的位置，放完歇一下再扫。
  *
  * <p>与挖掘、放置一样是单槽位、每 tick 推进的异步活。施工顺序是先低层后高层，
  * 同一层里先放脚下有依托的格子；一遍放不完就再走一遍，让新放下的方块给邻居当依托。
  * 单格判据只看这一格此刻“是什么、够不够得着、放不放得下”，不经过 LLM。
- * 落子要求她眼睛到落点之间没有方块挡着；选站位时也只考虑看得见这一格的位置，
- * 墙背面只剩外侧地面可选。够得着却看不见的格子交给垫脚，一格一格把她送上去：
- * 优先往附近垫一格走上去，四面被堵或者目标就在正上方时原地跳起来把脚下补上。
- * 走不过去时先试跑跳：缺口另一头站得住、看得见这一格，就按平地四格、抬一格三格
- * 的规则跳过去，不必搭方块。够得着却站不过去时，就一格一格垫：目标高过两层时是往上爬，
- * 目标与她齐平或只高一格时，先把一格垫在脚下、走上去，站到放得下的地方。
  *
- * <p>一遍没放上的格子不急着判死：先把整张图纸过完，别的方块放好之后常常就能放了，
- * 到那时回头补试一轮，补过还是不行的才计入失败。
+ * <p>走动、跳下、跑跳、垫脚、搭路全部由寻路模块负责；这里只给目标「站到能放下这一格的
+ * 位置」和边界「图纸格不许垫」。失败原因由寻路回报，这里翻成格子账上的原因。
  *
  * <p>生存模式从她背包里扣方块；主人是创造模式时不扣料，方便测试。缺料不硬等：
  * 这一格记成 short_of_material，别的能放继续放，收尾时把还差多少件一起交回插件。
@@ -70,42 +65,22 @@ public final class MaidBuildController {
     static final int TURN_EXTRA_TICKS = 5;
     /** 两遍之间歇一下。 */
     static final int PASS_BREAK_TICKS = 2;
-    /** 走路卡住这么久还没到落脚点，就认为这条路走不通。 */
-    static final int STUCK_TICKS = 80;
-    /** 这么久几乎没有位移才叫卡住：绕路时离目标变远是正常的，不能按直线距离判。 */
-    static final int WALK_STILL_TICKS = 80;
     /** 从受理到收工最多等这么久（约四十分钟）：中型房子的块数多，二十分钟会半途收手。 */
     static final int BUILD_TIMEOUT_TICKS = 48000;
     /** 一 tick 最多判几格，避免第一次扫描时对整张图纸算寻路。 */
     static final int MAX_SCAN_PER_TICK = 6;
-    /** 站到离目标这么近就能放（底面中心距离平方）。 */
-    static final double AT_STAND = 4.0;
-    /** 同一格最多换几个站位：换了这么多还看不见就认了，别在原地转圈。 */
-    static final int MAX_STAND_TRIES = 4;
     /** 目标格被活物占着时先放一放，过这么久再试。 */
     static final int ENTITY_RETRY_TICKS = 100;
     /** 这一层全被活物占着时最多等这么久（约十秒）；再等下去不如先搁置换层。 */
     static final int HOLD_GIVEUP_TICKS = 200;
-    /** 同一格连续因为寻路额度用完而没推进，最多等这么久（约六秒）。 */
+    /** 同一格连续因为寻路没推进而停住，最多等这么久（约六秒）。 */
     static final int MAX_CELL_WAITS = 120;
     /** 每一 tick 最多算几次寻路：屋里屋外不通时，一次全算完会把服务端卡住。 */
     static final int PATHS_PER_TICK = 6;
-    /** 同一条跑跳路线没算通，隔这么久再试，别每 tick 都重算一遍。 */
-    static final int HOP_RETRY_TICKS = 40;
-    /** 同一格最多为她从高处跳下去两次：一次能落十格，落完还要往下也只再补一次。 */
-    static final int MAX_DROPS = 2;
     /** 调试时多久算一次「下一块放哪」：每格都要验视线，不能每 tick 都算。 */
     static final int NEXT_PLACE_TICKS = 10;
-    /** 原地起跳的初速：与玩家跳跃一致，刚好够她升过一整格。 */
-    static final double JUMP_POWER = 0.42;
-    /** 起跳后最多等这么久：没离地、也没把方块补进去就放手。 */
-    static final int JUMP_TIMEOUT_TICKS = 20;
-    /** 垫完一块之后等这么久再判下一格，让她先落回新方块上。 */
-    static final int JUMP_LAND_TICKS = 10;
-    /** 收尾时走去一个落脚点离开垫脚块，最多等这么久。 */
+    /** 收尾时走去一个落脚点、拆净垫脚，最多等这么久。 */
     static final int CLEANUP_TIMEOUT_TICKS = 120;
-    /** 实在没有落脚点可去时，等这么久就把她脚下的垫脚块也拆掉，让她落回地面。 */
-    static final int CLEANUP_WAIT_TICKS = 30;
 
     /** 图纸里的一格，已经换算到世界坐标。 */
     public record Target(BlockPos pos, Block block, Float yaw) {
@@ -122,22 +97,16 @@ public final class MaidBuildController {
         CellState state = CellState.PENDING;
         /** 最后一次没放上的原因，搁置或收账时按它记账。 */
         Failure failure = Failure.NO_STAND;
-        /** 为这一格试过、但没能放上的站位：换位置时跳过，避免来回走。 */
-        final Set<BlockPos> triedStands = new HashSet<>();
-        /** 为这一格垫过几次脚（按升高次数算），防止在原地反复搭。 */
-        int steps;
-        /** 为这一格平铺过几块路：齐平的缺口一块一块搭过去。 */
-        int bridges;
-        /** 为这一格从高处跳下去过几次：落地之后还要往下时，别在两级之间来回跳。 */
-        int drops;
+        /** 这一格自己的寻路记忆：试过哪些站位、垫过几次脚、跳了几次。 */
+        final NavMemory nav = new NavMemory();
         /** 已经为这一格在目标底下垫过依托，再没有依托就真放不下了。 */
         boolean propped;
         /** 这一格被活物占着，等到这个游戏刻之后再试。 */
         long holdUntil;
-        /** 这一格的跑跳路线没算通，等到这个游戏刻之后再算。 */
-        long hopUntil;
-        /** 连续因为寻路额度用完而停在这一格的 tick 数。 */
+        /** 连续因为寻路没推进而停在这一格的 tick 数。 */
         int waits;
+        /** 为这一格开过几次寻路都失败了：连试两次还不行就先搁到补试轮。 */
+        int navFails;
         /** 有没有真的为它试过：没试过的格子收账时不拿默认原因顶数。 */
         boolean attempted;
 
@@ -161,14 +130,20 @@ public final class MaidBuildController {
         int placed;
         int ticks;
         int cooldown;
-        /** 同一时刻只有一个动作：走路、垫脚、起跳垫高、跑跳。 */
-        Move move;
         /** 这一 tick 走哪个相位；由运行状态推导，切换时跑进入与退出钩子。 */
         BuildPhase phase = BuildPhase.SCAN;
-        /** 本层收尾时冻结的统计；只在 CLOSE 相位里有值。 */
-        PassStats passStats;
+        /** 正在跑的寻路；为空表示不在赶路。 */
+        Navigator nav;
+        /** 这次寻路是为哪一格开的。 */
+        Cell navCell;
         /** 她正赶过去或正踩着的落脚点；选格和收尾时用来护着那一格。 */
         BlockPos stand;
+        /** 为哪一格选了落脚点：她没到之前，脚下这一格先别放方块堵死。 */
+        Cell standFor;
+        /** 这一轮施工垫下的临时方块。 */
+        final ScaffoldBook book = new ScaffoldBook();
+        /** 本层收尾时冻结的统计。 */
+        PassStats passStats;
         /** 当前处理的层在格子表里的下标区间。 */
         int layerStart;
         int layerEnd;
@@ -181,36 +156,19 @@ public final class MaidBuildController {
         final Set<BlockPos> built = new HashSet<>();
         /** 图纸占着的格子：垫脚不能占掉图纸自己的位置。 */
         final Set<BlockPos> blueprint = new HashSet<>();
-        /** 她为够到高处垫下的临时方块，她走开后逐块拆掉。 */
-        final Map<BlockPos, Block> scaffold = new LinkedHashMap<>();
-        /** 每块垫脚方块是为哪一格搭的：那一格还没放好之前不拆，拆了她就走不过去。 */
-        final Map<BlockPos, Cell> scaffoldOwner = new HashMap<>();
         /** 已经做过一轮补试：剩下的格子再不行就真有定论了。 */
         boolean retried;
         /** 这一 tick 还剩几次寻路；每 tick 开头重新发一份。 */
         SearchBudget search = new SearchBudget(0);
-        /** 这一 tick 已经算过一条跑跳路线：一条就够贵了。 */
-        boolean hopPlanned;
-        /** 从她上次站的这一格算过、走不到的站位：她没挪窝就不必反复算。 */
-        final Set<BlockPos> unreachable = new HashSet<>();
-        /** 上一次清站位缓存时她站的那一格。 */
-        BlockPos searchFrom;
-        /** 已经垫出的格数；它和 placed 一起算「这一遍有没有进展」。 */
-        int stepPlaced;
         /** 正在处理的那一格：换了站位、退了再试时都先盯着它，别扫到别的格子去。 */
         Cell active;
-        /** 为哪一格选了落脚点：她没到之前，脚下这一格先别放方块堵死。 */
-        Cell standFor;
         /** 这一层的顺序该按她此刻的位置重排了：换层、重开一遍时各排一次。 */
         boolean needOrder;
-        /** 施工完了先离开垫脚块、把它拆干净，再推收尾。 */
-        boolean cleaning;
-        int cleanTicks;
-        BlockPos cleanStand;
-        String pendingCode = "";
-        String pendingReason = "";
-        /** 走不开时拆得掉她脚下的那一块。 */
-        boolean forceClean;
+        /** 正在收尾：先离开垫脚块、把它拆干净，再推收尾。 */
+        boolean finishing;
+        int doneTicks;
+        String doneCode = "";
+        String doneReason = "";
         /** 收尾时按原因记账。 */
         final Map<String, Integer> failed = new LinkedHashMap<>();
         /** 施工前她的工作模式：收手时换回去，别让她盖完房子还一直闲站着。 */
@@ -398,10 +356,8 @@ public final class MaidBuildController {
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         if (maid != null) {
             // 换工地、停服时不讲究落脚点，垫出来的方块一块都不留
-            run.stand = null;
-            cancelMove(run, maid);
-            run.forceClean = true;
-            cleanScaffold(run, maid);
+            stopNav(run, maid);
+            run.book.clearNow(run.level, maid, run.consumeMaterials);
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
             restoreTask(run, maid);
@@ -454,67 +410,130 @@ public final class MaidBuildController {
         if (maid.isSleeping() || maid.isMaidInSittingPose() || maid.isPassenger()) {
             MaidActuator.standUp(maid);
         }
-        if (run.cleaning) {
-            if (PathDebug.watching(maid)) {
-                reportDebug(run, maid);
-            }
-            BuildPhase.to(run, BuildPhase.CLEAN);
-            run.phase.tick(server, run, maid);
-            return;
-        }
         if (++run.ticks > BUILD_TIMEOUT_TICKS) {
             finish(server, run, "timeout", "盖了这么久还没盖完，先停下了");
             return;
         }
         // 每个 tick 只给这么多寻路：屋里屋外不通时，逐格逐候选算路会把服务端拖住
         run.search = new SearchBudget(PATHS_PER_TICK);
-        run.hopPlanned = false;
         if (run.nextPlaceIn > 0) {
             run.nextPlaceIn--;
-        }
-        // 她挪了地方，之前算不到的站位可能就能走到了：缓存按她脚下这一格作废
-        if (!maid.blockPosition().equals(run.searchFrom)) {
-            run.searchFrom = maid.blockPosition().immutable();
-            run.unreachable.clear();
         }
         // 调试可视化开着时，把这一 tick 的阶段、落脚点与目标交上去；没开就只多一次空判断
         if (PathDebug.watching(maid)) {
             reportDebug(run, maid);
         }
-        cleanScaffold(run, maid);
-        BuildPhase.to(run, BuildPhase.of(run));
+        // 没有寻路在跑时，顺手把走开的垫脚块拆掉；她正赶去的落脚点附近先护着
+        if (run.nav == null) {
+            run.book.clean(run.level, maid, run.stand, false, false, run.consumeMaterials);
+        }
+        BuildPhase.to(server, run, maid, BuildPhase.of(run));
         run.phase.tick(server, run, maid);
     }
 
+    /** 扫描相位：本层按位置重排后取一格处理；扫完就数账、按决策表走。 */
+    static void scan(MinecraftServer server, Run run, EntityMaid maid) {
+        if (run.needOrder) {
+            run.needOrder = false;
+            orderLayer(run, maid);
+        }
+        if (next(run, maid)) {
+            return;
+        }
+        if (run.search.spent()) {
+            stop("额度用完");
+            return;
+        }
+        endPass(server, run, measurePass(run));
+    }
 
+    /** 赶路相位：寻路自己挑手段；到了就试放，走不通就记账回去扫。 */
+    static void pathing(MinecraftServer server, Run run, EntityMaid maid) {
+        Navigator nav = run.nav;
+        if (nav == null) {
+            return;
+        }
+        Navigator.Status status = nav.tick(maid, run.search);
+        nav.cleanScaffold(maid);
+        run.stand = nav.stand();
+        if (status == Navigator.Status.RUNNING) {
+            return;
+        }
+        Cell cell = run.navCell;
+        run.nav = null;
+        run.navCell = null;
+        run.standFor = null;
+        if (status == Navigator.Status.ARRIVED) {
+            if (cell != null) {
+                cell.navFails = 0;
+            }
+            arrive(run, maid);
+            return;
+        }
+        run.stand = null;
+        if (cell != null) {
+            Failure cause = failureOf(nav.failure());
+            if (++cell.navFails >= 2) {
+                CellFlow.park(run, cell, cause);
+            } else {
+                CellFlow.holdThenPark(run, cell, cause);
+            }
+        }
+        run.cooldown = PASS_BREAK_TICKS;
+    }
 
+    /** 放置间隔：放完一块或一遍走完，歇几个 tick 再扫。 */
+    static void cooldown(Run run) {
+        if (run.cooldown > 0) {
+            run.cooldown--;
+        }
+    }
+
+    /** 收尾相位：先走去实地上站好、拆净垫脚，再推收尾事件；等太久就强拆。 */
+    static void settling(MinecraftServer server, Run run, EntityMaid maid) {
+        run.doneTicks++;
+        if (run.nav != null) {
+            run.nav.tick(maid, run.search);
+            run.nav.cleanScaffold(maid);
+            run.stand = run.nav.stand();
+            if (run.nav.status() == Navigator.Status.RUNNING
+                    && run.doneTicks < CLEANUP_TIMEOUT_TICKS) {
+                return;
+            }
+            run.nav = null;
+        }
+        run.book.clearNow(run.level, maid, run.consumeMaterials);
+        finishNow(server, run, run.doneCode, run.doneReason);
+    }
+
+    /** 收手时把寻路停掉，别让她还在往半空里的落脚点走。 */
+    static void stopNav(Run run, EntityMaid maid) {
+        if (run.nav != null) {
+            run.nav.cancel(maid);
+            run.nav = null;
+        }
+        run.navCell = null;
+        run.standFor = null;
+        run.stand = null;
+    }
 
     /**
      * 调试可视化：这一 tick 她在干什么、正对着哪一格、站在哪、下一块大概放哪里。
-     *
-     * <p>白框标的是她手上这一格——走路时是目的地，放的时候就是手上这一块；空闲时才退回
-     * 「下一块大概放哪」。以前这里取的是本层第一格没做的，和真正在放的那一格经常对不上。
      */
     static void reportDebug(Run run, EntityMaid maid) {
         predictNext(run, maid);
-        Cell focus;
+        Cell focus = run.active != null && run.active.state.open() ? run.active : null;
         String phase;
-        if (run.cleaning) {
+        if (run.finishing) {
             phase = "收尾：收拾垫脚块";
-            focus = null;
-        } else if (run.move != null) {
-            phase = run.move.phase();
-            focus = run.move.cell();
+        } else if (run.nav != null) {
+            phase = run.nav.phase();
         } else if (run.cooldown > 0) {
-            // 冷却期间手上没有动作，别报成「扫描下一格」：相位机此刻走的是 COOLDOWN
             phase = "放置间隔";
-            focus = null;
-        } else if (run.active != null && run.active.state.open()) {
+        } else if (focus != null) {
             phase = "准备放这一格";
-            focus = run.active;
         } else {
             phase = "扫描下一格";
-            focus = null;
         }
         BlockPos target = focus != null ? focus.pos : run.nextPlace;
         Cell named = focus != null ? focus : cellAt(run, run.nextPlace);
@@ -523,7 +542,7 @@ public final class MaidBuildController {
                 : BuiltInRegistries.BLOCK.getKey(named.block).toString();
         PathDebug.report(
                 maid, phase, run.stand, target,
-                run.move == null ? List.of() : run.move.chain(),
+                run.nav == null ? List.of() : run.nav.chain(),
                 run.nextPlace, block);
     }
 
@@ -589,8 +608,10 @@ public final class MaidBuildController {
             }
         }
         String hand = run.active == null ? "-" : run.active.pos + ":" + run.active.state;
+        String walking = run.nav == null ? "-" : run.nav.phase();
         return "｜施工 " + run.placed + "/" + run.total
                 + "｜相 " + BuildPhase.of(run)
+                + "｜步 " + walking
                 + "｜本层 开 " + open + "·等活物 " + waiting + "·预留 " + reserved
                 + (waited > 0 ? "·已等 " + waited + "s" : "")
                 + "｜全 待 " + pending + "·补 " + retrying + "·败 " + failed
@@ -599,79 +620,10 @@ public final class MaidBuildController {
                 + "｜停 " + lastStop + "×" + stopTicks
                 + "｜行 " + run.cursor + "/" + run.layerStart + "-" + run.layerEnd
                 + "｜手 " + hand
+                + "｜垫 " + run.book.size()
                 + "｜心跳 " + run.ticks
                 + "｜额度 " + run.search.left() + "/" + run.search.total();
     }
-
-
-
-    /** 收工阶段每 tick 推进：先走去落脚点，路上把垫脚块拆掉，拆干净再真正收尾。 */
-    static void cleaning(MinecraftServer server, Run run, EntityMaid maid) {
-        if (++run.cleanTicks > CLEANUP_TIMEOUT_TICKS) {
-            run.forceClean = true;
-            cleanScaffold(run, maid);
-            finishNow(server, run, run.pendingCode, run.pendingReason);
-            return;
-        }
-        if (run.cleanStand != null) {
-            if (arrived(run.cleanStand, maid)) {
-                run.cleanStand = null;
-                MaidActuator.stopWalking(maid);
-                // 已经站到实地上，剩下的垫脚块不用再护着，直接拆干净
-                run.forceClean = true;
-            } else {
-                MaidActuator.walkToPos(maid, run.cleanStand, 0);
-            }
-        } else if (run.cleanTicks > CLEANUP_WAIT_TICKS) {
-            // 没有落脚点可去：等一小会儿就把脚下的垫脚块也拆了，让她落回地面
-            run.forceClean = true;
-        }
-        cleanScaffold(run, maid);
-        if (run.scaffold.isEmpty()) {
-            finishNow(server, run, run.pendingCode, run.pendingReason);
-        }
-    }
-
-    /**
-     * 收工时去哪站着：最近的一格能站人、又不踩着垫脚块的地面。
-     *
-     * <p>只在她身边几格内找；找不到给 null，由收尾阶段等一会儿直接拆。
-     */
-    static BlockPos awayStand(Run run, EntityMaid maid) {
-        BlockPos here = maid.blockPosition();
-        BlockPos best = null;
-        double bestScore = Double.MAX_VALUE;
-        for (int dx = -6; dx <= 6; dx++) {
-            for (int dz = -6; dz <= 6; dz++) {
-                for (int dy = -2; dy <= 2; dy++) {
-                    BlockPos stand = here.offset(dx, dy, dz);
-                    if (!cleanupStand(run, stand)) {
-                        continue;
-                    }
-                    double score = stand.distSqr(here);
-                    if (score < bestScore) {
-                        bestScore = score;
-                        best = stand;
-                    }
-                }
-            }
-        }
-        return best;
-    }
-
-    static boolean cleanupStand(Run run, BlockPos stand) {
-        if (run.scaffold.containsKey(stand) || run.scaffold.containsKey(stand.below())) {
-            return false;
-        }
-        if (!run.level.isLoaded(stand) || !run.level.isLoaded(stand.above())) {
-            return false;
-        }
-        if (!freeForStep(run, stand) || !freeForStep(run, stand.above())) {
-            return false;
-        }
-        return solidCell(run.level, stand.below());
-    }
-
 
 
     static void finish(MinecraftServer server, Run run, String reasonCode) {
@@ -687,16 +639,17 @@ public final class MaidBuildController {
     static void finish(MinecraftServer server, Run run, String reasonCode, String reason) {
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         boolean natural = reasonCode == null || reasonCode.isEmpty() || "timeout".equals(reasonCode);
-        if (natural && !run.cleaning && maid != null && !maid.isRemoved() && !run.scaffold.isEmpty()) {
-            run.cleaning = true;
-            run.pendingCode = reasonCode == null ? "" : reasonCode;
-            run.pendingReason = reason == null ? "" : reason;
-            run.stand = null;
-            cancelMove(run, maid);
-            run.cleanStand = awayStand(run, maid);
-            if (run.cleanStand != null) {
-                MaidActuator.walkToPos(maid, run.cleanStand, 0);
-            }
+        if (natural && !run.finishing && maid != null && !maid.isRemoved()
+                && !run.book.isEmpty()) {
+            run.finishing = true;
+            run.doneCode = reasonCode == null ? "" : reasonCode;
+            run.doneReason = reason == null ? "" : reason;
+            run.doneTicks = 0;
+            stopNav(run, maid);
+            run.nav = Navigator.start(
+                    new NavGoal.Settle(),
+                    new NavPolicy(run.blueprint, run.built, run.consumeMaterials),
+                    new NavMemory(), run.book);
             return;
         }
         finishNow(server, run, reasonCode, reason);
@@ -706,17 +659,13 @@ public final class MaidBuildController {
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
         if (maid != null) {
             // 中断的路上不再护着脚下那块：垫出来的方块一块都不留
-            run.stand = null;
-            cancelMove(run, maid);
-            run.forceClean = true;
-            cleanScaffold(run, maid);
-        }
-        current = null;
-        if (maid != null) {
+            stopNav(run, maid);
+            run.book.clearNow(run.level, maid, run.consumeMaterials);
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
             restoreTask(run, maid);
         }
+        current = null;
         WanderGuard.end(run.maidId);
 
         // 补试阶段又落下的格子也要有个说法，别在失败清单里凭空消失
@@ -796,25 +745,4 @@ public final class MaidBuildController {
             default -> "还没盖完";
         };
     }
-
-
-    static boolean arrived(BlockPos stand, EntityMaid maid) {
-        return arrived(stand, maid, false);
-    }
-
-    /**
-     * 到没到落脚点。垫脚时要求她真的站进那一格，差半格不算——
-     * 不然下一步会从斜角往对面跳，被旁边的方块挡住后再也上不去。
-     */
-    static boolean arrived(BlockPos stand, EntityMaid maid, boolean tight) {
-        if (stand == null) {
-            return false;
-        }
-        if (tight) {
-            return maid.blockPosition().equals(stand);
-        }
-        return maid.position().distanceToSqr(Vec3.atBottomCenterOf(stand)) <= AT_STAND
-                || maid.blockPosition().distManhattan(stand) <= 1;
-    }
-
 }

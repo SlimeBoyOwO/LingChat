@@ -25,6 +25,9 @@ import com.lingchat.maidbridge.action.construction.MaidBuildController.Run;
  * 原因在不同位置得到不同处置。现在一律经本类，规则只有下面这一份。
  */
 final class CellFlow {
+    /** 同一格换过这么多个站位都不行，就先搁到补试轮。 */
+    private static final int MAX_STAND_TRIES = 4;
+
     private CellFlow() {
     }
 
@@ -50,7 +53,7 @@ final class CellFlow {
      */
     static void holdThenPark(Run run, Cell cell, Failure cause) {
         hold(run, cell, cause);
-        if (cell.triedStands.size() >= MaidBuildController.MAX_STAND_TRIES) {
+        if (cell.nav.triedStands.size() >= MAX_STAND_TRIES) {
             park(run, cell, cause);
         }
     }
@@ -134,10 +137,14 @@ final class CellFlow {
             case RETRYING -> {
                 // 周围已经变样了，之前试过的站位不一定还成立；垫过的依托与铺过的路也重新给一次
                 cell.waits = 0;
-                cell.triedStands.clear();
                 cell.propped = false;
-                cell.bridges = 0;
-                cell.drops = 0;
+                cell.navFails = 0;
+                cell.nav.triedStands.clear();
+                cell.nav.unreachable.clear();
+                cell.nav.steps = 0;
+                cell.nav.bridges = 0;
+                cell.nav.drops = 0;
+                cell.nav.hopUntil = 0;
                 yield next;
             }
             case PENDING, DEFERRED -> next;
