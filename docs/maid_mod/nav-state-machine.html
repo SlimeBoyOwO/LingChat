@@ -1,0 +1,600 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>女仆寻路状态机与手段</title>
+<style>
+  :root {
+    --bg: #fbfcfe;
+    --panel: #ffffff;
+    --text: #1c2333;
+    --muted: #5b657a;
+    --line: #d9e0ec;
+    --edge: #44506a;
+    --fail: #b0523a;
+    --fail-fill: #fdeee9;
+    --scan-fill: #eef4ff;
+    --scan-stroke: #31558c;
+    --move-fill: #f1eefc;
+    --move-stroke: #5a4a96;
+    --wait-fill: #fff4e0;
+    --wait-stroke: #a9711a;
+    --done-fill: #e9f7ee;
+    --done-stroke: #2f7d4a;
+    --accent: #31558c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141c;
+      --panel: #161c27;
+      --text: #e8edf7;
+      --muted: #a3adc0;
+      --line: #2a3444;
+      --edge: #9fb0cc;
+      --fail: #e09b83;
+      --fail-fill: #3a201a;
+      --scan-fill: #1c2b45;
+      --scan-stroke: #7ea2d8;
+      --move-fill: #241f3a;
+      --move-stroke: #a793e0;
+      --wait-fill: #3a2c15;
+      --wait-stroke: #d6a755;
+      --done-fill: #163224;
+      --done-stroke: #6fc08d;
+      --accent: #7ea2d8;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: "Segoe UI", "Microsoft YaHei", "PingFang SC", system-ui, sans-serif;
+    line-height: 1.6;
+  }
+  main { max-width: 1400px; margin: 0 auto; padding: 28px 20px 56px; }
+  h1 { margin: 0 0 6px; font-size: 25px; letter-spacing: .02em; }
+  h2 { margin: 34px 0 6px; font-size: 19px; letter-spacing: .01em; }
+  .sub { margin: 0; color: var(--muted); font-size: 14px; }
+  .hint { margin: 4px 0 12px; color: var(--muted); font-size: 13px; }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: 10px 22px;
+    margin: 18px 0 10px; padding: 12px 14px;
+    border: 1px solid var(--line); border-radius: 12px; background: var(--panel);
+    font-size: 13px; color: var(--muted);
+  }
+  .legend b { color: var(--text); font-weight: 600; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; }
+  .chip i {
+    width: 16px; height: 16px; border-radius: 50%;
+    border: 2px solid var(--scan-stroke); background: var(--scan-fill);
+  }
+  .chip i.move { border-color: var(--move-stroke); background: var(--move-fill); }
+  .chip i.wait { border-color: var(--wait-stroke); background: var(--wait-fill); }
+  .chip i.done { border-color: var(--done-stroke); background: var(--done-fill); }
+  .chip i.fail { border-color: var(--fail); background: var(--fail-fill); }
+  .chip s { display: inline-block; width: 26px; height: 0; border-top: 2px solid var(--edge); }
+  .chip s.fail { border-top: 2px dashed var(--fail); }
+  .chip b.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--edge); }
+
+  .canvas { border: 1px solid var(--line); border-radius: 14px; background: var(--panel); overflow: auto; }
+  svg { display: block; width: 100%; min-width: 1080px; height: auto; }
+
+  .edge { fill: none; stroke: var(--edge); stroke-width: 2; }
+  .edge.fail { stroke: var(--fail); stroke-dasharray: 7 5; }
+  .edge.dash { stroke-dasharray: 6 5; }
+  .dg-a .edge { marker-end: url(#arrow-a); }
+  .dg-a .edge.fail { marker-end: url(#arrow-fail-a); }
+  .dg-b .edge { marker-end: url(#arrow-b); }
+  .dg-b .edge.fail { marker-end: url(#arrow-fail-b); }
+  .dg-c .edge { marker-end: url(#arrow-c); }
+  .dg-d .edge { marker-end: url(#arrow-d); }
+  .lbl {
+    fill: var(--text); font-size: 13px;
+    paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round;
+  }
+  .lbl.sm { font-size: 11.5px; fill: var(--muted); }
+  .lbl.fail { fill: var(--fail); }
+  .marker-edge path { fill: var(--edge); }
+  .marker-fail path { fill: var(--fail); }
+
+  circle.state { stroke-width: 2.2; }
+  circle.scan { fill: var(--scan-fill); stroke: var(--scan-stroke); }
+  circle.move { fill: var(--move-fill); stroke: var(--move-stroke); }
+  circle.wait { fill: var(--wait-fill); stroke: var(--wait-stroke); }
+  circle.done { fill: var(--done-fill); stroke: var(--done-stroke); }
+  circle.failstate { fill: var(--fail-fill); stroke: var(--fail); }
+  .nm { fill: var(--text); font-size: 16px; font-weight: 650; }
+  .tag { fill: var(--muted); font-size: 10px; letter-spacing: .04em; }
+  .pseudo { fill: var(--edge); }
+  .pseudo-ring { fill: none; stroke: var(--edge); stroke-width: 2.5; }
+
+  .sec-title { fill: var(--text); font-size: 15px; font-weight: 650; }
+  .step-num { fill: var(--panel); stroke: var(--line); stroke-width: 1.6; }
+  .step-num-t { fill: var(--text); font-size: 13px; font-weight: 650; }
+  .cond { fill: var(--text); font-size: 14px; font-weight: 600; }
+  .cond-s { fill: var(--muted); font-size: 12.5px; }
+  .act { fill: var(--text); font-size: 13px; font-weight: 650; }
+  .plat { fill: var(--move-fill); stroke: var(--move-stroke); stroke-width: 1.6; }
+  .goal-cell { fill: var(--scan-fill); stroke: var(--scan-stroke); stroke-width: 2; }
+  .feet-cell { fill: var(--edge); }
+  .grid line { stroke: var(--line); stroke-width: 1; }
+  .ring { fill: none; stroke: var(--scan-stroke); stroke-dasharray: 6 5; stroke-width: 1.4; }
+  .dot { fill: var(--scan-stroke); }
+  .star { fill: var(--wait-stroke); font-size: 20px; }
+  .axe { stroke: var(--accent); stroke-width: 1.6; }
+  .mini { fill: var(--muted); font-size: 12px; }
+  .mini-b { fill: var(--text); font-size: 12.5px; font-weight: 600; }
+
+  .notes {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 12px; margin-top: 14px;
+  }
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--wait-stroke);
+    border-radius: 10px; background: var(--panel); padding: 10px 14px; font-size: 13px;
+    color: var(--muted);
+  }
+  .note b { display: block; color: var(--text); font-weight: 650; margin-bottom: 2px; }
+
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13.5px; }
+  caption { text-align: left; font-weight: 650; padding: 8px 0 10px; font-size: 15px; }
+  th, td { border: 1px solid var(--line); padding: 8px 10px; vertical-align: top; text-align: left; }
+  th { background: var(--scan-fill); font-weight: 600; }
+  td code { font-size: 12.5px; }
+  .foot { margin-top: 14px; color: var(--muted); font-size: 12.5px; }
+  @media print {
+    .canvas { overflow: visible; }
+    svg { min-width: 0; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>女仆寻路：状态机与手段</h1>
+    <p class="sub">NeoForge 1.21.1 · lingchat_maid_bridge 0.1.0 · 调用方只给目标和边界，走法由寻路自己挑</p>
+  </header>
+
+  <div class="legend">
+    <span class="chip"><b class="dot"></b><b>进入</b> 每个 tick 都从这里走一遍</span>
+    <span class="chip"><i class="wait"></i><b>检查</b> 终态、超时、歇脚、是否已到位</span>
+    <span class="chip"><i></i><b>规划</b> 按代价挑一条腿</span>
+    <span class="chip"><i class="move"></i><b>赶路</b> 执行一条腿</span>
+    <span class="chip"><i class="done"></i><b>到站</b></span>
+    <span class="chip"><i class="fail"></i><b>走不通</b> 带原因回调用方</span>
+    <span class="chip"><s></s><b>正常迁移</b></span>
+    <span class="chip"><s class="fail"></s><b>判死</b></span>
+  </div>
+
+  <h2>一、外层状态机</h2>
+  <p class="hint">一次目标开一个小状态机：没有腿在跑就规划，选中一条腿就跑到底。终态只有两个：到站、走不通。</p>
+  <div class="canvas">
+    <svg class="dg-a" viewBox="0 0 1280 660" role="img" aria-label="寻路外层状态机">
+      <defs>
+        <marker id="arrow-a" class="marker-edge" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+        <marker id="arrow-fail-a" class="marker-fail" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <path class="edge" d="M 122 200 L 220 200"/>
+      <path class="edge" d="M 372 200 L 582 200"/>
+      <path class="edge" d="M 734 200 L 942 200"/>
+      <path class="edge" d="M 300 272 L 300 474"/>
+      <path class="edge fail" d="M 700 268 C 820 330, 900 400, 966 492"/>
+      <path class="edge" d="M 1010 116 C 998 28, 330 28, 300 128"/>
+      <path class="edge" d="M 1112 176 C 1200 132, 1224 268, 1114 224"/>
+
+      <text class="lbl" x="477" y="186" text-anchor="middle">没有腿在跑</text>
+      <text class="lbl sm" x="477" y="224" text-anchor="middle">先看终点与超时</text>
+      <text class="lbl" x="838" y="186" text-anchor="middle">选中一条手段</text>
+      <text class="lbl sm" x="838" y="224" text-anchor="middle">enter 一次</text>
+      <text class="lbl" x="318" y="352" text-anchor="start">已在能动手的位置</text>
+      <text class="lbl sm" x="318" y="374" text-anchor="start">且不站在目标格里</text>
+      <text class="lbl fail" x="884" y="310" text-anchor="start">判死</text>
+      <text class="lbl fail" x="884" y="332" text-anchor="start">连续 40 tick 排不出动作</text>
+      <text class="lbl fail" x="884" y="354" text-anchor="start">或 5 条腿都没成</text>
+      <text class="lbl" x="655" y="44" text-anchor="middle">下一 tick：还在跑就继续，跑完才重新规划</text>
+      <text class="lbl" x="1258" y="150" text-anchor="end">腿还在跑</text>
+      <text class="lbl sm" x="1258" y="170" text-anchor="end">或起跳后歇脚中</text>
+
+      <g>
+        <circle class="state wait" cx="300" cy="200" r="72"/>
+        <text class="nm" x="300" y="196" text-anchor="middle">每 tick 入口</text>
+        <text class="tag" x="300" y="220" text-anchor="middle">tick()</text>
+      </g>
+      <g>
+        <circle class="state scan" cx="660" cy="200" r="74"/>
+        <text class="nm" x="660" y="196" text-anchor="middle">规划</text>
+        <text class="tag" x="660" y="220" text-anchor="middle">PLAN</text>
+      </g>
+      <g>
+        <circle class="state move" cx="1030" cy="200" r="84"/>
+        <text class="nm" x="1030" y="196" text-anchor="middle">执行一条腿</text>
+        <text class="tag" x="1030" y="220" text-anchor="middle">RUN</text>
+      </g>
+      <g>
+        <circle class="state done" cx="300" cy="540" r="62"/>
+        <text class="nm" x="300" y="536" text-anchor="middle">到站</text>
+        <text class="tag" x="300" y="560" text-anchor="middle">ARRIVED</text>
+      </g>
+      <g>
+        <circle class="state failstate" cx="1030" cy="540" r="66"/>
+        <text class="nm" x="1030" y="536" text-anchor="middle">走不通</text>
+        <text class="tag" x="1030" y="560" text-anchor="middle">FAILED</text>
+      </g>
+
+      <circle class="pseudo" cx="110" cy="200" r="9"/>
+    </svg>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <b>入口先算三件事</b>
+      已经到站或走不通就直接返回；超过 600 tick 报超时；起跳后的歇脚还没数完，本 tick 不动。终点判定比规划更早——站在能动手的位置、又不在目标格里，才算到。
+    </div>
+    <div class="note">
+      <b>一条腿跨很多 tick</b>
+      进入时 enter 一次，之后每 tick 推进，结束（成或败）时 exit 一次。垫脚接走路这类连招会在腿结束时当场接上下一条，不等到下一 tick。
+    </div>
+    <div class="note">
+      <b>单条腿失败不算走不通</b>
+      记下这次的站位，换一种手段再来。腿失败计数只在成功时清零；连续失败超过 5 条，或连续 2 秒一个动作都排不出，才判死。
+    </div>
+  </div>
+
+  <h2>二、规划顺序</h2>
+  <p class="hint">由便宜到贵逐个试：能走就不跳，能跳就不搭，能搭就不垫。前一条不成立才看下一条，全不成立才判死。</p>
+  <div class="canvas">
+    <svg class="dg-b" viewBox="0 0 1180 800" role="img" aria-label="规划顺序阶梯">
+      <defs>
+        <marker id="arrow-b" class="marker-edge" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+        <marker id="arrow-fail-b" class="marker-fail" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+      <text class="sec-title" x="64" y="44">plan：前一条不成立，才看下一条</text>
+
+      <g class="spine">
+        <path class="edge" d="M 64 117 L 64 160"/>
+        <path class="edge" d="M 64 197 L 64 240"/>
+        <path class="edge" d="M 64 277 L 64 320"/>
+        <path class="edge" d="M 64 357 L 64 400"/>
+        <path class="edge" d="M 64 437 L 64 480"/>
+        <path class="edge" d="M 64 517 L 64 560"/>
+        <path class="edge" d="M 64 597 L 64 640"/>
+        <path class="edge" d="M 64 677 L 64 720"/>
+      </g>
+      <text class="mini" x="80" y="146">否</text>
+      <text class="mini" x="80" y="226">否</text>
+      <text class="mini" x="80" y="306">否</text>
+      <text class="mini" x="80" y="386">否</text>
+      <text class="mini" x="80" y="466">否</text>
+      <text class="mini" x="80" y="546">否</text>
+      <text class="mini" x="80" y="626">否</text>
+      <text class="mini" x="80" y="706">否</text>
+
+      <g>
+        <circle class="step-num" cx="64" cy="100" r="17"/><text class="step-num-t" x="64" y="105" text-anchor="middle">1</text>
+        <circle class="step-num" cx="64" cy="180" r="17"/><text class="step-num-t" x="64" y="185" text-anchor="middle">2</text>
+        <circle class="step-num" cx="64" cy="260" r="17"/><text class="step-num-t" x="64" y="265" text-anchor="middle">3</text>
+        <circle class="step-num" cx="64" cy="340" r="17"/><text class="step-num-t" x="64" y="345" text-anchor="middle">4</text>
+        <circle class="step-num" cx="64" cy="420" r="17"/><text class="step-num-t" x="64" y="425" text-anchor="middle">5</text>
+        <circle class="step-num" cx="64" cy="500" r="17"/><text class="step-num-t" x="64" y="505" text-anchor="middle">6</text>
+        <circle class="step-num" cx="64" cy="580" r="17"/><text class="step-num-t" x="64" y="585" text-anchor="middle">7</text>
+        <circle class="step-num" cx="64" cy="660" r="17"/><text class="step-num-t" x="64" y="665" text-anchor="middle">8</text>
+        <circle class="step-num" cx="64" cy="740" r="17"/><text class="step-num-t" x="64" y="745" text-anchor="middle">9</text>
+      </g>
+
+      <g class="rows">
+        <text class="cond" x="105" y="94">目标低两格以上，跳得下去</text>
+        <text class="cond-s" x="105" y="116">40 tick 内刚试过就跑跳；一次目标最多从高处跳 2 次</text>
+
+        <text class="cond" x="105" y="174">周围有站得住、够得着、走得到的站位</text>
+        <text class="cond-s" x="105" y="196">近圈 ±4 找不到再扩到 ±6；算过走不到的记下来</text>
+
+        <text class="cond" x="105" y="254">缺口那头有验过的落点</text>
+        <text class="cond-s" x="105" y="276">最多 5 段；平地 4 格、抬高 3 格；落点必须是整格面</text>
+
+        <text class="cond" x="105" y="334">与她齐平，前方悬空，料和次数都够</text>
+        <text class="cond-s" x="105" y="356">一次施工最多铺 8 块；前方本来就站得住就直接走</text>
+
+        <text class="cond" x="105" y="414">四邻位有地方垫，头顶让得出两格</text>
+        <text class="cond-s" x="105" y="436">先放托底再放顶块；目标正在头顶就原地起跳</text>
+
+        <text class="cond" x="105" y="494">这一 tick 的算路额度用完了</text>
+        <text class="cond-s" x="105" y="516">不算失败：本 tick 收手，下个 tick 接着找</text>
+
+        <text class="cond" x="105" y="574">头顶被挡，附近有露天站位</text>
+        <text class="cond-s" x="105" y="596">先走到能看见天空处，再沿外墙往上垫</text>
+
+        <text class="cond" x="105" y="654">她踩在自己垫的方块上</text>
+        <text class="cond-s" x="105" y="676">跳回地面，清空高处试出来的站位重来</text>
+
+        <text class="cond" x="105" y="734">以上都不成立</text>
+        <text class="cond-s" x="105" y="756">头顶跳得起来报 NO_STAND，跳不起来报 NO_HEADROOM</text>
+      </g>
+
+      <g>
+        <path class="edge" d="M 760 100 L 986 100"/>
+        <path class="edge" d="M 760 180 L 986 180"/>
+        <path class="edge" d="M 760 260 L 986 260"/>
+        <path class="edge" d="M 760 340 L 986 340"/>
+        <path class="edge" d="M 760 420 L 986 420"/>
+        <path class="edge" d="M 760 500 L 986 500"/>
+        <path class="edge" d="M 760 580 L 986 580"/>
+        <path class="edge" d="M 760 660 L 986 660"/>
+        <path class="edge fail" d="M 760 740 L 986 740"/>
+      </g>
+      <text class="mini" x="873" y="90" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="170" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="250" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="330" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="410" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="490" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="570" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="650" text-anchor="middle">是</text>
+      <text class="mini" x="873" y="730" text-anchor="middle">是</text>
+
+      <g>
+        <circle class="state move" cx="1030" cy="100" r="40"/><text class="act" x="1030" y="105" text-anchor="middle">跳下</text>
+        <circle class="state move" cx="1030" cy="180" r="40"/><text class="act" x="1030" y="185" text-anchor="middle">走</text>
+        <circle class="state move" cx="1030" cy="260" r="40"/><text class="act" x="1030" y="265" text-anchor="middle">跑跳</text>
+        <circle class="state move" cx="1030" cy="340" r="40"/><text class="act" x="1030" y="345" text-anchor="middle">搭路</text>
+        <circle class="state move" cx="1030" cy="420" r="40"/><text class="act" x="1030" y="425" text-anchor="middle">垫脚</text>
+        <circle class="state wait" cx="1030" cy="500" r="40"/><text class="act" x="1030" y="505" text-anchor="middle">等下</text>
+        <circle class="state move" cx="1030" cy="580" r="40"/><text class="act" x="1030" y="585" text-anchor="middle">出屋</text>
+        <circle class="state move" cx="1030" cy="660" r="40"/><text class="act" x="1030" y="665" text-anchor="middle">跳下</text>
+        <circle class="state failstate" cx="1030" cy="740" r="40"/><text class="act" x="1030" y="745" text-anchor="middle">走不通</text>
+      </g>
+    </svg>
+  </div>
+
+  <h2>三、跑跳的几何</h2>
+  <p class="hint">一格按一跳算：先按玩家手感验几何，再用自己的弧线摆位置，不靠冲量。图上的距离是格数，不是像素。</p>
+  <div class="canvas">
+    <svg class="dg-c" viewBox="0 0 1200 720" role="img" aria-label="跑跳的几何与限制">
+      <defs>
+        <marker id="arrow-c" class="marker-edge" viewBox="0 0 10 10" markerWidth="11" markerHeight="11"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <line x1="50" y1="640" x2="1150" y2="640" stroke="var(--line)" stroke-width="3"/>
+
+      <rect class="plat" x="70" y="380" width="100" height="28" rx="4"/>
+      <rect class="plat" x="290" y="380" width="100" height="28" rx="4"/>
+      <rect class="plat" x="460" y="325" width="100" height="28" rx="4"/>
+      <rect class="plat" x="690" y="480" width="100" height="28" rx="4"/>
+
+      <path class="edge" d="M 160 380 Q 230 300 300 380"/>
+      <path class="edge" d="M 390 380 Q 435 285 490 325"/>
+      <path class="edge" d="M 560 325 Q 625 315 690 480"/>
+
+      <text class="lbl" x="230" y="286" text-anchor="middle">平地 ≤4 格</text>
+      <text class="lbl" x="440" y="262" text-anchor="middle">抬高 1 格</text>
+      <text class="lbl sm" x="440" y="280" text-anchor="middle">横向缩到 3 格</text>
+      <text class="lbl" x="610" y="470" text-anchor="end">下落 ≤3 格</text>
+
+      <path class="edge dash" d="M 980 320 L 980 616"/>
+      <text class="lbl" x="996" y="430" text-anchor="start">施工模式免摔</text>
+      <text class="lbl sm" x="996" y="450" text-anchor="start">从屋檐直接落到地面</text>
+      <text class="lbl" x="996" y="476" text-anchor="start">深落 ≤10 格</text>
+
+      <text class="mini-b" x="70" y="690">每一段都重新验：落点是整格面、包络里没有实心块、断口下三格没有岩浆火苗</text>
+      <text class="mini" x="70" y="712">弧顶比直线高 1.05 格；中途关重力、清速度，走完或收手再还给她</text>
+    </svg>
+  </div>
+
+  <table>
+    <caption>跑跳的三道否决：任何一条不成立就改走路或垫方块</caption>
+    <thead>
+      <tr><th>检查</th><th>不通过的典型地形</th><th>为什么</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>飞行包络全空</td><td>半空有树叶、栅栏、屋檐</td><td>摆位置会把她塞进方块里</td></tr>
+      <tr><td>落点是整格面</td><td>台阶、半砖、栅栏顶</td><td>顶面高度对不上，落地会卡在碰撞盒</td></tr>
+      <tr><td>断口下三格安全</td><td>岩浆、火、仙人掌、细雪</td><td>半路被打断就救不回来，宁可多垫一块</td></tr>
+    </tbody>
+  </table>
+
+  <h2>四、站位搜索与垫脚</h2>
+  <p class="hint">先找「站过去就能动手」的现成位置；找不到才动土。候选先按远近排，能算路的按步数取最短。</p>
+  <div class="canvas">
+    <svg class="dg-d" viewBox="0 0 1200 660" role="img" aria-label="站位搜索与垫脚评分">
+      <defs>
+        <marker id="arrow-d" class="marker-edge" viewBox="0 0 10 10" markerWidth="11" markerHeight="11"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
+      </defs>
+
+      <text class="sec-title" x="99" y="66">站位搜索：以目标为中心逐圈找</text>
+
+      <g class="grid">
+        <line x1="99" y1="119" x2="541" y2="119"/><line x1="99" y1="153" x2="541" y2="153"/>
+        <line x1="99" y1="187" x2="541" y2="187"/><line x1="99" y1="221" x2="541" y2="221"/>
+        <line x1="99" y1="255" x2="541" y2="255"/><line x1="99" y1="289" x2="541" y2="289"/>
+        <line x1="99" y1="323" x2="541" y2="323"/><line x1="99" y1="357" x2="541" y2="357"/>
+        <line x1="99" y1="391" x2="541" y2="391"/><line x1="99" y1="425" x2="541" y2="425"/>
+        <line x1="99" y1="459" x2="541" y2="459"/><line x1="99" y1="493" x2="541" y2="493"/>
+        <line x1="99" y1="527" x2="541" y2="527"/><line x1="99" y1="561" x2="541" y2="561"/>
+        <line x1="99" y1="119" x2="99" y2="561"/><line x1="133" y1="119" x2="133" y2="561"/>
+        <line x1="167" y1="119" x2="167" y2="561"/><line x1="201" y1="119" x2="201" y2="561"/>
+        <line x1="235" y1="119" x2="235" y2="561"/><line x1="269" y1="119" x2="269" y2="561"/>
+        <line x1="303" y1="119" x2="303" y2="561"/><line x1="337" y1="119" x2="337" y2="561"/>
+        <line x1="371" y1="119" x2="371" y2="561"/><line x1="405" y1="119" x2="405" y2="561"/>
+        <line x1="439" y1="119" x2="439" y2="561"/><line x1="473" y1="119" x2="473" y2="561"/>
+        <line x1="507" y1="119" x2="507" y2="561"/><line x1="541" y1="119" x2="541" y2="561"/>
+      </g>
+
+      <rect class="ring" x="235" y="255" width="170" height="170" rx="6"/>
+      <rect class="ring" x="167" y="187" width="306" height="306" rx="6"/>
+
+      <rect class="goal-cell" x="303" y="323" width="34" height="34" rx="3"/>
+      <text class="mini" x="320" y="345" text-anchor="middle">目标</text>
+
+      <circle class="dot" cx="218" cy="306" r="6"/>
+      <circle class="dot" cx="286" cy="408" r="6"/>
+      <circle class="dot" cx="388" cy="408" r="6"/>
+      <circle class="dot" cx="388" cy="272" r="6"/>
+      <circle class="dot" cx="456" cy="340" r="6"/>
+      <circle class="dot" cx="320" cy="238" r="6"/>
+      <circle class="dot" cx="184" cy="442" r="6"/>
+      <circle class="dot" cx="456" cy="238" r="6"/>
+
+      <circle cx="456" cy="340" r="13" fill="none" stroke="var(--wait-stroke)" stroke-width="2"/>
+      <rect x="474" y="330" width="76" height="20" rx="5" fill="var(--panel)" stroke="var(--line)"/>
+      <text class="mini" x="512" y="345" text-anchor="middle">步数最短</text>
+
+      <text class="mini" x="167" y="180" text-anchor="start">近圈 ±4（下 6 / 上 3）</text>
+      <text class="mini" x="99" y="112" text-anchor="start">扩圈 ±6（下 8 / 上 5）</text>
+
+      <text class="mini-b" x="99" y="596">她脚下那格也算候选：已经够得着就不用多走一趟</text>
+      <text class="mini" x="99" y="620">每 tick 从总预算领额度，最多算 6 条路；屋里屋外不通时不算死</text>
+
+      <line x1="590" y1="90" x2="590" y2="610" stroke="var(--line)" stroke-width="1.4"/>
+
+      <text class="sec-title" x="630" y="66">垫脚：先托底，再顶块</text>
+
+      <rect x="660" y="230" width="50" height="50" rx="4" fill="var(--edge)"/>
+      <rect x="660" y="180" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <rect x="660" y="280" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <rect x="610" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <rect x="710" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+      <rect x="710" y="230" width="50" height="50" rx="4" fill="none" stroke="var(--wait-stroke)" stroke-width="2.4"/>
+
+      <rect class="goal-cell" x="810" y="120" width="50" height="50" rx="4"/>
+      <text class="mini" x="835" y="150" text-anchor="middle">目标</text>
+      <path class="edge dash" d="M 765 225 L 805 178"/>
+
+      <text class="mini" x="685" y="150" text-anchor="middle">四邻都是候选</text>
+      <text class="mini" x="685" y="170" text-anchor="middle">12.0</text>
+      <text class="mini" x="685" y="352" text-anchor="middle">18.2</text>
+      <text class="mini" x="685" y="374" text-anchor="middle">+0.5 托底</text>
+      <text class="mini" x="640" y="222" text-anchor="end">15.7</text>
+      <text class="mini-b" x="768" y="222" text-anchor="start">9.5</text>
+      <text class="mini" x="768" y="242" text-anchor="start">还要托底</text>
+      <text class="mini" x="835" y="196" text-anchor="middle">离目标多远²</text>
+
+      <text class="mini-b" x="630" y="410">分数 = 站上去以后离目标多远²</text>
+      <text class="mini" x="630" y="434">下面没现成依托就先垫托底，分数 +0.5</text>
+      <text class="mini" x="630" y="458">站上去就能动手的那格优先，哪怕要多垫一块</text>
+      <text class="mini" x="630" y="482">四面都放不下时，改原地起跳垫高</text>
+      <text class="mini" x="630" y="518">托底只是前半个动作：顶块放上去才算升高一次</text>
+      <text class="mini" x="630" y="542">每次垫脚都要她看得见、够得着、头顶让出两格</text>
+      <text class="mini" x="630" y="566">踩过的垫脚块记在账本里，走开后拆掉，料还回背包</text>
+    </svg>
+  </div>
+
+  <h2>五、腿、预算与失败原因</h2>
+  <table>
+    <caption>一条腿怎么开始、怎么算成、失败后留下什么</caption>
+    <thead>
+      <tr><th>腿</th><th>执行</th><th>成功</th><th>失败后</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>走 <code>WalkLeg</code></td>
+        <td>用原版 WALK_TARGET，每 tick 续一次目标；只看她自己有没有真的在动</td>
+        <td>脚落进目标格</td>
+        <td>80 tick 没动或算不出路：这个站位记进试过的清单，报 NO_PATH</td>
+      </tr>
+      <tr>
+        <td>跑跳 <code>HopLeg</code></td>
+        <td>按提前验过的链子逐段摆位置，每段起跳前再验一次落点</td>
+        <td>走完链子</td>
+        <td>整条链记进试过的站位，40 tick 内不再算跑跳</td>
+      </tr>
+      <tr>
+        <td>垫脚 <code>StepLeg</code></td>
+        <td>托底已经放好，下一 tick 放顶块，然后接一条走腿</td>
+        <td>顶块放上并开始走</td>
+        <td>位置不够或料不够：报 NO_STAND，换别的方向</td>
+      </tr>
+      <tr>
+        <td>原地起跳 <code>JumpLeg</code></td>
+        <td>跳起来，越过 1.02 格时把脚下这格补上</td>
+        <td>补上并落回，歇 10 tick</td>
+        <td>20 tick 没离地或被挤开：报 NO_HEADROOM 或 NO_STAND</td>
+      </tr>
+      <tr>
+        <td>跳下 <code>HopLeg</code> 深落</td>
+        <td>施工模式免摔，落点放宽到 10 格，落地后清空高处试过的站位</td>
+        <td>落到地面</td>
+        <td>同跑跳；一次目标最多跳 2 次</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption>常量：寻路的边界都在这里</caption>
+    <thead>
+      <tr><th>名称</th><th>值</th><th>含义</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>MAX_TICKS</td><td>600</td><td>一次目标最多约 30 秒，到点报 TIMEOUT</td></tr>
+      <tr><td>MAX_LEG_FAILURES</td><td>5</td><td>连续换掉 5 条腿都不成，判死并带上最后一条的原因</td></tr>
+      <tr><td>MAX_IDLE_TICKS</td><td>40</td><td>连续 2 秒排不出任何动作，判死</td></tr>
+      <tr><td>PATHS_PER_TICK</td><td>6</td><td>整个施工每 tick 最多算 6 条路，多出来的留到下 tick</td></tr>
+      <tr><td>PATH_CHECKS / PATH_RANK</td><td>24 / 8</td><td>每圈最多验 24 个候选的路；找到 8 个可达就按步数取最短</td></tr>
+      <tr><td>RING / RING_WIDE</td><td>4 / 6</td><td>站位搜索的近圈与扩圈半径（垂直方向下 6 上 3，扩圈下 8 上 5）</td></tr>
+      <tr><td>SIGHT_SCAN / MAX_LOOKUPS</td><td>64 / 1400</td><td>每圈最多做多少次视线判定、扫多少格</td></tr>
+      <tr><td>STAGE_CHECKS</td><td>8</td><td>出屋最多验几个露天站位</td></tr>
+      <tr><td>MAX_BLOCKS</td><td>16</td><td>一次施工最多同时留着 16 块垫脚</td></tr>
+      <tr><td>MAX_STEPS / MAX_BRIDGE</td><td>6 / 8</td><td>同一个目标最多垫高 6 次、平铺 8 块</td></tr>
+      <tr><td>MAX_RISE / MAX_DISTANCE</td><td>12 / 8</td><td>垫脚的高差与水平上限，超了通常是图纸写错</td></tr>
+      <tr><td>REACH</td><td>4.5</td><td>眼睛到方块外壳，与原版放置口径一致</td></tr>
+      <tr><td>MAX_HOPS / MAX_NODES</td><td>5 / 24</td><td>一条跑跳路线最多 5 段，搜索最多展开 24 个落点</td></tr>
+      <tr><td>JUMP_POWER / 超时 / 歇脚</td><td>0.42 / 20 / 10</td><td>起跳初速、等离地的上限、落地后歇多久</td></tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption>失败原因：寻路只报这五种，翻译成格子账由调用方做</caption>
+    <thead>
+      <tr><th>寻路报的</th><th>调用方记的</th><th>什么时候出现</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>NO_STAND</td><td>NO_STAND</td><td>四周没有站得住又能动手的位置，也没地方可垫</td></tr>
+      <tr><td>NO_PATH</td><td>NO_PATH</td><td>有位置，但走不过去（卡住、算不出路、跑跳也过不去）</td></tr>
+      <tr><td>NO_HEADROOM</td><td>NO_HEADROOM</td><td>她待的地方头顶太低，跳不起来也垫不上去</td></tr>
+      <tr><td>OUT_OF_REACH</td><td>OUT_OF_REACH</td><td>站到了，但够不着目标</td></tr>
+      <tr><td>TIMEOUT</td><td>NO_PATH</td><td>这一次拖过 600 tick；格子账上仍按走不过去处理</td></tr>
+    </tbody>
+  </table>
+
+  <div class="notes">
+    <div class="note">
+      <b>收尾是另一种目标</b>
+      收工不走上面的手段阶梯。她不在垫脚块上就直接拆净；在垫脚块上就先找最近的一格实地走过去；实在没有落脚点，等 30 tick 连脚下一起拆，让她落回地面。
+    </div>
+    <div class="note">
+      <b>记忆按目标分开存</b>
+      试过的站位、走不到的站位、垫了几次、铺了几块、跳了几次，都由调用方按自己的粒度持有。建筑按格子存，换一格就从干净的记忆开始。
+    </div>
+    <div class="note">
+      <b>垫脚账本只记位置</b>
+      谁放的、为什么放不记。赶路时护着，走开后拆掉，收工或被打断时拆净；生存模式下拆下来的方块还回她背包，塞不下就掉在脚边。
+    </div>
+  </div>
+
+  <p class="foot">
+    读图：前两张是状态机——圆是状态，箭头上的字是迁移条件；第三、四张是手段的几何与搜索范围，距离按格算。
+    规划里的手段顺序就是代码里的调用顺序，改了顺序等于改了「先走路还是先搭桥」的取舍。
+  </p>
+</main>
+</body>
+</html>
