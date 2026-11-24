@@ -1,6 +1,7 @@
 [package]
 name = "ling-chat-notes"
 version.workspace = true
+rust-version.workspace = true
 description = "LingChat 手动笔记存储库与语义检索基础：按角色存储的笔记文件读写 + ONNX 句向量引擎"
 authors = ["LingChat Team"]
 edition = "2024"
@@ -24,7 +25,7 @@ rusqlite = "0.32"
 sqlite-vec = "0.1.9"
 
 # 文本嵌入分词与推理（Tool RAG / 笔记检索共用）。
-tokenizers = "0.22"
+tokenizers = "0.23"
 ort = { version = "=2.0.0-rc.15", default-features = false, features = [
     "std",
     "ndarray",

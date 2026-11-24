@@ -19,10 +19,12 @@ static CATALOGS: LazyLock<Mutex<HashMap<String, (Instant, ImageModelCatalog)>>> 
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub(super) fn cache_key(provider: &str, source: &str, secret: &str) -> String {
-    format!(
-        "{provider}:{source}:{:x}",
-        Sha256::digest(secret.as_bytes())
-    )
+    let digest = Sha256::digest(secret.as_bytes());
+    let secret_hash = digest
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
+    format!("{provider}:{source}:{secret_hash}")
 }
 
 pub(super) async fn cached_catalog<F, Fut>(

@@ -1,6 +1,7 @@
 [package]
 name = "ling_chat"
 version.workspace = true
+rust-version.workspace = true
 default-run = "ling_chat"
 description = "AI Galgame Engine"
 authors = ["LingChat Team"]

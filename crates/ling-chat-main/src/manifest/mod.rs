@@ -11,7 +11,6 @@ use std::io;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 // ─── 基础类型 ────────────────────────────────────────────────
 
@@ -106,15 +105,4 @@ impl DataManifest {
         std::fs::rename(&tmp, path)?;
         Ok(())
     }
-}
-
-// ─── 工具函数 ────────────────────────────────────────────────
-
-/// 计算文件的 SHA-256 哈希（hex 字符串）。
-#[allow(dead_code)]
-pub fn compute_sha256(path: &Path) -> io::Result<String> {
-    let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
-    Ok(format!("{:x}", hasher.finalize()))
 }

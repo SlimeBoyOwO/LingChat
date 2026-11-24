@@ -1,6 +1,7 @@
 [package]
 name = "ling-chat-main"
 version.workspace = true
+rust-version.workspace = true
 description = "LingChat 业务主 crate：api / ai_service / db / config / utils 等"
 authors = ["LingChat Team"]
 edition = "2024"
@@ -33,13 +34,13 @@ chrono = { workspace = true }
 thiserror = "2"
 reqwest = { workspace = true }
 rustls = { workspace = true }
-webpki-roots = "0.26"
+webpki-roots = "1.0"
 futures-util = { workspace = true }
 futures-executor = "0.3"
 async-stream = "0.3"
 bytes = "1"
 regex = "1"
-genai = "0.7.0-rc.8"
+genai = "0.7"
 uuid = { workspace = true }
 async-trait = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -63,16 +64,16 @@ image = { version = "0.25", default-features = false, features = [
     "jpeg",
     "webp",
 ] }
-infer = "0.19"
+infer = "0.22"
 sevenz-rust2 = "0.21"
-sha2 = "0.10"
+sha2 = "0.11"
 tempfile = "3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # LAN Sync
 axum = { workspace = true }
 mdns-sd = "0.11"
-if-addrs = "0.13"
+if-addrs = "0.15"
 tokio-util = { workspace = true }
 
 # Skill Agent：命令输出在中文 Windows 上是 GBK，需要回退解码
