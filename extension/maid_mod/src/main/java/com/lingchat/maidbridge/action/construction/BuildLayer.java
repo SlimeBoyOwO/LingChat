@@ -67,11 +67,11 @@ final class BuildLayer {
         } else {
             run.stallPasses++;
         }
-        boolean layerOpen = layerHasOpen(run, doorsOnly);
+        boolean hasOpen = layerHasOpen(run, doorsOnly);
         return new PassStats(
                 run.placed >= run.total,
-                layerOpen,
-                layerOpen && waitHeld,
+                hasOpen,
+                hasOpen && waitHeld,
                 progress,
                 run.stallPasses,
                 run.retried,

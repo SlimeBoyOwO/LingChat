@@ -122,12 +122,12 @@ final class BuildRules {
         static final PassEnd FINISH = new PassEnd(List.of(Action.FINISH));
         static final PassEnd RESCAN = new PassEnd(List.of(Action.RESCAN));
 
-        static PassEnd of(Action first) {
-            return new PassEnd(List.of(first));
+        static PassEnd of(Action action) {
+            return new PassEnd(List.of(action));
         }
 
-        static PassEnd of(Action first, Action second) {
-            return new PassEnd(List.of(first, second));
+        static PassEnd of(Action action, Action then) {
+            return new PassEnd(List.of(action, then));
         }
 
         /** 状态栏里显示用：按执行顺序连起来。 */
@@ -147,56 +147,57 @@ final class BuildRules {
      * 一层收尾时的全部输入。
      *
      * @param allPlaced 整张图纸都放好了
-     * @param layerOpen 本层还有开着的格子（只剩门时按补试口径算门）
+     * @param layerHasOpen 本层还有开着的格子（只剩门时按补试口径算门）
      * @param openHeld 本层剩下的开格全在等活物挪开
      * @param progress 这一遍有进展：放了方块或垫了脚
      * @param stallPasses 这一遍之后连续没进展的遍数
      * @param retried 已经补试过一轮
-     * @param canMoveOn 别的层还有开格，或只剩门可以装门
-     * @param canRetryRound 还有搁置的格子可以补试
+     * @param anotherLayerHasWork 别的层还有开格，或只剩门可以装门
+     * @param deferredLeft 全图还有搁置的格子可以补试
      */
     record PassStats(
             boolean allPlaced,
-            boolean layerOpen,
+            boolean layerHasOpen,
             boolean openHeld,
             boolean progress,
             int stallPasses,
             boolean retried,
-            boolean canMoveOn,
-            boolean canRetryRound) {
+            boolean anotherLayerHasWork,
+            boolean deferredLeft) {
     }
 
     /** 一层扫完之后去哪：再扫一遍、换层、补试、搁置收账，或收工。 */
     static PassEnd endPass(PassStats stats) {
+        // 图纸全部放好：没有可做的了，直接收工
         if (stats.allPlaced()) {
             return PassEnd.FINISH;
         }
-        if (!stats.layerOpen()) {
-            if (stats.canMoveOn()) {
+        // 本层已经没有开格：先去还有活的层，没层可去再看补试，都没有就收工
+        if (!stats.layerHasOpen()) {
+            if (stats.anotherLayerHasWork()) {
                 return PassEnd.of(Action.NEXT_LAYER);
             }
-            if (stats.canRetryRound()) {
+            if (stats.deferredLeft()) {
                 return PassEnd.of(Action.RETRY_ROUND);
             }
             return PassEnd.FINISH;
         }
-        if (stats.openHeld() || stats.progress()) {
+        // 本层还有开格：有进展、剩下全在等活物、或还没连续停滞满 3 遍，都先重扫
+        if (stats.openHeld() || stats.progress() || stats.stallPasses() < MAX_STALL_PASSES) {
             return PassEnd.RESCAN;
         }
-        if (stats.stallPasses() < MAX_STALL_PASSES) {
-            return PassEnd.RESCAN;
+        // 连续 3 遍没进展：先结本层剩余开格的账；补试过的收账，没补试过的搁置
+        Action closeLayer = stats.retried() ? Action.SETTLE_LAYER : Action.DEFER_LAYER;
+        // 补试还有没有意义：别处已有搁置格，或这一轮结账马上会造出搁置格（还没补试过）
+        boolean retryHasWork = stats.deferredLeft() || !stats.retried();
+        // 别的层还有活：结完账先换层，补试留到全图过完
+        if (stats.anotherLayerHasWork()) {
+            return PassEnd.of(closeLayer, Action.NEXT_LAYER);
         }
-        // 这一遍到头了：补试过的直接收账，没补试过的先搁着，等整张图纸过完再回来
-        Action first = stats.retried() ? Action.SETTLE_LAYER : Action.DEFER_LAYER;
-        // 走到这里说明本层还有开格：没补试过的搁置之后就有格子可以补试了，
-        // 哪怕此刻一枚 deferred 都还没有
-        boolean retryAfter = stats.canRetryRound() || !stats.retried();
-        if (stats.canMoveOn()) {
-            return PassEnd.of(first, Action.NEXT_LAYER);
+        // 没有别的层可去：有东西可补就补试，否则结账收工
+        if (retryHasWork) {
+            return PassEnd.of(closeLayer, Action.RETRY_ROUND);
         }
-        if (retryAfter) {
-            return PassEnd.of(first, Action.RETRY_ROUND);
-        }
-        return PassEnd.of(first, Action.FINISH);
+        return PassEnd.of(closeLayer, Action.FINISH);
     }
 }

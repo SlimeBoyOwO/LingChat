@@ -14,10 +14,10 @@ import org.junit.jupiter.api.Test;
 class BuildRulesTest {
     /** 一层扫完的常规输入：还没全部放完，本层还有开格，有进展，可以换层。 */
     private static PassStats stats(
-            boolean allPlaced, boolean layerOpen, boolean openHeld, boolean progress,
-            int stall, boolean retried, boolean canMoveOn, boolean canRetry) {
-        return new PassStats(allPlaced, layerOpen, openHeld, progress, stall, retried,
-                canMoveOn, canRetry);
+            boolean allPlaced, boolean layerHasOpen, boolean openHeld, boolean progress,
+            int stall, boolean retried, boolean anotherLayerHasWork, boolean deferredLeft) {
+        return new PassStats(allPlaced, layerHasOpen, openHeld, progress, stall, retried,
+                anotherLayerHasWork, deferredLeft);
     }
 
     private static PassStats normal() {
