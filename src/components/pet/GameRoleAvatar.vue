@@ -68,7 +68,7 @@
           ]"
           @animationend="handleAnimationEnd"
         >
-          <div class="h-full w-full origin-top" :style="avatarStyles">
+          <div class="relative h-full w-full" :style="avatarStyles">
             <div
               v-if="live2dFailed && !targetAvatarUrl"
               class="flex h-full w-full items-center justify-center text-xs text-white/60"
@@ -111,6 +111,7 @@ import StarField from "../game/standard/particles/StarField.vue";
 import type { GameRole } from "@/stores/modules/game/state";
 import { useUIStore } from "@/stores/modules/ui/ui";
 import { useRoleAvatar } from "@/composables/role/useRoleAvatar";
+import { petAvatarStyle } from "@/utils/avatar-layout";
 import "@/assets/styles/avatar-animation.css";
 
 const props = defineProps<{ role: GameRole; live2dActive?: boolean; live2dFailed?: boolean }>();
@@ -186,12 +187,10 @@ const containerClasses = computed(() => ({
   "opacity-0": !role.value.show,
 }));
 
-const avatarStyles = computed(() => ({
-  transform: `scale(${role.value.scaleP}) translate(${role.value.offsetXP}px, ${role.value.offsetYP}px)`,
-}));
+const avatarStyles = computed(() => petAvatarStyle(role.value));
 
 const imageStyles = computed(() => ({
-  top: `-10px`,
+  top: `${-10 * (role.value.scaleP || 1)}px`,
 }));
 
 const bubbleClasses = computed(() => ({

@@ -66,12 +66,12 @@
         >
           <div
             v-if="showBounds && !live2dActive && imageUrl"
-            class="absolute inset-0 opacity-25"
+            class="absolute opacity-25"
             :style="imageTransform"
           >
             <ImageAcrossFade
               class="h-full w-full"
-              :style="{ top: '-10px' }"
+              :style="imageTopStyle"
               :src="imageUrl"
               :duration="0"
               position="center 0%"
@@ -86,11 +86,11 @@
                 : 'rounded-full border-2 border-white/60 bg-white/10 shadow-[0_8px_32px_rgba(0,176,255,0.15)]'
             "
           >
-            <div v-if="!live2dActive" class="h-full w-full origin-top" :style="imageTransform">
+            <div v-if="!live2dActive" class="relative h-full w-full" :style="imageTransform">
               <ImageAcrossFade
                 v-if="imageUrl"
                 class="h-full w-full"
-                :style="{ top: '-10px' }"
+                :style="imageTopStyle"
                 :src="imageUrl"
                 :duration="0"
                 position="center 0%"
@@ -153,6 +153,7 @@ import { useSettingsStore } from "@/stores/modules/settings";
 import { EMOTION_CONFIG_EMO } from "@/controllers/emotion/config";
 import { prefersLive2d } from "@/types/live2d";
 import type { GameRole } from "@/stores/modules/game/state";
+import { petAvatarStyle } from "@/utils/avatar-layout";
 import ImageAcrossFade from "@/components/ui/ImageAcrossFade.vue";
 import Live2DStage from "@/components/game/live2d/Live2DStage.vue";
 
@@ -249,10 +250,8 @@ watch(
     live2dFailed.value = false;
   },
 );
-const imageTransform = computed(() => ({
-  transform: `scale(${previewRole.value.scaleP}) translate(${previewRole.value.offsetXP}px, ${previewRole.value.offsetYP}px)`,
-  transformOrigin: "center top",
-}));
+const imageTransform = computed(() => petAvatarStyle(previewRole.value));
+const imageTopStyle = computed(() => ({ top: `${-10 * (previewRole.value.scaleP || 1)}px` }));
 function patch(values: Record<string, number | boolean>) {
   emit("update:modelValue", { ...props.modelValue, ...values });
 }
