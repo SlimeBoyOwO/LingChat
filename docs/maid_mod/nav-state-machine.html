@@ -117,6 +117,15 @@
   .cond { fill: var(--text); font-size: 14px; font-weight: 600; }
   .cond-s { fill: var(--muted); font-size: 12.5px; }
   .act { fill: var(--text); font-size: 13px; font-weight: 650; }
+  .qcard { fill: var(--panel); stroke: var(--line); stroke-width: 1.6; }
+  .qnum { fill: var(--scan-fill); stroke: var(--scan-stroke); stroke-width: 1.4; }
+  .leaf { stroke-width: 1.6; }
+  .leaf.move { fill: var(--move-fill); stroke: var(--move-stroke); }
+  .leaf.wait { fill: var(--wait-fill); stroke: var(--wait-stroke); }
+  .leaf-t { fill: var(--text); font-size: 14.5px; font-weight: 650; }
+  .leaf-n { fill: var(--muted); font-size: 11.5px; }
+  .ico { fill: none; stroke: var(--move-stroke); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  .ico.wait { stroke: var(--wait-stroke); }
   .plat { fill: var(--move-fill); stroke: var(--move-stroke); stroke-width: 1.6; }
   .goal-cell { fill: var(--scan-fill); stroke: var(--scan-stroke); stroke-width: 2; }
   .feet-cell { fill: var(--edge); }
@@ -250,10 +259,10 @@
     </div>
   </div>
 
-  <h2>二、规划顺序</h2>
-  <p class="hint">由便宜到贵逐个试：能走就不跳，能跳就不搭，能搭就不垫。前一条不成立才看下一条，全不成立才判死。</p>
+  <h2>二、规划决策树</h2>
+  <p class="hint">主干是依次追问的问题：成立就选这条手段（「是」），不成立才往下一问（「否」）。越往下越贵，最后一问也不成立才判死。</p>
   <div class="canvas">
-    <svg class="dg-b" viewBox="0 0 1180 800" role="img" aria-label="规划顺序阶梯">
+    <svg class="dg-b" viewBox="0 0 1400 980" role="img" aria-label="规划决策树">
       <defs>
         <marker id="arrow-b" class="marker-edge" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
                 refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
@@ -264,100 +273,181 @@
           <path d="M0,0 L10,5 L0,10 z"/>
         </marker>
       </defs>
-      <text class="sec-title" x="64" y="44">plan：前一条不成立，才看下一条</text>
 
-      <g class="spine">
-        <path class="edge" d="M 64 117 L 64 160"/>
-        <path class="edge" d="M 64 197 L 64 240"/>
-        <path class="edge" d="M 64 277 L 64 320"/>
-        <path class="edge" d="M 64 357 L 64 400"/>
-        <path class="edge" d="M 64 437 L 64 480"/>
-        <path class="edge" d="M 64 517 L 64 560"/>
-        <path class="edge" d="M 64 597 L 64 640"/>
-        <path class="edge" d="M 64 677 L 64 720"/>
+      <path class="edge" d="M 700 92 L 700 116"/>
+      <path class="edge" d="M 700 182 L 700 211"/>
+      <path class="edge" d="M 700 277 L 700 306"/>
+      <path class="edge" d="M 700 372 L 700 401"/>
+      <path class="edge" d="M 700 467 L 700 496"/>
+      <path class="edge" d="M 700 562 L 700 591"/>
+      <path class="edge" d="M 700 657 L 700 686"/>
+      <path class="edge" d="M 700 752 L 700 781"/>
+      <path class="edge fail" d="M 700 847 L 700 858"/>
+
+      <text class="mini" x="714" y="202">否</text>
+      <text class="mini" x="714" y="297">否</text>
+      <text class="mini" x="714" y="392">否</text>
+      <text class="mini" x="714" y="487">否</text>
+      <text class="mini" x="714" y="582">否</text>
+      <text class="mini" x="714" y="677">否</text>
+      <text class="mini" x="714" y="772">否</text>
+      <text class="mini" x="714" y="852">否</text>
+
+      <circle class="state scan" cx="700" cy="54" r="38"/>
+      <text class="nm" x="700" y="50" text-anchor="middle">规划</text>
+      <text class="tag" x="700" y="72" text-anchor="middle">PLAN</text>
+
+      <path class="edge" d="M 570 150 L 500 150"/>
+      <path class="edge" d="M 830 245 L 900 245"/>
+      <path class="edge" d="M 570 340 L 500 340"/>
+      <path class="edge" d="M 830 435 L 900 435"/>
+      <path class="edge" d="M 570 530 L 500 530"/>
+      <path class="edge" d="M 830 625 L 900 625"/>
+      <path class="edge" d="M 570 720 L 500 720"/>
+      <path class="edge" d="M 830 815 L 900 815"/>
+
+      <text class="mini" x="535" y="142" text-anchor="middle">是</text>
+      <text class="mini" x="865" y="237" text-anchor="middle">是</text>
+      <text class="mini" x="535" y="332" text-anchor="middle">是</text>
+      <text class="mini" x="865" y="427" text-anchor="middle">是</text>
+      <text class="mini" x="535" y="522" text-anchor="middle">是</text>
+      <text class="mini" x="865" y="617" text-anchor="middle">是</text>
+      <text class="mini" x="535" y="712" text-anchor="middle">是</text>
+      <text class="mini" x="865" y="807" text-anchor="middle">是</text>
+
+      <rect class="qcard" x="570" y="118" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="150" r="14"/>
+      <text class="step-num-t" x="592" y="155" text-anchor="middle">1</text>
+      <text class="cond" x="614" y="148">目标低两格以上？</text>
+      <text class="cond-s" x="614" y="168">先落到地面再看</text>
+
+      <rect class="qcard" x="570" y="213" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="245" r="14"/>
+      <text class="step-num-t" x="592" y="250" text-anchor="middle">2</text>
+      <text class="cond" x="614" y="243">周围有现成站位？</text>
+      <text class="cond-s" x="614" y="263">站得住又能动手</text>
+
+      <rect class="qcard" x="570" y="308" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="340" r="14"/>
+      <text class="step-num-t" x="592" y="345" text-anchor="middle">3</text>
+      <text class="cond" x="614" y="338">缺口那头有落点？</text>
+      <text class="cond-s" x="614" y="358">整格面、包络全空</text>
+
+      <rect class="qcard" x="570" y="403" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="435" r="14"/>
+      <text class="step-num-t" x="592" y="440" text-anchor="middle">4</text>
+      <text class="cond" x="614" y="433">齐平且前方悬空？</text>
+      <text class="cond-s" x="614" y="453">铺一格就能走过去</text>
+
+      <rect class="qcard" x="570" y="498" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="530" r="14"/>
+      <text class="step-num-t" x="592" y="535" text-anchor="middle">5</text>
+      <text class="cond" x="614" y="528">四邻能垫 / 正上方？</text>
+      <text class="cond-s" x="614" y="548">头顶让得出两格</text>
+
+      <rect class="qcard" x="570" y="593" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="625" r="14"/>
+      <text class="step-num-t" x="592" y="630" text-anchor="middle">6</text>
+      <text class="cond" x="614" y="628">这一 tick 额度用完？</text>
+      <text class="cond-s" x="614" y="648">算路配额只剩零</text>
+
+      <rect class="qcard" x="570" y="688" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="720" r="14"/>
+      <text class="step-num-t" x="592" y="725" text-anchor="middle">7</text>
+      <text class="cond" x="614" y="723">头顶被挡？</text>
+      <text class="cond-s" x="614" y="743">屋里垫不上天花板</text>
+
+      <rect class="qcard" x="570" y="783" width="260" height="64" rx="10"/>
+      <circle class="qnum" cx="592" cy="815" r="14"/>
+      <text class="step-num-t" x="592" y="820" text-anchor="middle">8</text>
+      <text class="cond" x="614" y="818">踩着自己垫的脚？</text>
+      <text class="cond-s" x="614" y="838">脚下那块是临时的</text>
+
+      <rect class="leaf move" x="120" y="118" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(472,150)">
+        <path d="M -18 -8 L -6 -8 L -6 2"/>
+        <path d="M 8 -14 L 8 6"/>
+        <path d="M 3 1 L 8 8 L 13 1"/>
+        <path d="M -18 12 L 18 12"/>
       </g>
-      <text class="mini" x="80" y="146">否</text>
-      <text class="mini" x="80" y="226">否</text>
-      <text class="mini" x="80" y="306">否</text>
-      <text class="mini" x="80" y="386">否</text>
-      <text class="mini" x="80" y="466">否</text>
-      <text class="mini" x="80" y="546">否</text>
-      <text class="mini" x="80" y="626">否</text>
-      <text class="mini" x="80" y="706">否</text>
+      <text class="leaf-t" x="136" y="138">跳下</text>
+      <text class="leaf-n" x="136" y="158">目标低两格以上：先落地再重找</text>
+      <text class="leaf-n" x="136" y="176">落点 ≤10 格；40 tick 冷却；最多 2 次</text>
 
-      <g>
-        <circle class="step-num" cx="64" cy="100" r="17"/><text class="step-num-t" x="64" y="105" text-anchor="middle">1</text>
-        <circle class="step-num" cx="64" cy="180" r="17"/><text class="step-num-t" x="64" y="185" text-anchor="middle">2</text>
-        <circle class="step-num" cx="64" cy="260" r="17"/><text class="step-num-t" x="64" y="265" text-anchor="middle">3</text>
-        <circle class="step-num" cx="64" cy="340" r="17"/><text class="step-num-t" x="64" y="345" text-anchor="middle">4</text>
-        <circle class="step-num" cx="64" cy="420" r="17"/><text class="step-num-t" x="64" y="425" text-anchor="middle">5</text>
-        <circle class="step-num" cx="64" cy="500" r="17"/><text class="step-num-t" x="64" y="505" text-anchor="middle">6</text>
-        <circle class="step-num" cx="64" cy="580" r="17"/><text class="step-num-t" x="64" y="585" text-anchor="middle">7</text>
-        <circle class="step-num" cx="64" cy="660" r="17"/><text class="step-num-t" x="64" y="665" text-anchor="middle">8</text>
-        <circle class="step-num" cx="64" cy="740" r="17"/><text class="step-num-t" x="64" y="745" text-anchor="middle">9</text>
+      <rect class="leaf move" x="900" y="213" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(928,245)">
+        <path d="M -16 0 L 12 0"/>
+        <path d="M 6 -5 L 13 0 L 6 5"/>
+        <path d="M -12 10 L -4 10"/>
+        <path d="M -8 6 L 0 6"/>
       </g>
+      <text class="leaf-t" x="962" y="233">走过去</text>
+      <text class="leaf-n" x="962" y="253">近圈 ±4 找站位，找不到扩到 ±6</text>
+      <text class="leaf-n" x="962" y="271">按路步数取最短；卡住 80 tick 记下这格</text>
 
-      <g class="rows">
-        <text class="cond" x="105" y="94">目标低两格以上，跳得下去</text>
-        <text class="cond-s" x="105" y="116">40 tick 内刚试过就跑跳；一次目标最多从高处跳 2 次</text>
-
-        <text class="cond" x="105" y="174">周围有站得住、够得着、走得到的站位</text>
-        <text class="cond-s" x="105" y="196">近圈 ±4 找不到再扩到 ±6；算过走不到的记下来</text>
-
-        <text class="cond" x="105" y="254">缺口那头有验过的落点</text>
-        <text class="cond-s" x="105" y="276">最多 5 段；平地 4 格、抬高 3 格；落点必须是整格面</text>
-
-        <text class="cond" x="105" y="334">与她齐平，前方悬空，料和次数都够</text>
-        <text class="cond-s" x="105" y="356">一次施工最多铺 8 块；前方本来就站得住就直接走</text>
-
-        <text class="cond" x="105" y="414">四邻位有地方垫，头顶让得出两格</text>
-        <text class="cond-s" x="105" y="436">先放托底再放顶块；目标正在头顶就原地起跳</text>
-
-        <text class="cond" x="105" y="494">这一 tick 的算路额度用完了</text>
-        <text class="cond-s" x="105" y="516">不算失败：本 tick 收手，下个 tick 接着找</text>
-
-        <text class="cond" x="105" y="574">头顶被挡，附近有露天站位</text>
-        <text class="cond-s" x="105" y="596">先走到能看见天空处，再沿外墙往上垫</text>
-
-        <text class="cond" x="105" y="654">她踩在自己垫的方块上</text>
-        <text class="cond-s" x="105" y="676">跳回地面，清空高处试出来的站位重来</text>
-
-        <text class="cond" x="105" y="734">以上都不成立</text>
-        <text class="cond-s" x="105" y="756">头顶跳得起来报 NO_STAND，跳不起来报 NO_HEADROOM</text>
+      <rect class="leaf move" x="120" y="308" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(472,340)">
+        <path d="M -18 10 Q 0 -18 18 10"/>
+        <path d="M -18 14 L -10 14"/>
+        <path d="M 10 14 L 18 14"/>
       </g>
+      <text class="leaf-t" x="136" y="328">跑跳</text>
+      <text class="leaf-n" x="136" y="348">缺口那头有验过的整格落点</text>
+      <text class="leaf-n" x="136" y="366">最多 5 段；平地 4 格、抬高 3 格</text>
 
-      <g>
-        <path class="edge" d="M 760 100 L 986 100"/>
-        <path class="edge" d="M 760 180 L 986 180"/>
-        <path class="edge" d="M 760 260 L 986 260"/>
-        <path class="edge" d="M 760 340 L 986 340"/>
-        <path class="edge" d="M 760 420 L 986 420"/>
-        <path class="edge" d="M 760 500 L 986 500"/>
-        <path class="edge" d="M 760 580 L 986 580"/>
-        <path class="edge" d="M 760 660 L 986 660"/>
-        <path class="edge fail" d="M 760 740 L 986 740"/>
+      <rect class="leaf move" x="900" y="403" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(928,435)">
+        <rect x="-18" y="2" width="9" height="9" rx="1"/>
+        <rect x="-5" y="2" width="9" height="9" rx="1"/>
+        <rect x="8" y="2" width="9" height="9" rx="1"/>
       </g>
-      <text class="mini" x="873" y="90" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="170" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="250" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="330" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="410" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="490" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="570" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="650" text-anchor="middle">是</text>
-      <text class="mini" x="873" y="730" text-anchor="middle">是</text>
+      <text class="leaf-t" x="962" y="423">搭路</text>
+      <text class="leaf-n" x="962" y="443">齐平、前面悬空、料和次数够</text>
+      <text class="leaf-n" x="962" y="461">最多 8 块；前面有地就直接走</text>
 
-      <g>
-        <circle class="state move" cx="1030" cy="100" r="40"/><text class="act" x="1030" y="105" text-anchor="middle">跳下</text>
-        <circle class="state move" cx="1030" cy="180" r="40"/><text class="act" x="1030" y="185" text-anchor="middle">走</text>
-        <circle class="state move" cx="1030" cy="260" r="40"/><text class="act" x="1030" y="265" text-anchor="middle">跑跳</text>
-        <circle class="state move" cx="1030" cy="340" r="40"/><text class="act" x="1030" y="345" text-anchor="middle">搭路</text>
-        <circle class="state move" cx="1030" cy="420" r="40"/><text class="act" x="1030" y="425" text-anchor="middle">垫脚</text>
-        <circle class="state wait" cx="1030" cy="500" r="40"/><text class="act" x="1030" y="505" text-anchor="middle">等下</text>
-        <circle class="state move" cx="1030" cy="580" r="40"/><text class="act" x="1030" y="585" text-anchor="middle">出屋</text>
-        <circle class="state move" cx="1030" cy="660" r="40"/><text class="act" x="1030" y="665" text-anchor="middle">跳下</text>
-        <circle class="state failstate" cx="1030" cy="740" r="40"/><text class="act" x="1030" y="745" text-anchor="middle">走不通</text>
+      <rect class="leaf move" x="120" y="498" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(472,530)">
+        <rect x="-14" y="4" width="12" height="8" rx="1"/>
+        <rect x="0" y="-4" width="12" height="8" rx="1"/>
+        <path d="M -17 2 L -17 -12"/>
+        <path d="M -21 -8 L -17 -13 L -13 -8"/>
       </g>
+      <text class="leaf-t" x="136" y="518">垫脚 / 起跳</text>
+      <text class="leaf-n" x="136" y="538">先托底再顶块；能动手的格优先</text>
+      <text class="leaf-n" x="136" y="556">正上方或四面放不下 → 原地起跳</text>
+
+      <rect class="leaf wait" x="900" y="593" width="380" height="64" rx="10"/>
+      <g class="ico wait" transform="translate(928,625)">
+        <circle cx="0" cy="0" r="14"/>
+        <path d="M 0 0 L 0 -8"/>
+        <path d="M 0 0 L 6 3"/>
+      </g>
+      <text class="leaf-t" x="962" y="613">等一下</text>
+      <text class="leaf-n" x="962" y="633">这一 tick 的算路额度用完了</text>
+      <text class="leaf-n" x="962" y="651">不算失败：下 tick 接着找</text>
+
+      <rect class="leaf move" x="120" y="688" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(472,720)">
+        <path d="M -15 12 L -15 -1 L 0 -12 L 15 -1 L 15 12"/>
+        <circle cx="18" cy="-12" r="4"/>
+      </g>
+      <text class="leaf-t" x="136" y="708">先出屋</text>
+      <text class="leaf-n" x="136" y="728">头顶被挡，附近有露天站位</text>
+      <text class="leaf-n" x="136" y="746">走到见天空处，再沿外墙往上垫</text>
+
+      <rect class="leaf move" x="900" y="783" width="380" height="64" rx="10"/>
+      <g class="ico" transform="translate(928,815)">
+        <path d="M 13 -3 A 14 14 0 1 1 5 12"/>
+        <path d="M 16 -11 L 13 -2 L 4 -4"/>
+      </g>
+      <text class="leaf-t" x="962" y="803">跳下重来</text>
+      <text class="leaf-n" x="962" y="823">她踩在自己刚垫的方块上</text>
+      <text class="leaf-n" x="962" y="841">回地面，清空高处试过的站位</text>
+
+      <circle class="state failstate" cx="700" cy="910" r="50"/>
+      <text class="nm" x="700" y="900" text-anchor="middle">走不通</text>
+      <text class="tag" x="700" y="922" text-anchor="middle">NO_STAND</text>
+      <text class="tag" x="700" y="936" text-anchor="middle">或 NO_HEADROOM</text>
     </svg>
   </div>
 
@@ -592,7 +682,8 @@
   </div>
 
   <p class="foot">
-    读图：前两张是状态机——圆是状态，箭头上的字是迁移条件；第三、四张是手段的几何与搜索范围，距离按格算。
+    读图：第一张是状态机——圆是状态，箭头上的字是迁移条件；第二张是规划决策树，主干上的「否」就是代码里的先后顺序；
+    第三、四张是手段的几何与搜索范围，距离按格算。
     规划里的手段顺序就是代码里的调用顺序，改了顺序等于改了「先走路还是先搭桥」的取舍。
   </p>
 </main>
