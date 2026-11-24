@@ -1,4 +1,4 @@
-use rand::Rng;
+use rand::RngExt;
 
 use crate::config::proactive::{
     DEFAULT_EXPECTED_INTERVAL_MINUTES, MAX_EXPECTED_INTERVAL_MINUTES, MIN_EXPECTED_INTERVAL_MINUTES,
@@ -156,8 +156,8 @@ impl InterestManager {
     }
 
     pub fn update_interest(&mut self) {
-        let mut rng = rand::thread_rng();
-        let growth = rng.gen_range(self.growth_range.0..self.growth_range.1);
+        let mut rng = rand::rng();
+        let growth = rng.random_range(self.growth_range.0..self.growth_range.1);
         self.interest = (self.interest + growth).min(self.max_interest_cap);
         tracing::info!(
             "[Engagement] Interest grown by {:.2}. Current: {:.2}/{:.2}",
@@ -176,9 +176,9 @@ impl InterestManager {
             return false;
         }
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rng();
         let prob = (self.interest + self.status_mod as f64 - 50.0) / 50.0;
-        let roll = rng.gen_range(0.0..1.0);
+        let roll = rng.random_range(0.0..1.0);
         let triggered = roll < prob;
 
         tracing::info!(

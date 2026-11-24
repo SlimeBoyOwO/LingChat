@@ -19,10 +19,10 @@ serde_yaml = { package = "yaml_serde", version = "0.10" }
 toml = "1.2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 async-trait = "0.1"
-axum = { version = "0.7", features = ["tokio", "ws"] }
+axum = { version = "0.8", features = ["tokio", "ws"] }
 reqwest = { version = "0.13", features = [
     "json",
     "form",

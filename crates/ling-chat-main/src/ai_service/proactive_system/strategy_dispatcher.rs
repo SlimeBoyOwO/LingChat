@@ -7,7 +7,7 @@ use crate::ai_service::screen_analyzer::{
     ImageIntent, ScreenAnalyzer, ScreenAnalyzerConfig, capture_screen_as_jpeg, deliver_image,
 };
 use chrono::Local;
-use rand::Rng;
+use rand::RngExt;
 use tokio::sync::Mutex;
 
 pub struct StrategyDispatcher {
@@ -130,9 +130,9 @@ impl StrategyDispatcher {
 
         // 轮盘赌/加权随机选择
         let selected_mode = {
-            let mut rng = rand::thread_rng();
+            let mut rng = rand::rng();
             let total_weight: f64 = weights.iter().sum();
-            let mut roll = rng.gen_range(0.0..total_weight);
+            let mut roll = rng.random_range(0.0..total_weight);
             let mut selected = modes[0];
             for (i, &w) in weights.iter().enumerate() {
                 roll -= w;
@@ -213,8 +213,8 @@ impl StrategyDispatcher {
             return None;
         }
 
-        let mut rng = rand::thread_rng();
-        let idx = rng.gen_range(0..candidates.len());
+        let mut rng = rand::rng();
+        let idx = rng.random_range(0..candidates.len());
         let selected = candidates[idx];
         let user_name = &game_status.player.user_name;
 

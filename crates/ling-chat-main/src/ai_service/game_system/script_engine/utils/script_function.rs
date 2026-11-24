@@ -3,7 +3,7 @@
 //! Replaces Python `ScriptFunction` static methods and parts of `Function` YAML/string utilities.
 
 use anyhow::{Result, anyhow};
-use rand::Rng;
+use rand::RngExt;
 use regex::Regex;
 use sea_orm::DatabaseConnection;
 use serde_json::Value;
@@ -112,7 +112,7 @@ pub fn parse_value(s: &str) -> Result<Value> {
             // Inclusive on both ends, matching what `random(1, 6)` reads like.
             // This used to return the midpoint `min + (max - min) / 2`, i.e. the
             // same constant every time — `random(1, 6)` was always 3.
-            let val = rand::thread_rng().gen_range(min..=max);
+            let val = rand::rng().random_range(min..=max);
             return Ok(Value::Number(val.into()));
         }
     }

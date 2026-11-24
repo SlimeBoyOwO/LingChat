@@ -56,7 +56,7 @@ sbv2_core = { git = "https://gh-proxy.org/github.com/shadow01a/sbv2-api/", defau
 ] }
 once_cell = "1"
 base64 = { workspace = true }
-rand = "0.8"
+rand = "0.10"
 indoc = "2"
 
 image = { version = "0.25", default-features = false, features = [
@@ -65,14 +65,14 @@ image = { version = "0.25", default-features = false, features = [
     "webp",
 ] }
 infer = "0.22"
-sevenz-rust2 = "0.21"
+sevenz-rust2 = "0.25"
 sha2 = "0.11"
 tempfile = "3"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 
 # LAN Sync
 axum = { workspace = true }
-mdns-sd = "0.11"
+mdns-sd = "0.22"
 if-addrs = "0.15"
 tokio-util = { workspace = true }
 
