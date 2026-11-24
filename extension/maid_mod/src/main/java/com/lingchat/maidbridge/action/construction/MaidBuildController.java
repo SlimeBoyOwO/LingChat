@@ -719,7 +719,7 @@ public final class MaidBuildController {
             return "short_of_material";
         }
         for (String code : List.of("no_path", "no_stand", "no_headroom", "blocked_by_entity",
-                "place_failed", "blocked", "liquid", "out_of_reach")) {
+                "self_blocked", "place_failed", "blocked", "liquid", "out_of_reach")) {
             if (run.failed.containsKey(code)) {
                 return code;
             }
@@ -735,6 +735,7 @@ public final class MaidBuildController {
             case "no_stand" -> "有几格旁边没有能站的地方";
             case "no_headroom" -> "有几格她待的地方头顶太低，跳不起来";
             case "blocked_by_entity" -> "有几格被活物占着";
+            case "self_blocked" -> "有几格她自己挡着，站不开";
             case "place_failed" -> "有几格试了还是没放上";
             case "blocked" -> "有几格被别的东西占着";
             case "liquid" -> "有几格是液体，放不了";

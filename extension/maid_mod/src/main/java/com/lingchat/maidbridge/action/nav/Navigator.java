@@ -437,7 +437,7 @@ public final class Navigator {
         double current = Vec3.atBottomCenterOf(feet).distanceToSqr(goalCenter);
         // 目标就在正上方：原地跳起来把脚下垫高
         if (rise >= 2 && pos.getX() == feet.getX() && pos.getZ() == feet.getZ()
-                && jumpUp(maid, feet, item)) {
+                && jumpUp(maid, feet, pos, item)) {
             return true;
         }
         BlockPos bestTop = null;
@@ -449,6 +449,10 @@ public final class Navigator {
         // 只往上下左右四个方向垫：斜着放她会从斜角起跳，被旁边的方块一挡就落回原高度
         for (Direction side : Direction.Plane.HORIZONTAL) {
             BlockPos top = feet.relative(side);
+            // 站到这一格去等于站进目标格（或者身体探进目标格）：那正是现在要躲开的位置
+            if (top.equals(pos) || Bodies.selfAt(top.above(), pos, maid)) {
+                continue;
+            }
             if (!stepRoom(maid, top)) {
                 continue;
             }
@@ -488,7 +492,7 @@ public final class Navigator {
             bestSupportReady = placeSupportReady;
         }
         if (bestTop == null) {
-            return jumpUp(maid, feet, item);
+            return jumpUp(maid, feet, pos, item);
         }
         ServerLevel level = (ServerLevel) maid.level();
         if (!bestSupportReady) {
@@ -509,7 +513,11 @@ public final class Navigator {
     }
 
     /** 原地跳起来把脚下的方块补上，落下来就升了一整格。 */
-    private boolean jumpUp(EntityMaid maid, BlockPos feet, Item item) {
+    private boolean jumpUp(EntityMaid maid, BlockPos feet, BlockPos target, Item item) {
+        // 跳起来会把落脚点抬高一层：抬高后正好是目标格就别跳，那是要放方块的地方
+        if (feet.above().equals(target)) {
+            return false;
+        }
         if (!maid.onGround()
                 || !policy.canBuildOn(feet)
                 || !Terrain.free(maid.level(), feet)
@@ -639,6 +647,12 @@ public final class Navigator {
         public Outcome tick(Navigator nav, EntityMaid maid) {
             if (maid.blockPosition().equals(to)) {
                 MaidActuator.stopWalking(maid);
+                // 人进了格子不代表站得住：半个身子还压在目标格上时，目标照样判成自己占着。
+                // 这种站位记下来，下一轮换一个，否则会在同一格上反复走。
+                if (goal instanceof NavGoal.Stand && !satisfied(maid)) {
+                    memory.triedStands.add(to);
+                    return Outcome.DONE;
+                }
                 stand = to;
                 return Outcome.DONE;
             }

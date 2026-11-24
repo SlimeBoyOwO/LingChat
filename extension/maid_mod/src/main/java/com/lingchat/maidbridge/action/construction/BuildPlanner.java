@@ -229,12 +229,16 @@ final class BuildPlanner {
                     yield Step.SKIP;
                 }
                 if (mode == Mode.ARRIVE) {
-                    // 还站在这一格里：下个 tick 先挪开再放
-                    run.active = cell;
+                    // 到了还压着这一格：把这个站位记下来，免得下轮又走回来
+                    rememberStand(run, cell);
+                    CellFlow.holdThenPark(run, cell, Failure.SELF_BLOCKED);
+                    if (cell.state.open()) {
+                        run.active = cell;
+                    }
                     yield Step.SKIP;
                 }
                 // 自己站在要放的那一格：让寻路把她挪出去，必要时在旁边垫一格站
-                startNav(run, maid, cell, stand -> canActFrom(maid, stand, cell.pos));
+                startNav(run, maid, cell, placeStand(maid, cell.pos));
                 yield Step.HANDLED;
             }
             case CONTINUE -> Step.CONTINUE;
@@ -270,10 +274,19 @@ final class BuildPlanner {
 
     /** 叫寻路站到能放下这一格的位置。 */
     static boolean goPlace(Run run, EntityMaid maid, Cell cell) {
-        // 她现在站的这一格不算：站得住脚却放不下时，得换一个地方，别原地判成「到了」
-        startNav(run, maid, cell,
-                stand -> !stand.equals(maid.blockPosition()) && canActFrom(maid, stand, cell.pos));
+        startNav(run, maid, cell, placeStand(maid, cell.pos));
         return true;
+    }
+
+    /**
+     * 能站过去放下这一格的站位。
+     *
+     * <p>这里不能排除她当前站的这一格：寻路每 tick 先用同一个判据问「到了没」，排除掉就永远
+     * 到不了，只能等 600 tick 超时。当前这格真放不下时，{@link #arrive} 会把它记进试过的
+     * 站位，下一次搜索自然跳过。
+     */
+    private static Predicate<BlockPos> placeStand(EntityMaid maid, BlockPos target) {
+        return stand -> canActFrom(maid, stand, target);
     }
 
     /** 给她开一次寻路：目标、边界、记忆都从这一格上拿。 */
@@ -288,9 +301,16 @@ final class BuildPlanner {
         run.cooldown = 0;
     }
 
-    /** 站到这一格之后能放下目标吗：够得着、看得见，且不是站在目标格里。 */
+    /** 站到这一格之后能放下目标吗：够得着、看得见，身体也不能压着目标格。 */
     static boolean canActFrom(EntityMaid maid, BlockPos stand, BlockPos target) {
         if (stand.equals(target)) {
+            return false;
+        }
+        // 已经站在这一格时量真实碰撞箱；还没过去时按站到格心的身体估算
+        boolean inside = stand.equals(maid.blockPosition())
+                ? Bodies.self(target, maid)
+                : Bodies.selfAt(stand, target, maid);
+        if (inside) {
             return false;
         }
         return Terrain.reachableFrom(maid, stand, target)
