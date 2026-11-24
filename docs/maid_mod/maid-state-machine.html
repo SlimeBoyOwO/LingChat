@@ -81,6 +81,7 @@
 
   .edge { fill: none; stroke: var(--edge); stroke-width: 2; marker-end: url(#arrow); }
   .edge.fail { stroke: var(--fail); stroke-dasharray: 7 5; marker-end: url(#arrow-fail); }
+  .edge.hold { stroke: var(--muted); stroke-dasharray: 5 4; marker-end: url(#arrow-hold); }
   .lbl {
     fill: var(--text); font-size: 13px;
     paint-order: stroke; stroke: var(--bg); stroke-width: 6px; stroke-linejoin: round;
@@ -88,6 +89,7 @@
   .lbl.fail { fill: var(--fail); }
   #arrow path { fill: var(--edge); }
   #arrow-fail path { fill: var(--fail); }
+  #arrow-hold path { fill: var(--muted); }
 
   .composite { fill: var(--comp); stroke: var(--comp-stroke); stroke-width: 1.6; stroke-dasharray: 8 6; }
   .comp-title { fill: var(--text); font-size: 15px; font-weight: 650; }
@@ -98,10 +100,24 @@
   circle.move { fill: var(--move-fill); stroke: var(--move-stroke); }
   circle.wait { fill: var(--wait-fill); stroke: var(--wait-stroke); }
   circle.done { fill: var(--done-fill); stroke: var(--done-stroke); }
+  circle.fail { fill: var(--panel); stroke: var(--fail); }
   .nm { fill: var(--text); font-size: 16px; font-weight: 650; }
   .tag { fill: var(--muted); font-size: 10px; letter-spacing: .04em; }
   .pseudo { fill: var(--edge); }
   .pseudo-ring { fill: none; stroke: var(--edge); stroke-width: 2.5; }
+
+  h2.sec { margin: 38px 0 4px; font-size: 19px; letter-spacing: .01em; }
+  .lead { margin: 0 0 12px; color: var(--muted); font-size: 13.5px; max-width: 1020px; }
+
+  .dec rect { fill: var(--scan-fill); stroke: var(--scan-stroke); stroke-width: 2; }
+  .dec text { fill: var(--text); font-size: 14px; font-weight: 600; }
+  .dec text.sub { font-size: 12px; font-weight: 400; fill: var(--muted); }
+  rect.leaf { fill: var(--panel); stroke: var(--line); stroke-width: 1.6; }
+  rect.leaf.done { fill: var(--done-fill); stroke: var(--done-stroke); }
+  rect.leaf.move { fill: var(--move-fill); stroke: var(--move-stroke); }
+  rect.leaf.retry { fill: var(--wait-fill); stroke: var(--wait-stroke); stroke-width: 2.4; }
+  .leaf-t { fill: var(--text); font-size: 13px; font-weight: 650; }
+  .leaf-n { fill: var(--muted); font-size: 12px; }
 
   .notes {
     display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -155,6 +171,10 @@
                 refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
           <path d="M0,0 L10,5 L0,10 z"/>
         </marker>
+        <marker id="arrow-hold" viewBox="0 0 10 10" markerWidth="12" markerHeight="12"
+                refX="9" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L10,5 L0,10 z"/>
+        </marker>
       </defs>
 
       <!-- 复合状态：寻路 -->
@@ -181,7 +201,7 @@
       <text class="lbl" x="1032" y="420" text-anchor="start">到站 / 走不通</text>
       <text class="lbl" x="708" y="480" text-anchor="middle">挑一种手段</text>
       <text class="lbl" x="708" y="584" text-anchor="middle">这条腿结束</text>
-      <text class="lbl" x="196" y="446" text-anchor="end">图纸扫完</text>
+      <text class="lbl" x="196" y="446" text-anchor="end">决策表收工</text>
       <text class="lbl" x="196" y="464" text-anchor="end">或被打断</text>
       <text class="lbl" x="268" y="792" text-anchor="start">拆净垫脚</text>
       <text class="lbl" x="268" y="810" text-anchor="start">推收尾事件</text>
@@ -232,6 +252,11 @@
     <div class="note">
       <b>中断（不经过选格）</b>
       被抱走、昏迷、被别的指令顶掉时直接收尾；收尾里先走到远处的实地，再把垫脚拆净。
+    </div>
+    <div class="note">
+      <b>扫完一层先过决策表</b>
+      本层没有能处理的格子之后，先数一遍账（进展、搁置、等活物、还有没有下一层），
+      再决定重扫、换层、补试、搁置还是收工；不是扫完就收尾。见下文两节。
     </div>
   </div>
 
@@ -287,6 +312,260 @@
       <tr><td>出屋</td><td>头顶被挡，附近有露天站位</td><td>记原因，换别的站位</td></tr>
     </tbody>
   </table>
+
+  <h2 class="sec">一格的进度：搁置与补试只有一轮</h2>
+  <p class="lead">
+    顶层只有四个相位，RETRY_ROUND 动的是每一格自己的进度。hold 只记原因；真正改状态的是这条链，
+    全部迁移都经 CellFlow 一个入口。颜色：蓝＝候选，橙＝搁置，紫＝补试中，绿＝完成，红＝失败。
+  </p>
+  <div class="canvas">
+    <svg viewBox="0 0 1300 620" role="img" aria-label="一格的进度状态迁移">
+      <g>
+        <circle class="state scan" cx="160" cy="230" r="62"/>
+        <text class="nm" x="160" y="226" text-anchor="middle">待做</text>
+        <text class="tag" x="160" y="248" text-anchor="middle">PENDING</text>
+      </g>
+      <g>
+        <circle class="state done" cx="600" cy="230" r="62"/>
+        <text class="nm" x="600" y="226" text-anchor="middle">完成</text>
+        <text class="tag" x="600" y="248" text-anchor="middle">DONE</text>
+      </g>
+      <g>
+        <circle class="state wait" cx="160" cy="500" r="62"/>
+        <text class="nm" x="160" y="496" text-anchor="middle">搁置</text>
+        <text class="tag" x="160" y="518" text-anchor="middle">DEFERRED</text>
+      </g>
+      <g>
+        <circle class="state move" cx="600" cy="500" r="62"/>
+        <text class="nm" x="600" y="496" text-anchor="middle">补试中</text>
+        <text class="tag" x="600" y="518" text-anchor="middle">RETRYING</text>
+      </g>
+      <g>
+        <circle class="state fail" cx="1040" cy="500" r="66"/>
+        <text class="nm" x="1040" y="496" text-anchor="middle">失败</text>
+        <text class="tag" x="1040" y="518" text-anchor="middle">FAILED</text>
+      </g>
+
+      <path class="edge" d="M 222 230 H 538"/>
+      <text class="lbl" x="380" y="210" text-anchor="middle">放好了，或本来就在</text>
+
+      <path class="edge" d="M 160 292 V 438"/>
+      <text class="lbl" x="174" y="350" text-anchor="start">换满 4 个站位都不行</text>
+      <text class="lbl" x="174" y="370" text-anchor="start">或这一遍没辙</text>
+
+      <path class="edge" d="M 222 500 H 538"/>
+      <text class="lbl" x="380" y="480" text-anchor="middle">整张图纸过完之后补试</text>
+
+      <path class="edge" d="M 649 468 C 720 400 720 330 650 264"/>
+      <text class="lbl" x="724" y="368" text-anchor="start">补试时放好</text>
+
+      <path class="edge" d="M 662 500 H 974"/>
+      <text class="lbl" x="812" y="480" text-anchor="middle">补试仍不行</text>
+
+      <path class="edge" d="M 195 178 C 400 55 920 55 1009 442"/>
+      <text class="lbl" x="600" y="82" text-anchor="middle">液体 · 缺料 · 挖不动的方块（当场定论）</text>
+
+      <path class="edge hold" d="M 116 186 C 40 130 15 300 114 270"/>
+      <text class="lbl" x="14" y="130" text-anchor="start">hold：只记原因，不改状态</text>
+    </svg>
+  </div>
+
+  <div class="notes">
+    <div class="note">
+      <b>hold 不改状态</b>
+      放置失败、到站看不见、够不着这类「这一遍先放着」只记原因和 attempted，不迁移状态；
+      所以它不会把格子从待做推到失败，也不会打断这一遍的进展计数。
+    </div>
+    <div class="note">
+      <b>搁置不是定论</b>
+      搁置可以走补试，也可以直接收账；完成与失败才是定论，之后只有完成还能再进。
+      拿「开格」当迁移判据会漏掉搁置转补试，补试轮就会一格都放不回来。
+    </div>
+    <div class="note">
+      <b>补试会清记忆</b>
+      进入补试中时清空这一格的 triedStands、unreachable、steps、bridges、drops、hopUntil、
+      waits、propped、navFails：周围已经变样，上一轮的尝试全部作废。
+    </div>
+    <div class="note">
+      <b>收账才进失败清单</b>
+      失败时按原因计数，缺料单独计入 missing；从没真正试过的格子记 incomplete，
+      不拿默认的「没站位」顶数。
+    </div>
+  </div>
+
+  <h2 class="sec">一层扫完的去向：endPass 的决策</h2>
+  <p class="lead">
+    BuildRules.endPass 是纯函数，只看这一遍数好的账，从上到下命中即止。BuildLayer.applyEnd
+    按返回的顺序执行动作，遇到 FINISH 就收工，其余情况冷却 2 tick 回扫描。
+    橙色的两个叶子就是 RETRY_ROUND 的全部入口。
+  </p>
+  <div class="canvas">
+    <svg viewBox="0 0 1400 880" role="img" aria-label="一层扫完之后的去向">
+      <g class="dec">
+        <rect x="40" y="30" width="420" height="54" rx="10"/>
+        <text x="250" y="57" text-anchor="middle" dominant-baseline="middle">整张图纸都放好了？</text>
+      </g>
+      <path class="edge" d="M 460 57 H 532"/>
+      <text class="lbl" x="496" y="47" text-anchor="middle">是</text>
+      <rect class="leaf done" x="540" y="30" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="50" text-anchor="middle">FINISH</text>
+      <text class="leaf-n" x="645" y="70" text-anchor="middle">收工</text>
+      <path class="edge" d="M 250 84 V 112"/>
+      <text class="lbl" x="264" y="104" text-anchor="start">否</text>
+
+      <g class="dec">
+        <rect x="40" y="120" width="420" height="54" rx="10"/>
+        <text x="250" y="147" text-anchor="middle" dominant-baseline="middle">本层还有开着的格子？</text>
+      </g>
+      <path class="edge" d="M 460 147 H 792"/>
+      <text class="lbl" x="620" y="137" text-anchor="middle">否</text>
+      <path class="edge" d="M 250 174 V 222"/>
+      <text class="lbl" x="264" y="204" text-anchor="start">是</text>
+
+      <g class="dec">
+        <rect x="800" y="120" width="360" height="54" rx="10"/>
+        <text x="980" y="147" text-anchor="middle" dominant-baseline="middle">后面还有别的层？</text>
+      </g>
+      <path class="edge" d="M 1160 147 H 1202"/>
+      <text class="lbl" x="1180" y="137" text-anchor="middle">是</text>
+      <rect class="leaf move" x="1210" y="120" width="170" height="54" rx="10"/>
+      <text class="leaf-t" x="1295" y="140" text-anchor="middle">NEXT_LAYER</text>
+      <text class="leaf-n" x="1295" y="160" text-anchor="middle">换到下一层</text>
+      <path class="edge" d="M 980 174 V 202"/>
+      <text class="lbl" x="994" y="196" text-anchor="start">否</text>
+
+      <g class="dec">
+        <rect x="800" y="210" width="360" height="54" rx="10"/>
+        <text x="980" y="237" text-anchor="middle" dominant-baseline="middle">还有搁置的格子？</text>
+      </g>
+      <path class="edge" d="M 1160 237 H 1202"/>
+      <text class="lbl" x="1180" y="227" text-anchor="middle">是</text>
+      <rect class="leaf retry" x="1210" y="210" width="170" height="54" rx="10"/>
+      <text class="leaf-t" x="1295" y="230" text-anchor="middle">RETRY_ROUND</text>
+      <text class="leaf-n" x="1295" y="250" text-anchor="middle">补试一轮（口 A）</text>
+      <path class="edge" d="M 980 264 V 327 H 1202"/>
+      <text class="lbl" x="994" y="290" text-anchor="start">否</text>
+      <rect class="leaf done" x="1210" y="300" width="170" height="54" rx="10"/>
+      <text class="leaf-t" x="1295" y="320" text-anchor="middle">FINISH</text>
+      <text class="leaf-n" x="1295" y="340" text-anchor="middle">收工</text>
+
+      <g class="dec">
+        <rect x="40" y="230" width="420" height="54" rx="10"/>
+        <text x="250" y="257" text-anchor="middle" dominant-baseline="middle">全在等活物，或这一遍有进展？</text>
+      </g>
+      <path class="edge" d="M 460 257 H 532"/>
+      <text class="lbl" x="496" y="247" text-anchor="middle">是</text>
+      <rect class="leaf move" x="540" y="230" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="252" text-anchor="middle">RESCAN</text>
+      <text class="leaf-n" x="645" y="272" text-anchor="middle">重扫一遍</text>
+      <path class="edge" d="M 250 284 V 312"/>
+      <text class="lbl" x="264" y="304" text-anchor="start">否</text>
+
+      <g class="dec">
+        <rect x="40" y="320" width="420" height="54" rx="10"/>
+        <text x="250" y="347" text-anchor="middle" dominant-baseline="middle">连续没进展的遍数少于 3？</text>
+      </g>
+      <path class="edge" d="M 460 347 H 532"/>
+      <text class="lbl" x="496" y="337" text-anchor="middle">是</text>
+      <rect class="leaf move" x="540" y="320" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="342" text-anchor="middle">RESCAN</text>
+      <text class="leaf-n" x="645" y="362" text-anchor="middle">再扫一遍</text>
+      <path class="edge" d="M 250 374 V 402"/>
+      <text class="lbl" x="264" y="394" text-anchor="start">否</text>
+
+      <g class="dec">
+        <rect x="40" y="410" width="420" height="86" rx="10"/>
+        <text x="60" y="438" text-anchor="start">已经补试过一轮？</text>
+        <text class="sub" x="60" y="464" text-anchor="start">否：先搁置这一层 → DEFER_LAYER</text>
+        <text class="sub" x="60" y="484" text-anchor="start">是：直接收账 → SETTLE_LAYER</text>
+      </g>
+      <path class="edge" d="M 250 496 V 522"/>
+      <text class="lbl" x="264" y="516" text-anchor="start">带着 first 往下</text>
+
+      <g class="dec">
+        <rect x="40" y="530" width="420" height="54" rx="10"/>
+        <text x="250" y="557" text-anchor="middle" dominant-baseline="middle">后面还有别的层？</text>
+      </g>
+      <path class="edge" d="M 460 557 H 532"/>
+      <text class="lbl" x="496" y="547" text-anchor="middle">是</text>
+      <rect class="leaf move" x="540" y="530" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="552" text-anchor="middle">first + NEXT_LAYER</text>
+      <text class="leaf-n" x="645" y="572" text-anchor="middle">先搁置或收账，再换层</text>
+      <path class="edge" d="M 250 584 V 612"/>
+      <text class="lbl" x="264" y="604" text-anchor="start">否</text>
+
+      <g class="dec">
+        <rect x="40" y="620" width="420" height="54" rx="10"/>
+        <text x="250" y="647" text-anchor="middle" dominant-baseline="middle">还有搁置格，或还没补试过？</text>
+      </g>
+      <path class="edge" d="M 460 647 H 532"/>
+      <text class="lbl" x="496" y="637" text-anchor="middle">是</text>
+      <rect class="leaf retry" x="540" y="620" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="642" text-anchor="middle">first + RETRY_ROUND</text>
+      <text class="leaf-n" x="645" y="662" text-anchor="middle">补试一轮（口 B）</text>
+      <path class="edge" d="M 250 674 V 737 H 532"/>
+      <text class="lbl" x="264" y="700" text-anchor="start">否</text>
+      <rect class="leaf done" x="540" y="710" width="210" height="54" rx="10"/>
+      <text class="leaf-t" x="645" y="732" text-anchor="middle">first + FINISH</text>
+      <text class="leaf-n" x="645" y="752" text-anchor="middle">收工</text>
+
+      <rect class="composite" x="40" y="790" width="1340" height="64" rx="12"/>
+      <text class="lbl" x="64" y="816">BuildLayer.applyEnd：动作按前后顺序执行，FINISH 一到就收工；其余情况冷却 2 tick 回扫描。</text>
+      <text class="lbl" x="64" y="840">RETRY_ROUND 只有两个入口：口 A 本层已无开格但还有搁置；口 B 本层连续 3 遍没进展。</text>
+    </svg>
+  </div>
+
+  <table>
+    <caption>闭环与有界性：哪些会绕回来，靠什么停下</caption>
+    <thead>
+      <tr><th>闭环</th><th>怎么绕</th><th>退出条件</th><th>有界性</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>重扫</td>
+        <td>SCAN → endPass(RESCAN) → 冷却 2 tick → SCAN</td>
+        <td>连续 3 遍没有新进展（放方块或垫脚都算）；有进展、或本层剩格全在等活物时重新计数</td>
+        <td><code>stallPasses</code> 到 3 就转搁置；等活物最多暂停计数 200 tick（10 秒）</td>
+      </tr>
+      <tr>
+        <td>搁置与换层</td>
+        <td>3 遍没进展 → DEFER_LAYER（本层开格全部转搁置）→ 有下一层就 NEXT_LAYER，没有就 RETRY_ROUND</td>
+        <td>图纸所有层都过完</td>
+        <td>每层最多搁置一次；补试过之后同样的停顿改为 SETTLE_LAYER 直接收账</td>
+      </tr>
+      <tr>
+        <td>补试轮</td>
+        <td>RETRY_ROUND → 所有搁置格转补试中，清空这一格的站位、垫脚、跑跳记忆 → 从第一个开格所在层重新扫</td>
+        <td>补试中的格子再放弃直接记失败，不会再搁一次</td>
+        <td>每格最多补一次。补试轮之后仍可能因「换满 4 个站位」产生新的搁置，从而再触发一次 RETRY_ROUND（<code>retried</code> 只影响口 B，不挡口 A）</td>
+      </tr>
+      <tr>
+        <td>总闸</td>
+        <td>每个 tick 累加 <code>run.ticks</code></td>
+        <td>超过 48000 tick（约 40 分钟）强制收尾</td>
+        <td>硬上限。所有闭环最终都被它截断；调试栏表现为心跳一直涨、进度不动</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <div class="notes">
+    <div class="note">
+      <b>retried 是整次施工共用的</b>
+      只在 retryRound 真正补过一格时置真，且换层不重置。它决定「3 遍没进展之后是搁置还是直接收账」，
+      不决定「本层无开格时还能不能补试」。
+    </div>
+    <div class="note">
+      <b>怎么读调试栏</b>
+      <code>停 层：RETRY_ROUND×N</code> 是最后一次 endPass 的出口；<code>停遍</code> 是连续没进展遍数；
+      <code>·已补</code> 表示 retried；<code>全 待/补/败/搁置</code> 是全图计数。补试轮如果在跑，
+      「补」应该从 0 涨起来；「补」一直是 0 而 RETRY_ROUND 反复出现，就是搁置格没能转进补试。
+    </div>
+    <div class="note">
+      <b>补试轮的已知坑（2026-11-24 已修）</b>
+      迁移守卫曾把搁置当成「已有定论」，拒绝搁置 → 补试中；补试轮因此每遍都空转，
+      只置 retried 而不改任何一格，最后一路耗到总超时。现在允许的迁移单独成一条规则并有单测。
+    </div>
+  </div>
 
   <p class="foot">
     读图：圆是状态，箭头是迁移，箭头上的字是迁移条件。虚线框里是寻路模块的内部状态——规划挑一种手段，
