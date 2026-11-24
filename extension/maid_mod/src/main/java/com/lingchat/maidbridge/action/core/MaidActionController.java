@@ -272,6 +272,10 @@ public final class MaidActionController {
      */
     private static void walkToPlayer(EntityMaid maid, Run run, ServerPlayer player) {
         BlockPos target = player.blockPosition();
+        // 已经站在到位线以内：下一 tick 状态机自己收尾，不必为挪半步重算
+        if (maid.blockPosition().distManhattan(target) <= run.action.arriveDistance()) {
+            return;
+        }
         if (run.nav == null || !target.equals(run.navTarget)) {
             if (run.nav != null) {
                 run.nav.cancel(maid);
