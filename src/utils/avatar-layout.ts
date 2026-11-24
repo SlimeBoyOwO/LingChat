@@ -27,6 +27,25 @@ export function standardAvatarStyle(
   return {
     left: `calc(${leftPercent}% + ${role.offsetX || 0}px)`,
     top: `${top + castY}px`,
-    transform: `translateX(-50%) scale(${scale})`,
+    width: `${scale * 100}%`,
+    height: `${scale * 100}%`,
+    transform: "translateX(-50%)",
+  };
+}
+
+export function petAvatarStyle(role: {
+  scaleP: number;
+  offsetXP: number;
+  offsetYP: number;
+}): Record<string, string> {
+  const scale = role.scaleP || 1;
+  const x = (role.offsetXP || 0) * scale;
+  const y = (role.offsetYP || 0) * scale;
+  return {
+    left: `calc(50% + ${x}px)`,
+    top: `${y}px`,
+    width: `${scale * 100}%`,
+    height: `${scale * 100}%`,
+    transform: "translateX(-50%)",
   };
 }
