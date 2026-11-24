@@ -290,6 +290,8 @@ public final class Navigator {
             return;
         }
         if (search == null) {
+            // 上一次腿失败留下的「走不到」不代表这条路走不通：新一趟重新算
+            MaidActuator.beginWalk(maid);
             search = RouteSearch.start(
                     new RouteView(maid, target, goalTest(), policy, memory),
                     maid.blockPosition(), target, limits());
