@@ -73,7 +73,7 @@ pub async fn start_server(
     let router = Router::new()
         .route("/", get(index_handler))
         .route("/stream", get(stream_handler))
-        .route("/voice/:file", get(voice_handler))
+        .route("/voice/{file}", get(voice_handler))
         .route("/ws", get(ws_handler))
         .with_state(state);
 
@@ -296,7 +296,7 @@ async fn handle_ws(app: AppHandle, mut socket: WebSocket) {
             }, if broadcast_rx.is_some() => {
                 match broadcast {
                     Ok(text) => {
-                        let _ = socket.send(Message::Text(text)).await;
+                        let _ = socket.send(Message::Text(text.into())).await;
                     }
                     // 消费过慢丢了几条广播：跳过即可，不必停掉发送支路
                     Err(broadcast::error::RecvError::Lagged(_)) => {}
@@ -345,7 +345,7 @@ async fn handle_client_frame(
         Err(e) => {
             tracing::warn!("[Cast][mic] 处理失败: {e}");
             let err = serde_json::json!({"type": "cast:mic", "error": e}).to_string();
-            let _ = socket.send(Message::Text(err)).await;
+            let _ = socket.send(Message::Text(err.into())).await;
         },
     }
 }
@@ -353,7 +353,7 @@ async fn handle_client_frame(
 /// 回执（预留协议：客户端可据此判断服务端已收到）。
 async fn send_ack(socket: &mut WebSocket) {
     let ack = serde_json::json!({"type": "cast:mic", "ack": true}).to_string();
-    let _ = socket.send(Message::Text(ack)).await;
+    let _ = socket.send(Message::Text(ack.into())).await;
 }
 
 /// 广播一条 `cast:audio`(play, voice) 给所有投屏 WS 客户端，供设备同步播放。

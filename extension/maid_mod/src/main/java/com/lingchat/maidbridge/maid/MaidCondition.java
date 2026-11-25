@@ -4,6 +4,7 @@ import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
+import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActuator;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
@@ -370,6 +371,7 @@ public final class MaidCondition {
             MaidAttackController.cancel();
             MaidMineController.cancelForUnconscious(server);
             MaidPlaceController.cancelForUnconscious(server);
+            MaidBuildController.cancelForUnconscious(server);
         }
         // 先把坐姿、载具、普通睡眠都收掉；被玩家抱着时 standUp 会自己避开
         MaidActuator.standUp(maid);

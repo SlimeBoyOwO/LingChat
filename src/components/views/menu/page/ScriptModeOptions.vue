@@ -1,7 +1,7 @@
 <template>
-  <StartList>
-    <StartLine v-for="(script, index) in currentPageScripts">
-      <StartItem class="menu-subitem" :key="script.script_name" @click="selectScript(script)">
+  <StartList ref="listRef">
+    <StartLine v-for="script in currentPageScripts" :key="script.script_name">
+      <StartItem class="menu-subitem" @click="selectScript(script)">
         <span class="inline-flex items-center gap-2">
           <span>{{ script.script_name }}</span>
           <PluginTag v-if="script.source && script.source !== 'game'" :source="script.source" />
@@ -9,35 +9,25 @@
       </StartItem>
     </StartLine>
 
-    <StartLine>
-      <StartItem
-        class="menu-subitem"
-        v-for="n in pageSize - currentPageScripts.length"
-        :key="'placeholder-' + n"
-        disabled="true"
-      >
-        {{ "\u00A0" }}
-      </StartItem>
-    </StartLine>
     <!-- 分页控制 -->
-    <StartLine>
-      <StartItem class="menu-subitem" @click="currentPage--" :disabled="currentPage === 1">
-        <
+    <StartLine class="pagination-row flex flex-wrap items-center justify-center gap-4">
+      <StartItem class="menu-subitem" @click="prevPage" :disabled="currentPage <= 1">
+        &lt;
       </StartItem>
       <StartItem class="menu-subitem" disabled="true" style="font-size: 28px">
-        {{ currentPage }} / {{ totalPages }}
+        {{ safePage }} / {{ totalPages }}
       </StartItem>
-      <StartItem class="menu-subitem" @click="currentPage++" :disabled="currentPage === totalPages">
-        >
+      <StartItem class="menu-subitem" @click="nextPage" :disabled="currentPage >= totalPages">
+        &gt;
       </StartItem>
       <!-- 返回按钮 -->
-      <StartItem @click="emit('back')">{{ $t("views.menu.back") }}</StartItem>
+      <StartItem class="menu-subitem" @click="emit('back')">{{ $t("views.menu.back") }}</StartItem>
     </StartLine>
   </StartList>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, onMounted, onUnmounted, ref, watch } from "vue";
 import { StartItem, StartLine, StartList } from "../base";
 import PluginTag from "@/components/ui/PluginTag.vue";
 import { useRouter } from "vue-router";
@@ -63,7 +53,8 @@ const gameStore = useGameStore();
 const uiStore = useUIStore();
 
 const currentPage = ref(1);
-const pageSize = 3;
+const pageSize = ref(3);
+const listRef = ref<InstanceType<typeof StartList> | null>(null);
 
 const selectScript = async (script: ScriptSummary) => {
   // 剧本互斥：已有剧本在跑时不再起跑新的（后端 start_script 有同款校验兜底）
@@ -95,12 +86,87 @@ const selectScript = async (script: ScriptSummary) => {
 };
 
 const totalPages = computed(() => {
-  return Math.ceil(props.scripts.length / pageSize);
+  return Math.ceil(props.scripts.length / pageSize.value);
 });
 
+/* 状态兜底：窗口变化或异常点击后页码可能越界，渲染时再钳一次 */
+const safePage = computed(() =>
+  Math.min(Math.max(1, currentPage.value), Math.max(1, totalPages.value)),
+);
+
 const currentPageScripts = computed(() => {
-  const start = (currentPage.value - 1) * pageSize;
-  const end = start + pageSize;
+  const start = (safePage.value - 1) * pageSize.value;
+  const end = start + pageSize.value;
   return props.scripts.slice(start, end);
 });
+
+/* 按可用高度决定每页展示的剧本数量：用真实行高和 StartPage 内容区高度推算，
+   分页行按实际高度扣除（窄屏折行时会自动变大） */
+let resizeTimer = 0;
+
+function measureVertical(el: HTMLElement) {
+  const marginTop = parseFloat(getComputedStyle(el).marginTop);
+  return el.getBoundingClientRect().height + (Number.isFinite(marginTop) ? marginTop : 0);
+}
+
+function updatePageSize() {
+  const nav = listRef.value?.$el as HTMLElement | undefined;
+  const page = nav?.closest(".start-page") as HTMLElement | null;
+  const sample = nav?.querySelector<HTMLElement>(".start-item");
+  // 没有剧本项时第一个 .start-item 落在分页行内，不拿它测量
+  if (!nav || !page || !sample || sample.closest(".pagination-row")) return;
+
+  const pageStyle = getComputedStyle(page);
+  const available =
+    page.getBoundingClientRect().height -
+    parseFloat(pageStyle.borderTopWidth) -
+    parseFloat(pageStyle.borderBottomWidth) -
+    parseFloat(pageStyle.paddingTop) -
+    parseFloat(pageStyle.paddingBottom);
+  const rowUnit = measureVertical(sample);
+  const pagination = nav.querySelector<HTMLElement>(".pagination-row");
+  const paginationUnit = pagination ? measureVertical(pagination) : rowUnit;
+
+  pageSize.value = Math.max(1, Math.floor((available - paginationUnit) / rowUnit));
+}
+
+/* 等布局结算后再算，避免 resize 瞬间读到旧字号 */
+function onWindowResize() {
+  window.clearTimeout(resizeTimer);
+  resizeTimer = window.setTimeout(updatePageSize, 50);
+}
+
+watch(totalPages, () => {
+  const maxPage = Math.max(1, totalPages.value);
+  currentPage.value = Math.min(Math.max(1, currentPage.value), maxPage);
+});
+
+function prevPage() {
+  if (currentPage.value > 1) currentPage.value--;
+}
+
+function nextPage() {
+  if (currentPage.value < totalPages.value) currentPage.value++;
+}
+
+onMounted(() => {
+  updatePageSize();
+  window.addEventListener("resize", onWindowResize);
+  // 字体加载完成后行高会变，补测一次；组件已卸载时 listRef 为空，回调会自行返回
+  document.fonts?.ready.then(updatePageSize);
+  currentPage.value = Math.min(Math.max(1, currentPage.value), Math.max(1, totalPages.value));
+});
+
+onUnmounted(() => {
+  window.removeEventListener("resize", onWindowResize);
+  window.clearTimeout(resizeTimer);
+});
 </script>
+
+<style scoped>
+/* 分页行常压在亮色屋顶/云上，加强描边和投影保证可读 */
+.pagination-row :deep(.start-item) {
+  -webkit-text-stroke: 0.024em rgba(30, 60, 100, 0.5);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+}
+</style>

@@ -26,7 +26,9 @@ public class MaidStateHandler implements MessageHandler {
 
     @Override
     public JsonObject handle(JsonObject request) {
-        String maidId = MonitoredMaidHandler.get();
+        // 施工等工具会带上它绑定的那只女仆；没带才退回监控目标
+        String requested = Envelope.string(Envelope.data(request), "maid_id");
+        String maidId = requested.isEmpty() ? MonitoredMaidHandler.get() : requested;
         EntityMaid maid = MaidQueries.findMaidById(server, maidId);
         if (maid != null) {
             // 见到活着的她也算「这一局知道她的状态」
@@ -45,6 +47,16 @@ public class MaidStateHandler implements MessageHandler {
         data.addProperty("unconscious", unconscious);
         data.addProperty("on_bed", onBed);
         data.addProperty("recovery_seconds", secondsLeft);
+        // 施工要在发起那一刻锁住她的位置与朝向；活着才给，死了的实体已经不在世上
+        if (maid != null) {
+            JsonObject position = new JsonObject();
+            position.addProperty("x", maid.getX());
+            position.addProperty("y", maid.getY());
+            position.addProperty("z", maid.getZ());
+            position.addProperty("yaw", maid.getYRot());
+            data.add("position", position);
+            data.addProperty("dimension", maid.level().dimension().location().toString());
+        }
         return Envelope.response(Protocol.MAID_STATE_RESULT, data);
     }
 }

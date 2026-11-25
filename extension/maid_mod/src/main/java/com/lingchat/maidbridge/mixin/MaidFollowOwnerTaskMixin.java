@@ -3,6 +3,7 @@ package com.lingchat.maidbridge.mixin;
 import com.github.tartaricacid.touhoulittlemaid.entity.ai.brain.task.MaidFollowOwnerTask;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.LongTaskGuard;
+import com.lingchat.maidbridge.action.WanderGuard;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.entity.LivingEntity;
 import org.spongepowered.asm.mixin.Mixin;
@@ -23,6 +24,9 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
  * 保持车万女仆原样——它们读的是同一个 {@code RESTRICT_RADIUS}，靠改半径来放宽会把这些
  * 一起放大，所以这里不改半径。
  *
+ * <p>桥接的动作在跑时（{@link WanderGuard} 按着的这段时间）连主人就在旁边也不跟：动作
+ * 每 tick 自己写寻路目标，跟随行为再写一个往主人那边去的，两份目标互相顶，她就原地来回走。
+ *
  * <p>只碰服务端行为类，没有客户端代码。
  */
 @Mixin(MaidFollowOwnerTask.class)
@@ -33,6 +37,12 @@ public class MaidFollowOwnerTaskMixin {
             at = @At("HEAD"),
             cancellable = true)
     private void lingchat$keepBridgeTask(ServerLevel level, EntityMaid maid, long gameTime, CallbackInfo ci) {
+        // 施工、叫她过来这类动作期间连「走近主人」也不做：那会每 tick 往寻路里写一个
+        // 往主人那边去的目标，和手上的活抢同一份记忆，她就会在原地来回走
+        if (WanderGuard.holds(maid)) {
+            ci.cancel();
+            return;
+        }
         if (lingchat$ownerTooFar(maid) && LongTaskGuard.active(maid)) {
             ci.cancel();
         }

@@ -12,7 +12,7 @@ use sea_orm::{
     ColumnTrait, DatabaseConnection, EntityTrait, QueryFilter, QueryOrder, Set, TransactionTrait,
 };
 
-use super::save_repo::SaveRepo;
+use super::{save_note_repo::SaveNoteRepo, save_repo::SaveRepo};
 use crate::ai_service::game_system::memory::scope::MemoryScopeSnapshot;
 use crate::db::entities::{memory_chunk, memory_document, memory_index_state};
 
@@ -215,6 +215,10 @@ impl MemoryIndexRepo {
             MemoryScopeSnapshot::history_version_for(key.save_id, key.role_id, &mut history)?
                 == key.history_version,
             "历史已变化，丢弃旧索引任务"
+        );
+        ensure!(
+            scope.save_notes_match(&SaveNoteRepo::list(&transaction, key.save_id).await?)?,
+            "存档笔记已变化，丢弃旧索引任务"
         );
         let rows = memory_document::Entity::find()
             .filter(memory_document::Column::RoleId.eq(key.role_id))

@@ -27,6 +27,7 @@
 
 from plugin_host import (
     add_prompt_line,
+    director_task_take,
     read_context,
     read_data_file,
     send_user_message,
@@ -159,6 +160,37 @@ def on_line_shown(ctx):
         })
     if want_voice:
         _send_tts(maid, audio_file)
+
+
+def on_director_task(ctx):
+    """导演任务完成或失败：取回蓝图，并把结果写成一条旁白。
+
+    本期还没有模组收蓝图的帧，先取回来确认链路；下一期在这里把蓝图转给模组，
+    再补「开始施工」的说法。
+    """
+    payload = ctx.get("payload") or {}
+    if (payload.get("kind") or "").strip() != "building":
+        return
+    status = (payload.get("status") or "").strip()
+    _maid, player = names()
+    if status == "done":
+        taken = director_task_take(task_id=(payload.get("taskId") or "").strip())
+        if not taken.get("ok"):
+            print(f"[mc_maid_bridge] 建筑蓝图没能取到：{taken.get('error')}")
+        summary = (payload.get("summary") or "").strip()
+        text = "［建筑］导演已经把蓝图设计好了"
+        if summary:
+            text += f"：{summary}"
+        text += "。"
+    elif status == "failed":
+        error = (payload.get("error") or "").strip()
+        text = f"［建筑］导演这次没能把{player}要的建筑设计出来：{error or '没有给出原因'}。"
+    else:
+        return
+    result = add_prompt_line("narrator", text)
+    if not result.get("ok"):
+        print(f"[mc_maid_bridge] 建筑任务状态没能写进台词表：{result.get('error')}")
+    _nudge()
 
 
 def _settle(maid):

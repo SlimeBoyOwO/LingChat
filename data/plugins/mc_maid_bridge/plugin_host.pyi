@@ -106,6 +106,20 @@ def set_voice_playback_available(available: bool) -> Dict[str, Any]:
 def compress_context() -> Dict[str, Any]:
     """触发并等待一次永久记忆压缩。返回 {ok, triggered}。"""
 
+def director_task_start(kind: str, request: Dict[str, Any]) -> Dict[str, Any]:
+    """向导演 Agent 投递后台任务，立刻返回。需 manifest 声明 director_task = true。
+    request 提供 system_prompt、prompt 与 submit（提交工具名、schema、结果字段），
+    宿主不解释具体领域。成功 {ok, task_id}；已有任务在跑时 {ok: False, error}。
+    任务进入终态后宿主派发 director_task 信号。"""
+
+def director_task_status(*, task_id: Optional[str] = ...) -> Dict[str, Any]:
+    """查导演任务进度；省略 task_id 时查当前插件最近一次任务。
+    返回 {ok, task}，没有任务时 task 为 None。"""
+
+def director_task_take(*, task_id: Optional[str] = ...) -> Dict[str, Any]:
+    """取走已完成导演任务的结果；取走后 hasResult 变为 false。
+    返回 {ok, taskId, kind, summary, result}。"""
+
 def ws_open(conn_id: str, *, url: Optional[str] = ...) -> Dict[str, Any]:
     """启用一条已声明的 WS 连接（可选 url 覆盖声明值）。返回 {ok}。"""
 

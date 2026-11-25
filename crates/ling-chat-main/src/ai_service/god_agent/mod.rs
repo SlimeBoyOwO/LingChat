@@ -7,6 +7,7 @@
 //!   - [`capabilities::speaker`]：决定下一个发言者
 //!   - [`capabilities::affection`]：定期评估对话对在场角色好感度的影响
 //! - 交互会话分支（[`director`]，将来的剧本 Agent）：持有会话、落库、流式推事件。
+//! - 后台任务分支（[`task`]）：插件投递的一次性导演任务，提示词与提交工具由插件给。
 //!
 //! 共用部分：[`core`] 是基础设施（LLM 槽位、配置、工具注册表、激活判定），
 //! 一次决策被抽象为「任务」——system_prompt + 工具集 + 数据载荷，由
@@ -19,5 +20,6 @@ pub mod capabilities;
 pub mod config;
 pub mod core;
 pub mod director;
+pub mod task;
 
 pub use core::GodAgentCore;

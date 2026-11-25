@@ -1,4 +1,4 @@
-//! 将可见历史与角色笔记同步到索引，只为新增或变化的分块计算向量。
+//! 将可见历史和笔记同步到索引，只为新增或变化的分块计算向量。
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -329,7 +329,7 @@ fn index_fingerprint(
             }
         }
     }
-    Ok(format!("{:x}", digest.finalize()))
+    Ok(digest.finalize().iter().map(|byte| format!("{byte:02x}")).collect())
 }
 
 // 必须按顺序无遗漏地还原原文，缺块或缺向量时才会重新补齐。

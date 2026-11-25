@@ -10,18 +10,19 @@ resolver = "3"
 # 三个成员共用的包版本。
 [workspace.package]
 version = "0.5.2"
+rust-version = "1.100"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
-serde_yaml = "0.9"
-toml = "0.8"
+serde_yaml = { package = "yaml_serde", version = "0.10" }
+toml = "1.2"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["io"] }
-tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+tokio-tungstenite = { version = "0.30", features = ["rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 async-trait = "0.1"
-axum = { version = "0.7", features = ["tokio", "ws"] }
+axum = { version = "0.8", features = ["tokio", "ws"] }
 reqwest = { version = "0.13", features = [
     "json",
     "form",
@@ -40,7 +41,7 @@ sea-orm = { version = "1", features = [
 ] }
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
-base64 = "0.22"
+base64 = "0.23"
 anyhow = "1"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = [

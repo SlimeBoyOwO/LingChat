@@ -7,7 +7,7 @@ repository = "https://github.com/ayangweb/tauri-plugin-screenshots"
 keywords = ["screenshots", "tauri", "tauri-plugin"]
 license = "MIT"
 edition = "2024"
-rust-version = "1.85"
+rust-version = "1.100"
 exclude = ["/examples", "/dist-js", "/guest-js", "/node_modules"]
 links = "tauri-plugin-screenshots"
 

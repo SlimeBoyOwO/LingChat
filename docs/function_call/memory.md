@@ -4,7 +4,7 @@
 
 > 聊天记忆索引、混合检索和来源校验的设计见 [聊天记忆与检索设计](../聊天记忆与检索设计.md)。
 
-`memory_search` 在当前角色、存档和感知范围内，按关键词／标签／向量搜索历史与笔记；自动回忆与该工具共用服务和缓存。参数为 `query`，可选 `max_hits`（1–5）及 `kinds`（`raw`／`diary`／`note`）。权限由“笔记与记忆”工具组及既有场景／角色矩阵控制，Tool RAG 负责发现。
+`memory_search` 在当前角色、存档和感知范围内，按关键词、标签和向量搜索历史与笔记。笔记来源包括当前角色的全局笔记和当前存档共享的笔记。自动回忆与该工具共用服务和缓存。参数为 `query`，可选 `max_hits`（1–5）及 `kinds`（`raw`／`diary`／`note`）。权限由“笔记与记忆”工具组及既有场景／角色矩阵控制，Tool RAG 负责发现。
 
 返回的 `status` 表示检索是否就绪，`reference_status` 表示引用处理结果：`provided` 是新增资料，`already_provided` 是本轮已提供，`already_in_context` 是已在近期上下文，`budget_exhausted` 是预算不足，`no_matches` 是本次没有可引用片段，`unavailable` 是本次未取得检索结果。`references` 只包含新增引用，并提供 `matched_count`、`already_provided_count`、`budget_excluded_count` 供核对；预算排除数包含检索筛选和整轮引用两个环节。空列表不代表历史中一定没有记录。
 

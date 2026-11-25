@@ -1,6 +1,6 @@
 id = "mc_maid_bridge"
 name = "车万女仆桥接"
-description = "把《车万女仆》桥接模组接进对话：MC 里主人说的话进对话，角色回的话变成游戏内女仆气泡，还能指挥女仆走过去、坐下、躺下、到前面探路、换工作模式（种菜、钓鱼、打怪）、打指定的活物（包括另一个玩家）、挖方块、放方块、在头上顶东西，并让她知道自己身边有什么、捡到了什么、上下船与进了什么结构、被 Carry On 抱起来、她自己死了还是复活了、主人拿出了她最爱吃的什么，以及主人拿到了什么成就"
+description = "把《车万女仆》桥接模组接进对话：MC 里主人说的话进对话，角色回的话变成游戏内女仆气泡，还能指挥女仆走过去、坐下、躺下、到前面探路、换工作模式（种菜、钓鱼、打怪）、打指定的活物（包括另一个玩家）、挖方块、放方块、在头上顶东西，把建筑愿望交给导演规划，并让她知道自己身边有什么、捡到了什么、上下船与进了什么结构、被 Carry On 抱起来、她自己死了还是复活了、主人拿出了她最爱吃的什么，以及主人拿到了什么成就"
 version = "0.1.0"
 author = "LingChat"
 
@@ -10,6 +10,9 @@ send_user_message = true
 
 # 游戏里的变化攒够了，要请角色主动开口（会花掉一轮生成）。
 trigger_proactive = true
+
+# 允许把建筑愿望交给导演 Agent 在后台生成蓝图（会花掉一轮后台生成）。
+director_task = true
 
 # 玩家在游戏里说话时，让角色可以「看一眼玩家的屏幕」（maid_see_screen 工具）——
 # 她要知道你搭的爱心是什么形状，光靠文字说不出来。屏幕上是玩家的隐私，所以单独声明。
@@ -102,6 +105,11 @@ signal = "line_shown"
 script = "hooks.py"
 handler = "on_line_shown"
 
+[[subscribe]]
+signal = "director_task"
+script = "hooks.py"
+handler = "on_director_task"
+
 # 动作、工作模式、攻击、挖掘、放置与查询：让 LLM 指挥游戏里的女仆走过去、坐下、躺床、
 # 换工作、打指定的活物、挖方块、放方块，或问一句她周围有什么。
 # 这些工具都指向 tools/entry.py（一个脚本可挂多个入口，按行为分模块在 tools/ 下）。
@@ -179,6 +187,38 @@ description = "让自己把背包里的一块方块放到指定位置。item 写
 parameters = '{ "type":"object", "properties":{ "item":{ "type":"string", "description":"方块中文名或英文 id（如 石头、minecraft:stone）" }, "at":{ "type":"string", "description":"要放的空格子的相对地址，形如 @3,1,1（相对她脚下那一格）；省略就按主人准星指着的那一面放" }, "facing":{ "type":"string", "enum":["north","south","east","west"], "description":"楼梯、原木这类有朝向的方块朝哪边；省略按她自己的朝向" } }, "required":["item"] }'
 script = "tools/entry.py"
 timeout_ms = 15000
+
+[[tools]]
+name = "maid_plan_building"
+examples = ["给我设计一座大宅子", "在这里规划一座塔", "设计一个带院子的别墅", "设计一座大型建筑"]
+description = "把复杂或大型建筑交给导演设计蓝图。简单的小房子用 maid_build_house 直接施工，不要走这里。prompt 写清楚想建什么、做什么用、想要什么风格或材料；scale 选规模等级，custom 时再给宽高深。工具立刻返回，蓝图设计好之后会通知；生成期间可以正常聊天。"
+parameters = '{ "type":"object", "properties":{ "prompt":{ "type":"string", "description":"想建什么：类型、用途、风格、希望用的材料" }, "scale":{ "type":"string", "enum":["small","medium","large","custom"], "description":"规模等级：small ≤9×9×9，medium ≤17×17×17，large ≤33×33×33；custom 需另给三边。默认 medium" }, "width":{ "type":"integer", "minimum":1, "maximum":33, "description":"宽（x 轴，方块数）；custom 必填" }, "height":{ "type":"integer", "minimum":1, "maximum":33, "description":"高（y 轴，方块数）；custom 必填" }, "depth":{ "type":"integer", "minimum":1, "maximum":33, "description":"深（z 轴，方块数）；custom 必填" } }, "required":["prompt"] }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_build_house"
+examples = ["帮我造个小木屋", "帮我造个小房子", "造个小木屋", "给我建个小屋", "帮我建个房子", "在这里盖个房子"]
+description = "用一张预先定好的中型木屋图纸，当场开始盖一座 11×11 的木屋：石砖地基、原木角柱与门框、两格高的玻璃窗、木门、外挑一格的台阶高屋顶、石砖烟囱，以及带原木柱、栅栏和灯笼的门廊，正面与背面各挂两支火把。位置以主人准星指着的那一格地面为中心，它上面一格起算施工区；主人要先看向要盖的地方。材料从她背包里出；工具立刻返回，施工在后台一块块进行，缺料、够不着或盖完才会再开口。上一座没盖完时指着同一处再调用一次会回去接着盖，指着别处则是另起一座。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_build_climb_test"
+examples = ["测试垫脚", "试试能不能垫上去", "造根高柱子试试爬高"]
+description = "调试用：在主人准星指着的地方立一根 2×2、8 格高的圆石柱子，最上面两层从地面够不着，只能先垫一格走上去再放，用来验证施工器的垫脚能力。创造模式不耗材料，生存模式要她背包里至少有 32 块圆石。工具立刻返回，盖好或卡住时她会开口。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 15000
+
+[[tools]]
+name = "maid_building_status"
+examples = ["建得怎么样了", "房子盖好了吗", "小木屋盖好了吗", "小木屋造得怎么样了", "设计完了没有"]
+description = "查当前建筑进度：小木屋施工到第几块了、盖完没有、缺没缺料；没有施工任务时再看导演还在不在设计。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "tools/entry.py"
+timeout_ms = 8000
 
 [[tools]]
 name = "maid_give_item"

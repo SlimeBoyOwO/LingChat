@@ -78,10 +78,15 @@
         </div>
 
         <!-- Error -->
-        <div v-else-if="error" class="flex flex-col items-center justify-center gap-3 py-12">
-          <p class="text-red-400">{{ error }}</p>
+        <div v-else-if="error" class="flex flex-col items-center justify-center gap-4 py-12">
+          <!-- 卡片是亮色玻璃底：用淡红玻璃条 + 深红字，既保证可读又不破坏页面柔和感 -->
+          <p
+            class="max-w-3xl rounded-xl border border-red-500/25 bg-red-400/15 px-5 py-3 text-center leading-relaxed font-medium text-red-700 backdrop-blur-md"
+          >
+            {{ error }}
+          </p>
           <button
-            class="rounded-lg border border-white/10 bg-white/10 px-5 py-2 text-white transition-colors hover:bg-white/20"
+            class="rounded-lg border border-white/25 bg-white/15 px-5 py-2 font-medium text-slate-900 backdrop-blur-md transition-colors hover:bg-white/30"
             @click="load"
           >
             {{ $t("settings.workshop.retry") }}

@@ -52,13 +52,7 @@ export interface SyncResult {
 
 /** 同步阶段 */
 export type SyncPhase =
-  | "idle"
-  | "scanning"
-  | "fetching"
-  | "planning"
-  | "executing"
-  | "complete"
-  | "error";
+  "idle" | "scanning" | "fetching" | "planning" | "executing" | "complete" | "error";
 
 /** 对话框视图 */
 export type DialogView = "device-list" | "sync-plan" | "progress" | "result";

@@ -56,8 +56,7 @@
         <div class="mb-1 text-[0.68rem] text-white/40">{{ t("scriptEditor.agentTool.args") }}</div>
         <pre
           class="max-h-40 overflow-y-auto font-mono text-[0.72rem] whitespace-pre-wrap text-white/75"
-          >{{ argsText }}</pre
-        >
+          >{{ argsText }}</pre>
       </div>
       <div v-if="run.output" class="rounded-lg border border-white/10 bg-black/25 px-2.5 py-1.5">
         <div class="mb-1 text-[0.68rem] text-white/40">
@@ -65,8 +64,7 @@
         </div>
         <pre
           class="max-h-52 overflow-y-auto font-mono text-[0.72rem] whitespace-pre-wrap text-white/75"
-          >{{ run.output }}</pre
-        >
+          >{{ run.output }}</pre>
       </div>
     </div>
   </div>

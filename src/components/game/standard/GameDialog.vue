@@ -93,13 +93,13 @@
 
                   <Button
                     type="nav"
-                    icon="upload"
+                    icon="download"
                     :title="$t('game.dialog.quickSave')"
                     @click="quickSave"
                   ></Button>
                   <Button
                     type="nav"
-                    icon="download"
+                    icon="upload"
                     :title="$t('game.dialog.quickLoad')"
                     @click="openSaveSettings"
                   ></Button>

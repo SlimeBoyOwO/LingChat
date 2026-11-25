@@ -78,9 +78,9 @@ fn get_window_bounds(hwnd: HWND) -> Result<RECT, String> {
 /// - The Windows message loop runs on the main UI thread
 /// - They are always different threads
 unsafe fn get_window_title(hwnd: HWND) -> Result<String, String> {
-    let text_length = GetWindowTextLengthW(hwnd);
+    let text_length = unsafe { GetWindowTextLengthW(hwnd) };
     let mut wide_buffer = vec![0u16; (text_length + 1) as usize];
-    GetWindowTextW(hwnd, &mut wide_buffer);
+    unsafe { GetWindowTextW(hwnd, &mut wide_buffer) };
     U16CString::from_vec_truncate(wide_buffer)
         .to_string()
         .map_err(|e| format!("Failed to convert window title: {e}"))
@@ -92,7 +92,7 @@ unsafe fn get_window_title(hwnd: HWND) -> Result<String, String> {
 
 unsafe fn get_window_pid(hwnd: HWND) -> u32 {
     let mut pid = 0;
-    GetWindowThreadProcessId(hwnd, Some(&mut pid));
+    unsafe { GetWindowThreadProcessId(hwnd, Some(&mut pid)) };
     pid
 }
 
@@ -139,29 +139,32 @@ struct LangCodePage {
 }
 
 unsafe fn get_app_name(pid: u32) -> String {
-    let scope_guard_handle = match OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) {
-        Ok(handle) => handle,
-        Err(_) => return String::new(),
-    };
+    let scope_guard_handle =
+        match unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) } {
+            Ok(handle) => handle,
+            Err(_) => return String::new(),
+        };
 
     let mut filename = [0u16; MAX_PATH as usize];
-    GetModuleFileNameExW(Some(scope_guard_handle), None, &mut filename);
+    unsafe { GetModuleFileNameExW(Some(scope_guard_handle), None, &mut filename) };
 
     let pcw_filename = PCWSTR::from_raw(filename.as_ptr());
 
-    let file_version_info_size_w = GetFileVersionInfoSizeW(pcw_filename, None);
+    let file_version_info_size_w = unsafe { GetFileVersionInfoSizeW(pcw_filename, None) };
     if file_version_info_size_w == 0 {
         return get_module_basename(scope_guard_handle).unwrap_or_default();
     }
 
     let mut file_version_info = vec![0u16; file_version_info_size_w as usize];
 
-    if GetFileVersionInfoW(
-        pcw_filename,
-        None,
-        file_version_info_size_w,
-        file_version_info.as_mut_ptr().cast(),
-    )
+    if unsafe {
+        GetFileVersionInfoW(
+            pcw_filename,
+            None,
+            file_version_info_size_w,
+            file_version_info.as_mut_ptr().cast(),
+        )
+    }
     .is_err()
     {
         return get_module_basename(scope_guard_handle).unwrap_or_default();
@@ -170,20 +173,23 @@ unsafe fn get_app_name(pid: u32) -> String {
     let mut lang_code_pages_ptr = ptr::null_mut();
     let mut lang_code_pages_length = 0u32;
 
-    let ok = VerQueryValueW(
-        file_version_info.as_ptr().cast(),
-        &HSTRING::from("\\VarFileInfo\\Translation"),
-        &mut lang_code_pages_ptr,
-        &mut lang_code_pages_length,
-    )
+    let ok = unsafe {
+        VerQueryValueW(
+            file_version_info.as_ptr().cast(),
+            &HSTRING::from("\\VarFileInfo\\Translation"),
+            &mut lang_code_pages_ptr,
+            &mut lang_code_pages_length,
+        )
+    }
     .as_bool();
 
     if !ok {
         return get_module_basename(scope_guard_handle).unwrap_or_default();
     }
 
-    let lang_code_pages: &[LangCodePage] =
-        core::slice::from_raw_parts(lang_code_pages_ptr.cast(), lang_code_pages_length as usize);
+    let lang_code_pages: &[LangCodePage] = unsafe {
+        core::slice::from_raw_parts(lang_code_pages_ptr.cast(), lang_code_pages_length as usize)
+    };
 
     // Try these keys in order (preferring FileDescription)
     let keys = [
@@ -203,12 +209,14 @@ unsafe fn get_app_name(pid: u32) -> String {
             let mut value_ptr = ptr::null_mut();
             let mut value_length: u32 = 0;
 
-            let ok = VerQueryValueW(
-                file_version_info.as_ptr().cast(),
-                &query_key,
-                &mut value_ptr,
-                &mut value_length,
-            )
+            let ok = unsafe {
+                VerQueryValueW(
+                    file_version_info.as_ptr().cast(),
+                    &query_key,
+                    &mut value_ptr,
+                    &mut value_length,
+                )
+            }
             .as_bool();
 
             if !ok {
@@ -216,7 +224,7 @@ unsafe fn get_app_name(pid: u32) -> String {
             }
 
             let value: &[u16] =
-                core::slice::from_raw_parts(value_ptr.cast(), value_length as usize);
+                unsafe { core::slice::from_raw_parts(value_ptr.cast(), value_length as usize) };
             if let Ok(attr) = U16CString::from_vec_truncate(value).to_string() {
                 let attr = attr.trim().to_string();
                 if !attr.is_empty() {
@@ -240,13 +248,15 @@ unsafe fn get_app_name(pid: u32) -> String {
 /// fix for issue #8 — the Tauri app's own windows should be screenshotable.
 unsafe fn is_valid_window(hwnd: HWND) -> bool {
     // 1. Must be a real, visible window
-    if !IsWindow(Some(hwnd)).as_bool() || !IsWindowVisible(hwnd).as_bool() {
+    let is_window = unsafe { IsWindow(Some(hwnd)) }.as_bool();
+    let is_visible = unsafe { IsWindowVisible(hwnd) }.as_bool();
+    if !is_window || !is_visible {
         return false;
     }
 
     // 2. Must have a valid class name
     let mut lp_class_name = [0u16; MAX_PATH as usize];
-    let lp_class_name_length = GetClassNameW(hwnd, &mut lp_class_name) as usize;
+    let lp_class_name_length = unsafe { GetClassNameW(hwnd, &mut lp_class_name) } as usize;
     if lp_class_name_length < 1 {
         return false;
     }
@@ -259,8 +269,8 @@ unsafe fn is_valid_window(hwnd: HWND) -> bool {
     }
 
     // 3. Check extended style and title
-    let gwl_ex_style = WINDOW_EX_STYLE(GetWindowLongPtrW(hwnd, GWL_EXSTYLE) as u32);
-    let title = get_window_title(hwnd).unwrap_or_default();
+    let gwl_ex_style = WINDOW_EX_STYLE(unsafe { GetWindowLongPtrW(hwnd, GWL_EXSTYLE) } as u32);
+    let title = unsafe { get_window_title(hwnd) }.unwrap_or_default();
 
     // 4. Filter out tool windows with empty titles (except the taskbar)
     if gwl_ex_style.contains(WS_EX_TOOLWINDOW)
@@ -282,14 +292,16 @@ unsafe fn is_valid_window(hwnd: HWND) -> bool {
 
     // 7. Must have non-empty frame bounds
     let mut rect = RECT::default();
-    let get_rect_result = DwmGetWindowAttribute(
-        hwnd,
-        DWMWA_EXTENDED_FRAME_BOUNDS,
-        &mut rect as *mut RECT as *mut c_void,
-        mem::size_of::<RECT>() as u32,
-    );
+    let get_rect_result = unsafe {
+        DwmGetWindowAttribute(
+            hwnd,
+            DWMWA_EXTENDED_FRAME_BOUNDS,
+            &mut rect as *mut RECT as *mut c_void,
+            mem::size_of::<RECT>() as u32,
+        )
+    };
 
-    if get_rect_result.is_err() || IsRectEmpty(&rect).as_bool() {
+    if get_rect_result.is_err() || unsafe { IsRectEmpty(&rect) }.as_bool() {
         return false;
     }
 
@@ -303,13 +315,15 @@ unsafe fn is_valid_window(hwnd: HWND) -> bool {
 // ---------------------------------------------------------------------------
 
 unsafe extern "system" fn enum_windows_proc(hwnd: HWND, state: LPARAM) -> BOOL {
-    let state = Box::leak(Box::from_raw(state.0 as *mut Vec<HWND>));
+    unsafe {
+        let state = Box::leak(Box::from_raw(state.0 as *mut Vec<HWND>));
 
-    if is_valid_window(hwnd) {
-        state.push(hwnd);
+        if is_valid_window(hwnd) {
+            state.push(hwnd);
+        }
+
+        TRUE
     }
-
-    TRUE
 }
 
 /// Enumerate all screenshotable windows on Windows.

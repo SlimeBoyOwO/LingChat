@@ -411,6 +411,8 @@ fn run_entry(
         let _capture_guard = host_api::set_capture_allow(run_env.capture_screen);
         // trigger_proactive 同上
         let _proactive_guard = host_api::set_proactive_allow(run_env.trigger_proactive);
+        // director_task 会花掉一轮后台生成，同样单独声明
+        let _director_task_guard = host_api::set_director_task_allow(run_env.director_task);
         // ws_send / ws_open / ws_close 按当前插件定位连接
         let _plugin_guard = host_api::set_current_plugin(&run_env.plugin_id);
         // 兄弟模块与包要在脚本顶层 import，所以导入钩子必须先装好

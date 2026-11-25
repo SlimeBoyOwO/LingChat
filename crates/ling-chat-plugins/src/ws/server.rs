@@ -148,10 +148,10 @@ async fn handle_server_ws(state: ServerState, mut socket: WebSocket) {
             },
             cmd = bc_rx.recv() => match cmd {
                 Ok(WsCommand::Text(t)) => {
-                    let _ = socket.send(AxumMessage::Text(t)).await;
+                    let _ = socket.send(AxumMessage::Text(t.into())).await;
                 },
                 Ok(WsCommand::Binary(b)) => {
-                    let _ = socket.send(AxumMessage::Binary(b)).await;
+                    let _ = socket.send(AxumMessage::Binary(b.into())).await;
                 },
                 Ok(WsCommand::Close) => break,
                 // 请求帧在转发环节就被挡下（server 无法定位应答者），不会广播到这里；

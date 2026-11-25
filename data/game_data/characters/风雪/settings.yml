@@ -12,34 +12,34 @@ body_part:
     猫耳:
       message: 钦灵摸了摸风雪的猫耳
       polygons:
-      - - - 0.3094
-          - 0.09695
-        - - 0.34486
-          - 0.1657
-        - - 0.38918
-          - 0.09695
+        - - - 0.3094
+            - 0.09695
+          - - 0.34486
+            - 0.1657
+          - - 0.38918
+            - 0.09695
     肚子:
       message: 钦灵摸了摸风雪的肚子
       polygons:
-      - - - 0.41578
-          - 0.37712
-        - - 0.51995
-          - 0.37884
-        - - 0.54876
-          - 0.46478
-        - - 0.33599
-          - 0.4579
+        - - - 0.41578
+            - 0.37712
+          - - 0.51995
+            - 0.37884
+          - - 0.54876
+            - 0.46478
+          - - 0.33599
+            - 0.4579
     格调:
       message: 钦灵碰到了风雪的格调
       polygons:
-      - - - 0.15017
-          - 0.30435
-        - - 0.04701
-          - 0.3513
-        - - 0.13223
-          - 0.41043
-        - - 0.13895
-          - 0.3513
+        - - - 0.15017
+            - 0.30435
+          - - 0.04701
+            - 0.3513
+          - - 0.13223
+            - 0.41043
+          - - 0.13895
+            - 0.3513
 scale: 1.25
 offset_x: 0.0
 offset_y: 65.0
@@ -52,14 +52,14 @@ offset_y_p: 0.0
 avatar_mode_p: live2d
 pet_frameless: null
 voice_models:
-  sva_speaker_id: ''
+  sva_speaker_id: ""
   sbv2_name: Fusetsu_v1.5
-  sbv2_speaker_id: '0'
-  bv2_speaker_id: ''
+  sbv2_speaker_id: "0"
+  bv2_speaker_id: ""
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  gsv_voice_text: ''
-  gsv_voice_filename: ''
+  sbv2api_speaker_id: "0"
+  gsv_voice_text: ""
+  gsv_voice_filename: ""
   gsv_gpt_model_name: null
   gsv_sovits_model_name: null
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846

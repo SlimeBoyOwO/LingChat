@@ -3,14 +3,16 @@
 use std::collections::HashMap;
 
 use anyhow::{Context, Result, ensure};
-use ling_chat_notes::NotesStore;
 use ling_chat_notes::memory::{
-    MemoryChunk, MemoryDocument, MemoryScope, MemoryScopeKey, MemorySource, memory_version,
+    MemoryChunk, MemoryDocument, MemoryKind, MemoryScope, MemoryScopeKey, MemorySource,
+    memory_version,
 };
+use ling_chat_notes::{Note, NotesStore};
 use sea_orm::{DatabaseConnection, EntityTrait, TransactionTrait};
 
 use crate::ai_service::types::GameLine;
 use crate::db::entities::{line::LineAttribute, role};
+use crate::db::managers::save_note_repo::SaveNoteRepo;
 use crate::db::managers::save_repo::SaveRepo;
 
 use super::persistent::{line_visible_to_role, tool_call_ids, tool_result_call_id};
@@ -49,7 +51,7 @@ impl MemoryScopeSnapshot {
             !role_display_name.trim().is_empty(),
             "必须提供宿主解析的角色展示名"
         );
-        // 角色检查和历史读取使用同一事务，避免读取期间数据库变化造成不一致。
+        // 在同一事务内读取历史和存档笔记，避免取到不同时间的存档内容。
         let transaction = db.begin().await?;
         ensure!(
             role::Entity::find_by_id(role_id)
@@ -60,11 +62,19 @@ impl MemoryScopeSnapshot {
         );
         // 沿存档链读取原始历史，不使用已压缩摘要，也不混入其他存档分支。
         let history = SaveRepo::get_memory_gameline_list(&transaction, save_id).await?;
+        let save_notes = SaveNoteRepo::list(&transaction, save_id).await?;
         transaction.commit().await?;
         let store = store.clone();
         let role_display_name = role_display_name.to_owned();
         tokio::task::spawn_blocking(move || {
-            Self::from_history(&store, save_id, role_id, &role_display_name, history)
+            Self::from_history(
+                &store,
+                save_id,
+                role_id,
+                &role_display_name,
+                history,
+                save_notes,
+            )
         })
         .await?
     }
@@ -75,6 +85,7 @@ impl MemoryScopeSnapshot {
         role_id: i32,
         role_display_name: &str,
         mut history: Vec<GameLine>,
+        save_notes: Vec<Note>,
     ) -> Result<Self> {
         // 版本覆盖整条历史，真正返回的台词再按当前角色的感知范围筛选。
         let history_version = Self::history_version_for(save_id, role_id, &mut history)?;
@@ -90,17 +101,16 @@ impl MemoryScopeSnapshot {
             })
             .collect();
         // 笔记按宿主解析的角色名读取，模型不能自行指定其他角色目录。
-        let mut notes = store
-            .load(role_display_name)?
-            .iter()
-            .map(|note| MemoryDocument::from_note(role_id, note))
-            .collect::<std::result::Result<Vec<_>, _>>()?;
+        let mut notes = Self::save_note_documents(save_id, role_id, &save_notes)?;
+        for note in store.load(role_display_name)?.iter() {
+            notes.push(MemoryDocument::from_note(role_id, MemoryScope::Role, note)?);
+        }
         notes.sort_by(|left, right| left.id.cmp(&right.id));
         ensure!(
             notes.windows(2).all(|pair| pair[0].id != pair[1].id),
             "笔记包含重复 ID"
         );
-        let notes_version = memory_version(&("notes-v1", role_id, role_display_name, &notes))?;
+        let notes_version = memory_version(&("notes-v2", role_id, role_display_name, &notes))?;
         Ok(Self {
             key: MemoryScopeKey {
                 save_id,
@@ -143,23 +153,53 @@ impl MemoryScopeSnapshot {
         &self.notes
     }
 
+    fn save_note_documents(
+        save_id: i32,
+        role_id: i32,
+        notes: &[Note],
+    ) -> Result<Vec<MemoryDocument>> {
+        notes
+            .iter()
+            .map(|note| {
+                Ok(MemoryDocument::from_note(
+                    role_id,
+                    MemoryScope::Save { save_id },
+                    note,
+                )?)
+            })
+            .collect()
+    }
+
+    pub(crate) fn save_notes_match(&self, notes: &[Note]) -> Result<bool> {
+        let mut documents = Self::save_note_documents(self.key.save_id, self.key.role_id, notes)?;
+        documents.sort_by(|left, right| left.id.cmp(&right.id));
+        Ok(self
+            .notes
+            .iter()
+            .filter(|note| matches!(note.scope, MemoryScope::Save { .. }))
+            .eq(&documents))
+    }
+
     /// 同时检查文档内容版本、归属和当前来源，撤回或编辑后旧文档立即失效。
     pub fn allows_document(&self, document: &MemoryDocument) -> bool {
         if document.validate().is_err() || document.role_id != self.key.role_id {
             return false;
         }
+        if document.kind == MemoryKind::Note {
+            return self.notes.iter().any(|note| note == document);
+        }
         match document.scope {
             MemoryScope::Save { save_id } => {
                 save_id == self.key.save_id && self.allows_sources(&document.sources)
             },
-            MemoryScope::Role => self.notes.iter().any(|note| note == document),
+            MemoryScope::Role => false,
         }
     }
 
     pub fn allows_chunk(&self, document: &MemoryDocument, chunk: &MemoryChunk) -> bool {
         self.allows_document(document)
             && chunk.validate_for(document).is_ok()
-            && (document.scope == MemoryScope::Role || self.allows_sources(&chunk.sources))
+            && (document.kind == MemoryKind::Note || self.allows_sources(&chunk.sources))
     }
 
     fn allows_sources(&self, sources: &[MemorySource]) -> bool {

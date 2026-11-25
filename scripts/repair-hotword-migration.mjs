@@ -22,12 +22,7 @@ const REMOVED_VERSIONS = [
   "m20261023_000001_library_hotword_unique_per_category",
 ];
 
-const LEGACY_TABLES = [
-  "library_hotword",
-  "role_hotword",
-  "global_hotword",
-  "hotword_category",
-];
+const LEGACY_TABLES = ["library_hotword", "role_hotword", "global_hotword", "hotword_category"];
 
 const dbPath = process.argv[2] ?? path.join(process.cwd(), "data", "game_database.db");
 if (!existsSync(dbPath)) {

@@ -1,6 +1,8 @@
 package com.lingchat.maidbridge.action.mine;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
+import com.lingchat.maidbridge.action.nav.StandSearch;
+import com.lingchat.maidbridge.action.nav.Terrain;
 import com.lingchat.maidbridge.maid.MaidInventory;
 import com.lingchat.maidbridge.perception.spatial.LocalTerrain;
 import com.lingchat.maidbridge.perception.spatial.SightLine;
@@ -11,6 +13,7 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -29,6 +32,7 @@ import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -46,6 +50,8 @@ public final class MineTargets {
     private static final double EYE_REACH = MineRules.REACH + 0.5F;
     /** 找落脚点时最多验几个候选的寻路：每个候选都要算一次路径，不能把一圈全试完。 */
     private static final int PATH_CHECKS = 8;
+    /** 放置时最多看几个候选的视线：射线比寻路便宜，但也别把一圈全扫完。 */
+    private static final int SIGHT_SCAN = 32;
 
     private MineTargets() {
     }
@@ -198,7 +204,7 @@ public final class MineTargets {
         if (!(maid.level() instanceof ServerLevel level)) {
             return null;
         }
-        List<BlockPos> candidates = standCandidates(maid, target);
+        List<BlockPos> candidates = StandSearch.candidates(maid, target, 2, 6, 2);
         int checks = Math.min(candidates.size(), PATH_CHECKS);
         for (int i = 0; i < checks; i++) {
             BlockPos stand = candidates.get(i);
@@ -214,23 +220,36 @@ public final class MineTargets {
     }
 
     /**
-     * 放置用的落脚点：伸手够得着要放的那一格就行。
+     * 放置用的落脚点：够得着、看得见、而且寻路能走到；看不见的站位直接跳过。
      *
-     * <p>不用「视线落到目标」那一条：目标是空格子，射线打不到它。中间隔没隔着东西由
-     * 放置上下文按支撑面另判。
+     * <p>只看「伸手够得着」会让墙另一面的格子永远选到室内那一侧，走过去才发现被挡。
+     * 视线由调用方从那个站位的眼睛去判，这里只负责把看不见的筛掉。
      */
-    public static BlockPos standForPlacement(EntityMaid maid, BlockPos target) {
-        if (!(maid.level() instanceof ServerLevel level)) {
+    public static BlockPos standForPlacement(
+            EntityMaid maid, BlockPos target, Set<BlockPos> skip,
+            Predicate<BlockPos> canSee) {
+        if (!(maid.level() instanceof ServerLevel)) {
             return null;
         }
-        List<BlockPos> candidates = standCandidates(maid, target);
-        int checks = Math.min(candidates.size(), PATH_CHECKS);
-        for (int i = 0; i < checks; i++) {
-            BlockPos stand = candidates.get(i);
+        List<BlockPos> candidates = StandSearch.candidates(maid, target, 2, 6, 2);
+        int checked = 0;
+        int scanned = 0;
+        for (BlockPos stand : candidates) {
+            if (checked >= PATH_CHECKS || scanned >= SIGHT_SCAN) {
+                break;
+            }
+            if (skip.contains(stand)) {
+                continue;
+            }
             Vec3 eye = Vec3.atBottomCenterOf(stand).add(0.0, maid.getEyeHeight(), 0.0);
             if (eye.distanceTo(Vec3.atCenterOf(target)) > EYE_REACH) {
                 continue;
             }
+            scanned++;
+            if (!canSee.test(stand)) {
+                continue;
+            }
+            checked++;
             if (stand.closerToCenterThan(maid.position(), 2.0) || maid.canPathReach(stand)) {
                 return stand;
             }
@@ -238,32 +257,6 @@ public final class MineTargets {
         return null;
     }
 
-    /** 目标周围站得下、在活动范围里的格子，按离目标远近排好。 */
-    private static List<BlockPos> standCandidates(EntityMaid maid, BlockPos target) {
-        ServerLevel level = (ServerLevel) maid.level();
-        List<BlockPos> candidates = new ArrayList<>();
-        BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
-        for (int dx = -2; dx <= 2; dx++) {
-            for (int dz = -2; dz <= 2; dz++) {
-                for (int dy = -6; dy <= 2; dy++) {
-                    if (dx == 0 && dy == 0 && dz == 0) {
-                        continue;
-                    }
-                    pos.setWithOffset(target, dx, dy, dz);
-                    BlockPos stand = pos.immutable();
-                    if (!standable(level, stand)) {
-                        continue;
-                    }
-                    if (maid.hasRestriction() && !maid.isWithinRestriction(stand)) {
-                        continue;
-                    }
-                    candidates.add(stand);
-                }
-            }
-        }
-        candidates.sort(Comparator.comparingDouble(stand -> stand.distSqr(target)));
-        return candidates;
-    }
 
     /** 目标周围有没有能站人的空格：只看空间，不问寻路。失败回执用它说「站不下」。 */
     public static boolean standRoom(EntityMaid maid, BlockPos target) {
@@ -469,20 +462,9 @@ public final class MineTargets {
         maid.setItemInHand(InteractionHand.MAIN_HAND, tool);
     }
 
-    /** 她能站在这一格上吗：自己和头顶是空的，脚下有东西接着。 */
-    private static boolean standable(Level level, BlockPos pos) {
-        if (!level.isLoaded(pos) || !level.isLoaded(pos.above())) {
-            return false;
-        }
-        BlockState feet = level.getBlockState(pos);
-        BlockState head = level.getBlockState(pos.above());
-        if (!feet.isAir() && !feet.canBeReplaced()) {
-            return false;
-        }
-        if (!head.isAir() && !head.canBeReplaced()) {
-            return false;
-        }
-        return !level.getBlockState(pos.below()).getCollisionShape(level, pos.below()).isEmpty();
+    /** 她能站在这一格上吗：移交给寻路包，挖掘与跑酷共用同一条判定。 */
+    public static boolean standable(Level level, BlockPos pos) {
+        return Terrain.standable(level, pos);
     }
 
     /** 从落脚点的眼睛出发，够得着而且第一眼看到的就是目标。 */

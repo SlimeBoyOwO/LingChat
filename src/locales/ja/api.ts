@@ -10,7 +10,8 @@ export default {
     },
     autoSaveFailed: {
       title: "自動セーブ失敗",
-      message: "自動セーブを書き込めませんでした（{time}）。今回の進行が保存されていない可能性があります。",
+      message:
+        "自動セーブを書き込めませんでした（{time}）。今回の進行が保存されていない可能性があります。",
     },
   },
   ambient: {

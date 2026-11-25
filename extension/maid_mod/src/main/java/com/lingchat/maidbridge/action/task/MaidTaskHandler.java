@@ -7,14 +7,10 @@ import com.github.tartaricacid.touhoulittlemaid.entity.task.TaskManager;
 import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.core.MaidActionController;
-import com.lingchat.maidbridge.action.core.MaidActuator;
-import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.Envelope;
 import com.lingchat.maidbridge.bridge.MessageHandler;
 import com.lingchat.maidbridge.bridge.Protocol;
-import com.lingchat.maidbridge.action.mine.MaidMineController;
-import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import com.lingchat.maidbridge.maid.MaidCondition;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
@@ -76,11 +72,10 @@ public class MaidTaskHandler implements MessageHandler {
         IMaidTask previous = maid.getTask();
         boolean changed = task != previous;
         // 换工作与追打、挖掘会互相抢寻路，先把还没做完的收掉
-        MaidAttackController.cancel();
-        MaidMineController.cancel(server);
-        MaidPlaceController.cancel(server);
-        String replaced = MaidActionController.cancelCurrent(server);
-        boolean stoodUp = MaidActuator.standUp(maid);
+        MaidActionController.StopResult stop =
+                MaidActionController.stopOtherActions(server, maid, "被换工作的事叫走了");
+        String replaced = stop.replaced();
+        boolean stoodUp = stop.stoodUp();
         if (changed) {
             maid.setTask(task);
         }

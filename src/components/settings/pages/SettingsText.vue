@@ -39,6 +39,16 @@
         </div>
       </MenuItem>
 
+      <!-- 设置面板导航栏位置：桌面端默认顶部、移动端默认底部，开关即时生效 -->
+      <MenuItem :title="$t('settings.text.navPosition.title')">
+        <template #header>
+          <PanelBottom :size="20" />
+        </template>
+        <Toggle :checked="settingsStore.settingsNavAtBottom" @change="setSettingsNavAtBottom">
+          {{ $t("settings.text.navPosition.desc") }}
+        </Toggle>
+      </MenuItem>
+
       <MenuItem :title="$t('settings.text.speed.title')">
         <template #header>
           <Zap :size="20" />
@@ -475,6 +485,7 @@ import {
   HardDrive,
   Import,
   MessageSquareText,
+  PanelBottom,
   RefreshCw,
   Star,
   Timer,
@@ -910,6 +921,11 @@ const loadConfig = async () => {
   }
   // 回复台词数量档位是运行时状态，单独走命令读取
   void loadReplyLengthMode();
+};
+
+// 设置面板导航栏位置：开关落到具体 top/bottom，默认的 auto（按设备）只在从未切换时生效
+const setSettingsNavAtBottom = (bottom: boolean) => {
+  settingsStore.setSettingsNavPosition(bottom ? "bottom" : "top");
 };
 
 // 使用 settings store 的文字速度

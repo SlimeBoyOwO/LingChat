@@ -7,8 +7,12 @@ import com.google.gson.JsonObject;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.FallingBlock;
+import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.items.wrapper.CombinedInvWrapper;
 
 /** 她背包里有什么。只读清单，交物品与「看一眼周围」共用。 */
@@ -71,6 +75,75 @@ public final class MaidInventory {
             }
         }
         return false;
+    }
+
+    /** 她手上、副手或背包里有多少件这件东西；头饰栏不算存货。 */
+    public static int count(EntityMaid maid, Item item) {
+        int total = 0;
+        if (maid.getMainHandItem().is(item)) {
+            total += maid.getMainHandItem().getCount();
+        }
+        if (maid.getOffhandItem().is(item)) {
+            total += maid.getOffhandItem().getCount();
+        }
+        CombinedInvWrapper backpack = maid.getAvailableBackpackInv();
+        for (int slot = 0; slot < backpack.getSlots(); slot++) {
+            if (slot == HEADWEAR_SLOT) {
+                continue;
+            }
+            ItemStack stack = backpack.getStackInSlot(slot);
+            if (stack.is(item)) {
+                total += stack.getCount();
+            }
+        }
+        return total;
+    }
+
+    /**
+     * 垫脚用的一格方块：能稳稳站上去的整方块里数量最多的那一种；没有给 null。
+     *
+     * <p>台阶、栅栏、玻璃板这类不是整块的形状踩不住；箱子、熔炉带方块实体，拆的时候
+     * 还会把里面的东西倒出来；沙砾会往下掉。这些都不当垫脚石。
+     */
+    public static Item scaffoldBlock(EntityMaid maid) {
+        Item best = null;
+        int bestCount = 0;
+        ItemStack main = maid.getMainHandItem();
+        if (isScaffold(maid, main) && main.getCount() > bestCount) {
+            best = main.getItem();
+            bestCount = main.getCount();
+        }
+        ItemStack off = maid.getOffhandItem();
+        if (isScaffold(maid, off) && off.getCount() > bestCount) {
+            best = off.getItem();
+            bestCount = off.getCount();
+        }
+        CombinedInvWrapper backpack = maid.getAvailableBackpackInv();
+        for (int slot = 0; slot < backpack.getSlots(); slot++) {
+            if (slot == HEADWEAR_SLOT) {
+                continue;
+            }
+            ItemStack stack = backpack.getStackInSlot(slot);
+            if (isScaffold(maid, stack) && stack.getCount() > bestCount) {
+                best = stack.getItem();
+                bestCount = stack.getCount();
+            }
+        }
+        return best;
+    }
+
+    private static boolean isScaffold(EntityMaid maid, ItemStack stack) {
+        if (stack.isEmpty() || !(stack.getItem() instanceof BlockItem blockItem)) {
+            return false;
+        }
+        Block block = blockItem.getBlock();
+        if (block instanceof FallingBlock) {
+            return false;
+        }
+        BlockState state = block.defaultBlockState();
+        return !state.hasBlockEntity()
+                && Block.isShapeFullBlock(
+                        state.getCollisionShape(maid.level(), maid.blockPosition()));
     }
 
     /** 从她身上取走一件：先主手、再副手、最后背包。取到给 true。 */

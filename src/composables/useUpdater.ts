@@ -29,12 +29,7 @@ export interface ResourceSyncResult {
 }
 
 export type UpdatePhase =
-  | "idle"
-  | "checking"
-  | "app-update-available"
-  | "downloading"
-  | "complete"
-  | "error";
+  "idle" | "checking" | "app-update-available" | "downloading" | "complete" | "error";
 
 // ─── 共享状态 ────────────────────────────────────────────────
 

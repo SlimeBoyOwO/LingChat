@@ -153,20 +153,30 @@ pub fn memory_version(value: &impl Serialize) -> Result<String, serde_json::Erro
 
 impl MemoryDocument {
     /// 在读取时转换旧笔记，不改变笔记文件原有的存储格式。
-    pub fn from_note(role_id: i32, note: &Note) -> Result<Self, MemoryContractError> {
+    pub fn from_note(
+        role_id: i32,
+        scope: MemoryScope,
+        note: &Note,
+    ) -> Result<Self, MemoryContractError> {
         let version = memory_version(&(
             "note-v1",
             role_id,
+            &scope,
             &note.id,
             &note.content,
             &note.tags,
             &note.created_at,
         ))?;
         let mut document = Self {
-            id: format!("note:{role_id}:{}", note.id),
+            id: match scope {
+                MemoryScope::Role => format!("note:{role_id}:{}", note.id),
+                MemoryScope::Save { save_id } => {
+                    format!("note:save:{save_id}:{role_id}:{}", note.id)
+                },
+            },
             kind: MemoryKind::Note,
             role_id,
-            scope: MemoryScope::Role,
+            scope,
             content: note.content.clone(),
             tags: note.tags.clone(),
             recorded_at: Some(note.created_at.clone()),
@@ -224,21 +234,20 @@ impl MemoryDocument {
                 return Err(Invalid("同一文档不能重复引用同一来源"));
             }
         }
-        // 原文跟随存档分支，手动笔记跟随角色，二者不能混用来源。
+        if matches!(self.scope, MemoryScope::Save { save_id } if save_id <= 0) {
+            return Err(Invalid("存档 ID 必须有效"));
+        }
         match (&self.kind, &self.scope) {
-            (MemoryKind::Note, MemoryScope::Role)
+            (MemoryKind::Note, _)
                 if self.sources.len() == 1
                     && matches!(self.sources[0], MemorySource::Note { .. }) => {},
-            (MemoryKind::Raw | MemoryKind::Diary, MemoryScope::Save { save_id })
-                if *save_id > 0
-                    && self
-                        .sources
-                        .iter()
-                        .all(|source| matches!(source, MemorySource::Line { .. })) => {},
+            (MemoryKind::Raw | MemoryKind::Diary, MemoryScope::Save { .. })
+                if self
+                    .sources
+                    .iter()
+                    .all(|source| matches!(source, MemorySource::Line { .. })) => {},
             _ => {
-                return Err(Invalid(
-                    "原文和日记属于存档，手动笔记属于角色，来源类型必须一致",
-                ));
+                return Err(Invalid("原文和日记须引用存档台词，手动笔记须引用笔记来源"));
             },
         }
         if self.version != self.content_version()? {

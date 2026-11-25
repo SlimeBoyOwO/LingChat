@@ -7,7 +7,9 @@
     </StartLine>
 
     <StartLine>
-      <StartItem class="menu-subitem" disabled="true">{{ $t("views.menu.storyMode") }}</StartItem>
+      <StartItem class="menu-subitem" @click="emit('open-scripts')">{{
+        $t("views.menu.storyMode")
+      }}</StartItem>
     </StartLine>
 
     <StartLine>

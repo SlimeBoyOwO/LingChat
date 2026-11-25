@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 use std::fs;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Component, Path};
 use std::time::UNIX_EPOCH;
 
@@ -138,8 +138,19 @@ fn scan_dir(
 fn compute_sha256(path: &Path) -> io::Result<String> {
     let mut file = fs::File::open(path)?;
     let mut hasher = Sha256::new();
-    io::copy(&mut file, &mut hasher)?;
-    Ok(format!("{:x}", hasher.finalize()))
+    let mut buf = [0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect())
 }
 
 /// 比较两个 CompleteManifest，生成同步计划。
@@ -241,4 +252,26 @@ pub fn validate_manifest_path(path: &str) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::compute_sha256;
+
+    #[test]
+    fn 分块读取的哈希与参考值一致() {
+        let mut data = Vec::new();
+        while data.len() < 200_000 {
+            data.extend_from_slice(b"lingchat-sha2-equiv-0123456789abcdef");
+        }
+        data.truncate(200_000);
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("blob.bin");
+        std::fs::write(&path, &data).unwrap();
+
+        assert_eq!(
+            compute_sha256(&path).unwrap(),
+            "a36b638e8fb2a101fffa38be9b712f4efee385c60b6d57cd3b9fac6cb59c3a09"
+        );
+    }
 }

@@ -12,10 +12,6 @@
       class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center bg-[#0a0a0c]"
       @click="startCredits"
     >
-      <!-- 右上角ESC退出提示 -->
-      <div class="absolute top-6 right-6 text-sm tracking-wider text-white opacity-50">
-        {{ $t("views.credits.escExit") }}
-      </div>
       <div class="animate-[pulse_3s_infinite] text-center text-white">
         <p class="mb-2 text-[2.2em] font-light tracking-[2px]">
           {{ $t("views.credits.letterTitle") }}
@@ -161,6 +157,20 @@
         </div>
       </div>
     </div>
+
+    <!-- 播放中的全屏点击层：点击画面切换退出提示的显隐 -->
+    <div v-if="isStarted" class="absolute inset-0 z-10" @click="hintVisible = !hintVisible"></div>
+
+    <!-- ESC 退出提示：播放开始后自动淡出，播放中点画面可再次唤出；点击即退出 -->
+    <Transition name="hint-fade">
+      <button
+        v-if="!isStarted || hintVisible"
+        class="absolute top-6 right-6 z-20 cursor-pointer rounded-md px-2 py-1 text-sm tracking-wider text-white/55 transition-colors hover:bg-white/10 hover:text-white"
+        @click="exitCredits"
+      >
+        {{ $t("views.credits.escExit") }}
+      </button>
+    </Transition>
   </div>
 </template>
 
@@ -203,6 +213,8 @@ const sectionTitle = (section: any) => {
 const sectionSubtitle = (section: any) => (isEn.value ? section.title : section.enTitle);
 
 const isStarted = ref(false);
+// 播放中退出提示的显隐，由点击画面切换；开始时默认隐藏
+const hintVisible = ref(false);
 const bgm = ref<HTMLAudioElement | null>(null);
 let timer: ReturnType<typeof setTimeout> | null = null;
 
@@ -412,10 +424,14 @@ const startCredits = () => {
   bgm.value.play().catch((error) => console.error("音频播放失败:", error));
 };
 
+const exitCredits = () => {
+  router.push("/");
+};
+
 // 监听ESC键按下事件
 const handleKeyDown = (event: KeyboardEvent) => {
   if (event.key === "Escape") {
-    router.push("/");
+    exitCredits();
   }
 };
 
@@ -445,6 +461,20 @@ onBeforeUnmount(() => {
 
 .credits-scroll {
   animation: scrollAnimation 120s linear forwards;
+}
+
+/* 退出提示的显隐过渡：下滑淡入、上浮淡出 */
+.hint-fade-enter-active,
+.hint-fade-leave-active {
+  transition:
+    opacity 0.25s ease,
+    transform 0.25s ease;
+}
+
+.hint-fade-enter-from,
+.hint-fade-leave-to {
+  opacity: 0;
+  transform: translateY(-6px);
 }
 
 @keyframes scrollAnimation {

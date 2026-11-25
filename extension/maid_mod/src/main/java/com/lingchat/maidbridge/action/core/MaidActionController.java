@@ -5,13 +5,21 @@ import com.google.gson.JsonObject;
 import com.lingchat.maidbridge.LingChatMaidBridge;
 import com.lingchat.maidbridge.action.WanderGuard;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
+import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.nav.NavGoal;
+import com.lingchat.maidbridge.action.nav.NavMemory;
+import com.lingchat.maidbridge.action.nav.NavPolicy;
+import com.lingchat.maidbridge.action.nav.Navigator;
+import com.lingchat.maidbridge.action.nav.ScaffoldBook;
 import com.lingchat.maidbridge.action.place.MaidPlaceController;
+import java.util.Set;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.server.level.ServerPlayer;
 
 /**
@@ -28,6 +36,9 @@ import net.minecraft.server.level.ServerPlayer;
  * 的状态不需要任何同步。
  */
 public final class MaidActionController {
+    /** 收尾时走开、拆垫脚最多等这么久（约六秒）。 */
+    private static final int CLEANUP_TIMEOUT_TICKS = 120;
+
     private static Run current;
 
     private static final class Run {
@@ -38,6 +49,18 @@ public final class MaidActionController {
         double distance;
         /** 探路的落点：主人一边走一边换，差得不多就不换（见 MaidActuator.scoutPoint）。 */
         BlockPos scoutPoint;
+        /** 走过去用的图搜索；目标挪了格子就换一个新的。 */
+        Navigator nav;
+        BlockPos navTarget;
+        /** 这一趟走路垫下的临时方块，走完要拆。 */
+        final ScaffoldBook book = new ScaffoldBook();
+        /** 生存模式从她背包扣垫脚料；创造模式借一块再拆掉。 */
+        boolean consumeMaterials = true;
+        /** 动作本身已经结束，还在走开、拆垫脚。 */
+        boolean settling;
+        ActionRun.Outcome outcome;
+        Navigator settleNav;
+        int settleTicks;
 
         Run(String maidId, MaidAction action, MaidActuator.Target target) {
             this.maidId = maidId;
@@ -64,6 +87,7 @@ public final class MaidActionController {
         if (reject != null) {
             return ActionFrames.rejected(action, reject.code(), reject.reason());
         }
+        MaidBuildController.cancelByOther(server, "被别的事叫走了");
 
         // 就地躺下：不走过去，当场换姿势，然后一直挂着——直到新动作顶掉它或她自己爬起来
         if (action.isGroundLie()) {
@@ -98,6 +122,8 @@ public final class MaidActionController {
             MaidActuator.beginWalk(maid);
         }
         current = new Run(maid.getStringUUID(), action, target);
+        ServerPlayer owner = MaidQueries.owner(maid);
+        current.consumeMaterials = owner == null || !owner.isCreative();
         WanderGuard.begin(maid);
         // 耗时动作的结果稍后由 action_done 给出，插件据此知道自己还没到位
         return ActionFrames.accepted(action, action.hasCompletionEvent(), stoodUp, replaced);
@@ -145,6 +171,10 @@ public final class MaidActionController {
             return;
         }
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
+        if (run.settling) {
+            settle(run, maid);
+            return;
+        }
         ActionRun.Observation observation =
                 MaidActuator.observe(maid, run.action, run.target, run.machine.lying());
         ActionRun.Outcome outcome = run.machine.tick(observation);
@@ -172,6 +202,8 @@ public final class MaidActionController {
         current = null;
         WanderGuard.clear();
         if (maid != null) {
+            stopNav(run, maid);
+            run.book.clearNow((ServerLevel) maid.level(), maid, run.consumeMaterials);
             if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
             }
@@ -199,6 +231,27 @@ public final class MaidActionController {
         return cancel(server);
     }
 
+    /** stopOtherActions 的结果：被顶掉的动作名（没有为空串）与有没有真的把她叫起来。 */
+    public record StopResult(String replaced, boolean stoodUp) {
+    }
+
+    /**
+     * 别的指令要接手时，把在跑的其它动作都收掉并让她站直。
+     *
+     * <p>攻击、动作、挖掘、放置与施工都会写寻路目标，同时留着两套她会在两个目标之间来回走。
+     * 各自给还在等收尾的插件一个交代；reason 是这一轮打断的说法，由调用方按自己的事由传入。
+     */
+    public static StopResult stopOtherActions(
+            MinecraftServer server, EntityMaid maid, String reason) {
+        MaidAttackController.cancel();
+        String replaced = cancel(server);
+        MaidMineController.cancel(server);
+        MaidPlaceController.cancel(server);
+        MaidBuildController.cancelByOther(server, reason);
+        boolean stoodUp = MaidActuator.standUp(maid);
+        return new StopResult(replaced, stoodUp);
+    }
+
     private static void act(EntityMaid maid, Run run, ActionRun.Command command) {
         switch (command) {
             case WALK -> {
@@ -207,7 +260,7 @@ public final class MaidActionController {
                 } else {
                     ServerPlayer player = MaidQueries.owner(maid);
                     if (player != null) {
-                        MaidActuator.walkToPlayer(maid, player, run.action.arriveDistance());
+                        walkToPlayer(maid, run, player);
                     }
                 }
             }
@@ -231,11 +284,92 @@ public final class MaidActionController {
         }
     }
 
+    /**
+     * 走到主人身边：与施工共用同一套图搜索，缺口与高差都可以动土。
+     *
+     * <p>目标取主人此刻站的格子。主人挪了格子就换一个新的寻路，从她此刻的位置重算；
+     * 走不到时挂上「走不到」的记忆，交给动作状态机在四十 tick 内如实收尾。
+     */
+    private static void walkToPlayer(EntityMaid maid, Run run, ServerPlayer player) {
+        BlockPos target = player.blockPosition();
+        // 已经站在到位线以内：下一 tick 状态机自己收尾，不必为挪半步重算
+        if (maid.blockPosition().distManhattan(target) <= run.action.arriveDistance()) {
+            return;
+        }
+        if (run.nav == null || !target.equals(run.navTarget)) {
+            if (run.nav != null) {
+                run.nav.cancel(maid);
+            }
+            run.navTarget = target;
+            run.nav = Navigator.start(
+                    new NavGoal.Near(target, run.action.arriveDistance()),
+                    navPolicy(run), new NavMemory(), run.book);
+            // 换了目标就把上一次的「走不到」清掉，否则动作状态机会提前收尾
+            MaidActuator.beginWalk(maid);
+        }
+        Navigator.Status status = run.nav.status();
+        if (status == Navigator.Status.RUNNING) {
+            status = run.nav.tick(maid);
+        }
+        run.nav.cleanScaffold(maid);
+        if (status == Navigator.Status.FAILED) {
+            MaidActuator.markUnreachable(maid);
+        }
+    }
+
+    /** 走路这一趟的边界：不挡任何格子，垫脚料按她主人的模式扣或借。 */
+    private static NavPolicy navPolicy(Run run) {
+        return new NavPolicy(Set.of(), Set.of(), run.consumeMaterials);
+    }
+
+    /**
+     * 动作结束：还踩着自己垫的方块时先走开、拆净，再报收尾。
+     *
+     * <p>直接硬拆会把她从垫脚块上摔下来，所以复用寻路自己的收尾目标：走到旁边的实地，
+     * 把这一趟垫的方块全拆了，然后才推 action_done。
+     */
     private static void finish(Run run, ActionRun.Outcome outcome, EntityMaid maid) {
+        if (maid != null && !run.book.isEmpty()) {
+            run.settling = true;
+            run.outcome = outcome;
+            run.settleTicks = 0;
+            WanderGuard.end(run.maidId);
+            stopNav(run, maid);
+            run.settleNav = Navigator.start(
+                    new NavGoal.Settle(), navPolicy(run), new NavMemory(), run.book);
+            return;
+        }
+        finalize(run, outcome, maid);
+    }
+
+    /** 收尾阶段：走去实地、拆净垫脚；等太久就强拆。 */
+    private static void settle(Run run, EntityMaid maid) {
+        if (maid == null) {
+            finalize(run, run.outcome, null);
+            return;
+        }
+        run.settleTicks++;
+        Navigator nav = run.settleNav;
+        if (nav != null) {
+            nav.tick(maid);
+            if (nav.status() == Navigator.Status.RUNNING
+                    && run.settleTicks < CLEANUP_TIMEOUT_TICKS) {
+                return;
+            }
+            run.settleNav = null;
+        }
+        run.book.clearNow((ServerLevel) maid.level(), maid, run.consumeMaterials);
+        finalize(run, run.outcome, maid);
+    }
+
+    /** 真正收尾：清动作槽、放开姿势、推收尾事件。 */
+    private static void finalize(Run run, ActionRun.Outcome outcome, EntityMaid maid) {
         current = null;
         // 动作完了她还站在那儿：再按一小会儿她的随机游荡，等这一轮的话说完
         WanderGuard.end(run.maidId);
         if (maid != null) {
+            // 跑跳的腿不退出就一直关着重力：先让寻路收手，再停走路
+            stopNav(run, maid);
             // 躺着收尾时要真的把她扶起来（床上的也要放开床位）
             if (run.action.isLie()) {
                 MaidActuator.wakeUp(maid);
@@ -249,6 +383,23 @@ public final class MaidActionController {
         }
     }
 
+    /** 停掉这一趟的两套寻路；跑跳没走完的会把重力还回来。 */
+    private static void stopNav(Run run, EntityMaid maid) {
+        if (maid == null) {
+            run.nav = null;
+            run.settleNav = null;
+            return;
+        }
+        if (run.nav != null) {
+            run.nav.cancel(maid);
+            run.nav = null;
+        }
+        if (run.settleNav != null) {
+            run.settleNav.cancel(maid);
+            run.settleNav = null;
+        }
+    }
+
     /** 顶掉在跑的动作，返回被顶掉的那个动作名（没有则为空串）。 */
     private static String cancel(MinecraftServer server) {
         Run run = current;
@@ -256,7 +407,23 @@ public final class MaidActionController {
             return "";
         }
         EntityMaid maid = MaidQueries.findMaidById(server, run.maidId);
-        finish(run, new ActionRun.Outcome(ActionRun.Command.HOLD, true, "cancelled", "replaced", "被新动作顶掉了"), maid);
+        if (run.settling) {
+            // 动作已经走完、只是在拆垫脚：照实报原结果，不当成被顶掉
+            stopNav(run, maid);
+            if (maid != null) {
+                run.book.clearNow((ServerLevel) maid.level(), maid, run.consumeMaterials);
+            }
+            finalize(run, run.outcome, maid);
+            return "";
+        }
+        ActionRun.Outcome cancelled = new ActionRun.Outcome(
+                ActionRun.Command.HOLD, true, "cancelled", "replaced", "被新动作顶掉了");
+        stopNav(run, maid);
+        // 被打断时来不及再走开：能拆的当场拆掉
+        if (maid != null) {
+            run.book.clearNow((ServerLevel) maid.level(), maid, run.consumeMaterials);
+        }
+        finalize(run, cancelled, maid);
         return run.action.actionId();
     }
 

@@ -978,6 +978,10 @@ export default {
       importTitle: "フォントファイルをインポート (.ttf / .woff2)",
       demo: "フォントデモ Font Sample 123",
     },
+    navPosition: {
+      title: "設定ナビの位置",
+      desc: "オンにすると設定のナビバーが画面下部に移動します（既定：PC は上部、モバイルは下部）",
+    },
     speed: {
       title: "テキスト表示速度",
       label: "遅/速",

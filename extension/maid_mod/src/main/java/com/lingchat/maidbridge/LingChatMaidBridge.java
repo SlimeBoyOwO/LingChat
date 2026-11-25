@@ -3,6 +3,8 @@ package com.lingchat.maidbridge;
 import com.lingchat.maidbridge.action.core.MaidActionController;
 import com.lingchat.maidbridge.action.core.MaidActionHandler;
 import com.lingchat.maidbridge.action.core.MaidSettleHandler;
+import com.lingchat.maidbridge.action.construction.MaidBuildController;
+import com.lingchat.maidbridge.action.construction.MaidBuildHandler;
 import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.attack.MaidAttackHandler;
 import com.lingchat.maidbridge.bridge.BridgeServer;
@@ -12,6 +14,8 @@ import com.lingchat.maidbridge.bridge.Protocol;
 import com.lingchat.maidbridge.integration.carry.CarryOnPresent;
 import com.lingchat.maidbridge.chat.ChatPushListener;
 import com.lingchat.maidbridge.chat.SendChatHandler;
+import com.lingchat.maidbridge.debug.PathDebug;
+import com.lingchat.maidbridge.debug.PathingCommands;
 import com.lingchat.maidbridge.perception.item.BackpackWatcher;
 import com.lingchat.maidbridge.perception.item.ItemReporter;
 import com.lingchat.maidbridge.action.feed.MaidFeeder;
@@ -44,6 +48,7 @@ import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerStartingEvent;
 import net.neoforged.neoforge.event.server.ServerStoppingEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
@@ -89,6 +94,7 @@ public class LingChatMaidBridge {
             }
         }
 
+        NeoForge.EVENT_BUS.addListener(PathingCommands::register);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerStarting);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerStopping);
         NeoForge.EVENT_BUS.addListener(LingChatMaidBridge::onServerTick);
@@ -151,6 +157,9 @@ public class LingChatMaidBridge {
         newRouter.register(Protocol.MAID_ATTACK, new MaidAttackHandler(server));
         newRouter.register(Protocol.MAID_MINE, new MaidMineHandler(server));
         newRouter.register(Protocol.MAID_PLACE, new MaidPlaceHandler(server));
+        newRouter.register(Protocol.MAID_BUILD, new MaidBuildHandler(server));
+        newRouter.register(Protocol.MAID_BUILD_STATUS, request ->
+                Envelope.response(Protocol.MAID_BUILD_STATUS_RESULT, MaidBuildController.status()));
         newRouter.register(Protocol.MAID_GIVE_ITEM, new MaidGiveItemHandler(server));
         newRouter.register(Protocol.MAID_HEADWEAR, new MaidHeadwearHandler(server));
         newRouter.register(Protocol.PLAY_TTS, new PlayTtsHandler(server));
@@ -207,6 +216,9 @@ public class LingChatMaidBridge {
         // 挖掘循环记着上一块方块
         MaidMineController.cancel(event.getServer());
         MaidPlaceController.cancel(event.getServer());
+        MaidBuildController.cancel(event.getServer());
+        // 寻路可视化盯着的女仆与画面数据都是这一个世界的
+        PathDebug.reset();
     }
 
     private static void onServerTick(ServerTickEvent.Post event) {
@@ -225,6 +237,10 @@ public class LingChatMaidBridge {
         MaidMineController.tick(event.getServer());
         // 放置同理：走到够得着的地方，按原版规则放下一块
         MaidPlaceController.tick(event.getServer());
+        // 施工：按图纸一格一格放，缺料或走不到就记下来，收尾推一条事件
+        MaidBuildController.tick(event.getServer());
+        // 调试时把这一帧的寻路画出来；没开就什么都不做
+        PathDebug.tick(event.getServer());
         // 喂食的待收尾有寿命：没吃成的那口要还给她，金苹果等不到吃完就作废
         MaidFeeder.tick(event.getServer());
         // 主人举着她最爱吃的东西、她凑过来讨食的那一刻

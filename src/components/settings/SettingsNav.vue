@@ -1,7 +1,7 @@
 <template>
   <div
     class="relative flex h-full w-full items-center justify-between px-5"
-    :class="isMobile() ? 'pt-safe pb-2' : 'py-2'"
+    :class="navPaddingClass"
   >
     <img src="@/assets/images/LingChatLogo.webp" alt="Logo" class="ml-5 hidden w-20 xl:block" />
     <nav
@@ -138,17 +138,24 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, watch } from "vue";
+import { computed, ref, onMounted, watch } from "vue";
 import { useUIStore } from "../../stores/modules/ui/ui";
 import { isMobile } from "../../utils/platform";
 import { Button } from "../base";
 import Icon from "../base/widget/Icon.vue";
 
-const props = defineProps<{}>();
+const props = defineProps<{
+  /** 导航栏所在位置：贴面板底部时安全区内边距换到下方 */
+  placement?: "top" | "bottom";
+}>();
 
 const emit = defineEmits([
   "remove-more-menu-from-a", // A 组件触发 remove 时通知父组件
 ]);
+
+const navPaddingClass = computed(() =>
+  isMobile() ? (props.placement === "bottom" ? "pt-2 pb-safe" : "pt-safe pb-2") : "py-2",
+);
 
 const uiStore = useUIStore();
 const indicator = ref<HTMLElement | null>(null);

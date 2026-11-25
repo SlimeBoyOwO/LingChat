@@ -47,5 +47,10 @@ pub fn build() -> tauri::Builder<tauri::Wry> {
                 .build()
         });
 
+    // 开发期 MCP 调试桥：插件从 9223 起监听一个 WebSocket 端口供外部 MCP 客户端
+    // 连接。仅 mcp-debug feature 下参与编译与注册。
+    #[cfg(feature = "mcp-debug")]
+    let builder = builder.plugin(tauri_plugin_mcp_bridge::init());
+
     super::commands::register(builder)
 }

@@ -141,9 +141,7 @@ const overflow = computed(() => (props.value ?? 0) > 100);
 /** 雾霾强度 0..1（ref 供雾晕样式使用）：负面峰值 ≥95 起、≥135 拉满 */
 const hazeLevel = ref(0);
 /** 环境雾霾染色：整颗心罩一层暗色（强度随雾霾），让黑化状态在深色背景下也可读 */
-const hazeTintColor = computed(
-  () => `rgba(10, 10, 16, ${(hazeLevel.value * 0.42).toFixed(3)})`,
-);
+const hazeTintColor = computed(() => `rgba(10, 10, 16, ${(hazeLevel.value * 0.42).toFixed(3)})`);
 const glowStyle = computed(() => {
   const filters: string[] = [];
   if (overflow.value) {

@@ -24,6 +24,10 @@ public final class Protocol {
     public static final String MAID_MINE = "maid_mine";
     /** 让她把一块方块放到玩家指着的那一面，或一个空格。 */
     public static final String MAID_PLACE = "maid_place";
+    /** 按插件给的图纸施工：每格写清方块与相对锚点的位置。 */
+    public static final String MAID_BUILD = "maid_build";
+    /** 问一次当前施工到哪了。 */
+    public static final String MAID_BUILD_STATUS = "maid_build_status";
     /** 把她背包里的东西交给主人。 */
     public static final String MAID_GIVE_ITEM = "maid_give_item";
     /** 把背包里的东西戴到她头上（最后一格是头饰栏），或把头上那件摘下来。 */
@@ -54,6 +58,10 @@ public final class Protocol {
     public static final String MAID_MINE_RESULT = "maid_mine_result";
     /** 放置指令的回执。 */
     public static final String MAID_PLACE_RESULT = "maid_place_result";
+    /** 施工指令的回执。 */
+    public static final String MAID_BUILD_RESULT = "maid_build_result";
+    /** 施工进度的回执。 */
+    public static final String MAID_BUILD_STATUS_RESULT = "maid_build_status_result";
     /** 交物品的回执。 */
     public static final String MAID_GIVE_ITEM_RESULT = "maid_give_item_result";
     /** 戴/摘头饰的回执。 */

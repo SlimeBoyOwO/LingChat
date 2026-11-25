@@ -143,6 +143,7 @@ We aim to provide the most immersive and unrestricted AI companion experience.
 2. Extract it, then double-click `..01 启动API服务.bat` (the bundled "start API service" script) to get started.
 3. **Performance note**: on integrated graphics or an older machine, generating a single line of speech can take about a minute; a device with a GPU can do it in under a second. Integrated-graphics users who hit a flood of errors may not be able to use this feature.
 4. **Using it with custom characters**: to give a custom character a voice, change the `model_name` field in `game_data/characters/<character>/settings.yml` to the name of the model you imported.
+
 </details>
 
 <details>
@@ -153,6 +154,7 @@ We aim to provide the most immersive and unrestricted AI companion experience.
 2. In **Settings → Advanced Settings → LLM Management**, assign a vision-capable model to the "vision model" role (the default is "follow the chat model", which reuses your current chat model).
 3. Save and restart the app.
 4. **How to trigger it**: send “看桌面” or “看看我的桌面” in chat (literally "look at the desktop" / "look at my desktop"). Once proactive chat is configured, the AI can also actively observe what you are doing (_just try not to get caught while playing an eroge *^▽^*_).
+
 </details>
 
 <details>
@@ -160,6 +162,7 @@ We aim to provide the most immersive and unrestricted AI companion experience.
 
 - We push updates to the [`dev` branch](https://github.com/SlimeBoyOwO/LingChat/tree/dev) at any time and post development logs in [Issues](https://github.com/SlimeBoyOwO/LingChat/issues).
 - _Note: development builds may be unstable — bug reports are always welcome!_
+
 </details>
 
 ---

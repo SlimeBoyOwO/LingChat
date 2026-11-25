@@ -9,9 +9,11 @@
     "EntityMaidPoseMixin",
     "EntityMaidSleepMixin",
     "EntityMaidTemptationMixin",
+    "LivingEntityFallDamageMixin",
     "LivingEntityLyingDimensionsMixin",
     "LivingEntityStopSleepingMixin",
     "MaidFollowOwnerTaskMixin",
+    "MaidPickupEntitiesTaskMixin",
     "MaidRunOneMixin"
   ],
   "injectors": {

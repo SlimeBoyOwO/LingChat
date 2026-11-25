@@ -222,8 +222,16 @@ data/plugins/**/*.py[cod]
 # 其他工具目录
 .openmcp/
 .claude
+# 本地 MCP 客户端配置：启动命令含平台差异，由开发者按需自行创建
+.mcp.json
 
 # 本地 APK build 路径
 prev-build-*/
 
 .dsh-ops/
+
+# 女仆寻路沙盘（本机研究工具，不入库）
+temp/maid-sim/
+
+# 参考文献不必上传
+reference.md

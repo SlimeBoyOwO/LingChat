@@ -286,8 +286,14 @@ pub async fn run_chat(
                 target.trim()
             }
         );
-        let mut messages =
-            item_messages(system_prompt, &base_history, &digest, run_materials, &parts.varying, &own);
+        let mut messages = item_messages(
+            system_prompt,
+            &base_history,
+            &digest,
+            run_materials,
+            &parts.varying,
+            &own,
+        );
 
         let text = run_item_tools(
             &ctx,

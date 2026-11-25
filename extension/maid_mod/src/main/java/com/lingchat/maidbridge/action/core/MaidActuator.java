@@ -197,12 +197,17 @@ public final class MaidActuator {
         maid.getBrain().eraseMemory(MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE);
     }
 
-    /** 每 tick 写一次寻路目标。看向玩家的目标不带头部高度：走路用的是脚下那格。 */
-    public static void walkToPlayer(EntityMaid maid, ServerPlayer player, int closeEnough) {
+    /**
+     * 寻路自己判定走不过去：按原版的做法挂上「这个目标走不到」。
+     *
+     * <p>动作状态机只认这条记忆；挂上之后它在四十 tick 内以 unreachable 收尾，
+     * 而不是一直干等到超时。
+     */
+    public static void markUnreachable(EntityMaid maid) {
         maid.getBrain()
                 .setMemory(
-                        MemoryModuleType.WALK_TARGET,
-                        new WalkTarget(new EntityTracker(player, false), WALK_SPEED, closeEnough));
+                        MemoryModuleType.CANT_REACH_WALK_TARGET_SINCE,
+                        maid.level().getGameTime());
     }
 
     /** 床走到床头那一格；与 sink 的判到位口径一致（曼哈顿 ≤ closeEnough）。 */

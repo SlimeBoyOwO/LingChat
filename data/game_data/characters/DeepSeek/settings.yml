@@ -13,10 +13,10 @@ offset_x: 0.0
 offset_y: 45.0
 clothes_name: null
 clothes:
-- name: default
-  prompt: DeepSeek 酱换上了自己的日常女仆服装，穿着深蓝色的，白色花边的女仆装和女仆头饰，裙子上秀了金色的花纹，穿着白色丝袜和黑色圆头小皮鞋。女仆装的围巾上有 DeepSeek 的 logo，整体看起来很可爱。
-- prompt: DeepSeek 换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
-  name: 泳装
+  - name: default
+    prompt: DeepSeek 酱换上了自己的日常女仆服装，穿着深蓝色的，白色花边的女仆装和女仆头饰，裙子上秀了金色的花纹，穿着白色丝袜和黑色圆头小皮鞋。女仆装的围巾上有 DeepSeek 的 logo，整体看起来很可爱。
+  - prompt: DeepSeek 换上了泳装，头上戴着淡蓝色的墨镜，穿着淡蓝色的外套和褶边淡蓝色泳衣和泳裙，漏着小肚子和嫩白的大腿，腿上还有一个腿环，裸足。
+    name: 泳装
 avatar_mode: image
 scale_p: 1.0
 offset_x_p: 0.0
@@ -24,16 +24,16 @@ offset_y_p: 0.0
 avatar_mode_p: live2d
 pet_frameless: true
 voice_models:
-  sva_speaker_id: '0'
+  sva_speaker_id: "0"
   sbv2_name: Ling-v2
-  sbv2_speaker_id: '0'
-  bv2_speaker_id: '0'
+  sbv2_speaker_id: "0"
+  bv2_speaker_id: "0"
   sbv2api_name: Ling v2
-  sbv2api_speaker_id: '0'
-  gsv_voice_text: ''
-  gsv_voice_filename: ''
-  gsv_gpt_model_name: ''
-  gsv_sovits_model_name: ''
+  sbv2api_speaker_id: "0"
+  gsv_voice_text: ""
+  gsv_voice_filename: ""
+  gsv_gpt_model_name: ""
+  gsv_sovits_model_name: ""
   aivis_model_uuid: 44f93196-7485-45af-9616-f33adee71846
   opentts_voice: null
   fish_s2_voice: null
@@ -91,11 +91,11 @@ live2d:
         心动: 心跳
         害羞: 脸红
         调皮: 双手比耶
-        平静: ''
+        平静: ""
         难为情: 心跳
         哭泣: 悲伤
         惊讶: 感叹号
-        正常: ''
+        正常: ""
         慌张: 流汗
         自信: 星星眼
       motions: {}

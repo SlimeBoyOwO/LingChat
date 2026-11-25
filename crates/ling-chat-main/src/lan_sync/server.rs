@@ -281,7 +281,11 @@ async fn push_file_handler(
         })?;
     drop(dest);
 
-    let sha256 = format!("{:x}", hasher.finalize());
+    let sha256 = hasher
+        .finalize()
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect::<String>();
 
     if let Err(e) = std::fs::rename(&tmp_path, &file_path) {
         // 目标文件被锁定（如 SQLite DB），回退到暂存

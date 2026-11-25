@@ -243,8 +243,7 @@ async function previewFromChapter() {
                   <pre
                     v-if="artifactName"
                     class="font-mono text-[0.74rem] leading-relaxed whitespace-pre-wrap text-white/75"
-                    >{{ artifactContent }}</pre
-                  >
+                    >{{ artifactContent }}</pre>
                   <ChapterTimeline
                     v-else-if="events.length"
                     readonly

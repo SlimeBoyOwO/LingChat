@@ -7,7 +7,6 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use sea_orm::{Database, DatabaseConnection};
-use sea_orm_migration::MigratorTrait;
 
 use crate::migration::Migrator;
 
@@ -30,7 +29,7 @@ pub async fn init_db(data_dir: &Path) -> Result<DatabaseConnection> {
         return Err(e).context("Failed to migrate database from old Python schema");
     }
 
-    Migrator::up(&db, None)
+    Migrator::migrate(&db)
         .await
         .map_err(|e: sea_orm::DbErr| {
             // Tauri only prints the outermost context, so log the full chain here.
