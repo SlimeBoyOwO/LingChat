@@ -48,7 +48,7 @@ public final class TestFeedback {
      * <p>只在调试指令等着的时候报；报过一次就不再刷屏。
      */
     public static void noteNavFailure(EntityMaid maid, NavFailure failure, String phase,
-            boolean hasScaffold) {
+            boolean hasScaffold, String detail) {
         if (maid == null || ACTION.requester == null || ACTION.noted
                 || !ACTION.maidId.equals(maid.getStringUUID())) {
             return;
@@ -57,7 +57,8 @@ public final class TestFeedback {
         String text = "[走过来测试] 寻路判了走不通："
                 + (failure == null ? "原因不明" : navText(failure) + "（" + failure.name() + "）")
                 + "｜阶段：" + phase
-                + (hasScaffold ? "" : "｜她身上没有能垫的方块");
+                + (hasScaffold ? "" : "｜她身上没有能垫的方块")
+                + (detail == null || detail.isEmpty() ? "" : "｜" + detail);
         say(ACTION, maid.level().getServer(), text);
     }
 
@@ -159,14 +160,15 @@ public final class TestFeedback {
         return String.format(Locale.ROOT, "%.1f", ticks / 20.0) + " 秒";
     }
 
-    /** 寻路失败原因的日常说法。 */
+    /** 寻路失败原因的日常说法。搜空的两种写成「图搜空了」，免得读成周围没有落脚点。 */
     private static String navText(NavFailure failure) {
         return switch (failure) {
-            case NO_STAND -> "旁边没有能站的地方";
+            case NO_STAND -> "落脚点图搜空了，没找到到得了目标附近的位置";
             case NO_PATH -> "有地方站，但走不过去";
-            case NO_HEADROOM -> "头顶太低，跳不起来";
+            case NO_HEADROOM -> "头顶太低，跳不起来也垫不上去";
             case OUT_OF_REACH -> "站到了也够不着目标";
             case TIMEOUT -> "太久没有靠近过目标";
+            case SEARCH_LIMIT -> "搜到节点上限，这一趟没算完";
         };
     }
 

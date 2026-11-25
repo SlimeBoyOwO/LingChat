@@ -2,12 +2,20 @@ package com.lingchat.maidbridge.action.nav;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.core.MaidActuator;
+import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.mine.MineTargets;
+import com.lingchat.maidbridge.perception.spatial.TerrainMemory;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.world.InteractionHand;
+import net.minecraft.world.entity.EquipmentSlot;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.phys.Vec3;
 
 /**
@@ -34,8 +42,6 @@ public final class Navigator {
     private static final int NO_PROGRESS_TICKS = 900;
     /** 距离比上次的最好成绩近了这么多，才算有进展。 */
     private static final double PROGRESS_STEP = 0.5;
-    /** 同一个目标最多从高处直落几次。 */
-    private static final int MAX_DROPS = 2;
     /** 原地起跳的初速：与玩家跳跃一致，刚好够她升过一整格。 */
     private static final double JUMP_POWER = 0.42;
     /** 起跳后最多等这么久：没离地、也没把方块补进去就放手。 */
@@ -44,6 +50,14 @@ public final class Navigator {
     private static final int JUMP_LAND_TICKS = 10;
     /** 收尾时实在没有落脚点可去，等这么久就直接拆脚下的垫脚块。 */
     private static final int SETTLE_WAIT_TICKS = 30;
+    /** 搜索盒子一开始从起点到目标的包围盒往外扩这么多格：到位线是 3，得盖住目标周围。 */
+    private static final int INITIAL_PAD = 3;
+    /** 盒子里搜空时每轮多扩这么多格。 */
+    private static final int PAD_STEP = 4;
+    /** 盒子最多扩到这么大（3 → 7 → 11）。 */
+    private static final int MAX_PAD = 11;
+    /** 手段分三档：只用走和跑跳、再允许搭路、最后允许拆挡路的方块。 */
+    private static final int MAX_TIER = 2;
 
     private final NavGoal goal;
     private final NavPolicy policy;
@@ -71,6 +85,14 @@ public final class Navigator {
     private int stillTicks;
     /** 搜不到时已经清过一次「试过的站位」，别在清空与重算之间来回打转。 */
     private boolean forgot;
+    /** 最后一次搜空时的一句话：节点数、离目标最近到过哪。 */
+    private String searchSummary = "";
+    /** 当前搜索盒子的外扩格数：盒子搜空就往外挪一圈重算。 */
+    private int pad = INITIAL_PAD;
+    /** 当前放开到第几档手段：0 只用走和跑跳，1 允许搭路，2 允许拆方块。 */
+    private int tier;
+    /** 高差一格以内已经让原版寻路试过一次了。 */
+    private boolean triedVanilla;
 
     private Navigator(NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
         this.goal = goal;
@@ -175,8 +197,30 @@ public final class Navigator {
         return phase;
     }
 
+    /** 最后一次搜空时的节点数与最近到达；没搜空过是空串。 */
+    public String searchSummary() {
+        return searchSummary;
+    }
+
+    /** 当前搜索盒子的外扩格数：日志里对账用。 */
+    public int pad() {
+        return pad;
+    }
+
     public List<BlockPos> chain() {
         return leg == null ? List.of() : leg.chain();
+    }
+
+    /** 算好的整条路线还剩下的落脚点：从当前这一段起，到她将站上的每一格。 */
+    public List<BlockPos> plannedPath() {
+        if (routeAt >= route.size()) {
+            return List.of();
+        }
+        List<BlockPos> out = new ArrayList<>(route.size() - routeAt);
+        for (int i = routeAt; i < route.size(); i++) {
+            out.add(route.get(i).to());
+        }
+        return out;
     }
 
     public ScaffoldBook book() {
@@ -219,7 +263,7 @@ public final class Navigator {
     private boolean satisfied(EntityMaid maid) {
         BlockPos here = maid.blockPosition();
         if (goal instanceof NavGoal.Near near) {
-            return here.distManhattan(near.target()) <= near.closeEnough();
+            return near.accepts(here);
         }
         if (!(goal instanceof NavGoal.Stand target)) {
             return false;
@@ -245,7 +289,7 @@ public final class Navigator {
             return pos -> !pos.equals(stand.target()) && stand.canActFrom().test(pos);
         }
         NavGoal.Near near = (NavGoal.Near) goal;
-        return pos -> pos.distManhattan(near.target()) <= near.closeEnough();
+        return near::accepts;
     }
 
     /**
@@ -291,24 +335,45 @@ public final class Navigator {
             fail(NavFailure.NO_STAND);
             return;
         }
+        if (search == null && startVanilla(maid, target)) {
+            return;
+        }
         if (search == null) {
             // 上一次腿失败留下的「走不到」不代表这条路走不通：新一趟重新算
             MaidActuator.beginWalk(maid);
             search = RouteSearch.start(
                     new RouteView(maid, target, goalTest(), policy, memory),
-                    maid.blockPosition(), target, limits());
+                    maid.blockPosition(), target, limits(), pad, tier >= 1, tier >= 2);
         }
         RouteSearch.State state = search.step();
         if (state == RouteSearch.State.SEARCHING) {
             return;
         }
         if (state == RouteSearch.State.EXHAUSTED) {
+            searchSummary = search.summary();
+            boolean truncated = search.truncated();
             search = null;
+            // 被节点额度截断的不是「没有路」，如实报没算完，别让调用方挂上走不到
+            if (truncated) {
+                fail(NavFailure.SEARCH_LIMIT);
+                return;
+            }
             // 试过的站位可能只是一次原版寻路没走过去：清掉重算一次，两次都搜不到才算真没路
             if (!forgot && (!memory.triedStands.isEmpty() || !memory.badBlocks.isEmpty())) {
                 forgot = true;
                 memory.triedStands.clear();
                 memory.badBlocks.clear();
+                return;
+            }
+            // 手段逐档放开：只用走和跑跳不行，再允许搭路，最后允许拆挡路的方块
+            if (tier < MAX_TIER) {
+                tier++;
+                return;
+            }
+            // 这一档的盒子里搜空：把盒子往外挪一圈，再从最省的手段重来
+            if (pad < MAX_PAD) {
+                pad = Math.min(MAX_PAD, pad + PAD_STEP);
+                tier = 0;
                 return;
             }
             fail(canJumpHere(maid) ? NavFailure.NO_STAND : NavFailure.NO_HEADROOM);
@@ -325,11 +390,7 @@ public final class Navigator {
 
     /** 这一次目标还剩多少额度可以动地形。 */
     private RouteSearch.Limits limits() {
-        return new RouteSearch.Limits(
-                Math.max(0, ScaffoldRules.MAX_BLOCKS - book.size()),
-                Math.max(0, ScaffoldRules.MAX_STEPS - memory.steps),
-                Math.max(0, ScaffoldRules.MAX_BRIDGE - memory.bridges),
-                Math.max(0, MAX_DROPS - memory.drops));
+        return new RouteSearch.Limits(Math.max(0, ScaffoldRules.MAX_BRIDGE - memory.bridges));
     }
 
     /** 执行路线的一段：走、跳、搭、垫，或者原地起跳。 */
@@ -337,13 +398,11 @@ public final class Navigator {
         switch (step.kind()) {
             case WALK -> startWalk(maid, step.to());
             case HOP -> hop(maid, step.to(), ParkourRules.MAX_FALL, "跑跳过缺口");
-            case DROP -> {
-                memory.drops++;
-                hop(maid, step.to(), ParkourRules.DEEP_FALL, "跳下");
-            }
+            case DROP -> hop(maid, step.to(), ParkourRules.DEEP_FALL, "跳下");
             case BRIDGE -> bridge(maid, step.to());
             case RISE -> rise(maid, step);
             case PILLAR -> pillar(maid);
+            case BREAK -> breakThrough(maid, step.to());
         }
     }
 
@@ -424,7 +483,6 @@ public final class Navigator {
             moveFailed(NavFailure.NO_STAND);
             return;
         }
-        memory.steps++;
         startWalk(maid, step.to());
     }
 
@@ -437,6 +495,63 @@ public final class Navigator {
             memory.badBlocks.add(feet);
             moveFailed(NavFailure.NO_STAND);
         }
+    }
+
+    /**
+     * 高差一格以内先让原版寻路试一次：走得过去就省下一整张图，走不动再进 A*。
+     *
+     * <p>只对「走到附近」这类目标有效；建筑要站的是能动手的位置，与原版寻路的重合不多。
+     * 目标比脚下高一格时原版跳得上去，差两格就跳不上去，直接交给图搜索。
+     */
+    private boolean startVanilla(EntityMaid maid, BlockPos target) {
+        // 要求同层的目标一定在坎上，原版跳不上去，别白试一趟
+        if (triedVanilla || !(goal instanceof NavGoal.Near near) || near.sameLevel()) {
+            return false;
+        }
+        if (Math.abs(target.getY() - maid.blockPosition().getY()) > 1) {
+            return false;
+        }
+        triedVanilla = true;
+        startWalk(maid, target);
+        return true;
+    }
+
+    /** 拆掉挡路的两格（脚、头），再从原来挡着的位置走过去。 */
+    private void breakThrough(EntityMaid maid, BlockPos to) {
+        if (!clearBlock(maid, to) || !clearBlock(maid, to.above())) {
+            memory.badBlocks.add(to);
+            moveFailed(NavFailure.NO_PATH);
+            return;
+        }
+        startWalk(maid, to);
+    }
+
+    /** 拆一格：工具、耐久、掉落都按挖掘那一套来；已经是空的就当拆好了。 */
+    private boolean clearBlock(EntityMaid maid, BlockPos pos) {
+        ServerLevel level = (ServerLevel) maid.level();
+        if (Terrain.free(level, pos) || Terrain.water(level, pos)) {
+            return true;
+        }
+        BlockState state = level.getBlockState(pos);
+        if (!state.getFluidState().isEmpty()
+                || state.getDestroySpeed(level, pos) < 0
+                || !maid.canDestroyBlock(pos)) {
+            return false;
+        }
+        MineTargets.equipBestTool(maid, state);
+        MaidActuator.stopWalking(maid);
+        MaidActuator.lookAtPos(maid, pos);
+        if (!maid.destroyBlock(pos, true)) {
+            return false;
+        }
+        maid.swing(InteractionHand.MAIN_HAND);
+        ItemStack used = maid.getMainHandItem();
+        if (!used.isEmpty()) {
+            used.hurtAndBreak(1, maid, EquipmentSlot.MAINHAND);
+        }
+        TerrainMemory.reveal(maid, pos, level.getGameTime());
+        MaidMineController.markMined(maid);
+        return true;
     }
 
     /** 原地跳起来把脚下的方块补上，落下来就升了一整格。 */
@@ -653,7 +768,6 @@ public final class Navigator {
                 lastLegFailure = NavFailure.NO_STAND;
                 return Outcome.FAILED;
             }
-            memory.steps++;
             stand = pos.above().immutable();
             restTicks = JUMP_LAND_TICKS;
             return Outcome.DONE;

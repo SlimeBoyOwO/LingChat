@@ -67,9 +67,6 @@ public final class ScaffoldBook {
     /** 放一块垫脚方块：扣料、记账，她走开后由 {@link #clean} 拆掉。 */
     public boolean put(
             ServerLevel level, EntityMaid maid, BlockPos pos, Item item, boolean consumeMaterials) {
-        if (blocks.size() >= ScaffoldRules.MAX_BLOCKS) {
-            return false;
-        }
         if (consumeMaterials && !MaidInventory.has(maid, item)) {
             return false;
         }
@@ -81,6 +78,9 @@ public final class ScaffoldBook {
         lookToward(maid, pos);
         BlockPlaceContext context =
                 Placement.visibleContext(maid, new ItemStack(item), pos, null, null, null);
+        if (context == null) {
+            context = floorSideContext(maid, item, pos);
+        }
         if (context == null) {
             return false;
         }
@@ -96,6 +96,20 @@ public final class ScaffoldBook {
         blocks.put(pos.immutable(), block);
         placed++;
         return true;
+    }
+
+    /**
+     * 贴着她脚下那块的侧面放：人站在格心时视线会先撞上那块的顶面，按视线判是看不见的，
+     * 可搭路就是这么放的，原版服务端也不验视线，这一面单独放行，与搜索的口径一致。
+     */
+    private static BlockPlaceContext floorSideContext(EntityMaid maid, Item item, BlockPos pos) {
+        BlockPos floor = maid.blockPosition().below();
+        for (Direction face : Direction.Plane.HORIZONTAL) {
+            if (floor.relative(face).equals(pos)) {
+                return Placement.contextForFace(maid, new ItemStack(item), pos, face, null);
+            }
+        }
+        return null;
     }
 
     /**

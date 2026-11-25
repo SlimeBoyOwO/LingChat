@@ -547,6 +547,7 @@ public final class MaidBuildController {
         PathDebug.report(
                 maid, phase, run.stand, target,
                 run.nav == null ? List.of() : run.nav.chain(),
+                run.nav == null ? List.of() : run.nav.plannedPath(),
                 run.nextPlace, block);
     }
 

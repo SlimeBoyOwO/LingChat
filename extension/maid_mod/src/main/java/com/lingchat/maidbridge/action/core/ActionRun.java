@@ -62,6 +62,20 @@ public final class ActionRun {
             int targetDistance,
             double distance,
             Interrupt interrupt) {
+
+        /** 同一条观察，但按「还没到」算：目标在坎上、她还在坎下时用来压住距离判定。 */
+        public Observation notArrived(int arriveDistance) {
+            return new Observation(maidPresent, blocked, sleeping, targetPresent, cannotReach,
+                    Math.max(targetDistance, arriveDistance + 1), distance, interrupt);
+        }
+
+        /** 同一条观察，抹掉原版的「走不到」：这一腿没走成不代表整条路走不通。 */
+        public Observation withoutCannotReach() {
+            return cannotReach
+                    ? new Observation(maidPresent, blocked, sleeping, targetPresent, false,
+                            targetDistance, distance, interrupt)
+                    : this;
+        }
     }
 
     /** 下一步做什么。收尾时这个值没有意义。 */

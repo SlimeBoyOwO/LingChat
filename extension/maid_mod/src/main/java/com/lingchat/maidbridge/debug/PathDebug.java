@@ -127,6 +127,8 @@ public final class PathDebug {
     private static int searchDown;
     private static int searchUp;
     private static List<BlockPos> hop = List.of();
+    /** 图搜索算出的整条路线：她还没走到的每一段都画出来。 */
+    private static List<BlockPos> planned = List.of();
     private static BlockPos nextPos;
     private static int livePathNodes;
     private static int lastProbeCount;
@@ -260,10 +262,11 @@ public final class PathDebug {
         stop();
     }
 
-    /** 施工每 tick 交一次当前阶段与落脚点。 */
+    /** 寻路每 tick 交一次当前阶段、落脚点与算好的整条路线。 */
     public static void report(
             EntityMaid maid, String phase, BlockPos stand, BlockPos target,
-            List<BlockPos> hopChain, BlockPos nextPlace, String targetBlock) {
+            List<BlockPos> hopChain, List<BlockPos> plannedPath,
+            BlockPos nextPlace, String targetBlock) {
         if (!watching(maid)) {
             return;
         }
@@ -272,6 +275,7 @@ public final class PathDebug {
         PathDebug.target = target;
         PathDebug.targetName = targetBlock == null ? "" : targetBlock;
         PathDebug.hop = hopChain.isEmpty() ? List.of() : List.copyOf(hopChain);
+        PathDebug.planned = plannedPath.isEmpty() ? List.of() : List.copyOf(plannedPath);
         PathDebug.nextPos = nextPlace;
         PathDebug.lastReport = maid.level().getGameTime();
     }
@@ -358,6 +362,7 @@ public final class PathDebug {
         // 先画最要紧的：粒子有总量上限，排到后面的在极端情况会被丢掉
         if (layers.contains(Layer.PATH)) {
             drawLivePath(level, maid, path);
+            drawPlanned(level, planned);
         }
         if (layers.contains(Layer.TARGET)) {
             drawTarget(level, target);
@@ -393,6 +398,7 @@ public final class PathDebug {
         searchDown = 0;
         searchUp = 0;
         hop = List.of();
+        planned = List.of();
         nextPos = null;
         livePathNodes = 0;
         lastProbeCount = 0;
@@ -494,6 +500,26 @@ public final class PathDebug {
         dot(level, GREEN, end.getX() + 0.5, end.getY() + 0.5, end.getZ() + 0.5);
         dot(level, ParticleTypes.HAPPY_VILLAGER,
                 maid.getX(), maid.getY() + 2.3, maid.getZ());
+    }
+
+    /**
+     * 图搜索算出的整条路线：每个落脚点一团浅绿，点之间连起来。
+     *
+     * <p>原版导航手里只有当前这一段，光看它容易以为路线被切成了好几段；这里把还没走到的
+     * 几段也画出来，断点就是跑跳、垫高、搭路这些要单独执行的动作。
+     */
+    private static void drawPlanned(ServerLevel level, List<BlockPos> planned) {
+        Vec3 previous = null;
+        // 只画个大概：整条路线可能是几十格，画满会把后面的落脚点框挤掉
+        int count = Math.min(planned.size(), 24);
+        for (int i = 0; i < count; i++) {
+            Vec3 at = Vec3.atCenterOf(planned.get(i)).add(0.0, 0.6, 0.0);
+            if (previous != null) {
+                line(level, LIME, previous, at, 4, 1.0);
+            }
+            dot(level, LIME, at.x, at.y, at.z);
+            previous = at;
+        }
     }
 
     /**

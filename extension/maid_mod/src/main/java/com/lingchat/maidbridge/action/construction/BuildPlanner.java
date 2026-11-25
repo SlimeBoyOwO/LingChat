@@ -364,6 +364,8 @@ final class BuildPlanner {
             case NO_HEADROOM -> Failure.NO_HEADROOM;
             case OUT_OF_REACH -> Failure.OUT_OF_REACH;
             case TIMEOUT -> Failure.NO_PATH;
+            // 没算完按「走不过去」记账：格子上没有更贴切的分类，日志里会写明截断
+            case SEARCH_LIMIT -> Failure.NO_PATH;
         };
     }
 

@@ -17,4 +17,9 @@ public record NavPolicy(
     public boolean canBuildOn(BlockPos pos) {
         return !noBuild.contains(pos);
     }
+
+    /** 这一格拆不拆得：图纸格不拆，其余挡路的方块可以拆。 */
+    public boolean canBreak(BlockPos pos) {
+        return !noBuild.contains(pos);
+    }
 }

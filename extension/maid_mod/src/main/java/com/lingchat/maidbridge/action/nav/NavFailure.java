@@ -11,5 +11,7 @@ public enum NavFailure {
     /** 站到了也够不着目标。 */
     OUT_OF_REACH,
     /** 这一次寻路拖得太久。 */
-    TIMEOUT
+    TIMEOUT,
+    /** 搜索被节点额度截断，没算完：不能当成没有路。 */
+    SEARCH_LIMIT
 }

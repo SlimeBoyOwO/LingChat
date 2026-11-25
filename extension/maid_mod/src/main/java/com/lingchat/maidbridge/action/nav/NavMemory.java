@@ -5,7 +5,7 @@ import java.util.Set;
 import net.minecraft.core.BlockPos;
 
 /**
- * 一次目标的记忆：试过的站位、垫不下的位置，以及垫脚、搭路、跳下各用过几次。
+ * 一次目标的记忆：试过的站位、垫不下的位置，以及平铺过几块路。
  *
  * <p>由调用方按自己的粒度持有（建筑按格子），寻路只负责读写。这样换了目标、换了下一次
  * 尝试，之前撞过的死路不会从头再撞一遍。
@@ -15,10 +15,6 @@ public final class NavMemory {
     public final Set<BlockPos> triedStands = new HashSet<>();
     /** 为这个目标试过、但没放成功的垫脚位置。 */
     public final Set<BlockPos> badBlocks = new HashSet<>();
-    /** 为这个目标垫过几次脚（按升高次数算）。 */
-    public int steps;
     /** 为这个目标平铺过几块路。 */
     public int bridges;
-    /** 为这个目标从高处跳下去过几次。 */
-    public int drops;
 }
