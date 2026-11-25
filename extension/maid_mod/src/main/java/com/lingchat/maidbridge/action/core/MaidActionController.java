@@ -38,6 +38,8 @@ import net.minecraft.server.level.ServerPlayer;
  * 的状态不需要任何同步。
  */
 public final class MaidActionController {
+    private static final org.slf4j.Logger LOGGER =
+            org.slf4j.LoggerFactory.getLogger("lingchat_maid_bridge");
     /** 收尾时走开、拆垫脚最多等这么久（约六秒）。 */
     private static final int CLEANUP_TIMEOUT_TICKS = 120;
 
@@ -54,6 +56,8 @@ public final class MaidActionController {
         /** 走过去用的图搜索；目标挪了格子就换一个新的。 */
         Navigator nav;
         BlockPos navTarget;
+        /** 这一趟的寻路失败原因已经报过、记过日志。 */
+        boolean navFailureReported;
         /** 这一趟走路垫下的临时方块，走完要拆。 */
         final ScaffoldBook book = new ScaffoldBook();
         /** 生存模式从她背包扣垫脚料；创造模式借一块再拆掉。 */
@@ -306,6 +310,7 @@ public final class MaidActionController {
             run.nav = Navigator.start(
                     new NavGoal.Near(target, run.action.arriveDistance()),
                     navPolicy(run), new NavMemory(), run.book);
+            run.navFailureReported = false;
             // 换了目标就把上一次的「走不到」清掉，否则动作状态机会提前收尾
             MaidActuator.beginWalk(maid);
         }
@@ -320,6 +325,13 @@ public final class MaidActionController {
                     run.nav.chain(), null, "");
         }
         if (status == Navigator.Status.FAILED) {
+            if (!run.navFailureReported) {
+                run.navFailureReported = true;
+                boolean scaffold = ScaffoldBook.item(maid, run.consumeMaterials) != null;
+                TestFeedback.noteNavFailure(maid, run.nav.failure(), run.nav.phase(), scaffold);
+                LOGGER.info("走过来寻路失败：{}（{}），垫脚块 {} 块，目标 {}",
+                        run.nav.phase(), run.nav.failure(), run.book.size(), target);
+            }
             MaidActuator.markUnreachable(maid);
         }
     }

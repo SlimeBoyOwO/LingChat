@@ -26,8 +26,6 @@ final class RouteSearch {
     private static final int EXPAND_PER_CALL = 400;
     /** 整次搜索最多生成多少个节点；到顶就认作搜不到，不做无限展开。 */
     private static final int MAX_NODES = 6000;
-    /** 离目标这么近才开始试垫脚与搭路：远处的缺口先交给走和跑跳。 */
-    private static final int NEAR = 16;
 
     /** 各种手段的相对代价：能走就别跳，能跳就别动方块。 */
     private static final double DIAGONAL_COST = 1.4142;
@@ -233,15 +231,10 @@ final class RouteSearch {
             // 这个方向走不过去：跑跳、直落、搭一格、垫一格，谁便宜用谁
             hop(node, dx, dz);
             drop(node, dx, dz);
-            if (!near(here)) {
-                continue;
-            }
             bridge(node, dx, dz);
             rise(node, dx, dz);
         }
-        if (near(here)) {
-            pillar(node);
-        }
+        pillar(node);
     }
 
     /** 跑跳跨缺口。 */
@@ -356,13 +349,6 @@ final class RouteSearch {
         best.put(to, node);
         open.add(node);
         generated++;
-    }
-
-    /** 离目标够近才值得动地形。 */
-    private boolean near(BlockPos pos) {
-        return Math.abs(pos.getX() - target.getX()) <= NEAR
-                && Math.abs(pos.getZ() - target.getZ()) <= NEAR
-                && Math.abs(pos.getY() - target.getY()) <= NEAR;
     }
 
     /** 到目标的直线距离：走的代价是每格 1，这个估计不会高过实际代价。 */

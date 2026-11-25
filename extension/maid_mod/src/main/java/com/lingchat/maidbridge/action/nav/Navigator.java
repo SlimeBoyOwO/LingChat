@@ -69,6 +69,8 @@ public final class Navigator {
     /** 有进展的判据：离目标最近到过哪里，以及多久没再靠近。 */
     private double bestDistance = Double.MAX_VALUE;
     private int stillTicks;
+    /** 搜不到时已经清过一次「试过的站位」，别在清空与重算之间来回打转。 */
+    private boolean forgot;
 
     private Navigator(NavGoal goal, NavPolicy policy, NavMemory memory, ScaffoldBook book) {
         this.goal = goal;
@@ -302,6 +304,13 @@ public final class Navigator {
         }
         if (state == RouteSearch.State.EXHAUSTED) {
             search = null;
+            // 试过的站位可能只是一次原版寻路没走过去：清掉重算一次，两次都搜不到才算真没路
+            if (!forgot && (!memory.triedStands.isEmpty() || !memory.badBlocks.isEmpty())) {
+                forgot = true;
+                memory.triedStands.clear();
+                memory.badBlocks.clear();
+                return;
+            }
             fail(canJumpHere(maid) ? NavFailure.NO_STAND : NavFailure.NO_HEADROOM);
             return;
         }

@@ -141,6 +141,16 @@ class RouteSearchTest {
     }
 
     @Test
+    void bridgesAGapEvenWhenTheTargetIsFarAway() {
+        // 缺口离目标三十多格：动地形不该只在目标附近才算数，远处的缺口一样是路
+        Fake world = new Fake().line(0, 1).line(5, 40).goal(38, FEET);
+        List<Step> route = solve(world, new BlockPos(40, FEET, 0));
+        long bridges = route.stream().filter(step -> step.kind() == Kind.BRIDGE).count();
+        assertEquals(3, bridges);
+        assertEquals(new BlockPos(38, FEET, 0), route.get(route.size() - 1).to());
+    }
+
+    @Test
     void risesToAStandThatDoesNotExistYet() {
         Fake world = new Fake().line(0, 0).goal(1, 2);
         List<Step> route = solve(world, new BlockPos(2, 2, 0));

@@ -79,8 +79,15 @@ final class RouteView implements RouteSearch.View {
                 || Bodies.other(level, block, maid)) {
             return false;
         }
-        return Terrain.reachableFrom(maid, from, block)
-                && Placement.seesFrom(maid, from, block, null);
+        if (!Terrain.reachableFrom(maid, from, block)) {
+            return false;
+        }
+        // 她脚下踩着的那块就是托面：架桥、往上垫时，下一块贴着它放就行。搜索里还看不见
+        // 这条路上刚铺出来的方块，真到执行的时候它们已经在了
+        if (block.distManhattan(from.below()) == 1) {
+            return true;
+        }
+        return Placement.seesFrom(maid, from, block, null);
     }
 
     @Override

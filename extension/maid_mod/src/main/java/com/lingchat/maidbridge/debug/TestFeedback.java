@@ -3,6 +3,7 @@ package com.lingchat.maidbridge.debug;
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.lingchat.maidbridge.action.nav.NavFailure;
 import com.lingchat.maidbridge.bridge.Envelope;
 import java.util.Locale;
 import java.util.UUID;
@@ -24,6 +25,8 @@ public final class TestFeedback {
         UUID requester;
         String maidId = "";
         String label = "";
+        /** 这一趟的寻路失败原因已经报过一次了。 */
+        boolean noted;
     }
 
     private static final Slot ACTION = new Slot();
@@ -36,6 +39,26 @@ public final class TestFeedback {
     public static void expectAction(ServerPlayer player, EntityMaid maid) {
         ACTION.requester = player.getUUID();
         ACTION.maidId = maid.getStringUUID();
+        ACTION.noted = false;
+    }
+
+    /**
+     * 走来走去的寻路判了走不通：先把原因报一次，收尾那句话随后照常发。
+     *
+     * <p>只在调试指令等着的时候报；报过一次就不再刷屏。
+     */
+    public static void noteNavFailure(EntityMaid maid, NavFailure failure, String phase,
+            boolean hasScaffold) {
+        if (maid == null || ACTION.requester == null || ACTION.noted
+                || !ACTION.maidId.equals(maid.getStringUUID())) {
+            return;
+        }
+        ACTION.noted = true;
+        String text = "[走过来测试] 寻路判了走不通："
+                + (failure == null ? "原因不明" : navText(failure) + "（" + failure.name() + "）")
+                + "｜阶段：" + phase
+                + (hasScaffold ? "" : "｜她身上没有能垫的方块");
+        say(ACTION, maid.level().getServer(), text);
     }
 
     /** 等一次施工的收尾。 */
@@ -136,11 +159,26 @@ public final class TestFeedback {
         return String.format(Locale.ROOT, "%.1f", ticks / 20.0) + " 秒";
     }
 
+    /** 寻路失败原因的日常说法。 */
+    private static String navText(NavFailure failure) {
+        return switch (failure) {
+            case NO_STAND -> "旁边没有能站的地方";
+            case NO_PATH -> "有地方站，但走不过去";
+            case NO_HEADROOM -> "头顶太低，跳不起来";
+            case OUT_OF_REACH -> "站到了也够不着目标";
+            case TIMEOUT -> "太久没有靠近过目标";
+        };
+    }
+
     private static void finish(Slot slot, MinecraftServer server, String text) {
+        say(slot, server, text);
+        clear(slot);
+    }
+
+    private static void say(Slot slot, MinecraftServer server, String text) {
         ServerPlayer player = slot.requester == null || server == null
                 ? null
                 : server.getPlayerList().getPlayer(slot.requester);
-        clear(slot);
         if (player != null) {
             player.sendSystemMessage(Component.literal(text));
         }
@@ -150,6 +188,7 @@ public final class TestFeedback {
         slot.requester = null;
         slot.maidId = "";
         slot.label = "";
+        slot.noted = false;
     }
 
     private static int intOf(JsonObject object, String key) {
