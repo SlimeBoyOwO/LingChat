@@ -20,6 +20,7 @@ import com.lingchat.maidbridge.action.nav.Navigator;
 import com.lingchat.maidbridge.action.nav.ScaffoldBook;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.debug.PathDebug;
+import com.lingchat.maidbridge.debug.TestFeedback;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.perception.EventFrames;
 import java.util.ArrayList;
@@ -209,6 +210,8 @@ public final class MaidBuildController {
     static ServerLevel lastLevel;
     static String lastDimension = "";
     static String lastStatus = "";
+    static String lastReasonCode = "";
+    static String lastReason = "";
     static String lastName = "";
     static int lastPlaced;
     static int lastTotal;
@@ -236,6 +239,8 @@ public final class MaidBuildController {
             data.addProperty("placed", 0);
             data.addProperty("total", 0);
             data.addProperty("remaining", 0);
+            data.addProperty("reason_code", "");
+            data.addProperty("reason", "");
             return data;
         }
         data.addProperty("status", lastStatus.isEmpty() ? "unknown" : lastStatus);
@@ -243,6 +248,8 @@ public final class MaidBuildController {
         data.addProperty("placed", lastPlaced);
         data.addProperty("total", lastTotal);
         data.addProperty("remaining", Math.max(0, lastTotal - lastPlaced));
+        data.addProperty("reason_code", lastReasonCode);
+        data.addProperty("reason", lastReason);
         return data;
     }
 
@@ -287,6 +294,8 @@ public final class MaidBuildController {
         lastLevel = (ServerLevel) maid.level();
         lastDimension = maid.level().dimension().location().toString();
         lastStatus = "";
+        lastReasonCode = "";
+        lastReason = "";
         lastName = name;
         lastPlaced = 0;
         lastTotal = targets.size();
@@ -341,6 +350,8 @@ public final class MaidBuildController {
         lastLevel = null;
         lastDimension = "";
         lastStatus = "";
+        lastReasonCode = "";
+        lastReason = "";
         lastName = "";
         lastPlaced = 0;
         lastTotal = 0;
@@ -678,6 +689,11 @@ public final class MaidBuildController {
             code = naturalReason(run);
         }
         String text = reason == null || reason.isEmpty() ? reasonText(code) : reason;
+        lastReasonCode = status.equals("done") ? "" : code;
+        lastReason = status.equals("done") ? "" : text;
+        // 调试指令等着的施工回执：盖完、盖了一半、没盖成都在这里交代
+        TestFeedback.buildDone(
+                server, run.maidId, status, code, text, run.placed, run.total, run.ticks);
         LOGGER.info(
                 "施工收工：{}，放置 {}/{}，原因 {}，失败 {}，无支撑跳过 {}，挖不动 {}",
                 status, run.placed, run.total, code, run.failed,

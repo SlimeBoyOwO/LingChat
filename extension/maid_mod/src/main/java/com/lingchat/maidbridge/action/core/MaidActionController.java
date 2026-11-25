@@ -8,6 +8,8 @@ import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
+import com.lingchat.maidbridge.debug.PathDebug;
+import com.lingchat.maidbridge.debug.TestFeedback;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
 import com.lingchat.maidbridge.action.nav.NavGoal;
@@ -312,6 +314,11 @@ public final class MaidActionController {
             status = run.nav.tick(maid);
         }
         run.nav.cleanScaffold(maid);
+        // 走来走去的这一趟也画出来：阶段、落脚点、跑跳路线与图搜索选的路
+        if (PathDebug.watching(maid)) {
+            PathDebug.report(maid, run.nav.phase(), run.nav.stand(), run.navTarget,
+                    run.nav.chain(), null, "");
+        }
         if (status == Navigator.Status.FAILED) {
             MaidActuator.markUnreachable(maid);
         }
@@ -376,6 +383,9 @@ public final class MaidActionController {
             }
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
+            // 调试指令等着的回执：到位、走不到、被打断都在这里交代
+            TestFeedback.actionDone(maid, outcome.status(), outcome.reasonCode(),
+                    outcome.reason(), run.machine.elapsedTicks());
         }
         // 没有完成事件的动作（坐下、站起、看一会儿）收尾是静默的
         if (run.action.hasCompletionEvent()) {
