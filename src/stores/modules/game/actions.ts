@@ -4,6 +4,7 @@ import type { GameLineInit, WebInitData } from "../../../api/services/game-info"
 import { getRoleInfo } from "../../../api/services/character";
 import { useUIStore } from "../ui/ui";
 import { useSettingsStore } from "../settings";
+import { useLetterStore } from "../letter";
 import type { SceneInfo } from "@/api/services/scene";
 import { canonicalEffectKey } from "@/components/game/standard/particles";
 import { invoke } from "@tauri-apps/api/core";
@@ -162,6 +163,8 @@ export const actions = {
 
 /** 将 WebInitData 写入 GameState（init / 角色切换共用） */
 export function applyWebInitData(state: GameState, gameInfo: WebInitData): void {
+  // 会话换了，信纸跟着收起并换成新会话的
+  useLetterStore().resetSession();
   const characterInfo = gameInfo.character_settings;
   const charId = characterInfo.character_id ?? 0;
 

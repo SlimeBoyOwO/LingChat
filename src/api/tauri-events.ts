@@ -7,6 +7,7 @@ import { useAdventureStore } from "../stores/modules/adventure";
 import { useUIStore } from "../stores/modules/ui/ui";
 import { useGameStore } from "../stores/modules/game";
 import { useSettingsStore } from "../stores/modules/settings";
+import { useLetterStore } from "../stores/modules/letter";
 import { isWeatherEffect } from "@/components/game/standard/particles";
 import { setWeatherAutoSync } from "./services/scene";
 import { applyWebInitData } from "../stores/modules/game/actions";
@@ -502,7 +503,13 @@ export function initializeTauriEventListeners() {
     }
   });
 
-  // === LLM 工具事件（场景 / 换装） ===
+  // === LLM 工具事件（场景 / 换装 / 信纸） ===
+
+  // 信纸写完或改完立即展示，不进对话事件队列
+  listen("letter:show", (event) => {
+    const payload = event.payload as { page: number };
+    void useLetterStore().showPage(payload.page);
+  });
 
   // ambient:effect 按来源落层：
   //   layer=weather —— 天气自动同步，只写天气层

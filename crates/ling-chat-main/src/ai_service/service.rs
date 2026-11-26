@@ -17,6 +17,7 @@ use crate::ai_service::tts::local::LocalTtsRuntime;
 use crate::ai_service::types::{CharacterSettings, GameLine, LineAttributeExt, LineBase};
 use crate::config::tts::TtsConfig;
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_letter_repo::SaveLetterRepo;
 use crate::db::managers::save_note_repo::SaveNoteRepo;
 use crate::utils::prompt::{PromptOptions, sys_prompt_builder_with_player};
 
@@ -210,6 +211,7 @@ impl AIService {
         // 会话边界：上一段未存档会话的暂存笔记不跨档带入
         gs.pending_save_notes.clear();
         gs.save_notes.clear();
+        gs.letters.clear();
         // 好感度会话边界：存档全局变量里的 `affection.{role_id}` 是「上一个会话/存档」
         gs.global_variables.clear();
         gs.affection_eval_cursor = 0;
@@ -241,8 +243,15 @@ impl AIService {
                     tracing::warn!("预加载存档笔记失败: {e}");
                     Vec::new()
                 });
+                gs.letters = SaveLetterRepo::list_ids(&self.db, sid)
+                    .await
+                    .unwrap_or_else(|e| {
+                        tracing::warn!("读取存档信纸失败: {e}");
+                        Vec::new()
+                    });
             } else {
                 gs.save_notes.clear();
+                gs.letters.clear();
             }
             gs.refresh_memories(&self.db).await?;
             let _ = gs.get_role(&self.db, main_role_id).await?;

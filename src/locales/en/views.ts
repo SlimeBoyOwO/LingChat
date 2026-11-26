@@ -11,6 +11,7 @@ export default {
     auto: "Auto",
     pet: "Desktop Pet",
     menu: "Menu",
+    letter: "Letter",
   },
   mainMenu: {
     characterAlt: "Character",

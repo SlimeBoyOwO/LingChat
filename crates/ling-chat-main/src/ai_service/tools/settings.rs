@@ -140,6 +140,15 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
         ],
     ),
     (
+        "letter",
+        &[
+            "letter_list",
+            "letter_read",
+            "letter_write",
+            "letter_update",
+        ],
+    ),
+    (
         "character",
         &[
             "character_list",
@@ -175,6 +184,9 @@ pub const TOOL_GROUPS: &[(&str, &[&str])] = &[
     ),
     ("command", &["execute_command"]),
 ];
+
+/// 缺省开启的分组；用户关过一次后以配置为准。
+const GROUPS_ON_BY_DEFAULT: &[&str] = &["letter"];
 
 /// 插件工具白名单在 `enabled_tools` 中的保留键。
 pub const PLUGIN_TOOL_GROUP: &str = "plugin";
@@ -375,6 +387,9 @@ impl ToolSettings {
         self.tool_cache_capacity = self
             .tool_cache_capacity
             .clamp(MIN_TOOL_CACHE_CAPACITY, MAX_TOOL_CACHE_CAPACITY);
+        for group in GROUPS_ON_BY_DEFAULT {
+            self.groups.entry((*group).to_string()).or_insert(true);
+        }
         self.normalize_enabled_tools();
     }
 
@@ -559,6 +574,7 @@ impl ToolSettings {
             return Ok(settings);
         }
         let mut settings = Self::default();
+        settings.normalize();
         settings.apply_platform_constraints();
         settings.save(data_dir)?;
         Ok(settings)
@@ -675,6 +691,8 @@ mod tests {
     fn whitelist_limits_tools_within_enabled_group() {
         let mut settings = ToolSettings::default();
         settings.groups.insert("schedule".into(), true);
+        // 信纸组缺省开启，这里显式关掉以免干扰计数
+        settings.groups.insert("letter".into(), false);
         settings.enabled_tools.insert(
             "schedule".into(),
             vec!["schedule_get_all".into(), "schedule_get_all".into()],

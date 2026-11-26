@@ -10,6 +10,7 @@ export default {
     auto: "自动",
     pet: "桌宠",
     menu: "菜单",
+    letter: "信纸",
   },
   mainMenu: {
     characterAlt: "人物",

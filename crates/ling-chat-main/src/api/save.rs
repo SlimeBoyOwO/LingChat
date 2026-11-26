@@ -250,6 +250,9 @@ pub async fn create_save(
         if let Err(e) = gs.rebind_save_notes(db, save_id).await {
             tracing::warn!("存档笔记同步失败: {e}");
         }
+        if let Err(e) = gs.rebind_letters(db, save_id).await {
+            tracing::warn!("存档信纸同步失败: {e}");
+        }
         gs.active_save_id = Some(save_id);
         SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
@@ -543,6 +546,9 @@ pub async fn update_save(
         if let Err(e) = gs.rebind_save_notes(db, save_id).await {
             tracing::warn!("存档笔记同步失败: {e}");
         }
+        if let Err(e) = gs.rebind_letters(db, save_id).await {
+            tracing::warn!("存档信纸同步失败: {e}");
+        }
         gs.active_save_id = Some(save_id);
         SaveRepo::bind_line_ids(&mut gs.line_list, &synced_ids);
     }
@@ -644,6 +650,7 @@ pub async fn delete_save(app: AppHandle, save_id: i32) -> Result<(), String> {
         if gs.active_save_id == Some(save_id) {
             gs.active_save_id = None;
             gs.save_notes.clear();
+            gs.letters.clear();
         }
     }
 

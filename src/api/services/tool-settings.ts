@@ -51,7 +51,7 @@ export interface ToolSettings {
   media_file: MediaFileSettings;
   /** 笔记语义检索与 Tool RAG 的向量化后端 */
   embedding: EmbeddingSettings;
-  /** 分组开关：组名 → 是否启用（schedule/memory/character/scene/status/clock/skills/media/file_ops/command） */
+  /** 分组开关：组名 → 是否启用（schedule/memory/letter/character/scene/status/clock/skills/media/file_ops/command） */
   groups: Record<string, boolean>;
   /** 工具级白名单：组名 → 组内已勾选的工具名。缺失某个组时沿用整组开关。 */
   enabled_tools: Record<string, string[]>;
@@ -86,6 +86,7 @@ export const TOOL_GROUP_KEYS = [
   "image_generation",
   "schedule",
   "memory",
+  "letter",
   "character",
   "scene",
   "status",
@@ -102,6 +103,7 @@ export const TOOL_PACKAGE_ORDER = [
   "web_search",
   "schedule",
   "memory",
+  "letter",
   "media",
   "file_ops",
   "command",

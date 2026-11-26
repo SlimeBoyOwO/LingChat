@@ -14,6 +14,7 @@ pub mod font;
 pub mod game;
 pub mod hotword;
 pub mod image_generation;
+pub mod letter;
 pub mod live2d;
 pub mod locale;
 pub mod memory;
@@ -146,6 +147,10 @@ pub(crate) fn ambient_dir() -> PathBuf {
 
 pub fn voice_dir() -> PathBuf {
     data_dir().join("voice")
+}
+
+pub fn letters_dir() -> PathBuf {
+    data_dir().join("letters")
 }
 
 pub(crate) fn fonts_dir() -> PathBuf {

@@ -11,6 +11,7 @@ export default {
     auto: "自動",
     pet: "桌寵",
     menu: "選單",
+    letter: "信紙",
   },
   mainMenu: {
     characterAlt: "人物",

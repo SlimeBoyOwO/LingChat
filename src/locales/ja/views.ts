@@ -10,6 +10,7 @@ export default {
     auto: "自動",
     pet: "デスクトップペット",
     menu: "メニュー",
+    letter: "便箋",
   },
   mainMenu: {
     characterAlt: "キャラクター",

@@ -11,9 +11,12 @@
     <GameBackground></GameBackground>
     <!-- <GameAvatar ref="gameAvatarRef" @audio-ended="handleAudioFinished" />  -->
     <!-- 轻量模式卸载整个角色舞台：Pixi Application、Live2D 模型与 WebGL 上下文随之释放 -->
+    <!-- 信纸展开时人物整层左移让位 -->
     <GameRolesStage
       v-if="!uiStore.liteMode"
       ref="gameAvatarRef"
+      class="transition-transform duration-500 ease-out"
+      :class="{ 'translate-x-[max(-20vw,-300px)] max-md:translate-x-0': letterStore.visible }"
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
@@ -22,6 +25,8 @@
       :relation-ready="relationReady"
       @player-continued="manualTriggerContinue"
     />
+
+    <LetterPaper v-if="letterReady" />
 
     <RelationGuardModal
       :visible="relationModalVisible"
@@ -53,6 +58,14 @@
       >
         <h3 class="hidden xl:block">{{ $t("views.mainChat.pet") }}</h3>
       </Button>
+      <Button
+        type="nav"
+        icon="edit"
+        @click="letterStore.visible ? letterStore.hide() : letterStore.open()"
+        v-show="uiStore.showSettings !== true"
+      >
+        <h3 class="hidden xl:block">{{ $t("views.mainChat.letter") }}</h3>
+      </Button>
       <Button type="nav" icon="text" @click="openSettings" v-show="uiStore.showSettings !== true">
         <h3 class="hidden xl:block">{{ $t("views.mainChat.menu") }}</h3>
       </Button>
@@ -76,10 +89,11 @@ import FreeModeTools from "@/components/tools/FreeModeTools.vue";
 import StatusInfoBar from "@/components/tools/StatusInfoBar.vue";
 import ToolActivityStatus from "@/components/tools/ToolActivityStatus.vue";
 import { eventQueue } from "@/core/events/event-queue";
-import { computed, onMounted, ref, watch } from "vue";
+import { computed, defineAsyncComponent, onMounted, ref, watch, watchEffect } from "vue";
 import { useRouter } from "vue-router";
 import { useGameStore } from "../../stores/modules/game";
 import { useUIStore } from "../../stores/modules/ui/ui";
+import { useLetterStore } from "../../stores/modules/letter";
 import { Button } from "../base";
 import { GameBackground, GameDialog, GameRolesStage } from "../game/standard";
 import LoadingTransition from "./LoadingTransition.vue";
@@ -93,6 +107,9 @@ import { useRelationGuard } from "@/composables/chat/useRelationGuard";
 import GameExtraUI from "../game/standard/GameExtraUI.vue";
 import DirectorSidebar from "../director/DirectorSidebar.vue";
 
+// 公式与代码高亮库较大，信纸按需加载
+const LetterPaper = defineAsyncComponent(() => import("../game/standard/LetterPaper.vue"));
+
 const LOADING_STORAGE_KEY = "lingchat_loading_shown";
 
 let loadingShownThisSession = false;
@@ -100,6 +117,13 @@ let loadingShownThisSession = false;
 const router = useRouter();
 const uiStore = useUIStore();
 const gameStore = useGameStore();
+const letterStore = useLetterStore();
+
+// 第一次用到信纸时才加载组件，之后保持挂载，收起动画才能播完
+const letterReady = ref(false);
+watchEffect(() => {
+  if (letterStore.pages.length > 0 || letterStore.visible) letterReady.value = true;
+});
 
 // 首次加载过渡状态：仅当本次 session 未播放过且 localStorage 未标记时播放
 const showLoading = ref(!loadingShownThisSession && !localStorage.getItem(LOADING_STORAGE_KEY));

@@ -100,6 +100,12 @@ pub fn setup(
             tracing::warn!("语音文件清理失败（非致命错误）: {e:#}");
         },
     }
+    match rt
+        .block_on(ling_chat_main::db::managers::save_letter_repo::cleanup_orphan_letter_files(&db))
+    {
+        Ok(deleted) => tracing::info!("信纸文件清理完成: 删除 {deleted} 个文件"),
+        Err(e) => tracing::warn!("信纸文件清理失败（非致命错误）: {e:#}"),
+    }
 
     // 构建整个领域服务图并组装 InnerAppState。
     // 注意这里**不能**用 `rt.block_on` 包起来：建图过程中 `PluginManager` 会调用

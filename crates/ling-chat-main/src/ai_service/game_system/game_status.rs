@@ -11,6 +11,7 @@ use crate::ai_service::game_system::role_manager::GameRoleManager;
 use crate::ai_service::game_system::status_ops::{Pending, PromptLine, RequestScoped};
 use crate::ai_service::types::{GameLine, GameRole, LineBase, Player, ScriptStatus};
 use crate::db::entities::line::LineAttribute;
+use crate::db::managers::save_letter_repo::{SaveLetterRepo, copy_letters};
 use crate::db::managers::save_note_repo::SaveNoteRepo;
 use crate::utils::prompt::{PromptRole, REPLY_LENGTH_VAR_KEY, ReplyLengthMode};
 use ling_chat_notes::Note;
@@ -67,6 +68,9 @@ pub struct GameStatus {
     /// 检索直接读这里，避免每次查库。
     pub save_notes: Vec<Note>,
 
+    /// 当前会话的信纸 id（按页序）。有存档时已落库，无存档时首次绑档再写入。
+    pub letters: Vec<String>,
+
     /// 试玩会话代号。
     pub preview_generation: u64,
 
@@ -113,6 +117,7 @@ impl GameStatus {
             active_save_id: None,
             pending_save_notes: Vec::new(),
             save_notes: Vec::new(),
+            letters: Vec::new(),
             preview_generation: 0,
             entry_greeting_done: false,
             affection_eval_cursor: 0,
@@ -254,6 +259,32 @@ impl GameStatus {
         if outcome.is_err() {
             // 同步失败时以目标档库内状态为准，避免内存残留旧档笔记；暂存保留待下次重试
             self.save_notes = SaveNoteRepo::list(db, target_save_id)
+                .await
+                .unwrap_or_default();
+        }
+        outcome
+    }
+
+    /// 把当前会话的信纸绑到目标存档，语义同 rebind_save_notes：
+    /// 另存到别的档时复制成新 id，一张信纸只属于一个存档。
+    pub async fn rebind_letters(
+        &mut self,
+        db: &DatabaseConnection,
+        target_save_id: i32,
+    ) -> Result<()> {
+        let outcome = async {
+            let ids = match self.active_save_id {
+                Some(current) if current == target_save_id => self.letters.clone(),
+                Some(_) => copy_letters(&self.letters)?,
+                None => self.letters.clone(),
+            };
+            SaveLetterRepo::replace_all(db, target_save_id, &ids).await?;
+            self.letters = ids;
+            Ok(())
+        }
+        .await;
+        if outcome.is_err() {
+            self.letters = SaveLetterRepo::list_ids(db, target_save_id)
                 .await
                 .unwrap_or_default();
         }
