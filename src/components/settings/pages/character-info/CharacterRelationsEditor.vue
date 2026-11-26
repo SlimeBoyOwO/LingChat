@@ -16,20 +16,18 @@
       <div v-for="(row, idx) in relationRows" :key="idx" class="flex items-center gap-2">
         <SelectMenu v-model="row.target" class="w-44 shrink-0" :options="optionsFor(row)" />
         <ExpandableInput v-model="row.text" class="glass-input flex-1" />
-        <!-- 玩家身份行：该角色对 ta 的初始好感度覆写，留空跟随角色卡默认。
-             宽度放在外层：glass-input 的 width:100% 未分层，直接写在 input 上的宽度类压不过它。 -->
-        <div v-if="isAffectionTarget(row)" class="w-22 shrink-0">
-          <input
-            :value="row.affection ?? ''"
-            type="number"
-            min="-100"
-            max="100"
-            class="glass-input w-full text-center"
-            :placeholder="$t('settings.characterInfo.relations.affectionPlaceholder')"
-            :title="$t('settings.characterInfo.relations.affectionHint')"
-            @input="setAffection(row, ($event.target as HTMLInputElement).value)"
-          />
-        </div>
+        <!-- 玩家身份行：该角色对 ta 的初始好感度覆写，留空跟随角色卡默认 -->
+        <input
+          v-if="isAffectionTarget(row)"
+          :value="row.affection ?? ''"
+          type="number"
+          min="-100"
+          max="100"
+          class="glass-input w-22 shrink-0 text-center"
+          :placeholder="$t('settings.characterInfo.relations.affectionPlaceholder')"
+          :title="$t('settings.characterInfo.relations.affectionHint')"
+          @input="setAffection(row, ($event.target as HTMLInputElement).value)"
+        />
         <button class="btn-sm btn-sm-ghost" @click="removeRow(idx)">×</button>
       </div>
       <button class="btn-sm btn-sm-ghost" @click="addRow()">

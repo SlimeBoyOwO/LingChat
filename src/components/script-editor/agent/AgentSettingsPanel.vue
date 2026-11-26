@@ -110,15 +110,12 @@
           <label class="shrink-0 text-[0.86rem] text-white/75">{{
             t("scriptEditor.agentSettings.maxToolRounds")
           }}</label>
-          <!-- 宽度放在外层：glass-input 的 width/padding 未分层，直接写在 input 上的尺寸类压不过它 -->
-          <div class="w-28 shrink-0">
-            <input
-              v-model.number="store.settings.maxToolRounds"
-              type="number"
-              min="-1"
-              class="glass-input w-full py-1.5 text-center"
-            />
-          </div>
+          <input
+            v-model.number="store.settings.maxToolRounds"
+            type="number"
+            min="-1"
+            class="glass-input w-28 shrink-0 py-1.5 text-center"
+          />
           <span class="text-[0.72rem] text-white/40">{{
             t("scriptEditor.agentSettings.unlimited")
           }}</span>
