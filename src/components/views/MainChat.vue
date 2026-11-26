@@ -20,11 +20,7 @@
       @audio-ended="handleAudioFinished"
       @audio-started="handleAudioStarted"
     />
-    <GameDialog
-      ref="gameDialogRef"
-      :relation-ready="relationReady"
-      @player-continued="manualTriggerContinue"
-    />
+    <GameDialog ref="gameDialogRef" @player-continued="manualTriggerContinue" />
 
     <LetterPaper v-if="letterReady" />
 
@@ -186,7 +182,6 @@ const runInitialization = async () => {
 
 // 关系就绪门：未就绪时禁用输入框、输入区上方提示条 + 引导模态
 const {
-  ready: relationReady,
   missingSide: relationMissingSide,
   blockedRoleId,
   blockedRoles,
