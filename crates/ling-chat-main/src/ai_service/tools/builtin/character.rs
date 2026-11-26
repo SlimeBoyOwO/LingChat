@@ -334,7 +334,7 @@ impl Tool for CharacterSetClothes {
         let app = context.require_app()?;
 
         let auto_allowed = crate::config::AppConfig::load(&app)
-            .map(|c| c.ai_auto_clothes)
+            .map(|c| c.clothes_auto_switch)
             .unwrap_or(true);
         if !auto_allowed {
             return Ok(json!({

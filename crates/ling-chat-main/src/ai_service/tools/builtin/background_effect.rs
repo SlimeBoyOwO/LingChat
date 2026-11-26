@@ -74,7 +74,7 @@ impl Tool for SetBackgroundEffect {
         // 手动优先（硬边界）：用户手动选过特效后，AI 的切换请求一律不执行；
         // 恢复的唯一途径是用户在设置页重新打开开关
         let auto_allowed = crate::config::AppConfig::load(&app)
-            .map(|c| c.ai_auto_effect)
+            .map(|c| c.effect_auto_switch)
             .unwrap_or(true);
         if !auto_allowed {
             return Ok(json!({

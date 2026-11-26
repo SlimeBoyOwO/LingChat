@@ -645,7 +645,7 @@ pub async fn select_clothes(
         tracing::warn!("emit character:clothes-changed 失败: {e}");
     }
     // 手动优先：用户手动选装后，关闭 AI 自动换装（设置页可重新打开）
-    crate::config::AppConfig::lock_auto_switch(&app, config::keys::AI_AUTO_CLOTHES);
+    crate::config::AppConfig::lock_auto_switch(&app, config::keys::CLOTHES_AUTO_SWITCH);
     Ok(result)
 }
 

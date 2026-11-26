@@ -50,11 +50,10 @@ pub const WEATHER_FIRST_TALK: &str = "features.weather_first_talk";
 /// 自动同步现实天气到天气特效层（需配合 WEATHER_CITY；手动或 AI 切换天气特效时自动关闭）。
 pub const WEATHER_AUTO_SYNC: &str = "features.weather_auto_sync";
 
-// ========== AI 自动切换（手动优先锁） ==========
-/// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）
-pub const AI_AUTO_CLOTHES: &str = "features.ai_auto_clothes";
-/// 是否允许 AI 自动切换粒子特效（用户手动选特效后自动关闭，设置页可重新打开）
-pub const AI_AUTO_EFFECT: &str = "features.ai_auto_effect";
+// ========== 自动切换（手动优先锁） ==========
+// 值语义：true = 允许 AI 自动切换；用户手动选定后由后端自动翻 false 落锁
+pub const CLOTHES_AUTO_SWITCH: &str = "features.clothes_auto_switch";
+pub const EFFECT_AUTO_SWITCH: &str = "features.effect_auto_switch";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

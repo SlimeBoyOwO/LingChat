@@ -3,6 +3,8 @@
 //! 设计原则：每个配置项的默认值仅在 `AppConfig::default()` 中定义一次，
 //! 其他所有位置（serde、load()、build_config_tree）均引用该实现。
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Wry};
@@ -112,11 +114,11 @@ pub struct AppConfig {
     /// 自动同步现实天气到天气特效层（需配置 weather_city；手动或 AI 切换天气特效时自动关闭）。
     #[serde(default)]
     pub weather_auto_sync: bool,
-    // ---- AI 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
+    // ---- 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
     #[serde(default = "default_true")]
-    pub ai_auto_clothes: bool,
+    pub clothes_auto_switch: bool,
     #[serde(default = "default_true")]
-    pub ai_auto_effect: bool,
+    pub effect_auto_switch: bool,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -171,8 +173,8 @@ impl Default for AppConfig {
             weather_city: String::new(),
             weather_first_talk: false,
             weather_auto_sync: false,
-            ai_auto_clothes: true,
-            ai_auto_effect: true,
+            clothes_auto_switch: true,
+            effect_auto_switch: true,
             use_persistent_memory: true,
             memory_update_interval: default_memory_update_interval(),
             memory_recent_window: default_memory_recent_window(),
@@ -233,6 +235,31 @@ fn get_u64_in_range(store: &Store<Wry>, key: &str, default: u64, min: u64, max: 
         .unwrap_or(default)
 }
 
+/// 配置键改名的一次性搬运：把旧键的值迁到新键并删除旧键，保持老用户已落的状态不丢。
+/// 新键已存在或旧键都不存在时不做任何写入，因此后续启动直接跳过。
+fn migrate_renamed_keys(store: &Arc<Store<Wry>>) {
+    const RENAMED: [(&str, &str); 2] = [
+        ("features.ai_auto_clothes", keys::CLOTHES_AUTO_SWITCH),
+        ("features.ai_auto_effect", keys::EFFECT_AUTO_SWITCH),
+    ];
+
+    let mut changed = false;
+    for (old, new) in RENAMED {
+        if store.has(new) {
+            continue;
+        }
+        if let Some(value) = store.get(old) {
+            store.set(new.to_string(), value);
+            store.delete(old);
+            changed = true;
+        }
+    }
+
+    if changed {
+        let _ = store.save();
+    }
+}
+
 // ========== AppConfig 方法 ==========
 
 impl AppConfig {
@@ -243,6 +270,8 @@ impl AppConfig {
             .context("Failed to open settings store")?;
 
         let default = Self::default();
+
+        migrate_renamed_keys(&store);
 
         Ok(Self {
             llm_output_sec_lang: get_bool(
@@ -282,8 +311,16 @@ impl AppConfig {
                 default.weather_first_talk,
             ),
             weather_auto_sync: get_bool(&store, keys::WEATHER_AUTO_SYNC, default.weather_auto_sync),
-            ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
-            ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
+            clothes_auto_switch: get_bool(
+                &store,
+                keys::CLOTHES_AUTO_SWITCH,
+                default.clothes_auto_switch,
+            ),
+            effect_auto_switch: get_bool(
+                &store,
+                keys::EFFECT_AUTO_SWITCH,
+                default.effect_auto_switch,
+            ),
             use_persistent_memory: get_bool(
                 &store,
                 keys::USE_PERSISTENT_MEMORY,
