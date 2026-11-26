@@ -63,6 +63,13 @@ fn default_auto_save_interval_secs() -> u32 {
 fn default_auto_compress_image() -> bool {
     true
 }
+/// 对话标识注入默认关闭：严格校验请求体的兼容端点可能因未知字段返回 400。
+fn default_prompt_cache_key() -> bool {
+    false
+}
+fn default_session_header() -> bool {
+    false
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
@@ -94,6 +101,12 @@ pub struct AppConfig {
     /// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求）。
     #[serde(default = "default_auto_compress_image")]
     pub auto_compress_image: bool,
+    /// 是否在 LLM 请求体注入 `prompt_cache_key`（值为当前存档 ID `save-N`）。
+    #[serde(default = "default_prompt_cache_key")]
+    pub prompt_cache_key: bool,
+    /// 是否在 LLM 请求头注入 `X-Session-ID`（值为当前存档 ID `save-N`）。
+    #[serde(default = "default_session_header")]
+    pub session_header: bool,
 
     // ---- 翻译 ----
     #[serde(default = "default_enable_translate")]
@@ -167,6 +180,8 @@ impl Default for AppConfig {
             no_emotion_limit_prompt: false,
             llm_timeout_secs: default_llm_timeout_secs(),
             auto_compress_image: default_auto_compress_image(),
+            prompt_cache_key: default_prompt_cache_key(),
+            session_header: default_session_header(),
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
@@ -297,6 +312,12 @@ impl AppConfig {
                 keys::LLM_AUTO_COMPRESS_IMAGE,
                 default.auto_compress_image,
             ),
+            prompt_cache_key: get_bool(
+                &store,
+                keys::LLM_PROMPT_CACHE_KEY,
+                default.prompt_cache_key,
+            ),
+            session_header: get_bool(&store, keys::LLM_SESSION_HEADER, default.session_header),
             enable_translate: get_bool(&store, keys::TRANSLATE_ENABLE, default.enable_translate),
             enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, default.enable_time_sense),
             enable_emotion_classifier: get_bool(

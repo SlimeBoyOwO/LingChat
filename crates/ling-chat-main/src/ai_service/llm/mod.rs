@@ -120,6 +120,17 @@ pub enum LlmChunk {
 
 pub type ChunkStream = Pin<Box<dyn Stream<Item = Result<LlmChunk>> + Send>>;
 
+/// 对话标识：随单次请求下发，让网关把同一整段对话归到同一份提示缓存与同一台机器。
+///
+/// `id` 形如 `save-12`（同一存档内恒定）；`use_body` / `use_header` 对应高级设置里的
+/// 两个总开关，由调用方每次请求现读配置，因此改开关即时生效，无需重建 LLM 槽位。
+#[derive(Debug, Clone)]
+pub struct ConversationTag {
+    pub id: String,
+    pub use_body: bool,
+    pub use_header: bool,
+}
+
 /// LLM 客户端：薄包装，把协议细节委托给内部的 `LlmProvider`。
 pub struct LlmClient {
     cfg: LlmConfig,
@@ -146,15 +157,23 @@ impl LlmClient {
 
     /// 非流式：一次性取完整回复。
     pub async fn complete(&self, messages: &[LlmMessage]) -> Result<String> {
+        self.complete_inner(messages, None).await
+    }
+
+    async fn complete_inner(
+        &self,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<String> {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 model"));
         }
-        self.provider.complete(&self.http, messages).await
+        self.provider.complete(&self.http, messages, tag).await
     }
 
     /// 流式：返回 `AsyncStream<Result<LlmChunk>>`。每个元素是一段内容或思考链片段。
     pub async fn complete_stream(&self, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        self.complete_stream_inner(messages, None).await
+        self.complete_stream_inner(messages, None, None).await
     }
 
     /// 是否支持原生流式 function calling。
@@ -169,7 +188,7 @@ impl LlmClient {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<ChunkStream> {
-        self.complete_stream_inner(messages, Some((tools, tool_choice)))
+        self.complete_stream_inner(messages, Some((tools, tool_choice)), None)
             .await
     }
 
@@ -177,6 +196,7 @@ impl LlmClient {
         &self,
         messages: &[LlmMessage],
         tools: Option<(&[ToolDefinition], Option<&str>)>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 model"));
@@ -184,10 +204,14 @@ impl LlmClient {
         let mut inner = match tools {
             Some((definitions, tool_choice)) => {
                 self.provider
-                    .complete_stream_with_tools(&self.http, messages, definitions, tool_choice)
+                    .complete_stream_with_tools(&self.http, messages, definitions, tool_choice, tag)
                     .await?
             },
-            None => self.provider.complete_stream(&self.http, messages).await?,
+            None => {
+                self.provider
+                    .complete_stream(&self.http, messages, tag)
+                    .await?
+            },
         };
         let timeout_secs = self.cfg.timeout_secs;
         let idle_timeout = Duration::from_secs(timeout_secs);
@@ -212,11 +236,72 @@ impl LlmClient {
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
     ) -> Result<LlmResponseWithTools> {
+        self.complete_with_tools_inner(messages, tools, tool_choice, None)
+            .await
+    }
+
+    async fn complete_with_tools_inner(
+        &self,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
+    ) -> Result<LlmResponseWithTools> {
         if !self.cfg.is_usable() {
             return Err(anyhow!("LLM 未配置 model"));
         }
         self.provider
-            .complete_with_tools(&self.http, messages, tools, tool_choice)
+            .complete_with_tools(&self.http, messages, tools, tool_choice, tag)
+            .await
+    }
+
+    /// 绑定对话标识，返回请求视图 [`LlmSession`]。
+    ///
+    /// provider 按标识里的两个开关把 `id` 注入请求体 `prompt_cache_key` 与请求头
+    /// `X-Session-ID`；传 `None`（未载入存档）时两者都不注入。
+    pub fn for_session<'a>(&'a self, tag: Option<&'a ConversationTag>) -> LlmSession<'a> {
+        LlmSession { client: self, tag }
+    }
+}
+
+/// 会话标识请求视图：与 [`LlmClient`] 同签名的四个请求方法，额外携带对话标识。
+///
+/// 只有主对话链路需要按对话分组缓存，其余子系统直接用 `LlmClient` 上的同名方法。
+pub struct LlmSession<'a> {
+    client: &'a LlmClient,
+    tag: Option<&'a ConversationTag>,
+}
+
+impl LlmSession<'_> {
+    pub async fn complete(&self, messages: &[LlmMessage]) -> Result<String> {
+        self.client.complete_inner(messages, self.tag).await
+    }
+
+    pub async fn complete_stream(&self, messages: &[LlmMessage]) -> Result<ChunkStream> {
+        self.client
+            .complete_stream_inner(messages, None, self.tag)
+            .await
+    }
+
+    pub async fn complete_stream_with_tools(
+        &self,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<ChunkStream> {
+        self.client
+            .complete_stream_inner(messages, Some((tools, tool_choice)), self.tag)
+            .await
+    }
+
+    pub async fn complete_with_tools(
+        &self,
+        messages: &[LlmMessage],
+        tools: &[ToolDefinition],
+        tool_choice: Option<&str>,
+    ) -> Result<LlmResponseWithTools> {
+        self.client
+            .complete_with_tools_inner(messages, tools, tool_choice, self.tag)
             .await
     }
 }

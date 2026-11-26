@@ -105,6 +105,28 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             .to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::LLM_PROMPT_CACHE_KEY.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_PROMPT_CACHE_KEY,
+                            &app_defaults.prompt_cache_key.to_string(),
+                        ),
+                        description: "在对话请求体注入 prompt_cache_key（值为当前存档 ID，形如 save-12），用于网关侧提示缓存分组；关闭则不发送该字段，避免严格校验的兼容端点因未知字段返回 400。未载入存档时不发送"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LLM_SESSION_HEADER.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_SESSION_HEADER,
+                            &app_defaults.session_header.to_string(),
+                        ),
+                        description: "在对话请求头注入 X-Session-ID（值与 prompt_cache_key 相同），用于网关侧会话亲和路由，把同一对话的请求送到同一台机器；与上一项配合才能完整命中缓存。只作用于主对话链路"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );

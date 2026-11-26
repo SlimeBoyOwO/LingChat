@@ -49,5 +49,10 @@ export default {
     affectionToggleConfirm:
       "Toggle the affection system? When disabled, affection evaluation stops and the affection panel is hidden immediately.",
     affectionToggleFailed: "Failed to toggle the affection system, please try again later",
+    conversationTagTitle: "Conversation Identifier",
+    conversationTagDesc:
+      "Sends the current save ID (e.g. save-12) to the model gateway as the unique ID of this conversation, so it can group requests into one prompt cache and one machine. The two switches are independent; gateways need both to fully hit the cache. Main chat only, and nothing is sent when no save is loaded",
+    promptCacheKeyToggle: "Send prompt_cache_key in body",
+    sessionHeaderToggle: "Send X-Session-ID in header",
   },
 };

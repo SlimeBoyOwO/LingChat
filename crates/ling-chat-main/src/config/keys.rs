@@ -31,6 +31,10 @@ pub const LLM_TIMEOUT_SECS: &str = "llm.timeout_secs";
 /// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求；
 /// 关闭后不再做该检查，超限图片将按原样直发，可能被服务端拒绝）。
 pub const LLM_AUTO_COMPRESS_IMAGE: &str = "llm.auto_compress_image";
+/// 是否在 LLM 请求体注入 `prompt_cache_key`（值为当前存档 ID），供网关侧提示缓存分组。
+pub const LLM_PROMPT_CACHE_KEY: &str = "llm.prompt_cache_key";
+/// 是否在 LLM 请求头注入 `X-Session-ID`（值为当前存档 ID），供网关侧会话亲和路由。
+pub const LLM_SESSION_HEADER: &str = "llm.session_header";
 
 // ========== 翻译（对应 TRANSLATE_LLM_PROVIDER / TRANSLATE_MODEL / TRANSLATE_API_KEY / TRANSLATE_BASE_URL） ==========
 pub const TRANSLATE_PROVIDER: &str = "translate.provider";

@@ -46,5 +46,10 @@ export default {
     affectionToggleConfirm:
       "好感度システムを切り替えますか？オフにすると、好感度の評価が直ちに停止し、好感度パネルも非表示になります。",
     affectionToggleFailed: "好感度システムの切替に失敗しました。後でもう一度お試しください",
+    conversationTagTitle: "会話識別子",
+    conversationTagDesc:
+      "現在のセーブID（save-12 のような形式）を会話全体の一意識別子としてモデルゲートウェイに送り、同一会話のリクエストを同一のプロンプトキャッシュ・同一マシンにまとめます。2つの項目は独立しており、両方有効で初めて完全にキャッシュに命中します。主会話のみ対象、セーブ未読み込み時は送信しません",
+    promptCacheKeyToggle: "リクエスト本文に prompt_cache_key",
+    sessionHeaderToggle: "リクエストヘッダに X-Session-ID",
   },
 };

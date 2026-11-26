@@ -42,5 +42,10 @@ export default {
     affectionMasterToggle: "启用好感度系统",
     affectionToggleConfirm: "确定要切换好感度系统吗？关闭后将立即停止好感度评估并隐藏好感度面板。",
     affectionToggleFailed: "切换好感度系统失败，请稍后重试",
+    conversationTagTitle: "对话标识",
+    conversationTagDesc:
+      "把当前存档 ID（形如 save-12）作为整段对话的唯一标识发给模型网关，帮助它把同一对话的请求归到同一份提示缓存、同一台机器。两项互相独立，网关侧两者配合才能完整命中；仅作用于主对话链路，未载入存档时不发送",
+    promptCacheKeyToggle: "请求体携带 prompt_cache_key",
+    sessionHeaderToggle: "请求头携带 X-Session-ID",
   },
 };

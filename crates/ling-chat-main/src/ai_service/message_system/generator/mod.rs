@@ -29,7 +29,7 @@ use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::{ConversationTag, LlmClient};
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
@@ -38,6 +38,7 @@ use crate::ai_service::tools::registry::ToolRegistry;
 use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
+use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{RoundReply, scan_reply_shape};
 
@@ -325,6 +326,20 @@ impl MessageGenerator {
             let gs = self.deps.game_status.lock().await;
             gs.reply_length_mode()
         };
+        // 对话标识：同一存档内恒定，供网关侧提示缓存分组与会话亲和路由；
+        // 两个注入开关每次现读配置，改高级设置即时生效。
+        let active_save_id = {
+            let gs = self.deps.game_status.lock().await;
+            gs.active_save_id
+        };
+        let conversation = active_save_id.map(|save_id| {
+            let app_config = AppConfig::load(&self.deps.app).unwrap_or_default();
+            ConversationTag {
+                id: format!("save-{save_id}"),
+                use_body: app_config.prompt_cache_key,
+                use_header: app_config.session_header,
+            }
+        });
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
             &self.deps.tool_registry,
@@ -334,6 +349,7 @@ impl MessageGenerator {
             &self.deps.app,
             tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
             reply_mode,
+            conversation,
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。

@@ -9,7 +9,7 @@ use tauri::{AppHandle, Emitter, Manager};
 use tokio::sync::{Mutex, oneshot};
 
 use crate::AppState;
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
@@ -159,6 +159,7 @@ pub async fn stream_with_tool_loop(
     app: &AppHandle,
     recommended: &[String],
     reply_mode: ReplyLengthMode,
+    conversation: Option<ConversationTag>,
 ) -> Result<ToolLoopResult> {
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let (settings, tool_rag) = {
@@ -185,7 +186,11 @@ pub async fn stream_with_tool_loop(
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
         return Ok(ToolLoopResult {
-            stream: presentation_stream(llm.complete_stream(&messages).await?),
+            stream: presentation_stream(
+                llm.for_session(conversation.as_ref())
+                    .complete_stream(&messages)
+                    .await?,
+            ),
             tool_messages: Arc::new(Mutex::new(Vec::new())),
             tool_calls_seen: Arc::new(AtomicBool::new(false)),
         });
@@ -281,9 +286,14 @@ pub async fn stream_with_tool_loop(
                 definitions
             };
             let mut response_stream = if definitions.is_empty() {
-                llm.complete_stream(&messages).await?
+                llm
+                    .for_session(conversation.as_ref())
+                    .complete_stream(&messages)
+                    .await?
             } else {
-                llm.complete_stream_with_tools(&messages, &definitions, Some("auto"))
+                llm
+                    .for_session(conversation.as_ref())
+                    .complete_stream_with_tools(&messages, &definitions, Some("auto"))
                     .await?
             };
             let progress_end_guard = ToolCallProgressEndGuard::new(app.clone());

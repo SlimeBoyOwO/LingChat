@@ -160,6 +160,34 @@
       </MenuItem>
     </div>
 
+    <!-- 对话标识（提示缓存分组） -->
+    <div class="h-full transition-all duration-300">
+      <MenuItem :title="$t('advance.menu.conversationTagTitle')" size="large">
+        <template #header>
+          <Fingerprint :size="20" />
+        </template>
+        <p class="mb-3 min-h-17 text-sm leading-relaxed text-white/50">
+          {{ $t("advance.menu.conversationTagDesc") }}
+        </p>
+        <div class="flex flex-col gap-2">
+          <Toggle
+            :key="`body-${conversationTagEpoch}`"
+            :checked="promptCacheKeyEnabled"
+            @change="(enabled: boolean) => onConversationTagToggle(PROMPT_CACHE_KEY, enabled)"
+          >
+            {{ $t("advance.menu.promptCacheKeyToggle") }}
+          </Toggle>
+          <Toggle
+            :key="`header-${conversationTagEpoch}`"
+            :checked="sessionHeaderEnabled"
+            @change="(enabled: boolean) => onConversationTagToggle(SESSION_HEADER, enabled)"
+          >
+            {{ $t("advance.menu.sessionHeaderToggle") }}
+          </Toggle>
+        </div>
+      </MenuItem>
+    </div>
+
     <!-- 内置 TTS 教程 -->
     <div class="h-full cursor-pointer transition-all duration-300" @click="openGuide">
       <MenuItem :title="$t('advance.menu.guideTitle')" size="large">
@@ -184,6 +212,7 @@ import {
   Cast,
   Cpu,
   Database,
+  Fingerprint,
   Heart,
   Mic,
   SlidersHorizontal,
@@ -232,6 +261,38 @@ async function onAffectionMasterToggle(enabled: boolean) {
     console.error("切换好感度系统失败:", e);
     affectionMasterEpoch.value++;
     dialogStore.alert(t("advance.menu.affectionToggleFailed"));
+  }
+}
+
+// 对话标识两个总开关：值存在 settings.json，随每次 LLM 请求现读，保存后立即生效
+const PROMPT_CACHE_KEY = "llm.prompt_cache_key";
+const SESSION_HEADER = "llm.session_header";
+const promptCacheKeyEnabled = ref(false);
+const sessionHeaderEnabled = ref(false);
+// 保存失败时递增，强制重渲染 Toggle 以恢复开关视觉状态
+const conversationTagEpoch = ref(0);
+
+onMounted(async () => {
+  try {
+    const [body, header] = await Promise.all([
+      getEnvConfigByKey(PROMPT_CACHE_KEY),
+      getEnvConfigByKey(SESSION_HEADER),
+    ]);
+    promptCacheKeyEnabled.value = body.value === "true";
+    sessionHeaderEnabled.value = header.value === "true";
+  } catch (e) {
+    console.error("读取对话标识配置失败:", e);
+  }
+});
+
+async function onConversationTagToggle(key: string, enabled: boolean) {
+  const target = key === PROMPT_CACHE_KEY ? promptCacheKeyEnabled : sessionHeaderEnabled;
+  try {
+    await saveEnvConfig({ [key]: String(enabled) });
+    target.value = enabled;
+  } catch (e) {
+    console.error("切换对话标识开关失败:", e);
+    conversationTagEpoch.value++;
   }
 }
 
