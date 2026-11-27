@@ -14,6 +14,10 @@ pub mod ort_env;
 pub mod retrieval;
 pub mod vector;
 
+pub mod chunking;
+pub mod memory;
+pub mod memory_retrieval;
+
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};

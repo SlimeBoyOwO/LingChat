@@ -1047,12 +1047,11 @@ fn meaningful_section<'a>(content: &'a str, placeholder: &str) -> Option<&'a str
 
 fn format_archive_line(line: &GameLine, role_id: i32, ai_name: &str) -> String {
     // 先截到回合结束边界：旧存档里模型越界写下的 `user` 段与思考文本不该进摘要，
-    // 否则会被压缩进长期记忆，再随记忆注入回上下文。 TODO： 这个地方我可能需要核查一下
-    // TODO 发现这里的问题了，系统提示也会被当做玩家信息，谁踏马写的屎山代码草
+    // 否则会被压缩进长期记忆，再随记忆注入回上下文。
     let content =
         crate::ai_service::message_system::processor::truncate_at_turn_end(line.content()).trim();
     match line.attribute() {
-        LineAttribute::User if line.sender_role_id().is_some() => {
+        LineAttribute::User if super::super::auto_save::is_real_dialogue(line) => {
             let player_name = line.base.display_name.as_deref().unwrap_or("玩家").trim();
             if player_name.is_empty() || player_name == "玩家" {
                 format!("玩家发言：{content}")
@@ -1184,21 +1183,45 @@ fn completed_tool_transactions(lines: &[GameLine], start: usize, end: usize, rol
 
 /// `Ok(None)` 表示该 assistant 行不是工具调用；工具调用内容解析失败时返回 `Err`，
 /// 调用方必须保守地把整个事务保留在原文区。
-fn tool_call_ids(line: &GameLine) -> Result<Option<HashSet<String>>, ()> {
-    let Some(raw) = line
+pub(super) fn tool_call_ids(line: &GameLine) -> Result<Option<HashSet<String>>, ()> {
+    let explicit = line
         .base
         .tool_call
         .as_deref()
-        .filter(|value| !value.trim().is_empty())
-        .or_else(|| {
-            line.content()
-                .split_once("\n\n")
-                .map(|(head, _)| head)
-                .or(Some(line.content()))
-                .filter(|head| head.trim_start().starts_with('['))
-        })
-    else {
-        return Ok(None);
+        .filter(|value| !value.trim().is_empty());
+    // 优先读取独立字段，旧记录才从正文开头识别工具协议，避免误把普通数组当调用。
+    let raw = if let Some(raw) = explicit {
+        raw
+    } else {
+        let head = line
+            .content()
+            .split_once("\n\n")
+            .map_or(line.content(), |(head, _)| head)
+            .trim();
+        let value = match serde_json::from_str::<serde_json::Value>(head) {
+            Ok(value) => value,
+            Err(_)
+                if head
+                    .strip_prefix('[')
+                    .is_some_and(|tail| tail.trim_start().starts_with('{'))
+                    && head.contains("\"function\"") =>
+            {
+                return Err(());
+            },
+            Err(_) => return Ok(None),
+        };
+        if !value.as_array().is_some_and(|calls| {
+            calls.iter().any(|call| {
+                (call.get("id").is_some()
+                    && call
+                        .get("function")
+                        .is_some_and(serde_json::Value::is_object))
+                    || call.get("type").and_then(serde_json::Value::as_str) == Some("function")
+            })
+        }) {
+            return Ok(None);
+        }
+        head
     };
 
     serde_json::from_str::<Vec<crate::ai_service::types::ToolCall>>(raw)
@@ -1216,7 +1239,7 @@ fn tool_call_ids(line: &GameLine) -> Result<Option<HashSet<String>>, ()> {
         })
 }
 
-fn tool_result_call_id(line: &GameLine) -> Option<String> {
+pub(super) fn tool_result_call_id(line: &GameLine) -> Option<String> {
     serde_json::from_str::<serde_json::Value>(line.content())
         .ok()?
         .get("tool_call_id")?
@@ -1225,7 +1248,7 @@ fn tool_result_call_id(line: &GameLine) -> Option<String> {
         .map(str::to_owned)
 }
 
-fn line_visible_to_role(line: &GameLine, role_id: i32) -> bool {
+pub(super) fn line_visible_to_role(line: &GameLine, role_id: i32) -> bool {
     let has_content = !line.content().trim().is_empty();
     let has_tool_call = line
         .base

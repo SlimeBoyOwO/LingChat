@@ -9,7 +9,7 @@ use crate::db::entities::save_note;
 pub struct SaveNoteRepo;
 
 impl SaveNoteRepo {
-    pub async fn list(db: &DatabaseConnection, save_id: i32) -> Result<Vec<Note>> {
+    pub async fn list(db: &impl ConnectionTrait, save_id: i32) -> Result<Vec<Note>> {
         let rows = save_note::Entity::find()
             .filter(save_note::Column::SaveId.eq(save_id))
             .order_by_asc(save_note::Column::CreatedAt)

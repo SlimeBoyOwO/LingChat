@@ -252,21 +252,15 @@ impl ToolPermissionConfig {
             return HashSet::new();
         }
 
-        // 3. 交集 / all_tools
-        // all_tools = true 且对方的工具集为空时，回退到全量名集合，
-        // 使得"双方都 all_tools"时能返回所有工具。
+        // 3. 交集 / all_tools；显式空工具集表示没有权限，不能回退到全量。
         if group.all_tools {
-            if scene.all_tools || scene.tools.is_empty() {
+            if scene.all_tools {
                 all_names.clone()
             } else {
                 scene.tools.clone()
             }
         } else if scene.all_tools {
-            if group.all_tools || group.tools.is_empty() {
-                all_names.clone()
-            } else {
-                group.tools.clone()
-            }
+            group.tools.clone()
         } else {
             let mut allowed = scene.tools.clone();
             allowed.retain(|name| group.tools.contains(name));
