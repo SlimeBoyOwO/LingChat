@@ -1,5 +1,4 @@
 <template>
-  <!-- 关闭态：贴右边缘的竖向把手。面板展开时原地淡出，标签挪到面板左边缘 -->
   <button
     class="director-tab director-tab-handle"
     :class="{ 'director-tab-hidden': store.open }"
@@ -10,10 +9,8 @@
     <span class="director-tab-label">{{ $t("game.director.title") }}</span>
   </button>
 
-  <!-- 展开态：右侧面板，从右边缘滑入 / 滑出 -->
   <Transition name="director-slide">
     <aside v-if="store.open" class="director-panel" :style="panelStyle">
-      <!-- 面板左边缘的竖标签：随面板一起进出，点它收回面板；窄屏抽屉没有多余空间 -->
       <button
         v-if="!narrow"
         class="director-tab director-tab-panel"
@@ -24,7 +21,6 @@
         <span class="director-tab-label">{{ $t("game.director.title") }}</span>
       </button>
 
-      <!-- 左边缘拖拽手柄（窄屏退化为抽屉，不显示） -->
       <div v-if="!narrow" class="director-grip" @pointerdown="onGripDown"></div>
 
       <header class="flex shrink-0 items-center gap-2 px-4 pt-3 pb-2">
@@ -62,7 +58,8 @@
       <div class="min-h-0 flex-1">
         <DirectorChatTab v-if="store.activeTab === 'chat'" />
         <DirectorContextTab v-else-if="store.activeTab === 'context'" />
-        <DirectorToolHistoryTab v-else />
+        <DirectorToolHistoryTab v-else-if="store.activeTab === 'tools'" />
+        <DirectorDraftTab v-else />
       </div>
     </aside>
   </Transition>
@@ -71,8 +68,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref, watch, type Component } from "vue";
 import { useI18n } from "vue-i18n";
-import { Brain, MessageSquare, PawPrint, Wrench, X } from "@lucide/vue";
+import { Brain, Clapperboard, MessageSquare, PawPrint, Wrench, X } from "@lucide/vue";
 import { useUIStore } from "@/stores/modules/ui/ui";
+import { useGameStore } from "@/stores/modules/game";
 import {
   DIRECTOR_MAX_WIDTH,
   DIRECTOR_MIN_WIDTH,
@@ -82,20 +80,20 @@ import {
 import DirectorChatTab from "./DirectorChatTab.vue";
 import DirectorContextTab from "./DirectorContextTab.vue";
 import DirectorToolHistoryTab from "./DirectorToolHistoryTab.vue";
+import DirectorDraftTab from "./DirectorDraftTab.vue";
 
 const { t } = useI18n();
 const store = useDirectorStore();
 const uiStore = useUIStore();
+const gameStore = useGameStore();
 
 const TABS: { key: DirectorTab; label: string; icon: Component }[] = [
   { key: "chat", label: "game.director.tabs.chat", icon: MessageSquare },
   { key: "context", label: "game.director.tabs.context", icon: Brain },
   { key: "tools", label: "game.director.tabs.tools", icon: Wrench },
+  { key: "draft", label: "game.director.tabs.draft", icon: Clapperboard },
 ];
 
-// ==================== 窄屏 ====================
-
-/** 视口窄于 768px 时退化为抽屉：宽度铺满、不显示拖拽手柄 */
 const narrow = ref(false);
 const syncNarrow = () => (narrow.value = window.innerWidth < 768);
 
@@ -105,18 +103,20 @@ onMounted(() => {
   void store.init();
 });
 
-onBeforeUnmount(() => window.removeEventListener("resize", syncNarrow));
+let cleanupDrag: (() => void) | null = null;
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", syncNarrow);
+  cleanupDrag?.();
+});
 
 const panelStyle = computed(() => ({
   width: narrow.value ? "calc(100vw - 16px)" : `${store.width}px`,
 }));
 
-// ==================== 拖拽调宽 ====================
-
-/** 从右向左拖出宽度：手柄在左边缘，向左移动变宽 */
 function onGripDown(e: PointerEvent) {
   if (narrow.value) return;
   e.preventDefault();
+  cleanupDrag?.();
   const startX = e.clientX;
   const startW = store.width;
   const onMove = (ev: PointerEvent) => {
@@ -126,12 +126,14 @@ function onGripDown(e: PointerEvent) {
   const onUp = () => {
     window.removeEventListener("pointermove", onMove);
     window.removeEventListener("pointerup", onUp);
+    window.removeEventListener("pointercancel", onUp);
+    if (cleanupDrag === onUp) cleanupDrag = null;
   };
+  cleanupDrag = onUp;
   window.addEventListener("pointermove", onMove);
   window.addEventListener("pointerup", onUp);
+  window.addEventListener("pointercancel", onUp);
 }
-
-// ==================== 状态 ====================
 
 const statusIconClass = computed(() => {
   switch (store.statusKind) {
@@ -165,10 +167,11 @@ function openPanel() {
   void store.init();
 }
 
-/**
- * 读档 / 开新档都发生在设置面板里：打开设置时收起侧栏，关闭后重新拉一次导演线，
- * 避免侧栏还显示上一个存档的对话。
- */
+watch(
+  () => gameStore.activeSaveId,
+  (saveId) => void store.switchSession(saveId),
+);
+
 watch(
   () => uiStore.showSettings,
   (open) => {
@@ -182,7 +185,6 @@ watch(
 </script>
 
 <style scoped>
-/* 竖向标签：关闭时贴右边缘，展开时贴在面板左边缘 */
 .director-tab {
   display: flex;
   flex-direction: column;
@@ -222,7 +224,6 @@ watch(
   z-index: 2;
 }
 
-/* 面板展开时右边缘的把手淡出，由面板左边缘的同款标签接管开合 */
 .director-tab-hidden {
   opacity: 0;
   pointer-events: none;
@@ -250,7 +251,6 @@ watch(
   box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
 }
 
-/* 面板内的滚动条收细，避免窄面板里滚动条占比过大 */
 .director-panel ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
@@ -267,7 +267,6 @@ watch(
 
 .director-slide-enter-active,
 .director-slide-leave-active {
-  /* 与设置面板同一套缓动：起步即快，滑入不拖沓 */
   transition:
     transform 0.36s cubic-bezier(0.32, 0.72, 0, 1),
     opacity 0.3s cubic-bezier(0.32, 0.72, 0, 1);
@@ -280,7 +279,6 @@ watch(
   opacity: 0;
 }
 
-/* 左边缘竖条手柄：6px 命中区，视觉上一条细线 */
 .director-grip {
   position: absolute;
   top: 0;

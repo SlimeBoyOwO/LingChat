@@ -278,10 +278,30 @@ async fn dispatch_chat_turn(
             }
         }
 
-        match generator.process_message(text).await {
-            Ok(acc) => tracing::info!("消息生成完成，长度: {}", acc.len()),
-            Err(e) => tracing::error!("消息生成失败: {:#}", e),
+        let succeeded = match generator.process_message(text).await {
+            Ok(acc) => {
+                tracing::info!("消息生成完成，长度: {}", acc.len());
+                true
+            },
+            Err(e) => {
+                tracing::error!("消息生成失败: {:#}", e);
+                false
+            },
+        };
+        if !succeeded {
+            return;
         }
+
+        let cycle_app = app.clone();
+        tokio::spawn(async move {
+            let state = cycle_app.state::<AppState>();
+            let tools_enabled = super::director::director_tools_enabled(&state).await;
+            if let Some(core) = state.god_agent.clone() {
+                core.director
+                    .maybe_generate_draft(cycle_app.clone(), tools_enabled)
+                    .await;
+            }
+        });
     });
 
     Ok(())
