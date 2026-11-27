@@ -2912,14 +2912,6 @@
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="WCdPR0rT8Rn011z_fhVI-219" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-142" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-218">
-          <mxGeometry relative="1" x="0.04" as="geometry" />
-        </mxCell>
-        <mxCell id="WCdPR0rT8Rn011z_fhVI-221" connectable="0" parent="WCdPR0rT8Rn011z_fhVI-219" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];inheritText=1;defaultLabelBackgroundColor=page;labelPadding=0 4;" value="不开阔" vertex="1">
-          <mxGeometry relative="1" x="-0.1343" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="WCdPR0rT8Rn011z_fhVI-142" parent="1" style="rhombus;whiteSpace=wrap;html=1;shapeInside=1;" value="本区域是否开阔" vertex="1">
           <mxGeometry height="67.48" width="100" x="4880" y="1593.99" as="geometry" />
         </mxCell>
@@ -3020,19 +3012,6 @@
             <mxPoint as="offset" />
           </mxGeometry>
         </mxCell>
-        <mxCell id="WCdPR0rT8Rn011z_fhVI-210" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-176" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-167">
-          <mxGeometry relative="1" as="geometry">
-            <Array as="points">
-              <mxPoint x="5990" y="1674.15" />
-              <mxPoint x="5990" y="1390.0500000000002" />
-            </Array>
-          </mxGeometry>
-        </mxCell>
-        <mxCell id="WCdPR0rT8Rn011z_fhVI-211" connectable="0" parent="WCdPR0rT8Rn011z_fhVI-210" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];inheritText=1;defaultLabelBackgroundColor=page;labelPadding=0 4;" value="循环 N 次，找不破坏方块的方法" vertex="1">
-          <mxGeometry relative="1" x="0.5308" y="-1" as="geometry">
-            <mxPoint as="offset" />
-          </mxGeometry>
-        </mxCell>
         <mxCell id="WCdPR0rT8Rn011z_fhVI-176" parent="1" style="rounded=1;whiteSpace=wrap;html=1;roundedPerimeter=1;" value="扩大范围 N 次&lt;br&gt;&lt;div&gt;无视障碍物（或者是建筑物进行带权A*搜索）&lt;/div&gt;&lt;div&gt;重新进行A*搜索&lt;/div&gt;" vertex="1">
           <mxGeometry height="60" width="140" x="5730" y="1644.15" as="geometry" />
         </mxCell>
@@ -3043,9 +3022,6 @@
           <mxGeometry relative="1" x="-0.4114" y="-2" as="geometry">
             <mxPoint as="offset" />
           </mxGeometry>
-        </mxCell>
-        <mxCell id="WCdPR0rT8Rn011z_fhVI-214" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-177" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-213">
-          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="WCdPR0rT8Rn011z_fhVI-177" parent="1" style="rhombus;whiteSpace=wrap;html=1;shapeInside=1;" value="计算路径" vertex="1">
           <mxGeometry height="67.48" width="100" x="5750" y="1814.15" as="geometry" />
@@ -3143,6 +3119,30 @@
         </mxCell>
         <mxCell id="WCdPR0rT8Rn011z_fhVI-209" parent="1" style="text;html=1;whiteSpace=wrap;strokeColor=none;fillColor=none;align=center;verticalAlign=middle;rounded=0;" value="&lt;span style=&quot;font-size: 40px;&quot;&gt;&lt;b&gt;A* 算法应用思路&lt;/b&gt;&lt;/span&gt;" vertex="1">
           <mxGeometry height="100" width="341" x="5429.5" y="1200" as="geometry" />
+        </mxCell>
+        <mxCell id="WCdPR0rT8Rn011z_fhVI-219" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-142" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-218">
+          <mxGeometry relative="1" x="0.04" as="geometry" />
+        </mxCell>
+        <mxCell id="WCdPR0rT8Rn011z_fhVI-221" connectable="0" parent="WCdPR0rT8Rn011z_fhVI-219" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];inheritText=1;defaultLabelBackgroundColor=page;labelPadding=0 4;" value="不开阔" vertex="1">
+          <mxGeometry relative="1" x="-0.1343" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WCdPR0rT8Rn011z_fhVI-210" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-176" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-167">
+          <mxGeometry relative="1" as="geometry">
+            <Array as="points">
+              <mxPoint x="5990" y="1674.15" />
+              <mxPoint x="5990" y="1390.0500000000002" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WCdPR0rT8Rn011z_fhVI-211" connectable="0" parent="WCdPR0rT8Rn011z_fhVI-210" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];inheritText=1;defaultLabelBackgroundColor=page;labelPadding=0 4;" value="循环 N 次，找不破坏方块的方法" vertex="1">
+          <mxGeometry relative="1" x="0.5308" y="-1" as="geometry">
+            <mxPoint as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="WCdPR0rT8Rn011z_fhVI-214" edge="1" parent="1" source="WCdPR0rT8Rn011z_fhVI-177" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0;entryY=0.5;entryDx=0;entryDy=0;defaultLabelBackgroundColor=page;labelPadding=0 4;" target="WCdPR0rT8Rn011z_fhVI-213">
+          <mxGeometry relative="1" as="geometry" />
         </mxCell>
         <mxCell id="WCdPR0rT8Rn011z_fhVI-213" parent="1" style="ellipse;whiteSpace=wrap;html=1;shapeInside=1;aspect=fixed;" value="无法到达&lt;div&gt;SETTLE&lt;/div&gt;" vertex="1">
           <mxGeometry height="80" width="80" x="5950" y="1807.89" as="geometry" />
