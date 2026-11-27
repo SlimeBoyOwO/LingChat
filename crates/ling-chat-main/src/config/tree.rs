@@ -105,6 +105,28 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                             .to_string(),
                         setting_type: "bool".to_string(),
                     },
+                    ConfigSetting {
+                        key: keys::LLM_PROMPT_CACHE_KEY.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_PROMPT_CACHE_KEY,
+                            &app_defaults.prompt_cache_key.to_string(),
+                        ),
+                        description: "在对话请求体注入 prompt_cache_key（值为当前存档 ID，形如 save-12），用于网关侧提示缓存分组；关闭则不发送该字段，避免严格校验的兼容端点因未知字段返回 400。未载入存档时不发送"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
+                    ConfigSetting {
+                        key: keys::LLM_SESSION_HEADER.to_string(),
+                        value: read_setting(
+                            app,
+                            keys::LLM_SESSION_HEADER,
+                            &app_defaults.session_header.to_string(),
+                        ),
+                        description: "在对话请求头注入 X-Session-ID（值与 prompt_cache_key 相同），用于网关侧会话亲和路由，把同一对话的请求送到同一台机器；与上一项配合才能完整命中缓存。只作用于主对话链路"
+                            .to_string(),
+                        setting_type: "bool".to_string(),
+                    },
                 ],
             },
         );
@@ -205,23 +227,23 @@ pub fn build_config_tree(app: &AppHandle) -> ConfigTree {
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::AI_AUTO_CLOTHES.to_string(),
+                        key: keys::CLOTHES_AUTO_SWITCH.to_string(),
                         value: read_setting(
                             app,
-                            keys::AI_AUTO_CLOTHES,
-                            &app_defaults.ai_auto_clothes.to_string(),
+                            keys::CLOTHES_AUTO_SWITCH,
+                            &app_defaults.clothes_auto_switch.to_string(),
                         ),
-                        description: "允许 AI 自动换装（在角色卡手动选过服装后自动关闭；关闭后 AI 的换装请求一律不执行，恢复需重新打开此开关）".to_string(),
+                        description: "服装自动切换：你在角色卡手动选过服装后会自动关掉，此后 AI 的换装请求一律不执行；想交还给 AI 就重新打开".to_string(),
                         setting_type: "bool".to_string(),
                     },
                     ConfigSetting {
-                        key: keys::AI_AUTO_EFFECT.to_string(),
+                        key: keys::EFFECT_AUTO_SWITCH.to_string(),
                         value: read_setting(
                             app,
-                            keys::AI_AUTO_EFFECT,
-                            &app_defaults.ai_auto_effect.to_string(),
+                            keys::EFFECT_AUTO_SWITCH,
+                            &app_defaults.effect_auto_switch.to_string(),
                         ),
-                        description: "允许 AI 自动切换粒子特效（手动选过特效后自动关闭；关闭后 AI 的特效切换请求一律不执行，恢复需重新打开此开关）".to_string(),
+                        description: "特效自动切换：你手动选过粒子特效后会自动关掉，此后 AI 的特效切换请求一律不执行；想交还给 AI 就重新打开".to_string(),
                         setting_type: "bool".to_string(),
                     },
                 ],

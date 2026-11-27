@@ -3,7 +3,7 @@ use async_trait::async_trait;
 use reqwest::Client;
 use serde::Serialize;
 
-use crate::ai_service::llm::{ChunkStream, LlmUsage};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 /// 模型声明的推理深度档位（think_efforts）。
@@ -36,6 +36,10 @@ pub struct LlmResponseWithTools {
 }
 
 /// LLM 供应商协议：不同供应商的唯一区别在于 HTTP 请求/响应的格式。
+///
+/// 各请求方法末尾的 `tag` 是对话标识（形如 `save-12`）连同两个注入开关，由调用方按请求
+/// 传入；provider 据此决定写入请求体 `prompt_cache_key` 还是请求头 `X-Session-ID`，
+/// 为 `None` 时两者都不注入。
 #[async_trait]
 pub trait LlmProvider: Send + Sync {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
@@ -43,10 +47,20 @@ pub trait LlmProvider: Send + Sync {
     }
 
     /// 非流式：发送消息列表，返回完整回复文本。
-    async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String>;
+    async fn complete(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<String>;
 
     /// 流式：返回逐字符（或逐 token）的 chunk 流，每个 chunk 区分内容与思考链。
-    async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream>;
+    async fn complete_stream(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<ChunkStream>;
 
     /// 是否支持原生流式 function calling。
     fn supports_streaming_tools(&self) -> bool {
@@ -62,8 +76,9 @@ pub trait LlmProvider: Send + Sync {
         messages: &[LlmMessage],
         _tools: &[ToolDefinition],
         _tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        self.complete_stream(http, messages).await
+        self.complete_stream(http, messages, tag).await
     }
 
     /// 非流式 + function calling。
@@ -75,8 +90,9 @@ pub trait LlmProvider: Send + Sync {
         messages: &[LlmMessage],
         _tools: &[ToolDefinition],
         _tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<LlmResponseWithTools> {
-        let text = self.complete(http, messages).await?;
+        let text = self.complete(http, messages, tag).await?;
         Ok(LlmResponseWithTools {
             content: Some(text),
             tool_calls: None,

@@ -2,6 +2,7 @@ package com.lingchat.maidbridge.action.nav;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import net.minecraft.core.BlockPos;
+import net.minecraft.tags.FluidTags;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.LiquidBlock;
 import net.minecraft.world.level.block.state.BlockState;
@@ -42,6 +43,11 @@ public final class Terrain {
             return false;
         }
         return !(state.getBlock() instanceof LiquidBlock);
+    }
+
+    /** 这一格是不是水：水能游过去，但不能站、也不能往上放方块。 */
+    public static boolean water(Level level, BlockPos pos) {
+        return level.getFluidState(pos).is(FluidTags.WATER);
     }
 
     /** 这一格是不是实心方块：垫脚块要立在它上面，或者它自己就得先垫出来。 */

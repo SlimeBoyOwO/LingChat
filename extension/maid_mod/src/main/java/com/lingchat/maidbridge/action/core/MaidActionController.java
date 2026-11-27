@@ -8,13 +8,17 @@ import com.lingchat.maidbridge.action.attack.MaidAttackController;
 import com.lingchat.maidbridge.action.construction.MaidBuildController;
 import com.lingchat.maidbridge.bridge.BridgeServer;
 import com.lingchat.maidbridge.bridge.MessageRouter;
+import com.lingchat.maidbridge.debug.PathDebug;
+import com.lingchat.maidbridge.debug.TestFeedback;
 import com.lingchat.maidbridge.maid.MaidQueries;
 import com.lingchat.maidbridge.action.mine.MaidMineController;
+import com.lingchat.maidbridge.action.nav.NavFailure;
 import com.lingchat.maidbridge.action.nav.NavGoal;
 import com.lingchat.maidbridge.action.nav.NavMemory;
 import com.lingchat.maidbridge.action.nav.NavPolicy;
 import com.lingchat.maidbridge.action.nav.Navigator;
 import com.lingchat.maidbridge.action.nav.ScaffoldBook;
+import com.lingchat.maidbridge.action.nav.Terrain;
 import com.lingchat.maidbridge.action.place.MaidPlaceController;
 import java.util.Set;
 import net.minecraft.core.BlockPos;
@@ -36,6 +40,8 @@ import net.minecraft.server.level.ServerPlayer;
  * 的状态不需要任何同步。
  */
 public final class MaidActionController {
+    private static final org.slf4j.Logger LOGGER =
+            org.slf4j.LoggerFactory.getLogger("lingchat_maid_bridge");
     /** 收尾时走开、拆垫脚最多等这么久（约六秒）。 */
     private static final int CLEANUP_TIMEOUT_TICKS = 120;
 
@@ -52,6 +58,8 @@ public final class MaidActionController {
         /** 走过去用的图搜索；目标挪了格子就换一个新的。 */
         Navigator nav;
         BlockPos navTarget;
+        /** 这一趟的寻路失败原因已经报过、记过日志。 */
+        boolean navFailureReported;
         /** 这一趟走路垫下的临时方块，走完要拆。 */
         final ScaffoldBook book = new ScaffoldBook();
         /** 生存模式从她背包扣垫脚料；创造模式借一块再拆掉。 */
@@ -177,6 +185,12 @@ public final class MaidActionController {
         }
         ActionRun.Observation observation =
                 MaidActuator.observe(maid, run.action, run.target, run.machine.lying());
+        observation = keepLevel(run, maid, observation);
+        // 寻路器还在跑时，原版那条「走不到」只是某一腿没走成，换条路还能到；
+        // 让动作层等寻路器自己判死，别在四十 tick 后先把它掐掉
+        if (run.nav != null && run.nav.status() == Navigator.Status.RUNNING) {
+            observation = observation.withoutCannotReach();
+        }
         ActionRun.Outcome outcome = run.machine.tick(observation);
         run.distance = observation.distance();
 
@@ -292,8 +306,9 @@ public final class MaidActionController {
      */
     private static void walkToPlayer(EntityMaid maid, Run run, ServerPlayer player) {
         BlockPos target = player.blockPosition();
-        // 已经站在到位线以内：下一 tick 状态机自己收尾，不必为挪半步重算
-        if (maid.blockPosition().distManhattan(target) <= run.action.arriveDistance()) {
+        // 已经在到位线以内、层也对上了：下一 tick 状态机自己收尾，不必为挪半步重算
+        if (maid.blockPosition().distManhattan(target) <= run.action.arriveDistance()
+                && !needsSameLevel(maid, target)) {
             return;
         }
         if (run.nav == null || !target.equals(run.navTarget)) {
@@ -301,9 +316,12 @@ public final class MaidActionController {
                 run.nav.cancel(maid);
             }
             run.navTarget = target;
+            // 目标在坎上时要求站到同一层：在旁边、在下面都不算到
             run.nav = Navigator.start(
-                    new NavGoal.Near(target, run.action.arriveDistance()),
+                    new NavGoal.Near(
+                            target, run.action.arriveDistance(), needsSameLevel(maid, target)),
                     navPolicy(run), new NavMemory(), run.book);
+            run.navFailureReported = false;
             // 换了目标就把上一次的「走不到」清掉，否则动作状态机会提前收尾
             MaidActuator.beginWalk(maid);
         }
@@ -312,9 +330,78 @@ public final class MaidActionController {
             status = run.nav.tick(maid);
         }
         run.nav.cleanScaffold(maid);
-        if (status == Navigator.Status.FAILED) {
-            MaidActuator.markUnreachable(maid);
+        // 走来走去的这一趟也画出来：阶段、落脚点、跑跳路线与图搜索算出的整条路
+        if (PathDebug.watching(maid)) {
+            PathDebug.report(maid, run.nav.phase(), run.nav.stand(), run.navTarget,
+                    run.nav.chain(), run.nav.plannedPath(), null, "");
         }
+        if (status == Navigator.Status.FAILED) {
+            if (!run.navFailureReported) {
+                run.navFailureReported = true;
+                boolean scaffold = ScaffoldBook.item(maid, run.consumeMaterials) != null;
+                String detail = failureDetail(maid, run, target);
+                TestFeedback.noteNavFailure(
+                        maid, run.nav.failure(), run.nav.phase(), scaffold, detail);
+                LOGGER.info("走过来寻路失败：{}（{}），{}，垫脚块 {} 块，目标 {}",
+                        run.nav.phase(), run.nav.failure(), detail, run.book.size(), target);
+            }
+            // 算不完不等于没有路：这种失败不挂原版的「走不到」，让它照实超时收尾
+            if (run.nav.failure() != NavFailure.SEARCH_LIMIT) {
+                MaidActuator.markUnreachable(maid);
+            }
+        }
+    }
+
+    /** 目标在坎上、她还在坎下：距离再近也按「没到」算，等她自己垫上去。 */
+    private static ActionRun.Observation keepLevel(
+            Run run, EntityMaid maid, ActionRun.Observation observation) {
+        if (run.action.kind() != MaidAction.Kind.GO_TO || maid == null) {
+            return observation;
+        }
+        ServerPlayer player = MaidQueries.owner(maid);
+        if (player == null) {
+            return observation;
+        }
+        return needsSameLevel(maid, player.blockPosition())
+                ? observation.notArrived(run.action.arriveDistance())
+                : observation;
+    }
+
+    /** 目标比脚下高、且那一格站得住：必须站到同一层才算到。 */
+    private static boolean needsSameLevel(EntityMaid maid, BlockPos target) {
+        return maid.level() instanceof ServerLevel level
+                && target.getY() > maid.blockPosition().getY()
+                && Terrain.standable(level, target);
+    }
+
+    /** 失败现场：她站的这格能不能站、目标附近有几格能站、搜索最近到了哪。 */
+    private static String failureDetail(EntityMaid maid, Run run, BlockPos target) {
+        ServerLevel level = (ServerLevel) maid.level();
+        BlockPos start = maid.blockPosition();
+        boolean startOk = Terrain.standable(level, start)
+                && (!maid.hasRestriction() || maid.isWithinRestriction(start));
+        int radius = Math.max(1, run.action.arriveDistance());
+        int stands = 0;
+        for (int dx = -radius; dx <= radius; dx++) {
+            for (int dy = -radius; dy <= radius; dy++) {
+                for (int dz = -radius; dz <= radius; dz++) {
+                    BlockPos pos = target.offset(dx, dy, dz);
+                    if (pos.distManhattan(target) > radius) {
+                        continue;
+                    }
+                    if (maid.hasRestriction() && !maid.isWithinRestriction(pos)) {
+                        continue;
+                    }
+                    if (Terrain.standable(level, pos)) {
+                        stands++;
+                    }
+                }
+            }
+        }
+        return "起点 " + start.getX() + "," + start.getY() + "," + start.getZ()
+                + (startOk ? "" : "（站不住）")
+                + "｜目标 " + radius + " 格内能站 " + stands + " 格"
+                + "｜" + run.nav.searchSummary();
     }
 
     /** 走路这一趟的边界：不挡任何格子，垫脚料按她主人的模式扣或借。 */
@@ -376,6 +463,9 @@ public final class MaidActionController {
             }
             MaidActuator.stopWalking(maid);
             MaidActuator.stopLooking(maid);
+            // 调试指令等着的回执：到位、走不到、被打断都在这里交代
+            TestFeedback.actionDone(maid, outcome.status(), outcome.reasonCode(),
+                    outcome.reason(), run.machine.elapsedTicks());
         }
         // 没有完成事件的动作（坐下、站起、看一会儿）收尾是静默的
         if (run.action.hasCompletionEvent()) {

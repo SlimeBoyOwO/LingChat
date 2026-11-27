@@ -44,6 +44,11 @@ pub async fn bootstrap(app: &tauri::App<tauri::Wry>) -> Result<(DatabaseConnecti
         .await
         .map_err(|e| anyhow::anyhow!("身份关系导入失败: {e}"))?;
 
+    // 按角色卡的 user_name，给默认角色与其搭档身份各补一条模板认知；已有文本不覆盖。
+    ling_chat_main::db::role_sync::seed_default_role_relations(&db, &data_dir)
+        .await
+        .map_err(|e| anyhow::anyhow!("默认认知补种失败: {e}"))?;
+
     // 迁移旧的扁平 LLM 配置 → 多供应商列表
     migrate_if_needed(app.handle());
     // 迁移旧的主动视觉独立配置（VD_*）→ 大模型管理中的视觉模型角色

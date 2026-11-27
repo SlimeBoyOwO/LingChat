@@ -3,6 +3,8 @@
 //! 设计原则：每个配置项的默认值仅在 `AppConfig::default()` 中定义一次，
 //! 其他所有位置（serde、load()、build_config_tree）均引用该实现。
 
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Wry};
@@ -64,6 +66,13 @@ fn default_auto_save_interval_secs() -> u32 {
 fn default_auto_compress_image() -> bool {
     true
 }
+/// 对话标识注入默认关闭：严格校验请求体的兼容端点可能因未知字段返回 400。
+fn default_prompt_cache_key() -> bool {
+    false
+}
+fn default_session_header() -> bool {
+    false
+}
 
 pub const DEFAULT_LLM_TIMEOUT_SECS: u64 = 120;
 pub const MIN_LLM_TIMEOUT_SECS: u64 = 10;
@@ -95,6 +104,12 @@ pub struct AppConfig {
     /// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求）。
     #[serde(default = "default_auto_compress_image")]
     pub auto_compress_image: bool,
+    /// 是否在 LLM 请求体注入 `prompt_cache_key`（值为当前存档 ID `save-N`）。
+    #[serde(default = "default_prompt_cache_key")]
+    pub prompt_cache_key: bool,
+    /// 是否在 LLM 请求头注入 `X-Session-ID`（值为当前存档 ID `save-N`）。
+    #[serde(default = "default_session_header")]
+    pub session_header: bool,
 
     // ---- 翻译 ----
     #[serde(default = "default_enable_translate")]
@@ -115,11 +130,11 @@ pub struct AppConfig {
     /// 自动同步现实天气到天气特效层（需配置 weather_city；手动或 AI 切换天气特效时自动关闭）。
     #[serde(default)]
     pub weather_auto_sync: bool,
-    // ---- AI 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
+    // ---- 自动切换（手动优先锁；用户手动设置后翻 false，设置页可改回） ----
     #[serde(default = "default_true")]
-    pub ai_auto_clothes: bool,
+    pub clothes_auto_switch: bool,
     #[serde(default = "default_true")]
-    pub ai_auto_effect: bool,
+    pub effect_auto_switch: bool,
 
     // ---- 功能开关（记忆系统） ----
     #[serde(default = "default_true")]
@@ -174,14 +189,16 @@ impl Default for AppConfig {
             no_emotion_limit_prompt: false,
             llm_timeout_secs: default_llm_timeout_secs(),
             auto_compress_image: default_auto_compress_image(),
+            prompt_cache_key: default_prompt_cache_key(),
+            session_header: default_session_header(),
             enable_translate: default_enable_translate(),
             enable_time_sense: default_enable_time_sense(),
             enable_emotion_classifier: default_enable_emotion_classifier(),
             weather_city: String::new(),
             weather_first_talk: false,
             weather_auto_sync: false,
-            ai_auto_clothes: true,
-            ai_auto_effect: true,
+            clothes_auto_switch: true,
+            effect_auto_switch: true,
             use_persistent_memory: true,
             memory_rag_enabled: true,
             memory_rag_timeout_ms: default_memory_rag_timeout_ms(),
@@ -244,6 +261,31 @@ fn get_u64_in_range(store: &Store<Wry>, key: &str, default: u64, min: u64, max: 
         .unwrap_or(default)
 }
 
+/// 配置键改名的一次性搬运：把旧键的值迁到新键并删除旧键，保持老用户已落的状态不丢。
+/// 新键已存在或旧键都不存在时不做任何写入，因此后续启动直接跳过。
+fn migrate_renamed_keys(store: &Arc<Store<Wry>>) {
+    const RENAMED: [(&str, &str); 2] = [
+        ("features.ai_auto_clothes", keys::CLOTHES_AUTO_SWITCH),
+        ("features.ai_auto_effect", keys::EFFECT_AUTO_SWITCH),
+    ];
+
+    let mut changed = false;
+    for (old, new) in RENAMED {
+        if store.has(new) {
+            continue;
+        }
+        if let Some(value) = store.get(old) {
+            store.set(new.to_string(), value);
+            store.delete(old);
+            changed = true;
+        }
+    }
+
+    if changed {
+        let _ = store.save();
+    }
+}
+
 // ========== AppConfig 方法 ==========
 
 impl AppConfig {
@@ -254,6 +296,8 @@ impl AppConfig {
             .context("Failed to open settings store")?;
 
         let default = Self::default();
+
+        migrate_renamed_keys(&store);
 
         Ok(Self {
             llm_output_sec_lang: get_bool(
@@ -279,6 +323,12 @@ impl AppConfig {
                 keys::LLM_AUTO_COMPRESS_IMAGE,
                 default.auto_compress_image,
             ),
+            prompt_cache_key: get_bool(
+                &store,
+                keys::LLM_PROMPT_CACHE_KEY,
+                default.prompt_cache_key,
+            ),
+            session_header: get_bool(&store, keys::LLM_SESSION_HEADER, default.session_header),
             enable_translate: get_bool(&store, keys::TRANSLATE_ENABLE, default.enable_translate),
             enable_time_sense: get_bool(&store, keys::ENABLE_TIME_SENSE, default.enable_time_sense),
             enable_emotion_classifier: get_bool(
@@ -293,8 +343,16 @@ impl AppConfig {
                 default.weather_first_talk,
             ),
             weather_auto_sync: get_bool(&store, keys::WEATHER_AUTO_SYNC, default.weather_auto_sync),
-            ai_auto_clothes: get_bool(&store, keys::AI_AUTO_CLOTHES, default.ai_auto_clothes),
-            ai_auto_effect: get_bool(&store, keys::AI_AUTO_EFFECT, default.ai_auto_effect),
+            clothes_auto_switch: get_bool(
+                &store,
+                keys::CLOTHES_AUTO_SWITCH,
+                default.clothes_auto_switch,
+            ),
+            effect_auto_switch: get_bool(
+                &store,
+                keys::EFFECT_AUTO_SWITCH,
+                default.effect_auto_switch,
+            ),
             use_persistent_memory: get_bool(
                 &store,
                 keys::USE_PERSISTENT_MEMORY,

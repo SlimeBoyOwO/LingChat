@@ -259,7 +259,7 @@
       <button
         id="sendButton"
         class="absolute right-0 bottom-0 translate-x-full cursor-pointer rounded-[5px] border-none bg-transparent px-2 py-2 font-[inherit] text-sm font-bold text-[#04bcff] transition-all duration-300 text-shadow-[inherit] hover:bg-transparent hover:text-[rgba(136,255,251,0.827)] disabled:cursor-not-allowed disabled:bg-[#333] disabled:opacity-70"
-        :disabled="isSending || !relationReady"
+        :disabled="isSending"
         @click="sendOrContinue"
       >
         ▼
@@ -295,13 +295,6 @@ import { Button } from "../../base";
 import ScreenshotButton from "./ScreenshotButton.vue";
 
 const { t } = useI18n();
-// 关系未就绪（角色卡或身份卡的关系栏为空）时输入框只读、发送按钮置灰
-const props = withDefaults(
-  defineProps<{
-    relationReady?: boolean;
-  }>(),
-  { relationReady: true },
-);
 const textareaRef = ref<HTMLTextAreaElement | null>(null);
 const inlineDisplayRef = ref<HTMLDivElement | null>(null);
 const gameStore = useGameStore();
@@ -611,8 +604,8 @@ const { placeholderState, isInputEnabled } = useDialogStatus({
   },
 });
 
-// 关系未就绪时输入框一并锁住（与 ASR 占用输入框同一层语义）
-const inputEnabled = computed(() => isInputEnabled.value && props.relationReady);
+// 关系未填只提示不拦人：输入区始终可用，提示条另行显示
+const inputEnabled = computed(() => isInputEnabled.value);
 
 // 关系就绪门提示条：搬到输入区上方，文案列出所有缺关系的角色
 const {

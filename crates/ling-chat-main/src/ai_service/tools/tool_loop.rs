@@ -12,7 +12,7 @@ use crate::AppState;
 use crate::ai_service::game_system::memory::recall::{
     EPHEMERAL_MEMORY_RESULT, RecallSession, RecallStamp,
 };
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmClient};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmChunk, LlmClient};
 use crate::ai_service::message_system::generator::GeneratorSource;
 use crate::ai_service::message_system::producer::{PresentationChunk, PresentationStream};
 use crate::ai_service::message_system::responses::event_names;
@@ -165,6 +165,7 @@ pub async fn stream_with_tool_loop(
     recommended: &[String],
     recall: Arc<RecallSession>,
     reply_mode: ReplyLengthMode,
+    conversation: Option<ConversationTag>,
 ) -> Result<ToolLoopResult> {
     // 每次回复开始时读取一次设置，避免同一轮执行期间修改配置导致边界跳变。
     let (settings, tool_rag) = {
@@ -192,7 +193,12 @@ pub async fn stream_with_tool_loop(
             tracing::info!("当前 LLM Provider 不支持原生流式工具调用，跳过普通聊天工具闭环");
         }
         return Ok(ToolLoopResult {
-            stream: presentation_stream(llm.complete_stream(&messages).await?, recall.stamp()),
+            stream: presentation_stream(
+                llm.for_session(conversation.as_ref())
+                    .complete_stream(&messages)
+                    .await?,
+                recall.stamp(),
+            ),
             tool_messages: Arc::new(Mutex::new(Vec::new())),
             tool_calls_seen: Arc::new(AtomicBool::new(false)),
         });
@@ -287,9 +293,14 @@ pub async fn stream_with_tool_loop(
                 definitions
             };
             let mut response_stream = if definitions.is_empty() {
-                llm.complete_stream(&messages).await?
+                llm
+                    .for_session(conversation.as_ref())
+                    .complete_stream(&messages)
+                    .await?
             } else {
-                llm.complete_stream_with_tools(&messages, &definitions, Some("auto"))
+                llm
+                    .for_session(conversation.as_ref())
+                    .complete_stream_with_tools(&messages, &definitions, Some("auto"))
                     .await?
             };
             let progress_end_guard = ToolCallProgressEndGuard::new(app.clone());
@@ -844,7 +855,10 @@ fn presentation_stream(stream: ChunkStream, stamp: RecallStamp) -> PresentationS
                 match chunk {
                     Ok(LlmChunk::ToolCalls(calls)) => {
                         if !calls.is_empty() {
-                            tracing::warn!(count = calls.len(), "非工具调用回复流包含工具调用，已丢弃");
+                            tracing::warn!(
+                                count = calls.len(),
+                                "非工具调用回复流包含工具调用，已丢弃"
+                            );
                         }
                         None
                     },

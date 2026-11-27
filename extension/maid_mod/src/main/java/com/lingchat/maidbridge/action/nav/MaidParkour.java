@@ -5,6 +5,7 @@ import com.lingchat.maidbridge.action.core.MaidActuator;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.function.Predicate;
@@ -32,6 +33,8 @@ public final class MaidParkour {
     private static final double ARC_HEIGHT = 1.05;
     /** 弧线上身体会比落脚面高出一格多，飞行包络要多查两层。 */
     private static final int ARC_CLEARANCE = 2;
+    /** 半个身宽，略小于 0.3：贴着格子边飞的时候不把隔壁一列算进来。 */
+    private static final double HALF_WIDTH = 0.29;
 
     private MaidParkour() {
     }
@@ -103,12 +106,26 @@ public final class MaidParkour {
 
     /** 这一跳能不能跳：距离、高差、落点、飞行包络与断口深度一起判。 */
     public static boolean canHop(ServerLevel level, BlockPos from, BlockPos to, int maxFall) {
+        return canHop(level, from, to, maxFall, false);
+    }
+
+    /**
+     * 同上；builtFloor 为真时起跳格脚下是这条路线上还没放下的垫脚块，只验脚和头空着。
+     *
+     * <p>落点可以斜着、错位：飞行包络按身体从起跳格心飞到落点格心扫过的格子列来查。
+     */
+    public static boolean canHop(
+            ServerLevel level, BlockPos from, BlockPos to, int maxFall, boolean builtFloor) {
         int rise = to.getY() - from.getY();
-        int distance = Math.abs(to.getX() - from.getX()) + Math.abs(to.getZ() - from.getZ());
-        if (!ParkourRules.allowed(distance, rise, maxFall)) {
+        int dx = to.getX() - from.getX();
+        int dz = to.getZ() - from.getZ();
+        if (!ParkourRules.allowed(dx, dz, rise, maxFall)) {
             return false;
         }
-        if (!Terrain.standable(level, from) || !Terrain.standable(level, to)) {
+        boolean takeoff = builtFloor
+                ? Terrain.free(level, from) && Terrain.free(level, from.above())
+                : Terrain.standable(level, from);
+        if (!takeoff || !Terrain.standable(level, to)) {
             return false;
         }
         // 落点要落在整格的面上：台阶、栅栏、半砖的顶面高度对不上，摆过去会卡在碰撞盒里
@@ -132,11 +149,8 @@ public final class MaidParkour {
         }
         int minY = Math.min(from.getY(), to.getY());
         int maxY = Math.max(from.getY(), to.getY());
-        int stepX = Integer.signum(to.getX() - from.getX());
-        int stepZ = Integer.signum(to.getZ() - from.getZ());
         boolean gap = false;
-        for (int i = 1; i < distance; i++) {
-            BlockPos cell = from.offset(stepX * i, 0, stepZ * i);
+        for (BlockPos cell : sweptColumns(from, to)) {
             for (int y = minY; y <= maxY + ARC_CLEARANCE; y++) {
                 if (!clear(level, cell.atY(y))) {
                     return false;
@@ -152,6 +166,38 @@ public final class MaidParkour {
         }
         // 地面连续时走过去更省，不生成这种空跳；深落是往下走，不要求中间有断口
         return gap || deep;
+    }
+
+    /**
+     * 身体从起跳格心直线飞到落点格心时扫过的格子列，高度取起跳格，不含起落两列。
+     *
+     * <p>沿中线和左右各偏半个身宽的两条线取样：斜着跳时擦过的墙角也算在里面。
+     */
+    static Set<BlockPos> sweptColumns(BlockPos from, BlockPos to) {
+        double dx = to.getX() - from.getX();
+        double dz = to.getZ() - from.getZ();
+        double length = Math.sqrt(dx * dx + dz * dz);
+        Set<BlockPos> out = new LinkedHashSet<>();
+        if (length < 1.0E-6) {
+            return out;
+        }
+        double sideX = -dz / length * HALF_WIDTH;
+        double sideZ = dx / length * HALF_WIDTH;
+        BlockPos landing = to.atY(from.getY());
+        int samples = (int) Math.ceil(length * 8);
+        for (int i = 1; i < samples; i++) {
+            double s = i / (double) samples;
+            double x = from.getX() + 0.5 + dx * s;
+            double z = from.getZ() + 0.5 + dz * s;
+            for (int side = -1; side <= 1; side++) {
+                BlockPos cell = BlockPos.containing(
+                        x + sideX * side, from.getY(), z + sideZ * side);
+                if (!cell.equals(from) && !cell.equals(landing)) {
+                    out.add(cell);
+                }
+            }
+        }
+        return out;
     }
 
     /** 落点底下是不是整格方块：台阶、栅栏、半砖不能当跑跳的落脚台。 */

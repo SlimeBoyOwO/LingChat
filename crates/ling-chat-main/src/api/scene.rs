@@ -941,7 +941,7 @@ pub async fn select_background_effect(app: AppHandle, effect: String) -> Result<
     apply_effect(&app, EffectOrigin::Manual, &effect, None).await;
 
     // 手动优先：用户手动选特效后，关闭 AI 自动切特效（设置页可重新打开）
-    crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::AI_AUTO_EFFECT);
+    crate::config::AppConfig::lock_auto_switch(&app, crate::config::keys::EFFECT_AUTO_SWITCH);
 
     Ok(())
 }

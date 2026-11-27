@@ -24,7 +24,7 @@ use serde_json::{Value, json};
 
 use crate::ai_service::llm::codex_auth::{self, CodexCredential};
 use crate::ai_service::llm::provider::{LlmModelInfo, LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{FunctionCall, LlmMessage, ToolCall, ToolDefinition};
 use crate::utils::proxy::build_proxied_client;
 
@@ -83,7 +83,7 @@ impl CodexProvider {
         Ok((http, cred))
     }
 
-    fn headers(&self, cred: &CodexCredential) -> Result<HeaderMap> {
+    fn headers(&self, cred: &CodexCredential, tag: Option<&ConversationTag>) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(
             AUTHORIZATION,
@@ -105,6 +105,11 @@ impl CodexProvider {
             USER_AGENT,
             HeaderValue::from_static("lingchat/0.5 (Windows)"),
         );
+        if let Some(id) = tag.and_then(|tag| tag.use_header.then_some(tag.id.as_str()))
+            && let Ok(value) = HeaderValue::from_str(id)
+        {
+            headers.insert("X-Session-ID", value);
+        }
         Ok(headers)
     }
 
@@ -124,6 +129,7 @@ impl CodexProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Value {
         // system → instructions；其余按 Responses API input item 转换
         let mut instructions = String::new();
@@ -223,6 +229,9 @@ impl CodexProvider {
                 _ => json!("auto"),
             };
         }
+        if let Some(tag) = tag.filter(|tag| tag.use_body) {
+            body["prompt_cache_key"] = json!(tag.id);
+        }
         body
     }
 
@@ -233,8 +242,9 @@ impl CodexProvider {
         http: &Client,
         cred: &CodexCredential,
         body: &Value,
+        tag: Option<&ConversationTag>,
     ) -> Result<reqwest::Response> {
-        let headers = self.headers(cred)?;
+        let headers = self.headers(cred, tag)?;
         let mut last_error = String::new();
         for attempt in 0..=MAX_RETRIES {
             let result = http
@@ -289,14 +299,15 @@ impl CodexProvider {
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
         max_output_tokens: Option<u32>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
         let (http, cred) = self.client_and_token().await?;
-        let mut body = self.build_body(messages, tools, tool_choice);
+        let mut body = self.build_body(messages, tools, tool_choice, tag);
         if let Some(limit) = max_output_tokens {
             body["max_output_tokens"] = json!(limit.max(1));
         }
         crate::utils::llm_request_logger::log_request_body("codex", &body);
-        let resp = self.send_with_retry(&http, &cred, &body).await?;
+        let resp = self.send_with_retry(&http, &cred, &body, tag).await?;
 
         let stream = async_stream::try_stream! {
             // 按字节累积：SSE 分隔符 \n\n 是 ASCII，切点必落在字符边界，整段解码才安全
@@ -458,9 +469,10 @@ impl CodexProvider {
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
         max_output_tokens: Option<u32>,
+        tag: Option<&ConversationTag>,
     ) -> Result<(String, Vec<ToolCall>, Option<LlmUsage>)> {
         let mut stream = self
-            .open_stream(messages, tools, tool_choice, max_output_tokens)
+            .open_stream(messages, tools, tool_choice, max_output_tokens, tag)
             .await?;
         let mut content = String::new();
         let mut calls: Vec<ToolCall> = Vec::new();
@@ -484,7 +496,7 @@ impl CodexProvider {
     ) -> Result<(String, Option<LlmUsage>)> {
         let messages = [LlmMessage::user_with_image(prompt, image_data_url)];
         let (text, _, usage) = self
-            .collect(&messages, None, None, Some(max_output_tokens))
+            .collect(&messages, None, None, Some(max_output_tokens), None)
             .await?;
         Ok((text, usage))
     }
@@ -529,12 +541,21 @@ fn rand_f64() -> f64 {
 impl LlmProvider for CodexProvider {
     async fn list_models(&self, _http: &Client) -> Result<Vec<LlmModelInfo>> {
         let (http, cred) = self.client_and_token().await?;
-        super::models::fetch_models(&http, self.headers(&cred)?, self.client_version.as_deref())
-            .await
+        super::models::fetch_models(
+            &http,
+            self.headers(&cred, None)?,
+            self.client_version.as_deref(),
+        )
+        .await
     }
 
-    async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let (content, _, _) = self.collect(messages, None, None, None).await?;
+    async fn complete(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<String> {
+        let (content, _, _) = self.collect(messages, None, None, None, tag).await?;
         Ok(content)
     }
 
@@ -542,8 +563,9 @@ impl LlmProvider for CodexProvider {
         &self,
         _http: &Client,
         messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, None, None, None).await
+        self.open_stream(messages, None, None, None, tag).await
     }
 
     fn supports_streaming_tools(&self) -> bool {
@@ -556,8 +578,9 @@ impl LlmProvider for CodexProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        self.open_stream(messages, Some(tools), tool_choice, None)
+        self.open_stream(messages, Some(tools), tool_choice, None, tag)
             .await
     }
 
@@ -567,9 +590,10 @@ impl LlmProvider for CodexProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<LlmResponseWithTools> {
         let (content, calls, usage) = self
-            .collect(messages, Some(tools), tool_choice, None)
+            .collect(messages, Some(tools), tool_choice, None, tag)
             .await?;
         Ok(LlmResponseWithTools {
             content: if content.is_empty() {

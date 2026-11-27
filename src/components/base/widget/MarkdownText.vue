@@ -23,10 +23,15 @@ marked.use({
   },
 });
 
-const props = defineProps<{ content: string }>();
+const props = defineProps<{
+  content: string;
+  /** 自定义渲染（信纸用来加公式、代码着色、SVG），须同样保证原始 HTML 被转义 */
+  render?: (content: string) => string;
+}>();
 
 const html = computed(() => {
   if (!props.content) return "";
+  if (props.render) return props.render(props.content);
   // async 关闭 → 同步返回 string
   return (marked.parse(props.content, { gfm: true, breaks: true }) as string) || "";
 });

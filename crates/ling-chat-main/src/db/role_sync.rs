@@ -17,9 +17,14 @@ pub(crate) static ROLE_SYNC_LOCK: tokio::sync::Mutex<()> = tokio::sync::Mutex::c
 // 官方角色入库顺序：全新数据库下依次得到 1、2、3、4 号，1 号即默认角色。
 const OFFICIAL_ROLE_ORDER: &[&str] = &["诺一钦灵", "风雪", "DeepSeek", "松子"];
 
+/// 默认角色没有指向主身份的认知时补的模板句；玩家之后可以随时改。
+const DEFAULT_ROLE_RELATION_TEXT: &str = "ta 是我认识的人。";
+
 #[derive(Debug, Deserialize)]
 struct CharacterSettings {
     title: Option<String>,
+    /// 角色卡默认搭档的玩家名，用来配对身份卡
+    user_name: Option<String>,
 }
 
 /// 一条待入库的插件角色。`encoded_folder` = `plugin:<id>/<folder>`。
@@ -131,8 +136,11 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
             continue;
         }
 
-        let title = match load_title(&settings_path) {
-            Ok(t) => t.unwrap_or_else(|| folder_name.clone()),
+        let title = match load_settings(&settings_path) {
+            Ok(settings) => settings
+                .title
+                .filter(|title| !title.is_empty())
+                .unwrap_or_else(|| folder_name.clone()),
             Err(e) => {
                 tracing::warn!("Failed to load {:?}: {}", settings_path, e);
                 continue;
@@ -172,10 +180,9 @@ pub async fn sync_roles_from_folder(db: &DatabaseConnection, data_dir: &Path) ->
     Ok(created_ids)
 }
 
-fn load_title(path: &Path) -> Result<Option<String>> {
+fn load_settings(path: &Path) -> Result<CharacterSettings> {
     let content = fs::read_to_string(path)?;
-    let settings: CharacterSettings = serde_yaml::from_str(&content)?;
-    Ok(settings.title.filter(|s| !s.is_empty()))
+    Ok(serde_yaml::from_str(&content)?)
 }
 
 /// 把身份卡投影成 `role_type='player'` 的角色行（文件是真源，本表是索引）。
@@ -328,4 +335,65 @@ fn resolve_relation_target(
         return by_identity.get(identity_id.trim()).copied();
     }
     None
+}
+
+/// 按角色卡自带的 `user_name` 找到对应身份，把两边缺失的认知各补一条模板句。
+/// 角色卡与身份卡各写各的；已有文本不覆盖，自定义角色匹配不到身份就跳过。
+pub async fn seed_default_role_relations(
+    db: &DatabaseConnection,
+    data_dir: &Path,
+) -> Result<usize> {
+    let store = IdentityStore::new(data_dir);
+    let by_identity: HashMap<String, i32> = RoleRepo::get_player_roles(db)
+        .await?
+        .into_iter()
+        .filter_map(|model| model.identity_id.clone().map(|id| (id, model.id)))
+        .collect();
+    // 身份显示名 → 玩家角色 id；角色卡的 user_name 用它配对。
+    let mut player_by_name: HashMap<String, i32> = HashMap::new();
+    for card in store.list() {
+        if let Some(role_id) = by_identity.get(&card.id) {
+            player_by_name.insert(card.display_name().to_string(), *role_id);
+        }
+    }
+    if player_by_name.is_empty() {
+        return Ok(0);
+    }
+
+    let characters_dir = data_dir.join("game_data").join("characters");
+    let mains = role::Entity::find()
+        .filter(role::Column::RoleType.eq(RoleType::Main))
+        .all(db)
+        .await?;
+    let mut seeded = 0usize;
+    for main in mains {
+        let Some(folder) = main.resource_folder.clone() else {
+            continue;
+        };
+        // 插件角色不在 characters/ 下，没有可读的默认搭档名
+        if folder.starts_with("plugin:") {
+            continue;
+        }
+        let settings_path = resolve_settings_file(&characters_dir.join(&folder));
+        if !settings_path.exists() {
+            continue;
+        }
+        let user_name = match load_settings(&settings_path) {
+            Ok(settings) => settings.user_name.unwrap_or_default(),
+            Err(_) => continue,
+        };
+        let Some(&player_id) = player_by_name.get(user_name.trim()) else {
+            continue;
+        };
+        if RoleRepo::ensure_relation(db, main.id, player_id, DEFAULT_ROLE_RELATION_TEXT).await? {
+            seeded += 1;
+        }
+        if RoleRepo::ensure_relation(db, player_id, main.id, DEFAULT_ROLE_RELATION_TEXT).await? {
+            seeded += 1;
+        }
+    }
+    if seeded > 0 {
+        tracing::info!("Seeded {seeded} default relation(s) from character user_name");
+    }
+    Ok(seeded)
 }

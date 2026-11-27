@@ -1,0 +1,121 @@
+> 此文件是claude.md的副本，有任何偏差以claude.md为准
+
+## 项目概览
+
+LingChat 是一个 AI Galgame 引擎，一个桌面 AI 聊天伴侣 / 桌宠应用，基于Tauri 2。核心功能：LLM 驱动的聊天，内置情绪分类器、TTS 语音、屏幕感知、基于剧本的多角色故事、AI 宠物/桌面伴侣模式、Python 插件系统、局域网同步，以及存档/成就。此外还有角色好感度与羁绊、AI 生图、世界书、导演模式、云端创意工坊、笔记与语义记忆检索、日程/待办与桌宠小组件。
+代码、注释、提交信息和文档主要使用**中文**编写。编写注释时，请与周围语言保持一致，仓库为SlimeBoyOwO/LingChat
+
+## 常用命令
+
+包管理器是pnpm
+
+- pnpm tauri dev：以开发模式运行完整桌面应用
+- pnpm dev：仅启动 Vite 开发服务器，针对已在运行的 Rust 后端进行纯前端迭代
+- pnpm build：前端类型检查和生产构建（必须使用此命令检查前端，不得加tail/head等）
+- pnpm tauri build：完整桌面打包，生成 NSIS / dmg / deb / AppImage + 更新器产物
+- pnpm format / pnpm format:check：prettier + cargo fmt；format:rs / format:frontend 只处理其中一半
+- pnpm check:rs：`cargo check --workspace`；测试用 `cargo test --workspace`，没有前端测试框架
+- pnpm init：生成应用图标，准备桌面资源，下载情绪与文本嵌入 ONNX 模型，并准备 Windows 的 ONNX Runtime DLL。
+- pnpm gen:effects / pnpm check:effects：生成 / 校验内置特效清单（`scripts/generate-known-effects.mjs`）
+- Android：pnpm android:prepare、pnpm android:dev、pnpm android:build（aarch64，apk）、pnpm android:devbuild（debug apk）、pnpm android:check（cargo ndk check）
+- iOS：pnpm ios:init，pnpm ios:build（`docs/ios-build.md`；`.npmrc` 记录了 Xcode 下 pnpm-11 的限制）。
+
+## 高层架构
+
+### 前端和后端 IPC 通信
+
+前端通过 `@tauri-apps/api/core` 的 `invoke()` 调用 Rust 命令。`src/api/services/*` 中每个域都有一个服务模块，但许多组件直接 `invoke`。**所有**命令都在一个地方注册：`src-tauri/src/app/commands.rs` 中 `generate_handler!` 宏列出的命令，再由 `builder.invoke_handler(...)` 注册。
+**自定义应用命令不受 ACL 门控。** 项目已移除应用命令的 ACL 门控。将 `#[tauri::command]` 添加到 `app/commands.rs` 的 `generate_handler!` 就足够了。`src-tauri/capabilities/*.json` 只门控核心/插件命令（updater、fs、dialog、screenshots 等）。编辑 capabilities 时，`src-tauri/gen/schemas/` 下生成的 schema 会通过 `build.rs` 重新生成；如果更改未生效，可用 `touch src-tauri/build.rs` 强制触发
+
+### 对话事件管线（核心运行时）
+
+需要理解的最重要流程：
+
+1. **Rust**：`crates/ling-chat-main/src/ai_service/message_system/generator/` 将对话作为 Tauri 事件流式发送——`ai:reply`、`ai:thinking` 等。载荷是与前端 `ScriptEventType`（`src/types/script.ts`）对齐的结构化事件对象
+2. **前端**：`src/api/tauri-events.ts` 监听并将它们送入 `EventQueue`（`src/core/events/event-queue.ts`）
+3. 队列通过 `src/core/events/processors/*.ts` 中按类型划分的处理器逐个处理事件（dialogue、narration、thinking、background/background-effect、ambient、music/sound、present-pic、chapter-change、script-choice/script-end、input、player、progress、error、status-reset 等），这些处理器由 `src/core/events/index.ts` 通过 `import.meta.glob` 自动注册
+4. 推进语义来自 `duration`：`-1` = 等待用户点击继续，`0` = 立即继续，`>0` = 等待 N 秒。`isFinal` 标记回合结束。`dialogue-merge.ts` 实现同一角色短连续回复的内联合并
+   中心游戏状态是 Pinia 的 `game` store（`src/stores/modules/game/`），尤其是 `currentStatus`（`input` / `responding`）。`script-editor` store 有自己的预览事件流，并会丢弃过期回复（`tauri-events.ts` 中的 `isStalePreviewReply`）
+
+### 后端布局（Cargo workspace）
+
+Rust 后端已拆为 Cargo workspace（根 `Cargo.toml`），共四个成员（3 个业务 crate + 1 个 Tauri 外壳）：
+
+- `crates/ling-chat-main/`（lib 名 `ling_chat_main`）：业务主 crate。含 api、ai_service、db、config、utils、cast、lan_sync、resource_sync、manifest、migration、achievements、adventures、data_dir、state、plugin_contract。
+- `crates/ling-chat-plugins/`（lib 名 `ling_chat_plugins`）：插件系统 crate。含 PluginManager（manager/）、RustPython 后端（python_backend.rs）、插件导入与资源同步（importer.rs、content_sync.rs、resources.rs、manifest.rs）、宿主 API（host_api/）、工具注册（tool.rs）、ws、signal、commands。
+- `crates/ling-chat-notes/`（lib 名 `ling_chat_notes`）：笔记与语义检索基础 crate。按角色独立存储手动笔记（`NotesStore`），并提供 ONNX 句向量引擎（`embedding::EmbeddingEngine`，Tool RAG 与笔记/记忆检索共用，配套 `retrieval.rs`、`vector.rs`、`ort_env.rs`），处于依赖链最底层。**依赖方向单向**：plugins → main → notes，外壳 → main + plugins。
+- `src-tauri/`：Tauri 外壳（bin + lib）。只保留 `lib.rs` / `main.rs` 与 `app/` 组合根（状态注入、命令注册、setup 编排、日志、平台适配、托盘）。
+- `src-tauri/src/app/commands.rs` 是**唯一**的 `generate_handler!` 注册表，同时注册 main 与 plugins 两边的命令。
+
+- main 内 `plugin_contract` 是宿主与插件之间的窄接口：`PluginResourceSource`（宿主只读插件资源）+ `ReplyHook`（全局回复回调，`generator` 经它把 `ai:reply` 转发给插件）。它切断了 `AppState` ↔ `PluginManager` 的循环依赖。
+- `AppState` 等状态容器定义在 `ling_chat_main::state`，外壳 `lib.rs` 以 `pub use` 重导出，`crate::AppState` 路径不变。
+- 外壳 `app/` 是组合根：`builder.rs` 组装 Tauri Builder，`commands.rs` 注册命令，`logging.rs` / `platform.rs` / `tray.rs` 负责日志、平台适配与托盘。`app/setup/` 分四段：`mod.rs` 编排建壳（manage 小状态与空壳 `AppState`，必须先于数据引导）、`data.rs` 引导数据层、`build.rs` 构建服务图（**唯一**构造领域服务处）、`background.rs` 起后台任务；另有 `asr.rs`（ASR 初始化）与 `voice_cleanup.rs`（孤儿语音清理，必须赶在 `db` 移入 `AppState` 之前）。
+- bootstrap 序列（`data.rs` → `build.rs`）：播种数据目录 → 应用 LAN 同步暂存（必须在数据库初始化之前）→ 打开数据库 → 确保玩家哨兵角色、投影玩家身份、从文件夹同步角色 → 导入 LAN 暂存记录 → 迁移旧 LLM 配置与视觉配置 → 加载 `AppConfig`。随后 `build.rs` 构建 LLM 槽位、`AIService`、默认角色/服装、情绪分类器、`MessageProcessor`、`Translator`、工具注册表、插件管理器、主动系统、截图状态、自动存档、上帝 Agent、Skill Agent 等全部领域服务。
+- api：每个命令域一个文件（character、character_create、chat、game、save、scene、settings、script、script_editor、pet、asr、affection、codex、director、font、hotword、image_generation、live2d、locale、memory、player_identity、role_archive、schedule、screenshot、tool_settings、workshop 等）。`api::data_dir()` 解析数据目录
+- ai_service：整个 AI 栈：
+  - llm：基于 genai 的客户端。`LlmSlot` 是可热插拔的 `RwLock`。提供商预设位于前端 `src/constants/llm-presets.ts`；见 `docs/llm-provider-presets.md`——添加新的 `provider` 类型还需要在 `ai_service/llm/provider_config.rs` 中添加分支。
+  - message_system：聊天处理 + `ai:reply` 流式发送
+  - game_system：剧本引擎 + 事件、自动存档、角色管理器、持久记忆
+  - asr：流式 ASR（VAD 分段、可插拔提供商、WebSocket）
+  - tts：本地进程内 TTS（SBV2 / onnxruntime、DeBerta、设备选择）+ 云端 CosyVoice
+  - emotion：ONNX 情绪分类器（19-emo 模型位于 `data/third_party/emotion_model_19emo/`）。
+  - affection：角色好感度数值与关系演进
+  - image_generation：AI 生图
+  - worldbook：世界书条目管理，按触发条件注入提示词
+  - embedding_remote：云端向量化后端与本地/云端路由；本地嵌入引擎已下沉到 `ling-chat-notes`
+  - screen_analyzer.rs、proactive_system/、god_agent/、skill_agent/、translator.rs、tools/（ToolRegistry + 内置工具定义）
+- db：sea-orm + SQLite；`entities/`+`managers/`（仓库）。迁移位于 `migration/`。插件系统在独立 crate `ling-chat-plugins`（见 `docs/plugin-dev-guide.md`）
+- lan_sync：axum HTTP+WebSocket 服务器 + mDNS 对等发现，manifest 差异推送/拉取
+- cast：投屏（screen-cast）：第二个窗口，镜像主窗口的对话（`cast:mirror`）
+- `resource_sync/` + `manifest/` — 安装器种子 / 数据版本同步。
+- `achievements/`、`adventures/` — 成就触发器 + 按角色的冒险 / 羁绊系统。
+
+### 前端布局（`src/`）
+
+- components 按功能划分：game、pet、settings、settings_pet、script-editor、schedule、pomodoro、effects、director、tools、base、ui，根级 `LanSyncDialog` / `ResourceSyncDialog`；根视图集中在 `components/views/`（`MainMenu`、`CompanionMode`、`PetMode`、`CastWindow`、`BubbleWindow`、`LogWindow`、`TodoWidgetWindow`、`ScriptEditor`、`WorkshopPage`、`MainChat`、`LoadingTransition`、`Credits`、`Second`）。
+- stores/modules：Pinia stores（game、settings、ui、user、agent、script-editor、adventure、asr），另有 `director.ts`、`llm-providers.ts`、`config/`，带自定义持久化插件（`stores/plugins/persist.ts`）。
+- core/events：事件队列 + 处理器
+- api：服务模块+tauri-events.ts；遗留的 axios `http.ts` 已无引用。
+- locales：用于 `en`、`ja`、`zh-CN`、`zh-HK` 的 vue-i18n（+ `schema-i18n.ts`）。
+- 路由（src/router/index.ts）：`/`（MainMenu）、`/chat`、`/pet`、`/second`、`/credit`、`/log-window`、`/cast`、`/bubble`、`/todo-widget`、`/script-editor`、`/workshop`。
+
+### 数据目录模型
+
+- `data/` 是运行时数据目录（`crates/ling-chat-main/src/data_dir.rs` 的 `get_data_dir()`）。在桌面 **dev** 模式下是仓库根目录的 `data/`（可实时编辑的游戏数据）；发布版中是与 exe 相邻的 `data/`；移动端则从打包的 `data.7z` 解压。
+- `game_data/` — characters/、scripts/、backgrounds/、musics/、ambients/（可选，资源系统支持）、scenes.json、schedules.json、notes/、player_identities/、skills/、achievement.json。
+- `game_database.db` — SQLite 主库（sea-orm），存档、聊天记录、角色等都在其中。
+- `data_manifest.json` — 数据版本 + SHA-256 文件列表（`manifest/` 模块）。
+- `.official/` — 桌面安装包将资源捆绑在此处；首次启动会将其播种到 `data/`，然后删除 `.official/`；应用更新会重新创建它，用户通过 `ResourceSyncDialog`（`resource_sync/`）同步。`third_party/`（ONNX 模型）直接随包发布，并在更新时覆盖。
+- 其余顶层目录：`plugins/`（用户/导入的插件）、`models/`（本地 TTS 模型）、`vector_index/`（向量索引，如笔记）、`voice/`（TTS 语音资源）、`locales/`（数据侧本地化）、`screenshots/`、`log/`（`utils/file_logger`），以及 `tool_permissions.toml` / `tool_settings.toml`。
+- `settings.json` — 应用设置，由 tauri-plugin-store 管理（不在 `data/` 下）。
+
+## 关键注意事项
+
+- `src-tauri/build.rs` 和 `.cargo/config.toml` 包含平台链接变通方案，不要移除它们
+- `[lib] crate-type` 为 `["cdylib", "rlib"]`：省略 `staticlib`，因为否则桌面构建会在每次增量构建时重新归档约 1.4 GB 的 `ling_chat_lib.lib`。**手动 iOS 构建必须把 `"staticlib"` 加回来**——见 `docs/ios-build.md`
+- 移动端构建需要 `custom-protocol` Cargo feature（在 `[features]` 下声明）
+
+## 参考文档
+
+各功能的权威文档位于 `docs/`：
+
+- 剧情与角色：剧本编辑器（`script-editor/`）、角色编辑器（`character-editor.md`）、角色归档（`utils/role-archive.md`）、世界书（`worldbook.md`）、自动剧情（`自动剧情模式.md`）、剧本/功能/导演 Agent（`god_agent/`）、多人对话设计（`updates/多人对话设计.md`）、对话合并计划（`merge-dialogue-plan.md`）
+- AI 能力与资源：函数调用（`function_call/`）、生图（`image-generation.md`）、Codex 视觉/推理（`codex-vision.md`、`codex-reasoning.md`）、本地 TTS（`local-tts-api.md`）与 GSV 自然语音（`gsv-natural-voice.md`）、ASR 热词（`asr/`）、笔记检索（`notes-retrieval.md`）、持久记忆压缩（`persistent-memory-compression.md`）、推理设备（`inference-devices.md`）、云端嵌入计划（`cloud-embedding-plan.md`）
+- 插件与平台：插件开发（`plugin-dev-guide.md`、`plugin_host.pyi`）、技能指令（`script_skill_instruction/`）、Live2D 创作/运行（`live2d/`、`utils/live2d.md`）、Android（`android/`）、iOS（`ios-build.md`）、i18n（`i18n.md`）、LLM 预设（`llm-provider-presets.md`）、更新记录与逻辑（`updates/`、`自动更新逻辑.md`）、构建性能（`build-performance.md`）
+- 其他：已知问题（`tips.md`）、静态触摸区（`static-touch-areas.md`）、粒子特效待办（`particle-effects-backlog.md`）、MC 女仆联动计划（`maid_mod/`）、工程协作说明（`agents/`）
+
+## 关键约定（本部分务必人工维护）
+
+- 与用户交流的时候，以专业的软件工程师的口吻交流，避免频繁提及函数名与内部实现细节，注重交流整体软件结构和功能。发言不要 AI 化严重。重点是让用户理解软件目前架构和情况，方便开发者定位问题。
+- 进行代码更改的时候，保证最小化破坏更改，代码上仅保留必要的注释，注释中禁止出现md语法。每次结束更改后，进行一次注释与不必要的Test代码清理。
+- 遵循 MVP 原则，不要过度设计，不要过度实现，不过度优化，不要过度封装，开发中能先用简洁的方式实现就不要用过于复杂的方法，随着开发和需求动态调整代码结构设计。
+- Rust 格式化字符串优先内联捕获变量：tracing等宏里用 `{role_id}` 直接捕获同名变量，优先于位置参数写法（可读性更高）。复杂表达式（字段访问 / 方法调用）不能内联，先绑定局部变量或继续用 `{}` 位置参数。新写的代码一律用这种风格；顺手改旧代码时也可以替换，但不要为此单独发起纯风格重构。
+- 代码注释、commit message、变量命名倾向中文。commit 用cc前缀 + 中文：`feat：xxx`、`fix：xxx`、`chore: xxx`、`build：xxx`、`refactor: xxx`（注意前缀中文冒号用全角）。**commit 用单行标题**，不加正文、**不要加 `Co-Authored-By:` 尾注**。
+- 格式化：不要求做，不作为验收依据，会在提交时自动化处理
+- 样式优先用 Tailwind CSS v4，而不是传统css：项目用 `@tailwindcss/vite` 4.x，CSS-first 配置，v4 语法与 v3 有差异，不确定时可查网络或 context7 文档，官方库 ID：`/websites/tailwindcss`（无需再 resolve-library-id）
+- provider 预设：LLM 服务商快捷配置在 `src/constants/llm-presets.ts`，改这个数组即可，勿动组件。
+- 无论任何时候，面对比较模糊的需求/提问（没有涉及具体代码/函数/plan文件都可以算模糊，范围大一点）时，你应当调用提问工具（优先，可多次）或输出最终回复，以中断对话的方式向用户提问，明确具体需求，不要自己私自做决定，或是采取忽略用户需求的方法推进plan和功能落地。用户需求不合理时你有责任中断实现并提醒用户且给出更佳的方法，除非用户二次明确指出需求，你必须服从用户。
+- 为本项目写issue/pr时comment务必精简，明了，不涉及程序具体运行逻辑和内部函数，请专注于程序运行逻辑，算法讨论。核心修改介绍不超过50字，展开介绍不超过200字，除非用户另外要求
+- 除非另有需求，否则禁止书写裸sql，始终使用sea-orm操作数据库
+- 前缀为维护者（如钦灵，shadow01a等）的注释不得擅自修改，修改到注释相关的代码时，必须将原话告知用户，用户明确同意修改后才可以动工
+- 注释只能包括描述函数等代码的功能，逻辑，调用点等，不能包括原代码和现在代码的比较，和你为什么要这样修改等废话。你被授权且有义务顺手简化你工作修改代码时相关的注释

@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use crate::ai_service::llm::provider::{
     LlmModelInfo, LlmProvider, LlmResponseWithTools, ThinkEffortsInfo,
 };
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolCall, ToolDefinition};
 
 #[derive(Debug, Deserialize)]
@@ -106,7 +106,7 @@ impl KimiCodeProvider {
         format!("{}/v1/messages", self.base_url)
     }
 
-    fn headers(&self) -> Result<HeaderMap> {
+    fn headers(&self, tag: Option<&ConversationTag>) -> Result<HeaderMap> {
         let mut headers = HeaderMap::new();
         headers.insert(USER_AGENT, HeaderValue::from_static("claude-code/0.1.0"));
         headers.insert(
@@ -114,6 +114,11 @@ impl KimiCodeProvider {
             HeaderValue::from_str(&self.api_key).context("Kimi-Code API key 包含非法字符")?,
         );
         headers.insert("anthropic-version", HeaderValue::from_static("2023-06-01"));
+        if let Some(id) = tag.and_then(|tag| tag.use_header.then_some(tag.id.as_str()))
+            && let Ok(value) = HeaderValue::from_str(id)
+        {
+            headers.insert("X-Session-ID", value);
+        }
         Ok(headers)
     }
 
@@ -123,6 +128,7 @@ impl KimiCodeProvider {
         stream: bool,
         tools: Option<&'a [ToolDefinition]>,
         tool_choice: Option<serde_json::Value>,
+        tag: Option<&ConversationTag>,
     ) -> Result<MessagesRequest<'a>> {
         // 拆分 system 与对话消息
         let mut system_text = String::new();
@@ -261,6 +267,7 @@ impl KimiCodeProvider {
             messages: conversation,
             tools: anthropic_tools,
             tool_choice: anthropic_tool_choice,
+            prompt_cache_key: tag.filter(|tag| tag.use_body).map(|tag| tag.id.clone()),
             thinking: {
                 // 设置了推理深度时视为启用思考链（K3 始终开启思考）
                 if reasoning_effort.is_some() || self.enable_thinking {
@@ -402,15 +409,20 @@ impl LlmProvider for KimiCodeProvider {
         Ok(models)
     }
 
-    async fn complete(&self, http: &Client, messages: &[LlmMessage]) -> Result<String> {
-        let body = self.build_request(messages, false, None, None)?;
+    async fn complete(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<String> {
+        let body = self.build_request(messages, false, None, None, tag)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
         );
         let resp = http
             .post(self.endpoint())
-            .headers(self.headers()?)
+            .headers(self.headers(tag)?)
             .json(&body)
             .send()
             .await
@@ -433,17 +445,18 @@ impl LlmProvider for KimiCodeProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<LlmResponseWithTools> {
         let tool_choice_value = parse_tool_choice(tool_choice);
 
-        let body = self.build_request(messages, false, Some(tools), tool_choice_value)?;
+        let body = self.build_request(messages, false, Some(tools), tool_choice_value, tag)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
         );
         let resp = http
             .post(self.endpoint())
-            .headers(self.headers()?)
+            .headers(self.headers(tag)?)
             .json(&body)
             .send()
             .await
@@ -465,8 +478,13 @@ impl LlmProvider for KimiCodeProvider {
         self.parse_messages_with_tools_response(parsed)
     }
 
-    async fn complete_stream(&self, http: &Client, messages: &[LlmMessage]) -> Result<ChunkStream> {
-        self.stream_impl(http, messages, None, None).await
+    async fn complete_stream(
+        &self,
+        http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<ChunkStream> {
+        self.stream_impl(http, messages, None, None, tag).await
     }
 
     /// Kimi-Code 支持 Anthropic SSE 的原生流式 function calling。
@@ -480,9 +498,10 @@ impl LlmProvider for KimiCodeProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
         let tool_choice_value = parse_tool_choice(tool_choice);
-        self.stream_impl(http, messages, Some(tools), tool_choice_value)
+        self.stream_impl(http, messages, Some(tools), tool_choice_value, tag)
             .await
     }
 }
@@ -511,15 +530,16 @@ impl KimiCodeProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<serde_json::Value>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        let body = self.build_request(messages, true, tools, tool_choice)?;
+        let body = self.build_request(messages, true, tools, tool_choice, tag)?;
         crate::utils::llm_request_logger::log_request_body(
             "kimicode",
             &serde_json::to_value(&body).unwrap_or_default(),
         );
         let resp = http
             .post(self.endpoint())
-            .headers(self.headers()?)
+            .headers(self.headers(tag)?)
             .json(&body)
             .send()
             .await
@@ -785,6 +805,8 @@ struct MessagesRequest<'a> {
     tools: Option<Vec<AnthropicTool<'a>>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     tool_choice: Option<AnthropicToolChoice>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    prompt_cache_key: Option<String>,
 }
 
 #[derive(Serialize)]

@@ -31,6 +31,10 @@ pub const LLM_TIMEOUT_SECS: &str = "llm.timeout_secs";
 /// 图片超过端点大小限制时是否自动压缩后再发送（作用于所有携带图片的 LLM 请求；
 /// 关闭后不再做该检查，超限图片将按原样直发，可能被服务端拒绝）。
 pub const LLM_AUTO_COMPRESS_IMAGE: &str = "llm.auto_compress_image";
+/// 是否在 LLM 请求体注入 `prompt_cache_key`（值为当前存档 ID），供网关侧提示缓存分组。
+pub const LLM_PROMPT_CACHE_KEY: &str = "llm.prompt_cache_key";
+/// 是否在 LLM 请求头注入 `X-Session-ID`（值为当前存档 ID），供网关侧会话亲和路由。
+pub const LLM_SESSION_HEADER: &str = "llm.session_header";
 
 // ========== 翻译（对应 TRANSLATE_LLM_PROVIDER / TRANSLATE_MODEL / TRANSLATE_API_KEY / TRANSLATE_BASE_URL） ==========
 pub const TRANSLATE_PROVIDER: &str = "translate.provider";
@@ -50,11 +54,10 @@ pub const WEATHER_FIRST_TALK: &str = "features.weather_first_talk";
 /// 自动同步现实天气到天气特效层（需配合 WEATHER_CITY；手动或 AI 切换天气特效时自动关闭）。
 pub const WEATHER_AUTO_SYNC: &str = "features.weather_auto_sync";
 
-// ========== AI 自动切换（手动优先锁） ==========
-/// 是否允许 AI 自动切换服装（用户手动选装后自动关闭，设置页可重新打开）
-pub const AI_AUTO_CLOTHES: &str = "features.ai_auto_clothes";
-/// 是否允许 AI 自动切换粒子特效（用户手动选特效后自动关闭，设置页可重新打开）
-pub const AI_AUTO_EFFECT: &str = "features.ai_auto_effect";
+// ========== 自动切换（手动优先锁） ==========
+// 值语义：true = 允许 AI 自动切换；用户手动选定后由后端自动翻 false 落锁
+pub const CLOTHES_AUTO_SWITCH: &str = "features.clothes_auto_switch";
+pub const EFFECT_AUTO_SWITCH: &str = "features.effect_auto_switch";
 
 // ========== 自动存档 ==========
 pub const AUTO_SAVE_ENABLED: &str = "features.auto_save_enabled";

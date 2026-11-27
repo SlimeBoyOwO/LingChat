@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use crate::ai_service::types::{GameLine, LineAttributeExt};
 use crate::db::entities::{
     agent_conversation, agent_message, line, line_perception, memory_bank, running_script, save,
-    save_note,
+    save_letter, save_note,
 };
 
 pub struct SaveRepo;
@@ -207,6 +207,13 @@ impl SaveRepo {
         // 存档级笔记随档删除
         save_note::Entity::delete_many()
             .filter(save_note::Column::SaveId.eq(save_id))
+            .exec(db)
+            .await
+            .map_err(|e| anyhow!("{e}"))?;
+
+        // 信纸只删归属，正文文件由下次启动的孤立文件清理收走
+        save_letter::Entity::delete_many()
+            .filter(save_letter::Column::SaveId.eq(save_id))
             .exec(db)
             .await
             .map_err(|e| anyhow!("{e}"))?;

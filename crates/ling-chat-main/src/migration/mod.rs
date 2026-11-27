@@ -48,6 +48,8 @@ impl MigratorTrait for Migrator {
             // 存档级手动笔记（同档内角色共享）。必须追加在末尾，保持时间戳单调递增。
             Box::new(m20261116_000001_create_save_note::Migration),
             Box::new(m20261125_000001_create_memory_index::Migration),
+            // 存档信纸（正文在 data/letters，表里只记归属与页序）。
+            Box::new(m20261126_000001_create_save_letter::Migration),
         ]
     }
 }
@@ -72,3 +74,4 @@ pub mod m20261115_000001_index_line_save_id;
 pub mod m20261116_000001_create_hotword;
 pub mod m20261116_000001_create_save_note;
 mod m20261125_000001_create_memory_index;
+pub mod m20261126_000001_create_save_letter;

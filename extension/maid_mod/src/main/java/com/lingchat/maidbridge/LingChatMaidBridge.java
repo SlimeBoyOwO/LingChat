@@ -16,6 +16,7 @@ import com.lingchat.maidbridge.chat.ChatPushListener;
 import com.lingchat.maidbridge.chat.SendChatHandler;
 import com.lingchat.maidbridge.debug.PathDebug;
 import com.lingchat.maidbridge.debug.PathingCommands;
+import com.lingchat.maidbridge.debug.TestFeedback;
 import com.lingchat.maidbridge.perception.item.BackpackWatcher;
 import com.lingchat.maidbridge.perception.item.ItemReporter;
 import com.lingchat.maidbridge.action.feed.MaidFeeder;
@@ -139,6 +140,8 @@ public class LingChatMaidBridge {
     }
 
     private static void onServerStarting(ServerStartingEvent event) {
+        // 调试期默认把寻路画出来：自动盯着离玩家最近的那一只，hide 才关
+        PathDebug.followNearest();
         if (!MaidBridgeConfig.ENABLED.get()) {
             LOGGER.info("桥接总开关是关的，不监听端口");
             return;
@@ -219,6 +222,8 @@ public class LingChatMaidBridge {
         MaidBuildController.cancel(event.getServer());
         // 寻路可视化盯着的女仆与画面数据都是这一个世界的
         PathDebug.reset();
+        // 调试指令等着的回执也不再作数
+        TestFeedback.reset();
     }
 
     private static void onServerTick(ServerTickEvent.Post event) {

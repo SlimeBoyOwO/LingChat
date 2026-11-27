@@ -2,6 +2,8 @@ package com.lingchat.maidbridge.action.nav;
 
 import com.github.tartaricacid.touhoulittlemaid.entity.passive.EntityMaid;
 import com.lingchat.maidbridge.action.place.Placement;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.function.Predicate;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
@@ -25,6 +27,8 @@ final class RouteView implements RouteSearch.View {
     private final NavMemory memory;
     /** 她身上有没有能垫的整方块：没有就一条垫脚边都不连。 */
     private final boolean hasScaffold;
+    /** 一次搜索内的站位缓存：跑跳要试一圈落点，同一格会被反复问到。 */
+    private final Map<BlockPos, Boolean> stands = new HashMap<>();
 
     RouteView(EntityMaid maid, BlockPos target, Predicate<BlockPos> goal,
             NavPolicy policy, NavMemory memory) {
@@ -40,7 +44,9 @@ final class RouteView implements RouteSearch.View {
     @Override
     public boolean standable(BlockPos pos) {
         // 试过站不上去的格子不再当落脚点，免得在同一格上反复走
-        return allowed(pos) && !memory.triedStands.contains(pos) && Terrain.standable(level, pos);
+        return stands.computeIfAbsent(pos.immutable(), key -> allowed(key)
+                && !memory.triedStands.contains(key)
+                && Terrain.standable(level, key));
     }
 
     @Override
@@ -55,8 +61,24 @@ final class RouteView implements RouteSearch.View {
 
     @Override
     public boolean passable(BlockPos pos) {
-        // 木门算能过：原版导航会替她推开；铁门推不动
-        return allowed(pos) && (standable(pos) || door(pos));
+        // 木门算能过：原版导航会替她推开；铁门推不动。水能游过去，不挡路
+        return allowed(pos) && (standable(pos) || door(pos) || swim(pos));
+    }
+
+    /** 这一格能游过去：脚下是水，头顶没有实心方块。 */
+    private boolean swim(BlockPos pos) {
+        return Terrain.water(level, pos) && !Terrain.solid(level, pos.above());
+    }
+
+    @Override
+    public boolean breakable(BlockPos pos) {
+        // 图纸格不许拆；拆得动的实心方块才行，水和空气谈不上拆
+        return allowed(pos)
+                && policy.canBreak(pos)
+                && !memory.badBlocks.contains(pos)
+                && !Terrain.free(level, pos)
+                && !Terrain.water(level, pos)
+                && level.getBlockState(pos).getDestroySpeed(level, pos) >= 0;
     }
 
     /** 居家模式的活动范围：图上的路也不能越过它，否则原版走到边界就会停。 */
@@ -79,8 +101,15 @@ final class RouteView implements RouteSearch.View {
                 || Bodies.other(level, block, maid)) {
             return false;
         }
-        return Terrain.reachableFrom(maid, from, block)
-                && Placement.seesFrom(maid, from, block, null);
+        if (!Terrain.reachableFrom(maid, from, block)) {
+            return false;
+        }
+        // 她脚下踩着的那块就是托面：架桥、往上垫时，下一块贴着它放就行。搜索里还看不见
+        // 这条路上刚铺出来的方块，真到执行的时候它们已经在了
+        if (block.distManhattan(from.below()) == 1) {
+            return true;
+        }
+        return Placement.seesFrom(maid, from, block, null);
     }
 
     @Override
@@ -89,17 +118,16 @@ final class RouteView implements RouteSearch.View {
     }
 
     @Override
-    public boolean hop(BlockPos from, BlockPos to) {
-        return allowed(to)
-                && !memory.triedStands.contains(to)
-                && MaidParkour.canHop(level, from, to, ParkourRules.MAX_FALL);
+    public boolean hop(BlockPos from, BlockPos to, boolean builtFloor) {
+        // 落点先过缓存：一圈落点大多站不住，不必每个都走一遍弧线校验
+        return standable(to)
+                && MaidParkour.canHop(level, from, to, ParkourRules.MAX_FALL, builtFloor);
     }
 
     @Override
-    public boolean drop(BlockPos from, BlockPos to) {
-        return allowed(to)
-                && !memory.triedStands.contains(to)
-                && MaidParkour.canHop(level, from, to, ParkourRules.DEEP_FALL);
+    public boolean drop(BlockPos from, BlockPos to, boolean builtFloor) {
+        return standable(to)
+                && MaidParkour.canHop(level, from, to, ParkourRules.DEEP_FALL, builtFloor);
     }
 
     @Override

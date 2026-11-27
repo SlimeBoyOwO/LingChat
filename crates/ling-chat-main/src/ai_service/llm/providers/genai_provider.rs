@@ -17,7 +17,7 @@ use genai::resolver::{AuthData, Endpoint};
 use reqwest::Client;
 
 use crate::ai_service::llm::provider::{LlmProvider, LlmResponseWithTools};
-use crate::ai_service::llm::{ChunkStream, LlmChunk, LlmConfig, LlmUsage};
+use crate::ai_service::llm::{ChunkStream, ConversationTag, LlmChunk, LlmConfig, LlmUsage};
 use crate::ai_service::types::{LlmMessage, ToolDefinition};
 
 // ─── Provider ────────────────────────────────────────────────────
@@ -346,7 +346,11 @@ impl GenaiProvider {
         out
     }
 
-    fn build_chat_options(&self, tool_choice: Option<&str>) -> ChatOptions {
+    fn build_chat_options(
+        &self,
+        tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
+    ) -> ChatOptions {
         let mut opts = ChatOptions::default()
             .with_capture_tool_calls(true)
             .with_capture_content(true)
@@ -408,9 +412,19 @@ impl GenaiProvider {
             "disabled"
         };
 
-        opts = opts.with_extra_body(serde_json::json!({
+        // 对话标识：with_extra_body 是整体替换语义，prompt_cache_key 必须并进同一个对象，
+        // 否则会把上面的 thinking 字段覆盖掉。
+        let mut body = serde_json::json!({
             "thinking": { "type": thinking_type }
-        }));
+        });
+        if let Some(tag) = tag.filter(|tag| tag.use_body) {
+            body["prompt_cache_key"] = serde_json::Value::String(tag.id.clone());
+        }
+        opts = opts.with_extra_body(body);
+
+        if let Some(tag) = tag.filter(|tag| tag.use_header) {
+            opts = opts.with_extra_headers([("X-Session-ID", tag.id.clone())]);
+        }
 
         if self.enable_thinking {
             opts = opts.with_capture_reasoning_content(true);
@@ -487,9 +501,10 @@ impl GenaiProvider {
         messages: &[LlmMessage],
         tools: Option<&[ToolDefinition]>,
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
         let chat_req = self.build_chat_request(messages, tools)?;
-        let opts = self.build_chat_options(tool_choice);
+        let opts = self.build_chat_options(tool_choice, tag);
         self.record_request(&chat_req, &opts);
         // 诊断日志：记录实际 ChatOptions，帮助排查 MiniMax 等兼容问题。
         // ChatOptions 字段为 public，直接访问；ToolChoice 转为字符串避免序列化依赖。
@@ -566,9 +581,14 @@ impl GenaiProvider {
 
 #[async_trait]
 impl LlmProvider for GenaiProvider {
-    async fn complete(&self, _http: &Client, messages: &[LlmMessage]) -> Result<String> {
+    async fn complete(
+        &self,
+        _http: &Client,
+        messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
+    ) -> Result<String> {
         let chat_req = self.build_chat_request(messages, None)?;
-        let opts = self.build_chat_options(None);
+        let opts = self.build_chat_options(None, tag);
         self.record_request(&chat_req, &opts);
 
         let response: ChatResponse = self
@@ -586,8 +606,9 @@ impl LlmProvider for GenaiProvider {
         &self,
         _http: &Client,
         messages: &[LlmMessage],
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        self.complete_stream_inner(messages, None, None).await
+        self.complete_stream_inner(messages, None, None, tag).await
     }
 
     fn supports_streaming_tools(&self) -> bool {
@@ -604,8 +625,9 @@ impl LlmProvider for GenaiProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<ChunkStream> {
-        self.complete_stream_inner(messages, Some(tools), tool_choice)
+        self.complete_stream_inner(messages, Some(tools), tool_choice, tag)
             .await
     }
 
@@ -615,9 +637,10 @@ impl LlmProvider for GenaiProvider {
         messages: &[LlmMessage],
         tools: &[ToolDefinition],
         tool_choice: Option<&str>,
+        tag: Option<&ConversationTag>,
     ) -> Result<LlmResponseWithTools> {
         let chat_req = self.build_chat_request(messages, Some(tools))?;
-        let opts = self.build_chat_options(tool_choice);
+        let opts = self.build_chat_options(tool_choice, tag);
         self.record_request(&chat_req, &opts);
         // 诊断日志：记录实际 ChatOptions。
         let tool_choice_str = opts.tool_choice.as_ref().map(|tc| match tc {

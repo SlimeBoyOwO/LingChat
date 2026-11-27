@@ -114,7 +114,7 @@
             v-model.number="store.settings.maxToolRounds"
             type="number"
             min="-1"
-            class="glass-input w-28 py-1.5 text-center"
+            class="glass-input w-28 shrink-0 py-1.5 text-center"
           />
           <span class="text-[0.72rem] text-white/40">{{
             t("scriptEditor.agentSettings.unlimited")

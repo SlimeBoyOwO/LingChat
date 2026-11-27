@@ -30,7 +30,7 @@ use crate::ai_service::game_system::memory::recall::{RecallSession, RecallStamp}
 use crate::ai_service::game_system::status_ops::{TemporaryMemory, TemporaryPlacement};
 use crate::ai_service::god_agent::GodAgentCore;
 use crate::ai_service::god_agent::capabilities::tool_hint as god_tool_hint;
-use crate::ai_service::llm::LlmClient;
+use crate::ai_service::llm::{ConversationTag, LlmClient};
 use crate::ai_service::message_system::events;
 use crate::ai_service::message_system::processor::{EmotionSegment, MessageProcessor};
 use crate::ai_service::message_system::producer::{SentenceItem, StreamProducer};
@@ -40,6 +40,7 @@ use crate::ai_service::tools::tool_loop::stream_with_tool_loop;
 use crate::ai_service::translator::Translator;
 use crate::ai_service::types::{LineAttributeExt, LineBase, LlmMessage};
 use crate::api::data_dir;
+use crate::config::AppConfig;
 use crate::db::entities::line::LineAttribute;
 use crate::utils::prompt::{RoundReply, scan_reply_shape};
 
@@ -347,10 +348,21 @@ impl MessageGenerator {
             context
         };
         // 台词额度按整回合算：工具闭环每轮都会问一句「还能说几句」
-        let reply_mode = {
+        let (reply_mode, active_save_id) = {
             let gs = self.deps.game_status.lock().await;
-            gs.reply_length_mode()
+            anyhow::ensure!(recall.matches(&gs), "当前会话已变化，取消旧请求");
+            (gs.reply_length_mode(), gs.active_save_id)
         };
+        // 对话标识：同一存档内恒定，供网关侧提示缓存分组与会话亲和路由；
+        // 两个注入开关每次现读配置，改高级设置即时生效。
+        let conversation = active_save_id.map(|save_id| {
+            let app_config = AppConfig::load(&self.deps.app).unwrap_or_default();
+            ConversationTag {
+                id: format!("save-{save_id}"),
+                use_body: app_config.prompt_cache_key,
+                use_header: app_config.session_header,
+            }
+        });
         let tool_loop_result = stream_with_tool_loop(
             &self.deps.llm,
             &self.deps.tool_registry,
@@ -361,6 +373,7 @@ impl MessageGenerator {
             tool_hint.map(|hint| hint.names.as_slice()).unwrap_or(&[]),
             recall.clone(),
             reply_mode,
+            conversation,
         )
         .await?;
         // 惰性工具闭环：工具消息在流消费过程中才逐渐收集完整。

@@ -13,9 +13,12 @@ import net.minecraft.core.particles.ParticleOptions;
 import net.minecraft.core.particles.ParticleTypes;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerLevel;
+import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.ai.memory.MemoryModuleType;
 import net.minecraft.world.level.ClipContext;
 import net.minecraft.world.level.pathfinder.Path;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.phys.BlockHitResult;
 import net.minecraft.world.phys.HitResult;
 import net.minecraft.world.phys.Vec3;
@@ -38,6 +41,8 @@ public final class PathDebug {
     private static final int MAX_PROBES = 96;
     /** 路线上最多画这么多格：长路按比例抽稀。 */
     private static final int MAX_PATH_NODES = 64;
+    /** 自动盯着她时，离玩家多远以内算「附近的那一只」。 */
+    private static final double AUTO_RADIUS = 64.0;
 
     private static final DustParticleOptions RED =
             new DustParticleOptions(new Vector3f(1.0F, 0.2F, 0.15F), 1.0F);
@@ -109,6 +114,8 @@ public final class PathDebug {
     }
 
     private static boolean enabled;
+    /** 进存档后自动盯着离玩家最近的她，直到手动 hide。 */
+    private static boolean auto;
     private static UUID watched;
     private static String watchedName = "";
     private static long lastReport;
@@ -120,6 +127,8 @@ public final class PathDebug {
     private static int searchDown;
     private static int searchUp;
     private static List<BlockPos> hop = List.of();
+    /** 图搜索算出的整条路线：她还没走到的每一段都画出来。 */
+    private static List<BlockPos> planned = List.of();
     private static BlockPos nextPos;
     private static int livePathNodes;
     private static int lastProbeCount;
@@ -138,6 +147,38 @@ public final class PathDebug {
     /** 是不是正在盯这只女仆。 */
     public static boolean watching(EntityMaid maid) {
         return enabled && watched != null && maid != null && watched.equals(maid.getUUID());
+    }
+
+    /** 进存档就开始画：自动盯着离玩家最近的那一只，直到手动 hide。 */
+    public static void followNearest() {
+        auto = true;
+        enabled = true;
+    }
+
+    /** 自动模式挑一只：各玩家附近最近的那只活着的女仆，选中后全部图层打开。 */
+    private static EntityMaid watchNearest(MinecraftServer server) {
+        EntityMaid best = null;
+        double bestDistance = Double.MAX_VALUE;
+        for (ServerPlayer player : server.getPlayerList().getPlayers()) {
+            Vec3 at = player.position();
+            for (EntityMaid maid : player.level().getEntitiesOfClass(
+                    EntityMaid.class, new AABB(at, at).inflate(AUTO_RADIUS), Entity::isAlive)) {
+                double distance = maid.distanceToSqr(at);
+                if (distance < bestDistance) {
+                    bestDistance = distance;
+                    best = maid;
+                }
+            }
+        }
+        if (best == null) {
+            return null;
+        }
+        clearFrame();
+        watched = best.getUUID();
+        watchedName = best.getName().getString();
+        layers.clear();
+        layers.addAll(EnumSet.allOf(Layer.class));
+        return best;
     }
 
     /**
@@ -205,9 +246,10 @@ public final class PathDebug {
         return text.toString();
     }
 
-    /** 关掉可视化。 */
+    /** 关掉可视化；手动关掉就不再自动盯着。 */
     public static void stop() {
         enabled = false;
+        auto = false;
         watched = null;
         watchedName = "";
         clearFrame();
@@ -220,10 +262,11 @@ public final class PathDebug {
         stop();
     }
 
-    /** 施工每 tick 交一次当前阶段与落脚点。 */
+    /** 寻路每 tick 交一次当前阶段、落脚点与算好的整条路线。 */
     public static void report(
             EntityMaid maid, String phase, BlockPos stand, BlockPos target,
-            List<BlockPos> hopChain, BlockPos nextPlace, String targetBlock) {
+            List<BlockPos> hopChain, List<BlockPos> plannedPath,
+            BlockPos nextPlace, String targetBlock) {
         if (!watching(maid)) {
             return;
         }
@@ -232,6 +275,7 @@ public final class PathDebug {
         PathDebug.target = target;
         PathDebug.targetName = targetBlock == null ? "" : targetBlock;
         PathDebug.hop = hopChain.isEmpty() ? List.of() : List.copyOf(hopChain);
+        PathDebug.planned = plannedPath.isEmpty() ? List.of() : List.copyOf(plannedPath);
         PathDebug.nextPos = nextPlace;
         PathDebug.lastReport = maid.level().getGameTime();
     }
@@ -264,12 +308,13 @@ public final class PathDebug {
             return "寻路可视化：关";
         }
         if (watched == null) {
-            return "寻路可视化：开，但还没选中女仆";
+            return auto ? "寻路可视化：自动开着，附近没找到她" : "寻路可视化：开，但还没选中女仆";
         }
+        String who = auto ? "自动盯着 " + watchedName : watchedName;
         if (lastReport == 0) {
-            return "寻路可视化：开（" + watchedName + "），她此刻没有在施工";
+            return "寻路可视化：开（" + who + "），她此刻没有在施工";
         }
-        return "寻路可视化：" + watchedName
+        return "寻路可视化：" + who
                 + "｜阶段：" + phase
                 + "｜目标：" + format(target)
                 + (targetName.isEmpty() ? "" : "（" + targetName + "）")
@@ -281,11 +326,22 @@ public final class PathDebug {
 
     /** 每 tick 画一次；施工停了就静默，等下一次开工。 */
     public static void tick(MinecraftServer server) {
-        if (!enabled || watched == null) {
+        if (!enabled) {
             return;
         }
-        EntityMaid maid = MaidQueries.findMaidById(server, watched.toString());
-        if (maid == null || !maid.isAlive() || !(maid.level() instanceof ServerLevel level)) {
+        EntityMaid maid = watched == null ? null : MaidQueries.findMaidById(server, watched.toString());
+        if (maid == null || !maid.isAlive()) {
+            // 自动模式换一只：她走远到区块卸载、或者刚进存档还没有目标
+            maid = auto ? watchNearest(server) : null;
+            if (maid == null) {
+                watched = null;
+                watchedName = "";
+                clearFrame();
+                probes.clear();
+                return;
+            }
+        }
+        if (!(maid.level() instanceof ServerLevel level)) {
             clearFrame();
             probes.clear();
             return;
@@ -306,6 +362,7 @@ public final class PathDebug {
         // 先画最要紧的：粒子有总量上限，排到后面的在极端情况会被丢掉
         if (layers.contains(Layer.PATH)) {
             drawLivePath(level, maid, path);
+            drawPlanned(level, planned);
         }
         if (layers.contains(Layer.TARGET)) {
             drawTarget(level, target);
@@ -341,6 +398,7 @@ public final class PathDebug {
         searchDown = 0;
         searchUp = 0;
         hop = List.of();
+        planned = List.of();
         nextPos = null;
         livePathNodes = 0;
         lastProbeCount = 0;
@@ -442,6 +500,26 @@ public final class PathDebug {
         dot(level, GREEN, end.getX() + 0.5, end.getY() + 0.5, end.getZ() + 0.5);
         dot(level, ParticleTypes.HAPPY_VILLAGER,
                 maid.getX(), maid.getY() + 2.3, maid.getZ());
+    }
+
+    /**
+     * 图搜索算出的整条路线：每个落脚点一团浅绿，点之间连起来。
+     *
+     * <p>原版导航手里只有当前这一段，光看它容易以为路线被切成了好几段；这里把还没走到的
+     * 几段也画出来，断点就是跑跳、垫高、搭路这些要单独执行的动作。
+     */
+    private static void drawPlanned(ServerLevel level, List<BlockPos> planned) {
+        Vec3 previous = null;
+        // 只画个大概：整条路线可能是几十格，画满会把后面的落脚点框挤掉
+        int count = Math.min(planned.size(), 24);
+        for (int i = 0; i < count; i++) {
+            Vec3 at = Vec3.atCenterOf(planned.get(i)).add(0.0, 0.6, 0.0);
+            if (previous != null) {
+                line(level, LIME, previous, at, 4, 1.0);
+            }
+            dot(level, LIME, at.x, at.y, at.z);
+            previous = at;
+        }
     }
 
     /**

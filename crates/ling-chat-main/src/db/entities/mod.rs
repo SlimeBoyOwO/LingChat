@@ -13,4 +13,5 @@ pub mod role;
 pub mod role_relation;
 pub mod running_script;
 pub mod save;
+pub mod save_letter;
 pub mod save_note;
