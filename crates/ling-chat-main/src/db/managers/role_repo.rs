@@ -35,7 +35,7 @@ pub struct RoleRelation {
 /// 临时关闭 SQLite 外键约束。
 /// 警告：调用方必须在 finally 路径中重新打开（[`FkReEnableGuard`] 已封装该逻辑）。
 async fn disable_fk(db: &DatabaseConnection) -> Result<()> {
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = OFF",
     ))
@@ -46,7 +46,7 @@ async fn disable_fk(db: &DatabaseConnection) -> Result<()> {
 
 /// 重新打开 SQLite 外键约束。即使前面的操作已经成功，也要在 finally 路径调用。
 async fn enable_fk(db: &DatabaseConnection) -> Result<()> {
-    db.execute(Statement::from_string(
+    db.execute_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = ON",
     ))

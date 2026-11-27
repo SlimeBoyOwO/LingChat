@@ -24,7 +24,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 toml = { workspace = true }
 sea-orm = { workspace = true }
-sea-orm-migration = "1"
+sea-orm-migration = "2"
 tokio = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }

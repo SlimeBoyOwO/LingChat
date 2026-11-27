@@ -33,7 +33,7 @@ reqwest = { version = "0.13", features = [
     "system-proxy",
 ], default-features = false }
 rustls = { version = "0.23", features = ["aws-lc-rs"] }
-sea-orm = { version = "1", features = [
+sea-orm = { version = "2", features = [
     "sqlx-sqlite",
     "runtime-tokio-rustls",
     "macros",

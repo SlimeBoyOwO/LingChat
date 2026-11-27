@@ -21,7 +21,7 @@ impl MigrationTrait for Migration {
         ] {
             let rows = manager
                 .get_connection()
-                .query_all(Statement::from_string(
+                .query_all_raw(Statement::from_string(
                     manager.get_database_backend(),
                     format!(
                         "SELECT name FROM pragma_table_info('skill_agent_message') WHERE name = '{kind}'"

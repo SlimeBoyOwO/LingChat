@@ -16,7 +16,7 @@ impl MigrationTrait for Migration {
         // 异常（如被手动清空）导致重复执行时报「duplicate column」。
         let rows = manager
             .get_connection()
-            .query_all(Statement::from_string(
+            .query_all_raw(Statement::from_string(
                 manager.get_database_backend(),
                 "SELECT name FROM pragma_table_info('skill_agent_message') WHERE name = 'reasoning'"
                     .to_string(),

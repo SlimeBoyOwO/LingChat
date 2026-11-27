@@ -349,7 +349,7 @@ pub async fn apply_staged_db_records(
 async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u64, String> {
     // 在事务中执行全部操作
     let txn = db.begin().await.map_err(|e| format!("开始事务失败: {e}"))?;
-    txn.execute(Statement::from_string(
+    txn.execute_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = OFF",
     ))
@@ -451,7 +451,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     }
     for table in DELETE_ORDER {
         let count = if table == "role" {
-            txn.execute(Statement::from_string(
+            txn.execute_raw(Statement::from_string(
                 DatabaseBackend::Sqlite,
                 "DELETE FROM role WHERE role_type <> 'player'".to_string(),
             ))
@@ -510,7 +510,7 @@ async fn apply_records(db: &DatabaseConnection, records: &DbRecords) -> Result<u
     import_rows!(&txn, &records.line_perceptions, line_perception, imported);
 
     // 重新启用外键检查
-    txn.execute(Statement::from_string(
+    txn.execute_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "PRAGMA foreign_keys = ON",
     ))
@@ -552,7 +552,7 @@ fn translate_player_ref(
 async fn delete_all(db: &impl ConnectionTrait, table: &str) -> Result<u64, String> {
     let sql = format!("DELETE FROM {}", table);
     let result = db
-        .execute(Statement::from_string(DatabaseBackend::Sqlite, sql))
+        .execute_raw(Statement::from_string(DatabaseBackend::Sqlite, sql))
         .await
         .map_err(|e| format!("清空表 {} 失败: {e}", table))?;
     Ok(result.rows_affected())

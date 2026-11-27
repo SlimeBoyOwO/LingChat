@@ -7,7 +7,7 @@ use sea_orm::{ConnectionTrait, DatabaseBackend, DatabaseConnection, Statement, T
 
 /// Execute a raw SQL statement with per-step context for debugging.
 async fn exec(db: &impl ConnectionTrait, description: &str, stmt: &str) -> Result<()> {
-    db.execute(Statement::from_string(DatabaseBackend::Sqlite, stmt))
+    db.execute_raw(Statement::from_string(DatabaseBackend::Sqlite, stmt))
         .await
         .with_context(|| format!("Migration step failed: {description}"))?;
     Ok(())
@@ -16,7 +16,7 @@ async fn exec(db: &impl ConnectionTrait, description: &str, stmt: &str) -> Resul
 /// Check if the database was created by the old Python backend.
 /// The old backend has a `user_info` table that the new Tauri schema removed.
 async fn is_old_schema(db: &DatabaseConnection) -> bool {
-    db.query_one(Statement::from_string(
+    db.query_one_raw(Statement::from_string(
         DatabaseBackend::Sqlite,
         "SELECT name FROM sqlite_master WHERE type='table' AND name='user_info'",
     ))
