@@ -162,6 +162,8 @@ impl PluginManager {
             capture_screen: record.manifest.capture_screen,
             trigger_proactive: record.manifest.trigger_proactive,
             director_task: record.manifest.director_task,
+            script_run: record.manifest.script_run,
+            plugin_view: record.manifest.plugin_view,
         }
     }
 
@@ -308,6 +310,8 @@ impl PluginManager {
         } else {
             self.cancel_plugin(id).await;
             self.ws.close(id, None);
+            crate::host_api::script::stop_plugin(id).await;
+            crate::host_api::view::close_for_plugin(id).await;
         }
         Ok(())
     }
@@ -360,11 +364,13 @@ impl PluginManager {
         states.remove(id);
         self.store.save_states(&states);
         drop(records);
-        std::fs::remove_dir_all(&dir).map_err(|e| format!("删除插件目录失败: {e}"))?;
-        let _ = self.registry.save_permissions(&self.data_dir);
-        // 插件本体没了：让它的启动重试立刻停下、WS 连接断开。依赖它的插件由调用方级联禁用。
+        // 先停脚本与视图，再删目录：Windows 上 Node 还占着插件目录里的文件时删不掉。
         self.cancel_plugin(id).await;
         self.ws.close(id, None);
+        crate::host_api::script::stop_plugin(id).await;
+        crate::host_api::view::close_for_plugin(id).await;
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("删除插件目录失败: {e}"))?;
+        let _ = self.registry.save_permissions(&self.data_dir);
         Ok(())
     }
 
@@ -438,5 +444,20 @@ impl PluginManager {
 impl ling_chat_main::plugin_contract::PluginResourceSource for PluginManager {
     async fn visible_file_entries(&self, kind: ResourceKind) -> Vec<PluginResourceEntry> {
         PluginManager::visible_file_entries(self, kind).await
+    }
+
+    async fn plugin_skill_dir(&self, plugin_id: &str, name: &str) -> Option<PathBuf> {
+        if !ling_chat_main::ai_service::skill_agent::skills::is_safe_skill_name(name) {
+            return None;
+        }
+        let records = self.store.lock().await;
+        let record = records.get(plugin_id)?;
+        if !record.state.enabled || record.error.is_some() {
+            return None;
+        }
+        let plugin_root = record.dir.canonicalize().ok()?;
+        let skill_dir = plugin_root.join("skills").join(name).canonicalize().ok()?;
+        (skill_dir.starts_with(&plugin_root) && skill_dir.join("SKILL.md").is_file())
+            .then_some(skill_dir)
     }
 }

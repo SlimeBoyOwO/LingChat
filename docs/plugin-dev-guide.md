@@ -12,6 +12,8 @@ data/plugins/<id>/
 └── 资源子目录（可选）# 见「插件携带资源」：characters / scripts / musics / backgrounds / ambients
 ```
 
+最短的上手方式是照着 `data/plugins/plugin_showcase` 抄：它把「运行自带脚本」「打开自带网页」「给导演带技能」三条示例放在一个插件里，目录里每一层都有注释。
+
 ## 编辑器补全：`plugin_host.pyi`
 
 `plugin_host` 是宿主注入进解释器的原生模块（源码在 `crates/ling-chat-plugins/src/host_api.rs`），磁盘上并没有这个包，所以 `from plugin_host import http_post` 在编辑器里会被标成「找不到模块 / 无法解析导入」。**这不影响运行**，只是缺补全和类型检查。
@@ -106,7 +108,7 @@ parameters = '{ "type":"object", "properties":{ "query":{"type":"string"}, "max_
 
 改完 `manifest.toml`（或往 `data/plugins` 里换过脚本）后，在 设置 → 插件 页点「重新扫描插件」即可生效，不用重启应用。注意页面上那个启用开关不管用：它只是拿内存里已经解析过的那份 manifest 重新注册工具，不会重读文件。
 
-除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）、向导演 Agent 投递后台任务的能力（`director_task`）以及接管实时台词语音（`[voice_play_back]`），见后文对应章节。
+除工具与资源，插件还可以订阅宿主信号（`[[subscribe]]`）、声明 WebSocket 连接（`[[ws]]` 与 `ws_allow`）、声明启动入口（`[startup]`）、前置插件（`depends_on`）、可读素材范围（`read`）、把外部消息送进对话的能力（`send_user_message`）、送消息时顺带抓一张屏幕的能力（`capture_screen`）、请求角色主动开口的能力（`trigger_proactive`）、向导演 Agent 投递后台任务的能力（`director_task`）、执行插件目录内 Node 脚本的能力（`script_run`）、在应用内打开回环页面的能力（`plugin_view`）以及接管实时台词语音（`[voice_play_back]`），见后文对应章节。
 
 **工具的下发与权限**：插件启用时，宿主会把它声明的工具一并授权给默认角色组（与工具设置页里打开开关同义），工具才会随主聊天下发给 LLM、也才能进 Tool RAG 的候选池；同时也会写进「主动对话」映射到的场景组，让游戏事件触发的那一轮也搜得到、调得动（场景组是一份早先写死的工具快照，不补进去的话插件工具只在玩家开口的那一轮可用）。禁用插件时两处授权一起收回。
 
@@ -1060,6 +1062,8 @@ trigger_proactive("")
 
 任务内容由插件给：任务说明、用户消息、提交工具的名称与参数 schema 都随请求传入，宿主不解释具体领域。`kind` 只是标签，用于任务 id 与信号回传。
 
+请求还可以带 `skills`：技能名数组。宿主先找**发起任务的插件自己**的 `skills/<name>/SKILL.md`，找不到再退回全局技能库 `data/game_data/skills/<name>`；找到后把 `SKILL.md` 注入 system prompt，并给导演一个只读的 `skill_read(skill, path)` 工具，用来读技能目录内的参考文件。插件把技能随插件目录一起分发即可，不用登记到全局技能库。
+
 ```python
 from plugin_host import director_task_start, director_task_status, director_task_take
 
@@ -1067,6 +1071,7 @@ r = director_task_start("building", {
     "system_prompt": "你是……（任务说明与约束）",
     "prompt": "……（本次任务的用户消息）",
     "include_recent": True,          # 由宿主在消息末尾追加最近对话，默认 True
+    "skills": ["minecraft-builder-skill"],  # 可选：发起插件 skills/ 下的技能
     "submit": {
         "tool": "submit_building_blueprint",
         "description": "提交最终结果。",
@@ -1079,13 +1084,56 @@ r = director_task_start("building", {
 ```
 
 - 立刻返回；同一时间只跑一个任务，已有任务在跑时返回 `{ok: False, error}`。
-- `system_prompt`、`prompt` 与提交工具定义都有体积上限，超过时直接拒绝。
+- `system_prompt`、`prompt` 与提交工具定义都有体积上限，超过时直接拒绝；技能内容另算，单个技能与总量也有上限。
 - 导演在自己的工具循环里调用 `submit.tool`，整个任务只认一次提交。宿主按字段名取出结果与摘要并保存，不解释内容。
 - 任务进入终态后宿主派发 `director_task` 信号（只发给发起者）；payload 只带 id、状态、摘要与错误。
 - `director_task_status(task_id=None)` 查进度；省略 id 查本插件最近一次任务。返回 `{ok, task}`，没有任务时 `task` 为 `null`。
 - `director_task_take(task_id=None)` 取走结果；只能在 `status == "done"` 时取，取走后 `hasResult` 变为 false。
 - 任务状态：`running` / `done` / `failed`。超时、模型报错或没交结果都只通知失败，不自动重试。
 - 仅内存：重启即失；任务结束时若发现存档已换，按失败收尾。
+
+### 插件自带脚本：`script_run` / `script_serve` / `script_stop`
+
+插件 Python 沙箱没有文件系统和子进程。需要跑 Node 脚本（例如技能自带的生成器、查看器）时，用这三个接口，并**在 manifest 顶层声明 `script_run = true`**。宿主只跑插件目录内的脚本，不开放 shell、不接受任意可执行文件。
+
+```python
+from plugin_host import script_run, script_serve, script_stop
+
+r = script_run(
+    "scripts/build.mjs",
+    args=["--json"],
+    files={"input.txt": "hello", "data.bin": {"base64": "..."}},
+    timeout_ms=60000,
+)
+# {"ok": True, "exit_code": 0, "stdout": "...", "stderr": "",
+#  "files": {"out/result.txt": {"base64": "...", "size": 12}}, "workdir": "..."}
+
+s = script_serve("scripts/view.mjs", args=["--port", "0"])
+# {"ok": True, "run_id": "run-...", "url": "http://127.0.0.1:5173/", "logs": [...]}
+script_stop(s["run_id"])
+```
+
+- `files` 的键是相对路径，值可以是字符串或 `{"base64": "..."}`；宿主先把它们写进本次独立工作目录，脚本以该目录为 cwd，输出文件也按相对路径带回（base64）。
+- `script_run` 受 Node 权限模型限制：只读插件目录与工作目录、只写工作目录、禁网、禁子进程、清空环境变量；默认 60 秒，最长 300 秒。适合执行模型生成的数据/代码。
+- `script_serve` 跑插件自带的可信脚本，允许绑定回环端口，用于本地页面/查看器；等脚本在 stdout/stderr 输出 URL 后返回。服务会运行到 `script_stop`、视图窗口关闭、插件禁用或应用退出。
+- 脚本路径必须是插件目录内的 `.mjs` / `.js` / `.cjs`；当前只支持 Node，需要本机有 Node 20+。
+- 工作目录在 `data/plugin_runs/<plugin_id>/<uuid>/`；输入输出大小都有上限。
+
+### 插件视图窗口：`open_plugin_view`
+
+把插件自己的回环页面放进应用内的沙箱窗口，**需要 manifest 顶层声明 `plugin_view = true`**。页面通常由 `script_serve` 启动。
+
+```python
+from plugin_host import open_plugin_view, script_serve
+
+s = script_serve("scripts/view.mjs")
+open_plugin_view(s["url"], run_id=s["run_id"], title="预览", width=1000, height=720)
+```
+
+- 只接受 `http://127.0.0.1:*` / `http://localhost:*` / `http://[::1]:*`；拒绝外网地址。
+- 窗口不注入 LingChat 前端与 Tauri IPC；导航也限制在回环 http 内。
+- 传入 `run_id` 时，窗口关闭会自动停止对应的 `script_serve` 服务；重复打开复用同一个窗口。
+- 插件禁用/删除时关闭窗口并回收服务。
 
 ### WebSocket：`ws_open` / `ws_close` / `ws_send` / `ws_status`
 
@@ -1152,7 +1200,7 @@ def run(ctx):
 - 禁用的顶层模块：`os`、`subprocess`、`shutil`、`pathlib`、`ctypes`、`sysconfig`
 - 标准库是 RustPython 自带的那份，不是本机 CPython：只有纯 Python 实现与已移植的原生模块，`math`、`cmath` 这类尚未移植，`import math` 会报 `No module named 'math'`。取整、开方这类简单计算自己写；需要复杂数学运算时用 `call_tool` 走宿主能力。
 - 环境变量只有 manifest `[[env]]` 白名单内的会注入 `ctx["env"]`
-- 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。唯一相关的能力是 `import` 插件目录内的模块与包（见「拆成多个文件与子目录」）：那份源码由宿主读进解释器，脚本自己依然碰不到文件。
+- 脚本无法直接写文件系统、启动子进程、加载系统库；读也只有一个口子——`read_data_file`，且只能读 manifest `read` 声明过的 `data/` 子目录（未声明 = 一律拒绝，见「读游戏素材」一节）。唯一相关的能力是 `import` 插件目录内的模块与包（见「拆成多个文件与子目录」）：那份源码由宿主读进解释器，脚本自己依然碰不到文件。要在本机跑脚本，只能走显式声明的 `script_run` / `script_serve`，由宿主在插件目录与独立工作目录内启动 Node。
 - 网络出站：`http_get` / `http_post` 可发往任意 URL；WebSocket client 连接受 manifest `ws_allow` 白名单约束（省略 `ws_allow` = 允许全网段），且脚本只能操作自己在 `[[ws]]` 里声明过的连接。
 - 每次调用新建解释器，无跨调用状态；超时（`timeout_ms`，上限 120000ms）后执行结果作废、本次调用终止。
 - **注意**：超时无法强制中断脚本所在的阻塞线程，死循环可能残留占用线程直至进程退出，插件作者（和你们的agent）应避免写死循环。

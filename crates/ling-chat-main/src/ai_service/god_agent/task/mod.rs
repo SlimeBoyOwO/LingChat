@@ -3,6 +3,7 @@
 //! 任务内容由插件提供：system prompt、数据载荷、提交工具的名称与参数 schema 都随
 //! 请求传来，宿主不解释具体领域。宿主只负责运行、限时、存档失效与信号通知。
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -10,12 +11,15 @@ use async_trait::async_trait;
 use chrono::Local;
 use serde::Serialize;
 use serde_json::{Value, json};
-use tauri::AppHandle;
+use tauri::{AppHandle, Manager};
 use tokio::sync::{Mutex, watch};
 
+use crate::AppState;
 use crate::ai_service::game_system::game_status::GameStatus;
 use crate::ai_service::god_agent::core::{GodAgentCore, tail_lines};
 use crate::ai_service::llm::{LlmClient, slot_snapshot};
+use crate::ai_service::skill_agent::config::SkillAgentConfig;
+use crate::ai_service::skill_agent::skills;
 use crate::ai_service::tools::agent::{AgentTask, run_tool_agent};
 use crate::ai_service::tools::executor::{Tool, ToolContext, ToolError, ToolResult};
 use crate::ai_service::tools::registry::ToolRegistry;
@@ -41,6 +45,20 @@ const RESULT_BYTE_LIMIT: usize = 2 * 1024 * 1024;
 const SUMMARY_CHAR_LIMIT: usize = 240;
 /// 导演最多跑几轮工具调用。
 const MAX_ROUNDS: usize = 6;
+/// 单次任务最多加载几个技能。
+const MAX_SKILLS: usize = 4;
+/// 单个技能进入 system prompt 的字符上限。
+const SKILL_CHAR_LIMIT: usize = 32_000;
+/// 多个技能进入 system prompt 的总字符上限。
+const SKILL_TOTAL_CHAR_LIMIT: usize = 64_000;
+
+/// 已解析的技能：目录用于 skill_read，内容注入系统提示。
+#[derive(Clone)]
+struct ResolvedSkill {
+    name: String,
+    base_directory: PathBuf,
+    content: String,
+}
 
 /// 任务状态。序列化为 `running` / `done` / `failed`。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -349,7 +367,9 @@ pub async fn start(
     let llm = slot_snapshot(&core.llm)
         .await
         .ok_or_else(|| "上帝Agent 没有可用的模型".to_string())?;
-    let prepared = prepare(&request)?;
+    let mut prepared = prepare(&request)?;
+    let resolved_skills = resolve_skills(&app, &plugin_id, &request).await?;
+    append_skills(&mut prepared.system_prompt, &resolved_skills);
     let (recent, save_id) = {
         let game_status = crate::ai_service::tools::game_status_handle(&app).await;
         let gs = game_status.lock().await;
@@ -367,8 +387,11 @@ pub async fn start(
     let app_for_task = app.clone();
     let task_id_for_task = task_id.clone();
     tauri::async_runtime::spawn(async move {
-        let outcome =
-            tokio::time::timeout(TASK_TIMEOUT, run(&llm, &app_for_task, prepared, recent)).await;
+        let outcome = tokio::time::timeout(
+            TASK_TIMEOUT,
+            run(&llm, &app_for_task, prepared, recent, resolved_skills),
+        )
+        .await;
         let outcome = match outcome {
             Ok(result) => result,
             Err(_) => Err(format!(
@@ -397,11 +420,171 @@ async fn save_changed(app: &AppHandle, origin: Option<i32>) -> bool {
     current != Some(origin)
 }
 
+/// 解析请求里声明的技能：优先找发起任务的插件目录，找不到再退回全局技能库。
+async fn resolve_skills(
+    app: &AppHandle,
+    plugin_id: &str,
+    request: &Value,
+) -> Result<Vec<ResolvedSkill>, String> {
+    let Some(raw) = request.get("skills") else {
+        return Ok(Vec::new());
+    };
+    let items = raw
+        .as_array()
+        .ok_or_else(|| "skills 必须是字符串数组".to_string())?;
+    if items.len() > MAX_SKILLS {
+        return Err(format!("一次最多声明 {MAX_SKILLS} 个技能"));
+    }
+
+    let mut resolved = Vec::new();
+    for item in items {
+        let name = item
+            .as_str()
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| "skills 里只能放非空字符串".to_string())?;
+        if !skills::is_safe_skill_name(name) {
+            return Err(format!("技能名不合法：{name}"));
+        }
+        if resolved
+            .iter()
+            .any(|skill: &ResolvedSkill| skill.name == name)
+        {
+            continue;
+        }
+
+        let plugin_dir = app
+            .state::<AppState>()
+            .plugin_resources
+            .plugin_skill_dir(plugin_id, name)
+            .await;
+        let loaded = match plugin_dir {
+            Some(dir) => skills::load_skill_at(&dir),
+            None => {
+                let root = SkillAgentConfig::load(app).resolve_skills_dir();
+                let name_owned = name.to_string();
+                tokio::task::spawn_blocking(move || skills::find_skill(&root, &name_owned))
+                    .await
+                    .map_err(|error| format!("技能读取任务异常：{error}"))?
+            },
+        };
+        let Some(mut loaded) = loaded else {
+            return Err(format!(
+                "找不到技能 '{name}'：发起插件自带的 skills/{name} 与全局技能库都没有"
+            ));
+        };
+        if loaded.content.chars().count() > SKILL_CHAR_LIMIT {
+            loaded.content = truncate_chars(&loaded.content, SKILL_CHAR_LIMIT);
+        }
+        resolved.push(ResolvedSkill {
+            name: name.to_string(),
+            base_directory: loaded.base_directory,
+            content: loaded.content,
+        });
+    }
+    Ok(resolved)
+}
+
+/// 把技能说明追加到系统提示。技能内容不经过插件的 system_prompt 上限校验。
+fn append_skills(system_prompt: &mut String, skills: &[ResolvedSkill]) {
+    let mut used = system_prompt.chars().count();
+    for skill in skills {
+        if used >= SKILL_TOTAL_CHAR_LIMIT {
+            break;
+        }
+        let block = format!(
+            "\n\n【技能：{}】\n可调用 {SKILL_READ_TOOL}(skill=\"{}\", path=\"references/...\") 读取技能目录内的参考文件。\n\n{}",
+            skill.name, skill.name, skill.content
+        );
+        let remaining = SKILL_TOTAL_CHAR_LIMIT.saturating_sub(used);
+        let block = if block.chars().count() > remaining {
+            truncate_chars(&block, remaining)
+        } else {
+            block
+        };
+        used += block.chars().count();
+        system_prompt.push_str(&block);
+    }
+}
+
+const SKILL_READ_TOOL: &str = "skill_read";
+
+/// 导演任务专用的只读技能参考读取工具。只在声明了 skills 的任务里注册。
+struct SkillReadTool {
+    skills: Arc<Vec<ResolvedSkill>>,
+}
+
+#[async_trait]
+impl Tool for SkillReadTool {
+    fn definition(&self) -> ToolDefinition {
+        ToolDefinition::new(
+            SKILL_READ_TOOL,
+            "读取本次任务声明的技能目录内的参考文件。path 是相对技能目录的路径，例如 references/notes.md。",
+            json!({
+                "type": "object",
+                "properties": {
+                    "skill": {
+                        "type": "string",
+                        "description": "技能名，必须是本次任务声明的技能之一"
+                    },
+                    "path": {
+                        "type": "string",
+                        "description": "相对技能目录的文件路径，不能包含 .. 或绝对路径"
+                    }
+                },
+                "required": ["skill", "path"],
+                "additionalProperties": false
+            }),
+        )
+    }
+
+    fn timeout_hint(&self) -> Option<Duration> {
+        Some(Duration::from_secs(5))
+    }
+
+    async fn execute(
+        &self,
+        _context: &ToolContext,
+        arguments: Value,
+    ) -> Result<ToolResult, ToolError> {
+        let skill_name = arguments
+            .get("skill")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|name| !name.is_empty())
+            .ok_or_else(|| ToolError::InvalidArguments("缺少 skill".to_string()))?;
+        let path = arguments
+            .get("path")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|path| !path.is_empty())
+            .ok_or_else(|| ToolError::InvalidArguments("缺少 path".to_string()))?;
+        let skill = self
+            .skills
+            .iter()
+            .find(|skill| skill.name == skill_name)
+            .ok_or_else(|| {
+                ToolError::InvalidArguments(format!("本次任务没有声明技能 {skill_name}"))
+            })?;
+
+        let (content, truncated) =
+            skills::read_skill_file(&skill.base_directory, path).map_err(ToolError::Execution)?;
+        Ok(json!({
+            "ok": true,
+            "skill": skill_name,
+            "path": path,
+            "content": content,
+            "truncated": truncated,
+        }))
+    }
+}
+
 async fn run(
     llm: &Arc<LlmClient>,
     app: &AppHandle,
     prepared: Prepared,
     recent: String,
+    skills: Vec<ResolvedSkill>,
 ) -> Result<TaskOutcome, String> {
     let slot = Arc::new(Mutex::new(None));
     let tool_name = prepared.submit.tool.clone();
@@ -417,10 +600,20 @@ async fn run(
         }))
         .map_err(|error| format!("注册提交工具失败：{error}"))?;
 
+    let mut tool_names = vec![tool_name];
+    if !skills.is_empty() {
+        registry
+            .register(Arc::new(SkillReadTool {
+                skills: Arc::new(skills),
+            }))
+            .map_err(|error| format!("注册 skill_read 失败：{error}"))?;
+        tool_names.push(SKILL_READ_TOOL.to_string());
+    }
+
     let task = AgentTask {
         system_prompt,
         payload,
-        tool_names: vec![tool_name],
+        tool_names,
         max_rounds: MAX_ROUNDS,
     };
     let output = run_tool_agent(llm, &registry, &task, Some(app.clone()))

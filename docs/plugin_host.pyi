@@ -108,8 +108,10 @@ def compress_context() -> Dict[str, Any]:
 def director_task_start(kind: str, request: Dict[str, Any]) -> Dict[str, Any]:
     """向导演 Agent 投递后台任务，立刻返回。需 manifest 声明 director_task = true。
     request 提供 system_prompt、prompt 与 submit（提交工具名、schema、结果字段），
-    宿主不解释具体领域。成功 {ok, task_id}；已有任务在跑时 {ok: False, error}。
-    任务进入终态后宿主派发 director_task 信号。"""
+    宿主不解释具体领域。可选 skills: [技能名]：宿主先找发起插件自己的
+    skills/<name>/SKILL.md，再退回全局技能库；找到后注入 system prompt，并给
+    导演一个只读的 skill_read 工具。成功 {ok, task_id}；已有任务在跑时
+    {ok: False, error}。任务进入终态后宿主派发 director_task 信号。"""
 
 def director_task_status(*, task_id: Optional[str] = ...) -> Dict[str, Any]:
     """查导演任务进度；省略 task_id 时查当前插件最近一次任务。
@@ -118,6 +120,45 @@ def director_task_status(*, task_id: Optional[str] = ...) -> Dict[str, Any]:
 def director_task_take(*, task_id: Optional[str] = ...) -> Dict[str, Any]:
     """取走已完成导演任务的结果；取走后 hasResult 变为 false。
     返回 {ok, taskId, kind, summary, result}。"""
+
+def script_run(
+    script: str,
+    *,
+    args: Optional[List[str]] = ...,
+    files: Optional[Dict[str, Any]] = ...,
+    timeout_ms: int = ...,
+) -> Dict[str, Any]:
+    """在插件目录内前台运行一个 Node 脚本（.mjs/.js/.cjs）。需 manifest 声明
+    script_run = true。files 先写进本次独立工作目录，脚本以该目录为 cwd；值可以是
+    字符串或 {"base64": "..."}。返回 {ok, exit_code, stdout, stderr, files, workdir}；
+    files 是输出文件的 base64。执行受 Node 权限模型限制：只读插件目录与工作目录、
+    只写工作目录、禁网、禁子进程。"""
+
+def script_serve(
+    script: str,
+    *,
+    args: Optional[List[str]] = ...,
+    files: Optional[Dict[str, Any]] = ...,
+) -> Dict[str, Any]:
+    """在插件目录内启动一个常驻 Node 脚本，等待它输出 URL。需 manifest 声明
+    script_run = true。返回 {ok, run_id, url, logs}。服务会运行到 script_stop、
+    视图窗口关闭、插件禁用或应用退出。这个接口跑插件自带的可信脚本，不受
+    script_run 的 Node 权限限制，但仍只允许插件目录内的脚本。"""
+
+def script_stop(run_id: str) -> Dict[str, Any]:
+    """停止一条 script_serve 启动的常驻脚本。返回 {ok}。"""
+
+def open_plugin_view(
+    url: str,
+    *,
+    run_id: Optional[str] = ...,
+    title: str = ...,
+    width: float = ...,
+    height: float = ...,
+) -> Dict[str, Any]:
+    """把插件的回环页面放进应用内沙箱窗口。需 manifest 声明 plugin_view = true。
+    只接受 http://127.0.0.1 / localhost / ::1；窗口不注入 LingChat 前端与 Tauri IPC。
+    传入 run_id 时窗口关闭会自动 script_stop 对应服务。返回 {ok}。"""
 
 def ws_open(conn_id: str, *, url: Optional[str] = ...) -> Dict[str, Any]:
     """启用一条已声明的 WS 连接（可选 url 覆盖声明值）。返回 {ok}。"""

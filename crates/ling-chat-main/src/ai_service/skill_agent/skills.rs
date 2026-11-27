@@ -3,10 +3,13 @@
 use serde::Serialize;
 use std::collections::HashSet;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 const MAX_SKILLS: usize = 200;
 const MAX_SKILL_BYTES: u64 = 512 * 1024;
+/// 技能参考文件单次读取上限。技能目录里的方块状态表接近 512KB，读太多会把导演上下文撑爆。
+const MAX_SKILL_READ_CHARS: usize = 64 * 1024;
+const MAX_SKILL_READ_BYTES: u64 = 4 * 1024 * 1024;
 
 /// 发现的技能信息。
 #[derive(Debug, Clone, Serialize)]
@@ -143,7 +146,75 @@ fn safe_skill_file(canonical_skill_dir: &Path) -> Option<PathBuf> {
     (metadata.is_file() && metadata.len() <= MAX_SKILL_BYTES).then_some(skill_md)
 }
 
-fn is_safe_skill_name(name: &str) -> bool {
+/// 直接从一个已知目录读取技能。插件携带的技能不走全局技能库，由插件系统解析出目录后交给这里。
+pub fn load_skill_at(base_dir: &Path) -> Option<SkillLoadResult> {
+    let canonical = base_dir.canonicalize().ok()?;
+    let skill_md = safe_skill_file(&canonical)?;
+    let content = fs::read_to_string(&skill_md).ok()?;
+    let name = canonical
+        .file_name()
+        .map(|name| name.to_string_lossy().to_string())?;
+    Some(SkillLoadResult {
+        name,
+        base_directory: canonical,
+        content,
+    })
+}
+
+/// 读取技能目录内的参考文件。只接受技能目录内的相对路径，返回截断后的文本。
+pub fn read_skill_file(base_dir: &Path, relative: &str) -> Result<(String, bool), String> {
+    let base = base_dir
+        .canonicalize()
+        .map_err(|error| format!("技能目录无效: {error}"))?;
+    let relative = relative.trim();
+    if relative.is_empty() {
+        return Err("缺少文件路径".to_string());
+    }
+    let rel_path = Path::new(relative);
+    if rel_path.is_absolute()
+        || rel_path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err("只允许技能目录内的相对路径".to_string());
+    }
+
+    let path = base.join(rel_path);
+    let canonical = path
+        .canonicalize()
+        .map_err(|error| format!("读取技能文件失败: {error}"))?;
+    if !canonical.starts_with(&base) {
+        return Err("路径越出技能目录".to_string());
+    }
+    let metadata =
+        fs::metadata(&canonical).map_err(|error| format!("读取技能文件失败: {error}"))?;
+    if !metadata.is_file() {
+        return Err("不是普通文件".to_string());
+    }
+    if metadata.len() > MAX_SKILL_READ_BYTES {
+        return Err(format!(
+            "文件太大（{} 字节，上限 {MAX_SKILL_READ_BYTES}）",
+            metadata.len()
+        ));
+    }
+
+    let bytes = fs::read(&canonical).map_err(|error| format!("读取技能文件失败: {error}"))?;
+    let text = String::from_utf8(bytes).map_err(|_| "技能参考文件不是文本".to_string())?;
+    let truncated = text.chars().count() > MAX_SKILL_READ_CHARS;
+    let content = if truncated {
+        let mut out: String = text.chars().take(MAX_SKILL_READ_CHARS).collect();
+        out.push_str("\n\n……（文件过长，已截断）");
+        out
+    } else {
+        text
+    };
+    Ok((content, truncated))
+}
+
+pub fn is_safe_skill_name(name: &str) -> bool {
     let mut components = Path::new(name).components();
     matches!(components.next(), Some(std::path::Component::Normal(_)))
         && components.next().is_none()

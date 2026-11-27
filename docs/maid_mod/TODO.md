@@ -207,11 +207,26 @@
     盖完工作模式恢复原样。
   - 已知：寻路额度与失败站位缓存只在一次施工内有效，换工地或她挪窝就作废重算。
 
+- [ ] **建筑平台前置：插件脚本运行时 + 视图窗口 + 插件 skill（宿主）**（代码已完成，已在示例插件上验证）
+  - 决定（2026-11-27）：建筑是插件扩展，宿主不再内嵌 blueprint/NBT/Node。宿主只补三项通用能力：
+    a) 导演任务可读插件目录下的 `skills/<name>/SKILL.md`（`skills` 请求字段 + 只读 `skill_read`）；
+    b) 插件系统提供 `script_run` / `script_serve` / `script_stop`，在插件目录内跑 Node 脚本；
+    c) 插件系统提供 `open_plugin_view`，把 `script_serve` 的**回环页面**放进应用内沙箱窗口。
+  - 能力位：manifest `script_run = true`、`plugin_view = true`；`director_task` 保持原样。
+  - 示例/自检插件：`data/plugins/plugin_showcase`（工具 `showcase_script` / `_view` / `_skill` / `_all`），
+    验证脚本执行、视图窗口、导演读取插件 skill 并调用 `skill_read`，同时作为用户写插件的模板。
+  - 验收：启用示例插件后，脚本工具返回输出文件；视图窗口能显示插件网页并在关闭时停掉服务；
+    导演工具能把 `skills/secret-note/references/note.md` 里的话交回，旁白报告通过。
+  - 后续（不在本轮）：把 `mc_maid_bridge` 的建筑链改成同一套：skill 随插件分发，导演提交 JS recipe，
+    插件按 `building` / `building-retry` 调 `run-build.mjs` → NBT → 插件自带 cells 适配脚本 → `script_serve`
+    `preview.mjs` + `open_plugin_view`；失败重试一次。模组施工仍用现有 `maid_build`。
+
 - [ ] **三期：小蓝图（模组 + 插件）**
   - 做：模组持有蓝图与进度（要建什么、放到第几块、哪块失败、下一步），插件只把玩家意图翻成蓝图；先限制在 9×9×9 以内，蓝图来源可以是玩家给的结构文件，或模型给一个很小的形状描述（墙 / 地板 / 坡屋顶）。
   - 验收：能按蓝图盖一个凉亭；中途缺材料时说缺什么、停在哪一步；重启游戏后进度不丢（或明确作废）。
   - 前置：二期。计划状态必须放常驻的模组侧——插件没有跨调用状态。
   - 调整（2026-11-21）：蓝图来源改为导演任务，格式与新分期见 [building-plan.md](building-plan.md)；本项保留模组执行器与进度部分。
+  - 调整（2026-11-27）：蓝图生成与预览改由插件携带 skill + 平台脚本运行时完成，宿主只提供通用能力；先验证上面的平台前置与示例插件，再动 `mc_maid_bridge`。
 
 - [ ] **四期：自主（模组 + 插件）**
   - 做：常驻任务槽 + 定时推进 + 完成 / 失败事件，让她在工作模式或空闲时自己接着往下干，而不是一次指令只做一件事。

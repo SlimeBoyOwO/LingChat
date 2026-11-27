@@ -75,6 +75,12 @@ impl PluginResourceEntry {
 pub trait PluginResourceSource: Send + Sync {
     /// 文件类资源（背景图 / 音乐 / 环境音）的可见条目：过滤隐藏、游戏同名、插件间重复。
     async fn visible_file_entries(&self, kind: ResourceKind) -> Vec<PluginResourceEntry>;
+
+    /// 解析插件携带的技能目录（`plugins/<id>/skills/<name>`）。
+    ///
+    /// 目录必须存在 `SKILL.md`，且规范化后仍在该插件目录内；插件不存在、未启用或
+    /// 目录非法时返回 `None`。宿主只拿到路径，不关心技能内容。
+    async fn plugin_skill_dir(&self, plugin_id: &str, name: &str) -> Option<PathBuf>;
 }
 
 /// 回复信号回调：宿主每产出一条 `ai:reply` 就调用一次，用于转发给订阅了

@@ -309,6 +309,14 @@ pub struct PluginManifest {
     /// 缺省 false：未声明的插件调用一律被拒——这会花掉一轮后台生成
     #[serde(default)]
     pub director_task: bool,
+    /// 是否允许执行插件目录内的 Node 脚本（`script_run` / `script_serve`）。
+    /// 缺省 false：未声明的插件调用一律被拒——这会在本机执行插件代码
+    #[serde(default)]
+    pub script_run: bool,
+    /// 是否允许把回环页面显示在应用内的沙箱窗口（`open_plugin_view`）。
+    /// 缺省 false：未声明的插件调用一律被拒
+    #[serde(default)]
+    pub plugin_view: bool,
     /// 启动（或启用）时执行的入口。
     #[serde(default)]
     pub startup: Option<StartupDecl>,
@@ -342,6 +350,10 @@ pub struct PluginRunEnv {
     pub trigger_proactive: bool,
     /// manifest `director_task` 声明：是否允许向导演 Agent 投递后台任务。
     pub director_task: bool,
+    /// manifest `script_run` 声明：是否允许执行插件目录内的 Node 脚本。
+    pub script_run: bool,
+    /// manifest `plugin_view` 声明：是否允许在应用内打开回环页面。
+    pub plugin_view: bool,
 }
 
 /// 插件运行期状态（含持久化开关与配置）。

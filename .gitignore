@@ -205,6 +205,12 @@ data/plugins/*
 !data/plugins/mc_maid_bridge/
 !data/plugins/mc_maid_bridge/**
 
+# 插件示例（演示脚本运行时 / 视图窗口 / 插件 skill，兼作平台自检）
+!data/plugins/plugin_showcase/
+!data/plugins/plugin_showcase/**
+# 插件携带的 skill 若安装 Node 依赖，node_modules 不入库
+data/plugins/**/skills/**/node_modules/
+
 # QQ 桥接插件（OneBot v11）
 !data/plugins/qq_onebot/
 !data/plugins/qq_onebot/**

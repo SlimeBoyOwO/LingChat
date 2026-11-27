@@ -1,0 +1,65 @@
+id = "plugin_showcase"
+name = "插件示例"
+description = "用三条最小示例演示插件平台：运行自带 Node 脚本、打开自带网页、让导演读取插件自带技能。可以照着它写自己的插件"
+version = "0.2.0"
+author = "LingChat"
+
+# 允许在本机运行插件目录内的 Node 脚本（scripts/hello.mjs、scripts/view.mjs）
+script_run = true
+# 允许把 script_serve 起的回环页面放进应用内沙箱窗口
+plugin_view = true
+# 允许让导演后台任务读取本插件自带的 skills/secret-note
+director_task = true
+
+[[config]]
+key = "auto_demo"
+label = "启用时自动跑一次脚本示例"
+kind = "boolean"
+required = false
+default = true
+hint = "插件启用或应用启动时自动运行 scripts/hello.mjs，并在台词表写一条结果。\n只演示脚本运行时，不会自动开窗口或投递导演任务。"
+
+# 启用/启动时跑一次脚本示例；失败不自动禁用本插件
+[startup]
+script = "main.py"
+handler = "on_start"
+timeout_ms = 60000
+required = false
+
+# 导演任务完成/失败时写一条旁白，报告它从技能参考文件里读到的原话
+[[subscribe]]
+signal = "director_task"
+script = "hooks.py"
+handler = "on_director_task"
+
+[[tools]]
+name = "showcase_script"
+examples = ["跑一下插件的脚本示例", "看看插件怎么运行自带脚本", "试一下 script_run"]
+description = "示例：在插件目录内运行 scripts/hello.mjs，读宿主写入的输入文件，在 out/ 里产出结果，并返回退出码、stdout 与输出文件清单。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 60000
+
+[[tools]]
+name = "showcase_view"
+examples = ["打开插件的示例网页", "看看插件怎么开窗口", "试一下 plugin_view"]
+description = "示例：启动 scripts/view.mjs 提供的本地网页，并在应用内沙箱窗口打开。关闭窗口会自动停止网页服务。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 60000
+
+[[tools]]
+name = "showcase_skill"
+examples = ["让导演读一下神秘纸条", "看看插件怎么带技能", "试一下插件 skill"]
+description = "示例：向导演 Agent 投递一个后台任务，让它读取本插件携带的 skills/secret-note，把纸条上的话原样交回。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 30000
+
+[[tools]]
+name = "showcase_all"
+examples = ["把插件示例全部跑一遍", "三条能力一起演示", "完整演示这个插件"]
+description = "示例：依次运行脚本、打开视图窗口，并投递导演读纸条的任务；导演结果会通过旁白报告。"
+parameters = '{ "type":"object", "properties":{} }'
+script = "main.py"
+timeout_ms = 90000

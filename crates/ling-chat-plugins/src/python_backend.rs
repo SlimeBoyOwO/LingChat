@@ -46,6 +46,8 @@ const BLOCKED_MODULES: &[&str] = &[
 /// 模块名可以点分（`events.world`）；每一段必须是合法标识符，路径分隔符与 `..`
 /// 一律挡掉（见 `is_module_name`）。包必须有 `__init__.py`，相对导入由 RustPython
 /// 的导入系统按 `__package__` 解析。
+///
+/// TODO: 这上面 AI 又踏马哈基啥呢，这地方似乎是硬编码，留着以后我检查一下
 const PLUGIN_IMPORT_BOOTSTRAP: &str = r#"
 import sys
 
@@ -413,6 +415,10 @@ fn run_entry(
         let _proactive_guard = host_api::set_proactive_allow(run_env.trigger_proactive);
         // director_task 会花掉一轮后台生成，同样单独声明
         let _director_task_guard = host_api::set_director_task_allow(run_env.director_task);
+        // script_run 会在本机执行插件携带的 Node 脚本，单独声明
+        let _script_run_guard = host_api::set_script_run_allow(run_env.script_run);
+        // plugin_view 允许把回环页面放进应用内窗口，单独声明
+        let _plugin_view_guard = host_api::set_plugin_view_allow(run_env.plugin_view);
         // ws_send / ws_open / ws_close 按当前插件定位连接
         let _plugin_guard = host_api::set_current_plugin(&run_env.plugin_id);
         // 兄弟模块与包要在脚本顶层 import，所以导入钩子必须先装好

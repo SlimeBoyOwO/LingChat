@@ -14,6 +14,8 @@ mod conversation;
 mod director_task;
 mod guard;
 mod http;
+pub(crate) mod script;
+pub(crate) mod view;
 mod websocket;
 
 use std::collections::HashMap;
@@ -24,8 +26,8 @@ use rustpython_vm::{PyObjectRef, VirtualMachine, builtins::PyListRef, function::
 
 pub(crate) use assets::check_relative_data_path;
 pub(crate) use guard::{
-    set_capture_allow, set_current_plugin, set_director_task_allow, set_proactive_allow,
-    set_read_allow, set_send_allow,
+    set_capture_allow, set_current_plugin, set_director_task_allow, set_plugin_view_allow,
+    set_proactive_allow, set_read_allow, set_script_run_allow, set_send_allow,
 };
 
 /// 插件脚本在独立线程执行，线程上无 tokio runtime 上下文；
@@ -360,7 +362,7 @@ mod plugin_host {
         super::director_task::director_task_status(kwargs, vm)
     }
 
-    /// 取走导演任务的结果（本期是建筑蓝图）。省略 `task_id` 时取当前插件最近一次任务。
+    /// 取走导演任务的结果（结构由插件定义）。省略 `task_id` 时取当前插件最近一次任务。
     ///
     /// 用法：`director_task_take()` / `director_task_take(task_id="...")`
     ///
@@ -373,6 +375,66 @@ mod plugin_host {
         vm: &VirtualMachine,
     ) -> PyResult<PyObjectRef> {
         super::director_task::director_task_take(kwargs, vm)
+    }
+
+    /// 在插件目录内前台执行一个 Node 脚本。
+    ///
+    /// 用法：`script_run("scripts/probe.mjs", args=["--json"], files={"in.txt": "..."})`
+    ///
+    /// 需要 manifest 顶层声明 `script_run = true`。脚本路径必须是插件目录内的相对路径；
+    /// `files` 的键也是相对路径，值可以是字符串或 `{"base64": "..."}`，会先写进本次
+    /// 独立工作目录，脚本以该目录为 cwd 运行。返回 `{ok, exit_code, stdout, stderr,
+    /// files, workdir}`；`files` 里是输出文件的 base64。执行受 Node 权限模型限制：
+    /// 只读插件目录与工作目录、只写工作目录、禁网、禁子进程。
+    #[pyfunction]
+    fn script_run(
+        script: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::script::script_run(script, kwargs, vm)
+    }
+
+    /// 在插件目录内启动一个常驻 Node 脚本，等待它输出 URL。
+    ///
+    /// 用法：`script_serve("scripts/view.mjs", args=["--port", "0"])`
+    ///
+    /// 需要 manifest 顶层声明 `script_run = true`。返回 `{ok, run_id, url, logs}`；
+    /// 服务会一直运行，直到 `script_stop`、视图窗口关闭、插件禁用或应用退出。
+    /// 这个接口跑的是插件自带的可信脚本，不受 script_run 的 Node 权限限制，
+    /// 但仍只允许插件目录内的脚本。
+    #[pyfunction]
+    fn script_serve(
+        script: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::script::script_serve(script, kwargs, vm)
+    }
+
+    /// 停止一条由 `script_serve` 启动的常驻脚本。
+    ///
+    /// 用法：`script_stop("run-...")`
+    #[pyfunction]
+    fn script_stop(run_id: String, vm: &VirtualMachine) -> PyResult<PyObjectRef> {
+        super::script::script_stop(run_id, vm)
+    }
+
+    /// 把插件自己的回环页面放进应用内的沙箱窗口。
+    ///
+    /// 用法：`open_plugin_view("http://127.0.0.1:5173/", run_id="run-...",
+    /// title="预览", width=1000, height=720)`
+    ///
+    /// 需要 manifest 顶层声明 `plugin_view = true`。只接受 127.0.0.1 / localhost /
+    /// ::1 的 http 页面；窗口不注入 LingChat 前端与 Tauri IPC。传入 `run_id` 时
+    /// 窗口关闭会自动停止对应的常驻脚本；页面来自 `script_serve` 就应当带上它。
+    #[pyfunction]
+    fn open_plugin_view(
+        url: String,
+        kwargs: KwArgs<PyObjectRef>,
+        vm: &VirtualMachine,
+    ) -> PyResult<PyObjectRef> {
+        super::view::open_plugin_view(url, kwargs, vm)
     }
 
     /// 启用一个已在 manifest 声明的 WebSocket 连接。

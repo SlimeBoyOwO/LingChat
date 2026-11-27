@@ -160,3 +160,55 @@ pub(crate) fn set_director_task_allow(allow: bool) -> DirectorTaskAllowGuard {
 pub(super) fn current_director_task_allow() -> bool {
     DIRECTOR_TASK_ALLOW.with(|cell| *cell.borrow())
 }
+
+thread_local! {
+    /// 当前线程正在执行的插件是否声明了 `script_run` 能力。它会在本机执行插件
+    /// 携带的 Node 脚本，必须由 manifest 单独声明。
+    static SCRIPT_RUN_ALLOW: RefCell<bool> = const { RefCell::new(false) };
+}
+
+pub(crate) struct ScriptRunAllowGuard {
+    prev: bool,
+}
+
+impl Drop for ScriptRunAllowGuard {
+    fn drop(&mut self) {
+        SCRIPT_RUN_ALLOW.with(|cell| *cell.borrow_mut() = self.prev);
+    }
+}
+
+pub(crate) fn set_script_run_allow(allow: bool) -> ScriptRunAllowGuard {
+    SCRIPT_RUN_ALLOW.with(|cell| ScriptRunAllowGuard {
+        prev: cell.replace(allow),
+    })
+}
+
+pub(super) fn current_script_run_allow() -> bool {
+    SCRIPT_RUN_ALLOW.with(|cell| *cell.borrow())
+}
+
+thread_local! {
+    /// 当前线程正在执行的插件是否声明了 `plugin_view` 能力：允许把回环页面
+    /// 放进应用内的沙箱窗口。
+    static PLUGIN_VIEW_ALLOW: RefCell<bool> = const { RefCell::new(false) };
+}
+
+pub(crate) struct PluginViewAllowGuard {
+    prev: bool,
+}
+
+impl Drop for PluginViewAllowGuard {
+    fn drop(&mut self) {
+        PLUGIN_VIEW_ALLOW.with(|cell| *cell.borrow_mut() = self.prev);
+    }
+}
+
+pub(crate) fn set_plugin_view_allow(allow: bool) -> PluginViewAllowGuard {
+    PLUGIN_VIEW_ALLOW.with(|cell| PluginViewAllowGuard {
+        prev: cell.replace(allow),
+    })
+}
+
+pub(super) fn current_plugin_view_allow() -> bool {
+    PLUGIN_VIEW_ALLOW.with(|cell| *cell.borrow())
+}

@@ -8,6 +8,19 @@
 施工帧 `maid_build`，插件加了 `maid_build_house`，蓝图暂时写死成一座 11×11 的中型木屋。
 这条链与导演任务并存，导演产出的蓝图以后接同一条施工帧；细节见下文「先行实现」。
 
+**平台前置（2026-11-27 调整）**：建筑是插件领域能力，宿主不内嵌 blueprint / NBT / Node。
+本轮先做三项通用平台能力，并用独立自检插件验证，暂不改 `mc_maid_bridge`：
+
+1. 导演任务可读插件目录下的 `skills/<name>/SKILL.md`（`skills` 请求字段 + 只读 `skill_read`）；
+2. 插件系统提供 `script_run` / `script_serve` / `script_stop`，在插件目录内运行 Node 脚本；
+3. 插件系统提供 `open_plugin_view`，把 `script_serve` 起的回环页面放进应用内沙箱窗口。
+
+建筑闭环的计划是：skill 随 `mc_maid_bridge` 分发 → 导演按 skill 提交 ESM recipe → 插件用
+`script_run` 跑 skill 自带的 `run-build.mjs` 得到 NBT → 插件自带适配脚本把 NBT 转成 cells 并校验
+2048 格 → `script_serve` 起 `preview.mjs`、`open_plugin_view` 在应用内看预览 → 失败按
+`building-retry` 重试一次 → 下一期把 cells 交给模组 `maid_build`。示例/自检插件见
+`data/plugins/plugin_showcase`，建筑侧改动等平台验证通过后再开始。
+
 ## 需求
 
 玩家对女仆说「给我盖一座小屋」这类话时：
