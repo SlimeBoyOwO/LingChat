@@ -52,4 +52,43 @@ export default {
     promptCacheKeyToggle: "リクエスト本文に prompt_cache_key",
     sessionHeaderToggle: "リクエストヘッダに X-Session-ID",
   },
+  search: {
+    placeholder:
+      "詳細設定・モデル・音声・ツール・設定キーを検索（例: LLM、TTS、ASR、投写、WEATHER_CITY…）",
+    clear: "検索をクリア",
+    resultCount: "{count} 件の設定が見つかりました",
+    resultCountCapped: "上位 {shown} 件を表示中（全 {total} 件）",
+    loadingDynamic: "詳細設定キーを読み込み中…",
+    emptyTitle: "一致する設定項目が見つかりません",
+    emptyHint:
+      "詳細設定の項目名・ツール名・設定キーで検索してみてください（例: LLM、timeout、音声、ホットワード、配信、記憶）",
+    shortcutHint: "Ctrl+K フォーカス · ↑↓ 選択 · Enter 移動 · Esc クリア",
+    jumpLabel: "移動",
+    restartTag: "再起動で反映",
+    sections: {
+      menu: "メインメニュー",
+      llm: "LLM 管理",
+      tts: "TTS 設定",
+      asr: "音声認識",
+      tools: "ツール設定",
+      cast: "画面配信",
+      memory: "永続記憶デバッグ",
+      other: "その他の詳細設定",
+    },
+    descs: {
+      menuLanguage: "表示言語を切り替えます（即時反映・自動保存）",
+      menuAffection: "好感度システムのメインスイッチ（保存後すぐ反映）",
+      menuGuide: "内蔵 TTS の設定ガイドを表示します",
+      llmList: "設定済みの AI モデル接続を確認・追加・編集・テストします",
+      llmAdd: "OpenAI 互換 / LM Studio / Codex などのモデル接続を新規作成します",
+      llmRoleChat: "メイン会話で使用する AI モデルを指定します",
+      llmRoleTranslate: "二言語翻訳に使用する AI モデルを指定します",
+      llmRoleGod: "裏側の判定やツール推薦に使う軽量モデルを指定します",
+      llmRoleVision: "画面認識や画像・動画理解に使うマルチモーダルモデルを指定します",
+      ttsSwitch: "オフラインのローカル TTS エンジンの有効 / 無効を切り替えます",
+      ttsInstalled: "インストール済みのローカルキャラクター音声モデルを管理します",
+      toolsWebSearch:
+        "Keenable / Kimi / BoCha / DeepSeek / Tavily / Codex・プロキシ設定を構成します",
+    },
+  },
 };

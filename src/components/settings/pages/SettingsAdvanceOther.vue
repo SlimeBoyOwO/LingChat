@@ -84,7 +84,12 @@
           </header>
 
           <form @submit.prevent="saveSettings">
-            <div v-for="setting in selectedSubcategory.settings" :key="setting.key" class="mb-6">
+            <div
+              v-for="setting in selectedSubcategory.settings"
+              :key="setting.key"
+              :data-setting-key="setting.key"
+              class="mb-6 rounded-xl transition-shadow"
+            >
               <SettingItem
                 :setting="localizedSetting(setting)"
                 @update:value="(value) => (setting.value = value)"
@@ -94,6 +99,7 @@
 
           <section
             v-if="activeSelection.category === 'TTS 配置'"
+            data-setting-anchor="tts-control"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
           >
             <h3 class="mb-1 text-base font-semibold text-white">
@@ -122,6 +128,7 @@
           <!-- 好感度动画开关：前端即时生效，不走后端配置树 -->
           <section
             v-if="activeSelection.category === '好感度' && activeSelection.subcategory === '通用'"
+            data-setting-anchor="affection-anim"
             class="mb-6 rounded-xl border border-white/10 bg-black/15 p-4"
           >
             <h3 class="mb-1 text-base font-semibold text-white">
@@ -187,6 +194,7 @@ import { getEnvConfigSettings, saveEnvConfigSettings } from "@/api/services/conf
 import { reactivateTTS } from "@/api/services/game-info";
 import { switchLlm } from "@/api/services/llm-providers";
 import { RefreshCw } from "@lucide/vue";
+import { useJumpRevealer } from "@/components/settings/search/advanceJump";
 
 // --- 响应式状态定义 ---
 const uiStore = useUIStore();
@@ -329,12 +337,20 @@ const forceReconnectTts = async () => {
   }
 };
 
-const loadConfig = async (selectFirst = true) => {
+let configLoadPromise: Promise<void> | null = null;
+let pendingJumpReveals = 0;
+
+const runLoadConfig = async (selectFirst = true) => {
   isLoading.value = true;
   try {
     configData.value = await getEnvConfigSettings();
 
-    if (selectFirst && Object.keys(configData.value).length > 0) {
+    if (
+      selectFirst &&
+      pendingJumpReveals === 0 &&
+      !activeSelection.category &&
+      Object.keys(configData.value).length > 0
+    ) {
       const firstCategory = Object.keys(configData.value)[0];
       if (firstCategory) {
         const firstSubcategory = Object.keys(
@@ -355,6 +371,14 @@ const loadConfig = async (selectFirst = true) => {
   } finally {
     isLoading.value = false;
   }
+};
+
+const loadConfig = (selectFirst = true): Promise<void> => {
+  const task = runLoadConfig(selectFirst);
+  configLoadPromise = task;
+  return task.finally(() => {
+    if (configLoadPromise === task) configLoadPromise = null;
+  });
 };
 
 // --- 导航指示器逻辑 ---
@@ -397,9 +421,49 @@ watch(
   { deep: true },
 );
 
+useJumpRevealer("other", async (target) => {
+  pendingJumpReveals += 1;
+  try {
+    if (configLoadPromise) {
+      await configLoadPromise;
+    } else if (Object.keys(configData.value).length === 0) {
+      await loadConfig(false);
+    }
+
+    if (Object.keys(configData.value).length === 0) return;
+
+    const targetCat = target.category;
+    let targetSub = target.subcategory;
+
+    if (targetCat && (!targetSub || !configData.value[targetCat]?.subcategories?.[targetSub])) {
+      targetSub = Object.keys(configData.value[targetCat]?.subcategories ?? {})[0];
+    }
+
+    if (targetCat && targetSub && configData.value[targetCat]?.subcategories?.[targetSub]) {
+      selectSubcategory(targetCat, targetSub);
+    } else if (!activeSelection.category) {
+      const firstCat = Object.keys(configData.value)[0];
+      const firstSub = firstCat
+        ? Object.keys(configData.value[firstCat]?.subcategories ?? {})[0]
+        : undefined;
+      if (firstCat && firstSub) {
+        selectSubcategory(firstCat, firstSub);
+      }
+    }
+
+    await nextTick();
+    updateIndicatorPosition();
+    navContainerRef.value
+      ?.querySelector<HTMLElement>(".adv-nav-link.active")
+      ?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  } finally {
+    pendingJumpReveals -= 1;
+  }
+});
+
 // --- 生命周期钩子 ---
 onMounted(async () => {
-  await loadConfig();
+  await (configLoadPromise ?? loadConfig());
   await nextTick();
   updateIndicatorPosition();
   setupNavResizeObserver();

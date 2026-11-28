@@ -49,4 +49,43 @@ export default {
     promptCacheKeyToggle: "請求體攜帶 prompt_cache_key",
     sessionHeaderToggle: "請求頭攜帶 X-Session-ID",
   },
+  search: {
+    placeholder:
+      "搜尋進階設定、模型、語音、工具或設定鍵（如 TTS、WEATHER_CITY、看螢幕、CosyVoice、熱詞…）",
+    clear: "清除搜尋",
+    resultCount: "找到 {count} 項設定",
+    resultCountCapped: "已顯示前 {shown} 項（共 {total} 項）",
+    loadingDynamic: "正在索引全部進階設定項目…",
+    emptyTitle: "找不到符合的設定項目",
+    emptyHint:
+      "試試輸入進階設定項目、工具名稱或設定鍵（例如：大模型、timeout、音色、熱詞、投影、記憶）",
+    shortcutHint: "Ctrl+K 聚焦 · ↑↓ 選擇 · Enter 跳轉 · Esc 清除",
+    jumpLabel: "前往",
+    restartTag: "需重啟生效",
+    sections: {
+      menu: "主選單",
+      llm: "大模型管理",
+      tts: "TTS 設定",
+      asr: "語音識別",
+      tools: "工具設定",
+      cast: "投影設定",
+      memory: "永久記憶除錯",
+      other: "其他進階設定",
+    },
+    descs: {
+      menuLanguage: "切換應用程式介面顯示語言，立即生效並自動儲存",
+      menuAffection: "好感度系統總開關，儲存後立即生效",
+      menuGuide: "查看內建 TTS 設定與使用指南",
+      llmList: "查看、新增、編輯、刪除並測試已設定的 AI 大模型連線與參數",
+      llmAdd: "建立 OpenAI 相容 / LM Studio / Codex 等模型連線設定",
+      llmRoleChat: "指定主對話預設使用的 AI 模型提供方",
+      llmRoleTranslate: "指定用於雙語台詞翻譯的模型提供方",
+      llmRoleGod: "指定用於背景判斷與工具推薦的輕量決策模型",
+      llmRoleVision: "指定用於看螢幕、圖片與影片理解的多模態模型",
+      ttsSwitch: "啟用或關閉離線本地 TTS 引擎",
+      ttsInstalled: "管理已安裝的本地角色語音模型",
+      toolsWebSearch:
+        "設定 Keenable / Kimi / 博查 / DeepSeek / Tavily / Codex / 代理位址等聯網搜尋參數",
+    },
+  },
 };

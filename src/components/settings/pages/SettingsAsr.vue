@@ -7,7 +7,11 @@
 
     <div class="mx-auto" :class="[columnClass, isMobileView ? 'space-y-3.5' : 'space-y-5']">
       <!-- 语音输入 -->
-      <AsrSectionCard :title="t('settings.asr.voiceInput')" :icon="Mic">
+      <AsrSectionCard
+        data-setting-anchor="asr-voice-input"
+        :title="t('settings.asr.voiceInput')"
+        :icon="Mic"
+      >
         <template #actions>
           <span
             v-if="!isMobileView && saveState !== 'idle'"
@@ -69,10 +73,14 @@
       </AsrSectionCard>
 
       <!-- 输入方式 -->
-      <AsrSectionCard :title="t('settings.asr.sections.inputMethod')" :icon="Keyboard">
+      <AsrSectionCard
+        data-setting-anchor="asr-input-method"
+        :title="t('settings.asr.sections.inputMethod')"
+        :icon="Keyboard"
+      >
         <div class="space-y-4">
           <!-- 语音快捷键；移动端无全局快捷键，前端 keydown 也易被蓝牙键盘误触，整块隐藏 -->
-          <div v-if="!isMobileView">
+          <div v-if="!isMobileView" data-setting-anchor="asr-ptt-key">
             <div class="mb-1.5 flex items-center justify-between">
               <label class="text-sm font-medium">{{ t("settings.asr.pttKey") }}</label>
               <button
@@ -100,7 +108,7 @@
               {{ t("settings.asr.pttKeyInvalid") }}
             </p>
             <!-- 失去焦点快捷键可用（全局注册）：任意应用前台按快捷键均可触发语音输入 -->
-            <div class="mt-4 border-t border-white/10 pt-4">
+            <div data-setting-anchor="asr-ptt-global" class="mt-4 border-t border-white/10 pt-4">
               <Toggle
                 :checked="localSettings.ptt_global"
                 @change="(v: boolean) => (localSettings.ptt_global = v)"
@@ -121,6 +129,7 @@
 
           <!-- 自动语音识别开关 -->
           <Toggle
+            data-setting-anchor="asr-auto-listen"
             :checked="localSettings.auto_listen"
             @change="(v: boolean) => (localSettings.auto_listen = v)"
           >
@@ -133,7 +142,7 @@
           <div class="border-t border-white/10"></div>
 
           <!-- 识别完成后处理方式：整卡可点，原生 radio 隐藏 -->
-          <div>
+          <div data-setting-anchor="asr-send-mode">
             <div class="mb-2 text-sm font-medium text-white">
               {{ t("settings.asr.sendMode.title") }}
             </div>
@@ -176,7 +185,11 @@
       </AsrSectionCard>
 
       <!-- 识别服务 -->
-      <AsrSectionCard :title="t('settings.asr.provider.title')" :icon="Server">
+      <AsrSectionCard
+        data-setting-anchor="asr-provider"
+        :title="t('settings.asr.provider.title')"
+        :icon="Server"
+      >
         <div>
           <!-- 两级选择：先选服务，再在表单里选该服务的模型。
             本地 llama.cpp 的模型清单要从服务端 /v1/models 拉，服务没起就拉不到，
@@ -357,7 +370,11 @@
       </AsrSectionCard>
 
       <!-- 热词 -->
-      <AsrSectionCard :title="t('settings.asr.hotwords.sectionTitle')" :icon="Tags">
+      <AsrSectionCard
+        data-setting-anchor="asr-hotwords"
+        :title="t('settings.asr.hotwords.sectionTitle')"
+        :icon="Tags"
+      >
         <p class="text-sm text-gray-300">{{ t("settings.asr.hotwords.description") }}</p>
 
         <!-- 两行同构的内嵌卡片：图标 + 标题说明 + 右侧「管理」 -->
@@ -413,7 +430,11 @@
       </AsrSectionCard>
 
       <!-- 高级与诊断 -->
-      <AsrSectionCard :title="t('settings.asr.advanced.title')" :icon="SlidersHorizontal">
+      <AsrSectionCard
+        data-setting-anchor="asr-advanced"
+        :title="t('settings.asr.advanced.title')"
+        :icon="SlidersHorizontal"
+      >
         <p class="text-sm text-gray-300">{{ t("settings.asr.advanced.description") }}</p>
 
         <!-- 两个数字输入：桌面两列，移动端单列整行 -->

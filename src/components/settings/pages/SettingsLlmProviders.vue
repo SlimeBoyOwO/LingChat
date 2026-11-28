@@ -9,7 +9,10 @@
         !uiStore.isNarrowScreen && sidePanel ? 'w-[45%] border-r border-white/10 pr-4' : 'w-full'
       "
     >
-      <div class="mb-4 flex shrink-0 items-center justify-between">
+      <div
+        data-setting-anchor="llm-list"
+        class="mb-4 flex shrink-0 items-center justify-between rounded-lg"
+      >
         <h3 class="text-base font-semibold text-white">
           {{ $t("settings.llmProviders.list.title") }}
         </h3>
@@ -34,6 +37,7 @@
             {{ $t("settings.llmProviders.list.restartApp") }}
           </button>
           <button
+            data-setting-anchor="llm-add"
             class="bg-brand hover:bg-brand/80 rounded-lg px-4 py-2 text-sm font-medium text-white transition-colors"
             @click="startAdd"
           >
@@ -49,6 +53,7 @@
         <div
           v-for="p in store.providers"
           :key="p.id"
+          :data-setting-anchor="`llm-provider-${p.id}`"
           class="flex cursor-pointer items-center gap-3 rounded-lg border border-white/10 bg-white/5 px-4 py-3.5 transition-colors hover:border-white/20"
           :class="{ 'border-brand/40 bg-brand/5': sidePanel && editing.id === p.id }"
           @click="startEdit(p)"
@@ -118,7 +123,7 @@
       <!-- Role assignment -->
       <div class="mt-4 shrink-0 border-t border-white/10 pt-4">
         <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
-          <div class="flex flex-col gap-1.5">
+          <div data-setting-anchor="llm-role-chat" class="flex flex-col gap-1.5 rounded-lg">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.llmProviders.role.chatModel")
             }}</label>
@@ -157,7 +162,7 @@
               </div>
             </div>
           </div>
-          <div class="flex flex-col gap-1.5">
+          <div data-setting-anchor="llm-role-translate" class="flex flex-col gap-1.5 rounded-lg">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.llmProviders.role.translateModel")
             }}</label>
@@ -196,7 +201,7 @@
               </div>
             </div>
           </div>
-          <div class="flex flex-col gap-1.5">
+          <div data-setting-anchor="llm-role-god" class="flex flex-col gap-1.5 rounded-lg">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.llmProviders.role.godAgent")
             }}</label>
@@ -235,7 +240,7 @@
               </div>
             </div>
           </div>
-          <div class="flex flex-col gap-1.5">
+          <div data-setting-anchor="llm-role-vision" class="flex flex-col gap-1.5 rounded-lg">
             <label class="text-xs font-medium text-white/60">{{
               $t("settings.llmProviders.role.visionModel")
             }}</label>

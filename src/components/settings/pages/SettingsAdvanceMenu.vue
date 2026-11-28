@@ -116,7 +116,7 @@
     </div>
 
     <!-- 界面语言 -->
-    <div class="h-full transition-all duration-300">
+    <div data-setting-anchor="menu-language" class="h-full transition-all duration-300">
       <MenuItem :title="$t('advance.menu.languageTitle')" size="large">
         <template #header>
           <Languages :size="20" />
@@ -142,7 +142,7 @@
     </div>
 
     <!-- 好感度系统 -->
-    <div class="h-full transition-all duration-300">
+    <div data-setting-anchor="menu-affection" class="h-full transition-all duration-300">
       <MenuItem :title="$t('advance.menu.affectionTitle')" size="large">
         <template #header>
           <Heart :size="20" />
@@ -189,7 +189,11 @@
     </div>
 
     <!-- 内置 TTS 教程 -->
-    <div class="h-full cursor-pointer transition-all duration-300" @click="openGuide">
+    <div
+      data-setting-anchor="menu-guide"
+      class="h-full cursor-pointer transition-all duration-300"
+      @click="openGuide"
+    >
       <MenuItem :title="$t('advance.menu.guideTitle')" size="large">
         <template #header>
           <BookOpen :size="20" />
